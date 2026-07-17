@@ -6,6 +6,7 @@ import { realpathSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
 import { Router, type RequestHandler } from 'express';
 import { acpHost, probeCodeCapabilities } from '../code-mode/acp-host.js';
+import { CodeTransportError } from '../code-mode/types.js';
 import {
     buildJwcModelRole,
     clearJwcModelAssignment,
@@ -31,6 +32,16 @@ function realOrOriginal(path: string): string {
         return realpathSync(path);
     } catch {
         return path;
+    }
+}
+
+function codeTransportStatus(error: unknown, fallback: number): number {
+    if (!(error instanceof CodeTransportError)) return fallback;
+    switch (error.code) {
+        case 'unknown_session': return 404;
+        case 'unsupported_model': return 422;
+        case 'unavailable': return 503;
+        case 'rpc_timeout': return 504;
     }
 }
 
@@ -258,8 +269,8 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         const modelId = String(body?.['modelId'] || '');
         if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
         acpHost.setSessionModel(String(req.params['id']), modelId).then(
-            () => res.json({ ok: true }),
-            (err: unknown) => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+            session => res.json({ ok: true, session }),
+            (err: unknown) => res.status(codeTransportStatus(err, 500)).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
         );
     });
 
@@ -273,7 +284,7 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
                 const session = await acpHost.newSession(cwd, model ? { model } : undefined);
                 res.status(201).json({ ok: true, session });
             } catch (err) {
-                res.status(503).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+                res.status(codeTransportStatus(err, 500)).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
             }
         })();
     });

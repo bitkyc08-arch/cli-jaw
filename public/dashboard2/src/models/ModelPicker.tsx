@@ -96,7 +96,7 @@ export function ModelPicker({
     });
     const display = selectedItem
         ? [selectedItem.provider, selectedItem.model, effort].filter(Boolean).join(' · ')
-        : loading ? 'Loading models…' : 'No models available';
+        : loading ? 'Loading models…' : options.length > 0 ? 'Select model…' : 'No models available';
     const scopeDescription = workerWide ? ' Applies to every Chat session on this instance.' : '';
 
     return (

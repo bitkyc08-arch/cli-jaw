@@ -11,6 +11,7 @@ const acpHostPath = resolve(import.meta.dirname, '../../src/code-mode/acp-host.j
 
 mock.module(acpHostPath, {
 	namedExports: {
+		probeCodeCapabilities: async () => ({ available: true, reason: 'ok' }),
 		acpHost: {
 			listSessions: () => [],
 			listPendingPermissions: () => [],

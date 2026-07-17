@@ -21,8 +21,19 @@ export interface CodeSessionInfo {
     status: CodeSessionStatus;
     createdAt: number;
     lastUsedAt: number;
+    /** Authoritative only after ACP confirms session/set_model. */
+    modelId: string | null;
     title?: string;
     replayEvents?: CodeSessionReplayEvent[];
+}
+
+export type CodeTransportErrorCode = 'unknown_session' | 'unsupported_model' | 'unavailable' | 'rpc_timeout';
+
+export class CodeTransportError extends Error {
+    constructor(public readonly code: CodeTransportErrorCode, message: string) {
+        super(message);
+        this.name = 'CodeTransportError';
+    }
 }
 
 export interface CodeSessionReplayEvent {
@@ -65,7 +76,7 @@ export interface CodeSessionTransport {
     listStoredSessions(options?: { cwd?: string; scope?: 'all' | 'cwd' }): Promise<StoredCodeSessionInfo[]>;
     extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
-    setSessionModel(sessionId: string, modelId: string): Promise<void>;
+    setSessionModel(sessionId: string, modelId: string): Promise<CodeSessionInfo>;
     /** Fire a prompt turn. Resolves on acceptance; streaming arrives via the 'jwc' bus topic (202+poll contract, 113.2 §4). */
     prompt(sessionId: string, text: string): Promise<PromptAccepted>;
     cancel(sessionId: string): Promise<void>;

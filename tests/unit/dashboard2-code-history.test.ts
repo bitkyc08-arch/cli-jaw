@@ -125,6 +125,7 @@ test('061 session/load history reconstructs one interrupted turn from the captur
         status: 'idle',
         createdAt: 0,
         lastUsedAt: 0,
+        modelId: null,
         replayEvents: load1,
     };
     const adapter = createCodeSourceAdapter(meta.sessionId, { now: clock() });

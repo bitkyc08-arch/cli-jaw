@@ -2,7 +2,7 @@
 // stream renderer (TurnStreamViewport + CodeLiveTail). Lives entirely inside
 // the lazy code/ chunk; the transport stays provider-owned (single
 // EventSource via useManagerSync().subscribeJwc — never a second one).
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useManagerSync } from '../providers/sync-provider.tsx';
 import { createTurnStore } from '../turn-stream/store/turn-store.ts';
@@ -14,6 +14,8 @@ import type { JwcPermissionEvent } from './code-event-types.ts';
 import { loadSessionHistory, type CodeHistorySummary } from './code-history-adapter.ts';
 import { CodeHistoryList } from './CodeHistoryList.tsx';
 import { CodeLiveTail } from './CodeLiveTail.tsx';
+import { CodeModelControl } from './CodeModelControl.tsx';
+import { createCodeSessionForGeneration, isCurrentCodeSessionGeneration } from './code-session-controller.ts';
 import './code-tab.css';
 
 export interface CodeTabProps {
@@ -57,7 +59,31 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
     const [draft, setDraft] = useState('');
     const [busy, setBusy] = useState(false);
     const [permissions, setPermissions] = useState<PendingPermission[]>([]);
+    const [modelSelection, setModelSelection] = useState<{ port: number; modelId: string } | null>(null);
     const replaySeededRef = useRef<string | null>(null);
+    const portGenerationRef = useRef(0);
+    const sessionGenerationRef = useRef(0);
+    const createAbortRef = useRef<AbortController | null>(null);
+    const selectedModelId = modelSelection?.port === port ? modelSelection.modelId : null;
+    const handleModelSelection = useCallback((modelId: string | null) => {
+        setModelSelection(modelId ? { port, modelId } : null);
+    }, [port]);
+
+    useEffect(() => {
+        portGenerationRef.current += 1;
+        sessionGenerationRef.current += 1;
+        createAbortRef.current?.abort();
+        createAbortRef.current = null;
+        setSessionId(null);
+        setModelSelection(null);
+        setListError(null);
+        return () => {
+            portGenerationRef.current += 1;
+            sessionGenerationRef.current += 1;
+            createAbortRef.current?.abort();
+            createAbortRef.current = null;
+        };
+    }, [port]);
 
     const scopeKey = sessionId ? `code:${port}/${sessionId}` : null;
     const store = useMemo(
@@ -82,10 +108,18 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
     useEffect(() => {
         if (!store || !adapter) return;
         return sync.subscribeJwc(payload => {
+            if (payload && typeof payload === 'object') {
+                const record = payload as Record<string, unknown>;
+                if (record['event'] === 'code_session_model_changed'
+                    && record['sessionId'] === sessionId
+                    && typeof record['modelId'] === 'string') {
+                    setModelSelection({ port, modelId: record['modelId'] });
+                }
+            }
             const actions = adapter.ingestLive(payload);
             if (actions.length) store.ingest(actions);
         });
-    }, [sync, store, adapter]);
+    }, [sync, store, adapter, sessionId, port]);
 
     useEffect(() => () => { store?.dispose(); }, [store]);
 
@@ -93,6 +127,7 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
         // the load runs AFTER the session-scoped store/adapter remount below
         replaySeededRef.current = null;
         pendingEntryRef.current = entry;
+        sessionGenerationRef.current += 1;
         setListError(null);
         setSessionId(entry.sessionId);
     }
@@ -105,28 +140,54 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
         if (replaySeededRef.current === sessionId) return;
         replaySeededRef.current = sessionId;
         pendingEntryRef.current = null;
-        void loadSessionHistory(client, entry, adapter).then(({ actions }) => {
+        const generation = portGenerationRef.current;
+        const sessionGeneration = sessionGenerationRef.current;
+        void loadSessionHistory(client, entry, adapter).then(({ session, actions }) => {
+            if (generation !== portGenerationRef.current
+                || !isCurrentCodeSessionGeneration(sessionGeneration, sessionGenerationRef.current)) return;
+            setModelSelection(session.modelId ? { port, modelId: session.modelId } : null);
             if (actions.length) store.ingest(actions);
         }).catch((error: unknown) => {
+            if (generation !== portGenerationRef.current
+                || !isCurrentCodeSessionGeneration(sessionGeneration, sessionGenerationRef.current)) return;
             setListError(error instanceof Error ? error.message : String(error));
         });
-    }, [store, adapter, sessionId, client]);
+    }, [store, adapter, sessionId, client, port]);
 
     async function startNewSession(): Promise<void> {
+        const generation = portGenerationRef.current;
+        const originatingClient = client;
+        const controller = new AbortController();
+        createAbortRef.current?.abort();
+        createAbortRef.current = controller;
         try {
+            if (!selectedModelId) {
+                setListError('Select an available provider and model before starting a Code session');
+                return;
+            }
             const instances = await api.fetchInstances();
             const cwd = instances.find(instance => instance.port === port)?.workingDir;
+            if (controller.signal.aborted || generation !== portGenerationRef.current) return;
             if (!cwd) {
                 setListError('No working directory for this instance');
                 return;
             }
-            const session = await client.newSession(cwd);
+            const session = await createCodeSessionForGeneration(originatingClient, cwd, selectedModelId, {
+                signal: controller.signal,
+                isCurrent: () => generation === portGenerationRef.current,
+            });
+            if (!session) return;
             replaySeededRef.current = null;
             pendingEntryRef.current = null;
+            sessionGenerationRef.current += 1;
             setSessionId(session.sessionId);
+            setModelSelection(session.modelId ? { port, modelId: session.modelId } : null);
             setListError(null);
         } catch (error: unknown) {
+            if (controller.signal.aborted || generation !== portGenerationRef.current) return;
             setListError(error instanceof Error ? error.message : String(error));
+        } finally {
+            if (createAbortRef.current === controller) createAbortRef.current = null;
         }
     }
 
@@ -157,13 +218,23 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
     if (!sessionId || !store) {
         return (
             <div className="d2-code-tab" data-testid="code-tab">
+                <div className="d2-code-model-bar">
+                    <CodeModelControl
+                        client={client}
+                        sessionId={null}
+                        confirmedModelId={selectedModelId}
+                        onSelectionChange={handleModelSelection}
+                    />
+                </div>
                 <CodeHistoryList
                     client={client}
                     onNewSession={() => { void startNewSession(); }}
                     onSelectLive={(session: CodeSessionInfo) => {
                         replaySeededRef.current = null;
                         pendingEntryRef.current = null;
+                        sessionGenerationRef.current += 1;
                         setSessionId(session.sessionId);
+                        setModelSelection(session.modelId ? { port, modelId: session.modelId } : null);
                     }}
                     onSelectStored={openStoredSession}
                 />
@@ -191,6 +262,14 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
                     ))}
                 </div>
             ))}
+            <div className="d2-code-model-bar">
+                <CodeModelControl
+                    client={client}
+                    sessionId={sessionId}
+                    confirmedModelId={selectedModelId}
+                    onSelectionChange={handleModelSelection}
+                />
+            </div>
             <div className="d2-code-composer">
                 <textarea
                     value={draft}

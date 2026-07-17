@@ -9,11 +9,12 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import type { Interface as ReadLineInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { publish } from '../core/event-bus.js';
 import { loadSettings } from '../core/config.js';
-import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionReplayEvent, type CodeSessionTransport, type PendingPermission, type PromptAccepted, type StoredCodeSessionInfo } from './types.js';
+import { CodeTransportError, DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionReplayEvent, type CodeSessionTransport, type PendingPermission, type PromptAccepted, type StoredCodeSessionInfo } from './types.js';
 
 const PROTOCOL_VERSION = 1;
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,8 @@ interface JsonRpcMessage {
 interface Deferred {
     resolve: (value: Record<string, unknown>) => void;
     reject: (err: Error) => void;
+    method: string;
+    timer: ReturnType<typeof setTimeout>;
 }
 
 export type CodeCommandSource = 'env' | 'package' | 'path';
@@ -90,6 +93,7 @@ function normalizeStoredSession(raw: Record<string, unknown>): StoredCodeSession
 
 class AcpHost implements CodeSessionTransport {
     #child: ChildProcess | null = null;
+    #readline: ReadLineInterface | null = null;
     #nextId = 1;
     #pendingRpc = new Map<number | string, Deferred>();
     #sessions = new Map<string, CodeSessionInfo>();
@@ -117,8 +121,14 @@ class AcpHost implements CodeSessionTransport {
         });
         this.#child = child;
         const rl = createInterface({ input: child.stdout! });
+        this.#readline = rl;
         rl.on('line', line => this.#onLine(line));
-        child.on('exit', code => this.#onChildExit(code));
+        child.once('error', () => {
+            if (this.#child === child) this.#onChildExit(null);
+        });
+        child.on('exit', code => {
+            if (this.#child === child) this.#onChildExit(code);
+        });
         // On handshake failure, reset #initialized so the NEXT call respawns instead
         // of returning the same rejected promise forever (no auto-recovery otherwise).
         this.#initialized = this.#handshake().catch(err => {
@@ -142,11 +152,16 @@ class AcpHost implements CodeSessionTransport {
 
     #onChildExit(code: number | null): void {
         this.#ready = false;
-        for (const [, d] of this.#pendingRpc) d.reject(new Error(`acp child exited (code ${code})`));
+        for (const [, d] of this.#pendingRpc) {
+            clearTimeout(d.timer);
+            d.reject(new CodeTransportError('unavailable', `acp child exited (code ${code})`));
+        }
         this.#pendingRpc.clear();
         for (const s of this.#sessions.values()) s.status = 'closed';
         this.#permissions.clear();
         this.#child = null;
+        this.#readline?.close();
+        this.#readline = null;
         this.#initialized = null;
         publish('jwc', 'code_child_exit', { code });
         // Lazy respawn: next newSession()/prompt() re-runs #ensureChild().
@@ -176,7 +191,18 @@ class AcpHost implements CodeSessionTransport {
     #request(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
         const id = this.#nextId++;
         return new Promise((resolve, reject) => {
-            this.#pendingRpc.set(id, { resolve, reject });
+            if (!this.#child || this.#child.exitCode !== null || !this.#child.stdin?.writable) {
+                reject(new CodeTransportError('unavailable', 'acp child unavailable'));
+                return;
+            }
+            const configured = Number(process.env['JWC_ACP_RPC_TIMEOUT_MS'] ?? 30_000);
+            const timeoutMs = Number.isFinite(configured) && configured > 0 ? configured : 30_000;
+            const timer = setTimeout(() => {
+                this.#pendingRpc.delete(id);
+                reject(new CodeTransportError('rpc_timeout', `${method} timed out`));
+            }, timeoutMs);
+            timer.unref();
+            this.#pendingRpc.set(id, { resolve, reject, method, timer });
             this.#send({ jsonrpc: '2.0', id, method, params });
         });
     }
@@ -189,9 +215,13 @@ class AcpHost implements CodeSessionTransport {
             const d = this.#pendingRpc.get(msg.id);
             if (!d) return;
             this.#pendingRpc.delete(msg.id);
+            clearTimeout(d.timer);
             if (msg.error) {
                 const details = typeof msg.error.data?.['details'] === 'string' ? msg.error.data['details'] : '';
-                d.reject(new Error(details ? `${msg.error.message}: ${details}` : msg.error.message));
+                const message = details ? `${msg.error.message}: ${details}` : msg.error.message;
+                d.reject(d.method === 'session/set_model' && /model|unsupported|invalid/i.test(message)
+                    ? new CodeTransportError('unsupported_model', message)
+                    : new Error(message));
             }
             else d.resolve(msg.result ?? {});
             return;
@@ -243,15 +273,33 @@ class AcpHost implements CodeSessionTransport {
         const settings = loadSettings();
         const max = Number((settings['code'] as Record<string, unknown> | undefined)?.['maxConcurrentSessions'] ?? DEFAULT_CODE_SETTINGS.maxConcurrentSessions);
         const live = [...this.#sessions.values()].filter(s => s.status !== 'closed');
-        if (live.length >= max) throw new Error(`code.maxConcurrentSessions (${max}) reached`);
+        if (live.length >= max) throw new CodeTransportError('unavailable', `code.maxConcurrentSessions (${max}) reached`);
         await this.#ensureChild();
-        const res = await this.#request('session/new', { cwd, mcpServers: [] });
+        let res: Record<string, unknown>;
+        try {
+            res = await this.#request('session/new', { cwd, mcpServers: [] });
+        } catch (error) {
+            if (error instanceof CodeTransportError && error.code === 'rpc_timeout') {
+                // The remote side may have created a session whose id was in a
+                // late response. Terminate the child so that unknown session
+                // cannot survive as an orphan.
+                await this.#terminateChild();
+            }
+            throw error;
+        }
         const sessionId = String(res['sessionId'] ?? '');
         if (!sessionId) throw new Error('engine returned no sessionId');
         if (opts?.model) {
-            await this.#request('session/set_model', { sessionId, modelId: opts.model });
+            try {
+                await this.#request('session/set_model', { sessionId, modelId: opts.model });
+            } catch (error) {
+                await this.#request('session/close', { sessionId }).catch(async () => {
+                    await this.#terminateChild();
+                });
+                throw error;
+            }
         }
-        const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
+        const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now(), modelId: opts?.model ?? null };
         this.#sessions.set(sessionId, info);
         publish('jwc', 'code_session_created', { sessionId, cwd });
         return info;
@@ -273,7 +321,7 @@ class AcpHost implements CodeSessionTransport {
             captures.delete(replayCapture);
             if (captures.size === 0) this.#replayCaptures.delete(sessionId);
         }
-        const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
+        const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now(), modelId: null };
         if (stored?.title) info.title = stored.title;
         if (replayCapture.length > 0) info.replayEvents = replayCapture;
         this.#sessions.set(sessionId, info);
@@ -310,14 +358,23 @@ class AcpHost implements CodeSessionTransport {
         const res = await this.#request('session/fork', { sessionId, cwd, mcpServers: [] });
         const newSessionId = String(res['sessionId'] ?? '');
         if (!newSessionId) throw new Error('fork returned no sessionId');
-        const info: CodeSessionInfo = { sessionId: newSessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
+        const info: CodeSessionInfo = { sessionId: newSessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now(), modelId: null };
         this.#sessions.set(newSessionId, info);
         publish('jwc', 'code_session_forked', { sessionId: newSessionId, sourceSessionId: sessionId, cwd });
         return info;
     }
 
-    async setSessionModel(sessionId: string, modelId: string): Promise<void> {
+    async setSessionModel(sessionId: string, modelId: string): Promise<CodeSessionInfo> {
+        const session = this.#sessions.get(sessionId);
+        if (!session || session.status === 'closed') {
+            throw new CodeTransportError('unknown_session', `unknown session: ${sessionId}`);
+        }
+        await this.#ensureChild();
         await this.#request('session/set_model', { sessionId, modelId });
+        session.modelId = modelId;
+        session.lastUsedAt = Date.now();
+        publish('jwc', 'code_session_model_changed', { sessionId, modelId });
+        return { ...session };
     }
 
     async prompt(sessionId: string, text: string): Promise<PromptAccepted> {
@@ -360,7 +417,9 @@ class AcpHost implements CodeSessionTransport {
     async closeSession(sessionId: string): Promise<void> {
         const session = this.#sessions.get(sessionId);
         if (!session) return;
-        await this.#request('session/close', { sessionId }).catch(() => {});
+        await this.#request('session/close', { sessionId }).catch(async () => {
+            await this.#terminateChild();
+        });
         session.status = 'closed';
         this.#sessions.delete(sessionId);
         publish('jwc', 'code_session_closed', { sessionId });
@@ -389,9 +448,47 @@ class AcpHost implements CodeSessionTransport {
         this.#ready = false;
         if (this.#idleReaper) { clearInterval(this.#idleReaper); this.#idleReaper = null; }
         for (const sessionId of [...this.#sessions.keys()]) await this.closeSession(sessionId).catch(() => {});
-        this.#child?.stdin?.end();
-        this.#child?.kill('SIGTERM');
-        this.#child = null;
+        for (const [, deferred] of this.#pendingRpc) {
+            clearTimeout(deferred.timer);
+            deferred.reject(new CodeTransportError('unavailable', 'acp host disposed'));
+        }
+        this.#pendingRpc.clear();
+        this.#readline?.close();
+        this.#readline = null;
+        await this.#terminateChild();
+        this.#initialized = null;
+    }
+
+    async #terminateChild(): Promise<void> {
+        const child = this.#child;
+        if (!child) return;
+        child.stdin?.end();
+        if (child.exitCode !== null) return;
+        await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            let killTimer: ReturnType<typeof setTimeout> | null = null;
+            let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+            const done = (): void => {
+                if (settled) return;
+                settled = true;
+                if (killTimer) clearTimeout(killTimer);
+                if (fallbackTimer) clearTimeout(fallbackTimer);
+                resolve();
+            };
+            child.once('exit', done);
+            child.kill('SIGTERM');
+            killTimer = setTimeout(() => {
+                if (child.exitCode === null) child.kill('SIGKILL');
+            }, 1_000);
+            killTimer.unref();
+            fallbackTimer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                if (killTimer) clearTimeout(killTimer);
+                reject(new CodeTransportError('unavailable', 'acp child did not exit after SIGKILL'));
+            }, 2_000);
+            fallbackTimer.unref();
+        });
     }
 
     /** 061 — resident readiness snapshot for the capability fast-path. */
@@ -399,10 +496,21 @@ class AcpHost implements CodeSessionTransport {
         const alive = this.#child !== null && this.#child.exitCode === null;
         return { ready: alive && this.#ready, commandSource: this.#commandSource };
     }
+
+    diagnosticSnapshot(): { childAlive: boolean; pendingRpcCount: number; sessionCount: number } {
+        return {
+            childAlive: this.#child !== null && this.#child.exitCode === null,
+            pendingRpcCount: this.#pendingRpc.size,
+            sessionCount: this.#sessions.size,
+        };
+    }
 }
 
 const acpHostInstance = new AcpHost();
 export const acpHost: CodeSessionTransport = acpHostInstance;
+export function getAcpHostDiagnosticSnapshot(): { childAlive: boolean; pendingRpcCount: number; sessionCount: number } {
+    return acpHostInstance.diagnosticSnapshot();
+}
 
 // ── 061 — side-effect-free capability probe ─────────────────────────
 // No persistent child, no session: a throwaway `--mode acp` child performs the
