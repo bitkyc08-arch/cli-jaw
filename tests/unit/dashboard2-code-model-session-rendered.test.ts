@@ -105,6 +105,11 @@ test('rendered Code model control ignores a stale port inventory and reports the
     assert.equal(firstSignal?.aborted, true);
     assert.match(dom.window.document.querySelector('[role="combobox"]')?.textContent ?? '', /openai-codex.*gpt-5\.6-sol/);
     assert.equal(selected.at(-1), 'openai-codex/gpt-5.6-sol');
+    await act(async () => {
+        dom.window.document.querySelector<HTMLButtonElement>('[role="combobox"]')?.click();
+        await flush();
+    });
+    assert.ok(dom.window.document.querySelector('.d2-model-picker.opens-below.is-open'));
 
     await act(async () => {
         first.resolve(anthropic);

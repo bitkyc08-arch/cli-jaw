@@ -72,6 +72,11 @@
     gap: 2px;
 }
 
+.d2-model-picker.opens-below .d2-model-picker-menu {
+    top: calc(100% + 7px);
+    bottom: auto;
+}
+
 .d2-model-picker-option {
     display: flex;
     min-width: 0;

@@ -174,6 +174,7 @@ export function CodeModelControl({
                 loading={loading}
                 pending={switching}
                 disabled={!loading && options.length === 0}
+                placement={sessionId ? 'above' : 'below'}
                 onSelect={(next) => { void selectModel(next); }}
             />
             {catalog?.degraded ? (

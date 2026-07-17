@@ -23,6 +23,7 @@ export interface ModelPickerProps {
     error?: string | null;
     compact?: boolean;
     workerWide?: boolean;
+    placement?: 'above' | 'below';
     onSelect(option: ModelPickerOption): void;
 }
 
@@ -72,7 +73,7 @@ export function modelPickerOptions(
 export function ModelPicker({
     label = 'Provider and model', value, options, effort = '', loading = false,
     pending = false, disabled = false, error = null, compact = false,
-    workerWide = false, onSelect,
+    workerWide = false, placement = 'above', onSelect,
 }: ModelPickerProps): JSX.Element {
     const inputId = useId();
     const selectedItem = options.find(option => option.id === value?.id) ?? value;
@@ -100,7 +101,7 @@ export function ModelPicker({
     const scopeDescription = workerWide ? ' Applies to every Chat session on this instance.' : '';
 
     return (
-        <div className={`d2-model-picker${compact ? ' is-compact' : ''}${isOpen ? ' is-open' : ''}`}>
+        <div className={`d2-model-picker${compact ? ' is-compact' : ''}${isOpen ? ' is-open' : ''}${placement === 'below' ? ' opens-below' : ''}`}>
             <span className="d2-model-picker-label" {...getLabelProps()}>{label}</span>
             <button
                 type="button"
