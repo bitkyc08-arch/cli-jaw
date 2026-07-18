@@ -10,4 +10,5 @@ export const DOCK_TAB_TITLES: Record<DockTabKind, string> = {
 
 export type HoverDockProps = {
     port: number;
+    locale?: string | undefined;
 };

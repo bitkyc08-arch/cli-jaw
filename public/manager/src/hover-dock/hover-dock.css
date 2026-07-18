@@ -260,6 +260,82 @@
     background: var(--accent-soft);
 }
 
+/* ── Skills tab ── */
+
+.dock-skill-search {
+    width: 100%;
+    padding: 4px 8px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    background: var(--surface-overlay, var(--bg-elevated));
+    color: var(--text-primary, inherit);
+    font-size: 12px;
+    box-sizing: border-box;
+}
+
+.dock-skill-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.dock-skill-filter {
+    border: none;
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 10px;
+    background: var(--surface-overlay, var(--bg-elevated));
+    color: var(--text-secondary, inherit);
+    cursor: pointer;
+}
+
+.dock-skill-filter.is-active {
+    background: var(--accent-soft);
+    color: var(--text-primary, inherit);
+}
+
+.dock-skill {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--surface-overlay, var(--bg-elevated));
+}
+
+.dock-skill-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.dock-skill-name {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.dock-skill-toggle {
+    border: none;
+    border-radius: 9px;
+    padding: 1px 8px;
+    font-size: 9px;
+    cursor: pointer;
+    background: var(--surface-raised, var(--bg-raised));
+    color: var(--text-secondary, inherit);
+}
+
+.dock-skill-toggle.is-on {
+    background: var(--green, #4caf7d);
+    color: #fff;
+}
+
+.dock-skill-desc {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-secondary, inherit);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .hover-dock-pill {
         transition: none;

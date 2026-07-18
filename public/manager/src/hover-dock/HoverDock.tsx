@@ -2,6 +2,7 @@ import { useHoverDock } from './useHoverDock';
 import { DOCK_TAB_KINDS, DOCK_TAB_TITLES, type HoverDockProps } from './types';
 import { useDockClient } from './dock-settings';
 import { AgentsTab } from './AgentsTab';
+import { SkillsTab } from './SkillsTab';
 
 export function HoverDock(props: HoverDockProps) {
     const dock = useHoverDock();
@@ -49,6 +50,7 @@ export function HoverDock(props: HoverDockProps) {
                     </div>
                     <div className="hover-dock-body" role="tabpanel" data-dock-tab={dock.tab}>
                         {dock.tab === 'agents' && <AgentsTab client={client} active={dock.open && dock.tab === 'agents'} />}
+                        {dock.tab === 'skills' && <SkillsTab client={client} active={dock.open && dock.tab === 'skills'} locale={props.locale} />}
                     </div>
                 </div>
             )}

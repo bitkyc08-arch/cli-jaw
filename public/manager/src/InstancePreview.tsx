@@ -16,6 +16,7 @@ type InstancePreviewProps = {
     active: boolean;
     refreshKey: number;
     theme: PreviewTheme;
+    locale?: string | undefined;
     onOpenNotesFromPreview?: (path: string) => void;
     onOpenDocFromPreview?: (absolutePath: string) => void;
     onPreviewDroppedFiles?: (files: File[]) => void;
@@ -449,7 +450,7 @@ export function InstancePreview(props: InstancePreviewProps) {
             onDrop={(event) => { void handleFolderPathDrop(event); }}
         >
             {props.instance && (
-                <HoverDock key={props.instance.port} port={props.instance.port} />
+                <HoverDock key={props.instance.port} port={props.instance.port} locale={props.locale} />
             )}
             {(!props.enabled || !state.canPreview) && <div className="preview-empty">{disabledReason}</div>}
             {pathDropStatus && (
