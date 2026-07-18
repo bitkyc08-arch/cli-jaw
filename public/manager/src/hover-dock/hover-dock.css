@@ -420,6 +420,24 @@
     box-sizing: border-box;
 }
 
+.dock-model-card {
+    margin: 8px 0;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--surface-overlay, var(--bg-elevated));
+}
+
+.dock-model-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.dock-mcp-row {
+    padding: 2px 0;
+    font-size: 11px;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .hover-dock-pill {
         transition: none;

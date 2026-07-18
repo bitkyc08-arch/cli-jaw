@@ -2,6 +2,9 @@ import type { SettingsClient } from '../settings/types';
 import type { DockSettingsSnapshot } from './HoverDock';
 import { SettingsPromptSection } from './SettingsPromptSection';
 import { SettingsChannelsSection } from './SettingsChannelsSection';
+import { SettingsModelsSection } from './SettingsModelsSection';
+import { SettingsMcpSection } from './SettingsMcpSection';
+import { SettingsSttSection } from './SettingsSttSection';
 
 type SettingsTabProps = {
     client: SettingsClient;
@@ -18,6 +21,9 @@ export function SettingsTab({ client, active, snapshot }: SettingsTabProps) {
         <div className="dock-settings">
             <SettingsPromptSection client={client} active={active} />
             <SettingsChannelsSection client={client} active={active} settings={state.data} snapshot={snapshot} />
+            <SettingsModelsSection client={client} active={active} settings={state.data} snapshot={snapshot} />
+            <SettingsMcpSection client={client} active={active} />
+            <SettingsSttSection client={client} active={active} settings={state.data} snapshot={snapshot} />
         </div>
     );
 }
