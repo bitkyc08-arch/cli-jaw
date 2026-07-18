@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SettingsClient } from '../settings/types';
-import { usePageSnapshot } from '../settings/pages/page-shell';
 import { fetchCliRegistry, PRIMARY_CLIS, toModelMap, type CliRegistry } from './cli-registry';
-import { unwrapData, type DockTabProps, type SettingsData } from './dock-settings';
+import { unwrapData, type SettingsData } from './dock-settings';
+import type { DockSettingsSnapshot } from './HoverDock';
 import { FlushAgentSection } from './FlushAgentSection';
 import { EmployeesSection } from './EmployeesSection';
 
@@ -23,9 +23,15 @@ function useCliRegistry(client: SettingsClient, active: boolean): { registry: Cl
     return { registry, error };
 }
 
-export function AgentsTab({ client, active }: DockTabProps) {
+type AgentsTabProps = {
+    client: SettingsClient;
+    active: boolean;
+    snapshot: DockSettingsSnapshot;
+};
+
+export function AgentsTab({ client, active, snapshot }: AgentsTabProps) {
     const { registry, error: registryError } = useCliRegistry(client, active);
-    const { state, refresh, setData } = usePageSnapshot<SettingsData>(client, '/api/settings', [active]);
+    const { state, refresh, setData } = snapshot;
     const [expanded, setExpanded] = useState(false);
     const [customInput, setCustomInput] = useState('');
     const [saveError, setSaveError] = useState<string | null>(null);

@@ -336,6 +336,90 @@
     color: var(--text-secondary, inherit);
 }
 
+/* ── Settings tab ── */
+
+.dock-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+}
+
+.dock-toggle-row {
+    justify-content: space-between;
+}
+
+.dock-field-label {
+    font-size: 11px;
+    color: var(--text-secondary, inherit);
+}
+
+.dock-toggle-group {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.dock-toggle {
+    border: none;
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 10px;
+    background: var(--surface-overlay, var(--bg-elevated));
+    color: var(--text-secondary, inherit);
+    cursor: pointer;
+}
+
+.dock-toggle.is-active {
+    background: var(--accent-soft);
+    color: var(--text-primary, inherit);
+}
+
+.dock-health {
+    margin: 6px 0;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--surface-overlay, var(--bg-elevated));
+}
+
+.dock-health-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.dock-health-chips {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.dock-chip {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 9px;
+    background: var(--accent-soft);
+}
+
+.dock-channel {
+    margin-top: 8px;
+    border-top: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.08));
+    padding-top: 6px;
+}
+
+.dock-prompt-editor {
+    width: 100%;
+    min-height: 120px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    background: var(--surface-overlay, var(--bg-elevated));
+    color: var(--text-primary, inherit);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .hover-dock-pill {
         transition: none;

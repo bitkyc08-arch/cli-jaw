@@ -1,8 +1,35 @@
 import { useHoverDock } from './useHoverDock';
 import { DOCK_TAB_KINDS, DOCK_TAB_TITLES, type HoverDockProps } from './types';
 import { useDockClient } from './dock-settings';
+import type { SettingsData } from './dock-settings';
+import { usePageSnapshot, type SnapshotState } from '../settings/pages/page-shell';
+import type { SettingsClient } from '../settings/types';
 import { AgentsTab } from './AgentsTab';
 import { SkillsTab } from './SkillsTab';
+import { SettingsTab } from './SettingsTab';
+import type { DockTabKind } from './types';
+
+export type DockSettingsSnapshot = {
+    state: SnapshotState<SettingsData>;
+    refresh: () => Promise<void>;
+    setData: (next: SettingsData) => void;
+};
+
+function DockTabContent(props: { client: SettingsClient; tab: DockTabKind; open: boolean; locale?: string | undefined }) {
+    const snapshot = usePageSnapshot<SettingsData>(props.client, '/api/settings', [props.open]);
+    const settingsSnapshot: DockSettingsSnapshot = {
+        state: snapshot.state,
+        refresh: snapshot.refresh,
+        setData: snapshot.setData,
+    };
+    return (
+        <>
+            {props.tab === 'agents' && <AgentsTab client={props.client} active={props.open} snapshot={settingsSnapshot} />}
+            {props.tab === 'skills' && <SkillsTab client={props.client} active={props.open} locale={props.locale} />}
+            {props.tab === 'settings' && <SettingsTab client={props.client} active={props.open} snapshot={settingsSnapshot} />}
+        </>
+    );
+}
 
 export function HoverDock(props: HoverDockProps) {
     const dock = useHoverDock();
@@ -49,8 +76,7 @@ export function HoverDock(props: HoverDockProps) {
                         ))}
                     </div>
                     <div className="hover-dock-body" role="tabpanel" data-dock-tab={dock.tab}>
-                        {dock.tab === 'agents' && <AgentsTab client={client} active={dock.open && dock.tab === 'agents'} />}
-                        {dock.tab === 'skills' && <SkillsTab client={client} active={dock.open && dock.tab === 'skills'} locale={props.locale} />}
+                        <DockTabContent client={client} tab={dock.tab} open={dock.open} locale={props.locale} />
                     </div>
                 </div>
             )}
