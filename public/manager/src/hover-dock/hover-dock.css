@@ -90,6 +90,176 @@
     padding: 10px;
 }
 
+/* ── Dock form controls ── */
+
+.dock-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--text-secondary, inherit);
+}
+
+.dock-field select,
+.dock-field input[type="text"],
+.dock-emp-custom {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    background: var(--surface-overlay, var(--bg-elevated));
+    color: var(--text-primary, inherit);
+    font-size: 12px;
+}
+
+.dock-field-static {
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.dock-mono {
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+.dock-error {
+    margin: 6px 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(220, 60, 60, 0.15);
+    color: #ff8a8a;
+    font-size: 11px;
+}
+
+.dock-loading,
+.dock-dim {
+    color: var(--text-secondary, inherit);
+    font-size: 11px;
+    padding: 4px 0;
+}
+
+.dock-section {
+    margin-top: 10px;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    padding-top: 8px;
+}
+
+.dock-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    border: none;
+    background: none;
+    color: var(--text-primary, inherit);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 0;
+}
+
+.dock-section-header-static {
+    cursor: default;
+}
+
+.dock-section-body {
+    margin-top: 6px;
+}
+
+.dock-mini-btn {
+    border: none;
+    background: var(--accent-soft);
+    color: var(--text-primary, inherit);
+    border-radius: 6px;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.dock-emp {
+    margin: 8px 0;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--surface-overlay, var(--bg-elevated));
+}
+
+.dock-emp.is-static {
+    border-left: 2px solid var(--accent, #6aa6ff);
+}
+
+.dock-emp-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.dock-emp-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.dock-emp-name-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text-primary, inherit);
+    font-size: 12px;
+    font-weight: 600;
+    outline: none;
+}
+
+.dock-emp-builtin {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 9px;
+    color: var(--accent, #6aa6ff);
+    background: var(--accent-soft);
+    letter-spacing: 0.3px;
+}
+
+.dock-emp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.dock-emp-custom {
+    margin-top: 4px;
+    height: 44px;
+    resize: vertical;
+    font-size: 10px;
+}
+
+.dock-emp-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 10px;
+}
+
+.dock-status-running {
+    color: var(--warning, #e5a44a);
+}
+
+.dock-status-idle {
+    color: var(--green, #4caf7d);
+}
+
+.dock-emp-phase {
+    padding: 1px 6px;
+    border-radius: 9px;
+    font-size: 9px;
+    background: var(--accent-soft);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .hover-dock-pill {
         transition: none;

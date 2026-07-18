@@ -1,8 +1,11 @@
 import { useHoverDock } from './useHoverDock';
 import { DOCK_TAB_KINDS, DOCK_TAB_TITLES, type HoverDockProps } from './types';
+import { useDockClient } from './dock-settings';
+import { AgentsTab } from './AgentsTab';
 
-export function HoverDock(_props: HoverDockProps) {
+export function HoverDock(props: HoverDockProps) {
     const dock = useHoverDock();
+    const client = useDockClient(props.port);
     const pillVisible = dock.revealed || dock.open;
 
     return (
@@ -44,7 +47,9 @@ export function HoverDock(_props: HoverDockProps) {
                             </button>
                         ))}
                     </div>
-                    <div className="hover-dock-body" role="tabpanel" data-dock-tab={dock.tab} />
+                    <div className="hover-dock-body" role="tabpanel" data-dock-tab={dock.tab}>
+                        {dock.tab === 'agents' && <AgentsTab client={client} active={dock.open && dock.tab === 'agents'} />}
+                    </div>
                 </div>
             )}
         </div>
