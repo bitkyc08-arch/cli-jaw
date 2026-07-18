@@ -201,3 +201,33 @@ test('registered Code model handlers expose typed validation and transport failu
     newSessionError = null;
     setSessionModelError = null;
 });
+
+test('registered Code model handlers reject non-string model, modelId, and cwd payloads with 400', async () => {
+    calls.newSession.length = 0;
+    calls.setSessionModel.length = 0;
+    newSessionError = null;
+    setSessionModelError = null;
+    await withServer(async baseUrl => {
+        const post = (path: string, payload: unknown) => fetch(`${baseUrl}${path}`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        // modelId must be a real string: numbers/objects must not coerce downstream.
+        assert.equal((await post('/api/code/sessions/session-1/model', { modelId: 123 })).status, 400);
+        assert.equal((await post('/api/code/sessions/session-1/model', { modelId: {} })).status, 400);
+        assert.equal((await post('/api/code/sessions/session-1/model', { modelId: '   ' })).status, 400);
+
+        // create model: present-but-non-string is malformed, omitted stays valid.
+        assert.equal((await post('/api/code/sessions', { cwd: '/tmp/workspace', model: {} })).status, 400);
+        assert.equal((await post('/api/code/sessions', { cwd: '/tmp/workspace', model: 123 })).status, 400);
+        assert.equal((await post('/api/code/sessions', { cwd: '/tmp/workspace', model: '  ' })).status, 400);
+
+        // cwd: String(["/tmp"]) coerces to an absolute path, so type-check first.
+        assert.equal((await post('/api/code/sessions', { cwd: ['/tmp'] })).status, 400);
+        assert.equal((await post('/api/code/sessions', { cwd: 123 })).status, 400);
+        assert.equal((await post('/api/code/sessions/session-1/fork', { cwd: ['/tmp'] })).status, 400);
+    });
+    assert.deepEqual(calls.newSession, []);
+    assert.deepEqual(calls.setSessionModel, []);
+});

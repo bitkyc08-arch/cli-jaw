@@ -16,7 +16,6 @@ import { CodeHistoryList } from './CodeHistoryList.tsx';
 import { CodeLiveTail } from './CodeLiveTail.tsx';
 import { CodeModelControl } from './CodeModelControl.tsx';
 import { createCodeSessionForGeneration, isCurrentCodeSessionGeneration } from './code-session-controller.ts';
-import './code-tab.css';
 
 export interface CodeTabProps {
     port: number;
@@ -156,10 +155,13 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
 
     async function startNewSession(): Promise<void> {
         const generation = portGenerationRef.current;
+        const sessionGeneration = sessionGenerationRef.current;
         const originatingClient = client;
         const controller = new AbortController();
         createAbortRef.current?.abort();
         createAbortRef.current = controller;
+        const isCurrent = () => generation === portGenerationRef.current
+            && isCurrentCodeSessionGeneration(sessionGeneration, sessionGenerationRef.current);
         try {
             if (!selectedModelId) {
                 setListError('Select an available provider and model before starting a Code session');
@@ -167,14 +169,14 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
             }
             const instances = await api.fetchInstances();
             const cwd = instances.find(instance => instance.port === port)?.workingDir;
-            if (controller.signal.aborted || generation !== portGenerationRef.current) return;
+            if (controller.signal.aborted || !isCurrent()) return;
             if (!cwd) {
                 setListError('No working directory for this instance');
                 return;
             }
             const session = await createCodeSessionForGeneration(originatingClient, cwd, selectedModelId, {
                 signal: controller.signal,
-                isCurrent: () => generation === portGenerationRef.current,
+                isCurrent,
             });
             if (!session) return;
             replaySeededRef.current = null;
@@ -184,7 +186,7 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
             setModelSelection(session.modelId ? { port, modelId: session.modelId } : null);
             setListError(null);
         } catch (error: unknown) {
-            if (controller.signal.aborted || generation !== portGenerationRef.current) return;
+            if (controller.signal.aborted || !isCurrent()) return;
             setListError(error instanceof Error ? error.message : String(error));
         } finally {
             if (createAbortRef.current === controller) createAbortRef.current = null;

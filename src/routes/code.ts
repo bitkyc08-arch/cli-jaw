@@ -253,7 +253,8 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
     app.post('/api/code/sessions/:id/fork', requireAuth, (req, res) => {
         void (async () => {
             const body = req.body as Record<string, unknown> | undefined;
-            const cwd = String(body?.['cwd'] || '');
+            const cwdRaw = body?.['cwd'];
+            const cwd = typeof cwdRaw === 'string' ? cwdRaw.trim() : '';
             if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
             try {
                 const session = await acpHost.forkSession(String(req.params['id']), cwd);
@@ -266,7 +267,8 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
 
     app.post('/api/code/sessions/:id/model', requireAuth, (req, res) => {
         const body = req.body as Record<string, unknown> | undefined;
-        const modelId = String(body?.['modelId'] || '');
+        const modelIdRaw = body?.['modelId'];
+        const modelId = typeof modelIdRaw === 'string' ? modelIdRaw.trim() : '';
         if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
         acpHost.setSessionModel(String(req.params['id']), modelId).then(
             session => res.json({ ok: true, session }),
@@ -277,8 +279,14 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
     app.post('/api/code/sessions', requireAuth, (req, res) => {
         void (async () => {
             const body = req.body as Record<string, unknown> | undefined;
-            const cwd = String(body?.['cwd'] || '');
-            const model = body?.['model'] ? String(body['model']) : undefined;
+            const cwdRaw = body?.['cwd'];
+            const cwd = typeof cwdRaw === 'string' ? cwdRaw.trim() : '';
+            const modelRaw = body?.['model'];
+            if (modelRaw !== undefined && (typeof modelRaw !== 'string' || !modelRaw.trim())) {
+                res.status(400).json({ ok: false, error: 'model must be a non-empty string' });
+                return;
+            }
+            const model = typeof modelRaw === 'string' ? modelRaw.trim() : undefined;
             if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
             try {
                 const session = await acpHost.newSession(cwd, model ? { model } : undefined);

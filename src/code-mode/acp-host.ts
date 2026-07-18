@@ -366,8 +366,13 @@ class AcpHost implements CodeSessionTransport {
 
     async setSessionModel(sessionId: string, modelId: string): Promise<CodeSessionInfo> {
         const session = this.#sessions.get(sessionId);
-        if (!session || session.status === 'closed') {
+        if (!session) {
             throw new CodeTransportError('unknown_session', `unknown session: ${sessionId}`);
+        }
+        if (session.status === 'closed') {
+            // Retained after an ACP child exit: the remote side is gone, so the
+            // documented contract maps this to 503 (unavailable), not 404.
+            throw new CodeTransportError('unavailable', `session unavailable after acp child exit: ${sessionId}`);
         }
         await this.#ensureChild();
         await this.#request('session/set_model', { sessionId, modelId });
@@ -379,7 +384,10 @@ class AcpHost implements CodeSessionTransport {
 
     async prompt(sessionId: string, text: string): Promise<PromptAccepted> {
         const session = this.#sessions.get(sessionId);
-        if (!session || session.status === 'closed') throw new Error(`unknown session: ${sessionId}`);
+        if (!session) throw new CodeTransportError('unknown_session', `unknown session: ${sessionId}`);
+        if (session.status === 'closed') {
+            throw new CodeTransportError('unavailable', `session unavailable after acp child exit: ${sessionId}`);
+        }
         await this.#ensureChild();
         session.status = 'streaming';
         session.lastUsedAt = Date.now();
@@ -417,6 +425,14 @@ class AcpHost implements CodeSessionTransport {
     async closeSession(sessionId: string): Promise<void> {
         const session = this.#sessions.get(sessionId);
         if (!session) return;
+        if (session.status === 'closed') {
+            // Retained after an ACP child exit: no remote close is possible, and
+            // attempting one would spawn a fresh child only to kill it. Remove
+            // the entry locally so stale sessions cannot accumulate.
+            this.#sessions.delete(sessionId);
+            publish('jwc', 'code_session_closed', { sessionId });
+            return;
+        }
         await this.#request('session/close', { sessionId }).catch(async () => {
             await this.#terminateChild();
         });
@@ -426,7 +442,10 @@ class AcpHost implements CodeSessionTransport {
     }
 
     listSessions(): CodeSessionInfo[] {
-        return [...this.#sessions.values()];
+        // Live-list contract: entries retained as 'closed' after a child exit are
+        // not selectable live sessions; they stay in the map only for the 503
+        // unavailable mapping until explicitly closed.
+        return [...this.#sessions.values()].filter(s => s.status !== 'closed');
     }
 
     listPendingPermissions(sessionId?: string): PendingPermission[] {

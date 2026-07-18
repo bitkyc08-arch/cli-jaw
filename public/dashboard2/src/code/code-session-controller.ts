@@ -24,6 +24,9 @@ export async function createCodeSessionForGeneration(
 ): Promise<CodeSessionInfo | null> {
     const session = await client.newSession(cwd, modelId);
     if (!guard.signal.aborted && guard.isCurrent()) return session;
-    await client.closeSession(session.sessionId).catch(() => {});
+    await client.closeSession(session.sessionId).catch((cleanupError: unknown) => {
+        // Orphan risk: surface the failed cleanup instead of dropping it silently.
+        console.warn('[code] stale session cleanup failed', session.sessionId, cleanupError);
+    });
     return null;
 }

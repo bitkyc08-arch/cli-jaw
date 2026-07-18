@@ -118,3 +118,65 @@ test('session/new timeout terminates the child because remote creation outcome i
         rmSync(dir, { recursive: true, force: true });
     }
 });
+
+test('child exit maps retained sessions to 503, hides them from the live list, and closes them locally', { concurrency: false }, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jaw-code-model-child-exit-'));
+    const transcript = join(dir, 'transcript.ndjson');
+    const previous = {
+        command: process.env['JWC_ACP_CMD'], transcript: process.env['JWC_FAKE_TRANSCRIPT'],
+        timeout: process.env['JWC_ACP_RPC_TIMEOUT_MS'], exitAfter: process.env['JWC_FAKE_EXIT_AFTER'],
+    };
+    process.env['JWC_ACP_CMD'] = `${process.execPath} ${fixture}`;
+    process.env['JWC_FAKE_TRANSCRIPT'] = transcript;
+    process.env['JWC_ACP_RPC_TIMEOUT_MS'] = '500';
+    process.env['JWC_FAKE_EXIT_AFTER'] = 'session/new';
+    const { acpHost, getAcpHostDiagnosticSnapshot } = await import('../../src/code-mode/acp-host.ts');
+    try {
+        const created = await acpHost.newSession(dir, { model: 'openai-codex/gpt-5.6-sol' });
+        assert.equal(created.modelId, 'openai-codex/gpt-5.6-sol');
+        // The fake child exits right after answering session/new; wait for the
+        // host to observe the exit and mark the session closed.
+        let snapshot = getAcpHostDiagnosticSnapshot();
+        for (let attempt = 0; attempt < 100 && snapshot.childAlive; attempt += 1) {
+            await new Promise(resolveWait => setTimeout(resolveWait, 20));
+            snapshot = getAcpHostDiagnosticSnapshot();
+        }
+        assert.equal(snapshot.childAlive, false);
+        assert.equal(snapshot.sessionCount, 1); // retained for the 503 mapping
+
+        // Live-list contract: exit-closed sessions are not selectable live sessions.
+        assert.deepEqual(acpHost.listSessions(), []);
+
+        // Documented contract: exited child => 503 unavailable; unknown id => 404.
+        await assert.rejects(
+            acpHost.setSessionModel(created.sessionId, 'openai-codex/gpt-5.6-terra'),
+            (error: unknown) => error instanceof CodeTransportError && error.code === 'unavailable',
+        );
+        await assert.rejects(
+            acpHost.prompt(created.sessionId, 'hello'),
+            (error: unknown) => error instanceof CodeTransportError && error.code === 'unavailable',
+        );
+        await assert.rejects(
+            acpHost.setSessionModel('never-existed', 'openai-codex/gpt-5.6-terra'),
+            (error: unknown) => error instanceof CodeTransportError && error.code === 'unknown_session',
+        );
+        await assert.rejects(
+            acpHost.prompt('never-existed', 'hello'),
+            (error: unknown) => error instanceof CodeTransportError && error.code === 'unknown_session',
+        );
+
+        // Closed-entry close is local-only: no RPC, no child respawn, no accumulation.
+        await acpHost.closeSession(created.sessionId);
+        snapshot = getAcpHostDiagnosticSnapshot();
+        assert.equal(snapshot.sessionCount, 0);
+        assert.equal(snapshot.childAlive, false);
+        assert.equal(records(transcript).some(record => record.method === 'session/close'), false);
+    } finally {
+        await acpHost.dispose().catch(() => {});
+        if (previous.command === undefined) delete process.env['JWC_ACP_CMD']; else process.env['JWC_ACP_CMD'] = previous.command;
+        if (previous.transcript === undefined) delete process.env['JWC_FAKE_TRANSCRIPT']; else process.env['JWC_FAKE_TRANSCRIPT'] = previous.transcript;
+        if (previous.timeout === undefined) delete process.env['JWC_ACP_RPC_TIMEOUT_MS']; else process.env['JWC_ACP_RPC_TIMEOUT_MS'] = previous.timeout;
+        if (previous.exitAfter === undefined) delete process.env['JWC_FAKE_EXIT_AFTER']; else process.env['JWC_FAKE_EXIT_AFTER'] = previous.exitAfter;
+        rmSync(dir, { recursive: true, force: true });
+    }
+});

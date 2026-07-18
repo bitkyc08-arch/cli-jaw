@@ -141,3 +141,29 @@ test('same-port session generation rejects delayed authority from session A afte
     assert.equal(isCurrentCodeSessionGeneration(loadA, current), false);
     assert.equal(isCurrentCodeSessionGeneration(current, current), true);
 });
+
+test('stale Code create cleanup failure surfaces a console warning and still resolves null', async () => {
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+        const client = {
+            newSession: async () => ({
+                sessionId: 'orphan-session', cwd: '/repo', status: 'idle' as const,
+                createdAt: 1, lastUsedAt: 1, modelId: 'openai-codex/gpt-5.6-sol',
+            }),
+            closeSession: async () => { throw new Error('DELETE 500'); },
+        } as unknown as ReturnType<typeof createCodeApiClient>;
+        const controller = new AbortController();
+        const result = await createCodeSessionForGeneration(
+            client, '/repo', 'openai-codex/gpt-5.6-sol',
+            { signal: controller.signal, isCurrent: () => false },
+        );
+        assert.equal(result, null);
+        assert.equal(warnings.length, 1);
+        assert.equal(warnings[0]?.[1], 'orphan-session');
+        assert.ok(warnings[0]?.[2] instanceof Error);
+    } finally {
+        console.warn = originalWarn;
+    }
+});

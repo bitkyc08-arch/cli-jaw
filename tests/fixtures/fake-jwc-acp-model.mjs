@@ -2,6 +2,7 @@ import { appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 const transcript = process.env.JWC_FAKE_TRANSCRIPT;
+const exitAfter = process.env.JWC_FAKE_EXIT_AFTER;
 let sessionCounter = 0;
 
 function record(message) {
@@ -28,6 +29,9 @@ createInterface({ input: process.stdin }).on('line', line => {
         if (process.env.JWC_FAKE_HANG_NEW === '1') return;
         sessionCounter += 1;
         reply(message.id, { sessionId: `fake-session-${sessionCounter}` });
+        // Give the host time to consume the reply before the child goes away;
+        // exiting in the same tick can race readline delivery of the response.
+        if (exitAfter === method) setTimeout(() => process.exit(0), 50).unref();
         return;
     }
     if (method === 'session/set_model') {
