@@ -306,7 +306,7 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
                 const accepted = await acpHost.prompt(String(req.params['id']), text);
                 res.status(202).json({ ok: true, ...accepted });
             } catch (err) {
-                res.status(404).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+                res.status(codeTransportStatus(err, 500)).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
             }
         })();
     });

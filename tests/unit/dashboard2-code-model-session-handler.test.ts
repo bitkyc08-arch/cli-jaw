@@ -22,6 +22,7 @@ const calls: {
 };
 let newSessionError: Error | null = null;
 let setSessionModelError: Error | null = null;
+let promptError: Error | null = null;
 
 const acpHostPath = resolve(import.meta.dirname, '../../src/code-mode/acp-host.js');
 mock.module(acpHostPath, {
@@ -54,7 +55,10 @@ mock.module(acpHostPath, {
                     lastUsedAt: 2, modelId,
                 };
             },
-            prompt: async () => ({ accepted: true, sessionId: 'unused' }),
+            prompt: async () => {
+                if (promptError) throw promptError;
+                return { accepted: true, sessionId: 'unused' };
+            },
             cancel: async () => {},
             setSessionConfig: async () => {},
             closeSession: async () => {},
@@ -230,4 +234,28 @@ test('registered Code model handlers reject non-string model, modelId, and cwd p
     });
     assert.deepEqual(calls.newSession, []);
     assert.deepEqual(calls.setSessionModel, []);
+});
+
+test('registered Code prompt handler maps transport failures to typed HTTP statuses', async () => {
+    promptError = null;
+    await withServer(async baseUrl => {
+        const prompt = () => fetch(`${baseUrl}/api/code/sessions/session-1/prompt`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: 'hello' }),
+        });
+        const cases: Array<[CodeTransportErrorCode | 'unexpected', number]> = [
+            ['unknown_session', 404], ['unavailable', 503], ['rpc_timeout', 504], ['unexpected', 500],
+        ];
+        for (const [code, status] of cases) {
+            promptError = code === 'unexpected'
+                ? new Error('unexpected')
+                : new CodeTransportError(code, code);
+            const response = await prompt();
+            assert.equal(response.status, status, `prompt ${code}`);
+        }
+        promptError = null;
+        const accepted = await prompt();
+        assert.equal(accepted.status, 202);
+    });
+    promptError = null;
 });
