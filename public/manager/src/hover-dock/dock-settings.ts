@@ -82,3 +82,16 @@ export interface DockTabProps {
 export function useDockClient(port: number): SettingsClient {
     return useMemo(() => createSettingsClient(port), [port]);
 }
+
+/**
+ * Dual-response compat (public/js/api.ts parity): instance endpoints answer
+ * either `{ ok, data }` (ok() helper) or a bare payload. Unwrap when wrapped.
+ */
+export function unwrapData<T>(json: unknown): T {
+    if (json && typeof json === 'object' && 'ok' in json && 'data' in json) {
+        const wrapped = json as { ok: boolean; data: unknown };
+        if (!wrapped.ok) throw new Error('instance api returned ok:false');
+        return wrapped.data as T;
+    }
+    return json as T;
+}

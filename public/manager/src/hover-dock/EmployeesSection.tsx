@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SettingsClient } from '../settings/types';
 import { ROLE_PRESETS, type CliRegistry } from './cli-registry';
+import { unwrapData } from './dock-settings';
 
 interface Employee {
     id: string;
@@ -44,8 +45,11 @@ export function EmployeesSection({ client, active, registry, modelMap }: Props) 
 
     const reload = useCallback(() => {
         setError(null);
-        client.get<Employee[]>('/api/employees')
-            .then((data) => setEmployees(Array.isArray(data) ? data : []))
+        client.get<unknown>('/api/employees')
+            .then((json) => {
+                const data = unwrapData<Employee[]>(json);
+                setEmployees(Array.isArray(data) ? data : []);
+            })
             .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
     }, [client]);
 

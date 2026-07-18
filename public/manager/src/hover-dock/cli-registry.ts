@@ -1,6 +1,7 @@
 // CLI registry helpers ported from public/js/constants.ts (read-only source,
 // UI freeze policy — logic is ported, not imported, to avoid DOM side effects).
 import type { SettingsClient } from '../settings/types';
+import { unwrapData } from './dock-settings';
 
 export interface CliEntry {
     label: string;
@@ -74,7 +75,7 @@ export function toModelMap(registry: CliRegistry): Record<string, string[]> {
 }
 
 export async function fetchCliRegistry(client: SettingsClient): Promise<CliRegistry> {
-    const data = await client.get<Record<string, unknown>>('/api/cli-registry');
+    const data = unwrapData<Record<string, unknown>>(await client.get<unknown>('/api/cli-registry'));
     const normalized = normalizeRegistry(data);
     if (!Object.keys(normalized).length) throw new Error('invalid cli registry');
     return normalized;
