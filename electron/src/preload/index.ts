@@ -40,8 +40,8 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
     write: (id: string, data: string) => ipcRenderer.invoke('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
     kill: (id: string) => ipcRenderer.invoke('terminal:kill', id),
-    onData: (cb: (id: string, data: string) => void) => {
-      const handler = (_e: unknown, id: string, data: string) => cb(id, data);
+    onData: (cb: (id: string, data: string, seq?: number) => void) => {
+      const handler = (_e: unknown, id: string, data: string, seq?: number) => cb(id, data, seq);
       ipcRenderer.on('terminal:data', handler);
       return () => { ipcRenderer.removeListener('terminal:data', handler); };
     },

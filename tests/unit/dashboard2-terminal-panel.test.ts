@@ -133,6 +133,8 @@ function createHarness(): {
 async function flushCreates(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 test('terminalNewTab request ledger preserves batched and unopened requests', () => {
@@ -517,6 +519,82 @@ test('hydrate failure fails closed and an explicit request retries hydration', a
     await flushCreates();
     assert.equal(listCalls, 2, 'explicit intent retries hydration');
     assert.equal(bridge.createCalls.length, 1, 'create resumes after a successful retry');
+});
+
+test('hydrate failure clears a pending auto-session from the in-flight ordering', async () => {
+    const { bridge, controller } = createHarness();
+    let rejectList!: (error: Error) => void;
+    bridge.listImpl = () => new Promise<ListResult>((_resolve, reject) => { rejectList = reject; });
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    // TerminalPanel ordering: auto-session is requested while hydrate is pending.
+    controller.requestAutoSession();
+    rejectList(new Error('list exploded'));
+    await flushCreates();
+    assert.equal(controller.getSnapshot().rejection, 'list exploded');
+    assert.equal(bridge.createCalls.length, 0, 'fail-closed: no auto-create after hydrate failure');
+});
+
+test('detach with an in-flight create parks the late resolution instead of killing it', async () => {
+    const { bridge, controller } = createHarness();
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    controller.requestNewSessions(1);
+    await flushCreates();
+    assert.equal(bridge.createCalls.length, 1);
+
+    controller.detach();
+    bridge.resolveNext({ ok: true, id: 'term-late', shell: '/bin/zsh', cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.deepEqual(bridge.kills, [], 'detached controller parks its late create for a future hydrate');
+});
+
+test('stale-create kill prunes owner-wide capacity even when the snapshot contained the id', async () => {
+    const { bridge, controller } = createHarness();
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    controller.requestNewSessions(1);
+    await flushCreates();
+    assert.equal(bridge.createCalls.length, 1);
+
+    // Switch target: the new snapshot still contains the in-flight old-target id
+    // plus fills every other slot.
+    const crowd = Array.from({ length: MAX_TERMINAL_SESSIONS - 1 }, (_, index) => ({
+        id: `term-crowd-${index}`, shell: '/bin/zsh', cwd: '/Users/jun/other',
+        port: 3458, seq: 0, cols: 90, rows: 30, buffer: '',
+    }));
+    bridge.listImpl = async () => ({
+        ok: true,
+        sessions: [...crowd, { id: 'term-inflight', shell: '/bin/zsh', cwd: '/Users/jun/project-a', port: 3457, seq: 0, cols: 90, rows: 30, buffer: '' }],
+    });
+    controller.setTarget({ port: 3458, cwd: '/Users/jun/project-b' });
+    await flushCreates();
+
+    // The in-flight create resolves stale and is killed; capacity must be pruned.
+    bridge.resolveNext({ ok: true, id: 'term-inflight', shell: '/bin/zsh', cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.deepEqual(bridge.kills, ['term-inflight']);
+
+    controller.requestNewSessions(1);
+    await flushCreates();
+    assert.equal(controller.getSnapshot().rejection, null, 'killed stale create must not occupy capacity');
+    assert.equal(bridge.createCalls.length, 2);
+});
+
+test('hydrate event buffer is bounded by the pre-bind cap', async () => {
+    const { bridge, controller, runtimes } = createHarness();
+    let resolveList!: (result: ListResult) => void;
+    bridge.listImpl = () => new Promise<ListResult>((resolve) => { resolveList = resolve; });
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    bridge.emitData('term-mine', 'x'.repeat(PRE_BIND_BUFFER_CAP + 4096), 9);
+    resolveList({
+        ok: true,
+        sessions: [
+            { id: 'term-mine', shell: '/bin/zsh', cwd: '/Users/jun/project-a', port: 3457, seq: 1, cols: 90, rows: 30, buffer: 'base' },
+        ],
+    });
+    await flushCreates();
+
+    const session = controller.getSnapshot().sessions[0]!;
+    const runtime = runtimes.get(session.key)!;
+    assert.equal(runtime.writes.join('').length, 'base'.length + PRE_BIND_BUFFER_CAP);
 });
 
 test('auto session waits for hydration and fires only when nothing was restored', async () => {

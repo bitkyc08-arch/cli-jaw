@@ -155,7 +155,8 @@ export function TerminalPanel({
         const active = snapshot.sessions.find(session => session.key === snapshot.activeSessionKey);
         if (!active?.sessionId || active.status !== 'running') return;
         controller.focusActive();
-        consumeTerminalFocus(terminalRequests.focus.issued);
+        // Drain exactly one token per focus call; the effect re-runs for the rest.
+        consumeTerminalFocus(terminalRequests.focus.consumed + 1);
     }, [
         consumeTerminalFocus,
         snapshot,

@@ -194,6 +194,10 @@ test('terminal create rejects invalid port and disallowed cwd; owner kill works'
     assert.equal(create(owner, { port: -1 }).error, 'invalid port');
     assert.equal(create(owner, { port: 70000 }).error, 'invalid port');
     assert.equal(create(owner, { port: 3.5 }).error, 'invalid port');
+    // Runtime type enforcement: IPC payloads are untyped at the boundary.
+    assert.equal(create(owner, { port: '3506' }).error, 'invalid port');
+    assert.equal(create(owner, { port: true }).error, 'invalid port');
+    assert.equal(create(owner, { port: 'abc' }).error, 'invalid port');
     assert.equal(create(owner, { cwd: '/definitely/not/allowed' }).error, 'cwd not allowed');
 
     const created = create(owner, { port: null });

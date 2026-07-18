@@ -49,9 +49,8 @@ function clampDimension(value: unknown, fallback: number, min: number, max: numb
 
 function clampPort(value: unknown): number | null | 'invalid' {
     if (value === undefined || value === null) return null;
-    const numeric = Number(value);
-    if (!Number.isInteger(numeric) || numeric <= 0 || numeric > 65535) return 'invalid';
-    return numeric;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0 || value > 65535) return 'invalid';
+    return value;
 }
 
 function sendToOwner(session: TermSession, channel: string, ...args: unknown[]): void {
@@ -83,12 +82,11 @@ function trackOwner(session: TermSession, sender: WebContents): void {
     sender.once('destroyed', () => {
         ownersWithDestroyListener.delete(session.ownerWebContentsId);
         const ownedIds = ownerSessions.get(session.ownerWebContentsId);
-        ownerSessions.delete(session.ownerWebContentsId);
         if (!ownedIds) return;
         for (const sessionId of ownedIds) {
             const orphan = sessions.get(sessionId);
-            sessions.delete(sessionId);
             try { orphan?.pty.kill(); } catch { /* ignore */ }
+            removeSession(sessionId);
         }
     });
 }

@@ -1,5 +1,5 @@
 import type { TerminalBridgeApi } from '../../providers/desktop-bridge-contract.ts';
-import { TerminalPreBindBuffer } from './terminal-prebind-buffer.ts';
+import { PRE_BIND_BUFFER_CAP, TerminalPreBindBuffer } from './terminal-prebind-buffer.ts';
 export { PRE_BIND_BUFFER_CAP } from './terminal-prebind-buffer.ts';
 export const MAX_TERMINAL_SESSIONS = 8;
 const MAX_PRE_BIND_CANDIDATES = MAX_TERMINAL_SESSIONS;
@@ -67,6 +67,8 @@ interface HydrateEventCandidate {
     exitCode: number | null;
 }
 
+const HYDRATE_EVENT_MAX_CANDIDATES = MAX_PRE_BIND_CANDIDATES;
+
 // Output arriving between the list snapshot and rebind: replayed only when
 // its seq is newer than the snapshot watermark (R1 dedupe).
 class HydrateEventBuffer {
@@ -74,29 +76,35 @@ class HydrateEventBuffer {
 
     captureData(id: string, data: string, seq: number | undefined): void {
         const candidate = this.candidate(id);
-        candidate.chunks.push({ data, seq });
+        if (!candidate) return;
+        const buffered = candidate.chunks.reduce((total, chunk) => total + chunk.data.length, 0);
+        if (buffered >= PRE_BIND_BUFFER_CAP) return;
+        candidate.chunks.push({ data: data.slice(0, PRE_BIND_BUFFER_CAP - buffered), seq });
     }
 
     captureExit(id: string, code: number | null): void {
         const candidate = this.candidate(id);
+        if (!candidate) return;
         candidate.exitSeen = true;
         candidate.exitCode = code;
     }
 
     take(id: string): HydrateEventCandidate | null {
-        return this.candidates.get(id) ?? null;
+        const candidate = this.candidates.get(id) ?? null;
+        this.candidates.delete(id);
+        return candidate;
     }
 
     clear(): void {
         this.candidates.clear();
     }
 
-    private candidate(id: string): HydrateEventCandidate {
-        let candidate = this.candidates.get(id);
-        if (!candidate) {
-            candidate = { chunks: [], exitSeen: false, exitCode: null };
-            this.candidates.set(id, candidate);
-        }
+    private candidate(id: string): HydrateEventCandidate | null {
+        const existing = this.candidates.get(id);
+        if (existing) return existing;
+        if (this.candidates.size >= HYDRATE_EVENT_MAX_CANDIDATES) return null;
+        const candidate: HydrateEventCandidate = { chunks: [], exitSeen: false, exitCode: null };
+        this.candidates.set(id, candidate);
         return candidate;
     }
 }
@@ -127,6 +135,7 @@ export class TerminalSessionController {
     private ownerSessionIds = new Set<string>();
     private rejection: string | null = null;
     private disposed = false;
+    private closedAll = false;
 
     constructor(
         private readonly bridge: TerminalBridgeApi,
@@ -293,6 +302,7 @@ export class TerminalSessionController {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.closedAll = true;
         this.targetEpoch += 1;
         this.pendingHydrate = null;
         this.hydrateEvents.clear();
@@ -432,7 +442,15 @@ export class TerminalSessionController {
         }
 
         if (stale || !session) {
-            void this.bridge.kill(result.id);
+            if (this.disposed && !this.closedAll) {
+                // Detached (unmounted) controller: park the late create in
+                // main — a future hydrate for its target can adopt it (C3).
+            } else {
+                // Prune owner-wide accounting at the kill site: main-side
+                // kill emits no exit event (C4).
+                this.ownerSessionIds.delete(result.id);
+                void this.bridge.kill(result.id);
+            }
             this.notify();
             this.drainCreateQueue();
             return;
@@ -542,6 +560,7 @@ export class TerminalSessionController {
             if (!this.pendingHydrate || this.pendingHydrate.epoch !== epoch) return;
             this.pendingHydrate = null;
             apply();
+            this.hydrateEvents.clear();
             this.notify();
             this.drainAfterHydrate();
         };
@@ -553,6 +572,7 @@ export class TerminalSessionController {
                     this.hydrateError = result.error ?? 'Unable to list terminal sessions';
                     this.rejection = this.hydrateError;
                     this.queuedNewSessions = 0;
+                    this.autoPending = false;
                     return;
                 }
                 this.hydrateError = null;
@@ -566,6 +586,7 @@ export class TerminalSessionController {
                 this.hydrateError = error instanceof Error ? error.message : 'Unable to list terminal sessions';
                 this.rejection = this.hydrateError;
                 this.queuedNewSessions = 0;
+                this.autoPending = false;
             });
         });
     }
