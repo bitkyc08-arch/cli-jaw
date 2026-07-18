@@ -1,0 +1,97 @@
+/* HoverDock — chat-top floating control dock (010 shell spec). */
+
+.hover-dock {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+}
+
+.hover-dock-hotzone {
+    width: 160px;
+    height: 12px;
+    pointer-events: auto;
+}
+
+.hover-dock-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 10px;
+    margin-top: 2px;
+    border: none;
+    border-radius: 12px;
+    background: var(--surface-overlay, var(--bg-elevated));
+    color: var(--text-secondary, inherit);
+    font-size: 11px;
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: var(--shadow-elevated);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.hover-dock-pill.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.hover-dock-pill:hover {
+    background: var(--accent-soft);
+}
+
+.hover-dock-panel {
+    margin-top: 8px;
+    width: 340px;
+    max-height: calc(100% - 16px);
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px;
+    background: var(--surface-raised, var(--bg-raised));
+    box-shadow: var(--shadow-panel);
+    pointer-events: auto;
+    overflow: hidden;
+}
+
+.hover-dock-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 8px 8px 0;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.hover-dock-tab {
+    flex: 1;
+    padding: 6px 0;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    background: transparent;
+    color: var(--text-secondary, inherit);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.hover-dock-tab.is-active {
+    background: var(--accent-soft);
+    color: var(--text-primary, inherit);
+}
+
+.hover-dock-body {
+    flex: 1;
+    min-height: 120px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hover-dock-pill {
+        transition: none;
+    }
+}
