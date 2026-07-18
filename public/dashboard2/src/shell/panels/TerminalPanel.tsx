@@ -19,12 +19,14 @@ interface TerminalPanelProps {
     workingDirectoryError?: string | null;
     terminalRequests: TerminalRequestLedger;
     consumeTerminalRequests(token: number): void;
+    consumeTerminalFocus(token: number): void;
 }
 
 const EMPTY_SNAPSHOT: TerminalSessionSnapshot = {
     sessions: [],
     activeSessionKey: null,
     creating: false,
+    hydrating: false,
     queuedRequests: 0,
     rejection: null,
 };
@@ -89,11 +91,12 @@ export function TerminalPanel({
     workingDirectoryError = null,
     terminalRequests,
     consumeTerminalRequests,
+    consumeTerminalFocus,
 }: TerminalPanelProps): JSX.Element {
     const bridge = useDesktopBridge();
     const viewportRef = useRef<HTMLDivElement>(null);
     const controllerRef = useRef<TerminalSessionController | null>(null);
-    const handledRequestTokenRef = useRef(terminalRequests.consumed);
+    const handledRequestTokenRef = useRef(terminalRequests.newTab.consumed);
     const [snapshot, setSnapshot] = useState<TerminalSessionSnapshot>(EMPTY_SNAPSHOT);
     const nativeTerminal = bridge.terminal.nativeAvailable ? bridge.terminal.native : null;
 
@@ -108,7 +111,10 @@ export function TerminalPanel({
         return () => {
             controllerRef.current = null;
             unsubscribe();
-            controller.dispose();
+            // Always detach (park): remount/reload hydrates parked PTYs back.
+            // Close-all belongs to main (owner destroyed / app quit) or an
+            // explicit dispose() command — never to unmount (S3).
+            controller.detach();
         };
     }, [nativeTerminal]);
 
@@ -119,24 +125,42 @@ export function TerminalPanel({
         const targetChanged = controller.setTarget(target);
         handledRequestTokenRef.current = Math.max(
             handledRequestTokenRef.current,
-            terminalRequests.consumed,
+            terminalRequests.newTab.consumed,
         );
         if (!target) return;
 
-        const pendingRequestCount = terminalRequests.issued - handledRequestTokenRef.current;
+        const pendingRequestCount = terminalRequests.newTab.issued - handledRequestTokenRef.current;
         if (pendingRequestCount > 0) {
-            handledRequestTokenRef.current = terminalRequests.issued;
+            handledRequestTokenRef.current = terminalRequests.newTab.issued;
             controller.requestNewSessions(pendingRequestCount);
-            consumeTerminalRequests(terminalRequests.issued);
+            consumeTerminalRequests(terminalRequests.newTab.issued);
         } else if (targetChanged && controller.getSnapshot().sessions.length === 0) {
-            controller.requestNewSessions(1);
+            controller.requestAutoSession();
         }
     }, [
         consumeTerminalRequests,
         port,
-        terminalRequests.consumed,
-        terminalRequests.issued,
+        terminalRequests.newTab.consumed,
+        terminalRequests.newTab.issued,
         workingDirectory,
+    ]);
+
+    useEffect(() => {
+        const controller = controllerRef.current;
+        if (!controller) return;
+        const pendingFocus = terminalRequests.focus.issued - terminalRequests.focus.consumed;
+        if (pendingFocus <= 0) return;
+        // Drain focus only after hydration settled and a live session exists (R6).
+        if (snapshot.hydrating || snapshot.creating) return;
+        const active = snapshot.sessions.find(session => session.key === snapshot.activeSessionKey);
+        if (!active?.sessionId || active.status !== 'running') return;
+        controller.focusActive();
+        consumeTerminalFocus(terminalRequests.focus.issued);
+    }, [
+        consumeTerminalFocus,
+        snapshot,
+        terminalRequests.focus.consumed,
+        terminalRequests.focus.issued,
     ]);
 
     useEffect(() => {

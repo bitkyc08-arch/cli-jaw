@@ -7,6 +7,8 @@ export interface TerminalSessionSnapshot {
     id: string;
     shell: string;
     cwd: string;
+    port?: number | null;
+    seq?: number;
     cols: number;
     rows: number;
     buffer: string;
@@ -14,7 +16,7 @@ export interface TerminalSessionSnapshot {
 
 export interface TerminalBridgeApi {
     list(): Promise<{ ok: boolean; sessions?: TerminalSessionSnapshot[]; error?: string }>;
-    create(opts?: { cwd?: string; cols?: number; rows?: number }): Promise<{
+    create(opts?: { cwd?: string; cols?: number; rows?: number; port?: number | null }): Promise<{
         ok: boolean;
         id?: string;
         shell?: string;
@@ -24,7 +26,7 @@ export interface TerminalBridgeApi {
     write(id: string, data: string): Promise<void>;
     resize(id: string, cols: number, rows: number): Promise<void>;
     kill(id: string): Promise<void>;
-    onData(callback: (id: string, data: string) => void): () => void;
+    onData(callback: (id: string, data: string, seq?: number) => void): () => void;
     onExit(callback: (id: string, code: number | null) => void): () => void;
 }
 

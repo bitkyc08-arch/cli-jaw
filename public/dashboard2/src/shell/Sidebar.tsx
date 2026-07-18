@@ -124,7 +124,7 @@ function ThemeToggle(): JSX.Element {
 
 export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const api = useManagerApi();
-    const { selected, expandedPorts, selectSession, toggleInstance, openSidePane } = useAppScope();
+    const { selected, expandedPorts, selectSession, toggleInstance, openSidePane, openPanel } = useAppScope();
     const [mode, setMode] = useState<SidebarMode>('jaw');
     const [instances, setInstances] = useState<DashboardInstance[]>([]);
     const [instancesLoading, setInstancesLoading] = useState(true);
@@ -490,7 +490,17 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                                     <button type="button" role="menuitem" disabled={!lifecycle?.canPerm || lifecycleBlocked} onClick={() => void runLifecycleAction('perm', instance)}>Set as permanent</button>
                                                     <button type="button" role="menuitem" disabled={!projectDir} onClick={() => void copyPath(projectDir)}>Copy project dir</button>
                                                     <button type="button" role="menuitem" disabled={!instance.workingDir} onClick={() => void copyPath(instance.workingDir)}>Copy working dir</button>
-                                                    <button type="button" role="menuitem" disabled title="Terminal bridge unavailable">Open in terminal</button>
+                                                    <button
+                                                        type="button"
+                                                        role="menuitem"
+                                                        disabled={!isOnline || selected?.port !== instance.port}
+                                                        title={!isOnline ? 'Instance is offline' : selected?.port !== instance.port ? 'Select this instance to open a terminal' : 'Open in terminal'}
+                                                        onClick={() => {
+                                                            setMenuPort(null);
+                                                            openSidePane();
+                                                            openPanel({ type: 'terminal', key: 'terminal', title: 'Terminal', keepAlive: true });
+                                                        }}
+                                                    >Open in terminal</button>
                                                     <button className="is-danger" type="button" role="menuitem" disabled={!lifecycle?.canStop || lifecycleBlocked} onClick={() => void runLifecycleAction('stop', instance)}>Stop</button>
                                                 </div>
                                             ) : null}

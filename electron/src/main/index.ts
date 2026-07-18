@@ -577,7 +577,7 @@ async function bootstrap(): Promise<void> {
   installRendererRequestIdentity();
   installDefaultSessionPermissionHandlers();
 
-  registerTerminalIpc(() => mainWindow);
+  registerTerminalIpc();
   registerDiffIpc();
   registerFolderIpc(() => mainWindow);
   registerBrowserIpc({

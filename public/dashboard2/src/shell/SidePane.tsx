@@ -14,6 +14,8 @@ import { FileTreePanel } from './panels/FileTreePanel.tsx';
 import { TerminalPanel } from './panels/TerminalPanel.tsx';
 import {
     initialTerminalRequestLedger,
+    dispatchTerminalShortcutIntent,
+    normalizeTerminalShortcutAction,
     terminalRequestLedgerReducer,
     type TerminalRequestLedger,
 } from './panels/terminal-session-requests.ts';
@@ -69,9 +71,10 @@ interface TabContentProps {
     active: boolean;
     terminalRequests: TerminalRequestLedger;
     consumeTerminalRequests(token: number): void;
+    consumeTerminalFocus(token: number): void;
 }
 
-function TabContent({ panel, active, terminalRequests, consumeTerminalRequests }: TabContentProps): JSX.Element | null {
+function TabContent({ panel, active, terminalRequests, consumeTerminalRequests, consumeTerminalFocus }: TabContentProps): JSX.Element | null {
     const { selected } = useAppScope();
     const api = useManagerApi();
     const [terminalWorkingDirectory, setTerminalWorkingDirectory] = useState<TerminalTarget | null>(null);
@@ -120,6 +123,7 @@ function TabContent({ panel, active, terminalRequests, consumeTerminalRequests }
                     workingDirectoryError={terminalWorkingDirError}
                     terminalRequests={terminalRequests}
                     consumeTerminalRequests={consumeTerminalRequests}
+                    consumeTerminalFocus={consumeTerminalFocus}
                 />
             );
         case 'browser':
@@ -194,7 +198,10 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         widgetUiStore.getSnapshot,
     );
     const consumeTerminalRequests = useCallback((token: number) => {
-        dispatchTerminalRequest({ type: 'consume-through', token });
+        dispatchTerminalRequest({ type: 'consume-new-tab-through', token });
+    }, []);
+    const consumeTerminalFocus = useCallback((token: number) => {
+        dispatchTerminalRequest({ type: 'consume-focus-through', token });
     }, []);
 
     useEffect(() => {
@@ -227,9 +234,13 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         const shortcuts = bridge.shell.shortcuts.nativeAvailable ? bridge.shell.shortcuts.native : null;
         if (!shortcuts) return;
         return shortcuts.onAction((action) => {
-            if (action !== 'terminalNewTab') return;
-            dispatchTerminalRequest({ type: 'issue' });
-            openPanel({ type: 'terminal', key: 'terminal', title: 'Terminal', keepAlive: true });
+            const intent = normalizeTerminalShortcutAction(action);
+            if (!intent) return;
+            dispatchTerminalShortcutIntent(intent, {
+                openPanel: () => openPanel({ type: 'terminal', key: 'terminal', title: 'Terminal', keepAlive: true }),
+                issueNewTab: () => dispatchTerminalRequest({ type: 'issue-new-tab' }),
+                issueFocus: () => dispatchTerminalRequest({ type: 'issue-focus' }),
+            });
         });
     }, [bridge.shell.shortcuts.native, bridge.shell.shortcuts.nativeAvailable, openPanel]);
 
@@ -286,6 +297,7 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                                 active={active}
                                 terminalRequests={terminalRequests}
                                 consumeTerminalRequests={consumeTerminalRequests}
+                                consumeTerminalFocus={consumeTerminalFocus}
                             />
                         </div>
                     );

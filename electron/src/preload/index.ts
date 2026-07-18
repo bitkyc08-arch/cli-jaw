@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
   getHomePath,
   terminal: {
     list: () => ipcRenderer.invoke('terminal:list'),
-    create: (opts?: { cwd?: string; cols?: number; rows?: number }) => ipcRenderer.invoke('terminal:create', opts),
+    create: (opts?: { cwd?: string; cols?: number; rows?: number; port?: number | null }) => ipcRenderer.invoke('terminal:create', opts),
     write: (id: string, data: string) => ipcRenderer.invoke('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
     kill: (id: string) => ipcRenderer.invoke('terminal:kill', id),
