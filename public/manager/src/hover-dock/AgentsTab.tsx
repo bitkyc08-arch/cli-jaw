@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SettingsClient } from '../settings/types';
 import { usePageSnapshot } from '../settings/pages/page-shell';
 import { fetchCliRegistry, PRIMARY_CLIS, toModelMap, type CliRegistry } from './cli-registry';
-import type { DockTabProps, SettingsData } from './dock-settings';
+import { unwrapData, type DockTabProps, type SettingsData } from './dock-settings';
 import { FlushAgentSection } from './FlushAgentSection';
 import { EmployeesSection } from './EmployeesSection';
 
@@ -53,7 +53,7 @@ export function AgentsTab({ client, active }: DockTabProps) {
     const putSettings = useCallback(async (patch: Record<string, unknown>) => {
         setSaveError(null);
         try {
-            const next = await client.put<SettingsData>('/api/settings', patch);
+            const next = unwrapData<SettingsData>(await client.put<unknown>('/api/settings', patch));
             setData(next);
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : String(err));
