@@ -211,6 +211,100 @@
     flex: none;
 }
 
+/* Toolbar file title (071 gap: these classes had no styles) */
+.d2-notes-toolbar-file {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.d2-notes-toolbar-file strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.d2-notes-dirty {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* View mode segmented group */
+.d2-notes-view-modes {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg);
+}
+
+.d2-notes-view-modes button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.d2-notes-view-modes button:hover:not(:disabled) {
+    color: var(--text);
+}
+
+.d2-notes-view-modes button.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.d2-notes-view-modes button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.d2-notes-word-count {
+    flex: none;
+    padding: 0 4px;
+    color: var(--text-3);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.d2-notes-save-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.d2-notes-save-button:hover:not(:disabled) {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-notes-save-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .d2-notes-conflict,
 .d2-notes-error {
     display: flex;
