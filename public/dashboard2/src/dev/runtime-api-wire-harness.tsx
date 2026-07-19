@@ -22,6 +22,10 @@ declare global {
         __wireProbe?: {
             loadBoth(pathA: string, pathB: string): void;
             settled(): Promise<void>;
+            load(path: string): Promise<void>;
+            save(): Promise<void>;
+            overwrite(): Promise<void>;
+            edit(content: string): void;
         };
     }
 }
@@ -77,6 +81,10 @@ function NoteDocumentProbe(): JSX.Element {
     const docRef = useRef(doc);
     docRef.current = doc;
     const settleRef = useRef<Promise<void>>(Promise.resolve());
+    const track = (pending: Promise<void>): Promise<void> => {
+        settleRef.current = Promise.allSettled([settleRef.current, pending]).then(() => undefined);
+        return pending;
+    };
     useEffect(() => {
         window.__wireProbe = {
             loadBoth(pathA: string, pathB: string) {
@@ -87,6 +95,10 @@ function NoteDocumentProbe(): JSX.Element {
             async settled() {
                 await settleRef.current;
             },
+            load: (path: string) => track(docRef.current.load(path)),
+            save: () => track(docRef.current.save()),
+            overwrite: () => track(docRef.current.overwrite()),
+            edit: (content: string) => { docRef.current.setContent(content); },
         };
         return () => { delete window.__wireProbe; };
     }, []);
@@ -95,6 +107,10 @@ function NoteDocumentProbe(): JSX.Element {
             <span data-testid="doc-path">{doc.file?.path ?? ''}</span>
             <span data-testid="doc-content">{doc.content}</span>
             <span data-testid="doc-error">{doc.error ?? ''}</span>
+            <span data-testid="doc-loading">{String(doc.loading)}</span>
+            <span data-testid="doc-dirty">{String(doc.dirty)}</span>
+            <span data-testid="doc-revision">{doc.file?.revision ?? ''}</span>
+            <span data-testid="doc-conflict">{doc.conflict ? 'conflict' : ''}</span>
         </section>
     );
 }

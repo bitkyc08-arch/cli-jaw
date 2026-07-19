@@ -17,8 +17,22 @@ after(async () => {
 type RouteMode = 'default' | 'html-tree' | 'race' | 'slow-search';
 let routeMode: RouteMode = 'default';
 
-const NOTE_A = { path: 'a.md', content: 'AAA-content', baseRevision: '1' };
-const NOTE_B = { path: 'b.md', content: 'BBB-content', baseRevision: '1' };
+function noteFile(path: string, content: string, revision = 'r1') {
+    return { path, name: path.split('/').pop(), content, revision, mtimeMs: 1_700_000_000_000, size: content.length };
+}
+const NOTE_A = noteFile('a.md', 'AAA-content');
+const NOTE_B = noteFile('b.md', 'BBB-content');
+
+// Programmable per-test behaviors for GET /file?path=<key> and PUT /file.
+interface FileBehavior { delayMs?: number; status?: number; body?: unknown }
+let getBehaviors: Record<string, FileBehavior> = {};
+let putBehavior: (FileBehavior & { conflict?: boolean }) | null = null;
+
+function resetBehaviors(): void {
+    getBehaviors = {};
+    putBehavior = null;
+    routeMode = 'default';
+}
 
 async function fulfill(route: Parameters<Parameters<Page['route']>[1]>[0], body: unknown, status = 200, contentType = 'application/json', delayMs = 0): Promise<void> {
     if (delayMs > 0) await new Promise(resolveWait => setTimeout(resolveWait, delayMs));
@@ -53,21 +67,37 @@ async function openHarness(t: TestContext): Promise<Page | null> {
 
     await page.route('**/api/dashboard/notes/**', async route => {
         const url = route.request().url();
+        const method = route.request().method();
         if (routeMode === 'html-tree' && url.includes('/tree')) {
             return fulfill(route, '<html><body>manager fallback</body></html>', 200, 'text/html');
         }
-        if (routeMode === 'race') {
-            if (url.includes('path=a.md')) return fulfill(route, NOTE_A, 200, 'application/json', 700);
-            if (url.includes('path=b.md')) return fulfill(route, NOTE_B);
-        }
         if (routeMode === 'slow-search' && url.includes('/search')) {
             return fulfill(route, [], 200, 'application/json', 2500);
+        }
+        if (url.includes('/file') && method === 'PUT') {
+            const body = route.request().postDataJSON() as { path?: string; content?: string } | null;
+            const behavior = putBehavior ?? {};
+            if (behavior.status && behavior.status !== 200) {
+                return fulfill(route, behavior.body ?? { ok: false, error: 'boom' }, behavior.status, 'application/json', behavior.delayMs ?? 0);
+            }
+            return fulfill(route, noteFile(body?.path ?? 'x.md', body?.content ?? '', 'r2'), 200, 'application/json', behavior.delayMs ?? 0);
+        }
+        if (url.includes('/file') && method === 'GET') {
+            const path = new URL(url).searchParams.get('path') ?? '';
+            const behavior = getBehaviors[path];
+            if (behavior) {
+                if (behavior.status && behavior.status !== 200) {
+                    return fulfill(route, behavior.body ?? { ok: false, error: 'boom' }, behavior.status, 'application/json', behavior.delayMs ?? 0);
+                }
+                return fulfill(route, behavior.body ?? noteFile(path, `${path}-content`), 200, 'application/json', behavior.delayMs ?? 0);
+            }
+            if (path === 'a.md') return fulfill(route, NOTE_A);
+            return fulfill(route, NOTE_B);
         }
         if (url.includes('/info')) return fulfill(route, { root: '/vault' });
         if (url.includes('/version')) return fulfill(route, { version: 1 });
         if (url.includes('/tree')) return fulfill(route, []);
         if (url.includes('/index')) return fulfill(route, { notes: [], generatedAt: 0 });
-        if (url.includes('/file')) return fulfill(route, NOTE_B);
         if (url.includes('/search')) return fulfill(route, []);
         return fulfill(route, {});
     });
@@ -191,7 +221,7 @@ test('404/401/500 responses raise typed NotesApiError with status', async t => {
 test('useNoteDocument stale-load race: an older response must not clobber a newer note', async t => {
     const page = await openHarness(t);
     if (!page) return;
-    routeMode = 'race';
+    getBehaviors['a.md'] = { body: NOTE_A, delayMs: 700 };
     try {
         await page.evaluate(() => window.__wireProbe!.loadBoth('a.md', 'b.md'));
         await page.evaluate(() => window.__wireProbe!.settled());
@@ -202,16 +232,16 @@ test('useNoteDocument stale-load race: an older response must not clobber a newe
         );
         const finalContent = await page.getByTestId('doc-content').textContent();
         const finalPath = await page.getByTestId('doc-path').textContent();
-        // 071 defect reproduction record: the unguarded race currently lets the
-        // older response clobber the newer note. The 071 work-phase adds the
-        // generation guard and flips this assertion to BBB-content.
+        // 071 fixed: the generation guard discards the stale A completion.
+        // (Defect reproduction record 2026-07-19: AAA-content/raceReproduced.)
         console.log(JSON.stringify({
             probe: 'useNoteDocument-race', finalContent, finalPath,
             raceReproduced: finalContent === 'AAA-content',
         }));
-        assert.equal(finalContent, 'AAA-content', 'defect reproduced on 2026-07-19; 071 generation-guard must flip this to BBB-content');
+        assert.equal(finalContent, 'BBB-content');
+        assert.equal(finalPath, 'b.md');
     } finally {
-        routeMode = 'default';
+        resetBehaviors();
     }
 });
 
@@ -239,5 +269,175 @@ test('aborting an in-flight notes search rejects and never resolves late', async
         assert.notEqual(result.outcome, 'resolved', 'aborted request must never resolve late');
     } finally {
         routeMode = 'default';
+    }
+});
+
+// ---- 071 race matrix: shared doc-op generation guard activation evidence ----
+
+async function probeState(page: Page): Promise<Record<string, string>> {
+    const read = async (id: string) => (await page.getByTestId(id).textContent()) ?? '';
+    return {
+        path: await read('doc-path'),
+        content: await read('doc-content'),
+        error: await read('doc-error'),
+        loading: await read('doc-loading'),
+        dirty: await read('doc-dirty'),
+        revision: await read('doc-revision'),
+        conflict: await read('doc-conflict'),
+    };
+}
+
+async function putCaptures(page: Page): Promise<WireCaptureEntry[]> {
+    return (await captures(page)).filter(entry => entry.method === 'PUT' && entry.url.includes('/api/dashboard/notes/file'));
+}
+
+async function getCapturesFor(page: Page, fragment: string): Promise<WireCaptureEntry[]> {
+    return (await captures(page)).filter(entry => entry.method === 'GET' && entry.url.includes(fragment));
+}
+
+test('071: save from residual A state is refused while B load is pending', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    getBehaviors['b.md'] = { body: NOTE_B, delayMs: 800 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 0, 'no A write may dispatch while B is pending');
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.path, 'b.md');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: save invoked before a pre-settle navigation dispatches nothing', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        // save() settles pending editor changes first; load(B) must land inside
+        // that window — issue both in one task so the interleave is deterministic.
+        await page.evaluate(() => {
+            const savePromise = window.__wireProbe!.save();
+            void window.__wireProbe!.load('b.md');
+            return savePromise;
+        });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 0, 'stale save must return before dispatching');
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: 409 recovery bails at branch entry after navigation (zero recovery GETs)', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    putBehavior = { status: 409, body: { ok: false, error: 'conflict', code: 'note_revision_conflict' }, delayMs: 700 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        await page.waitForTimeout(150); // settle passed, PUT in flight
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 1, 'the save PUT did dispatch before navigation');
+        assert.equal((await getCapturesFor(page, 'path=a.md')).length, 1, 'recovery must not fetch A after navigation');
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.conflict, '', 'no conflict state may leak into B');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: overwrite after a real conflict does not pollute a later navigation', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    try {
+        // Produce a genuine conflict first so overwrite() is meaningful.
+        putBehavior = { status: 409, body: { ok: false, error: 'conflict', code: 'note_revision_conflict' } };
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await probeState(page)).conflict, 'conflict');
+
+        putBehavior = { status: 200, delayMs: 700 };
+        await page.evaluate(() => window.__wireProbe!.edit('overwrite-A'));
+        await page.evaluate(() => { void window.__wireProbe!.overwrite(); });
+        await page.waitForTimeout(150);
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.path, 'b.md');
+        assert.equal(state.conflict, '', 'stale overwrite must not clear or set conflict on B');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: a stale failing A creates no error state after B wins', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    getBehaviors['a.md'] = { status: 500, body: { ok: false, error: 'boom-A' }, delayMs: 700 };
+    try {
+        await page.evaluate(() => { void window.__wireProbe!.load('a.md'); });
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.error, '', 'stale failure must not surface an error');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: stale A finishing while B is pending never clears B loading', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    getBehaviors['a.md'] = { body: NOTE_A, delayMs: 400 };
+    getBehaviors['b.md'] = { body: NOTE_B, delayMs: 1200 };
+    try {
+        await page.evaluate(() => { void window.__wireProbe!.load('a.md'); });
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.waitForTimeout(700); // A resolved stale; B still in flight
+        assert.equal((await probeState(page)).loading, 'true', 'B loading must survive the stale A completion');
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await probeState(page)).content, 'BBB-content');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: save adopts the new revision while a newer edit stays dirty', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    putBehavior = { status: 200, delayMs: 600 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('v1'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        await page.waitForTimeout(150);
+        await page.evaluate(() => window.__wireProbe!.edit('v2'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        const state = await probeState(page);
+        assert.equal(state.revision, 'r2', 'saved revision adopted for the next baseRevision');
+        assert.equal(state.dirty, 'true', 'the newer edit stays dirty');
+        assert.equal(state.content, 'v2', 'newer edit content is preserved');
+    } finally {
+        resetBehaviors();
     }
 });

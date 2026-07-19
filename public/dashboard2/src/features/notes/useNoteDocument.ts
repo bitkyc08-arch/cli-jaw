@@ -35,22 +35,38 @@ export function useNoteDocument(): UseNoteDocumentResult {
     const latestContentRef = useRef('');
     const dirtyRef = useRef(false);
     const savingRef = useRef(false);
+    // 071: shared document-operation generation. A late completion of any op
+    // (load/save/overwrite/conflict-recovery) applies nothing when it is no
+    // longer current, so navigation always wins over in-flight A-state.
+    const docOpGenerationRef = useRef(0);
+    // Pending navigation target, recorded synchronously at load() entry.
+    // save/overwrite refuse to dispatch while a load is in flight.
+    const loadingPathRef = useRef<string | null>(null);
+    const fileRef = useRef(file);
+    fileRef.current = file;
 
     const load = useCallback(async (path: string): Promise<void> => {
+        const generation = ++docOpGenerationRef.current;
+        loadingPathRef.current = path;
         setLoading(true);
         setError(null);
         setConflict(null);
+        const isCurrent = () => generation === docOpGenerationRef.current;
         try {
             const next = await fetchNoteFile(path);
+            if (!isCurrent()) return;
+            loadingPathRef.current = null;
             setFile(next);
             latestContentRef.current = next.content;
             dirtyRef.current = false;
             setContentState(next.content);
             setDirty(false);
         } catch (loadError) {
+            if (!isCurrent()) return;
+            loadingPathRef.current = null;
             setError(loadError instanceof Error ? loadError.message : 'Unable to load note');
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     }, []);
 
@@ -62,15 +78,23 @@ export function useNoteDocument(): UseNoteDocumentResult {
     }
 
     const save = useCallback(async (): Promise<void> => {
+        const preGeneration = docOpGenerationRef.current;
+        const prePath = fileRef.current?.path ?? null;
         await settlePendingEditorChanges();
+        if (preGeneration !== docOpGenerationRef.current) return;
+        if ((fileRef.current?.path ?? null) !== prePath) return;
+        if (loadingPathRef.current !== null) return;
         if (!file || !dirtyRef.current || savingRef.current) return;
+        const generation = ++docOpGenerationRef.current;
         const contentSnapshot = latestContentRef.current;
         savingRef.current = true;
         setSaving(true);
         setError(null);
         setConflict(null);
+        const isCurrent = () => generation === docOpGenerationRef.current;
         try {
             const saved = await saveNoteFile({ path: file.path, content: contentSnapshot, baseRevision: file.revision });
+            if (!isCurrent()) return;
             setFile(saved);
             if (latestContentRef.current === contentSnapshot) {
                 latestContentRef.current = saved.content;
@@ -79,13 +103,16 @@ export function useNoteDocument(): UseNoteDocumentResult {
                 setDirty(false);
             }
         } catch (saveError) {
+            if (!isCurrent()) return;
             if (isRevisionConflict(saveError)) {
                 let remoteRevision = file.revision;
                 try {
                     const remote = await fetchNoteFile(file.path);
+                    if (!isCurrent()) return;
                     remoteRevision = remote.revision;
                     setFile(remote);
                 } catch {
+                    if (!isCurrent()) return;
                     remoteRevision = file.revision;
                 }
                 setConflict({
@@ -107,14 +134,22 @@ export function useNoteDocument(): UseNoteDocumentResult {
     }, [file, load]);
 
     const overwrite = useCallback(async (): Promise<void> => {
+        const preGeneration = docOpGenerationRef.current;
+        const prePath = fileRef.current?.path ?? null;
         await settlePendingEditorChanges();
+        if (preGeneration !== docOpGenerationRef.current) return;
+        if ((fileRef.current?.path ?? null) !== prePath) return;
+        if (loadingPathRef.current !== null) return;
         if (!file || savingRef.current) return;
+        const generation = ++docOpGenerationRef.current;
         const contentSnapshot = latestContentRef.current;
         savingRef.current = true;
         setSaving(true);
         setError(null);
+        const isCurrent = () => generation === docOpGenerationRef.current;
         try {
             const saved = await saveNoteFile({ path: file.path, content: contentSnapshot });
+            if (!isCurrent()) return;
             setFile(saved);
             if (latestContentRef.current === contentSnapshot) {
                 latestContentRef.current = saved.content;
@@ -124,6 +159,7 @@ export function useNoteDocument(): UseNoteDocumentResult {
             }
             setConflict(null);
         } catch (overwriteError) {
+            if (!isCurrent()) return;
             setError(overwriteError instanceof Error ? overwriteError.message : 'Unable to overwrite note');
         } finally {
             savingRef.current = false;
