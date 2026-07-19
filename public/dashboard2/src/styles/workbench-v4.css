@@ -159,6 +159,18 @@
     color: var(--text);
 }
 
+/* cell-in-button B1 fix: the tab button inside the pill carries no own
+   chrome — the pill span is the single button face (UA default border/bg
+   would render a second box inside the pill). */
+.d2-side-pane-pill > button[role='tab'] {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
 .d2-side-pane-pill .d2-icon {
     color: var(--text-3);
 }

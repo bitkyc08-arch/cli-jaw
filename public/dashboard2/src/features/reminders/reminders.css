@@ -868,7 +868,7 @@ body:has(.d2-tray-reminders-root),
 .d2-tray-reminder-card .d2-reminders-card-actions button {
     width: 30px;
     height: 30px;
-    border-color: var(--border);
+    border-color: transparent;
 }
 
 @keyframes d2-reminders-spin {
