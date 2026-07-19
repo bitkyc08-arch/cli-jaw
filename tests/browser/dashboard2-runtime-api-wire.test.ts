@@ -441,3 +441,112 @@ test('071: save adopts the new revision while a newer edit stays dirty', async t
         resetBehaviors();
     }
 });
+
+test('071: a stale successful save applies nothing after navigation', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    putBehavior = { status: 200, delayMs: 700 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        await page.waitForTimeout(150); // PUT in flight
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        const state = await probeState(page);
+        assert.equal(state.path, 'b.md', 'stale save must not restore A file metadata');
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.revision, 'r1', 'stale save revision must not be adopted');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: navigation during the recovery GET discards the post-fetch application', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    putBehavior = { status: 409, body: { ok: false, error: 'conflict', code: 'note_revision_conflict' } };
+    getBehaviors['a.md'] = { body: noteFile('a.md', 'remote-A', 'r9'), delayMs: 700 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        // The 409 arrives fast; the recovery GET for A is slow. Navigate mid-fetch.
+        await page.waitForFunction(() => (window.__wireCapture ?? []).filter(
+            entry => entry.method === 'GET' && entry.url.includes('path=a.md'),
+        ).length >= 2);
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.path, 'b.md');
+        assert.equal(state.conflict, '', 'recovery must not plant A conflict on B');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: overwrite from residual A state is refused while B load is pending', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    getBehaviors['b.md'] = { body: NOTE_B, delayMs: 800 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('overwrite-A'));
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => { void window.__wireProbe!.overwrite(); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 0, 'no A overwrite may dispatch while B is pending');
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.path, 'b.md');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: a stale overwrite failure creates no error state after navigation', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    putBehavior = { status: 500, body: { ok: false, error: 'boom-overwrite' }, delayMs: 700 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('overwrite-A'));
+        await page.evaluate(() => { void window.__wireProbe!.overwrite(); });
+        await page.waitForTimeout(150);
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.error, '', 'stale overwrite failure must not surface an error');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: a failed current load clears the pending guard so saving resumes', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    getBehaviors['a.md'] = { status: 500, body: { ok: false, error: 'boom-A' } };
+    try {
+        await page.evaluate(() => { void window.__wireProbe!.load('a.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.match((await probeState(page)).error, /boom-A|500/, 'current failure surfaces its error');
+
+        // The pending guard cleared: a subsequent save on a fresh document dispatches.
+        getBehaviors['b.md'] = { body: NOTE_B };
+        await page.evaluate(() => window.__wireProbe!.load('b.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('edited-B'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 1, 'save dispatches again after the failed load cleared');
+        assert.equal((await probeState(page)).revision, 'r2');
+    } finally {
+        resetBehaviors();
+    }
+});
