@@ -1,7 +1,8 @@
 /* 071 — Notes panel */
 .d2-notes-panel {
     display: grid;
-    grid-template-columns: 200px minmax(0, 1fr);
+    position: relative;
+    grid-template-columns: var(--notes-tree-width, 200px) auto minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
 }
@@ -10,9 +11,47 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-right: 1px solid var(--border);
+    min-width: 0;
     background: var(--surface);
     overflow: hidden;
+}
+
+/* ── resizable divider (owns the separating line) ── */
+.d2-notes-divider {
+    position: relative;
+    width: 5px;
+    margin: 0 -2px;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    z-index: 2;
+}
+
+.d2-notes-divider::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 2px;
+    width: 1px;
+    height: 100%;
+    background: var(--border);
+    transition: background 150ms, width 150ms;
+}
+
+.d2-notes-divider:hover::after,
+.d2-notes-divider:active::after {
+    width: 2px;
+    background: var(--accent);
+}
+
+/* ── editor workspace column ── */
+.d2-notes-workspace {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg);
 }
 
 .d2-notes-sidebar-header {
@@ -55,6 +94,54 @@
 .d2-notes-icon-btn:disabled {
     opacity: .4;
     cursor: default;
+}
+
+/* ── file tree container (071 gap) ── */
+.d2-notes-file-tree {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+}
+
+.d2-notes-tree-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 36px;
+    flex: none;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.d2-notes-tree-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.d2-notes-tree-icon {
+    display: inline-flex;
+    width: 14px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-4);
+}
+
+.d2-notes-file-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-4);
+}
+
+.d2-notes-tree-state {
+    padding: 16px 12px;
+    color: var(--text-4);
+    font-size: 12px;
+    text-align: center;
 }
 
 .d2-notes-tree {
@@ -157,6 +244,16 @@
 
 .d2-notes-tree-item.active {
     background: var(--surface-h);
+    color: var(--text);
+    font-weight: 500;
+}
+
+/* TSX marks selection on the row wrapper (071 gap: selector mismatch) */
+.d2-notes-tree-row.active {
+    background: var(--accent-soft);
+}
+
+.d2-notes-tree-row.active .d2-notes-tree-item {
     color: var(--text);
     font-weight: 500;
 }
@@ -372,6 +469,22 @@
     overflow: hidden;
 }
 
+/* view-mode layouts (071 gap: no mode selectors existed) */
+.d2-notes-content.is-edit,
+.d2-notes-content.is-preview {
+    display: flex;
+    flex-direction: column;
+}
+
+.d2-notes-content.is-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.d2-notes-content.is-split .d2-notes-textarea {
+    border-right: 1px solid var(--border);
+}
+
 .d2-notes-textarea {
     width: 100%;
     height: 100%;
@@ -411,4 +524,206 @@
     place-content: center;
     color: var(--text-4);
     font-size: 13px;
+}
+
+/* ── notices (071 gap) ── */
+.d2-notes-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.d2-notes-notice > span {
+    min-width: 0;
+    flex: 1;
+}
+
+.d2-notes-notice button {
+    flex: none;
+    padding: 3px 10px;
+    border: 1px solid currentColor;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.d2-notes-notice.is-error {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    color: var(--danger);
+}
+
+.d2-notes-notice.is-conflict {
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    color: var(--warn-text);
+}
+
+/* ── frontmatter tag strip (071 gap) ── */
+.d2-notes-frontmatter-strip {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.d2-notes-tag-pill {
+    padding: 1px 8px;
+    border-radius: var(--r-full);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+/* ── empty state (071 gap) ── */
+.d2-notes-empty-state {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    color: var(--text-3);
+    font-size: 13px;
+    text-align: center;
+}
+
+.d2-notes-empty-state button {
+    padding: 6px 14px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--text-2);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.d2-notes-empty-state button:hover {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+/* ── quick switcher + command palette modals (071 gap) ── */
+.d2-notes-modal-backdrop {
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+    display: grid;
+    place-items: start center;
+    padding: 96px 20px 20px;
+    background: color-mix(in srgb, var(--bg) 68%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.d2-notes-quick-switcher,
+.d2-notes-command-palette {
+    display: flex;
+    width: min(100%, 480px);
+    max-height: min(60vh, 480px);
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-xl);
+    background: var(--surface);
+    box-shadow: var(--shadow-elevated);
+    color: var(--text);
+}
+
+.d2-notes-modal-search {
+    display: flex;
+    flex: none;
+    border-bottom: 1px solid var(--border);
+}
+
+.d2-notes-modal-search input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+.d2-notes-modal-search input::placeholder {
+    color: var(--text-4);
+}
+
+.d2-notes-modal-results {
+    min-height: 0;
+    flex: 1;
+    padding: 5px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-4) 55%, transparent) transparent;
+}
+
+.d2-notes-modal-results::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.d2-notes-modal-results::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-4) 55%, transparent);
+    border: 2px solid transparent;
+    border-radius: var(--r-full);
+    background-clip: padding-box;
+}
+
+.d2-notes-modal-results button {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+    text-align: left;
+}
+
+.d2-notes-modal-results button.active {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.d2-notes-modal-results button.disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.d2-notes-result-title {
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-notes-result-path,
+.d2-notes-command-section {
+    overflow: hidden;
+    color: var(--text-4);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-notes-modal-empty {
+    margin: 0;
+    padding: 18px 12px;
+    color: var(--text-4);
+    font-size: 12.5px;
+    text-align: center;
 }
