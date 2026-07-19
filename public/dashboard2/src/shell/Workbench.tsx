@@ -123,8 +123,8 @@ export function Workbench({
                             <Icon icon={Settings} />
                         </button>
                     ) : null}
-                    {workspaceMode === 'chat' && selected ? (
-                        <HoverDock key={selected.port} port={selected.port} />
+                    {workspaceMode === 'chat' ? (
+                        <HoverDock key={selected?.port ?? 'none'} port={selected?.port ?? null} />
                     ) : null}
                     <button
                         ref={toggleButtonRef}

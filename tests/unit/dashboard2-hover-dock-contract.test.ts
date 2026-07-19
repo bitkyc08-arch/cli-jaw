@@ -12,10 +12,10 @@ import { parseChannelHealth } from '../../public/dashboard2/src/features/hover-d
 import { normalizeRegistry, toModelMap } from '../../public/dashboard2/src/features/hover-dock/cli-registry.ts';
 import { unwrapData } from '../../public/dashboard2/src/features/hover-dock/dock-settings.ts';
 
-test('hover dock is mounted from the workbench chat header with port key', () => {
+test('hover dock is mounted from the workbench chat header, visible without selection', () => {
     const source = readFileSync(new URL('../../public/dashboard2/src/shell/Workbench.tsx', import.meta.url), 'utf8');
     assert.match(source, /import \{ HoverDock \} from '\.\.\/features\/hover-dock\/HoverDock\.tsx'/);
-    assert.match(source, /<HoverDock key=\{selected\.port\} port=\{selected\.port\} \/>/);
+    assert.match(source, /<HoverDock key=\{selected\?\.port \?\? 'none'\} port=\{selected\?\.port \?\? null\} \/>/);
 });
 
 test('hover dock stays out of the frozen manager surface', async () => {

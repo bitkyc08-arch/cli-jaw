@@ -31,7 +31,7 @@ function DockTabContent(props: { client: DockClient; tab: DockTabKind; open: boo
 
 export function HoverDock(props: HoverDockProps) {
     const dock = useHoverDock();
-    const client = useDockClient(props.port);
+    const client = useDockClient(props.port ?? 0);
 
     return (
         <div className="hover-dock" ref={dock.rootRef}>
@@ -52,23 +52,31 @@ export function HoverDock(props: HoverDockProps) {
             </button>
             {dock.open && (
                 <div className="hover-dock-panel" role="dialog" aria-label="에이전트 스킬 설정 독">
-                    <div className="hover-dock-tabs" role="tablist">
-                        {DOCK_TAB_KINDS.map((kind) => (
-                            <button
-                                key={kind}
-                                type="button"
-                                role="tab"
-                                aria-selected={dock.tab === kind}
-                                className={`hover-dock-tab${dock.tab === kind ? ' is-active' : ''}`}
-                                onClick={() => dock.setTab(kind)}
-                            >
-                                {DOCK_TAB_TITLES[kind]}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="hover-dock-body" role="tabpanel" data-dock-tab={dock.tab}>
-                        <DockTabContent client={client} tab={dock.tab} open={dock.open} locale={props.locale} />
-                    </div>
+                    {props.port === null ? (
+                        <div className="hover-dock-body">
+                            <div className="dock-dim">세션을 선택하면 인스턴스 제어 탭이 열립니다</div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="hover-dock-tabs" role="tablist">
+                                {DOCK_TAB_KINDS.map((kind) => (
+                                    <button
+                                        key={kind}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={dock.tab === kind}
+                                        className={`hover-dock-tab${dock.tab === kind ? ' is-active' : ''}`}
+                                        onClick={() => dock.setTab(kind)}
+                                    >
+                                        {DOCK_TAB_TITLES[kind]}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="hover-dock-body" role="tabpanel" data-dock-tab={dock.tab}>
+                                <DockTabContent client={client} tab={dock.tab} open={dock.open} locale={props.locale} />
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
         </div>
