@@ -31,7 +31,6 @@ import { createPendingQueueStore } from './pending/pending-queue-store.ts';
 import { PendingQueueView } from './pending/PendingQueue.tsx';
 import { modelPickerOptions } from '../models/ModelPicker.tsx';
 import { useInstanceModelSettings } from '../models/use-instance-model-settings.ts';
-import { HoverDock } from '../features/hover-dock/HoverDock.tsx';
 
 // per-scope draft preservation across pane/tab round-trips (045 §5)
 const scopeDrafts = new Map<string, string>();
@@ -177,7 +176,6 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
 
     return (
         <RenderActionPortsProvider ports={ports}><div className="d2-chat-view" data-testid="chat-view">
-            <HoverDock key={scope.port} port={scope.port} />
             <div className="d2-chat-content">
                 <TurnStreamViewport
                     store={store}

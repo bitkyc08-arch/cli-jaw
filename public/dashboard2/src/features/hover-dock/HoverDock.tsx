@@ -32,30 +32,23 @@ function DockTabContent(props: { client: DockClient; tab: DockTabKind; open: boo
 export function HoverDock(props: HoverDockProps) {
     const dock = useHoverDock();
     const client = useDockClient(props.port);
-    const pillVisible = dock.revealed || dock.open;
 
     return (
         <div className="hover-dock" ref={dock.rootRef}>
-            <div
-                className="hover-dock-hotzone"
-                onPointerEnter={dock.handleHotZoneEnter}
-                onPointerLeave={dock.handleHotZoneLeave}
-            />
             <button
                 type="button"
-                className={`hover-dock-pill${pillVisible ? ' is-visible' : ''}`}
+                className="hover-dock-trigger d2-workbench-header-button"
                 aria-expanded={dock.open}
                 aria-label="에이전트 · 스킬 · 설정 독 토글"
                 title="에이전트 · 스킬 · 설정"
-                tabIndex={pillVisible ? 0 : -1}
-                onPointerEnter={dock.handlePillEnter}
-                onPointerLeave={dock.handlePillLeave}
                 onClick={dock.toggleOpen}
             >
-                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false">
-                    <path d={dock.open ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} />
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" focusable="false">
+                    <path d="M2 4h12M2 8h12M2 12h12" />
+                    <circle cx="5.5" cy="4" r="1.6" fill="currentColor" stroke="none" />
+                    <circle cx="10.5" cy="8" r="1.6" fill="currentColor" stroke="none" />
+                    <circle cx="6.5" cy="12" r="1.6" fill="currentColor" stroke="none" />
                 </svg>
-                <span className="hover-dock-pill-label">제어</span>
             </button>
             {dock.open && (
                 <div className="hover-dock-panel" role="dialog" aria-label="에이전트 스킬 설정 독">

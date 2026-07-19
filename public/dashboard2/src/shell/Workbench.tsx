@@ -2,6 +2,7 @@ import { PanelLeft, PanelRight, Settings } from '@lucide/icons';
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import type { DashboardInstance } from '../../../../src/manager/types.ts';
 import { ChatView } from '../chat/ChatView.tsx';
+import { HoverDock } from '../features/hover-dock/HoverDock.tsx';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
@@ -121,6 +122,9 @@ export function Workbench({
                         >
                             <Icon icon={Settings} />
                         </button>
+                    ) : null}
+                    {workspaceMode === 'chat' && selected ? (
+                        <HoverDock key={selected.port} port={selected.port} />
                     ) : null}
                     <button
                         ref={toggleButtonRef}

@@ -152,8 +152,6 @@
     min-height: 0;
     min-width: 0;
     overflow: hidden;
-    /* HoverDock absolute overlay anchor (070 port) */
-    position: relative;
 }
 
 .d2-chat-content {
