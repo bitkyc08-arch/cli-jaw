@@ -80,7 +80,7 @@
     padding: 3px;
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--text) 4%, transparent);
     corner-shape: var(--corner-shape);
 }
 
@@ -101,12 +101,12 @@
 }
 
 .d2-mode-button:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--text) 4%, transparent);
     color: var(--text-2);
 }
 
 .d2-mode-button.is-active {
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text) 8%, transparent);
     box-shadow: var(--shadow-hairline);
     color: var(--text);
 }
@@ -133,6 +133,12 @@
     flex: 1;
     padding: 6px 8px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-4) 55%, transparent) transparent;
+}
+
+.d2-settings-modal,
+.d2-settings-modal > [role='dialog'] {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--text-4) 55%, transparent) transparent;
 }
@@ -176,7 +182,7 @@
 }
 
 .d2-sidebar-v4 .d2-instance-row:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .d2-sidebar-v4 .d2-instance-row.is-selected {
@@ -208,7 +214,7 @@
 
 .d2-instance-dot.is-running {
     background: var(--positive);
-    box-shadow: 0 0 6px rgba(91, 216, 138, 0.4);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--positive) 40%, transparent);
 }
 
 .d2-instance-dot.is-off {
@@ -217,7 +223,7 @@
 
 .d2-instance-dot.is-busy {
     background: var(--warn);
-    box-shadow: 0 0 6px rgba(229, 185, 79, 0.3);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
 .d2-sidebar-v4 .d2-instance-copy {
@@ -267,7 +273,7 @@
 .d2-instance-spinner {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.08);
+    border: 2px solid var(--div-color);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: d2-sidebar-spin 800ms linear infinite;
@@ -333,7 +339,7 @@
 }
 
 .d2-instance-control.is-stop {
-    border: 1px solid rgba(248, 113, 113, 0.15);
+    border: 1px solid color-mix(in srgb, var(--danger) 15%, transparent);
     color: var(--danger);
 }
 
@@ -360,7 +366,7 @@
 }
 
 .d2-instance-more:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text) 8%, transparent);
     color: var(--text);
 }
 
@@ -383,7 +389,7 @@
     border: 1px solid var(--border-h);
     border-radius: var(--r-lg);
     background: var(--surface);
-    box-shadow: var(--shadow-elevated, 0 16px 48px rgba(0, 0, 0, 0.5));
+    box-shadow: var(--shadow-elevated);
 }
 
 .d2-instance-menu button {
@@ -431,7 +437,7 @@
     align-items: center;
     gap: 4px;
     padding: 10px 14px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--div-color);
 }
 
 .d2-sidebar-brand {
@@ -453,7 +459,7 @@
 
 .d2-sidebar-settings:hover:not(:disabled),
 .d2-sidebar-theme:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: color-mix(in srgb, var(--text) 6%, transparent);
     color: var(--text-2);
 }
 
@@ -507,7 +513,7 @@
     display: grid;
     place-items: center;
     padding: 20px;
-    background: rgba(6, 6, 8, 0.68);
+    background: color-mix(in srgb, var(--bg) 68%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     overflow-y: auto;
@@ -677,7 +683,7 @@
 .d2-sidebar-retry {
     margin-top: 6px;
     padding: 4px 12px;
-    border: 1px solid var(--panel-line, rgba(255, 255, 255, 0.08));
+    border: 1px solid var(--border-h);
     border-radius: 6px;
     background: transparent;
     color: inherit;
@@ -686,9 +692,38 @@
     cursor: pointer;
 }
 
+.d2-sidebar-retry:hover {
+    background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
 .d2-sidebar-empty strong {
     display: block;
     margin-bottom: 4px;
+}
+
+/* ── Focus treatment (overrides base.css legacy --d2-accent inset ring) ── */
+.d2-sidebar-v4 :is(button):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Full-width rows: inset ring so the outline is not clipped by list padding */
+.d2-sidebar-v4 .d2-instance-main:focus-visible,
+.d2-sidebar-v4 .d2-jwc-conv-row:focus-visible,
+.d2-sidebar-v4 .d2-session-row:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--accent);
+    border-radius: var(--r-lg);
+}
+
+.d2-sidebar-v4 .d2-session-row:focus-visible {
+    border-radius: var(--r-sm);
+}
+
+/* ── jwc conversation rows: denser than instance rows ── */
+.d2-sidebar-v4 .d2-jwc-conv-row {
+    min-height: 44px;
+    padding: 7px 10px;
 }
 
 /* ── Light-mode overrides ── */
@@ -715,45 +750,7 @@
     }
 }
 
-:root[data-theme='light'] .d2-mode-switcher {
-    background: rgba(0, 0, 0, 0.03);
-}
-
-:root[data-theme='light'] .d2-mode-button:hover {
-    background: rgba(0, 0, 0, 0.04);
-}
-
-:root[data-theme='light'] .d2-mode-button.is-active {
-    background: rgba(255, 255, 255, 0.7);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-
-:root[data-theme='light'] .d2-sidebar-v4 .d2-instance-row:hover {
-    background: rgba(0, 0, 0, 0.04);
-}
-
-:root[data-theme='light'] .d2-sidebar-v4 .d2-instance-row.is-selected {
-    background: var(--accent-soft);
-}
-
-:root[data-theme='light'] .d2-instance-spinner {
-    border-color: rgba(0, 0, 0, 0.08);
-    border-top-color: var(--accent);
-}
-
-:root[data-theme='light'] .d2-instance-menu {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-}
-
-:root[data-theme='light'] .d2-instance-more:hover {
-    background: rgba(0, 0, 0, 0.06);
-}
-
-:root[data-theme='light'] .d2-sidebar-footer-v4 {
-    border-top-color: rgba(0, 0, 0, 0.06);
-}
-
-:root[data-theme='light'] .d2-sidebar-settings:hover:not(:disabled),
-:root[data-theme='light'] .d2-sidebar-theme:hover {
-    background: rgba(0, 0, 0, 0.06);
-}
+/* light-specific per-selector overrides removed 260719: all sidebar chrome now
+   derives from semantic tokens (color-mix on --text / --div-color / --border-h),
+   so dark, light, and auto themes share one rule set. The glass gradient
+   branches above remain the only theme-forked rules. */
