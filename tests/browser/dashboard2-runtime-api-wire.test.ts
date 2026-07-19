@@ -113,8 +113,17 @@ test('notes/info wire capture proves a bodiless GET with headers and callsite st
         assert.equal(entry.url.includes('/i/'), false, 'manager-owned route must not use the worker prefix');
         assert.ok(entry.stack.includes('notes-api'), `stack should contain the callsite: ${entry.stack}`);
     }
-    // Header capture works (notesFetch sets none for GET; browser defaults visible).
+    // Header capture reflects init.headers only (browser defaults are applied
+    // below this seam): GET sends none, POST sends content-type json.
     assert.ok(info[0] && typeof info[0].headers === 'object');
+    assert.equal(info[0].headers['content-type'], undefined);
+    await page.evaluate(async () => {
+        const module = await import('/dist/dashboard2/src/features/notes/notes-api.ts');
+        await module.createNoteFile('header-check.md', 'x').catch(() => null);
+    });
+    const posts = (await captures(page)).filter(entry => entry.url.includes('/api/dashboard/notes/file') && entry.method === 'POST');
+    assert.ok(posts.length >= 1, 'POST capture exists');
+    assert.equal(posts[0]?.headers['content-type'], 'application/json');
 });
 
 test('route ownership: worker-scoped clients carry the /i/:port prefix', async t => {
