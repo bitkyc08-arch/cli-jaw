@@ -1,9 +1,25 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 const transcript = process.env.JWC_FAKE_TRANSCRIPT;
 const exitAfter = process.env.JWC_FAKE_EXIT_AFTER;
+const controlPath = process.env.JWC_FAKE_CONTROL;
 let sessionCounter = 0;
+
+// One-shot dynamic hang trigger (WP8): when the control file exists with
+// 'hang-new', the NEXT session/new hangs unanswered and the file is consumed,
+// so a single long-lived fake can serve both success and timeout legs.
+function consumeHangNew() {
+    if (!controlPath || !existsSync(controlPath)) return false;
+    try {
+        const content = readFileSync(controlPath, 'utf8').trim();
+        if (content !== 'hang-new') return false;
+        rmSync(controlPath, { force: true });
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 function record(message) {
     if (transcript) appendFileSync(transcript, `${JSON.stringify(message)}\n`);
@@ -27,6 +43,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     if (method === 'authenticate') { reply(message.id, {}); return; }
     if (method === 'session/new') {
         if (process.env.JWC_FAKE_HANG_NEW === '1') return;
+        if (consumeHangNew()) return;
         sessionCounter += 1;
         reply(message.id, { sessionId: `fake-session-${sessionCounter}` });
         // Give the host time to consume the reply before the child goes away;
