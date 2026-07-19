@@ -79,61 +79,59 @@ export function SettingsChannelsSection({ client, active, settings, snapshot }: 
     return (
         <div className="dock-section">
             <div className="dock-section-header dock-section-header-static"><span>Active Channel</span></div>
-            <div className="dock-row">
-                <span className="dock-toggle-group">
-                    <button type="button" className={`dock-toggle${channel === 'telegram' ? ' is-active' : ''}`} onClick={() => setChannel('telegram')}>TG</button>
-                    <button type="button" className={`dock-toggle${channel === 'discord' ? ' is-active' : ''}`} onClick={() => setChannel('discord')}>DC</button>
-                </span>
+            <div className="dock-segmented" role="group" aria-label="Active channel">
+                <button type="button" className={channel === 'telegram' ? 'is-active' : ''} onClick={() => setChannel('telegram')}>TG</button>
+                <button type="button" className={channel === 'discord' ? 'is-active' : ''} onClick={() => setChannel('discord')}>DC</button>
             </div>
             {health && (
-                <div className="dock-health">
+                <div className="dock-health-row">
                     {(['telegram', 'discord'] as const).map((name) => (
-                        <div key={name} className="dock-health-row">
-                            <span className="dock-field-label">{name === 'telegram' ? 'Telegram' : 'Discord'}</span>
-                            <span className="dock-health-chips">
-                                <span className="dock-chip">{health[name].configured ? 'configured' : 'not configured'}</span>
-                                {health[name].sendCapable && <span className="dock-chip">send</span>}
-                                {health[name].activeInbound && <span className="dock-chip">inbound</span>}
+                        <span key={name} className="dock-health-item">
+                            <span className="dock-field-label">{name === 'telegram' ? 'TG' : 'DC'}</span>
+                            <span className={`dock-chip${health[name].configured ? '' : ' is-dim'}`}>
+                                {health[name].configured ? 'configured' : 'not configured'}
                             </span>
-                        </div>
+                            {health[name].sendCapable && <span className="dock-chip">send</span>}
+                            {health[name].activeInbound && <span className="dock-chip">inbound</span>}
+                        </span>
                     ))}
                 </div>
             )}
             {error && <div className="dock-error">{error}</div>}
 
             {channel === 'telegram' && (
-                <div className="dock-channel">
+                <div className="dock-fields">
                     <TogglePair label="Telegram 활성화" value={!!tg.enabled} onChange={(v) => void putSettings({ telegram: { enabled: v } })} />
-                    <label className="dock-field">
+                    <label className="dock-field dock-field-inset">
                         <span>봇 토큰</span>
                         <input type="text" value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
                     </label>
-                    <label className="dock-field">
+                    <label className="dock-field dock-field-inset">
                         <span>허용 채팅 ID (쉼표 구분)</span>
                         <input type="text" value={tgChatIds} onChange={(e) => setTgChatIds(e.target.value)} />
                     </label>
-                    <div className="dock-row"><button type="button" className="dock-mini-btn" onClick={saveTelegramText}>Telegram 저장</button></div>
+                    <div className="dock-row dock-row-end"><button type="button" className="dock-mini-btn" onClick={saveTelegramText}>저장</button></div>
                     <TogglePair label="자동 전송" value={tg.forwardAll !== false} onChange={(v) => void putSettings({ telegram: { forwardAll: v } })} />
                     <TogglePair label="Mention Only" value={tg.mentionOnly !== false} onChange={(v) => void putSettings({ telegram: { mentionOnly: v } })} />
                 </div>
             )}
 
             {channel === 'discord' && (
-                <div className="dock-channel">
+                <div className="dock-fields">
                     <TogglePair label="Discord 활성화" value={!!dc.enabled} onChange={(v) => void putSettings({ discord: { enabled: v } })} />
-                    <label className="dock-field">
+                    <label className="dock-field dock-field-inset">
                         <span>Bot Token</span>
                         <input type="text" value={dcToken} onChange={(e) => setDcToken(e.target.value)} />
                     </label>
-                    <label className="dock-field">
+                    <label className="dock-field dock-field-inset">
                         <span>Guild ID</span>
                         <input type="text" value={dcGuildId} onChange={(e) => setDcGuildId(e.target.value)} />
                     </label>
-                    <label className="dock-field">
+                    <label className="dock-field dock-field-inset">
                         <span>Channel IDs (쉼표 구분)</span>
                         <input type="text" value={dcChannelIds} onChange={(e) => setDcChannelIds(e.target.value)} />
                     </label>
-                    <div className="dock-row"><button type="button" className="dock-mini-btn" onClick={saveDiscordText}>Discord 저장</button></div>
+                    <div className="dock-row dock-row-end"><button type="button" className="dock-mini-btn" onClick={saveDiscordText}>저장</button></div>
                     <TogglePair label="Mention Only" value={!!dc.mentionOnly} onChange={(v) => void putSettings({ discord: { mentionOnly: v } })} />
                     <TogglePair label="자동 전송" value={!!dc.forwardAll} onChange={(v) => void putSettings({ discord: { forwardAll: v } })} />
                     <TogglePair label="Allow Bots" value={!!dc.allowBots} onChange={(v) => void putSettings({ discord: { allowBots: v } })} />
@@ -142,25 +140,27 @@ export function SettingsChannelsSection({ client, active, settings, snapshot }: 
 
             <div className="dock-section">
                 <div className="dock-section-header dock-section-header-static"><span>Fallback</span></div>
-                {Array.from({ length: slotCount }, (_, i) => (
-                    <label key={i} className="dock-field">
-                        <span>Fallback {i + 1}</span>
-                        <select
-                            value={fallback[i] || ''}
-                            onChange={(e) => setFallback((prev) => {
-                                const next = [...prev];
-                                next[i] = e.target.value;
-                                return next;
-                            })}
-                        >
-                            <option value="">—</option>
-                            {cliKeys.map((cli) => <option key={cli} value={cli}>{cli}</option>)}
-                        </select>
-                    </label>
-                ))}
-                {slotCount > 0 && (
-                    <div className="dock-row"><button type="button" className="dock-mini-btn" onClick={saveFallback}>Fallback 저장</button></div>
-                )}
+                <div className="dock-fields">
+                    {Array.from({ length: slotCount }, (_, i) => (
+                        <label key={i} className="dock-field-row">
+                            <span className="dock-field-row-label">Fallback {i + 1}</span>
+                            <select
+                                value={fallback[i] || ''}
+                                onChange={(e) => setFallback((prev) => {
+                                    const next = [...prev];
+                                    next[i] = e.target.value;
+                                    return next;
+                                })}
+                            >
+                                <option value="">—</option>
+                                {cliKeys.map((cli) => <option key={cli} value={cli}>{cli}</option>)}
+                            </select>
+                        </label>
+                    ))}
+                    {slotCount > 0 && (
+                        <div className="dock-row dock-row-end"><button type="button" className="dock-mini-btn" onClick={saveFallback}>저장</button></div>
+                    )}
+                </div>
             </div>
         </div>
     );

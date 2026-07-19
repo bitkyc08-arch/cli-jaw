@@ -424,6 +424,11 @@
     margin: 6px 0;
 }
 
+.dock-row-end {
+    justify-content: flex-end;
+    margin: 4px 0;
+}
+
 .dock-toggle-row {
     justify-content: space-between;
 }
@@ -433,21 +438,107 @@
     font-size: 12px;
 }
 
-.dock-toggle-group {
+/* Segmented control (tab bar parity, used for TG/DC) */
+.dock-segmented {
     display: inline-flex;
     gap: 2px;
+    margin: 6px 0;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg);
+}
+
+.dock-segmented button {
+    min-width: 44px;
+    min-height: 24px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.dock-segmented button:hover {
+    color: var(--text);
+}
+
+.dock-segmented button.is-active {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+/* Settings rows card (d2-settings-fields compact parity) */
+.dock-fields {
+    margin: 8px 0;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+}
+
+.dock-fields > * + * {
+    border-top: 1px solid var(--border);
+}
+
+.dock-fields .dock-toggle-row {
+    min-height: 34px;
+    margin: 0;
+}
+
+.dock-field-inset {
+    margin: 0;
+    padding: 6px 0;
+}
+
+.dock-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+}
+
+.dock-field-row-label {
+    flex: none;
+    width: 72px;
+    color: var(--text-3);
+    font-size: 12px;
+}
+
+.dock-field-row select {
+    flex: 1;
+    min-height: 28px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    outline: 0;
+}
+
+.dock-field-row select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .dock-health-row {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 2px 0;
+    gap: 12px;
+    margin: 2px 0 6px;
 }
 
-.dock-health-chips {
+.dock-health-item {
     display: inline-flex;
+    align-items: center;
     gap: 4px;
+}
+
+.dock-chip.is-dim {
+    background: var(--surface-h);
+    color: var(--text-3);
 }
 
 .dock-channel {
