@@ -219,9 +219,9 @@ settings.ts (barrel)
 
 ### dashboard2 HoverDock (2026-07-19)
 
-`dashboard2/src/features/hover-dock/`는 채팅 컬럼(`.d2-chat-view`) 상단 중앙 hot-zone hover로 드러나는 플로팅 제어 독이다. pill 클릭으로 패널 토글(=pin), ESC/외부 클릭/재클릭으로 닫힘(Codex 데스크톱 summary popover 계약, devlog `_fin/260718_dashboard2_hover_dock/`). z-index 40(composer 20/toast 30 위, dialog 80+ 아래).
+`dashboard2/src/features/hover-dock/`는 채팅 헤더(`.d2-workbench-left-header`)의 툴 바 버튼으로 여는 플로팅 제어 독이다. 버튼 클릭으로 패널 토글(=pin), ESC/외부 클릭/재클릭으로 닫힘(Codex 데스크톱 summary popover 계약 — 실제 asar 동작도 헤더 버튼 클릭 토글, devlog `_fin/260718_dashboard2_hover_dock/`). z-index 40(composer 20/toast 30 위, dialog 80+ 아래). 초기 hot-zone hover pill 트리거는 2026-07-19 헤더 버튼 방식으로 교첐됐다.
 
-- 마운트: `ChatView.tsx`의 `.d2-chat-view` 난부, `key={scope.port}`로 인스턴스 전환 시 리마운트. 같은 포트의 세션 전환에서는 유지.
+- 마운트: `Workbench.tsx` 헤더(settings 버튼 옆), `key={selected.port}`로 인스턴스 전환 시 리마운트. 같은 포트의 세션 전환에서는 유지.
 - 3탭(에이전트/스킬/설정)은 옛 바닐라 오른쪽 사이드바의 완전 이식. API는 dock-local client(`dock-client.ts`)로 `/i/{port}` 프록시 경유 — manager 의존 없음. `/api/settings` 스냅샷은 Dock 레벨 hoist로 에이전트/설정 탭 공유.
 - 이중 응답 주의: 인스턴스 API는 `{ok,data}` 래핑과 bare가 혼재 — `dock-settings.ts`의 `unwrapData` 필수(바닐라 `js/api.ts` parity).
 - 의도적 제외/대체: `data-help-topic`(manager Help guide로 통합), MCP 필드별 모달(JSON 에디터 + 로컬 검증), claude-e 카드(바닐라 display:none parity).
