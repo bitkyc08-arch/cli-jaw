@@ -34,7 +34,15 @@ export function AgentsTab({ client, active, snapshot }: AgentsTabProps) {
     const { state, refresh, setData } = snapshot;
     const [expanded, setExpanded] = useState(false);
     const [customInput, setCustomInput] = useState('');
+    const [customMode, setCustomMode] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+
+    const settingsCli = state.kind === 'ready' ? state.data.cli : '';
+    // CLI 전환 시 custom 입력 잔여 상태 초기화 (final review #5)
+    useEffect(() => {
+        setCustomInput('');
+        setCustomMode(false);
+    }, [settingsCli]);
 
     const settings = state.kind === 'ready' ? state.data : null;
     const cliKeys = useMemo(() => (registry ? Object.keys(registry) : []), [registry]);
@@ -75,10 +83,11 @@ export function AgentsTab({ client, active, snapshot }: AgentsTabProps) {
         const patch: Record<string, unknown> = { cli: next };
         const nextMeta = registry?.[next];
         if (next !== 'pi' && nextMeta?.providers?.length) {
-            patch['perCli'] = { [next]: { provider: nextMeta.defaultProvider || nextMeta.providers[0] } };
+            // 기존 저장 provider 보존 (final review #1) — 없을 때만 기본값
+            patch['perCli'] = { [next]: { provider: settings?.perCli?.[next]?.provider || nextMeta.defaultProvider || nextMeta.providers[0] } };
         }
         void putSettings(patch);
-    }, [putSettings, registry]);
+    }, [putSettings, registry, settings?.perCli]);
 
     const handleProviderChange = useCallback((nextProvider: string) => {
         void putSettings({ perCli: { [cli]: { provider: nextProvider } } });
@@ -93,13 +102,18 @@ export function AgentsTab({ client, active, snapshot }: AgentsTabProps) {
     }, [cli, effortDisabled, hasProviders, provider, putSettings]);
 
     const handleModelChange = useCallback((value: string) => {
-        if (value === CUSTOM) return;
+        if (value === CUSTOM) {
+            setCustomMode(true);
+            return;
+        }
+        setCustomMode(false);
         saveActiveOverrides(value, savedEffort);
     }, [saveActiveOverrides, savedEffort]);
 
     const handleCustomCommit = useCallback(() => {
         const value = customInput.trim();
         if (!value) return;
+        setCustomMode(false);
         saveActiveOverrides(value, savedEffort);
     }, [customInput, saveActiveOverrides, savedEffort]);
 
@@ -140,7 +154,7 @@ export function AgentsTab({ client, active, snapshot }: AgentsTabProps) {
             <label className="dock-field">
                 <span>모델</span>
                 <select
-                    value={modelInList ? savedModel : CUSTOM}
+                    value={customMode || !modelInList ? CUSTOM : savedModel}
                     disabled={!!meta?.modelNote}
                     title={meta?.modelNote || ''}
                     onChange={(event) => handleModelChange(event.target.value)}
@@ -157,12 +171,13 @@ export function AgentsTab({ client, active, snapshot }: AgentsTabProps) {
                         )}
                 </select>
             </label>
-            {(!modelInList || customInput) && !meta?.modelNote && (
+            {(customMode || !modelInList || customInput) && !meta?.modelNote && (
                 <label className="dock-field">
                     <span>모델 ID 직접 입력</span>
                     <input
                         type="text"
-                        value={customInput || savedModel}
+                        value={customInput || (modelInList ? '' : savedModel)}
+                        placeholder="모델 ID"
                         onChange={(event) => setCustomInput(event.target.value)}
                         onBlur={handleCustomCommit}
                         onKeyDown={(event) => { if (event.key === 'Enter') handleCustomCommit(); }}

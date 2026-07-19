@@ -91,9 +91,11 @@ type CardProps = {
 function CliModelCard({ cli, registry, models, config, piSettings, onChange }: CardProps) {
     const meta = registry[cli];
     const [customDraft, setCustomDraft] = useState('');
+    const [customMode, setCustomMode] = useState(false);
     const hasProviders = cli !== 'pi' && (meta?.providers?.length ?? 0) > 0;
     const provider = hasProviders ? (config.provider || meta?.defaultProvider || '') : '';
     const piProvider = cli === 'pi' ? (config.provider || '') : '';
+    const piProfiles = cli === 'pi' ? (piSettings?.profiles || []) : [];
     const piModels = cli === 'pi' && piProvider
         ? (piSettings?.discoveredModels?.[piProvider] || [])
         : [];
@@ -111,12 +113,19 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
     const isClaude1m = cli === 'claude' && model.endsWith('[1m]');
 
     const setModel = (next: string) => {
-        if (next === '__custom__') return;
+        if (next === '__custom__') {
+            setCustomMode(true);
+            return;
+        }
+        setCustomMode(false);
         onChange({ model: next });
     };
     const commitCustom = () => {
         const value = customDraft.trim();
-        if (value) onChange({ model: value });
+        if (value) {
+            setCustomMode(false);
+            onChange({ model: value });
+        }
     };
     const toggleClaude1m = (enable: boolean) => {
         const base = model.replace(/\[1m\]$/, '');
@@ -126,6 +135,16 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
     return (
         <div className="dock-model-card">
             <div className="dock-model-card-title">{meta?.label || cli}</div>
+            {cli === 'pi' && piProfiles.length > 0 && (
+                <label className="dock-field">
+                    <span>Provider</span>
+                    <select value={piProvider} onChange={(e) => onChange({ provider: e.target.value })}>
+                        {!piProvider && <option value="">—</option>}
+                        {piProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label || profile.id}</option>)}
+                        {piProvider && !piProfiles.some((p) => p.id === piProvider) && <option value={piProvider}>{piProvider}</option>}
+                    </select>
+                </label>
+            )}
             {hasProviders && (
                 <label className="dock-field">
                     <span>Provider</span>
@@ -137,7 +156,7 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
             <label className="dock-field">
                 <span>모델</span>
                 <select
-                    value={modelInList ? model : '__custom__'}
+                    value={customMode || !modelInList ? '__custom__' : model}
                     disabled={!!meta?.modelNote}
                     title={meta?.modelNote || ''}
                     onChange={(e) => setModel(e.target.value)}
@@ -154,12 +173,14 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
                         )}
                 </select>
             </label>
-            {!modelInList && !meta?.modelNote && (
+            {(customMode || !modelInList) && !meta?.modelNote && (
                 <label className="dock-field">
                     <span>모델 ID</span>
                     <input
+                        key={`${cli}:${model}`}
                         type="text"
-                        defaultValue={model}
+                        defaultValue={modelInList ? '' : model}
+                        placeholder="모델 ID"
                         onChange={(e) => setCustomDraft(e.target.value)}
                         onBlur={commitCustom}
                         onKeyDown={(e) => { if (e.key === 'Enter') commitCustom(); }}
@@ -210,6 +231,7 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
                             <label className="dock-field">
                                 <span>Context Window</span>
                                 <input
+                                    key={`${cli}:win:${config.contextWindowSize}`}
                                     type="number" min={272000} max={1050000} step={1000}
                                     defaultValue={config.contextWindowSize ?? 1000000}
                                     onBlur={(e) => onChange({ contextWindowSize: parseInt(e.target.value || '1000000', 10) })}
@@ -218,6 +240,7 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
                             <label className="dock-field">
                                 <span>Auto Compact Limit</span>
                                 <input
+                                    key={`${cli}:compact:${config.contextCompactLimit}`}
                                     type="number" min={100000} max={1000000} step={1000}
                                     defaultValue={config.contextCompactLimit ?? 900000}
                                     onBlur={(e) => onChange({ contextCompactLimit: parseInt(e.target.value || '900000', 10) })}

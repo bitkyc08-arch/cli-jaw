@@ -78,12 +78,13 @@ export function useHoverDock(): HoverDockState {
     }, [open, scheduleHide]);
 
     const toggleOpen = useCallback(() => {
+        clearTimers(); // pending hide/reveal 타이머가 열린 상태를 깨지 않도록 (final review #7)
         setOpen((prev) => {
             const next = !prev;
             if (next) setRevealed(true);
             return next;
         });
-    }, []);
+    }, [clearTimers]);
 
     // Close on ESC / outside pointerdown while open.
     useEffect(() => {
