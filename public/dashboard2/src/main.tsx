@@ -10,6 +10,7 @@ import './styles/workbench-v4.css';
 import './styles/turn-stream.css';
 import './styles/render-content.css';
 import './models/model-picker.css';
+import './features/hover-dock/hover-dock.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { ManagerApiProvider } from './providers/api-provider.tsx';
