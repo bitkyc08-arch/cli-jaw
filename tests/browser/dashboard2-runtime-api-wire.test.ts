@@ -565,7 +565,7 @@ test('071: navigation during a FAILED recovery GET applies nothing and clears no
         ).length >= 2);
         await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
         await page.evaluate(() => window.__wireProbe!.settled());
-        assert.equal((await putCaptures(page)).length, 1, 'the overwrite PUT really dispatched and rejected late');
+        assert.equal((await putCaptures(page)).length, 1, 'the conflict save PUT really dispatched before navigation');
         const state = await probeState(page);
         assert.equal(state.content, 'BBB-content');
         assert.equal(state.path, 'b.md');
@@ -588,6 +588,7 @@ test('071: a stale overwrite failure creates no error state after navigation', a
         await page.waitForTimeout(150);
         await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
         await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 1, 'the overwrite PUT really dispatched and rejected late');
         const state = await probeState(page);
         assert.equal(state.content, 'BBB-content');
         assert.equal(state.error, '', 'stale overwrite failure must not surface an error');
