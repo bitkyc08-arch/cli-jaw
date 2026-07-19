@@ -136,6 +136,9 @@ export class TerminalSessionController {
     private rejection: string | null = null;
     private disposed = false;
     private closedAll = false;
+    // Explicit user closes, tracked separately from park tombstones so a
+    // detach cannot undo a close (D1).
+    private readonly explicitlyClosedKeys = new Set<string>();
 
     constructor(
         private readonly bridge: TerminalBridgeApi,
@@ -273,6 +276,7 @@ export class TerminalSessionController {
     closeSession(key: string): void {
         const session = this.findSession(key);
         if (!session) return;
+        this.explicitlyClosedKeys.add(key);
         if (session.sessionId) this.ownerSessionIds.delete(session.sessionId);
         this.queuedRestarts.splice(0, this.queuedRestarts.length, ...this.queuedRestarts.filter((queued) => queued !== key));
         this.teardownSession(session);
@@ -442,7 +446,12 @@ export class TerminalSessionController {
         }
 
         if (stale || !session) {
-            if (this.disposed && !this.closedAll) {
+            const explicitlyClosed = this.explicitlyClosedKeys.has(pending.key);
+            const adoptedByHydrate = this.keyBySessionId.has(result.id);
+            if (adoptedByHydrate) {
+                // A same-target hydrate already rebound this id as a live
+                // session: the late completion must not kill it (D2).
+            } else if (this.disposed && !this.closedAll && !explicitlyClosed) {
                 // Detached (unmounted) controller: park the late create in
                 // main — a future hydrate for its target can adopt it (C3).
             } else {
@@ -578,7 +587,10 @@ export class TerminalSessionController {
                 this.hydrateError = null;
                 // Re-seed owner-wide accounting from the authoritative list.
                 this.ownerSessionIds = new Set(result.sessions.map(entry => entry.id));
-                const mine = result.sessions.filter(entry => entry.port === target.port);
+                // Target identity is port+cwd: cross-cwd entries stay parked
+                // for their own target (D2).
+                const mine = result.sessions.filter(entry => entry.port === target.port
+                    && (entry.cwd === undefined || entry.cwd === target.cwd));
                 for (const entry of mine) this.rebindSession(entry, target);
             });
         }).catch((error: unknown) => {

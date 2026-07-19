@@ -11,6 +11,7 @@ import {
     type TerminalSessionSnapshot,
     type TerminalTarget,
 } from './terminal-session-state.ts';
+import { shouldDrainFocus } from './terminal-session-requests.ts';
 import type { TerminalRequestLedger } from './terminal-session-requests.ts';
 
 interface TerminalPanelProps {
@@ -148,12 +149,7 @@ export function TerminalPanel({
     useEffect(() => {
         const controller = controllerRef.current;
         if (!controller) return;
-        const pendingFocus = terminalRequests.focus.issued - terminalRequests.focus.consumed;
-        if (pendingFocus <= 0) return;
-        // Drain focus only after hydration settled and a live session exists (R6).
-        if (snapshot.hydrating || snapshot.creating) return;
-        const active = snapshot.sessions.find(session => session.key === snapshot.activeSessionKey);
-        if (!active?.sessionId || active.status !== 'running') return;
+        if (!shouldDrainFocus(snapshot, terminalRequests.focus)) return;
         controller.focusActive();
         // Drain exactly one token per focus call; the effect re-runs for the rest.
         consumeTerminalFocus(terminalRequests.focus.consumed + 1);

@@ -13,6 +13,7 @@ import {
     initialTerminalRequestLedger,
     dispatchTerminalShortcutIntent,
     normalizeTerminalShortcutAction,
+    shouldDrainFocus,
     terminalRequestLedgerReducer,
 } from '../../public/dashboard2/src/shell/panels/terminal-session-requests.ts';
 import type { TerminalBridgeApi } from '../../public/dashboard2/src/providers/desktop-bridge-contract.ts';
@@ -595,6 +596,87 @@ test('hydrate event buffer is bounded by the pre-bind cap', async () => {
     const session = controller.getSnapshot().sessions[0]!;
     const runtime = runtimes.get(session.key)!;
     assert.equal(runtime.writes.join('').length, 'base'.length + PRE_BIND_BUFFER_CAP);
+});
+
+test('close-then-detach still kills an explicitly closed in-flight create', async () => {
+    const { bridge, controller } = createHarness();
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    controller.requestNewSessions(1);
+    await flushCreates();
+    const key = controller.getSnapshot().activeSessionKey!;
+
+    controller.closeSession(key);
+    controller.detach();
+    bridge.resolveNext({ ok: true, id: 'term-closed', shell: '/bin/zsh', cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.deepEqual(bridge.kills, ['term-closed'], 'explicit close must not be undone by a later detach');
+});
+
+test('hydrate does not adopt cross-cwd entries of the same port', async () => {
+    const { bridge, controller } = createHarness();
+    bridge.listImpl = async () => ({
+        ok: true,
+        sessions: [
+            { id: 'term-other-cwd', shell: '/bin/zsh', cwd: '/Users/jun/other', port: 3457, seq: 0, cols: 90, rows: 30, buffer: 'x' },
+        ],
+    });
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.equal(controller.getSnapshot().sessions.length, 0, 'cross-cwd entry stays parked for its own target');
+});
+
+test('same-target hydrate adopt survives the in-flight create resolving late', async () => {
+    const { bridge, controller } = createHarness();
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    controller.requestNewSessions(1);
+    await flushCreates();
+    assert.equal(bridge.createCalls.length, 1);
+
+    controller.setTarget({ port: 3458, cwd: '/Users/jun/project-b' });
+    await flushCreates();
+    bridge.listImpl = async () => ({
+        ok: true,
+        sessions: [
+            { id: 'term-inflight', shell: '/bin/zsh', cwd: '/Users/jun/project-a', port: 3457, seq: 0, cols: 90, rows: 30, buffer: 'live' },
+        ],
+    });
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.equal(controller.getSnapshot().sessions[0]?.sessionId, 'term-inflight');
+    assert.equal(controller.getSnapshot().sessions[0]?.status, 'running');
+
+    bridge.resolveNext({ ok: true, id: 'term-inflight', shell: '/bin/zsh', cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.deepEqual(bridge.kills, [], 'adopted session must not be killed by its late create');
+    assert.equal(controller.getSnapshot().sessions[0]?.status, 'running');
+});
+
+test('focus drain gate progresses exactly one token per call', () => {
+    const running = {
+        hydrating: false,
+        creating: false,
+        sessions: [{ key: 'k1', sessionId: 'term-1', status: 'running' }],
+        activeSessionKey: 'k1',
+    };
+    let focus = { issued: 3, consumed: 0 };
+    let drains = 0;
+    while (shouldDrainFocus(running, focus)) {
+        drains += 1;
+        focus = { ...focus, consumed: focus.consumed + 1 };
+    }
+    assert.equal(drains, 3);
+    assert.equal(shouldDrainFocus(running, focus), false);
+
+    assert.equal(shouldDrainFocus({ ...running, hydrating: true }, { issued: 1, consumed: 0 }), false);
+    assert.equal(shouldDrainFocus({ ...running, creating: true }, { issued: 1, consumed: 0 }), false);
+    assert.equal(shouldDrainFocus(
+        { ...running, sessions: [{ key: 'k1', sessionId: null, status: 'exited' }] },
+        { issued: 1, consumed: 0 },
+    ), false);
+    assert.equal(shouldDrainFocus(
+        { ...running, activeSessionKey: 'missing' },
+        { issued: 1, consumed: 0 },
+    ), false);
 });
 
 test('auto session waits for hydration and fires only when nothing was restored', async () => {

@@ -71,3 +71,19 @@ export function dispatchTerminalShortcutIntent(
     if (intent === 'new-tab') ports.issueNewTab();
     else ports.issueFocus();
 }
+
+export interface FocusDrainState {
+    hydrating: boolean;
+    creating: boolean;
+    sessions: ReadonlyArray<{ key: string; sessionId: string | null; status: string }>;
+    activeSessionKey: string | null;
+}
+
+// Focus drain gate (R6/D3): one token per call, only after hydration settled
+// and a running active session exists to receive keyboard focus.
+export function shouldDrainFocus(state: FocusDrainState, focus: TerminalRequestCounter): boolean {
+    if (focus.issued - focus.consumed <= 0) return false;
+    if (state.hydrating || state.creating) return false;
+    const active = state.sessions.find(session => session.key === state.activeSessionKey);
+    return Boolean(active?.sessionId) && active?.status === 'running';
+}
