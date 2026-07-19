@@ -133,6 +133,31 @@
     flex: 1;
     padding: 6px 8px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-4) 55%, transparent) transparent;
+}
+
+/* Floating scrollbar (track-less indicator) for sidebar scroll areas */
+.d2-sidebar-list::-webkit-scrollbar,
+.d2-settings-modal::-webkit-scrollbar,
+.d2-settings-modal > [role='dialog']::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.d2-sidebar-list::-webkit-scrollbar-track,
+.d2-settings-modal::-webkit-scrollbar-track,
+.d2-settings-modal > [role='dialog']::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.d2-sidebar-list::-webkit-scrollbar-thumb,
+.d2-settings-modal::-webkit-scrollbar-thumb,
+.d2-settings-modal > [role='dialog']::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-4) 55%, transparent);
+    border: 2px solid transparent;
+    border-radius: var(--r-full);
+    background-clip: padding-box;
 }
 
 .d2-sidebar-v4 .d2-instance-node + .d2-instance-node {
