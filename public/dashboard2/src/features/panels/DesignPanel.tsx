@@ -5,7 +5,7 @@ import { widgetUiStore } from '../../turn-stream/widgets/widget-ui-store.ts';
 import './panels.css';
 
 export type DesignPanelPayload = { kind: 'url'; url: string } | WidgetPanelPayload;
-export type DesignPanelProps = { active: boolean; payload?: DesignPanelPayload };
+export type DesignPanelProps = { active: boolean; payload?: DesignPanelPayload | undefined };
 
 export function DesignPanel({ active, payload }: DesignPanelProps): JSX.Element {
     const viewportRef = useRef<HTMLDivElement>(null);

@@ -59,25 +59,30 @@ export function createWidgetPanelPayload(
     descriptor: Partial<WidgetDescriptor>,
     identity: WidgetRenderIdentity | undefined,
 ): WidgetPanelPayload | null {
-    if (source !== 'turn-widget' || !chatId || !isDescriptor(descriptor) || !isIdentity(identity)) return null;
+    const validDescriptor: WidgetDescriptor | null = isDescriptor(descriptor) ? descriptor : null;
+    const validIdentity: WidgetRenderIdentity | null = isIdentity(identity) ? identity : null;
+    const widgetId = validDescriptor?.widgetId;
+    if (source !== 'turn-widget' || !chatId || !validDescriptor || !validIdentity || !widgetId) return null;
     return {
         kind: 'widget',
         source,
-        panelKey: widgetPanelKey(chatId, descriptor.widgetId),
-        rowKey: widgetRowKey(identity),
+        panelKey: widgetPanelKey(chatId, widgetId),
+        rowKey: widgetRowKey(validIdentity),
         chatId,
-        descriptor,
-        identity,
+        descriptor: validDescriptor,
+        identity: validIdentity,
     };
 }
 
 export function isWidgetPanelPayload(value: unknown): value is WidgetPanelPayload {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const payload = value as Record<string, unknown>;
+    const descriptor: WidgetDescriptor | null = isDescriptor(payload['descriptor']) ? payload['descriptor'] : null;
+    const identity: WidgetRenderIdentity | null = isIdentity(payload['identity']) ? payload['identity'] : null;
+    const widgetId = descriptor?.widgetId;
     if (payload['kind'] !== 'widget' || payload['source'] !== 'turn-widget'
-        || typeof payload['chatId'] !== 'string' || payload['chatId'].length === 0 || !isDescriptor(payload['descriptor'])
-        || !isIdentity(payload['identity'])) return false;
-    const expectedPanelKey = widgetPanelKey(payload['chatId'], payload['descriptor'].widgetId);
-    const expectedRowKey = widgetRowKey(payload['identity']);
+        || typeof payload['chatId'] !== 'string' || payload['chatId'].length === 0 || !descriptor || !identity || !widgetId) return false;
+    const expectedPanelKey = widgetPanelKey(payload['chatId'], widgetId);
+    const expectedRowKey = widgetRowKey(identity);
     return payload['panelKey'] === expectedPanelKey && payload['rowKey'] === expectedRowKey;
 }

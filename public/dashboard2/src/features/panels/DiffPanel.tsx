@@ -6,7 +6,11 @@ import { selectDiffTransport } from './diff-transport.ts';
 import './panels.css';
 
 type DiffMode = 'unstaged' | 'staged';
-export type DiffPanelPayload = { repoRoot?: string; filePath?: string; mode?: DiffMode };
+export type DiffPanelPayload = {
+    repoRoot?: string | undefined;
+    filePath?: string | undefined;
+    mode?: DiffMode | undefined;
+};
 export type DiffPanelProps = { active: boolean; payload?: DiffPanelPayload };
 type DiffFile = { path: string; status: string; insertions: number; deletions: number };
 type DiffLine = { text: string; kind: 'add' | 'del' | 'hunk' | 'meta' | 'context'; oldLine: number | null; newLine: number | null };

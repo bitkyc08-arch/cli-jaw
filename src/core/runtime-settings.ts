@@ -79,9 +79,9 @@ async function invalidateSendOnlyClientsIfNeeded(
 }
 
 export async function applyRuntimeSettingsPatch(
-    rawPatch: Record<string, any> = {},
+    rawPatch: Record<string, any> = {}, // @strict-allow-any(loose JSON settings patch boundary)
     opts: ApplyRuntimeSettingsOptions = {},
-): Promise<Record<string, any>> {
+): Promise<Record<string, any>> { // @strict-allow-any(loose JSON settings patch boundary)
     const finishSettingsMutation = beginRuntimeSettingsMutation();
     const prevCli = settings["cli"];
     const prevWorkingDir = settings["workingDir"];

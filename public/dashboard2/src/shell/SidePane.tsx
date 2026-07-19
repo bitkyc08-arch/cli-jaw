@@ -153,10 +153,12 @@ function TabContent({ panel, active, terminalRequests, consumeTerminalRequests, 
         }
         case 'diff': {
             const raw = payloadObject(panel.payload);
+            const rawMode: unknown = raw['mode'];
+            const mode: 'staged' | 'unstaged' | undefined = rawMode === 'staged' || rawMode === 'unstaged' ? rawMode : undefined;
             const payload = {
                 ...(typeof raw['repoRoot'] === 'string' ? { repoRoot: raw['repoRoot'] } : {}),
                 ...(typeof raw['filePath'] === 'string' ? { filePath: raw['filePath'] } : {}),
-                ...(raw['mode'] === 'staged' || raw['mode'] === 'unstaged' ? { mode: raw['mode'] } : {}),
+                ...(mode ? { mode } : {}),
             };
             return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading diff...</div>}><LazyDiffPanel active={active} payload={payload} /></Suspense>;
         }

@@ -1,6 +1,7 @@
 // ─── Settings Merge Logic ────────────────────────────
 // Phase 9.4 — server.js의 applySettingsPatch에서 추출한 deep merge 로직
 
+// @strict-allow-any(loose JSON settings map boundary)
 function cloneCliSettingsMap(value: unknown): Record<string, any> {
     if (!value || typeof value !== 'object') return {};
     return Object.fromEntries(Object.entries(value).map(([cli, cfg]) => [
@@ -16,6 +17,7 @@ function cloneCliSettingsMap(value: unknown): Record<string, any> {
  * @param {object} patch - 적용할 패치
  * @returns {object} 새 settings (current를 직접 변경하지 않음)
  */
+// @strict-allow-any(loose JSON settings patch boundary)
 export function mergeSettingsPatch(current: Record<string, any>, patch: Record<string, any>) {
     const result = { ...current };
     const remaining = { ...patch };
@@ -30,6 +32,7 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
     // Deep merge perCli at per-CLI level
     if (remaining["perCli"] && typeof remaining["perCli"] === 'object') {
         result["perCli"] = result["perCli"] || {};
+        // @strict-allow-any(loose JSON perCli settings boundary)
         for (const [cli, cfg] of Object.entries(remaining["perCli"]) as [string, Record<string, any>][]) {
             result["perCli"][cli] = { ...result["perCli"][cli], ...cfg };
         }
@@ -39,6 +42,7 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
     // Deep merge activeOverrides at per-CLI level
     if (remaining["activeOverrides"] && typeof remaining["activeOverrides"] === 'object') {
         result["activeOverrides"] = result["activeOverrides"] || {};
+        // @strict-allow-any(loose JSON activeOverrides settings boundary)
         for (const [cli, cfg] of Object.entries(remaining["activeOverrides"]) as [string, Record<string, any>][]) {
             result["activeOverrides"][cli] = { ...result["activeOverrides"][cli], ...cfg };
         }
@@ -49,6 +53,7 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
     for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network']) {
         if (remaining[key] && typeof remaining[key] === 'object') {
             if (key === 'network') {
+                // @strict-allow-any(loose JSON record guard boundary)
                 const isRecord = (value: unknown): value is Record<string, any> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
                 const networkPatch = remaining[key], currentRemoteAccess = isRecord(result[key]) ? result[key]["remoteAccess"] : undefined;
                 const remoteAccessPatch = isRecord(networkPatch) ? networkPatch["remoteAccess"] : undefined;

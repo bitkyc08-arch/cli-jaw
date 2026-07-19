@@ -22,6 +22,7 @@ function getProjectDir(): string {
 }
 
 export function detectCli(name: string): CliDetection {
+    // @strict-allow-any(CLI registry loose record boundary)
     const binary = (CLI_REGISTRY as Record<string, any>)[name]?.binary || name;
     if ((name === 'codex' || name === 'codex-app') && process.env['CODEX_BIN']) {
         return selectSpawnableCliPath([

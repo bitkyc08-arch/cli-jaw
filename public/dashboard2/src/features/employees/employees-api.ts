@@ -70,7 +70,11 @@ function byAgentId(value: unknown, key?: string): Map<string, JsonObject> {
 }
 
 async function requestJson(fetchImpl: FetchImpl, url: string, signal?: AbortSignal): Promise<unknown> {
-    const response = await fetchImpl(url, { method: 'GET', headers: { Accept: 'application/json' }, signal });
+    const response = await fetchImpl(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        ...(signal ? { signal } : {}),
+    });
     if (!response.ok) throw new Error(`${url} failed (${response.status})`);
     return await response.json() as unknown;
 }
