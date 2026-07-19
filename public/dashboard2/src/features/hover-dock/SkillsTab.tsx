@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DockTabProps } from './dock-settings';
 import { filterSkills, SKILL_FILTERS, type SkillFilter, type SkillItem } from './skill-filter';
+import { DockSwitch } from './DockSwitch';
 
 const FILTER_LABELS: Record<SkillFilter, string> = {
     all: '전체',
@@ -81,15 +82,12 @@ export function SkillsTab({ client, active, locale }: DockTabProps & { locale?: 
                 <div key={skill.id} className={`dock-skill${skill.enabled ? ' is-enabled' : ''}`}>
                     <div className="dock-skill-head">
                         <span className="dock-skill-name">{skill.name || skill.id}</span>
-                        <button
-                            type="button"
-                            className={`dock-skill-toggle${skill.enabled ? ' is-on' : ''}`}
+                        <DockSwitch
+                            checked={skill.enabled}
+                            onChange={() => toggleSkill(skill)}
                             disabled={pendingId === skill.id}
-                            aria-label={`${skill.name || skill.id} toggle`}
-                            onClick={() => toggleSkill(skill)}
-                        >
-                            {skill.enabled ? 'ON' : 'OFF'}
-                        </button>
+                            ariaLabel={`${skill.name || skill.id} 토글`}
+                        />
                     </div>
                     {skill.description && <div className="dock-skill-desc">{skill.description}</div>}
                 </div>

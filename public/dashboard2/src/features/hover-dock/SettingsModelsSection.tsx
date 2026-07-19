@@ -3,6 +3,7 @@ import type { DockClient } from './dock-client';
 import { fetchCliRegistry, toModelMap, type CliRegistry } from './cli-registry';
 import { unwrapData, type PerCliConfig, type SettingsData } from './dock-settings';
 import type { DockSettingsSnapshot } from './HoverDock';
+import { DockSwitch } from './DockSwitch';
 
 type Props = {
     client: DockClient;
@@ -204,27 +205,18 @@ function CliModelCard({ cli, registry, models, config, piSettings, onChange }: C
             {cli === 'claude' && (
                 <div className="dock-row dock-toggle-row">
                     <span className="dock-field-label">1M Context</span>
-                    <span className="dock-toggle-group">
-                        <button type="button" className={`dock-toggle${isClaude1m ? ' is-active' : ''}`} onClick={() => toggleClaude1m(true)}>ON</button>
-                        <button type="button" className={`dock-toggle${!isClaude1m ? ' is-active' : ''}`} onClick={() => toggleClaude1m(false)}>OFF</button>
-                    </span>
+                    <DockSwitch checked={isClaude1m} onChange={toggleClaude1m} ariaLabel="Claude 1M Context" />
                 </div>
             )}
             {cli === 'codex' && (
                 <>
                     <div className="dock-row dock-toggle-row">
                         <span className="dock-field-label">Fast Mode</span>
-                        <span className="dock-toggle-group">
-                            <button type="button" className={`dock-toggle${config.fastMode ? ' is-active' : ''}`} onClick={() => onChange({ fastMode: true })}>ON</button>
-                            <button type="button" className={`dock-toggle${!config.fastMode ? ' is-active' : ''}`} onClick={() => onChange({ fastMode: false })}>OFF</button>
-                        </span>
+                        <DockSwitch checked={!!config.fastMode} onChange={(v) => onChange({ fastMode: v })} ariaLabel="Codex Fast Mode" />
                     </div>
                     <div className="dock-row dock-toggle-row">
                         <span className="dock-field-label">1M Context</span>
-                        <span className="dock-toggle-group">
-                            <button type="button" className={`dock-toggle${config.contextWindow ? ' is-active' : ''}`} onClick={() => onChange({ contextWindow: true })}>ON</button>
-                            <button type="button" className={`dock-toggle${!config.contextWindow ? ' is-active' : ''}`} onClick={() => onChange({ contextWindow: false })}>OFF</button>
-                        </span>
+                        <DockSwitch checked={!!config.contextWindow} onChange={(v) => onChange({ contextWindow: v })} ariaLabel="Codex 1M Context" />
                     </div>
                     {config.contextWindow && (
                         <>

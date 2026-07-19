@@ -1,4 +1,7 @@
-/* HoverDock — header-button floating control dock (070 + 080 trigger variant). */
+/* HoverDock — header-button floating control dock (090 design pass:
+   dashboard2 v4 token language only, no ad-hoc rgba/hardcoded values). */
+
+/* ── Shell ── */
 
 .hover-dock {
     position: relative;
@@ -19,97 +22,229 @@
     max-height: min(560px, calc(100vh - 96px));
     display: flex;
     flex-direction: column;
-    border-radius: 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-2xl);
+    corner-shape: var(--corner-shape);
     background: var(--surface);
     box-shadow: var(--shadow-elevated);
     overflow: hidden;
 }
 
+/* Segmented tab bar (sidebar-v4 .d2-settings-segmented parity) */
 .hover-dock-tabs {
     display: flex;
     gap: 2px;
-    padding: 8px 8px 0;
-    border-bottom: 1px solid var(--border);
+    margin: 8px 8px 0;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg);
 }
 
 .hover-dock-tab {
     flex: 1;
-    padding: 6px 0;
-    border: none;
-    border-radius: 8px 8px 0 0;
+    min-height: 28px;
+    border: 0;
+    border-radius: var(--r-sm);
     background: transparent;
-    color: var(--text-2);
+    color: var(--text-3);
     font-size: 12px;
     cursor: pointer;
 }
 
-.hover-dock-tab.is-active {
-    background: var(--accent-soft);
+.hover-dock-tab:hover {
     color: var(--text);
 }
 
+.hover-dock-tab.is-active {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.hover-dock-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Body + floating scrollbar (track-less indicator) */
 .hover-dock-body {
     flex: 1;
     min-height: 120px;
     overflow-y: auto;
     padding: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-4) 55%, transparent) transparent;
 }
 
-/* ── Dock form controls ── */
+.hover-dock-body::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.hover-dock-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.hover-dock-body::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-4) 55%, transparent);
+    border: 2px solid transparent;
+    border-radius: var(--r-full);
+    background-clip: padding-box;
+}
+
+/* ── Shared atoms ── */
+
+.dock-dim,
+.dock-loading {
+    padding: 4px 0;
+    color: var(--text-3);
+    font-size: 12px;
+}
+
+.dock-error {
+    margin: 6px 0;
+    padding: 6px 8px;
+    border: 1px solid var(--danger);
+    border-radius: var(--r-md);
+    color: var(--danger);
+    font-size: 12px;
+}
+
+.dock-mini-btn {
+    min-height: 26px;
+    padding: 3px 10px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.dock-mini-btn:hover {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.dock-mini-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.dock-mini-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.dock-chip {
+    padding: 1px 8px;
+    border-radius: var(--r-full);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10px;
+}
+
+/* Switch (d2 settings switch values: settings.css .d2-settings-switch) */
+.dock-switch {
+    flex: none;
+    width: 38px;
+    height: 22px;
+    padding: 2px;
+    border: 0;
+    border-radius: var(--r-full);
+    background: var(--text-4);
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.dock-switch-thumb {
+    display: block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: var(--shadow-md);
+    transition: transform 150ms ease;
+}
+
+.dock-switch.is-on {
+    background: var(--accent);
+}
+
+.dock-switch.is-on .dock-switch-thumb {
+    transform: translateX(16px);
+}
+
+.dock-switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.dock-switch:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ── Form controls (dock compact variant: 30px control height) ── */
 
 .dock-field {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     margin-bottom: 8px;
-    font-size: 11px;
-    color: var(--text-2);
+    font-size: 12px;
+    color: var(--text-3);
 }
 
 .dock-field select,
 .dock-field input[type="text"],
-.dock-emp-custom {
+.dock-field input[type="password"],
+.dock-field input[type="number"],
+.dock-emp-custom,
+.dock-skill-search,
+.dock-prompt-editor {
+    box-sizing: border-box;
     width: 100%;
-    padding: 4px 6px;
+    min-height: 30px;
+    padding: 4px 8px;
     border: 1px solid var(--border-h);
-    border-radius: 6px;
-    background: var(--surface-h);
+    border-radius: var(--r-md);
+    background: var(--bg);
     color: var(--text);
+    font: inherit;
     font-size: 12px;
+    outline: 0;
+}
+
+.dock-field select:focus,
+.dock-field input:focus,
+.dock-emp-custom:focus,
+.dock-skill-search:focus,
+.dock-prompt-editor:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .dock-field-static {
     flex-direction: row;
     justify-content: space-between;
+    align-items: center;
 }
 
 .dock-mono {
-    font-family: ui-monospace, monospace;
-    font-size: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 200px;
 }
 
-.dock-error {
-    margin: 6px 0;
-    padding: 6px 8px;
-    border-radius: 6px;
-    background: rgba(220, 60, 60, 0.15);
-    color: #ff8a8a;
-    font-size: 11px;
-}
-
-.dock-loading,
-.dock-dim {
-    color: var(--text-2);
-    font-size: 11px;
-    padding: 4px 0;
-}
+/* ── Sections ── */
 
 .dock-section {
-    margin-top: 10px;
+    margin-top: 12px;
     border-top: 1px solid var(--border);
     padding-top: 8px;
 }
@@ -119,13 +254,13 @@
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    border: none;
+    padding: 2px 0;
+    border: 0;
     background: none;
-    color: var(--text);
+    color: var(--text-2);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    padding: 2px 0;
 }
 
 .dock-section-header-static {
@@ -136,21 +271,17 @@
     margin-top: 6px;
 }
 
-.dock-mini-btn {
-    border: none;
-    background: var(--accent-soft);
-    color: var(--text);
-    border-radius: 6px;
-    font-size: 11px;
-    padding: 2px 8px;
-    cursor: pointer;
-}
+/* ── Cards ── */
 
-.dock-emp {
+.dock-emp,
+.dock-model-card,
+.dock-skill,
+.dock-health {
     margin: 8px 0;
-    padding: 8px;
-    border-radius: 8px;
-    background: var(--surface-h);
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
 }
 
 .dock-emp.is-static {
@@ -172,8 +303,8 @@
 
 .dock-emp-name-input {
     flex: 1;
+    border: 0;
     background: none;
-    border: none;
     color: var(--text);
     font-size: 12px;
     font-weight: 600;
@@ -181,11 +312,11 @@
 }
 
 .dock-emp-builtin {
-    font-size: 9px;
-    padding: 1px 6px;
-    border-radius: 9px;
-    color: var(--accent);
+    padding: 1px 8px;
+    border-radius: var(--r-full);
     background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10px;
     letter-spacing: 0.3px;
 }
 
@@ -197,9 +328,9 @@
 
 .dock-emp-custom {
     margin-top: 4px;
-    height: 44px;
+    height: 48px;
     resize: vertical;
-    font-size: 10px;
+    font-size: 11px;
 }
 
 .dock-emp-status {
@@ -207,7 +338,7 @@
     align-items: center;
     gap: 6px;
     margin-top: 4px;
-    font-size: 10px;
+    font-size: 11px;
 }
 
 .dock-status-running {
@@ -219,24 +350,23 @@
 }
 
 .dock-emp-phase {
-    padding: 1px 6px;
-    border-radius: 9px;
-    font-size: 9px;
+    padding: 1px 8px;
+    border-radius: var(--r-full);
     background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10px;
+}
+
+.dock-model-card-title {
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 /* ── Skills tab ── */
 
 .dock-skill-search {
-    width: 100%;
-    padding: 4px 8px;
-    margin-bottom: 6px;
-    border: 1px solid var(--border-h);
-    border-radius: 6px;
-    background: var(--surface-h);
-    color: var(--text);
-    font-size: 12px;
-    box-sizing: border-box;
+    margin-bottom: 8px;
 }
 
 .dock-skill-filters {
@@ -247,25 +377,24 @@
 }
 
 .dock-skill-filter {
-    border: none;
-    border-radius: 10px;
-    padding: 2px 8px;
-    font-size: 10px;
-    background: var(--surface-h);
-    color: var(--text-2);
+    min-height: 24px;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-full);
+    background: transparent;
+    color: var(--text-3);
+    font-size: 11px;
     cursor: pointer;
 }
 
-.dock-skill-filter.is-active {
-    background: var(--accent-soft);
+.dock-skill-filter:hover {
     color: var(--text);
 }
 
-.dock-skill {
-    margin-top: 6px;
-    padding: 6px 8px;
-    border-radius: 8px;
-    background: var(--surface-h);
+.dock-skill-filter.is-active {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent);
 }
 
 .dock-skill-head {
@@ -280,25 +409,10 @@
     font-weight: 600;
 }
 
-.dock-skill-toggle {
-    border: none;
-    border-radius: 9px;
-    padding: 1px 8px;
-    font-size: 9px;
-    cursor: pointer;
-    background: var(--surface);
-    color: var(--text-2);
-}
-
-.dock-skill-toggle.is-on {
-    background: var(--positive);
-    color: #fff;
-}
-
 .dock-skill-desc {
     margin-top: 2px;
+    color: var(--text-3);
     font-size: 11px;
-    color: var(--text-2);
 }
 
 /* ── Settings tab ── */
@@ -315,35 +429,13 @@
 }
 
 .dock-field-label {
-    font-size: 11px;
     color: var(--text-2);
+    font-size: 12px;
 }
 
 .dock-toggle-group {
     display: inline-flex;
     gap: 2px;
-}
-
-.dock-toggle {
-    border: none;
-    border-radius: 8px;
-    padding: 3px 10px;
-    font-size: 10px;
-    background: var(--surface-h);
-    color: var(--text-2);
-    cursor: pointer;
-}
-
-.dock-toggle.is-active {
-    background: var(--accent-soft);
-    color: var(--text);
-}
-
-.dock-health {
-    margin: 6px 0;
-    padding: 6px 8px;
-    border-radius: 8px;
-    background: var(--surface-h);
 }
 
 .dock-health-row {
@@ -358,47 +450,21 @@
     gap: 4px;
 }
 
-.dock-chip {
-    font-size: 9px;
-    padding: 1px 6px;
-    border-radius: 9px;
-    background: var(--accent-soft);
-}
-
 .dock-channel {
     margin-top: 8px;
-    border-top: 1px dashed var(--border);
-    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
 }
 
 .dock-prompt-editor {
-    width: 100%;
     min-height: 120px;
-    padding: 6px 8px;
-    border: 1px solid var(--border-h);
-    border-radius: 6px;
-    background: var(--surface-h);
-    color: var(--text);
+    font-family: var(--font-mono);
     font-size: 11px;
-    font-family: ui-monospace, monospace;
+    line-height: 1.5;
     resize: vertical;
-    box-sizing: border-box;
-}
-
-.dock-model-card {
-    margin: 8px 0;
-    padding: 8px;
-    border-radius: 8px;
-    background: var(--surface-h);
-}
-
-.dock-model-card-title {
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 6px;
 }
 
 .dock-mcp-row {
     padding: 2px 0;
-    font-size: 11px;
+    font-size: 12px;
 }

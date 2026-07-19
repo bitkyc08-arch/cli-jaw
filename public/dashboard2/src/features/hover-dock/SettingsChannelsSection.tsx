@@ -3,6 +3,7 @@ import type { DockClient } from './dock-client';
 import { unwrapData, type SettingsData } from './dock-settings';
 import type { DockSettingsSnapshot } from './HoverDock';
 import { parseChannelHealth, type ChannelHealth } from './channel-health';
+import { DockSwitch } from './DockSwitch';
 
 type Props = {
     client: DockClient;
@@ -15,10 +16,7 @@ function TogglePair(props: { label: string; value: boolean; onChange: (next: boo
     return (
         <div className="dock-row dock-toggle-row">
             <span className="dock-field-label">{props.label}</span>
-            <span className="dock-toggle-group">
-                <button type="button" className={`dock-toggle${props.value ? ' is-active' : ''}`} onClick={() => props.onChange(true)}>ON</button>
-                <button type="button" className={`dock-toggle${!props.value ? ' is-active' : ''}`} onClick={() => props.onChange(false)}>OFF</button>
-            </span>
+            <DockSwitch checked={props.value} onChange={props.onChange} ariaLabel={props.label} />
         </div>
     );
 }

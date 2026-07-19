@@ -76,3 +76,14 @@ test('unwrapData handles dual-response and bare payloads', () => {
     assert.deepEqual(unwrapData({ b: 2 }), { b: 2 });
     assert.throws(() => unwrapData({ ok: false, data: null }));
 });
+
+test('dock switch follows the d2 ARIA switch contract', () => {
+    const source = readFileSync(new URL('../../public/dashboard2/src/features/hover-dock/DockSwitch.tsx', import.meta.url), 'utf8');
+    assert.match(source, /role="switch"/);
+    assert.match(source, /aria-checked=\{checked\}/);
+    const css = readFileSync(new URL('../../public/dashboard2/src/features/hover-dock/hover-dock.css', import.meta.url), 'utf8');
+    // floating scrollbar: no painted track
+    assert.match(css, /::-webkit-scrollbar-track \{\s*background: transparent;\s*\}/);
+    // v4 token language only — no ad-hoc rgba() in dock css
+    assert.equal(css.includes('rgba('), false);
+});
