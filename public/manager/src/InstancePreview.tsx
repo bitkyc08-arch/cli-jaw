@@ -6,8 +6,6 @@ import { isElectron } from './panels/desktop-bridge';
 import { buildPreviewState } from './preview';
 import type { PreviewTheme } from './preview';
 import type { DashboardInstance, DashboardScanResult } from './types';
-import { HoverDock } from './hover-dock/HoverDock';
-import './hover-dock/hover-dock.css';
 
 type InstancePreviewProps = {
     instance: DashboardInstance | null;
@@ -16,7 +14,6 @@ type InstancePreviewProps = {
     active: boolean;
     refreshKey: number;
     theme: PreviewTheme;
-    locale?: string | undefined;
     onOpenNotesFromPreview?: (path: string) => void;
     onOpenDocFromPreview?: (absolutePath: string) => void;
     onPreviewDroppedFiles?: (files: File[]) => void;
@@ -449,9 +446,6 @@ export function InstancePreview(props: InstancePreviewProps) {
             }}
             onDrop={(event) => { void handleFolderPathDrop(event); }}
         >
-            {props.instance && (
-                <HoverDock key={props.instance.port} port={props.instance.port} locale={props.locale} />
-            )}
             {(!props.enabled || !state.canPreview) && <div className="preview-empty">{disabledReason}</div>}
             {pathDropStatus && (
                 <div className="preview-path-drop-status" role="status">
