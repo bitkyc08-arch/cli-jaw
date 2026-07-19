@@ -139,6 +139,9 @@ export class TerminalSessionController {
     // Explicit user closes, tracked separately from park tombstones so a
     // detach cannot undo a close (D1).
     private readonly explicitlyClosedKeys = new Set<string>();
+    // Locally killed ids: main-side kill emits no exit event, so hydration
+    // must never re-seed or rebind a snapshot entry we already killed (E2).
+    private readonly killedIds = new Set<string>();
 
     constructor(
         private readonly bridge: TerminalBridgeApi,
@@ -447,19 +450,28 @@ export class TerminalSessionController {
 
         if (stale || !session) {
             const explicitlyClosed = this.explicitlyClosedKeys.has(pending.key);
-            const adoptedByHydrate = this.keyBySessionId.has(result.id);
-            if (adoptedByHydrate) {
-                // A same-target hydrate already rebound this id as a live
-                // session: the late completion must not kill it (D2).
-            } else if (this.disposed && !this.closedAll && !explicitlyClosed) {
-                // Detached (unmounted) controller: park the late create in
-                // main — a future hydrate for its target can adopt it (C3).
-            } else {
+            const adoptedKey = this.keyBySessionId.get(result.id);
+            // Explicit close always wins over adoption (E1); adoption only
+            // preserves a live rebound session from its own late create (D2).
+            const mustKill = explicitlyClosed
+                || this.closedAll
+                || (!this.disposed && !adoptedKey);
+            if (mustKill) {
+                this.killedIds.add(result.id);
                 // Prune owner-wide accounting at the kill site: main-side
                 // kill emits no exit event (C4).
                 this.ownerSessionIds.delete(result.id);
                 void this.bridge.kill(result.id);
+                if (adoptedKey) {
+                    const adoptedSession = this.findSession(adoptedKey);
+                    this.keyBySessionId.delete(result.id);
+                    if (adoptedSession) {
+                        adoptedSession.sessionId = null;
+                        this.applyExit(adoptedSession, null);
+                    }
+                }
             }
+            // else: adopted live (preserve) or detached park (C3).
             this.notify();
             this.drainCreateQueue();
             return;
@@ -585,11 +597,15 @@ export class TerminalSessionController {
                     return;
                 }
                 this.hydrateError = null;
-                // Re-seed owner-wide accounting from the authoritative list.
-                this.ownerSessionIds = new Set(result.sessions.map(entry => entry.id));
+                // Re-seed owner-wide accounting from the authoritative list,
+                // minus anything we already killed locally (E2).
+                this.ownerSessionIds = new Set(
+                    result.sessions.filter(entry => !this.killedIds.has(entry.id)).map(entry => entry.id),
+                );
                 // Target identity is port+cwd: cross-cwd entries stay parked
                 // for their own target (D2).
-                const mine = result.sessions.filter(entry => entry.port === target.port
+                const mine = result.sessions.filter(entry => !this.killedIds.has(entry.id)
+                    && entry.port === target.port
                     && (entry.cwd === undefined || entry.cwd === target.cwd));
                 for (const entry of mine) this.rebindSession(entry, target);
             });

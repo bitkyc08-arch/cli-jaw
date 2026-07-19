@@ -679,6 +679,66 @@ test('focus drain gate progresses exactly one token per call', () => {
     ), false);
 });
 
+test('explicit close wins over same-target hydrate adoption of the in-flight id', async () => {
+    const { bridge, controller } = createHarness();
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    controller.requestNewSessions(1);
+    await flushCreates();
+    const key = controller.getSnapshot().activeSessionKey!;
+    controller.closeSession(key);
+
+    controller.setTarget({ port: 3458, cwd: '/Users/jun/project-b' });
+    await flushCreates();
+    bridge.listImpl = async () => ({
+        ok: true,
+        sessions: [
+            { id: 'term-closed', shell: '/bin/zsh', cwd: '/Users/jun/project-a', port: 3457, seq: 0, cols: 90, rows: 30, buffer: '' },
+        ],
+    });
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.equal(controller.getSnapshot().sessions[0]?.sessionId, 'term-closed');
+    assert.equal(controller.getSnapshot().sessions[0]?.status, 'running');
+
+    bridge.resolveNext({ ok: true, id: 'term-closed', shell: '/bin/zsh', cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.deepEqual(bridge.kills, ['term-closed'], 'explicit close beats adoption');
+    const session = controller.getSnapshot().sessions[0]!;
+    assert.equal(session.status, 'exited');
+    assert.equal(session.sessionId, null);
+});
+
+test('stale kill before list application never re-seeds the dead id', async () => {
+    const { bridge, controller } = createHarness();
+    controller.setTarget({ port: 3457, cwd: '/Users/jun/project-a' });
+    controller.requestNewSessions(1);
+    await flushCreates();
+
+    let resolveList!: (result: ListResult) => void;
+    bridge.listImpl = () => new Promise<ListResult>((resolve) => { resolveList = resolve; });
+    controller.setTarget({ port: 3458, cwd: '/Users/jun/project-b' });
+    await flushCreates();
+
+    // The stale create resolves and is killed BEFORE the snapshot lands.
+    bridge.resolveNext({ ok: true, id: 'term-inflight', shell: '/bin/zsh', cwd: '/Users/jun/project-a' });
+    await flushCreates();
+    assert.deepEqual(bridge.kills, ['term-inflight']);
+
+    resolveList({
+        ok: true,
+        sessions: [
+            { id: 'term-inflight', shell: '/bin/zsh', cwd: '/Users/jun/project-b', port: 3458, seq: 0, cols: 90, rows: 30, buffer: '' },
+        ],
+    });
+    await flushCreates();
+    assert.equal(controller.getSnapshot().sessions.length, 0, 'killed id must not be rebound');
+
+    controller.requestNewSessions(1);
+    await flushCreates();
+    assert.equal(controller.getSnapshot().rejection, null, 'killed id must not occupy capacity');
+    assert.equal(bridge.createCalls.length, 2);
+});
+
 test('auto session waits for hydration and fires only when nothing was restored', async () => {
     const { bridge, controller } = createHarness();
     let resolveList!: (result: ListResult) => void;
