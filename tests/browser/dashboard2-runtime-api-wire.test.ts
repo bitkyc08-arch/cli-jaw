@@ -7,6 +7,8 @@ const ROOT = resolve(import.meta.dirname, '..', '..');
 const browsers: Browser[] = [];
 const contexts: BrowserContext[] = [];
 const servers: { close(): Promise<void> }[] = [];
+let sharedBrowser: Browser | null = null;
+let sharedServerPort: number | null = null;
 
 after(async () => {
     await Promise.allSettled(contexts.map(context => context.close()));
@@ -40,27 +42,34 @@ async function fulfill(route: Parameters<Parameters<Page['route']>[1]>[0], body:
 }
 
 async function openHarness(t: TestContext): Promise<Page | null> {
-    let browser: Browser | null = null;
-    for (const launch of [
-        () => chromium.launch({ headless: true, channel: 'chrome' as const }),
-        () => chromium.launch({ headless: true }),
-    ]) {
-        try { browser = await launch(); break; } catch { /* local fallback */ }
+    // One browser + one vite server for the whole suite (I1: per-test servers
+    // made teardown hang and slowed every test).
+    if (!sharedBrowser) {
+        for (const launch of [
+            () => chromium.launch({ headless: true, channel: 'chrome' as const }),
+            () => chromium.launch({ headless: true }),
+        ]) {
+            try { sharedBrowser = await launch(); break; } catch { /* local fallback */ }
+        }
+        // 070 P5: a skipped run can never ground a NOOP verdict.
+        if (!sharedBrowser) { t.skip('no local Chrome/Chromium — NOOP verdict requires executed captures'); return null; }
+        browsers.push(sharedBrowser);
     }
-    // 070 P5: a skipped run can never ground a NOOP verdict.
-    if (!browser) { t.skip('no local Chrome/Chromium — NOOP verdict requires executed captures'); return null; }
-    browsers.push(browser);
-    const { createServer } = await import('vite');
-    const server = await createServer({
-        configFile: join(ROOT, 'vite.config.ts'),
-        root: join(ROOT, 'public'),
-        logLevel: 'silent',
-        server: { port: 0, host: '127.0.0.1', hmr: false },
-    });
-    await server.listen();
-    servers.push({ close: () => server.close() });
-    const address = server.httpServer?.address();
-    if (!address || typeof address !== 'object') throw new Error('vite bind failed');
+    if (sharedServerPort === null) {
+        const { createServer } = await import('vite');
+        const server = await createServer({
+            configFile: join(ROOT, 'vite.config.ts'),
+            root: join(ROOT, 'public'),
+            logLevel: 'silent',
+            server: { port: 0, host: '127.0.0.1', hmr: false },
+        });
+        await server.listen();
+        servers.push({ close: () => server.close() });
+        const address = server.httpServer?.address();
+        if (!address || typeof address !== 'object') throw new Error('vite bind failed');
+        sharedServerPort = address.port;
+    }
+    const browser = sharedBrowser;
     const context = await browser.newContext({ viewport: { width: 760, height: 420 } });
     contexts.push(context);
     const page = await context.newPage();
@@ -104,7 +113,7 @@ async function openHarness(t: TestContext): Promise<Page | null> {
     await page.route('**/i/3506/api/code/sessions**', route => fulfill(route, { ok: true, sessions: [] }));
 
     await page.route('**/dashboard2/src/main.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
-    await page.goto(`http://127.0.0.1:${address.port}/dist/dashboard2/index.html`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`http://127.0.0.1:${sharedServerPort}/dist/dashboard2/index.html`, { waitUntil: 'domcontentloaded' });
     await page.evaluate('window.__name = window.__name || ((fn) => fn)');
     await page.evaluate(async () => {
         document.documentElement.dataset.cliJawDesktop = 'true';
@@ -379,6 +388,7 @@ test('071: overwrite after a real conflict does not pollute a later navigation',
         await page.waitForTimeout(150);
         await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
         await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 2, 'conflict PUT and overwrite PUT both dispatched');
         const state = await probeState(page);
         assert.equal(state.content, 'BBB-content');
         assert.equal(state.path, 'b.md');
@@ -454,6 +464,7 @@ test('071: a stale successful save applies nothing after navigation', async t =>
         await page.waitForTimeout(150); // PUT in flight
         await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
         await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 1, 'the save PUT really dispatched and resolved late');
         const state = await probeState(page);
         assert.equal(state.path, 'b.md', 'stale save must not restore A file metadata');
         assert.equal(state.content, 'BBB-content');
@@ -479,6 +490,7 @@ test('071: navigation during the recovery GET discards the post-fetch applicatio
         ).length >= 2);
         await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
         await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 1, 'the conflict PUT really dispatched before navigation');
         const state = await probeState(page);
         assert.equal(state.content, 'BBB-content');
         assert.equal(state.path, 'b.md');
@@ -503,6 +515,62 @@ test('071: overwrite from residual A state is refused while B load is pending', 
         const state = await probeState(page);
         assert.equal(state.content, 'BBB-content');
         assert.equal(state.path, 'b.md');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: overwrite invoked before a pre-settle navigation dispatches nothing', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        await page.evaluate(() => window.__wireProbe!.edit('overwrite-A'));
+        // Same-task interleave: load(B) bumps during overwrite's settle window,
+        // activating the settle-time generation guard (hook:137-140).
+        await page.evaluate(() => {
+            const overwritePromise = window.__wireProbe!.overwrite();
+            void window.__wireProbe!.load('b.md');
+            return overwritePromise;
+        });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 0, 'stale overwrite must return before dispatching');
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.path, 'b.md');
+    } finally {
+        resetBehaviors();
+    }
+});
+
+test('071: navigation during a FAILED recovery GET applies nothing and clears nothing', async t => {
+    const page = await openHarness(t);
+    if (!page) return;
+    putBehavior = { status: 409, body: { ok: false, error: 'conflict', code: 'note_revision_conflict' } };
+    getBehaviors['a.md'] = { status: 500, body: { ok: false, error: 'recovery-boom' }, delayMs: 700 };
+    try {
+        await page.evaluate(() => window.__wireProbe!.load('b.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        // Establish A as the current document first via a direct load override.
+        getBehaviors['a.md'] = { body: NOTE_A };
+        await page.evaluate(() => window.__wireProbe!.load('a.md'));
+        await page.evaluate(() => window.__wireProbe!.settled());
+        getBehaviors['a.md'] = { status: 500, body: { ok: false, error: 'recovery-boom' }, delayMs: 700 };
+        await page.evaluate(() => window.__wireProbe!.edit('edited-A'));
+        await page.evaluate(() => { void window.__wireProbe!.save(); });
+        // 409 arrives fast; the recovery GET for A fails slowly. Navigate mid-fetch.
+        await page.waitForFunction(() => (window.__wireCapture ?? []).filter(
+            entry => entry.method === 'GET' && entry.url.includes('path=a.md'),
+        ).length >= 2);
+        await page.evaluate(() => { void window.__wireProbe!.load('b.md'); });
+        await page.evaluate(() => window.__wireProbe!.settled());
+        assert.equal((await putCaptures(page)).length, 1, 'the overwrite PUT really dispatched and rejected late');
+        const state = await probeState(page);
+        assert.equal(state.content, 'BBB-content');
+        assert.equal(state.path, 'b.md');
+        assert.equal(state.conflict, '', 'failed stale recovery must not plant conflict on B');
+        assert.equal(state.error, '', 'failed stale recovery must not surface an error on B');
     } finally {
         resetBehaviors();
     }
