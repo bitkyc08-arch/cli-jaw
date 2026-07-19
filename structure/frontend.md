@@ -217,6 +217,16 @@ settings.ts (barrel)
 
 `public/manager/`는 메인 채팅 UI와 별개의 React 19 앱이다. `vite.config.ts`의 `manager` entry가 `public/manager/index.html`을 빌드한다.
 
+### dashboard2 HoverDock (2026-07-19)
+
+`dashboard2/src/features/hover-dock/`는 채팅 컬럼(`.d2-chat-view`) 상단 중앙 hot-zone hover로 드러나는 플로팅 제어 독이다. pill 클릭으로 패널 토글(=pin), ESC/외부 클릭/재클릭으로 닫힘(Codex 데스크톱 summary popover 계약, devlog `_fin/260718_dashboard2_hover_dock/`). z-index 40(composer 20/toast 30 위, dialog 80+ 아래).
+
+- 마운트: `ChatView.tsx`의 `.d2-chat-view` 난부, `key={scope.port}`로 인스턴스 전환 시 리마운트. 같은 포트의 세션 전환에서는 유지.
+- 3탭(에이전트/스킬/설정)은 옛 바닐라 오른쪽 사이드바의 완전 이식. API는 dock-local client(`dock-client.ts`)로 `/i/{port}` 프록시 경유 — manager 의존 없음. `/api/settings` 스냅샷은 Dock 레벨 hoist로 에이전트/설정 탭 공유.
+- 이중 응답 주의: 인스턴스 API는 `{ok,data}` 래핑과 bare가 혼재 — `dock-settings.ts`의 `unwrapData` 필수(바닐라 `js/api.ts` parity).
+- 의도적 제외/대체: `data-help-topic`(manager Help guide로 통합), MCP 필드별 모달(JSON 에디터 + 로컬 검증), claude-e 카드(바닐라 display:none parity).
+- 2026-07-19 이력: 초기 구현은 frozen `public/manager`에 잘못 올라가 전량 리버트(3425a004) 후 dashboard2로 재이식됐다.
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.
