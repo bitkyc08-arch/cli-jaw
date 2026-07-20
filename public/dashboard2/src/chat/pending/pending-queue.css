@@ -1,5 +1,5 @@
 .d2-pending {
-    border-top: 1px solid var(--d2-border, #d7d9dd);
+    border-top: 1px solid var(--border);
     padding: 10px 12px;
 }
 
@@ -18,7 +18,7 @@
 
 .d2-pending-header span,
 .d2-pending-copy > span {
-    color: var(--d2-muted, #686d76);
+    color: var(--text-3);
     font-size: 11px;
 }
 
@@ -65,7 +65,7 @@
 
 .d2-pending-row[data-phase='armed'] .d2-pending-status,
 .d2-pending-row[data-phase='error'] .d2-pending-status {
-    color: var(--d2-danger, #b42318);
+    color: var(--danger);
 }
 
 .d2-pending-actions {
@@ -91,11 +91,11 @@
 .d2-pending-actions button:hover,
 .d2-pending-actions button:focus-visible,
 .d2-pending-actions button[aria-pressed='true'] {
-    background: var(--d2-hover, #eef0f3);
-    border-color: var(--d2-border, #d7d9dd);
+    background: var(--surface-h);
+    border-color: var(--border);
     outline: none;
 }
 
 .d2-pending-actions button:focus-visible {
-    box-shadow: 0 0 0 2px var(--d2-focus, #2f6feb);
+    box-shadow: 0 0 0 2px var(--accent);
 }

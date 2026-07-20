@@ -1,6 +1,6 @@
 /* 049 — v4 design tokens (canonical: render_design/010 §6 + design-guide-v4.html :root).
-   Codex-derived 1.25x radii scale; loaded after manager-tokens.css and base.css
-   so v4 values win inside the dashboard2 shell.
+   Codex-derived 1.25x radii scale; loaded after base.css.
+   All CSS files now reference v4 tokens directly (no manager-token aliases).
    085 — split into dark (default) + light palettes. */
 
 /* ── shared shape/motion tokens (theme-invariant) ── */

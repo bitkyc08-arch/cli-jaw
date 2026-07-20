@@ -1,4 +1,3 @@
-import '../../../manager/src/manager-tokens.css';
 import '../styles/base.css';
 import '../styles/tokens-v4.css';
 import '../styles/sidebar-v4.css';

@@ -11,10 +11,10 @@
     min-width: 0;
     flex-direction: column;
     padding: 10px 11px 9px;
-    border: 1px solid var(--d2-border);
+    border: 1px solid var(--border);
     border-radius: 25px;
     corner-shape: superellipse(1.5);
-    background: var(--d2-surface);
+    background: var(--surface);
     box-shadow: 0 8px 28px light-dark(rgb(27 38 51 / 10%), rgb(0 0 0 / 24%));
 }
 
@@ -65,8 +65,8 @@
     font-size: 10px;
     font-weight: 600;
     white-space: nowrap;
-    border: 1px solid var(--phase-color, var(--d2-border));
-    color: var(--phase-color, var(--d2-muted));
+    border: 1px solid var(--phase-color, var(--border));
+    color: var(--phase-color, var(--text-3));
     background: color-mix(in srgb, var(--phase-color, transparent) 8%, transparent);
 }
 
@@ -80,13 +80,13 @@
     outline: 0;
     padding: 7px 9px;
     background: transparent;
-    color: var(--d2-text);
+    color: var(--text);
     font: inherit;
     font-size: 14px;
     line-height: 21px;
 }
 
-.d2-composer-pill textarea::placeholder { color: var(--d2-muted); }
+.d2-composer-pill textarea::placeholder { color: var(--text-3); }
 
 .d2-composer-footer,
 .d2-composer-controls {
@@ -108,7 +108,7 @@
     align-items: center;
     justify-content: center;
     border: 0;
-    color: var(--d2-muted);
+    color: var(--text-3);
     background: transparent;
     cursor: pointer;
 }
@@ -121,10 +121,10 @@
     border-radius: 50%;
 }
 
-.d2-composer-icon:hover:not(:disabled) { background: var(--d2-surface-muted); color: var(--d2-text); }
+.d2-composer-icon:hover:not(:disabled) { background: var(--surface-h); color: var(--text); }
 .d2-composer-icon:disabled { cursor: default; opacity: .45; }
-.d2-composer-icon.is-recording { color: var(--d2-danger); background: color-mix(in srgb, var(--d2-danger) 12%, transparent); }
-.d2-composer-icon.d2-composer-primary { color: var(--d2-bg); background: var(--d2-text); }
+.d2-composer-icon.is-recording { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.d2-composer-icon.d2-composer-primary { color: var(--bg); background: var(--text); }
 
 .d2-composer-access,
 .d2-composer-picker {
@@ -137,8 +137,8 @@
     line-height: 16px;
 }
 
-.d2-composer-access { color: var(--d2-warning); opacity: 1; }
-.d2-composer-picker { max-width: 250px; background: var(--d2-surface-muted); }
+.d2-composer-access { color: var(--warn); opacity: 1; }
+.d2-composer-picker { max-width: 250px; background: var(--surface-h); }
 .d2-composer-picker span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d2-composer-picker:disabled { cursor: default; opacity: 1; }
 
@@ -146,9 +146,9 @@
     overflow: hidden;
     max-width: 120px;
     padding: 3px 7px;
-    border: 1px solid var(--d2-border);
+    border: 1px solid var(--border);
     border-radius: 7px;
-    color: var(--d2-muted);
+    color: var(--text-3);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -163,17 +163,17 @@
     align-items: center;
     gap: 5px;
     padding: 0 4px 0 8px;
-    border: 1px solid var(--d2-border);
+    border: 1px solid var(--border);
     border-radius: 7px;
-    color: var(--d2-muted);
-    background: var(--d2-surface-muted);
+    color: var(--text-3);
+    background: var(--surface-h);
     font-size: 11px;
 }
 .d2-attachment > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.d2-attachment.is-error { border-color: color-mix(in srgb, var(--d2-danger) 55%, var(--d2-border)); color: var(--d2-danger); }
+.d2-attachment.is-error { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); color: var(--danger); }
 .d2-attachment button { width: 22px; height: 22px; flex: none; padding: 0; border-radius: 5px; }
 
-.d2-composer-notice { display: flex; min-height: 20px; align-items: center; justify-content: space-between; padding: 0 8px 4px; color: var(--d2-danger); font-size: 10px; }
+.d2-composer-notice { display: flex; min-height: 20px; align-items: center; justify-content: space-between; padding: 0 8px 4px; color: var(--danger); font-size: 10px; }
 .d2-composer-notice button { color: inherit; text-decoration: underline; }
 
 .d2-composer-menu {
@@ -185,9 +185,9 @@
     max-height: 260px;
     padding: 5px;
     overflow-y: auto;
-    border: 1px solid var(--d2-border);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--d2-surface);
+    background: var(--surface);
     box-shadow: 0 12px 32px rgb(0 0 0 / 24%);
 }
 
@@ -199,16 +199,16 @@
     padding: 7px 9px;
     border: 0;
     border-radius: 5px;
-    color: var(--d2-text);
+    color: var(--text);
     background: transparent;
     text-align: left;
     cursor: pointer;
 }
 .d2-composer-menu button:hover,
-.d2-composer-menu button.is-active { background: var(--d2-surface-muted); }
+.d2-composer-menu button.is-active { background: var(--surface-h); }
 .d2-composer-menu strong { font-size: 12px; font-weight: 600; }
 .d2-composer-menu span,
-.d2-composer-menu-state { overflow: hidden; color: var(--d2-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.d2-composer-menu-state { overflow: hidden; color: var(--text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .d2-composer-menu-state { padding: 12px 10px; }
 
 @media (max-width: 900px) {

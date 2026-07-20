@@ -45,7 +45,7 @@ export function ComposerFooter(props: ComposerFooterProps): JSX.Element {
                 {props.phase && props.phase !== 'IDLE' ? (
                     <span
                         className="d2-composer-phase"
-                        style={{ '--phase-color': PHASE_COLORS[props.phase] ?? 'var(--d2-muted)' } as React.CSSProperties}
+                        style={{ '--phase-color': PHASE_COLORS[props.phase] ?? 'var(--text-3)' } as React.CSSProperties}
                     >
                         {props.goalLabel ? `goal \u00b7 ${props.phase}` : props.phase}
                     </span>

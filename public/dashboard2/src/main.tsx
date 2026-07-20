@@ -1,8 +1,7 @@
 // CSS boot order contract (B-008 §7 + 049): token/style sheets load BEFORE the
 // component tree so component-level css (composer.css, pending css) layers on
-// top of tokens. Import order == injection order in vite.
-// manager-tokens.css is consumed read-only from the frozen manager tree (033.2).
-import '../../manager/src/manager-tokens.css';
+// top of tokens. tokens-v4.css is the sole token source.
+// Import order == injection order in vite.
 import './styles/base.css';
 import './styles/tokens-v4.css';
 import './styles/sidebar-v4.css';
