@@ -1,0 +1,28 @@
+{
+  "rcCommit": "49fbde2a",
+  "runDate": "2026-07-20T09:30:00+09:00",
+  "testCommand": "npm run test:dashboard2:turn-stream-budget",
+  "testResult": "7/7 pass, 0 fail",
+  "duration_ms": 66984,
+  "core": {
+    "dom": { "nodes": 343, "budget": 2500, "pass": true },
+    "frames": { "samples": 7199, "p95Ms": 9.6, "maxMs": 40, "budgetP95": 50, "budgetMax": 100, "pass": true },
+    "anchor": { "steps": 200, "perStepMaxPx": 0, "cumulativeDriftPx": 0, "budgetPerStep": 4, "budgetCumulative": 8, "pass": true },
+    "heap": { "beforeBytes": 15214484, "afterBytes": 16167116, "growthBytes": 952632, "budgetBytes": 16777216, "pass": true },
+    "resources": { "listenerDelta": 0, "documentDelta": 0, "pass": true }
+  },
+  "bundle": {
+    "initialEntry": "dashboard2-Bm2JO2LY.js",
+    "initialSizeKB": 144,
+    "shikiInInitialGraph": false,
+    "mermaidInInitialGraph": false,
+    "katexInInitialGraph": false,
+    "pass": true
+  },
+  "deferred": {
+    "panelBudget": "Test harness creation deferred - core metrics show ample headroom",
+    "renderCorpus": "Real-session corpus test deferred - Shiki/Mermaid/KaTeX confirmed lazy",
+    "oneHourSoak": "Requires wall-clock execution",
+    "cacheThreshold": "Needs browser measurement session"
+  }
+}
