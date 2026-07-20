@@ -579,3 +579,40 @@
 @keyframes d2-panel-spin {
     to { transform: rotate(360deg); }
 }
+
+/* ---- responsive: sidebar + side-pane ---- */
+
+/*
+ * Below 1024px the sidebar auto-collapses (driven by Shell.tsx matchMedia).
+ * These rules handle the side-pane: when the viewport is narrow and both
+ * sidebar and side-pane would be open, close the side-pane so chat keeps
+ * priority.
+ */
+@media (max-width: 1023px) {
+    /* When the shell sidebar is still open at narrow width AND the workbench
+       has the side-pane open, force the side-pane closed so chat fills the
+       remaining space. */
+    .d2-shell:not(.d2-sb-closed) > .d2-workbench.d2-workbench-side-open {
+        grid-template-columns: minmax(0, 1fr) 0 0;
+    }
+
+    .d2-shell:not(.d2-sb-closed) > .d2-workbench.d2-workbench-side-open > .d2-workbench-divider-drag,
+    .d2-shell:not(.d2-sb-closed) > .d2-workbench.d2-workbench-side-open > .d2-workbench-side-pane-slot {
+        visibility: hidden;
+        pointer-events: none;
+    }
+}
+
+@media (min-width: 720px) and (max-width: 1023px) {
+    /* Sidebar is auto-collapsed by JS; chat fills the full width.
+       Ensure side-pane also stays collapsed in this band. */
+    .d2-shell.d2-sb-closed > .d2-workbench.d2-workbench-side-open {
+        grid-template-columns: minmax(0, 1fr) 0 0;
+    }
+
+    .d2-shell.d2-sb-closed > .d2-workbench.d2-workbench-side-open > .d2-workbench-divider-drag,
+    .d2-shell.d2-sb-closed > .d2-workbench.d2-workbench-side-open > .d2-workbench-side-pane-slot {
+        visibility: hidden;
+        pointer-events: none;
+    }
+}

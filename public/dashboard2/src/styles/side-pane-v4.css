@@ -1,0 +1,134 @@
+/* side-pane-v4.css — overflow picker for 7+ tabs */
+
+/* ── Overflow trigger button ── */
+.d2-side-pane-overflow-trigger {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    gap: 4px;
+    padding: 0 10px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, .05);
+    color: var(--text-3);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+
+.d2-side-pane-overflow-trigger:hover,
+.d2-side-pane-overflow-trigger[aria-expanded='true'] {
+    background: rgba(255, 255, 255, .10);
+    border-color: var(--border-h);
+    color: var(--text-2);
+}
+
+.d2-side-pane-overflow-trigger .d2-icon {
+    color: var(--text-4);
+    transition: color 150ms ease;
+}
+
+.d2-side-pane-overflow-trigger:hover .d2-icon {
+    color: var(--text-3);
+}
+
+/* ── Overflow anchor (positions the dropdown) ── */
+.d2-side-pane-overflow-anchor {
+    position: relative;
+}
+
+/* ── Overflow dropdown ── */
+.d2-side-pane-overflow-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 100;
+    display: flex;
+    min-width: 180px;
+    max-width: 260px;
+    max-height: min(360px, calc(100vh - 120px));
+    flex-direction: column;
+    overflow-y: auto;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-elevated);
+    padding: 4px;
+}
+
+/* ── Group label ── */
+.d2-side-pane-overflow-group-label {
+    padding: 6px 10px 4px;
+    color: var(--text-4);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+/* ── Dropdown item ── */
+.d2-side-pane-overflow-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 450;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+    white-space: nowrap;
+    text-align: left;
+    width: 100%;
+}
+
+.d2-side-pane-overflow-item:hover,
+.d2-side-pane-overflow-item[data-focused='true'] {
+    background: rgba(255, 255, 255, .07);
+    color: var(--text);
+}
+
+.d2-side-pane-overflow-item[aria-current='true'] {
+    color: var(--accent);
+}
+
+.d2-side-pane-overflow-item[aria-current='true']::after {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 4px;
+    margin-left: auto;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.d2-side-pane-overflow-item .d2-icon {
+    flex-shrink: 0;
+    color: var(--text-4);
+}
+
+.d2-side-pane-overflow-item:hover .d2-icon,
+.d2-side-pane-overflow-item[data-focused='true'] .d2-icon {
+    color: var(--text-3);
+}
+
+/* ── Separator between groups ── */
+.d2-side-pane-overflow-sep {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--border);
+}
+
+/* ── Backdrop for closing on outside click ── */
+.d2-side-pane-overflow-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+}

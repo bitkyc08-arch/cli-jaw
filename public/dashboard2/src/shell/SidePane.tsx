@@ -1,6 +1,6 @@
 // 089.04 — instance-based SidePane with explicit-close lifecycle.
-import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, Users, X } from '@lucide/icons';
-import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Bell, ChevronDown, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, Users, X } from '@lucide/icons';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useDesktopBridge } from '../providers/desktop-bridge-provider.tsx';
 import {
@@ -22,6 +22,7 @@ import {
 import type { TerminalTarget } from './panels/terminal-session-state.ts';
 import { isWidgetPanelPayload, type WidgetPanelPayload } from '../turn-stream/widgets/widget-panel-key.ts';
 import { widgetUiStore } from '../turn-stream/widgets/widget-ui-store.ts';
+import '../styles/side-pane-v4.css';
 
 const LazyCodeTab = lazy(() => import('../code/index.ts'));
 const LazyNotesPanel = lazy(() => import('../features/notes/NotesPanel.tsx').then((m) => ({ default: m.NotesPanel })));
@@ -56,6 +57,9 @@ const TAB_REGISTRY: TabDescriptor[] = [
 ];
 
 const TAB_MAP = new Map(TAB_REGISTRY.map((tab) => [tab.id, tab]));
+
+/* ── Overflow constants ── */
+const INLINE_TAB_LIMIT = 6;
 
 type DocPayload = { path?: string; content?: string; truncated?: boolean; binary?: boolean };
 type DesignPayload = { kind: 'url'; url: string } | WidgetPanelPayload;
@@ -173,6 +177,125 @@ function TabContent({ panel, active, terminalRequests, consumeTerminalRequests, 
     }
 }
 
+/* ── Overflow picker dropdown ── */
+interface OverflowPickerProps {
+    panels: readonly SidePanePanelInstance[];
+    activePanelId: string | null;
+    onSelect(id: string): void;
+}
+
+function OverflowPicker({ panels, activePanelId, onSelect }: OverflowPickerProps): JSX.Element {
+    const [focusIndex, setFocusIndex] = useState(0);
+    const listRef = useRef<HTMLDivElement>(null);
+
+    // Group panels by category
+    const grouped = useMemo(() => {
+        const tools: SidePanePanelInstance[] = [];
+        const features: SidePanePanelInstance[] = [];
+        for (const p of panels) {
+            const desc = TAB_MAP.get(p.type);
+            if (desc?.category === 'feature') features.push(p);
+            else tools.push(p);
+        }
+        return { tools, features };
+    }, [panels]);
+
+    // Flat ordered list for keyboard navigation
+    const flatItems = useMemo(
+        () => [...grouped.tools, ...grouped.features],
+        [grouped],
+    );
+
+    useEffect(() => {
+        // Focus the first item on mount
+        const first = listRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+        first?.focus();
+    }, []);
+
+    const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>): void => {
+        const len = flatItems.length;
+        if (len === 0) return;
+        let next = focusIndex;
+        switch (event.key) {
+            case 'ArrowDown':
+                next = (focusIndex + 1) % len;
+                break;
+            case 'ArrowUp':
+                next = (focusIndex - 1 + len) % len;
+                break;
+            case 'Home':
+                next = 0;
+                break;
+            case 'End':
+                next = len - 1;
+                break;
+            case 'Enter':
+            case ' ': {
+                event.preventDefault();
+                const item = flatItems[focusIndex];
+                if (item) onSelect(item.id);
+                return;
+            }
+            default:
+                return;
+        }
+        event.preventDefault();
+        setFocusIndex(next);
+        const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+        buttons?.[next]?.focus();
+    }, [flatItems, focusIndex, onSelect]);
+
+    const renderItem = (panel: SidePanePanelInstance, idx: number): JSX.Element => {
+        const desc = TAB_MAP.get(panel.type);
+        const isActive = panel.id === activePanelId;
+        return (
+            <button
+                key={panel.id}
+                role="menuitem"
+                type="button"
+                className="d2-side-pane-overflow-item"
+                aria-current={isActive ? 'true' : undefined}
+                data-focused={idx === focusIndex ? 'true' : undefined}
+                tabIndex={idx === focusIndex ? 0 : -1}
+                onClick={() => onSelect(panel.id)}
+                onMouseEnter={() => setFocusIndex(idx)}
+            >
+                {desc ? <Icon icon={desc.icon} size={14} /> : null}
+                <span>{panel.title}</span>
+            </button>
+        );
+    };
+
+    // Compute the running index offset for features group
+    const toolCount = grouped.tools.length;
+
+    return (
+        <div
+            ref={listRef}
+            className="d2-side-pane-overflow-dropdown"
+            role="menu"
+            aria-label="More tabs"
+            onKeyDown={handleKeyDown}
+        >
+            {grouped.tools.length > 0 ? (
+                <>
+                    <div className="d2-side-pane-overflow-group-label">Tools</div>
+                    {grouped.tools.map((p, i) => renderItem(p, i))}
+                </>
+            ) : null}
+            {grouped.tools.length > 0 && grouped.features.length > 0 ? (
+                <div className="d2-side-pane-overflow-sep" />
+            ) : null}
+            {grouped.features.length > 0 ? (
+                <>
+                    <div className="d2-side-pane-overflow-group-label">Features</div>
+                    {grouped.features.map((p, i) => renderItem(p, toolCount + i))}
+                </>
+            ) : null}
+        </div>
+    );
+}
+
 interface SidePaneProps {
     open: boolean;
     onClose(): void;
@@ -180,6 +303,7 @@ interface SidePaneProps {
 
 export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
     const bridge = useDesktopBridge();
+    const paneRef = useRef<HTMLElement>(null);
     const {
         panelInstances,
         activePanelId,
@@ -206,9 +330,34 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         dispatchTerminalRequest({ type: 'consume-focus-through', token });
     }, []);
     const paneTabRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+    const [overflowOpen, setOverflowOpen] = useState(false);
+
+    // Determine which tabs render inline vs overflow
+    const needsOverflow = panelInstances.length > INLINE_TAB_LIMIT;
+    const inlineTabs = needsOverflow ? panelInstances.slice(0, INLINE_TAB_LIMIT) : panelInstances;
+    const overflowTabs = needsOverflow ? panelInstances : [];
+    const overflowCount = needsOverflow ? panelInstances.length - INLINE_TAB_LIMIT : 0;
+
+    // Close overflow when panel list changes
+    useEffect(() => { setOverflowOpen(false); }, [panelInstances.length]);
+
+    const handleOverflowSelect = useCallback((id: string) => {
+        activatePanel(id);
+        setOverflowOpen(false);
+        // Restore focus to the tab if it's inline, otherwise to the overflow trigger
+        requestAnimationFrame(() => {
+            const tabEl = paneTabRefs.current.get(id);
+            if (tabEl) {
+                tabEl.focus();
+            } else {
+                paneRef.current?.querySelector<HTMLButtonElement>('.d2-side-pane-overflow-trigger')?.focus();
+            }
+        });
+    }, [activatePanel]);
 
     const handlePaneTabKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-        const ids = panelInstances.map(p => p.id);
+        // Roving tabindex operates only over inline-visible tabs
+        const ids = inlineTabs.map(p => p.id);
         const currentIndex = ids.indexOf(activePanelId ?? '');
         let nextIndex: number | null = null;
         switch (event.key) {
@@ -231,7 +380,7 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         const nextId = ids[nextIndex]!;
         activatePanel(nextId);
         paneTabRefs.current.get(nextId)?.focus();
-    }, [panelInstances, activePanelId, activatePanel]);
+    }, [inlineTabs, activePanelId, activatePanel]);
 
     useEffect(() => {
         for (const state of Object.values(widgetSnapshot)) {
@@ -277,26 +426,52 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         if (!open) return;
         const handleKeyDown = (event: KeyboardEvent): void => {
             const isCmdW = (event.metaKey || event.ctrlKey) && event.key === 'w';
-            const isEscape = event.key === 'Escape' && !event.defaultPrevented
-                && document.querySelector('.d2-side-pane')?.contains(document.activeElement);
-            if (!isCmdW && !isEscape) return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (activePanelId) {
-                closeActivePanel();
-                // After closing the active panel, restore focus to whatever tab
-                // becomes active next. We defer so state settles first.
-                requestAnimationFrame(() => {
-                    const nextActive = document.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
-                    nextActive?.focus();
-                });
-            } else {
-                onClose();
+            const isEscape = event.key === 'Escape' && !event.defaultPrevented;
+
+            // Scope check: only intercept when focus is inside the side pane
+            const paneEl = paneRef.current;
+            const activeEl = document.activeElement;
+            const focusInPane = paneEl != null && (paneEl === activeEl || paneEl.contains(activeEl));
+
+            if (isCmdW) {
+                // Only intercept Cmd+W when focus is inside the pane
+                if (!focusInPane) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (activePanelId) {
+                    closeActivePanel();
+                    requestAnimationFrame(() => {
+                        const nextActive = paneEl?.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
+                        nextActive?.focus();
+                    });
+                } else {
+                    onClose();
+                }
+            } else if (isEscape) {
+                if (!focusInPane) return;
+                // Close overflow dropdown first if open
+                if (overflowOpen) {
+                    event.preventDefault();
+                    setOverflowOpen(false);
+                    paneRef.current?.querySelector<HTMLButtonElement>('.d2-side-pane-overflow-trigger')?.focus();
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                if (activePanelId) {
+                    closeActivePanel();
+                    requestAnimationFrame(() => {
+                        const nextActive = paneEl?.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
+                        nextActive?.focus();
+                    });
+                } else {
+                    onClose();
+                }
             }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activePanelId, closeActivePanel, onClose, open]);
+    }, [activePanelId, closeActivePanel, onClose, open, overflowOpen]);
 
     const toolTabs = TAB_REGISTRY.filter((tab) => tab.category === 'tool');
     const featureTabs = TAB_REGISTRY.filter((tab) => tab.category === 'feature');
@@ -305,10 +480,10 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
     };
 
     return (
-        <aside className="d2-side-pane" aria-label="Side pane">
+        <aside ref={paneRef} className="d2-side-pane" aria-label="Side pane">
             <header className="d2-side-pane-header">
                 <div className="d2-side-pane-tab-group" role="tablist" aria-label="Open side panels">
-                    {panelInstances.map((panel) => (
+                    {inlineTabs.map((panel) => (
                         <span key={panel.id} className="d2-side-pane-pill">
                             <button
                                 ref={(el) => { paneTabRefs.current.set(panel.id, el); }}
@@ -329,6 +504,31 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                             </button>
                         </span>
                     ))}
+                    {needsOverflow ? (
+                        <span className="d2-side-pane-overflow-anchor">
+                            <button
+                                type="button"
+                                className="d2-side-pane-overflow-trigger"
+                                aria-expanded={overflowOpen}
+                                aria-haspopup="menu"
+                                onClick={() => setOverflowOpen(prev => !prev)}
+                                title={`${overflowCount} more tab${overflowCount === 1 ? '' : 's'}`}
+                            >
+                                <span>+{overflowCount}</span>
+                                <Icon icon={ChevronDown} size={12} />
+                            </button>
+                            {overflowOpen ? (
+                                <>
+                                    <div className="d2-side-pane-overflow-backdrop" onClick={() => setOverflowOpen(false)} />
+                                    <OverflowPicker
+                                        panels={overflowTabs}
+                                        activePanelId={activePanelId}
+                                        onSelect={handleOverflowSelect}
+                                    />
+                                </>
+                            ) : null}
+                        </span>
+                    ) : null}
                 </div>
                 <span className="d2-side-pane-header-spacer" />
                 <button className="d2-side-pane-header-button" type="button" onClick={showPanelPicker} aria-label="Open panel" title="Open panel"><Icon icon={Plus} size={14} /></button>

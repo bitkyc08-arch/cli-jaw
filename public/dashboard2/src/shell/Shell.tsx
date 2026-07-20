@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type JSX, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import { Sidebar } from './Sidebar.tsx';
 import { Workbench } from './Workbench.tsx';
 
@@ -6,10 +6,48 @@ const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 400;
 const SIDEBAR_DEFAULT = 260;
 
+/** Viewport width below which the sidebar auto-collapses. */
+const RESPONSIVE_BREAKPOINT = 1024;
+
 export function Shell(): JSX.Element {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
     const shellRef = useRef<HTMLElement>(null);
+    /**
+     * Tracks whether the current collapsed state was caused by the responsive
+     * auto-collapse (true) or by the user clicking the sidebar toggle (false).
+     * When the viewport widens past the breakpoint we only restore the sidebar
+     * if it was auto-collapsed — a manual close is respected across resizes.
+     */
+    const autoCollapsedRef = useRef(false);
+
+    useEffect(() => {
+        const mql = window.matchMedia(`(max-width: ${RESPONSIVE_BREAKPOINT - 1}px)`);
+
+        const handleChange = (e: MediaQueryListEvent | MediaQueryList) => {
+            if (e.matches) {
+                // Viewport dropped below breakpoint → auto-collapse if open
+                setSidebarCollapsed((prev) => {
+                    if (!prev) {
+                        autoCollapsedRef.current = true;
+                        return true;
+                    }
+                    return prev;
+                });
+            } else {
+                // Viewport widened above breakpoint → restore only if auto-collapsed
+                if (autoCollapsedRef.current) {
+                    autoCollapsedRef.current = false;
+                    setSidebarCollapsed(false);
+                }
+            }
+        };
+
+        // Evaluate on mount so SSR/late hydration starts in the right state
+        handleChange(mql);
+        mql.addEventListener('change', handleChange);
+        return () => mql.removeEventListener('change', handleChange);
+    }, []);
 
     const onResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -67,8 +105,12 @@ export function Shell(): JSX.Element {
             style={!sidebarCollapsed ? { '--d2-sidebar-w': `${sidebarWidth}px` } as React.CSSProperties : undefined}
         >
             <a href="#d2-chat-area" className="d2-skip-nav">Skip to main content</a>
-            <Sidebar onClose={() => setSidebarCollapsed(true)} />
-            {!sidebarCollapsed ? (
+            <Sidebar onClose={() => {
+                // User explicitly closed → mark as manual so auto-restore skips it
+                autoCollapsedRef.current = false;
+                setSidebarCollapsed(true);
+            }} />
+            {!sidebarCollapsed && (
                 <div
                     className="d2-sidebar-resize"
                     role="separator"
@@ -80,10 +122,14 @@ export function Shell(): JSX.Element {
                     onPointerDown={onResizeStart}
                     onKeyDown={onResizeKeyDown}
                 />
-            ) : null}
+            )}
             <Workbench
                 sidebarCollapsed={sidebarCollapsed}
-                onOpenSidebar={() => setSidebarCollapsed(false)}
+                onOpenSidebar={() => {
+                    // User explicitly opened → clear auto-collapsed flag
+                    autoCollapsedRef.current = false;
+                    setSidebarCollapsed(false);
+                }}
             />
         </main>
     );

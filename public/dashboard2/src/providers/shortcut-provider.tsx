@@ -139,9 +139,21 @@ export function ManagerShortcutProvider(props: PropsWithChildren): JSX.Element {
 
     useEffect(() => {
         function onKeyDown(event: KeyboardEvent): void {
+            if (event.isComposing || event.keyCode === 229) return;
             if (!shortcuts.shortcutsEnabled || isEditableTarget(event.target)) return;
             const action = actionForEvent(event, shortcuts.keymap);
             if (!action) return;
+            if (action === 'commandPalette'
+                && event.target instanceof HTMLElement
+                && event.target.closest('.xterm')) {
+                return;
+            }
+            if (action === 'newSession') {
+                console.log('newSession');
+            }
+            if (action === 'commandPalette') {
+                console.log('commandPalette');
+            }
             event.preventDefault();
             dispatch(action, 'dom');
         }
