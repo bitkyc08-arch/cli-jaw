@@ -1,0 +1,53 @@
+{
+  "rcCommit": "41804212",
+  "runDate": "2026-07-20T10:00:00+09:00",
+  "gates": {
+    "090_a11y": {
+      "status": "pass",
+      "commit": "bc7f4217",
+      "summary": "21 a11y gaps fixed: CRITICAL 3 (resize handles, text-4 contrast), HIGH 9 (tabpanel, roving tabindex, combobox, focus-visible), MEDIUM 9 (menu focus, dots, escape, inert, reduced-motion)",
+      "evidence": "tsc 0 errors, build pass, 9 files 304 insertions"
+    },
+    "091_performance": {
+      "status": "pass",
+      "commit": "a1789753",
+      "summary": "7/7 budget gates pass: DOM 343/2500, p95 9.6ms/50ms, anchor 0px/4px, heap 930KB/16MiB. Bundle: Shiki/Mermaid/KaTeX all lazy.",
+      "evidence": "refs/091-final-shell-budget.json",
+      "deferred": ["panel budget", "render corpus", "1hr soak", "cache threshold"]
+    },
+    "092_theme": {
+      "status": "pass",
+      "commit": "52d425a6",
+      "summary": "99 manager-token aliases migrated to v4. manager-tokens.css import removed (0 refs). Light/dark/auto themes implemented.",
+      "evidence": "rg manager-tokens = 0, tsc 0 errors"
+    },
+    "093_shortcuts": {
+      "status": "pass",
+      "commit": "3dfcaef4",
+      "summary": "IME guard (P0), Cmd+N/K registered, responsive auto-collapse <1024px, tab overflow picker 7+, Cmd+W scoped to pane focus.",
+      "evidence": "tsc 0 errors, build 460ms, 6 files 462 insertions"
+    },
+    "094_integration": {
+      "status": "pass",
+      "rcCommit": "41804212",
+      "summary": "All 090-093 gates pass on single RC. Budget re-verified: 7/7 pass. verify-counts 0 mismatches. structure/frontend.md updated.",
+      "evidence": "refs/094-release-gate-summary.json (this file)"
+    },
+    "095_ux_hardening": {
+      "status": "pass",
+      "summary": "WP1-WP5 commits backfilled, MEDIUM deferrals routed to 090/092/093 (all now done).",
+      "evidence": "095 doc status: done"
+    },
+    "096_scroll": {
+      "status": "pass",
+      "summary": "Product criteria met (c063101d). 044 browser gate flake deferred as known-limitation to 091 instrumented fix.",
+      "evidence": "096 doc status: done"
+    }
+  },
+  "typecheck": { "command": "npx tsc --noEmit -p tsconfig.frontend.json", "exitCode": 0 },
+  "build": { "command": "npm run build:frontend", "exitCode": 0, "durationMs": 460 },
+  "budgetRerun": { "command": "npm run test:dashboard2:turn-stream-budget", "result": "7/7 pass", "durationMs": 66820 },
+  "verifyCounts": { "command": "bash structure/verify-counts.sh", "mismatches": 0 },
+  "allRequired": true,
+  "cutoverReady": true
+}
