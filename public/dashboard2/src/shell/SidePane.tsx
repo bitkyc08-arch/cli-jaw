@@ -1,6 +1,6 @@
 // 089.04 — instance-based SidePane with explicit-close lifecycle.
 import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, Users, X } from '@lucide/icons';
-import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type JSX } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useDesktopBridge } from '../providers/desktop-bridge-provider.tsx';
 import {
@@ -205,6 +205,33 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
     const consumeTerminalFocus = useCallback((token: number) => {
         dispatchTerminalRequest({ type: 'consume-focus-through', token });
     }, []);
+    const paneTabRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+
+    const handlePaneTabKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+        const ids = panelInstances.map(p => p.id);
+        const currentIndex = ids.indexOf(activePanelId ?? '');
+        let nextIndex: number | null = null;
+        switch (event.key) {
+            case 'ArrowRight':
+                nextIndex = (currentIndex + 1) % ids.length;
+                break;
+            case 'ArrowLeft':
+                nextIndex = (currentIndex - 1 + ids.length) % ids.length;
+                break;
+            case 'Home':
+                nextIndex = 0;
+                break;
+            case 'End':
+                nextIndex = ids.length - 1;
+                break;
+            default:
+                return;
+        }
+        event.preventDefault();
+        const nextId = ids[nextIndex]!;
+        activatePanel(nextId);
+        paneTabRefs.current.get(nextId)?.focus();
+    }, [panelInstances, activePanelId, activatePanel]);
 
     useEffect(() => {
         for (const state of Object.values(widgetSnapshot)) {
@@ -255,8 +282,17 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
             if (!isCmdW && !isEscape) return;
             event.preventDefault();
             event.stopPropagation();
-            if (activePanelId) closeActivePanel();
-            else onClose();
+            if (activePanelId) {
+                closeActivePanel();
+                // After closing the active panel, restore focus to whatever tab
+                // becomes active next. We defer so state settles first.
+                requestAnimationFrame(() => {
+                    const nextActive = document.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
+                    nextActive?.focus();
+                });
+            } else {
+                onClose();
+            }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
@@ -274,7 +310,18 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                 <div className="d2-side-pane-tab-group" role="tablist" aria-label="Open side panels">
                     {panelInstances.map((panel) => (
                         <span key={panel.id} className="d2-side-pane-pill">
-                            <button type="button" role="tab" aria-selected={panel.id === activePanelId} onClick={() => activatePanel(panel.id)} title={panel.title}>
+                            <button
+                                ref={(el) => { paneTabRefs.current.set(panel.id, el); }}
+                                id={`d2-pane-tab-${panel.id}`}
+                                type="button"
+                                role="tab"
+                                aria-selected={panel.id === activePanelId}
+                                aria-controls={`d2-pane-panel-${panel.id}`}
+                                tabIndex={panel.id === activePanelId ? 0 : -1}
+                                onKeyDown={handlePaneTabKeyDown}
+                                onClick={() => activatePanel(panel.id)}
+                                title={panel.title}
+                            >
                                 {panel.title}
                             </button>
                             <button type="button" className="d2-side-pane-tab-close" onClick={() => closePanel(panel.id)} aria-label={`Close ${panel.title}`} title={`Close ${panel.title}`}>
@@ -293,7 +340,7 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                 {panelInstances.map((panel) => {
                     const active = open && panel.id === activePanelId;
                     return (
-                        <div key={panel.id} className="d2-side-pane-tab-slot" data-tab={panel.type} style={{ display: active ? undefined : 'none' }} inert={!active} aria-hidden={!active}>
+                        <div key={panel.id} className="d2-side-pane-tab-slot" role="tabpanel" id={`d2-pane-panel-${panel.id}`} aria-labelledby={`d2-pane-tab-${panel.id}`} data-tab={panel.type} style={{ display: active ? undefined : 'none' }} inert={!active} aria-hidden={!active}>
                             <TabContent
                                 panel={panel}
                                 active={active}

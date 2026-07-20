@@ -222,13 +222,21 @@ export function Composer({
         addFiles(filesFromTransfer(event.dataTransfer));
     };
 
+    // ── combobox ARIA state ──
+    const slashMenuOpen = Boolean(slash && matchingCommands.length);
+    const mentionMenuOpen = Boolean(mention && matchingMentions.length);
+    const menuOpen = slashMenuOpen || mentionMenuOpen;
+    const menuId = slashMenuOpen ? 'd2-slash-menu' : mentionMenuOpen ? 'd2-mention-menu' : undefined;
+    const activeDescendantId = slashMenuOpen ? `d2-slash-opt-${slashIndex}` : undefined;
+
     return (
         <div className="d2-composer-wrap" onDragOver={event => event.preventDefault()} onDrop={onDrop} data-testid="dashboard2-composer">
             {slash ? <SlashCommandMenu commands={matchingCommands} activeIndex={slashIndex} error={commandError} onSelect={applyCommand} /> : null}
-            {mention && matchingMentions.length ? (
-                <div className="d2-composer-menu" role="listbox" aria-label="Mentions">
-                    {matchingMentions.map(item => (
-                        <button key={item.id} type="button" role="option" aria-selected="false" onMouseDown={event => event.preventDefault()} onClick={() => applyMention(item)}>
+           {mention && matchingMentions.length > 0 ? (
+                <div className="d2-composer-menu" role="listbox" aria-label="Mentions" id="d2-mention-menu">
+                    {/* TODO: keyboard arrow navigation for mentions is a future enhancement */}
+                    {matchingMentions.map((item, mentionIdx) => (
+                        <button key={item.id} type="button" role="option" id={`d2-mention-opt-${mentionIdx}`} aria-selected="false" onMouseDown={event => event.preventDefault()} onClick={() => applyMention(item)}>
                             <strong>@{item.label}</strong><span>Display mention</span>
                         </button>
                     ))}
@@ -246,13 +254,18 @@ export function Composer({
                         ))}
                     </div>
                 ) : null}
-                <textarea
-                    ref={inputRef}
-                    value={draft}
-                    rows={1}
-                    aria-label="Message"
-                    placeholder="Message cli-jaw"
-                    onChange={event => {
+               <textarea
+                   ref={inputRef}
+                   value={draft}
+                   rows={1}
+                   aria-label="Message"
+                   placeholder="Message cli-jaw"
+                    role={menuOpen ? 'combobox' : undefined}
+                    aria-expanded={menuOpen}
+                    aria-haspopup={menuOpen ? 'listbox' : undefined}
+                    aria-controls={menuId}
+                    aria-activedescendant={activeDescendantId}
+                   onChange={event => {
                         setControlledDraft(event.target.value);
                         setCaret(event.target.selectionStart);
                     }}

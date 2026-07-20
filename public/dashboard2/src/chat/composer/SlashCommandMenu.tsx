@@ -10,7 +10,7 @@ interface SlashCommandMenuProps {
 
 export function SlashCommandMenu({ commands, activeIndex, error, onSelect }: SlashCommandMenuProps): JSX.Element {
     return (
-        <div className="d2-composer-menu" role="listbox" aria-label="Slash commands">
+        <div className="d2-composer-menu" role="listbox" aria-label="Slash commands" id="d2-slash-menu">
             {error ? <div className="d2-composer-menu-state">Commands unavailable</div> : null}
             {!error && commands.length === 0 ? <div className="d2-composer-menu-state">No matching commands</div> : null}
             {!error ? commands.map((command, index) => (
@@ -18,6 +18,7 @@ export function SlashCommandMenu({ commands, activeIndex, error, onSelect }: Sla
                     key={command.name}
                     type="button"
                     role="option"
+                    id={`d2-slash-opt-${index}`}
                     aria-selected={index === activeIndex}
                     className={index === activeIndex ? 'is-active' : undefined}
                     onMouseDown={event => event.preventDefault()}

@@ -56,6 +56,8 @@ body {
 
 .d2-skip-nav:focus {
     top: 12px;
+    outline: 2px solid var(--accent, #6ea8fe);
+    outline-offset: 2px;
 }
 
 button {
@@ -66,6 +68,16 @@ button {
 button:focus-visible {
     outline: 2px solid var(--d2-accent);
     outline-offset: -2px;
+}
+
+/* global focus-visible ring for non-button interactives (085 a11y) */
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .d2-shell {
@@ -434,5 +446,10 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
     .d2-spinner {
         animation-duration: 1600ms;
+    }
+
+    .d2-shell * {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
     }
 }

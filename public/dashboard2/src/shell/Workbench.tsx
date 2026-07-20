@@ -1,5 +1,5 @@
 import { PanelLeft, PanelRight, Settings } from '@lucide/icons';
-import { Suspense, lazy, useCallback, useEffect, useRef, useState, type JSX } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { DashboardInstance } from '../../../../src/manager/types.ts';
 import { ChatView } from '../chat/ChatView.tsx';
 import { HoverDock } from '../features/hover-dock/HoverDock.tsx';
@@ -15,6 +15,7 @@ const LazySettingsWorkspace = lazy(() =>
 const PANE_MIN = 280;
 const CHAT_MIN = 280;
 const DIVIDER_WIDTH = 1;
+const PANE_DEFAULT = 340;
 
 export interface WorkbenchProps {
     sidebarCollapsed?: boolean;
@@ -37,6 +38,7 @@ export function Workbench({
     const [instanceNames, setInstanceNames] = useState<Map<number, string>>(() => new Map());
     const wbRef = useRef<HTMLElement>(null);
     const toggleButtonRef = useRef<HTMLButtonElement>(null);
+    const [paneWidth, setPaneWidth] = useState(PANE_DEFAULT);
 
     const closeSidePaneWithFocusRestore = useCallback(() => {
         const focusWasInsidePane = Boolean(
@@ -63,6 +65,7 @@ export function Workbench({
             const paneMax = rect.width - CHAT_MIN - DIVIDER_WIDTH;
             const paneWidth = Math.max(0, Math.min(paneMax, Math.max(PANE_MIN, rect.right - ev.clientX)));
             wb.style.setProperty('--d2-pane-w', `${paneWidth}px`);
+            setPaneWidth(paneWidth);
         };
         const up = (): void => {
             handle.classList.remove('is-dragging');
@@ -74,6 +77,41 @@ export function Workbench({
         document.addEventListener('pointerup', up);
         document.addEventListener('pointercancel', up);
     }, []);
+
+    const getPaneMax = useCallback((): number => {
+        const wb = wbRef.current;
+        if (!wb) return 600;
+        const rect = wb.getBoundingClientRect();
+        return rect.width - CHAT_MIN - DIVIDER_WIDTH;
+    }, []);
+
+    const onDividerKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+        const paneMax = getPaneMax();
+        let next = paneWidth;
+        const step = e.shiftKey ? 50 : 10;
+        switch (e.key) {
+            case 'ArrowLeft':
+                next = Math.min(paneMax, paneWidth + step);
+                break;
+            case 'ArrowRight':
+                next = Math.max(PANE_MIN, paneWidth - step);
+                break;
+            case 'Home':
+                next = PANE_MIN;
+                break;
+            case 'End':
+                next = paneMax;
+                break;
+            default:
+                return;
+        }
+        e.preventDefault();
+        setPaneWidth(next);
+        const wb = wbRef.current;
+        if (wb) {
+            wb.style.setProperty('--d2-pane-w', `${next}px`);
+        }
+    }, [paneWidth, getPaneMax]);
 
     useEffect(() => {
         let mounted = true;
@@ -101,6 +139,7 @@ export function Workbench({
                             onClick={onOpenSidebar}
                             aria-label="Open sidebar"
                             title="Open sidebar"
+                            aria-expanded={!sidebarCollapsed}
                         >
                             <Icon icon={PanelLeft} />
                         </button>
@@ -139,7 +178,7 @@ export function Workbench({
                     </button>
                 </header>
 
-                <div className="d2-workbench-chat">
+                <div className="d2-workbench-chat" id="d2-chat-area">
                     {workspaceMode === 'settings' ? (
                         <Suspense fallback={<div className="d2-pane-empty">Loading settings...</div>}>
                             <LazySettingsWorkspace />
@@ -152,7 +191,19 @@ export function Workbench({
                 </div>
             </div>
 
-            {sidePaneOpen ? <div className="d2-workbench-divider-drag" aria-hidden="true" onPointerDown={onDividerDown} /> : null}
+            {sidePaneOpen ? (
+                <div
+                    className="d2-workbench-divider-drag"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-valuenow={paneWidth}
+                    aria-valuemin={PANE_MIN}
+                    aria-valuemax={getPaneMax()}
+                    tabIndex={0}
+                    onPointerDown={onDividerDown}
+                    onKeyDown={onDividerKeyDown}
+                />
+            ) : null}
             <div
                 className="d2-workbench-side-pane-slot"
                 style={{ display: sidePaneOpen ? undefined : 'none' }}

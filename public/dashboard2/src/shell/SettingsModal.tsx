@@ -15,19 +15,52 @@ export interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): JSX.Element | null {
-    const closeButtonRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!isOpen) return undefined;
         const previouslyFocused = document.activeElement;
+
+        /* set inert on main content to block background interaction */
+        const root = document.getElementById('dashboard2-root');
+        const dialogEl = dialogRef.current?.closest('.d2-settings-modal') as HTMLElement | null;
+        if (root && dialogEl) {
+            /* inert everything except the modal overlay */
+            for (const child of Array.from(root.children)) {
+                if (child !== dialogEl && child instanceof HTMLElement) {
+                    child.setAttribute('inert', '');
+                }
+            }
+        }
+
         const closeOnEscape = (event: KeyboardEvent): void => {
             if (event.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', closeOnEscape);
-        closeButtonRef.current?.focus();
+
+        /* focus first interactive control inside the panel (not the close button) */
+        requestAnimationFrame(() => {
+            const firstControl = dialogRef.current?.querySelector<HTMLElement>(
+                '.d2-settings-panel input:not(:disabled), .d2-settings-panel select:not(:disabled), .d2-settings-panel button:not(:disabled)',
+            );
+            if (firstControl) {
+                firstControl.focus();
+            } else {
+                /* fallback: focus the dialog itself so focus trap still works */
+                dialogRef.current?.focus();
+            }
+        });
+
         return () => {
             document.removeEventListener('keydown', closeOnEscape);
+            /* remove inert from siblings */
+            if (root) {
+                for (const child of Array.from(root.children)) {
+                    if (child instanceof HTMLElement) {
+                        child.removeAttribute('inert');
+                    }
+                }
+            }
             if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
         };
     }, [isOpen, onClose]);
@@ -67,7 +100,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): JSX.Elem
                 <button
                     className="d2-settings-close"
                     type="button"
-                    ref={closeButtonRef}
                     onClick={onClose}
                     aria-label="Close settings"
                     title="Close settings"

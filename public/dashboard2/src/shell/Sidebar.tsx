@@ -12,7 +12,7 @@ import {
     Sun,
     Terminal,
 } from '@lucide/icons';
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type {
     DashboardInstance,
     DashboardLifecycleAction,
@@ -143,6 +143,9 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
         generation: 0,
         controller: null,
     });
+    const menuTriggerRef = useRef<HTMLElement | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const tabRefs = useRef<(HTMLButtonElement | null)[]>([null, null]);
     const openSettings = useCallback(() => setSettingsOpen(true), []);
     const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -240,13 +243,24 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
 
     useEffect(() => {
         if (menuPort === null) return;
+        // Auto-focus first menuitem on open
+        requestAnimationFrame(() => {
+            const firstItem = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)');
+            firstItem?.focus();
+        });
         const closeMenu = (event: PointerEvent): void => {
             const target = event.target;
             if (target instanceof Element && target.closest('[data-sidebar-instance-menu]')) return;
             setMenuPort(null);
+            menuTriggerRef.current?.focus();
+            menuTriggerRef.current = null;
         };
         const closeOnEscape = (event: KeyboardEvent): void => {
-            if (event.key === 'Escape') setMenuPort(null);
+            if (event.key === 'Escape') {
+                setMenuPort(null);
+                menuTriggerRef.current?.focus();
+                menuTriggerRef.current = null;
+            }
         };
         document.addEventListener('pointerdown', closeMenu);
         document.addEventListener('keydown', closeOnEscape);
@@ -312,6 +326,45 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
 
     const activeInstanceCount = instances.filter((instance) => instanceVisualStatus(instance) !== 'off').length;
 
+    // Roving tabindex helpers for the mode switcher tablist
+    const SIDEBAR_MODES: SidebarMode[] = ['jaw', 'jwc'];
+    const activeTabId = `d2-sidebar-tab-${mode}`;
+
+    const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+        const currentIndex = SIDEBAR_MODES.indexOf(mode);
+        let nextIndex: number | null = null;
+        switch (event.key) {
+            case 'ArrowRight':
+                nextIndex = (currentIndex + 1) % SIDEBAR_MODES.length;
+                break;
+            case 'ArrowLeft':
+                nextIndex = (currentIndex - 1 + SIDEBAR_MODES.length) % SIDEBAR_MODES.length;
+                break;
+            case 'Home':
+                nextIndex = 0;
+                break;
+            case 'End':
+                nextIndex = SIDEBAR_MODES.length - 1;
+                break;
+            default:
+                return;
+        }
+        event.preventDefault();
+        const nextMode = SIDEBAR_MODES[nextIndex]!;
+        setMode(nextMode);
+        tabRefs.current[nextIndex]?.focus();
+    };
+
+    // Menu keyboard navigation (Up/Down between menuitems)
+    const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+        const current = items.indexOf(document.activeElement as HTMLElement);
+        const next = event.key === 'ArrowDown' ? (current + 1) % items.length : (current - 1 + items.length) % items.length;
+        items[next]?.focus();
+    };
+
     return (
         <>
             <aside className="d2-sidebar d2-sidebar-v4" aria-label="Instances and sessions">
@@ -319,8 +372,9 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                 <button
                     className="d2-sidebar-toggle"
                     type="button"
-                    onClick={onClose}
-                    disabled={!onClose}
+                   onClick={onClose}
+                   disabled={!onClose}
+                    aria-expanded={true}
                     aria-label="Close sidebar"
                     title={onClose ? 'Close sidebar' : 'Close sidebar unavailable'}
                 >
@@ -332,9 +386,14 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                 <div className="d2-mode-switcher" role="tablist" aria-label="Sidebar mode">
                     <button
                         className={`d2-mode-button${mode === 'jaw' ? ' is-active' : ''}`}
+                        ref={(el) => { tabRefs.current[0] = el; }}
+                        id="d2-sidebar-tab-jaw"
                         type="button"
                         role="tab"
                         aria-selected={mode === 'jaw'}
+                        aria-controls="d2-sidebar-panel"
+                        tabIndex={mode === 'jaw' ? 0 : -1}
+                        onKeyDown={handleTabKeyDown}
                         onClick={() => setMode('jaw')}
                     >
                         <Icon icon={Terminal} />
@@ -343,9 +402,14 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                     </button>
                     <button
                         className={`d2-mode-button${mode === 'jwc' ? ' is-active' : ''}`}
+                        ref={(el) => { tabRefs.current[1] = el; }}
+                        id="d2-sidebar-tab-jwc"
                         type="button"
                         role="tab"
                         aria-selected={mode === 'jwc'}
+                        aria-controls="d2-sidebar-panel"
+                        tabIndex={mode === 'jwc' ? 0 : -1}
+                        onKeyDown={handleTabKeyDown}
                         onClick={() => setMode('jwc')}
                     >
                         <Icon icon={MessageSquare} />
@@ -354,7 +418,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                 </div>
             </div>
 
-            <div className="d2-sidebar-list" aria-live="polite">
+            <div className="d2-sidebar-list" role="tabpanel" id="d2-sidebar-panel" aria-labelledby={activeTabId} aria-live="polite">
                {mode === 'jwc' ? (
                     jwcState.loading ? (
                         <div className="d2-inline-state"><span className="d2-spinner" aria-hidden="true" />Loading Code sessions</div>
@@ -449,7 +513,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                             disabled={!isOnline}
                                             aria-expanded={isOnline ? isExpanded : undefined}
                                         >
-                                            <span className={`d2-instance-dot is-${visualStatus}`} />
+                                            <span className={`d2-instance-dot is-${visualStatus}`} aria-hidden="true" />
                                             <span className="d2-instance-copy">
                                                 <strong>{instanceName(instance)}</strong>
                                                 <span><span className="d2-instance-port">:{instance.port}</span> &middot; {instance.status}</span>
@@ -474,8 +538,15 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                             <button
                                                 className="d2-instance-more"
                                                 type="button"
-                                                disabled={lifecycleBlocked}
-                                                onClick={() => setMenuPort(isMenuOpen ? null : instance.port)}
+                                               disabled={lifecycleBlocked}
+                                                onClick={() => {
+                                                    if (isMenuOpen) {
+                                                        setMenuPort(null);
+                                                    } else {
+                                                        menuTriggerRef.current = document.activeElement as HTMLElement;
+                                                        setMenuPort(instance.port);
+                                                    }
+                                                }}
                                                 aria-haspopup="menu"
                                                 aria-expanded={isMenuOpen}
                                                 aria-label={`More actions for ${instanceName(instance)}`}
@@ -484,7 +555,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                                 <Icon icon={Ellipsis} />
                                             </button>
                                             {isMenuOpen ? (
-                                                <div className="d2-instance-menu" role="menu">
+                                                <div className="d2-instance-menu" role="menu" ref={menuRef} onKeyDown={handleMenuKeyDown}>
                                                     <button type="button" role="menuitem" disabled title="Rename API unavailable">Rename</button>
                                                     <button type="button" role="menuitem" disabled={!lifecycle?.canRestart || lifecycleBlocked} onClick={() => void runLifecycleAction('restart', instance)}>Restart</button>
                                                     <button type="button" role="menuitem" disabled={!lifecycle?.canPerm || lifecycleBlocked} onClick={() => void runLifecycleAction('perm', instance)}>Set as permanent</button>
