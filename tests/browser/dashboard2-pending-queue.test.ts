@@ -72,7 +72,7 @@ test('047 browser: keyboard arm text and icon controls keep stable geometry', as
     const before = await Promise.all([steer.boundingBox(), deletion.boundingBox()]);
     await steer.focus();
     await page.keyboard.press('Enter');
-    await page.getByText('Steer armed. Activate again to cancel.').waitFor();
+    await page.locator('.d2-pending-status').filter({ hasText: 'Steer armed. Activate again to cancel.' }).waitFor();
     assert.equal(await steer.getAttribute('aria-pressed'), 'true');
     assert.equal(await steer.getAttribute('aria-label'), 'Cancel steer');
     const afterArm = await Promise.all([steer.boundingBox(), deletion.boundingBox()]);

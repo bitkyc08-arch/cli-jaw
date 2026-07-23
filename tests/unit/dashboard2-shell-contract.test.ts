@@ -49,21 +49,21 @@ test('dashboard2 source tree does not import zustand', () => {
     assert.deepEqual(offenders, [], 'dashboard2 must keep UI scope in React state');
 });
 
-test('dashboard2 theme boot order: manager tokens load before base styles (033.2)', () => {
+test('dashboard2 theme boot order: v4 tokens own theming without manager CSS (092)', () => {
     const main = read('public/dashboard2/src/main.tsx');
-    const tokensImport = main.indexOf("import '../../manager/src/manager-tokens.css'");
     const baseImport = main.indexOf("import './styles/base.css'");
+    const tokensImport = main.indexOf("import './styles/tokens-v4.css'");
 
-    assert.ok(tokensImport >= 0, 'main must consume manager-tokens.css (read-only, frozen tree)');
     assert.ok(baseImport >= 0, 'main must import dashboard2 base styles');
-    assert.ok(tokensImport < baseImport, 'token CSS must load before base CSS (B-008 §7 boot order)');
+    assert.ok(tokensImport > baseImport, 'v4 token CSS must layer after base CSS');
+    assert.equal(main.includes('manager-tokens.css'), false, 'dashboard2 must not consume the frozen manager token sheet');
 });
 
-test('manager token file keeps the data-theme selector contract dashboard2 relies on', () => {
-    const tokens = read('public/manager/src/manager-tokens.css');
+test('dashboard2 v4 tokens keep the dark/light data-theme contract', () => {
+    const tokens = read('public/dashboard2/src/styles/tokens-v4.css');
 
-    assert.ok(tokens.includes(':root[data-theme="dark"]'), 'tokens must define the dark data-theme selector');
-    assert.ok(tokens.includes(':root[data-theme="light"]'), 'tokens must define the light data-theme selector');
+    assert.match(tokens, /:root\[data-theme=['"]dark['"]\]/, 'tokens must define the dark data-theme selector');
+    assert.match(tokens, /:root\[data-theme=['"]light['"]\]/, 'tokens must define the light data-theme selector');
 });
 
 test('dashboard2 theme toggle syncs CSS color-scheme with the resolved theme (033 F2)', () => {
@@ -83,7 +83,7 @@ test('dashboard2 API provider imports canonical manager types as type-only', () 
 
     assert.match(
         provider,
-        /import\s+type\s+\{\s*DashboardInstance\s*\}\s+from\s+['"][^'"]*src\/manager\/types\.ts['"]/,
+        /import\s+type\s+\{[\s\S]*?\bDashboardInstance\b[\s\S]*?\}\s+from\s+['"][^'"]*src\/manager\/types\.ts['"]/,
         'DashboardInstance must use a type-only canonical import',
     );
     assert.doesNotMatch(

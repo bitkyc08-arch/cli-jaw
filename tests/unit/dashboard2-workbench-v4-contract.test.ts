@@ -71,7 +71,8 @@ test('dashboard2 side pane gates lifecycle, restores focus, and preserves the ch
     const sidePane = read('public/dashboard2/src/shell/SidePane.tsx');
 
     assert.ok(sidePane.includes('if (!open) return;'));
-    assert.ok(sidePane.includes('<TabContent panel={panel} active={active} />'));
+    assert.ok(sidePane.includes('<PanelErrorBoundary panelId={panel.id} guardedClosePanel={guardedClosePanel}>'));
+    assert.match(sidePane, /<PanelErrorBoundary[\s\S]*?<TabContent[\s\S]*?panel=\{panel\}[\s\S]*?active=\{active\}[\s\S]*?<\/PanelErrorBoundary>/);
     assert.ok(workbench.includes('toggleButtonRef.current?.focus()'));
     assert.ok(workbench.includes('const CHAT_MIN = 280;'));
     assert.ok(workbench.includes('const DIVIDER_WIDTH = 1;'));

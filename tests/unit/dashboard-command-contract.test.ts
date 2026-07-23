@@ -105,15 +105,15 @@ test('dashboard serves manager favicon from packaged icons', () => {
 
 test('dashboard2 routes are served before the legacy manager SPA fallback', () => {
     const managerServer = read('src/manager/server.ts');
-    const redirectIndex = managerServer.indexOf("app.get('/dashboard2'");
+    const rootIndex = managerServer.indexOf("app.get('/dashboard2', sendDashboard2Html)");
     const splatIndex = managerServer.indexOf("app.get('/dashboard2/{*splat}'");
     const fallbackIndex = managerServer.indexOf("app.get('/{*splat}'");
 
-    assert.ok(redirectIndex >= 0, 'manager server must canonicalize /dashboard2 to /dashboard2/');
-    assert.ok(managerServer.includes("res.redirect(308, '/dashboard2/')"), '/dashboard2 must 308-redirect to /dashboard2/');
+    assert.ok(rootIndex >= 0, 'manager server must serve /dashboard2 without a redirect loop');
+    assert.equal(managerServer.includes("res.redirect(308, '/dashboard2/')"), false, '/dashboard2 must render directly');
     assert.ok(splatIndex >= 0, 'manager server must serve /dashboard2/ SPA subpaths');
     assert.ok(fallbackIndex >= 0, 'manager server must keep the legacy SPA fallback route');
-    assert.ok(redirectIndex < fallbackIndex, '/dashboard2 redirect must register before the legacy SPA fallback');
+    assert.ok(rootIndex < fallbackIndex, '/dashboard2 root must register before the legacy SPA fallback');
     assert.ok(splatIndex < fallbackIndex, '/dashboard2/{*splat} must register before the legacy SPA fallback');
     assert.ok(
         managerServer.includes("join(distRoot, 'dashboard2', 'index.html')"),

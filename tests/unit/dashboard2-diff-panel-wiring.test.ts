@@ -64,5 +64,5 @@ test('DiffPanel mounts through 089.04 openPanel contract and removes worker git 
     assert.match(panel, /transport\.resolveRepoRoot\(workingDir\)/);
     assert.match(panel, /paths: \[filePath\]/);
     assert.doesNotMatch(panel, /\/i\/\$\{port\}\/api\/git/);
-    assert.doesNotMatch(sidePane, /UnifiedDiffSegment|widget.*promot/i);
+    assert.doesNotMatch(panel, /UnifiedDiffSegment|widget.*promot/i);
 });

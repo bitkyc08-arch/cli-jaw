@@ -80,8 +80,9 @@ test('internal status and tool broadcasts are guarded from public WebSocket clie
 });
 
 test('internal sidecars do not inherit parent live-run tool ownership', () => {
-    assert.ok(
-        spawnSrc.includes("const parentLiveScopeForChild = !opts.internal && isEmployee ? liveScope : null"),
+    assert.match(
+        spawnSrc,
+        /const parentLiveScopeForChild = !opts\.internal && isEmployee\s*\? opts\.parentLiveScope \|\| liveScope\s*: null/,
         'internal sidecars must not append tools into a public parent live run',
     );
     assert.equal(

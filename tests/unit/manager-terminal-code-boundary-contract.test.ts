@@ -42,9 +42,10 @@ test('Electron terminal IPC owns shell process lifecycle separately from Code AC
     assert.match(terminalMain, /ipcMain\.handle\('terminal:write'/, 'terminal writes must route through terminal:write');
     assert.match(terminalMain, /ipcMain\.handle\('terminal:resize'/, 'terminal resize must route through terminal:resize');
     assert.match(terminalMain, /ipcMain\.handle\('terminal:kill'/, 'terminal kill must route through terminal:kill');
-    assert.match(terminalMain, /win\.webContents\.send\('terminal:data'/, 'terminal output must be emitted as terminal:data');
-    assert.match(terminalMain, /win\.webContents\.send\('terminal:exit'/, 'terminal process exit must be emitted as terminal:exit');
-    assert.match(preload, /terminal: \{[\s\S]*create: \(opts\?: \{ cwd\?: string; cols\?: number; rows\?: number \}\) => ipcRenderer\.invoke\('terminal:create', opts\)/, 'preload must expose terminal IPC under cliJawDesktop.terminal');
+    assert.match(terminalMain, /function sendToOwner[\s\S]*owner\.send\(channel, \.\.\.args\)/, 'terminal output must be scoped to the owning renderer');
+    assert.match(terminalMain, /sendToOwner\(session, 'terminal:data'/, 'terminal output must be emitted as terminal:data');
+    assert.match(terminalMain, /sendToOwner\(session, 'terminal:exit'/, 'terminal process exit must be emitted as terminal:exit');
+    assert.match(preload, /terminal: \{[\s\S]*create: \(opts\?: \{ cwd\?: string; cols\?: number; rows\?: number; port\?: number \| null \}\) => ipcRenderer\.invoke\('terminal:create', opts\)/, 'preload must expose terminal IPC under cliJawDesktop.terminal');
     assert.match(preload, /ipcRenderer\.on\('terminal:data'/, 'preload must expose terminal data events');
     assert.match(preload, /ipcRenderer\.on\('terminal:exit'/, 'preload must expose terminal exit events');
 

@@ -25,7 +25,9 @@ test('provider and preview layer retain opt-in resource gates', () => {
     const preview = read('public/dashboard2/src/turn-stream/render/links/LinkPreviewCard.tsx');
     assert.ok(provider.indexOf('if (!hydratedRef.current)') < provider.indexOf('client.patch(patch)'));
     assert.match(provider, /chatLinkPreviewsEnabled:\s*enabled/);
-    assert.match(preview, /if \(!enabled \|\| !host\) return/);
+    assert.match(preview, /useRenderActionPorts\(\)/);
+    assert.match(preview, /if \(!enabled \|\| !host \|\| workerPort === null\) return/);
+    assert.match(preview, /if \(!enabled \|\| workerPort === null\) return null/);
     assert.match(preview, /rootMargin:\s*'160px'/);
     assert.match(preview, /observer\.disconnect\(\)/);
     assert.match(preview, /controllers\.forEach\(controller => controller\.abort\(\)\)/);

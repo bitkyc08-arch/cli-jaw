@@ -20,7 +20,8 @@ function dashboardSources(directory = dashboardRoot.pathname): string[] {
             files.push(...dashboardSources(absolute));
         } else if (/\.(?:ts|tsx)$/.test(entry.name)
             && repoPath !== 'providers/sync-provider.tsx'
-            && repoPath !== 'shell/Sidebar.tsx') {
+            && repoPath !== 'shell/Sidebar.tsx'
+            && repoPath !== 'dev/code-model-session-harness.tsx') {
             files.push(absolute);
         }
     }

@@ -204,10 +204,11 @@ test('044: source contracts — Icon reuse, no theme writes, css import order, n
         assert.ok(!/\bjwc\b|source === ['"](jaw|code)['"]/.test(text), `${rel}: no source branch`);
     }
     const main = readFileSync(join(ROOT, 'public/dashboard2/src/main.tsx'), 'utf8');
-    const tokenIdx = main.indexOf('manager-tokens.css');
     const baseIdx = main.indexOf('styles/base.css');
+    const tokenIdx = main.indexOf('styles/tokens-v4.css');
     const turnIdx = main.indexOf('styles/turn-stream.css');
-    assert.ok(tokenIdx >= 0 && baseIdx > tokenIdx && turnIdx > baseIdx, 'css import order: tokens → base → turn-stream');
+    assert.ok(baseIdx >= 0 && tokenIdx > baseIdx && turnIdx > tokenIdx, 'css import order: base → v4 tokens → turn-stream');
+    assert.equal(main.includes('manager-tokens.css'), false, 'dashboard2 must not consume frozen manager tokens');
     const workbench = readFileSync(join(ROOT, 'public/dashboard2/src/shell/Workbench.tsx'), 'utf8');
     assert.ok(workbench.includes('ChatView'), 'turn stream mounts inside the Workbench pane array via ChatView (045 host)');
 });

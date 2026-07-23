@@ -42,7 +42,7 @@ test('Electron terminal backend exposes live session snapshots for renderer remo
     assert.ok(terminalMain.includes('session.cols = clampDimension(cols'), 'resize must persist the clamped column count');
     assert.ok(terminalMain.includes('session.rows = clampDimension(rows'), 'resize must persist the clamped row count');
     assert.ok(preload.includes("list: () => ipcRenderer.invoke('terminal:list')"), 'preload must expose terminal:list');
-    assert.ok(preload.includes('create: (opts?: { cwd?: string; cols?: number; rows?: number })'), 'preload create opts must match renderer cols/rows');
+    assert.ok(preload.includes('create: (opts?: { cwd?: string; cols?: number; rows?: number; port?: number | null })'), 'preload create opts must match renderer cols/rows/port');
     assert.ok(desktopBridge.includes('list: () => Promise<{ ok: boolean; sessions?: TerminalSessionSnapshot[]; error?: string }>'), 'desktop bridge must type terminal:list');
     assert.ok(desktopBridge.includes('export type TerminalSessionSnapshot'), 'desktop bridge must expose terminal snapshot type');
 });

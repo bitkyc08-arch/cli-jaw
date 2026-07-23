@@ -28,16 +28,17 @@ test('dashboard2 preferences use PATCH behind a hydration save barrier', () => {
     assert.ok(patchIndex > guardIndex, 'hydration guard must run before registry save');
 });
 
-test('dashboard2 keymap matches the server navigation shortcut action set', () => {
+test('dashboard2 keymap extends persisted navigation shortcuts with local app actions', () => {
     const preferences = read('public/dashboard2/src/providers/preferences-provider.tsx');
     const registry = read('src/manager/registry.ts');
+    const dashboardActions = arrayMembers(preferences, 'SHORTCUT_ACTIONS');
+    const persistedActions = arrayMembers(registry, 'SHORTCUT_ACTIONS');
 
-    assert.deepEqual(
-        arrayMembers(preferences, 'SHORTCUT_ACTIONS'),
-        arrayMembers(registry, 'SHORTCUT_ACTIONS'),
-        'dashboard2 and registry shortcut action sets must stay identical',
-    );
-    assert.equal(arrayMembers(preferences, 'SHORTCUT_ACTIONS').length, 5);
+    assert.deepEqual(dashboardActions.filter((action) => !['commandPalette', 'newSession'].includes(action)), persistedActions);
+    assert.deepEqual(dashboardActions.filter((action) => ['commandPalette', 'newSession'].includes(action)), ['commandPalette', 'newSession']);
+    assert.equal(dashboardActions.length, 7);
+    assert.match(preferences, /newSession:\s*isMac \? 'Meta\+N' : 'Control\+N'/);
+    assert.match(preferences, /commandPalette:\s*isMac \? 'Meta\+K' : 'Control\+K'/);
 });
 
 test('dashboard2 boots the saved theme before the application module', () => {
