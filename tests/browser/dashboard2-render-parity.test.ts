@@ -35,6 +35,7 @@ async function openHarness(t: TestContext): Promise<Page | null> {
     const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], baseURL: origin, viewport: { width: 1280, height: 720 } });
     contexts.push(context);
     const page = await context.newPage();
+    await page.addInitScript({ content: 'globalThis.__name = globalThis.__name || ((value) => value);' });
     await page.addInitScript(() => {
         const NativeObserver = window.IntersectionObserver;
         const active = new Set<IntersectionObserver>();
@@ -53,7 +54,6 @@ async function openHarness(t: TestContext): Promise<Page | null> {
     });
     await page.route('**/dashboard2/src/main.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
     await page.goto(`${origin}/dist/dashboard2/index.html`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate('window.__name = window.__name || ((fn) => fn)');
     await page.evaluate(async () => {
         await import('/dist/dashboard2/src/styles/render-content.css');
         const module = await import('/dist/dashboard2/src/dev/render-foundation-harness.tsx');

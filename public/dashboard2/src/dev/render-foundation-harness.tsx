@@ -9,6 +9,7 @@ import { WidgetSegment } from '../turn-stream/components/segments/WidgetSegment.
 import type { WidgetDescriptor } from '../turn-stream/widgets/widget-segment-adapter.ts';
 import { getRenderCache } from '../turn-stream/render/render-cache.ts';
 import { DesktopBridgeProvider } from '../providers/desktop-bridge-provider.tsx';
+import { RenderActionPortsProvider } from '../providers/render-action-ports.tsx';
 
 if (import.meta.env.PROD) throw new Error('render-foundation-harness is dev/test-only');
 
@@ -95,7 +96,9 @@ export function mountRenderFoundationHarness(): RenderFoundationHarness {
     const root = createRoot(host);
     root.render(
         <ManagerPreferencesProvider client={client}>
-            <DesktopBridgeProvider><FixtureApp /></DesktopBridgeProvider>
+            <DesktopBridgeProvider>
+                <RenderActionPortsProvider ports={{ workerPort: 3458 }}><FixtureApp /></RenderActionPortsProvider>
+            </DesktopBridgeProvider>
         </ManagerPreferencesProvider>,
     );
     const cache = getRenderCache();
