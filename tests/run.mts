@@ -15,8 +15,9 @@
 import './setup/test-home.ts';
 import { run } from 'node:test';
 import { spec } from 'node:test/reporters';
-import { readdirSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 
 const TESTS_DIR = resolve(import.meta.dirname);
@@ -40,5 +41,38 @@ else if (all) files = list(TESTS_DIR, true);
 else files = [...list(TESTS_DIR, false), ...list(join(TESTS_DIR, 'unit'), false)];
 if (files.length === 0) { console.error('[tests/run] no test files matched'); process.exit(1); }
 let failures = 0;
-run({ files, concurrency: true, watch, isolation: 'process' }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
-if (!watch) process.on('beforeExit', () => { if (failures > 0 && !process.exitCode) process.exitCode = 1; });
+let passes = 0;
+let runtimeSkips = 0;
+const startedAt = Date.now();
+const e2eDir = join(TESTS_DIR, 'e2e');
+const writesE2eReceipt = !watch && explicit.length > 0 && files.every(file => resolve(file).startsWith(`${e2eDir}/`));
+const stream = run({ files, concurrency: true, watch, isolation: 'process' });
+stream.on('test:pass', event => {
+    passes += 1;
+    if ((event as { directive?: { type?: string } }).directive?.type === 'skip') runtimeSkips += 1;
+});
+stream.on('test:fail', () => { failures += 1; });
+stream.compose(spec).pipe(process.stdout);
+if (!watch) process.on('beforeExit', () => {
+    if (writesE2eReceipt) {
+        const sourceSkips = files.reduce((count, file) => {
+            const source = readFileSync(file, 'utf8');
+            return count + (source.match(/(?:\bt|\btest)\.skip\s*\(/g)?.length ?? 0);
+        }, 0);
+        const skipCount = runtimeSkips + sourceSkips;
+        const receipt = {
+            schemaVersion: 1,
+            suite: 'dashboard2-e2e',
+            discoveredFiles: files.map(file => file.slice(TESTS_DIR.length + 1)),
+            passCount: passes,
+            failCount: failures,
+            skipCount,
+            assertions: { skipCountEqualsZero: skipCount === 0 },
+            rcSha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(TESTS_DIR, '..'), encoding: 'utf8' }).trim(),
+            durationMs: Date.now() - startedAt,
+        };
+        writeFileSync(resolve(TESTS_DIR, '..', 'refs', '094-e2e-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
+        if (skipCount > 0) failures += 1;
+    }
+    if (failures > 0 && !process.exitCode) process.exitCode = 1;
+});

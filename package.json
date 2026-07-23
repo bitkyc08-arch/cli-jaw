@@ -78,6 +78,7 @@
     "test:manager:browser": "tsx --test tests/browser/manager-layout-smoke.test.ts",
     "test:dashboard2:turn-stream-budget": "tsx --experimental-test-module-mocks tests/run.mts tests/browser/dashboard2-turn-stream-budget.test.ts",
     "test:dashboard2:panel-budget": "tsx --experimental-test-module-mocks tests/run.mts tests/browser/dashboard2-panel-budget.test.ts",
+    "test:dashboard2:e2e": "tsx --experimental-test-module-mocks tests/run.mts tests/e2e",
     "test:dashboard2:soak": "JAW_DASHBOARD2_SOAK=1 JAW_FRAME_BUDGET_MS=1000 tsx --experimental-test-module-mocks tests/run.mts tests/browser/dashboard2-turn-stream-budget.test.ts",
     "test:smoke": "TEST_PORT=3457 tsx --test tests/integration/api-smoke.test.ts",
     "smoke:opencode": "tsx scripts/smoke/opencode-external-dir-smoke.ts",

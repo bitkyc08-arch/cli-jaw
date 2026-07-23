@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "suite": "dashboard2-e2e",
+  "discoveredFiles": [
+    "e2e/dashboard2-core-flow.test.ts",
+    "e2e/dashboard2-electron-flow.test.ts",
+    "e2e/dashboard2-feature-flow.test.ts",
+    "e2e/dashboard2-responsive-theme-flow.test.ts"
+  ],
+  "passCount": 4,
+  "failCount": 0,
+  "skipCount": 0,
+  "assertions": {
+    "skipCountEqualsZero": true
+  },
+  "rcSha": "08be9654606ea095de33e77dfe221c6d34e54763",
+  "durationMs": 4453
+}
