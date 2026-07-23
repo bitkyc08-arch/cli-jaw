@@ -17,6 +17,8 @@ import {
 } from './markdown-render-security';
 import { buildWikiLinkLookup, splitChildrenWithWikiLinks, type WikiLinkContext } from '../wiki-link-rendering';
 import type { NoteLinkRef, NoteMetadata } from '../notes-types';
+import { MermaidSegment } from '../../../turn-stream/render/embeds/MermaidSegment';
+import { sanitizeHtml } from '../../../turn-stream/render/sanitize-policy';
 
 const LEADING_FRONTMATTER_RE = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
@@ -195,7 +197,7 @@ function splitChildrenWithLocalFileLinks(
 
 export function MarkdownRenderer(props: MarkdownRendererProps) {
     const renderedMarkdown = useMemo(
-        () => markdownBody(props.markdown),
+        () => sanitizeHtml(markdownBody(props.markdown), 'markdown'),
         [props.markdown],
     );
 
@@ -252,6 +254,7 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         pre: ({ children }) => {
             const language = languageFromCodeNode(children);
             const code = textFromNode(children).replace(/\n$/, '');
+            if (language.toLowerCase() === 'mermaid') return <MermaidSegment source={code} />;
             return <CodeBlock code={code} language={language} />;
         },
         img: ({ src, alt, ...imageProps }: ComponentProps<'img'>) => {

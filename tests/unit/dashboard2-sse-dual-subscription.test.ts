@@ -198,14 +198,14 @@ test('provider keeps manager source across worker port changes and reconnects bo
     const { createRoot } = await import('react-dom/client');
     const { AppScopeProvider, useAppScope } = await import('../../public/dashboard2/src/state/scope.tsx');
     const { ManagerSyncProvider, useManagerSync } = await import('../../public/dashboard2/src/providers/sync-provider.tsx');
-    let selectSession: ((port: number, sessionId: string) => void) | null = null;
+    let selectSession: ((port: number, sessionId: string) => Promise<boolean>) | null = null;
     const managerEvents: string[] = [];
     const jwcEvents: string[] = [];
 
     function Probe() {
         const scope = useAppScope();
         const sync: ManagerSyncContextValue = useManagerSync();
-        selectSession = scope.selectSession;
+        selectSession = scope.guardedSelectSession;
         useEffect(() => {
             const offManager = sync.subscribeManagerWorker(payload => managerEvents.push(payload.event));
             const offJwc = sync.subscribeJwc(payload => jwcEvents.push(payload.event));
@@ -218,7 +218,7 @@ test('provider keeps manager source across worker port changes and reconnects bo
     await act(async () => root.render(h(AppScopeProvider, null, h(ManagerSyncProvider, null, h(Probe)))));
     assert.deepEqual(FakeEventSource.instances.map(source => source.url), ['/api/events']);
     const manager = FakeEventSource.instances[0];
-    await act(async () => selectSession!(3457, 'main'));
+    await act(async () => { await selectSession!(3457, 'main'); });
     const worker3457 = FakeEventSource.instances.at(-1)!;
     manager.emit({
         topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'status',
@@ -229,7 +229,7 @@ test('provider keeps manager source across worker port changes and reconnects bo
     assert.deepEqual(managerEvents, ['instance-status-changed']);
     assert.deepEqual(jwcEvents, ['code_delta'], 'manager JWC is dropped; worker JWC is delivered once');
 
-    await act(async () => selectSession!(3458, 'main'));
+    await act(async () => { await selectSession!(3458, 'main'); });
     assert.equal(manager.closed, false, 'port change must not replace manager source');
     assert.equal(worker3457.closed, true);
     assert.equal(FakeEventSource.instances.at(-1)!.url, '/i/3458/api/events');

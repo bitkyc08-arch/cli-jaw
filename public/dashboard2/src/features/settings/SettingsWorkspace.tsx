@@ -28,7 +28,7 @@ const CATEGORIES: SettingsCategory[] = [
 ];
 
 export function SettingsWorkspace(): JSX.Element {
-    const { selected, setWorkspaceMode } = useAppScope();
+    const { selected, guardedSetWorkspaceMode } = useAppScope();
     const [activeId, setActiveId] = useState<SettingsPageId>('display');
     const dirty = useDirtyStore();
     const active = useMemo(() => CATEGORIES.find((category) => category.id === activeId) ?? CATEGORIES[0]!, [activeId]);
@@ -37,7 +37,7 @@ export function SettingsWorkspace(): JSX.Element {
     const leave = (): void => {
         if (!dirty.confirmLeave()) return;
         dirty.markClean();
-        setWorkspaceMode('chat');
+        void guardedSetWorkspaceMode('chat');
     };
 
     const selectPage = (next: SettingsPageId): void => {

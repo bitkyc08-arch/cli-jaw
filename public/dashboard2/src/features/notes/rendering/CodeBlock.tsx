@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { highlightCode } from './highlight-languages';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getHighlightService } from '../../../turn-stream/render/highlight-service';
+import { contentHash } from '../../../turn-stream/render/render-cache';
+import { sanitizedHtmlProps, type SanitizedHtml } from '../../../turn-stream/render/sanitize-policy';
 
 async function copyText(text: string): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
@@ -17,8 +19,31 @@ type CodeBlockProps = {
 
 export function CodeBlock(props: CodeBlockProps) {
     const [copied, setCopied] = useState(false);
-    const result = highlightCode(props.code, props.language);
-    const label = result.language || 'text';
+    const [highlighted, setHighlighted] = useState<SanitizedHtml | null>(null);
+    const generation = useRef(0);
+    const codeHash = useMemo(() => contentHash(props.code), [props.code]);
+    const label = props.language || 'text';
+
+    useEffect(() => {
+        const mine = ++generation.current;
+        setHighlighted(null);
+        const handle = getHighlightService().request(`notes:${codeHash}`, {
+            code: props.code,
+            codeHash,
+            language: label,
+            streaming: false,
+            openFence: false,
+            generation: mine,
+            priority: 'visible',
+        });
+        void handle.promise.then(result => {
+            if (generation.current === mine && typeof result.html === 'string') setHighlighted(result.html);
+        }).catch(error => console.warn('[notes:highlight]', error));
+        return () => {
+            generation.current += 1;
+            handle.cancel();
+        };
+    }, [codeHash, label, props.code]);
 
     async function copyCode(): Promise<void> {
         const result = await copyText(props.code);
@@ -39,9 +64,9 @@ export function CodeBlock(props: CodeBlockProps) {
             </div>
             <pre>
                 <code
-                    className={`hljs language-${label}`}
-                    data-highlighted={result.highlighted ? 'yes' : 'no'}
-                    dangerouslySetInnerHTML={{ __html: result.html }}
+                    className={`language-${label}`}
+                    data-highlighted={highlighted ? 'yes' : 'no'}
+                    {...(highlighted ? { dangerouslySetInnerHTML: sanitizedHtmlProps(highlighted) } : { children: props.code })}
                 />
             </pre>
         </div>

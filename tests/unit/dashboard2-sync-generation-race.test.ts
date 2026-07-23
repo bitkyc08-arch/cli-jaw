@@ -44,7 +44,7 @@ test('D2: stale-generation EventSource messages never reach subscribers; port_ch
 
     const received: string[] = [];
     const invalidations: string[] = [];
-    let scopeApi: { selectSession(port: number, sessionId: string): void } | null = null;
+    let scopeApi: { guardedSelectSession(port: number, sessionId: string): Promise<boolean> } | null = null;
 
     function Probe() {
         const scope = useAppScope();
@@ -62,7 +62,7 @@ test('D2: stale-generation EventSource messages never reach subscribers; port_ch
     await act(async () => {
         root.render(h(AppScopeProvider, null, h(ManagerSyncProvider, null, h(Probe))));
     });
-    await act(async () => { scopeApi!.selectSession(3457, 'main'); });
+    await act(async () => { await scopeApi!.guardedSelectSession(3457, 'main'); });
     assert.ok(FakeEventSource.instances.length >= 1, 'EventSource opened for the first port');
     const first = FakeEventSource.instances[FakeEventSource.instances.length - 1];
 
@@ -75,7 +75,7 @@ test('D2: stale-generation EventSource messages never reach subscribers; port_ch
     assert.deepEqual(received, ['race-turn#1'], 'live generation delivers');
 
     // port switch: new generation + port_change invalidation
-    await act(async () => { scopeApi!.selectSession(3458, 'main'); });
+    await act(async () => { await scopeApi!.guardedSelectSession(3458, 'main'); });
     assert.ok(invalidations.includes('port_change'), 'port_change invalidation published');
     const second = FakeEventSource.instances[FakeEventSource.instances.length - 1];
     assert.notEqual(second, first, 'a new EventSource opened for the new port');

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type JSX, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX, type PointerEvent as ReactPointerEvent } from 'react';
+import { useAppScope } from '../../state/scope';
 import { NotesCommandPalette } from './NotesCommandPalette';
 import { NotesEmptyState } from './NotesEmptyState';
 import { NotesFileTree } from './NotesFileTree';
@@ -32,7 +33,10 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
     const [compactEditorOpen, setCompactEditorOpen] = useState(false);
     const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+    const [flashPath, setFlashPath] = useState<string | null>(null);
+    const flashTimer = useRef<number | null>(null);
     const noteDocument = useNoteDocument();
+    const scope = useAppScope();
 
     const confirmDirtyLeave = useCallback((nextPath?: string | null): boolean => {
         return !noteDocument.dirty || nextPath === selectedPath || window.confirm('Discard unsaved changes and leave this note?');
@@ -48,6 +52,32 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
         selectedPath,
         onSelectedPathChange: path => { if (!path || confirmDirtyLeave(path)) setSelectedPath(path); },
     });
+
+    useEffect(() => {
+        scope.registerLeaveGuard('notes', confirmDirtyLeave);
+        scope.registerDirtyCheck('notes', () => noteDocument.dirty);
+        return () => {
+            scope.unregisterLeaveGuard('notes');
+            scope.unregisterDirtyCheck('notes');
+        };
+    }, [confirmDirtyLeave, noteDocument.dirty, scope.registerDirtyCheck, scope.registerLeaveGuard, scope.unregisterDirtyCheck, scope.unregisterLeaveGuard]);
+
+    useEffect(() => {
+        const intent = scope.pendingNotesIntent;
+        if (!active || !intent || !confirmDirtyLeave(intent.path)) return;
+        const parts = intent.path.split('/').slice(0, -1);
+        setExpandedDirs(new Set(parts.map((_, index) => parts.slice(0, index + 1).join('/'))));
+        setSelectedPath(intent.path);
+        setCompactEditorOpen(true);
+        setFlashPath(intent.path);
+        if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+        flashTimer.current = window.setTimeout(() => setFlashPath(null), 1600);
+        void model.refresh(intent.path).finally(() => scope.consumeNotesIntent(intent.seq));
+    }, [active, confirmDirtyLeave, model.refresh, scope.consumeNotesIntent, scope.pendingNotesIntent]);
+
+    useEffect(() => () => {
+        if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    }, []);
 
     const handleCreateFile = useCallback(async () => {
         const name = prompt('Note name:');
@@ -85,15 +115,6 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
 
     useEffect(() => { if (active && selectedPath) void noteDocument.load(selectedPath); }, [active, selectedPath, noteDocument.load]);
     useEffect(() => { setDirtyPath(noteDocument.dirty ? selectedPath : null); }, [noteDocument.dirty, selectedPath]);
-    useEffect(() => {
-        if (!active) return;
-        const handler = (event: BeforeUnloadEvent): void => {
-            if (!noteDocument.dirty) return;
-            event.preventDefault(); event.returnValue = '';
-        };
-        window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
-    }, [active, noteDocument.dirty]);
     useEffect(() => {
         if (!active) return;
         const handler = (event: KeyboardEvent): void => {
@@ -135,7 +156,7 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
     return (
         <section className={`d2-feature-panel d2-notes-panel${compactEditorOpen ? ' is-compact-editor-open' : ''}`} style={{ '--notes-tree-width': `${treeWidth}px` } as CSSProperties} aria-label="Notes workspace">
             <aside className="d2-notes-sidebar" aria-label="Notes browser">
-                <NotesFileTree tree={model.filteredTree} selectedPath={selectedPath} expandedDirs={expandedDirs} loading={model.loading} onSelect={selectPath} onToggleDir={path => setExpandedDirs(prev => { const n = new Set(prev); if (n.has(path)) n.delete(path); else n.add(path); return n; })} onCreateFile={() => void handleCreateFile()} onCreateFolder={() => void handleCreateFolder()} onRename={path => void handleRename(path)} onTrash={path => void handleTrash(path)} onRefresh={() => void model.refresh(selectedPath)} />
+                <NotesFileTree tree={model.filteredTree} selectedPath={selectedPath} expandedDirs={expandedDirs} loading={model.loading} flashPath={flashPath} onSelect={selectPath} onToggleDir={path => setExpandedDirs(prev => { const n = new Set(prev); if (n.has(path)) n.delete(path); else n.add(path); return n; })} onCreateFile={() => void handleCreateFile()} onCreateFolder={() => void handleCreateFolder()} onRename={path => void handleRename(path)} onTrash={path => void handleTrash(path)} onRefresh={() => void model.refresh(selectedPath)} />
             </aside>
             <div className="d2-notes-divider" role="separator" aria-orientation="vertical" onPointerDown={resizeTree} />
             <main className="d2-notes-workspace">

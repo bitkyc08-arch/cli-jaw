@@ -34,23 +34,23 @@ export function Workbench({
     onOpenSidebar,
 }: WorkbenchProps): JSX.Element {
     const api = useManagerApi();
-    const { selected, sidePaneOpen, openSidePane, closeSidePane, workspaceMode, setWorkspaceMode } = useAppScope();
+    const { selected, sidePaneOpen, openSidePane, guardedCloseSidePane, workspaceMode, guardedSetWorkspaceMode } = useAppScope();
     const [instanceNames, setInstanceNames] = useState<Map<number, string>>(() => new Map());
     const wbRef = useRef<HTMLElement>(null);
     const toggleButtonRef = useRef<HTMLButtonElement>(null);
     const [paneWidth, setPaneWidth] = useState(PANE_DEFAULT);
 
-    const closeSidePaneWithFocusRestore = useCallback(() => {
+    const closeSidePaneWithFocusRestore = useCallback(async () => {
         const focusWasInsidePane = Boolean(
             wbRef.current?.querySelector('.d2-side-pane')?.contains(document.activeElement),
         );
-        closeSidePane();
-        if (focusWasInsidePane) {
+        const closed = await guardedCloseSidePane();
+        if (closed && focusWasInsidePane) {
             requestAnimationFrame(() => toggleButtonRef.current?.focus());
         }
-    }, [closeSidePane]);
+    }, [guardedCloseSidePane]);
 
-    const toggleSidePane = sidePaneOpen ? closeSidePaneWithFocusRestore : openSidePane;
+    const toggleSidePane = sidePaneOpen ? () => void closeSidePaneWithFocusRestore() : openSidePane;
 
     const onDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -155,7 +155,7 @@ export function Workbench({
                         <button
                             className="d2-workbench-header-button"
                             type="button"
-                            onClick={() => setWorkspaceMode('settings')}
+                            onClick={() => void guardedSetWorkspaceMode('settings')}
                             aria-label="Open settings"
                             title="Settings"
                         >

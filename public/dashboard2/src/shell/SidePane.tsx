@@ -309,9 +309,9 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         activePanelId,
         panelOpenError,
         openPanel,
-        activatePanel,
-        closePanel,
-        closeActivePanel,
+        guardedActivatePanel,
+        guardedClosePanel,
+        guardedCloseActivePanel,
         showPanelPicker,
     } = useAppScope();
     const [terminalRequests, dispatchTerminalRequest] = useReducer(
@@ -341,8 +341,8 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
     // Close overflow when panel list changes
     useEffect(() => { setOverflowOpen(false); }, [panelInstances.length]);
 
-    const handleOverflowSelect = useCallback((id: string) => {
-        activatePanel(id);
+    const handleOverflowSelect = useCallback(async (id: string) => {
+        if (!await guardedActivatePanel(id)) return;
         setOverflowOpen(false);
         // Restore focus to the tab if it's inline, otherwise to the overflow trigger
         requestAnimationFrame(() => {
@@ -353,7 +353,13 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                 paneRef.current?.querySelector<HTMLButtonElement>('.d2-side-pane-overflow-trigger')?.focus();
             }
         });
-    }, [activatePanel]);
+    }, [guardedActivatePanel]);
+
+    const handleTabActivate = useCallback((id: string) => {
+        void guardedActivatePanel(id).then(activated => {
+            if (!activated && activePanelId) paneTabRefs.current.get(activePanelId)?.focus();
+        });
+    }, [activePanelId, guardedActivatePanel]);
 
     const handlePaneTabKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>): void => {
         // Roving tabindex operates only over inline-visible tabs
@@ -378,9 +384,10 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         }
         event.preventDefault();
         const nextId = ids[nextIndex]!;
-        activatePanel(nextId);
-        paneTabRefs.current.get(nextId)?.focus();
-    }, [inlineTabs, activePanelId, activatePanel]);
+        void guardedActivatePanel(nextId).then(activated => {
+            if (activated) paneTabRefs.current.get(nextId)?.focus();
+        });
+    }, [inlineTabs, activePanelId, guardedActivatePanel]);
 
     useEffect(() => {
         for (const state of Object.values(widgetSnapshot)) {
@@ -439,13 +446,14 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                 event.preventDefault();
                 event.stopPropagation();
                 if (activePanelId) {
-                    closeActivePanel();
-                    requestAnimationFrame(() => {
-                        const nextActive = paneEl?.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
-                        nextActive?.focus();
+                    void guardedCloseActivePanel().then(closed => {
+                        if (closed) requestAnimationFrame(() => {
+                            const nextActive = paneEl?.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
+                            nextActive?.focus();
+                        });
                     });
                 } else {
-                    onClose();
+                    void onClose();
                 }
             } else if (isEscape) {
                 if (!focusInPane) return;
@@ -459,19 +467,20 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                 event.preventDefault();
                 event.stopPropagation();
                 if (activePanelId) {
-                    closeActivePanel();
-                    requestAnimationFrame(() => {
-                        const nextActive = paneEl?.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
-                        nextActive?.focus();
+                    void guardedCloseActivePanel().then(closed => {
+                        if (closed) requestAnimationFrame(() => {
+                            const nextActive = paneEl?.querySelector<HTMLElement>('.d2-side-pane-tab-group [role="tab"][aria-selected="true"]');
+                            nextActive?.focus();
+                        });
                     });
                 } else {
-                    onClose();
+                    void onClose();
                 }
             }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activePanelId, closeActivePanel, onClose, open, overflowOpen]);
+    }, [activePanelId, guardedCloseActivePanel, onClose, open, overflowOpen]);
 
     const toolTabs = TAB_REGISTRY.filter((tab) => tab.category === 'tool');
     const featureTabs = TAB_REGISTRY.filter((tab) => tab.category === 'feature');
@@ -494,12 +503,12 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                                 aria-controls={`d2-pane-panel-${panel.id}`}
                                 tabIndex={panel.id === activePanelId ? 0 : -1}
                                 onKeyDown={handlePaneTabKeyDown}
-                                onClick={() => activatePanel(panel.id)}
+                                onClick={() => handleTabActivate(panel.id)}
                                 title={panel.title}
                             >
                                 {panel.title}
                             </button>
-                            <button type="button" className="d2-side-pane-tab-close" onClick={() => closePanel(panel.id)} aria-label={`Close ${panel.title}`} title={`Close ${panel.title}`}>
+                            <button type="button" className="d2-side-pane-tab-close" onClick={() => void guardedClosePanel(panel.id)} aria-label={`Close ${panel.title}`} title={`Close ${panel.title}`}>
                                 <Icon icon={X} size={10} />
                             </button>
                         </span>
@@ -532,7 +541,7 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                 </div>
                 <span className="d2-side-pane-header-spacer" />
                 <button className="d2-side-pane-header-button" type="button" onClick={showPanelPicker} aria-label="Open panel" title="Open panel"><Icon icon={Plus} size={14} /></button>
-                <button className="d2-side-pane-header-button" type="button" onClick={onClose} aria-label="Close side pane" title="Close side pane"><Icon icon={X} size={14} /></button>
+                <button className="d2-side-pane-header-button" type="button" onClick={() => void onClose()} aria-label="Close side pane" title="Close side pane"><Icon icon={X} size={14} /></button>
             </header>
 
             <div className="d2-side-pane-body">

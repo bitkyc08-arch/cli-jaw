@@ -124,7 +124,7 @@ function ThemeToggle(): JSX.Element {
 
 export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const api = useManagerApi();
-    const { selected, expandedPorts, selectSession, toggleInstance, openSidePane, openPanel } = useAppScope();
+    const { selected, expandedPorts, guardedSelectSession, toggleInstance, openSidePane, openPanel } = useAppScope();
     const [mode, setMode] = useState<SidebarMode>('jaw');
     const [instances, setInstances] = useState<DashboardInstance[]>([]);
     const [instancesLoading, setInstancesLoading] = useState(true);
@@ -290,11 +290,11 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
             const port = Number(portStr);
             if (entry.data.sessions.length === 1) {
                 const session = entry.data.sessions[0]!;
-                selectSession(port, session.id);
+                void guardedSelectSession(port, session.id);
                 return; // select the first match only
             }
         }
-    }, [sessionsByPort, selected, selectSession]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [sessionsByPort, selected, guardedSelectSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const copyPath = async (path: string | null | undefined): Promise<void> => {
         if (!path) return;
@@ -611,7 +611,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                                         className={`d2-session-row${selectedRow ? ' is-selected' : ''}`}
                                                         type="button"
                                                         key={session.id}
-                                                        onClick={() => selectSession(instance.port, session.id)}
+                                                        onClick={() => void guardedSelectSession(instance.port, session.id)}
                                                         aria-current={selectedRow ? 'page' : undefined}
                                                     >
                                                         <span className="d2-session-copy">

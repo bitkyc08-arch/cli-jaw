@@ -13,7 +13,7 @@ let root: Root | null = null;
 
 function SelectedSettings() {
     const scope = useAppScope();
-    useEffect(() => scope.selectSession(3506, 'wp4-settings-session'), []);
+    useEffect(() => { void scope.guardedSelectSession(3506, 'wp4-settings-session'); }, []);
     return <SettingsWorkspace />;
 }
 

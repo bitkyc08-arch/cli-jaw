@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { fetchNoteFile } from '../notes/notes-api.ts';
+import { CodeBlock } from '../notes/rendering/CodeBlock.tsx';
 import { MarkdownRenderer } from '../notes/rendering/MarkdownRenderer.tsx';
-import { highlightCode } from '../notes/rendering/highlight-languages.ts';
 import './panels.css';
 
 export type DocPanelPayload = {
@@ -39,10 +39,7 @@ export function DocPanel({ active, source, payload = {} }: DocPanelProps): JSX.E
     const nativeReady = source === 'native-file' && Boolean(path) && payload.binary !== true;
     const effectiveStatus = source === 'native-file' ? (nativeReady ? 'ready' : 'idle') : status;
     const markdown = Boolean(path && /\.mdx?$/i.test(path));
-    const highlighted = useMemo(
-        () => markdown || !path || payload.binary ? null : highlightCode(renderedContent, languageForPath(path)),
-        [markdown, path, payload.binary, renderedContent],
-    );
+    const codeLanguage = markdown || !path || payload.binary ? null : languageForPath(path);
 
     useEffect(() => {
         if (source !== 'notes' || !active || !path) return;
@@ -86,8 +83,8 @@ export function DocPanel({ active, source, payload = {} }: DocPanelProps): JSX.E
                 {effectiveStatus === 'loading' ? <div className="d2-panel-state" role="status">Loading document...</div> : null}
                 {effectiveStatus === 'error' ? <div className="d2-panel-state is-error" role="alert">{message}</div> : null}
                 {effectiveStatus === 'ready' && markdown ? <div className="d2-doc-prose"><MarkdownRenderer markdown={renderedContent} /></div> : null}
-                {effectiveStatus === 'ready' && highlighted ? (
-                    <pre className="d2-doc-code"><code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} /></pre>
+                {effectiveStatus === 'ready' && codeLanguage ? (
+                    <div className="d2-doc-code"><CodeBlock code={renderedContent} language={codeLanguage} /></div>
                 ) : null}
             </div>
         </section>

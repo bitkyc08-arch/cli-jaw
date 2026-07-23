@@ -1,10 +1,24 @@
 /* 071 — Notes panel */
 .d2-notes-panel {
+    --notes-layout-tier: narrow;
     display: grid;
     position: relative;
-    grid-template-columns: var(--notes-tree-width, 200px) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
+}
+
+.d2-side-pane-tab-slot:has(> .d2-notes-panel) {
+    container-type: inline-size;
+}
+
+.d2-notes-panel.is-compact-editor-open .d2-notes-sidebar,
+.d2-notes-panel.is-compact-editor-open .d2-notes-divider {
+    display: none;
+}
+
+.d2-notes-panel:not(.is-compact-editor-open) .d2-notes-workspace {
+    display: none;
 }
 
 .d2-notes-sidebar {
@@ -258,6 +272,14 @@
     font-weight: 500;
 }
 
+.d2-notes-tree-row.is-flashing {
+    animation: d2-notes-intent-flash 800ms ease-in-out 2;
+}
+
+@keyframes d2-notes-intent-flash {
+    50% { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+}
+
 .d2-notes-tree-dot {
     width: 4px;
     height: 4px;
@@ -478,11 +500,42 @@
 
 .d2-notes-content.is-split {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .d2-notes-content.is-split .d2-notes-textarea {
-    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+@container (min-width: 400px) {
+    .d2-notes-panel {
+        --notes-layout-tier: medium;
+        grid-template-columns: minmax(144px, var(--notes-tree-width, 184px)) auto minmax(0, 1fr);
+    }
+
+    .d2-notes-panel .d2-notes-sidebar,
+    .d2-notes-panel .d2-notes-workspace {
+        display: flex;
+    }
+    .d2-notes-panel .d2-notes-divider { display: block; }
+    .d2-notes-panel.is-compact-editor-open .d2-notes-sidebar { display: flex; }
+    .d2-notes-panel.is-compact-editor-open .d2-notes-divider { display: block; }
+}
+
+@container (min-width: 640px) {
+    .d2-notes-panel { --notes-layout-tier: wide; }
+    .d2-notes-content.is-split {
+        grid-template-rows: none;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .d2-notes-content.is-split .d2-notes-textarea {
+        border-right: 1px solid var(--border);
+        border-bottom: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .d2-notes-tree-row.is-flashing { animation: none; }
 }
 
 .d2-notes-textarea {

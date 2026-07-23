@@ -21,6 +21,8 @@ test('DocPanel treats native shell payload as canonical and reports binary/trunc
     assert.match(docPanel, /if \(source !== 'notes'/, 'notes fetch must be an explicit source adapter');
     assert.match(docPanel, /Truncated preview/);
     assert.match(docPanel, /Binary preview is not supported/);
+    assert.match(docPanel, /<CodeBlock code=\{renderedContent\} language=\{codeLanguage\}/);
+    assert.doesNotMatch(docPanel, /highlight-languages|highlight\.js|dangerouslySetInnerHTML/);
     assert.match(sidePane, /<LazyDocPanel active=\{active\} source="native-file" payload=\{payload\}/);
 });
 

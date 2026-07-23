@@ -8,6 +8,7 @@ export type NotesFileTreeProps = {
     selectedPath: string | null;
     expandedDirs: Set<string>;
     loading: boolean;
+    flashPath?: string | null;
     onSelect: (path: string) => void;
     onToggleDir: (path: string) => void;
     onCreateFile: () => void;
@@ -87,7 +88,7 @@ export function NotesFileTree(props: NotesFileTreeProps): JSX.Element {
         const expanded = entry.kind === 'folder' && props.expandedDirs.has(entry.path);
         const selected = entry.kind === 'file' && props.selectedPath === entry.path;
         return (
-            <div className={`d2-notes-tree-row${selected ? ' active' : ''}`} key={entry.path} role="none">
+            <div className={`d2-notes-tree-row${selected ? ' active' : ''}${props.flashPath === entry.path ? ' is-flashing' : ''}`} key={entry.path} role="none">
                 <button
                     ref={node => { if (node) itemRefs.current.set(entry.path, node); else itemRefs.current.delete(entry.path); }}
                     type="button"
@@ -95,6 +96,7 @@ export function NotesFileTree(props: NotesFileTreeProps): JSX.Element {
                     role="treeitem"
                     aria-expanded={entry.kind === 'folder' ? expanded : undefined}
                     aria-selected={selected}
+                    data-notes-path={entry.path}
                     tabIndex={focusedPath === entry.path ? 0 : -1}
                     style={{ paddingInlineStart: `${depth * 16}px` } as CSSProperties}
                     onFocus={() => setFocusedPath(entry.path)}
