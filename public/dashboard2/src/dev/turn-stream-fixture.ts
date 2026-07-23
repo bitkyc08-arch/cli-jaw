@@ -20,6 +20,7 @@ export interface FixtureHandle {
     completeOpenTurns(): void;
     totalSize(): number;
     scrollToIndex(index: number): void;
+    cycleSidePaneTab(): string;
 }
 
 declare global {
@@ -59,6 +60,7 @@ interface SurfaceProps {
 function FixtureSurface({ initial, expose }: SurfaceProps): JSX.Element {
     const [rows, setRows] = useState(initial);
     const [sidePane, setSidePane] = useState(true);
+    const [sidePaneTab, setSidePaneTab] = useState(0);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const pendingPrepend = useRef<number | null>(null);
 
@@ -98,6 +100,12 @@ function FixtureSurface({ initial, expose }: SurfaceProps): JSX.Element {
             }))),
             totalSize: () => virtualizer.getTotalSize(),
             scrollToIndex: (index: number) => virtualizer.scrollToIndex(index, { align: 'start' }),
+            cycleSidePaneTab: () => {
+                const tabs = ['terminal', 'browser', 'files', 'notes', 'board', 'reminders'];
+                const next = (sidePaneTab + 1) % tabs.length;
+                setSidePaneTab(next);
+                return tabs[next];
+            },
         });
     });
 
@@ -124,7 +132,7 @@ function FixtureSurface({ initial, expose }: SurfaceProps): JSX.Element {
                 }))),
         ),
         h('div', { className: 'd2fix-divider' }),
-        h('div', { className: 'd2fix-side', 'data-testid': 'fixture-side-pane' }));
+        h('div', { className: 'd2fix-side', 'data-testid': 'fixture-side-pane', 'data-active-tab': ['terminal', 'browser', 'files', 'notes', 'board', 'reminders'][sidePaneTab] }));
 }
 
 export function mountTurnStreamFixture(messages: SegmentedMessageItem[]): Promise<FixtureHandle> {

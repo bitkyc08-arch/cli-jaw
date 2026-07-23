@@ -5,7 +5,7 @@
 // budgets + v4 shell assertions against the dev fixture surface.
 // Parity evidence stays SYNTHETIC (034 §1.5) — real 3-runtime replay is 048.
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, test, type TestContext } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright-core';
@@ -27,6 +27,10 @@ declare global {
 const ROOT = resolve(import.meta.dirname, '..', '..');
 const MANIFEST_PATH = join(ROOT, 'tests/fixtures/dashboard2/turn-stream/manifest.json');
 const FRAME_BUDGET_MS = Number(process.env.JAW_FRAME_BUDGET_MS || 60_000);
+const SOAK_ENABLED = process.env.JAW_DASHBOARD2_SOAK === '1';
+const SOAK_MINUTES = Number(process.env.SOAK_MINUTES || 3);
+const SOAK_TIME_SCALE = Number(process.env.SOAK_TIME_SCALE || (SOAK_MINUTES >= 60 ? 1 : 0.1));
+const EVIDENCE_PATH = join(ROOT, 'refs/091-baseline-full-budget.json');
 
 const SEGMENT_KEYS = [
     'turnId', 'turnSeq', 'segmentId', 'sessionId', 'createdAt', 'observedAt',
@@ -128,8 +132,23 @@ test('040 guard: fixture module is absent from any built production bundle', () 
 const browsers: Browser[] = [];
 const servers: { close(): Promise<void> }[] = [];
 after(async () => {
-    await Promise.allSettled(browsers.map(b => b.close()));
-    await Promise.allSettled(servers.map(s => s.close()));
+    const bounded = (operation: Promise<unknown>) => Promise.race([
+        operation.catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+    ]);
+    await Promise.all(browsers.map(async (browser) => {
+        const context = browser.contexts()[0];
+        const page = context?.pages()[0];
+        if (context && page) {
+            const session = await context.newCDPSession(page).catch(() => null);
+            if (session) await bounded(session.send('Browser.close'));
+        }
+        await bounded(browser.close());
+    }));
+    await Promise.all(servers.map((server) => bounded(server.close())));
+    if (SOAK_ENABLED) {
+        setTimeout(() => process.exit(process.exitCode ?? 0), 1_000);
+    }
 });
 
 async function launchChromium(t: TestContext): Promise<Browser | null> {
@@ -310,6 +329,117 @@ test('040 budget: DOM/heap/frame/anchor budgets + v4 shell assertions (synthetic
     assert.ok(Math.abs(countersAfter.documents - countersBefore.documents) <= 1, 'document count stable');
 
     console.log('[040 budget report]', JSON.stringify(report));
+});
+
+function regressionSlopeBytesPerHour(samples: Array<{ elapsedMs: number; heapBytes: number }>, windowMinutes: number, timeScale: number): number {
+    const cutoff = samples.at(-1)!.elapsedMs - windowMinutes * 60_000;
+    const rows = samples.filter((sample) => sample.elapsedMs >= cutoff);
+    assert.ok(rows.length >= 7, `slope requires 7+ samples, received ${rows.length}`);
+    const xs = rows.map((sample) => sample.elapsedMs / timeScale / 3_600_000);
+    const ys = rows.map((sample) => sample.heapBytes);
+    const xMean = xs.reduce((sum, value) => sum + value, 0) / xs.length;
+    const yMean = ys.reduce((sum, value) => sum + value, 0) / ys.length;
+    const denominator = xs.reduce((sum, value) => sum + (value - xMean) ** 2, 0);
+    return denominator === 0 ? 0 : xs.reduce((sum, value, index) => sum + (value - xMean) * (ys[index] - yMean), 0) / denominator;
+}
+
+if (SOAK_ENABLED) test('091 Chrome soak: 20Hz + prepend/tab cycles + five-minute post-GC time series', { timeout: SOAK_MINUTES * 60_000 + 240_000 }, async (t) => {
+    assert.ok(Number.isFinite(SOAK_MINUTES) && SOAK_MINUTES > 0, 'SOAK_MINUTES must be positive');
+    assert.ok(Number.isFinite(SOAK_TIME_SCALE) && SOAK_TIME_SCALE > 0, 'SOAK_TIME_SCALE must be positive');
+    const browser = await launchChromium(t);
+    if (!browser) return;
+    const { origin } = await startVite();
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    await mountFixtureSurface(page, origin);
+    const session = await context.newCDPSession(page);
+    const durationMs = SOAK_MINUTES * 60_000;
+    const sampleIntervalMs = 5 * 60_000 * SOAK_TIME_SCALE;
+    const prependIntervalMs = 5 * 60_000 * SOAK_TIME_SCALE;
+    const tabIntervalMs = 2 * 60_000 * SOAK_TIME_SCALE;
+    const slopeWindowMinutes = 30 * SOAK_TIME_SCALE;
+    const startedAt = performance.now();
+    let nextSampleAt = 0;
+    let nextPrependAt = prependIntervalMs;
+    let nextTabAt = tabIntervalMs;
+    let streamId = 1_000_000;
+    let prependId = 2_000_000;
+    let prepends = 0;
+    let tabCycles = 0;
+    const samples: Array<{ elapsedMs: number; simulatedMinutes: number; heapBytes: number; domNodes: number; documents: number; jsEventListeners: number }> = [];
+    const sample = async (elapsedMs: number): Promise<void> => {
+        const heap = await collectHeapUsagePostGc(session);
+        const dom = await sampleDomCountersMedian(session, 3);
+        samples.push({ elapsedMs, simulatedMinutes: elapsedMs / SOAK_TIME_SCALE / 60_000, heapBytes: heap.usedSizeBytes, domNodes: dom.nodes, documents: dom.documents, jsEventListeners: dom.jsEventListeners });
+    };
+    await sample(0);
+    nextSampleAt = sampleIntervalMs;
+
+    while (performance.now() - startedAt < durationMs) {
+        const elapsedMs = performance.now() - startedAt;
+        streamId += 1;
+        await page.evaluate((id) => window.__jawTurnStreamFixture!.append({
+            id, role: 'assistant', content: `soak stream ${id}`, cli: 'codex', model: 'model-0', tool_log: null,
+            trace_run_id: null, turn_id: `soak-${id}`, cost_usd: null, duration_ms: 42, working_dir: '/tmp/jaw-fixture',
+            created_at: new Date(0).toISOString(), turn_segments: [],
+        }), streamId);
+        if (elapsedMs >= nextPrependAt) {
+            prependId += 1;
+            await page.evaluate((id) => window.__jawTurnStreamFixture!.prepend([{
+                id, role: 'assistant', content: `soak prepend ${id}`, cli: 'codex', model: 'model-0', tool_log: null,
+                trace_run_id: null, turn_id: `soak-prepend-${id}`, cost_usd: null, duration_ms: 42, working_dir: '/tmp/jaw-fixture',
+                created_at: new Date(0).toISOString(), turn_segments: [],
+            }]), prependId);
+            prepends += 1;
+            nextPrependAt += prependIntervalMs;
+        }
+        if (elapsedMs >= nextTabAt) {
+            await page.evaluate(() => window.__jawTurnStreamFixture!.cycleSidePaneTab());
+            tabCycles += 1;
+            nextTabAt += tabIntervalMs;
+        }
+        if (elapsedMs >= nextSampleAt) {
+            await sample(elapsedMs);
+            nextSampleAt += sampleIntervalMs;
+        }
+        const delayMs = Math.max(0, 50 - (performance.now() - startedAt - elapsedMs));
+        if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    await sample(durationMs);
+    const slopeBytesPerHour = regressionSlopeBytesPerHour(samples, slopeWindowMinutes, SOAK_TIME_SCALE);
+    const growthBytes = samples.at(-1)!.heapBytes - samples[0].heapBytes;
+    const growthCapBytes = Math.max(16 * 1024 * 1024, samples[0].heapBytes * 0.1);
+    const slopeCapBytesPerHour = 8 * 1024 * 1024;
+    assert.ok(slopeBytesPerHour <= slopeCapBytesPerHour, `heap slope ${slopeBytesPerHour}B/h <= ${slopeCapBytesPerHour}B/h`);
+    assert.ok(growthBytes <= growthCapBytes, `heap growth ${growthBytes}B <= ${growthCapBytes}B`);
+    const report: Record<string, unknown> = { status: SOAK_MINUTES >= 60 && SOAK_TIME_SCALE === 1 ? 'PASS' : 'SANITY_PASS', runtime: 'headless-chrome', durationMinutes: SOAK_MINUTES, timeScale: SOAK_TIME_SCALE, contract: { streamHz: 20, sampleEveryMinutes: 5, prependEveryMinutes: 5, tabCycleEveryMinutes: 2, slopeWindowMinutes: 30, slopeMinimumSamples: 7 }, prepends, tabCycles, growthBytes, growthCapBytes, slopeBytesPerHour, slopeCapBytesPerHour, samples };
+    console.log('[091 soak report]', JSON.stringify(report));
+    const browserIndex = browsers.indexOf(browser);
+    if (browserIndex >= 0) browsers.splice(browserIndex, 1);
+    const closeWithin = async (close: () => Promise<void>): Promise<'closed' | 'timeout'> => {
+        const outcome = await Promise.race([
+            close().then(() => 'closed' as const).catch(() => 'closed' as const),
+            new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000)),
+        ]);
+        return outcome;
+    };
+    const cdpBrowserClose = await closeWithin(() => session.send('Browser.close').then(() => undefined));
+    const pageClose = await closeWithin(() => page.close({ runBeforeUnload: false }));
+    const contextClose = await closeWithin(() => context.close());
+    const browserClose = await closeWithin(() => browser.close());
+    report.teardown = {
+        cdpBrowser: cdpBrowserClose,
+        page: pageClose,
+        context: contextClose,
+        playwrightBrowser: browserClose,
+        processClosed: cdpBrowserClose === 'closed' || browserClose === 'closed',
+    };
+    if (process.env.JAW_SOAK_WRITE_EVIDENCE !== '0') {
+        const evidence = JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8')) as Record<string, unknown>;
+        evidence.measuredAt = new Date().toISOString();
+        evidence.soak = report;
+        writeFileSync(EVIDENCE_PATH, `${JSON.stringify(evidence, null, 2)}\n`);
+    }
 });
 
 // keep referenced helpers "used" for lints when the browser test skips
