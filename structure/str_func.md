@@ -367,7 +367,7 @@ cli-jaw/
 ├── electron/                 ← Electron tray background app (35 TS/TSX files, 5079L) ✨
 │   ├── package.json / electron-builder.yml / electron.vite.config.ts
 │   └── src/
-│       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1359L)
+│       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1292L)
 │       ├── main/lib/         ← 33 helper modules, 3569L (jaw-spawn 233L, manager-url 29L, renderer-request-identity 70L, stream-redactor 56L, install-cli 147L, tray-manager 185L, terminal/ 206L, navigation-policy 113L, app-metrics 177L, health-check 78L, deep-link 79L, permissions, path-security, quit-progress, etc.)
 │       └── preload/          ← preload bridge (index 151L)
 ├── native/
