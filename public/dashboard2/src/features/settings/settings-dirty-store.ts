@@ -8,6 +8,7 @@ export interface DirtyStore {
     confirmLeave(): boolean;
     registerActions(save: (() => Promise<void>) | null, discard: (() => void) | null): void;
     triggerSave(): Promise<void>;
+    triggerDiscard(): void;
 }
 
 export function useDirtyStore(): DirtyStore {
@@ -27,6 +28,9 @@ export function useDirtyStore(): DirtyStore {
     const triggerSave = useCallback(async () => {
         await actionsRef.current.save?.();
     }, []);
+    const triggerDiscard = useCallback(() => {
+        actionsRef.current.discard?.();
+    }, []);
 
     return useMemo(() => ({
         isDirty: dirtyScope !== null,
@@ -36,5 +40,6 @@ export function useDirtyStore(): DirtyStore {
         confirmLeave,
         registerActions,
         triggerSave,
-    }), [confirmLeave, dirtyScope, markClean, markDirty, registerActions, triggerSave]);
+        triggerDiscard,
+    }), [confirmLeave, dirtyScope, markClean, markDirty, registerActions, triggerDiscard, triggerSave]);
 }

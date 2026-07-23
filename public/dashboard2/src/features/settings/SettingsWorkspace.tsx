@@ -28,48 +28,56 @@ const CATEGORIES: SettingsCategory[] = [
 ];
 
 export function SettingsWorkspace(): JSX.Element {
-    const { selected, guardedSetWorkspaceMode } = useAppScope();
+    const {
+        selected,
+        workspaceMode,
+        guardedSetWorkspaceMode,
+        registerLeaveGuard,
+        unregisterLeaveGuard,
+        registerDirtyCheck,
+        unregisterDirtyCheck,
+    } = useAppScope();
     const [activeId, setActiveId] = useState<SettingsPageId>('display');
     const dirty = useDirtyStore();
     const active = useMemo(() => CATEGORIES.find((category) => category.id === activeId) ?? CATEGORIES[0]!, [activeId]);
     const ActivePage = active.page;
 
-    const leave = (): void => {
-        if (!dirty.confirmLeave()) return;
-        dirty.markClean();
-        void guardedSetWorkspaceMode('chat');
+    const leave = async (): Promise<void> => {
+        if (!await guardedSetWorkspaceMode('chat')) return;
+        dirty.triggerDiscard();
     };
 
     const selectPage = (next: SettingsPageId): void => {
         if (next === activeId || !dirty.confirmLeave()) return;
-        dirty.markClean();
+        dirty.triggerDiscard();
         setActiveId(next);
     };
+
+    useEffect(() => {
+        registerLeaveGuard('settings', dirty.confirmLeave);
+        return () => unregisterLeaveGuard('settings');
+    }, [dirty.confirmLeave, registerLeaveGuard, unregisterLeaveGuard]);
+
+    useEffect(() => {
+        registerDirtyCheck('settings', () => dirty.isDirty);
+        return () => unregisterDirtyCheck('settings');
+    }, [dirty.isDirty, registerDirtyCheck, unregisterDirtyCheck]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent): void => {
             if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 's') {
                 event.preventDefault();
-                if (dirty.isDirty) void dirty.triggerSave();
+                if (workspaceMode === 'settings' && dirty.isDirty) void dirty.triggerSave();
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [dirty]);
-
-    useEffect(() => {
-        const onBeforeUnload = (event: BeforeUnloadEvent): void => {
-            if (!dirty.isDirty) return;
-            event.preventDefault();
-        };
-        window.addEventListener('beforeunload', onBeforeUnload);
-        return () => window.removeEventListener('beforeunload', onBeforeUnload);
-    }, [dirty.isDirty]);
+    }, [dirty, workspaceMode]);
 
     return (
         <div className="d2-settings-workspace">
             <aside className="d2-settings-rail">
-                <button className="d2-settings-back" type="button" onClick={leave}>
+                <button className="d2-settings-back" type="button" onClick={() => void leave()}>
                     <Icon icon={ArrowLeft} size={16} />
                     <span>Back to chat</span>
                 </button>

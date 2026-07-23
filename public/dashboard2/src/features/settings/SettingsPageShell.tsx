@@ -10,7 +10,14 @@ import {
 } from './settings-api.ts';
 import { getInstanceSettingsAdapter } from './settings-category-adapters.ts';
 import type { DirtyStore } from './settings-dirty-store.ts';
-import type { InstanceSettingsAdapterId, SettingsFieldDefinition, SettingsRecord, SettingsSource, SettingsToastState } from './settings-types.ts';
+import {
+    validateSettingsField,
+    type InstanceSettingsAdapterId,
+    type SettingsFieldDefinition,
+    type SettingsRecord,
+    type SettingsSource,
+    type SettingsToastState,
+} from './settings-types.ts';
 
 interface Props {
     title: string;
@@ -97,6 +104,16 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
     }, [load]);
 
     const changed = useMemo(() => JSON.stringify(initial) !== JSON.stringify(draft), [draft, initial]);
+    const validationErrors = useMemo(() => {
+        const errors = new Map<string, string>();
+        for (const field of fields) {
+            const value = readPath(draft, field.key);
+            if (Object.is(value, readPath(initial, field.key))) continue;
+            const message = validateSettingsField(field, value, draft);
+            if (message) errors.set(field.errorKey ?? field.key, message);
+        }
+        return errors;
+    }, [draft, fields, initial]);
     useEffect(() => {
         if (changed) markDirty(scope);
         else markClean(scope);
@@ -109,7 +126,7 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
     }, [initial, markClean, scope]);
 
     const save = useCallback(async () => {
-        if (!changed || saving) return;
+        if (!changed || saving || validationErrors.size > 0) return;
         setSaving(true);
         setToast(null);
         try {
@@ -139,7 +156,7 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
         } finally {
             if (mounted.current) setSaving(false);
         }
-    }, [adapter, changed, decode, draft, initial, locale, markClean, port, root, saving, scope, slice, source, theme, title]);
+    }, [adapter, changed, decode, draft, initial, locale, markClean, port, root, saving, scope, slice, source, theme, title, validationErrors]);
 
     useEffect(() => {
         registerActions(save, discard);
@@ -167,33 +184,35 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
                     {fields.map((field) => {
                         const value = readPath(draft, field.key);
                         const id = `${scope}-${field.key}`.replaceAll('.', '-');
+                        const fieldError = validationErrors.get(field.errorKey ?? field.key) ?? null;
                         return (
-                            <div className={`d2-settings-field${field.kind === 'toggle' ? ' toggle' : ''}`} key={field.key}>
+                            <div className={`d2-settings-field${field.kind === 'toggle' ? ' toggle' : ''}${fieldError ? ' invalid' : ''}`} key={field.key}>
                                 <label htmlFor={id}><span>{field.label}</span>{field.description ? <small>{field.description}</small> : null}</label>
-                                <FieldControl id={id} field={field} value={value} onChange={(next) => setField(field, next)} />
+                                <FieldControl id={id} field={field} value={value} error={fieldError} onChange={(next) => setField(field, next)} />
                                 {field.unsupported ? <small id={`${id}-unsupported`} role="note">Unsupported: {field.unsupported}</small> : null}
+                                {fieldError ? <small className="d2-settings-field-error" id={`${id}-error`} role="alert">{fieldError}</small> : null}
                             </div>
                         );
                     })}
                 </div>
             ) : null}
-            <SaveBar visible={changed} saving={saving} onSave={() => void save()} onDiscard={discard} />
+            <SaveBar visible={changed} saving={saving} saveDisabled={validationErrors.size > 0} onSave={() => void save()} onDiscard={discard} />
             {toast ? <SettingsToast {...toast} onDismiss={() => setToast(null)} /> : null}
         </section>
     );
 }
 
-function FieldControl({ id, field, value, onChange }: { id: string; field: SettingsFieldDefinition; value: unknown; onChange(value: unknown): void }): JSX.Element {
+function FieldControl({ id, field, value, error, onChange }: { id: string; field: SettingsFieldDefinition; value: unknown; error: string | null; onChange(value: unknown): void }): JSX.Element {
     const disabled = Boolean(field.unsupported);
-    const describedBy = disabled ? `${id}-unsupported` : undefined;
+    const describedBy = [disabled ? `${id}-unsupported` : null, error ? `${id}-error` : null].filter(Boolean).join(' ') || undefined;
     if (field.kind === 'toggle') {
         return <button id={id} type="button" className={`d2-settings-switch${value === true ? ' on' : ''}`} role="switch" aria-checked={value === true} aria-describedby={describedBy} disabled={disabled} onClick={() => onChange(value !== true)}><span /></button>;
     }
     if (field.kind === 'select') {
-        return <select id={id} value={String(value ?? '')} aria-describedby={describedBy} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+        return <select id={id} value={String(value ?? '')} aria-describedby={describedBy} aria-invalid={error ? true : undefined} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
     }
     if (field.kind === 'textarea') {
-        return <textarea id={id} rows={5} value={String(value ?? '')} placeholder={field.placeholder} aria-describedby={describedBy} disabled={disabled} onChange={(event) => onChange(event.target.value)} />;
+        return <textarea id={id} rows={5} value={String(value ?? '')} placeholder={field.placeholder} aria-describedby={describedBy} aria-invalid={error ? true : undefined} disabled={disabled} onChange={(event) => onChange(event.target.value)} />;
     }
-    return <input id={id} type={field.kind === 'secret' ? 'password' : field.kind} value={value === undefined ? '' : String(value)} placeholder={field.placeholder} min={field.min} max={field.max} step={field.step} aria-describedby={describedBy} disabled={disabled} onChange={(event) => onChange(field.kind === 'number' ? event.target.valueAsNumber : event.target.value)} />;
+    return <input id={id} type={field.kind === 'secret' ? 'password' : field.kind} value={value === undefined ? '' : String(value)} placeholder={field.placeholder} min={field.min} max={field.max} step={field.step} aria-describedby={describedBy} aria-invalid={error ? true : undefined} disabled={disabled} onChange={(event) => onChange(field.kind === 'number' ? event.target.valueAsNumber : event.target.value)} />;
 }

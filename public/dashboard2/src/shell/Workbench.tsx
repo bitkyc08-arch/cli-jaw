@@ -179,15 +179,24 @@ export function Workbench({
                 </header>
 
                 <div className="d2-workbench-chat" id="d2-chat-area">
-                    {workspaceMode === 'settings' ? (
+                    <div
+                        data-workspace-surface="settings"
+                        style={{ display: workspaceMode === 'settings' ? 'grid' : 'none', gridArea: '1 / 1', width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', containerType: 'inline-size' }}
+                        inert={workspaceMode !== 'settings'}
+                        aria-hidden={workspaceMode !== 'settings'}
+                    >
                         <Suspense fallback={<div className="d2-pane-empty">Loading settings...</div>}>
                             <LazySettingsWorkspace />
                         </Suspense>
-                    ) : selected ? (
-                        <ChatView scope={selected} />
-                    ) : (
-                        <div className="d2-pane-empty">No session selected</div>
-                    )}
+                    </div>
+                    <div
+                        data-workspace-surface="chat"
+                        style={{ display: workspaceMode === 'chat' ? 'grid' : 'none', gridArea: '1 / 1', width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden' }}
+                        inert={workspaceMode !== 'chat'}
+                        aria-hidden={workspaceMode !== 'chat'}
+                    >
+                        {selected ? <ChatView scope={selected} /> : <div className="d2-pane-empty">No session selected</div>}
+                    </div>
                 </div>
             </div>
 
