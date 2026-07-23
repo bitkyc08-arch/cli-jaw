@@ -99,6 +99,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:frontend": "tsc --noEmit -p tsconfig.frontend.json",
     "gate:typecheck": "node scripts/release-gates.mjs typecheck",
+    "gate:cutover": "tsx --experimental-test-module-mocks tests/run.mts tests/cutover/electron-default.test.ts tests/cutover/root-url-rollback.test.ts tests/cutover/no-jwc-chunk.test.ts",
     "gate:tests": "node scripts/release-gates.mjs tests",
     "gate:truth-table-fresh": "node scripts/release-gates.mjs truth-table-fresh",
     "gate:mcp-scope-frozen": "node scripts/release-gates.mjs mcp-scope-frozen",

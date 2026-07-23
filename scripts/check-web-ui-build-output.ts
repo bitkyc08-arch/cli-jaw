@@ -43,7 +43,7 @@ export interface BuildOutputCheckResult {
     dashboard2Bundle: Dashboard2BundleReport | null;
 }
 
-interface ManifestNode {
+export interface ManifestNode {
     file: string;
     imports?: string[];
     dynamicImports?: string[];
@@ -145,6 +145,28 @@ function isMermaid(value: string): boolean {
     return /(?:^|[/_.-])mermaid(?:[/_.-]|$)/i.test(value);
 }
 
+export function isJwcChunk(value: string): boolean {
+    return /(?:^|[/_.-])(?:jwc|jawcode)(?:[/_.-]|$)/i.test(value);
+}
+
+export function isCodeChunk(value: string): boolean {
+    return /(?:^|[/_.-])code(?:[/_.-]|$)/i.test(value);
+}
+
+export function isJwcOrCodeChunk(value: string): boolean {
+    return isJwcChunk(value) || isCodeChunk(value);
+}
+
+export function dashboard2StaticClosureHasJwcOrCodeChunk(
+    manifest: Record<string, ManifestNode>,
+): boolean {
+    const staticGraph = collectGraph(manifest, [DASHBOARD2_ENTRY_KEY], false);
+    return [...staticGraph].some(key => {
+        const node = manifest[key];
+        return isJwcOrCodeChunk(key) || isJwcOrCodeChunk(node?.file ?? '');
+    });
+}
+
 function findWorkerFile(distDir: string, serviceFiles: string[]): string | null {
     const assetsDir = join(distDir, 'assets');
     if (!existsSync(assetsDir)) return null;
@@ -183,9 +205,14 @@ function checkDashboard2Bundle(distDir: string, errors: string[]): Dashboard2Bun
         const node = manifest[key];
         return isMermaid(key) || isMermaid(node?.file ?? '');
     });
+    const staticJwcOrCode = [...staticGraph].filter(key => {
+        const node = manifest[key];
+        return isJwcOrCodeChunk(key) || isJwcOrCodeChunk(node?.file ?? '');
+    });
     if (staticShiki.length > 0) errors.push(`Dashboard2 static import closure contains Shiki: ${staticShiki.join(', ')}`);
     if (staticKatex.length > 0) errors.push(`Dashboard2 static import closure contains KaTeX: ${staticKatex.join(', ')}`);
     if (staticMermaid.length > 0) errors.push(`Dashboard2 static import closure contains Mermaid: ${staticMermaid.join(', ')}`);
+    if (staticJwcOrCode.length > 0) errors.push(`Dashboard2 static import closure contains JWC/Code chunks: ${staticJwcOrCode.join(', ')}`);
 
     const serviceKeys = Object.keys(manifest).filter(key => {
         if (/turn-stream\/render\/highlight-service\.ts$/.test(key)) return true;

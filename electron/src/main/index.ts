@@ -9,8 +9,8 @@ import { findJawBinary, spawnJawDashboard, gracefulShutdown } from './lib/jaw-sp
 import {
   buildImplicitManagerUrl,
   resolveManagerRouteUrl,
-  resolveManagerUrl,
 } from './lib/manager-url.js';
+import { parseCliFlags } from './lib/cli-flags.js';
 import {
   isCurrentLiveOwnedManagerGeneration,
   releaseOwnedManagerGeneration,
@@ -67,78 +67,11 @@ import {
   type ElectronPermissionSurface,
 } from './lib/electron-permissions.js';
 
-interface CliFlags {
-  port: number;
-  attachOnly: boolean;
-  spawn: boolean;
-  background: boolean;
-  managerUrl: string;
-  managerUrlExplicit: boolean;
-}
-
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const ELECTRON_MANAGER_PORT_START = 24577;
 const ELECTRON_MANAGER_PORT_END = 24590;
 const DEFAULT_MANAGER_PORT = ELECTRON_MANAGER_PORT_START;
 
-function assertLoopbackManagerUrl(raw: string): void {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch (err) {
-    throw new Error(`[jaw-electron] invalid manager URL: ${raw}`);
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(
-      `[jaw-electron] manager URL must use http: or https:. Got: ${parsed.protocol}`,
-    );
-  }
-  const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (!LOOPBACK_HOSTS.has(host)) {
-    throw new Error(
-      `[jaw-electron] manager URL must be loopback (127.0.0.1, localhost, ::1). Got: ${parsed.hostname}`,
-    );
-  }
-}
-
-function parseArgs(argv: string[]): CliFlags {
-  let port = Number(process.env.JAW_MANAGER_PORT ?? DEFAULT_MANAGER_PORT);
-  let attachOnly = false;
-  let spawn = false;
-  let background = false;
-  let managerUrl = process.env.JAW_MANAGER_URL ?? '';
-  let managerUrlExplicit = managerUrl.trim().length > 0;
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--port') {
-      const v = argv[++i];
-      if (v) port = Number(v);
-    } else if (a?.startsWith('--port=')) {
-      port = Number(a.slice('--port='.length));
-    } else if (a === '--attach-only') {
-      attachOnly = true;
-    } else if (a === '--spawn') {
-      spawn = true;
-    } else if (a === '--manager-url') {
-      const v = argv[++i];
-      if (v) {
-        managerUrl = v;
-        managerUrlExplicit = true;
-      }
-    } else if (a?.startsWith('--manager-url=')) {
-      managerUrl = a.slice('--manager-url='.length);
-      managerUrlExplicit = managerUrl.trim().length > 0;
-    } else if (a === '--background') {
-      background = true;
-    }
-  }
-  if (!Number.isFinite(port) || port <= 0) port = DEFAULT_MANAGER_PORT;
-  managerUrl = resolveManagerUrl(managerUrl, port);
-  assertLoopbackManagerUrl(managerUrl);
-  return { port, attachOnly, spawn, background, managerUrl, managerUrlExplicit };
-}
-
-const FLAGS = parseArgs(process.argv.slice(1));
+const FLAGS = parseCliFlags(process.argv.slice(1), DEFAULT_MANAGER_PORT);
 let MANAGER_URL = FLAGS.managerUrl;
 let MANAGER_ORIGIN = new URL(MANAGER_URL).origin;
 setAllowedOrigin(MANAGER_ORIGIN);
