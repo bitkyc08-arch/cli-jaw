@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "suite": "dashboard2-theme-matrix",
+  "baselineSha": "481aac65f0a43c036dea1fd6412217174ef4b5e4",
+  "sidebarBlurDecision": "as-built 48px saturate(1.3)",
+  "tokens": {
+    "dark": {
+      "bg": "rgb(13, 13, 15)",
+      "surface": "rgb(26, 26, 29)",
+      "surfaceH": "rgb(34, 34, 37)",
+      "text": "rgb(240, 240, 242)",
+      "text2": "rgb(176, 176, 184)",
+      "border": "rgba(255, 255, 255, 0.06)",
+      "focus": "rgb(110, 168, 254)",
+      "positive": "rgb(91, 216, 138)",
+      "warn": "rgb(229, 185, 79)",
+      "danger": "rgb(248, 113, 113)"
+    },
+    "light": {
+      "bg": "rgb(245, 247, 250)",
+      "surface": "rgb(255, 255, 255)",
+      "surfaceH": "rgb(238, 241, 245)",
+      "text": "rgb(24, 32, 42)",
+      "text2": "rgb(61, 72, 84)",
+      "border": "rgba(0, 0, 0, 0.08)",
+      "focus": "rgb(9, 105, 218)",
+      "positive": "rgb(22, 121, 75)",
+      "warn": "rgb(154, 103, 0)",
+      "danger": "rgb(180, 35, 24)"
+    },
+    "auto": {
+      "dark": {
+        "bg": "rgb(13, 13, 15)",
+        "surface": "rgb(26, 26, 29)",
+        "surfaceH": "rgb(34, 34, 37)",
+        "text": "rgb(240, 240, 242)",
+        "text2": "rgb(176, 176, 184)",
+        "border": "rgba(255, 255, 255, 0.06)",
+        "focus": "rgb(110, 168, 254)",
+        "positive": "rgb(91, 216, 138)",
+        "warn": "rgb(229, 185, 79)",
+        "danger": "rgb(248, 113, 113)",
+        "glass": {
+          "backdropFilter": "blur(48px) saturate(1.3)",
+          "backgroundImage": "linear-gradient(rgba(28, 28, 32, 0.72) 0%, rgba(22, 22, 25, 0.78) 30%, rgba(21, 21, 23, 0.84) 70%, rgba(21, 21, 23, 0.9) 100%)"
+        },
+        "phases": {
+          "I": {
+            "borderColor": "rgba(192, 132, 252, 0.45)",
+            "boxShadow": "rgba(192, 132, 252, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "P": {
+            "borderColor": "rgba(122, 162, 247, 0.45)",
+            "boxShadow": "rgba(122, 162, 247, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "A": {
+            "borderColor": "rgba(251, 191, 36, 0.45)",
+            "boxShadow": "rgba(251, 191, 36, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "B": {
+            "borderColor": "rgba(74, 222, 128, 0.45)",
+            "boxShadow": "rgba(74, 222, 128, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "C": {
+            "borderColor": "rgba(251, 146, 60, 0.45)",
+            "boxShadow": "rgba(251, 146, 60, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "D": {
+            "borderColor": "rgba(34, 211, 238, 0.45)",
+            "boxShadow": "rgba(34, 211, 238, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          }
+        }
+      },
+      "light": {
+        "bg": "rgb(245, 247, 250)",
+        "surface": "rgb(255, 255, 255)",
+        "surfaceH": "rgb(238, 241, 245)",
+        "text": "rgb(24, 32, 42)",
+        "text2": "rgb(61, 72, 84)",
+        "border": "rgba(0, 0, 0, 0.08)",
+        "focus": "rgb(9, 105, 218)",
+        "positive": "rgb(22, 121, 75)",
+        "warn": "rgb(154, 103, 0)",
+        "danger": "rgb(180, 35, 24)",
+        "glass": {
+          "backdropFilter": "blur(48px) saturate(1.3)",
+          "backgroundImage": "linear-gradient(rgba(238, 241, 245, 0.82) 0%, rgba(235, 238, 243, 0.88) 30%, rgba(232, 236, 241, 0.92) 70%, rgba(230, 234, 239, 0.95) 100%)"
+        },
+        "phases": {
+          "I": {
+            "borderColor": "rgba(192, 132, 252, 0.45)",
+            "boxShadow": "rgba(192, 132, 252, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "P": {
+            "borderColor": "rgba(122, 162, 247, 0.45)",
+            "boxShadow": "rgba(122, 162, 247, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "A": {
+            "borderColor": "rgba(251, 191, 36, 0.45)",
+            "boxShadow": "rgba(251, 191, 36, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "B": {
+            "borderColor": "rgba(74, 222, 128, 0.45)",
+            "boxShadow": "rgba(74, 222, 128, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "C": {
+            "borderColor": "rgba(251, 146, 60, 0.45)",
+            "boxShadow": "rgba(251, 146, 60, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          },
+          "D": {
+            "borderColor": "rgba(34, 211, 238, 0.45)",
+            "boxShadow": "rgba(34, 211, 238, 0.12) 0px 0px 16px 0px, rgba(0, 0, 0, 0.24) 0px 8px 28px 0px"
+          }
+        }
+      }
+    }
+  },
+  "panelMatrix": [
+    {
+      "theme": "dark",
+      "panelWidth": 280,
+      "requestedWidth": 280,
+      "actualWidth": 280,
+      "overflowX": 0,
+      "textVisible": true,
+      "contained": true,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "panelWidth": 500,
+      "requestedWidth": 500,
+      "actualWidth": 500,
+      "overflowX": 0,
+      "textVisible": true,
+      "contained": true,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "panelWidth": 700,
+      "requestedWidth": 700,
+      "actualWidth": 700,
+      "overflowX": 0,
+      "textVisible": true,
+      "contained": true,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "panelWidth": 280,
+      "requestedWidth": 280,
+      "actualWidth": 280,
+      "overflowX": 0,
+      "textVisible": true,
+      "contained": true,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "panelWidth": 500,
+      "requestedWidth": 500,
+      "actualWidth": 500,
+      "overflowX": 0,
+      "textVisible": true,
+      "contained": true,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "panelWidth": 700,
+      "requestedWidth": 700,
+      "actualWidth": 700,
+      "overflowX": 0,
+      "textVisible": true,
+      "contained": true,
+      "pass": true
+    }
+  ],
+  "failures": [],
+  "pass": true
+}

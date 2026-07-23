@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "suite": "dashboard2-shortcuts-responsive",
+  "baselineSha": "481aac65f0a43c036dea1fd6412217174ef4b5e4",
+  "dispatch": {
+    "cmdN": "browser provider",
+    "cmdK": "browser provider",
+    "cmdW": "SidePane DOM handler",
+    "imeGuard": true,
+    "electron": "deferred to WP5"
+  },
+  "collisionMatrix": {
+    "composer": {
+      "cmdN": "suppressed",
+      "cmdK": "suppressed",
+      "cmdW": "suppressed"
+    },
+    "notes-editable": {
+      "cmdN": "suppressed",
+      "cmdK": "suppressed",
+      "cmdW": "suppressed"
+    },
+    "settings-field": {
+      "cmdN": "suppressed",
+      "cmdK": "suppressed",
+      "cmdW": "suppressed"
+    },
+    "xterm-terminal": {
+      "cmdN": "allowed",
+      "cmdK": "suppressed",
+      "cmdW": "suppressed"
+    },
+    "browser-url": {
+      "cmdN": "suppressed",
+      "cmdK": "suppressed",
+      "cmdW": "suppressed"
+    },
+    "iframe-focus": {
+      "cmdN": "suppressed",
+      "cmdK": "suppressed",
+      "cmdW": "suppressed"
+    },
+    "code-history": {
+      "cmdN": "allowed",
+      "cmdK": "allowed",
+      "cmdW": "allowed"
+    },
+    "code-composer": {
+      "cmdN": "suppressed",
+      "cmdK": "suppressed",
+      "cmdW": "allowed"
+    },
+    "code-permission": {
+      "cmdN": "allowed",
+      "cmdK": "allowed",
+      "cmdW": "allowed"
+    }
+  },
+  "viewportMatrix": [
+    {
+      "width": 1440,
+      "height": 900,
+      "orientation": "landscape",
+      "sidebarCollapsed": false,
+      "documentOverflow": 0,
+      "bodyOverflow": 0,
+      "overflowPicker": {
+        "itemCount": 8,
+        "overflowX": 0,
+        "visible": true
+      },
+      "pass": true
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "orientation": "landscape",
+      "sidebarCollapsed": false,
+      "documentOverflow": 0,
+      "bodyOverflow": 0,
+      "overflowPicker": {
+        "itemCount": 8,
+        "overflowX": 0,
+        "visible": true
+      },
+      "pass": true
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "orientation": "landscape",
+      "sidebarCollapsed": false,
+      "documentOverflow": 0,
+      "bodyOverflow": 0,
+      "overflowPicker": {
+        "itemCount": 8,
+        "overflowX": 0,
+        "visible": true
+      },
+      "pass": true
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "orientation": "portrait",
+      "sidebarCollapsed": true,
+      "documentOverflow": 0,
+      "bodyOverflow": 0,
+      "overflowPicker": {
+        "itemCount": 8,
+        "overflowX": 0,
+        "visible": true
+      },
+      "pass": true
+    },
+    {
+      "width": 720,
+      "height": 900,
+      "orientation": "portrait",
+      "sidebarCollapsed": true,
+      "documentOverflow": 0,
+      "bodyOverflow": 0,
+      "overflowPicker": {
+        "itemCount": 8,
+        "overflowX": 0,
+        "visible": true
+      },
+      "pass": true
+    }
+  ],
+  "failures": [],
+  "pass": true
+}

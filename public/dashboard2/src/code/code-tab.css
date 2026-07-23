@@ -40,7 +40,7 @@
 }
 
 .d2-code-model-note {
-    color: var(--text-4, rgba(255, 255, 255, 0.58));
+    color: var(--text-4);
 }
 
 .d2-code-model-error {
@@ -63,8 +63,8 @@
     gap: 2px;
     padding: 10px 12px;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface-h);
+    border-radius: var(--r-md);
+    background: var(--surface);
     color: inherit;
     cursor: pointer;
     text-align: left;
@@ -73,7 +73,7 @@
 
 .d2-code-new-session:hover,
 .d2-code-session-row:hover {
-    background: var(--surface-h); /* TODO: 092 — was --d2-surface-3; no distinct v4 tier */
+    background: var(--surface-h);
 }
 
 .d2-code-session-row span {
@@ -92,7 +92,7 @@
     margin: 0 16px 8px;
     padding: 8px 12px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--r-md);
     font-size: 12px;
 }
 
@@ -107,7 +107,7 @@
 .d2-code-composer textarea {
     resize: none;
     padding: 8px 10px;
-    border-radius: 8px;
+    border-radius: var(--r-md);
     border: 1px solid var(--border);
     background: var(--surface-h);
     color: inherit;
@@ -122,7 +122,7 @@
 
 .d2-code-composer-actions button {
     padding: 4px 12px;
-    border-radius: 6px;
+    border-radius: var(--r-sm);
     border: 1px solid var(--border);
     background: transparent;
     color: inherit;
