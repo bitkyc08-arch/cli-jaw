@@ -14,6 +14,7 @@ if (import.meta.env.PROD) {
 
 export interface FixtureHandle {
     rowCount(): number;
+    diagnostics(): { rowCount: number; prependedRows: number; retainedStreamRows: number; streamRetentionCap: number };
     setSidePane(open: boolean): void;
     prepend(rows: SegmentedMessageItem[]): void;
     append(row: SegmentedMessageItem): void;
@@ -22,6 +23,12 @@ export interface FixtureHandle {
     scrollToIndex(index: number): void;
     cycleSidePaneTab(): string;
 }
+
+// The fixture's 20 Hz append driver represents the currently hydrated T2 tail,
+// not durable transcript storage. Keeping every synthetic DTO here bypasses the
+// product TurnStore's 200-turn cap and makes the measurement harness its own
+// unbounded cache.
+const STREAM_RETENTION_ROWS = 200;
 
 declare global {
     interface Window { __jawTurnStreamFixture?: FixtureHandle }
@@ -63,6 +70,7 @@ function FixtureSurface({ initial, expose }: SurfaceProps): JSX.Element {
     const [sidePaneTab, setSidePaneTab] = useState(0);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const pendingPrepend = useRef<number | null>(null);
+    const prependedRows = useRef(0);
 
     const virtualizer = useVirtualizer({
         count: rows.length,
@@ -87,12 +95,26 @@ function FixtureSurface({ initial, expose }: SurfaceProps): JSX.Element {
     useLayoutEffect(() => {
         expose({
             rowCount: () => rows.length,
+            diagnostics: () => ({
+                rowCount: rows.length,
+                prependedRows: prependedRows.current,
+                retainedStreamRows: Math.max(0, rows.length - initial.length - prependedRows.current),
+                streamRetentionCap: STREAM_RETENTION_ROWS,
+            }),
             setSidePane: (open: boolean) => setSidePane(open),
             prepend: (extra: SegmentedMessageItem[]) => {
                 pendingPrepend.current = extra.length;
+                prependedRows.current += extra.length;
                 setRows(prev => [...extra, ...prev]);
             },
-            append: (row: SegmentedMessageItem) => setRows(prev => [...prev, row]),
+            append: (row: SegmentedMessageItem) => setRows(prev => {
+                const cap = initial.length + prependedRows.current + STREAM_RETENTION_ROWS;
+                if (prev.length < cap) return [...prev, row];
+                // Preserve baseline + prepended history and replace only the
+                // oldest synthetic stream-tail row.
+                const oldestStreamIndex = prependedRows.current + initial.length;
+                return [...prev.slice(0, oldestStreamIndex), ...prev.slice(oldestStreamIndex + 1), row];
+            }),
             completeOpenTurns: () => setRows(prev => prev.map(row => ({
                 ...row,
                 turn_segments: row.turn_segments.map(seg =>

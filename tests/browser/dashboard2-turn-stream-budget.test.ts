@@ -30,6 +30,9 @@ const FRAME_BUDGET_MS = Number(process.env.JAW_FRAME_BUDGET_MS || 60_000);
 const SOAK_ENABLED = process.env.JAW_DASHBOARD2_SOAK === '1';
 const SOAK_MINUTES = Number(process.env.SOAK_MINUTES || 3);
 const SOAK_TIME_SCALE = Number(process.env.SOAK_TIME_SCALE || (SOAK_MINUTES >= 60 ? 1 : 0.1));
+const SOAK_STREAM_ENABLED = process.env.JAW_SOAK_STREAM !== '0';
+const SOAK_PREPEND_ENABLED = process.env.JAW_SOAK_PREPEND !== '0';
+const SOAK_TAB_CYCLE_ENABLED = process.env.JAW_SOAK_TAB_CYCLE !== '0';
 const EVIDENCE_PATH = join(ROOT, 'refs/091-baseline-full-budget.json');
 
 const SEGMENT_KEYS = [
@@ -366,24 +369,27 @@ if (SOAK_ENABLED) test('091 Chrome soak: 20Hz + prepend/tab cycles + five-minute
     let prependId = 2_000_000;
     let prepends = 0;
     let tabCycles = 0;
-    const samples: Array<{ elapsedMs: number; simulatedMinutes: number; heapBytes: number; domNodes: number; documents: number; jsEventListeners: number }> = [];
+    const samples: Array<{ elapsedMs: number; simulatedMinutes: number; heapBytes: number; domNodes: number; documents: number; jsEventListeners: number; harnessRows: number; retainedStreamRows: number }> = [];
     const sample = async (elapsedMs: number): Promise<void> => {
         const heap = await collectHeapUsagePostGc(session);
         const dom = await sampleDomCountersMedian(session, 3);
-        samples.push({ elapsedMs, simulatedMinutes: elapsedMs / SOAK_TIME_SCALE / 60_000, heapBytes: heap.usedSizeBytes, domNodes: dom.nodes, documents: dom.documents, jsEventListeners: dom.jsEventListeners });
+        const harness = await page.evaluate(() => window.__jawTurnStreamFixture!.diagnostics());
+        samples.push({ elapsedMs, simulatedMinutes: elapsedMs / SOAK_TIME_SCALE / 60_000, heapBytes: heap.usedSizeBytes, domNodes: dom.nodes, documents: dom.documents, jsEventListeners: dom.jsEventListeners, harnessRows: harness.rowCount, retainedStreamRows: harness.retainedStreamRows });
     };
     await sample(0);
     nextSampleAt = sampleIntervalMs;
 
     while (performance.now() - startedAt < durationMs) {
         const elapsedMs = performance.now() - startedAt;
-        streamId += 1;
-        await page.evaluate((id) => window.__jawTurnStreamFixture!.append({
-            id, role: 'assistant', content: `soak stream ${id}`, cli: 'codex', model: 'model-0', tool_log: null,
-            trace_run_id: null, turn_id: `soak-${id}`, cost_usd: null, duration_ms: 42, working_dir: '/tmp/jaw-fixture',
-            created_at: new Date(0).toISOString(), turn_segments: [],
-        }), streamId);
-        if (elapsedMs >= nextPrependAt) {
+        if (SOAK_STREAM_ENABLED) {
+            streamId += 1;
+            await page.evaluate((id) => window.__jawTurnStreamFixture!.append({
+                id, role: 'assistant', content: `soak stream ${id}`, cli: 'codex', model: 'model-0', tool_log: null,
+                trace_run_id: null, turn_id: `soak-${id}`, cost_usd: null, duration_ms: 42, working_dir: '/tmp/jaw-fixture',
+                created_at: new Date(0).toISOString(), turn_segments: [],
+            }), streamId);
+        }
+        if (SOAK_PREPEND_ENABLED && elapsedMs >= nextPrependAt) {
             prependId += 1;
             await page.evaluate((id) => window.__jawTurnStreamFixture!.prepend([{
                 id, role: 'assistant', content: `soak prepend ${id}`, cli: 'codex', model: 'model-0', tool_log: null,
@@ -393,7 +399,7 @@ if (SOAK_ENABLED) test('091 Chrome soak: 20Hz + prepend/tab cycles + five-minute
             prepends += 1;
             nextPrependAt += prependIntervalMs;
         }
-        if (elapsedMs >= nextTabAt) {
+        if (SOAK_TAB_CYCLE_ENABLED && elapsedMs >= nextTabAt) {
             await page.evaluate(() => window.__jawTurnStreamFixture!.cycleSidePaneTab());
             tabCycles += 1;
             nextTabAt += tabIntervalMs;
@@ -410,10 +416,14 @@ if (SOAK_ENABLED) test('091 Chrome soak: 20Hz + prepend/tab cycles + five-minute
     const growthBytes = samples.at(-1)!.heapBytes - samples[0].heapBytes;
     const growthCapBytes = Math.max(16 * 1024 * 1024, samples[0].heapBytes * 0.1);
     const slopeCapBytesPerHour = 8 * 1024 * 1024;
+    const harness = await page.evaluate(() => window.__jawTurnStreamFixture!.diagnostics());
+    const report: Record<string, unknown> = { status: SOAK_MINUTES >= 60 && SOAK_TIME_SCALE === 1 ? 'PASS' : 'SANITY_PASS', runtime: 'headless-chrome', durationMinutes: SOAK_MINUTES, timeScale: SOAK_TIME_SCALE, contract: { streamHz: SOAK_STREAM_ENABLED ? 20 : 0, sampleEveryMinutes: 5, prependEveryMinutes: SOAK_PREPEND_ENABLED ? 5 : null, tabCycleEveryMinutes: SOAK_TAB_CYCLE_ENABLED ? 2 : null, slopeWindowMinutes: 30, slopeMinimumSamples: 7 }, drivers: { stream: SOAK_STREAM_ENABLED, prepend: SOAK_PREPEND_ENABLED, tabCycle: SOAK_TAB_CYCLE_ENABLED }, prepends, tabCycles, harness, growthBytes, growthCapBytes, slopeBytesPerHour, slopeCapBytesPerHour, samples };
+    // Print before assertions so a failed gate retains its complete heap/DOM/
+    // listener and harness-retention time series for RCA.
+    console.log('[091 soak report]', JSON.stringify(report));
     assert.ok(slopeBytesPerHour <= slopeCapBytesPerHour, `heap slope ${slopeBytesPerHour}B/h <= ${slopeCapBytesPerHour}B/h`);
     assert.ok(growthBytes <= growthCapBytes, `heap growth ${growthBytes}B <= ${growthCapBytes}B`);
-    const report: Record<string, unknown> = { status: SOAK_MINUTES >= 60 && SOAK_TIME_SCALE === 1 ? 'PASS' : 'SANITY_PASS', runtime: 'headless-chrome', durationMinutes: SOAK_MINUTES, timeScale: SOAK_TIME_SCALE, contract: { streamHz: 20, sampleEveryMinutes: 5, prependEveryMinutes: 5, tabCycleEveryMinutes: 2, slopeWindowMinutes: 30, slopeMinimumSamples: 7 }, prepends, tabCycles, growthBytes, growthCapBytes, slopeBytesPerHour, slopeCapBytesPerHour, samples };
-    console.log('[091 soak report]', JSON.stringify(report));
+    assert.ok(harness.retainedStreamRows <= harness.streamRetentionCap, `fixture stream retention ${harness.retainedStreamRows} <= ${harness.streamRetentionCap}`);
     const browserIndex = browsers.indexOf(browser);
     if (browserIndex >= 0) browsers.splice(browserIndex, 1);
     const closeWithin = async (close: () => Promise<void>): Promise<'closed' | 'timeout'> => {
