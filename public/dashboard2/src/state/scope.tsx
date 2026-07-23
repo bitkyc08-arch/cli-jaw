@@ -33,6 +33,7 @@ export interface SidePanePanelInstance {
     title: string;
     payload: unknown;
     keepAlive: boolean;
+    ordinal: number;
     lastActiveAt: number;
 }
 
@@ -57,6 +58,15 @@ export interface PendingNotesIntent {
 export type LeaveGuard = () => boolean | Promise<boolean>;
 
 export const SIDE_PANE_PANEL_LIMIT = 8;
+const SIDE_PANE_STORAGE_KEY = 'd2.sidepane.v1';
+const RESTORABLE_PANEL_TYPES = new Set<SidePanePanelType>([
+    'terminal',
+    'browser',
+    'files',
+    'notes',
+    'board',
+    'reminders',
+]);
 
 export interface AppScopeState {
     selected: SessionScope | null;
@@ -117,6 +127,87 @@ export const initialAppScopeState: AppScopeState = {
 };
 
 const AppScopeContext = createContext<AppScopeValue | null>(null);
+
+interface PersistedPanelInstance {
+    type: string;
+    key: string;
+    title: string;
+    keepAlive: boolean;
+    ordinal: number;
+}
+
+interface PersistedSidePaneState {
+    v: 1;
+    instances: PersistedPanelInstance[];
+    activePanelId: string | null;
+}
+
+function isPersistedPanelInstance(value: unknown): value is PersistedPanelInstance {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const instance = value as Record<string, unknown>;
+    return typeof instance['type'] === 'string'
+        && typeof instance['key'] === 'string'
+        && typeof instance['title'] === 'string'
+        && typeof instance['keepAlive'] === 'boolean'
+        && Number.isInteger(instance['ordinal'])
+        && (instance['ordinal'] as number) > 0;
+}
+
+function restoreAppScopeState(): AppScopeState {
+    try {
+        const raw = window.localStorage.getItem(SIDE_PANE_STORAGE_KEY);
+        if (!raw) return initialAppScopeState;
+        const value = JSON.parse(raw) as Partial<PersistedSidePaneState>;
+        if (value.v !== 1
+            || !Array.isArray(value.instances)
+            || !value.instances.every(isPersistedPanelInstance)
+            || (value.activePanelId !== null && typeof value.activePanelId !== 'string')) {
+            return initialAppScopeState;
+        }
+        const ordinals = value.instances.map((instance) => instance.ordinal);
+        if (value.instances.length > SIDE_PANE_PANEL_LIMIT || new Set(ordinals).size !== ordinals.length) {
+            return initialAppScopeState;
+        }
+        const panelInstances: SidePanePanelInstance[] = value.instances.flatMap((instance) => {
+            if (!RESTORABLE_PANEL_TYPES.has(instance.type as SidePanePanelType)) return [];
+            return [{
+                id: `side-panel-${instance.ordinal}`,
+                type: instance.type as SidePanePanelType,
+                key: instance.key,
+                title: instance.title,
+                payload: null,
+                keepAlive: instance.keepAlive,
+                ordinal: instance.ordinal,
+                lastActiveAt: instance.ordinal,
+            }];
+        });
+        const restoredIds = new Set(panelInstances.map((instance) => instance.id));
+        return {
+            ...initialAppScopeState,
+            panelInstances,
+            activePanelId: value.activePanelId && restoredIds.has(value.activePanelId)
+                ? value.activePanelId
+                : panelInstances[0]?.id ?? null,
+            nextPanelOrdinal: Math.max(0, ...panelInstances.map((instance) => instance.ordinal)) + 1,
+        };
+    } catch {
+        return initialAppScopeState;
+    }
+}
+
+function persistedSidePaneState(state: AppScopeState): PersistedSidePaneState {
+    return {
+        v: 1,
+        instances: state.panelInstances.map(({ type, key, title, keepAlive, ordinal }) => ({
+            type,
+            key,
+            title,
+            keepAlive,
+            ordinal,
+        })),
+        activePanelId: state.activePanelId,
+    };
+}
 
 function defaultKeepAlive(type: SidePanePanelType): boolean {
     return type === 'terminal' || type === 'browser' || type === 'notes' || type === 'board';
@@ -185,6 +276,7 @@ export function scopeReducer(state: AppScopeState, action: AppScopeAction): AppS
                 title: action.input.title,
                 payload: action.input.payload ?? null,
                 keepAlive: action.input.keepAlive ?? defaultKeepAlive(action.input.type),
+                ordinal: state.nextPanelOrdinal,
                 lastActiveAt: action.at,
             };
             return {
@@ -224,7 +316,7 @@ export function scopeReducer(state: AppScopeState, action: AppScopeAction): AppS
 }
 
 export function AppScopeProvider(props: PropsWithChildren): JSX.Element {
-    const [state, dispatch] = useReducer(scopeReducer, initialAppScopeState);
+    const [state, dispatch] = useReducer(scopeReducer, initialAppScopeState, restoreAppScopeState);
     const stateRef = useRef(state);
     const leaveGuards = useRef(new Map<string, LeaveGuard>());
     const dirtyChecks = useRef(new Map<string, () => boolean>());
@@ -288,6 +380,13 @@ export function AppScopeProvider(props: PropsWithChildren): JSX.Element {
         return () => window.removeEventListener('beforeunload', onBeforeUnload);
     }, [hasDirty]);
     useEffect(() => subscribeNotesOpen(path => { void openNotesAt(path); }), [openNotesAt]);
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(SIDE_PANE_STORAGE_KEY, JSON.stringify(persistedSidePaneState(state)));
+        } catch {
+            // Persistence is best-effort; in-memory panel state remains authoritative.
+        }
+    }, [state.activePanelId, state.panelInstances]);
 
     const value = useMemo<AppScopeValue>(() => ({
         ...state,
