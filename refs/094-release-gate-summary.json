@@ -1,53 +1,89 @@
 {
-  "rcCommit": "41804212",
-  "runDate": "2026-07-20T10:00:00+09:00",
-  "gates": {
-    "090_a11y": {
-      "status": "pass",
-      "commit": "bc7f4217",
-      "summary": "21 a11y gaps fixed: CRITICAL 3 (resize handles, text-4 contrast), HIGH 9 (tabpanel, roving tabindex, combobox, focus-visible), MEDIUM 9 (menu focus, dots, escape, inert, reduced-motion)",
-      "evidence": "tsc 0 errors, build pass, 9 files 304 insertions"
+  "schemaVersion": 2,
+  "rcSha": "dcc84a835f467fb421caee3534991b44f31af9c1",
+  "generatedAt": "2026-07-23",
+  "note": "260723 WP4 honest rewrite (114). Previous summary (RC 41804212) recorded allRequired/cutoverReady=true while deferring hard gates — superseded.",
+  "predicates": {
+    "webGateReady": {
+      "value": true,
+      "requiredGateIds": [
+        "build",
+        "build-frontend",
+        "typecheck",
+        "typecheck-frontend",
+        "unit-glob",
+        "browser-suites",
+        "e2e-4",
+        "turn-stream-budget",
+        "panel-budget",
+        "soak-60min-chrome",
+        "a11y",
+        "theme-matrix",
+        "shortcuts-responsive",
+        "render-parity",
+        "verify-counts"
+      ],
+      "blocked": []
     },
-    "091_performance": {
-      "status": "pass",
-      "commit": "a1789753",
-      "summary": "7/7 budget gates pass: DOM 343/2500, p95 9.6ms/50ms, anchor 0px/4px, heap 930KB/16MiB. Bundle: Shiki/Mermaid/KaTeX all lazy.",
-      "evidence": "refs/091-final-shell-budget.json",
-      "deferred": ["panel budget", "render corpus", "1hr soak", "cache threshold"]
+    "preCutoverReady": {
+      "value": false,
+      "requiredGateIds": [
+        "100-section1-all"
+      ],
+      "blocked": [
+        "071-075/085/091/093/094 문서 active 잔존",
+        "renderCorpus corpus-consent NEEDS_HUMAN",
+        "최종 RC 미고정(WP5 closeout 소유)",
+        "Electron soak 미실행(WP5)"
+      ]
     },
-    "092_theme": {
-      "status": "pass",
-      "commit": "52d425a6",
-      "summary": "99 manager-token aliases migrated to v4. manager-tokens.css import removed (0 refs). Light/dark/auto themes implemented.",
-      "evidence": "rg manager-tokens = 0, tsc 0 errors"
-    },
-    "093_shortcuts": {
-      "status": "pass",
-      "commit": "3dfcaef4",
-      "summary": "IME guard (P0), Cmd+N/K registered, responsive auto-collapse <1024px, tab overflow picker 7+, Cmd+W scoped to pane focus.",
-      "evidence": "tsc 0 errors, build 460ms, 6 files 462 insertions"
-    },
-    "094_integration": {
-      "status": "pass",
-      "rcCommit": "41804212",
-      "summary": "All 090-093 gates pass on single RC. Budget re-verified: 7/7 pass. verify-counts 0 mismatches. structure/frontend.md updated.",
-      "evidence": "refs/094-release-gate-summary.json (this file)"
-    },
-    "095_ux_hardening": {
-      "status": "pass",
-      "summary": "WP1-WP5 commits backfilled, MEDIUM deferrals routed to 090/092/093 (all now done).",
-      "evidence": "095 doc status: done"
-    },
-    "096_scroll": {
-      "status": "pass",
-      "summary": "Product criteria met (c063101d). 044 browser gate flake deferred as known-limitation to 091 instrumented fix.",
-      "evidence": "096 doc status: done"
+    "releaseReady": {
+      "value": false,
+      "requiredGateIds": [
+        "preCutoverReady",
+        "3os-package-matrix",
+        "direct-os-smokes"
+      ],
+      "blocked": [
+        "3-OS 패키지/직접 스모크 CI-SCOPED — native runner 필요"
+      ]
     }
   },
-  "typecheck": { "command": "npx tsc --noEmit -p tsconfig.frontend.json", "exitCode": 0 },
-  "build": { "command": "npm run build:frontend", "exitCode": 0, "durationMs": 460 },
-  "budgetRerun": { "command": "npm run test:dashboard2:turn-stream-budget", "result": "7/7 pass", "durationMs": 66820 },
-  "verifyCounts": { "command": "bash structure/verify-counts.sh", "mismatches": 0 },
-  "allRequired": true,
-  "cutoverReady": true
+  "gates": {
+    "build": "pass",
+    "build-frontend": "pass",
+    "typecheck": "pass",
+    "typecheck-frontend": "pass",
+    "unit-glob": "pass",
+    "browser-suites": "pass",
+    "e2e-core-flow": "pass",
+    "e2e-feature-flow": "pass",
+    "e2e-responsive-theme": "pass",
+    "e2e-electron-flow": "pass",
+    "e2e-receipt": "pass (refs/094-e2e-receipt.json skipCount=0)",
+    "render-parity": "pass (7/7 exit 0 after 113.1 rig fixes)",
+    "render-corpus-parity": "blocked (corpus-consent NEEDS_HUMAN — curated-synthetic only)",
+    "3-runtime-replay": "not-run (048 evidence 기존; 최종 RC에서 재실행 — WP5)",
+    "gate-d-electron": "partial (pre-cutover 실기 스모크 pass — refs/094-precutover-electron-smoke.md; packaged default-URL은 WP5)",
+    "turn-stream-budget": "pass (7/7)",
+    "panel-budget": "pass (evidence 091-baseline-full-budget.json)",
+    "soak-60min-chrome": "pass (slope 1.16MB/h — 091 evidence soak60min)",
+    "soak-electron": "blocked (WP5 실기 병합)",
+    "a11y": "pass (090 evidence — axe 0, AA 24/24)",
+    "theme-matrix": "pass (092 evidence)",
+    "shortcuts-responsive": "pass (093 evidence — Electron dispatch WP5 잔여)",
+    "check-frontend-build-output": "pass",
+    "gate-all": "pass",
+    "verify-counts": "pass (379)",
+    "screenshot-matrix-full": "not-run (부분: 각 evidence 스크린샷 — 전수 matrix는 100 게이트에서)",
+    "test-all": "not-run (full suite는 WP5 final RC에서)"
+  },
+  "allRequired": false,
+  "docStatus": {
+    "094": "active (corpus/Electron 잔여)",
+    "090": "done",
+    "091": "active",
+    "092": "done",
+    "093": "active"
+  }
 }
