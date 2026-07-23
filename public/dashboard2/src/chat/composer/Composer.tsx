@@ -261,7 +261,7 @@ export function Composer({
                    aria-label="Message"
                    placeholder="Message cli-jaw"
                     role={menuOpen ? 'combobox' : undefined}
-                    aria-expanded={menuOpen}
+                    aria-expanded={menuOpen ? true : undefined}
                     aria-haspopup={menuOpen ? 'listbox' : undefined}
                     aria-controls={menuId}
                     aria-activedescendant={activeDescendantId}

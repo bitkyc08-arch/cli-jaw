@@ -418,7 +418,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                 </div>
             </div>
 
-            <div className="d2-sidebar-list" role="tabpanel" id="d2-sidebar-panel" aria-labelledby={activeTabId} aria-live="polite">
+            <div className="d2-sidebar-list" role="tabpanel" id="d2-sidebar-panel" aria-labelledby={activeTabId}>
                {mode === 'jwc' ? (
                     jwcState.loading ? (
                         <div className="d2-inline-state"><span className="d2-spinner" aria-hidden="true" />Loading Code sessions</div>

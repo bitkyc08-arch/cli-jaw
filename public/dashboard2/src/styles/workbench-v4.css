@@ -602,17 +602,3 @@
         pointer-events: none;
     }
 }
-
-@media (min-width: 720px) and (max-width: 1023px) {
-    /* Sidebar is auto-collapsed by JS; chat fills the full width.
-       Ensure side-pane also stays collapsed in this band. */
-    .d2-shell.d2-sb-closed > .d2-workbench.d2-workbench-side-open {
-        grid-template-columns: minmax(0, 1fr) 0 0;
-    }
-
-    .d2-shell.d2-sb-closed > .d2-workbench.d2-workbench-side-open > .d2-workbench-divider-drag,
-    .d2-shell.d2-sb-closed > .d2-workbench.d2-workbench-side-open > .d2-workbench-side-pane-slot {
-        visibility: hidden;
-        pointer-events: none;
-    }
-}

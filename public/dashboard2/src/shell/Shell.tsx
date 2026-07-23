@@ -105,6 +105,7 @@ export function Shell(): JSX.Element {
             style={!sidebarCollapsed ? { '--d2-sidebar-w': `${sidebarWidth}px` } as React.CSSProperties : undefined}
         >
             <a href="#d2-chat-area" className="d2-skip-nav">Skip to main content</a>
+            <h1 className="d2-sr-only">cli-jaw dashboard</h1>
             <Sidebar onClose={() => {
                 // User explicitly closed → mark as manual so auto-restore skips it
                 autoCollapsedRef.current = false;

@@ -27,8 +27,8 @@
     --border-h: rgba(255, 255, 255, .10);
     --text: #f0f0f2;
     --text-2: #b0b0b8;
-    --text-3: #707078;
-    --text-4: #8a8a94;
+    --text-3: #92929b;
+    --text-4: #82828b;
     --accent: #6ea8fe;
     --accent-soft: rgba(110, 168, 254, .12);
     --accent-glow: rgba(110, 168, 254, .25);
@@ -64,8 +64,8 @@
     --border-h: rgba(0, 0, 0, .14);
     --text: #18202a;
     --text-2: #3d4854;
-    --text-3: #657180;
-    --text-4: #9ba7b5;
+    --text-3: #586574;
+    --text-4: #5e6b7a;
     --accent: #0969da;
     --accent-soft: rgba(9, 105, 218, .10);
     --accent-glow: rgba(9, 105, 218, .20);
@@ -102,8 +102,8 @@
         --border-h: rgba(0, 0, 0, .14);
         --text: #18202a;
         --text-2: #3d4854;
-        --text-3: #657180;
-        --text-4: #9ba7b5;
+        --text-3: #586574;
+        --text-4: #5e6b7a;
         --accent: #0969da;
         --accent-soft: rgba(9, 105, 218, .10);
         --accent-glow: rgba(9, 105, 218, .20);

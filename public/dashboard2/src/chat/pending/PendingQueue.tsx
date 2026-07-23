@@ -17,6 +17,12 @@ function actionLabel(action: PendingQueueAction, phase: string | undefined): str
 export function PendingQueueView(props: { store: PendingQueueStore }): JSX.Element | null {
     const snapshot = usePendingQueue(props.store);
     if (snapshot.rows.length === 0) return null;
+    const announcement = snapshot.rows.flatMap(({ overlay }) => {
+        if (overlay?.phase === 'armed') {
+            return [`${overlay.action === 'steer' ? 'Steer' : 'Delete'} armed. Activate again to cancel.`];
+        }
+        return overlay?.phase === 'error' ? [overlay.message] : [];
+    }).join(' ');
 
     return (
         <section className="d2-pending" aria-label="Pending messages">
@@ -36,7 +42,7 @@ export function PendingQueueView(props: { store: PendingQueueStore }): JSX.Eleme
                             <div className="d2-pending-copy">
                                 <p>{item.prompt}</p>
                                 <span>{item.source}</span>
-                                <span className="d2-pending-status" aria-live="polite" aria-atomic="true">
+                                <span className="d2-pending-status">
                                     {status}
                                 </span>
                             </div>
@@ -66,6 +72,7 @@ export function PendingQueueView(props: { store: PendingQueueStore }): JSX.Eleme
                     );
                 })}
             </ol>
+            <span className="d2-sr-only" aria-live="polite" aria-atomic="true">{announcement}</span>
         </section>
     );
 }

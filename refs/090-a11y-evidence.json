@@ -1,0 +1,536 @@
+{
+  "schemaVersion": 1,
+  "gate": "090-dashboard2-a11y",
+  "generatedAt": "2026-07-23T14:50:03.894Z",
+  "baselineCommit": "5196313b45a17b68d0a1fb65c163cba4f6cd14ef",
+  "sourceUnderTest": "working-tree",
+  "command": "npx tsx --test tests/browser/dashboard2-a11y.test.ts",
+  "thresholds": {
+    "normalText": 4.5,
+    "largeTextAndUi": 3,
+    "axeBlockedImpacts": [
+      "serious",
+      "critical"
+    ],
+    "moderatePolicy": "external iframe boundaries only"
+  },
+  "summary": {
+    "severityCounts": {
+      "minor": 0,
+      "moderate": 0,
+      "serious": 0,
+      "critical": 0
+    },
+    "runs": 6,
+    "keyboardFlowsPassed": 6,
+    "contrastRows": 24,
+    "contrastFailures": 0
+  },
+  "externalIframeExceptions": [],
+  "runs": [
+    {
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "focusOrder": [
+        "A11y fixture:3506 · online",
+        "Alpha session0 messagesActive",
+        "Message",
+        "Open side pane",
+        "Browser",
+        "Close side pane",
+        "Open side pane"
+      ],
+      "sentMessages": 1,
+      "violations": [],
+      "reducedMotion": {
+        "spinner": {
+          "animationName": "d2-spin",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "shimmer": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "glow": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        }
+      }
+    },
+    {
+      "theme": "dark",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "focusOrder": [
+        "A11y fixture:3506 · online",
+        "Alpha session0 messagesActive",
+        "Message",
+        "Open side pane",
+        "Browser",
+        "Close side pane",
+        "Open side pane"
+      ],
+      "sentMessages": 1,
+      "violations": [],
+      "reducedMotion": {
+        "spinner": {
+          "animationName": "d2-spin",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "shimmer": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "glow": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        }
+      }
+    },
+    {
+      "theme": "dark",
+      "viewport": {
+        "width": 720,
+        "height": 900
+      },
+      "focusOrder": [
+        "Open sidebar",
+        "A11y fixture:3506 · online",
+        "Alpha session0 messagesActive",
+        "Close sidebar",
+        "Message",
+        "Open side pane",
+        "Browser",
+        "Close side pane",
+        "Open side pane"
+      ],
+      "sentMessages": 1,
+      "violations": [],
+      "reducedMotion": {
+        "spinner": {
+          "animationName": "d2-spin",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "shimmer": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "glow": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        }
+      }
+    },
+    {
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "focusOrder": [
+        "A11y fixture:3506 · online",
+        "Alpha session0 messagesActive",
+        "Message",
+        "Open side pane",
+        "Browser",
+        "Close side pane",
+        "Open side pane"
+      ],
+      "sentMessages": 1,
+      "violations": [],
+      "reducedMotion": {
+        "spinner": {
+          "animationName": "d2-spin",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "shimmer": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "glow": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        }
+      }
+    },
+    {
+      "theme": "light",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "focusOrder": [
+        "A11y fixture:3506 · online",
+        "Alpha session0 messagesActive",
+        "Message",
+        "Open side pane",
+        "Browser",
+        "Close side pane",
+        "Open side pane"
+      ],
+      "sentMessages": 1,
+      "violations": [],
+      "reducedMotion": {
+        "spinner": {
+          "animationName": "d2-spin",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "shimmer": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "glow": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        }
+      }
+    },
+    {
+      "theme": "light",
+      "viewport": {
+        "width": 720,
+        "height": 900
+      },
+      "focusOrder": [
+        "Open sidebar",
+        "A11y fixture:3506 · online",
+        "Alpha session0 messagesActive",
+        "Close sidebar",
+        "Message",
+        "Open side pane",
+        "Browser",
+        "Close side pane",
+        "Open side pane"
+      ],
+      "sentMessages": 1,
+      "violations": [],
+      "reducedMotion": {
+        "spinner": {
+          "animationName": "d2-spin",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "shimmer": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        },
+        "glow": {
+          "animationName": "none",
+          "animationDuration": "1e-05s",
+          "stopped": true
+        }
+      }
+    }
+  ],
+  "contrast": [
+    {
+      "theme": "dark",
+      "token": "--text-3",
+      "foreground": "rgb(146, 146, 155)",
+      "surface": "bg",
+      "background": "rgb(13, 13, 15)",
+      "compositedBackground": "rgb(13, 13, 15)",
+      "ratio": 6.29,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--text-3",
+      "foreground": "rgb(146, 146, 155)",
+      "surface": "surface",
+      "background": "rgb(26, 26, 29)",
+      "compositedBackground": "rgb(26, 26, 29)",
+      "ratio": 5.63,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--text-3",
+      "foreground": "rgb(146, 146, 155)",
+      "surface": "sidebar-worst-stop",
+      "background": "linear-gradient(rgba(28, 28, 32, 0.72) 0%, rgba(22, 22, 25, 0.78) 30%, rgba(21, 21, 23, 0.84) 70%, rgba(21, 21, 23, 0.9) 100%)",
+      "compositedBackground": "rgb(24, 24, 27)",
+      "ratio": 5.75,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--text-4",
+      "foreground": "rgb(130, 130, 139)",
+      "surface": "bg",
+      "background": "rgb(13, 13, 15)",
+      "compositedBackground": "rgb(13, 13, 15)",
+      "ratio": 5.1,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--text-4",
+      "foreground": "rgb(130, 130, 139)",
+      "surface": "surface",
+      "background": "rgb(26, 26, 29)",
+      "compositedBackground": "rgb(26, 26, 29)",
+      "ratio": 4.56,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--text-4",
+      "foreground": "rgb(130, 130, 139)",
+      "surface": "sidebar-worst-stop",
+      "background": "linear-gradient(rgba(28, 28, 32, 0.72) 0%, rgba(22, 22, 25, 0.78) 30%, rgba(21, 21, 23, 0.84) 70%, rgba(21, 21, 23, 0.9) 100%)",
+      "compositedBackground": "rgb(24, 24, 27)",
+      "ratio": 4.66,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--positive",
+      "foreground": "rgb(91, 216, 138)",
+      "surface": "surface",
+      "background": "rgb(26, 26, 29)",
+      "compositedBackground": "rgb(26, 26, 29)",
+      "ratio": 9.62,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--positive",
+      "foreground": "rgb(91, 216, 138)",
+      "surface": "pos-dim-on-surface",
+      "background": "rgba(91, 216, 138, 0.15)",
+      "compositedBackground": "rgb(36, 55, 45)",
+      "ratio": 7.05,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--warn",
+      "foreground": "rgb(229, 185, 79)",
+      "surface": "surface",
+      "background": "rgb(26, 26, 29)",
+      "compositedBackground": "rgb(26, 26, 29)",
+      "ratio": 9.41,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--warn-text",
+      "foreground": "rgb(232, 152, 64)",
+      "surface": "surface",
+      "background": "rgb(26, 26, 29)",
+      "compositedBackground": "rgb(26, 26, 29)",
+      "ratio": 7.44,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--danger",
+      "foreground": "rgb(248, 113, 113)",
+      "surface": "surface",
+      "background": "rgb(26, 26, 29)",
+      "compositedBackground": "rgb(26, 26, 29)",
+      "ratio": 6.28,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "token": "--accent",
+      "foreground": "rgb(110, 168, 254)",
+      "surface": "accent-soft-on-surface",
+      "background": "rgba(110, 168, 254, 0.12)",
+      "compositedBackground": "rgb(36, 43, 56)",
+      "ratio": 5.88,
+      "threshold": 3,
+      "usage": "ui",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--text-3",
+      "foreground": "rgb(88, 101, 116)",
+      "surface": "bg",
+      "background": "rgb(245, 247, 250)",
+      "compositedBackground": "rgb(245, 247, 250)",
+      "ratio": 5.55,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--text-3",
+      "foreground": "rgb(88, 101, 116)",
+      "surface": "surface",
+      "background": "rgb(255, 255, 255)",
+      "compositedBackground": "rgb(255, 255, 255)",
+      "ratio": 5.95,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--text-3",
+      "foreground": "rgb(88, 101, 116)",
+      "surface": "sidebar-worst-stop",
+      "background": "linear-gradient(rgba(238, 241, 245, 0.82) 0%, rgba(235, 238, 243, 0.88) 30%, rgba(232, 236, 241, 0.92) 70%, rgba(230, 234, 239, 0.95) 100%)",
+      "compositedBackground": "rgb(231, 235, 240)",
+      "ratio": 4.96,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--text-4",
+      "foreground": "rgb(94, 107, 122)",
+      "surface": "bg",
+      "background": "rgb(245, 247, 250)",
+      "compositedBackground": "rgb(245, 247, 250)",
+      "ratio": 5.07,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--text-4",
+      "foreground": "rgb(94, 107, 122)",
+      "surface": "surface",
+      "background": "rgb(255, 255, 255)",
+      "compositedBackground": "rgb(255, 255, 255)",
+      "ratio": 5.44,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--text-4",
+      "foreground": "rgb(94, 107, 122)",
+      "surface": "sidebar-worst-stop",
+      "background": "linear-gradient(rgba(238, 241, 245, 0.82) 0%, rgba(235, 238, 243, 0.88) 30%, rgba(232, 236, 241, 0.92) 70%, rgba(230, 234, 239, 0.95) 100%)",
+      "compositedBackground": "rgb(231, 235, 240)",
+      "ratio": 4.53,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--positive",
+      "foreground": "rgb(22, 121, 75)",
+      "surface": "surface",
+      "background": "rgb(255, 255, 255)",
+      "compositedBackground": "rgb(255, 255, 255)",
+      "ratio": 5.43,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--positive",
+      "foreground": "rgb(22, 121, 75)",
+      "surface": "pos-dim-on-surface",
+      "background": "rgba(22, 121, 75, 0.1)",
+      "compositedBackground": "rgb(232, 242, 237)",
+      "ratio": 4.73,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--warn",
+      "foreground": "rgb(154, 103, 0)",
+      "surface": "surface",
+      "background": "rgb(255, 255, 255)",
+      "compositedBackground": "rgb(255, 255, 255)",
+      "ratio": 4.87,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--warn-text",
+      "foreground": "rgb(125, 82, 0)",
+      "surface": "surface",
+      "background": "rgb(255, 255, 255)",
+      "compositedBackground": "rgb(255, 255, 255)",
+      "ratio": 6.82,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--danger",
+      "foreground": "rgb(180, 35, 24)",
+      "surface": "surface",
+      "background": "rgb(255, 255, 255)",
+      "compositedBackground": "rgb(255, 255, 255)",
+      "ratio": 6.57,
+      "threshold": 4.5,
+      "usage": "normal-text",
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "token": "--accent",
+      "foreground": "rgb(9, 105, 218)",
+      "surface": "accent-soft-on-surface",
+      "background": "rgba(9, 105, 218, 0.1)",
+      "compositedBackground": "rgb(230, 240, 251)",
+      "ratio": 4.51,
+      "threshold": 3,
+      "usage": "ui",
+      "pass": true
+    }
+  ]
+}
