@@ -429,6 +429,71 @@
     white-space: nowrap;
 }
 
+.d2-schedule-heading > button,
+.d2-schedule-row-actions > button {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+}
+
+.d2-schedule-heading > button {
+    margin-left: auto;
+}
+
+.d2-schedule-heading > button:hover,
+.d2-schedule-row-actions > button:hover:not(:disabled) {
+    border-color: var(--border-h);
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-schedule-heading > button:focus-visible,
+.d2-schedule-row-actions > button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.d2-schedule-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.d2-schedule-row-actions > button:disabled {
+    cursor: wait;
+    opacity: .45;
+}
+
+.d2-schedule-decision-note {
+    margin: -2px 2px 12px;
+    color: var(--text-3);
+    font-size: 10px;
+    line-height: 15px;
+    text-wrap: balance;
+}
+
+.d2-schedule-dispatch-result {
+    color: var(--accent) !important;
+    font-weight: 600;
+}
+
+.d2-reminders-schedule-row[data-dispatch-status='disabled'] .d2-schedule-dispatch-result,
+.d2-reminders-schedule-row[data-dispatch-status='no_target'] .d2-schedule-dispatch-result {
+    color: var(--text-3) !important;
+}
+
+.d2-reminders-schedule-row[data-dispatch-status='claim-changed'] .d2-schedule-dispatch-result {
+    color: var(--warn) !important;
+}
+
 .d2-reminders-empty,
 .d2-reminders-loading {
     margin: 0;
@@ -693,6 +758,37 @@
     color: var(--accent);
 }
 
+.d2-schedule-editor .d2-schedule-enabled-field {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.d2-schedule-editor .d2-schedule-enabled-field input {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    padding: 0;
+}
+
+.d2-schedule-field-error {
+    margin: -6px 0 0;
+    color: var(--danger);
+    font-size: 10px;
+    line-height: 14px;
+}
+
+.d2-schedule-editor-spacer {
+    flex: 1;
+}
+
+.d2-reminder-edit footer .d2-schedule-delete {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+    color: var(--danger);
+}
+
 @container (max-width: 360px) {
     .d2-reminders-form-row {
         grid-template-columns: minmax(0, 1fr);
@@ -718,8 +814,12 @@
         text-align: left;
     }
 
-    .d2-schedule-switch {
+    .d2-schedule-row-actions {
         grid-column: 2;
+        justify-content: flex-start;
+    }
+
+    .d2-schedule-row-actions .d2-schedule-switch {
         grid-template-columns: 28px auto;
         align-items: center;
         justify-self: start;
