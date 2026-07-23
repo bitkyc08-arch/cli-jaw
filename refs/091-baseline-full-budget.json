@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineSha": "481aac65f0a43c036dea1fd6412217174ef4b5e4",
-  "measuredAt": "2026-07-23T17:28:44Z",
+  "measuredAt": "2026-07-23T18:31:59.863Z",
   "runtimeScope": {
     "panelBudget": "headless Chrome with deterministic desktop bridge fakes",
     "soak": "headless Chrome; packaged Electron soak remains WP5",
@@ -176,9 +176,192 @@
       "reason": "render cache exposes pool occupancy but not markdown/height hit counters"
     }
   },
-  "soak": {"status":"SANITY_PASS","runtime":"headless-chrome","durationMinutes":15,"timeScale":0.1,"contract":{"streamHz":20,"sampleEveryMinutes":5,"prependEveryMinutes":5,"tabCycleEveryMinutes":2,"slopeWindowMinutes":30,"slopeMinimumSamples":7},"drivers":{"stream":true,"prepend":true,"tabCycle":true},"prepends":29,"tabCycles":74,"harness":{"rowCount":10229,"prependedRows":29,"retainedStreamRows":200,"streamRetentionCap":200},"growthBytes":1497928,"growthCapBytes":16777216,"slopeBytesPerHour":281461.27503372636,"slopeCapBytesPerHour":8388608,"samples":[{"elapsedMs":0,"simulatedMinutes":0,"heapBytes":12627256,"domNodes":209,"documents":1,"jsEventListeners":175,"harnessRows":10000,"retainedStreamRows":0},{"elapsedMs":30004.241124999997,"simulatedMinutes":5.0007068541666655,"heapBytes":13907060,"domNodes":225,"documents":1,"jsEventListeners":175,"harnessRows":10201,"retainedStreamRows":200},{"elapsedMs":60035.83079199999,"simulatedMinutes":10.005971798666666,"heapBytes":14010776,"domNodes":228,"documents":1,"jsEventListeners":175,"harnessRows":10202,"retainedStreamRows":200},{"elapsedMs":90029.340375,"simulatedMinutes":15.0048900625,"heapBytes":14105380,"domNodes":231,"documents":1,"jsEventListeners":175,"harnessRows":10203,"retainedStreamRows":200},{"elapsedMs":120039.79275,"simulatedMinutes":20.006632124999996,"heapBytes":14160648,"domNodes":234,"documents":1,"jsEventListeners":175,"harnessRows":10204,"retainedStreamRows":200},{"elapsedMs":150014.119792,"simulatedMinutes":25.002353298666666,"heapBytes":13757192,"domNodes":224,"documents":1,"jsEventListeners":175,"harnessRows":10205,"retainedStreamRows":200},{"elapsedMs":180035.66654200002,"simulatedMinutes":30.00594442366667,"heapBytes":14288876,"domNodes":240,"documents":1,"jsEventListeners":175,"harnessRows":10206,"retainedStreamRows":200},{"elapsedMs":210030.753042,"simulatedMinutes":35.005125506999995,"heapBytes":14347372,"domNodes":243,"documents":1,"jsEventListeners":175,"harnessRows":10207,"retainedStreamRows":200},{"elapsedMs":240027.050667,"simulatedMinutes":40.0045084445,"heapBytes":13851444,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10208,"retainedStreamRows":200},{"elapsedMs":270050.70954199997,"simulatedMinutes":45.00845159033333,"heapBytes":13923732,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10209,"retainedStreamRows":200},{"elapsedMs":300019.695334,"simulatedMinutes":50.00328255566666,"heapBytes":13916876,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10210,"retainedStreamRows":200},{"elapsedMs":330008.36412499996,"simulatedMinutes":55.001394020833324,"heapBytes":14532016,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10211,"retainedStreamRows":200},{"elapsedMs":360031.087,"simulatedMinutes":60.00518116666666,"heapBytes":14463916,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10212,"retainedStreamRows":200},{"elapsedMs":390032.071084,"simulatedMinutes":65.00534518066667,"heapBytes":13966932,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10213,"retainedStreamRows":200},{"elapsedMs":420044.385334,"simulatedMinutes":70.00739755566667,"heapBytes":14467188,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10214,"retainedStreamRows":200},{"elapsedMs":450037.036875,"simulatedMinutes":75.0061728125,"heapBytes":14539532,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10215,"retainedStreamRows":200},{"elapsedMs":480006.46395899996,"simulatedMinutes":80.00107732649998,"heapBytes":13957580,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10216,"retainedStreamRows":200},{"elapsedMs":510051.626625,"simulatedMinutes":85.00860443749998,"heapBytes":14539300,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10217,"retainedStreamRows":200},{"elapsedMs":540048.620167,"simulatedMinutes":90.00810336116666,"heapBytes":13931820,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10218,"retainedStreamRows":200},{"elapsedMs":570007.255334,"simulatedMinutes":95.00120922233332,"heapBytes":13974764,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10219,"retainedStreamRows":200},{"elapsedMs":600029.306417,"simulatedMinutes":100.00488440283334,"heapBytes":14476032,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10220,"retainedStreamRows":200},{"elapsedMs":630048.236334,"simulatedMinutes":105.00803938899999,"heapBytes":13974372,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10221,"retainedStreamRows":200},{"elapsedMs":660047.7530840001,"simulatedMinutes":110.00795884733334,"heapBytes":14476436,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10222,"retainedStreamRows":200},{"elapsedMs":690020.937125,"simulatedMinutes":115.00348952083333,"heapBytes":14550044,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10223,"retainedStreamRows":200},{"elapsedMs":720040.437959,"simulatedMinutes":120.00673965983333,"heapBytes":13943948,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10224,"retainedStreamRows":200},{"elapsedMs":750012.379959,"simulatedMinutes":125.0020633265,"heapBytes":14550848,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10225,"retainedStreamRows":200},{"elapsedMs":780042.6162500001,"simulatedMinutes":130.00710270833335,"heapBytes":14482440,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10226,"retainedStreamRows":200},{"elapsedMs":810051.66275,"simulatedMinutes":135.00861045833332,"heapBytes":14554388,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10227,"retainedStreamRows":200},{"elapsedMs":840034.306709,"simulatedMinutes":140.0057177848333,"heapBytes":14503600,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10228,"retainedStreamRows":200},{"elapsedMs":870032.915834,"simulatedMinutes":145.00548597233333,"heapBytes":14596612,"domNodes":249,"documents":1,"jsEventListeners":175,"harnessRows":10229,"retainedStreamRows":200},{"elapsedMs":900000,"simulatedMinutes":150,"heapBytes":14125184,"domNodes":233,"documents":1,"jsEventListeners":175,"harnessRows":10229,"retainedStreamRows":200}]},
+  "soak": {
+    "status": "PASS",
+    "runtime": "headless-chrome",
+    "durationMinutes": 60,
+    "timeScale": 1,
+    "contract": {
+      "streamHz": 20,
+      "sampleEveryMinutes": 5,
+      "prependEveryMinutes": 5,
+      "tabCycleEveryMinutes": 2,
+      "slopeWindowMinutes": 30,
+      "slopeMinimumSamples": 7
+    },
+    "drivers": {
+      "stream": true,
+      "prepend": true,
+      "tabCycle": true
+    },
+    "prepends": 11,
+    "tabCycles": 29,
+    "harness": {
+      "rowCount": 10211,
+      "prependedRows": 11,
+      "retainedStreamRows": 200,
+      "streamRetentionCap": 200
+    },
+    "growthBytes": 1953444,
+    "growthCapBytes": 16777216,
+    "slopeBytesPerHour": 1163399.2507191075,
+    "slopeCapBytesPerHour": 8388608,
+    "samples": [
+      {
+        "elapsedMs": 0,
+        "simulatedMinutes": 0,
+        "heapBytes": 12610244,
+        "domNodes": 209,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10000,
+        "retainedStreamRows": 0
+      },
+      {
+        "elapsedMs": 300012.72829199996,
+        "simulatedMinutes": 5.000212138199999,
+        "heapBytes": 13912968,
+        "domNodes": 225,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10201,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 600031.3693339999,
+        "simulatedMinutes": 10.000522822233332,
+        "heapBytes": 13608088,
+        "domNodes": 215,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10202,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 900017.960459,
+        "simulatedMinutes": 15.000299340983332,
+        "heapBytes": 13768548,
+        "domNodes": 218,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10203,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 1200036.544042,
+        "simulatedMinutes": 20.000609067366668,
+        "heapBytes": 14352784,
+        "domNodes": 234,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10204,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 1500004.2235,
+        "simulatedMinutes": 25.000070391666668,
+        "heapBytes": 14460612,
+        "domNodes": 237,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10205,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 1800017.415084,
+        "simulatedMinutes": 30.0002902514,
+        "heapBytes": 14089868,
+        "domNodes": 227,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10206,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 2100000.077125,
+        "simulatedMinutes": 35.000001285416666,
+        "heapBytes": 14204052,
+        "domNodes": 230,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10207,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 2400018.838042,
+        "simulatedMinutes": 40.000313967366665,
+        "heapBytes": 14803440,
+        "domNodes": 246,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10208,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 2700033.945584,
+        "simulatedMinutes": 45.000565759733334,
+        "heapBytes": 14901248,
+        "domNodes": 249,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10209,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 3000038.263375,
+        "simulatedMinutes": 50.00063772291667,
+        "heapBytes": 14398444,
+        "domNodes": 233,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10210,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 3300025.725125,
+        "simulatedMinutes": 55.00042875208333,
+        "heapBytes": 15053104,
+        "domNodes": 249,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10211,
+        "retainedStreamRows": 200
+      },
+      {
+        "elapsedMs": 3600000,
+        "simulatedMinutes": 60,
+        "heapBytes": 14563688,
+        "domNodes": 233,
+        "documents": 1,
+        "jsEventListeners": 175,
+        "harnessRows": 10211,
+        "retainedStreamRows": 200
+      }
+    ],
+    "teardown": {
+      "cdpBrowser": "closed",
+      "page": "closed",
+      "context": "closed",
+      "playwrightBrowser": "closed",
+      "processClosed": true
+    }
+  },
   "renderCorpus": {
     "status": "BLOCKED",
     "reason": "corpus-consent NEEDS_HUMAN"
+  },
+  "soak60min": {
+    "status": "PASS",
+    "ranAt": "2026-07-23",
+    "durationMinutes": 60,
+    "slopeBytesPerHour": 1163399,
+    "slopeCapBytesPerHour": 8388608,
+    "growthBytes": 1953444,
+    "growthCapBytes": 16777216,
+    "samples": 13,
+    "listenerDelta": 0,
+    "documentDelta": 0,
+    "retainedStreamRows": "200/200 (T2-aligned FIFO after 150dbb7a rig fix)",
+    "note": "first run FAILED slope 16.9MB/h due to rig retention (fixture bypassed TurnStore); RCA+fix 150dbb7a; rerun PASS"
   }
 }
