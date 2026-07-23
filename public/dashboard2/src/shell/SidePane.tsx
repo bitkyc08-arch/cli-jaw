@@ -9,6 +9,7 @@ import {
     type SidePanePanelType,
 } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
+import { PanelErrorBoundary } from './PanelErrorBoundary.tsx';
 import { BrowserPanel } from './panels/BrowserPanel.tsx';
 import { FileTreePanel } from './panels/FileTreePanel.tsx';
 import { TerminalPanel } from './panels/TerminalPanel.tsx';
@@ -550,13 +551,15 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                     const active = open && panel.id === activePanelId;
                     return (
                         <div key={panel.id} className="d2-side-pane-tab-slot" role="tabpanel" id={`d2-pane-panel-${panel.id}`} aria-labelledby={`d2-pane-tab-${panel.id}`} data-tab={panel.type} style={{ display: active ? undefined : 'none' }} inert={!active} aria-hidden={!active}>
-                            <TabContent
-                                panel={panel}
-                                active={active}
-                                terminalRequests={terminalRequests}
-                                consumeTerminalRequests={consumeTerminalRequests}
-                                consumeTerminalFocus={consumeTerminalFocus}
-                            />
+                            <PanelErrorBoundary panelId={panel.id} guardedClosePanel={guardedClosePanel}>
+                                <TabContent
+                                    panel={panel}
+                                    active={active}
+                                    terminalRequests={terminalRequests}
+                                    consumeTerminalRequests={consumeTerminalRequests}
+                                    consumeTerminalFocus={consumeTerminalFocus}
+                                />
+                            </PanelErrorBoundary>
                         </div>
                     );
                 })}
