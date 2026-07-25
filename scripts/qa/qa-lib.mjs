@@ -48,11 +48,17 @@ export const SURFACES = {
     },
     'hover-dock': {
         owner: 'wp7a',
-        root: '.d2-hover-dock',
+        // The dock predates the d2- convention and uses a bare `hover-dock`
+        // prefix. The old selectors never matched, so every dock scan reported
+        // "not reached" — which earlier runs then read as "no defects".
+        root: '.hover-dock-panel',
         reach: async (page) => {
             await selectFirstOnlineInstance(page);
-            const trigger = page.locator('.d2-hover-dock-trigger');
-            if (await trigger.count()) await trigger.first().click().catch(() => {});
+            const trigger = page.locator('.hover-dock-trigger');
+            if (await trigger.count()) {
+                await trigger.first().click().catch(() => {});
+                await page.waitForTimeout(600);
+            }
         },
     },
 };
