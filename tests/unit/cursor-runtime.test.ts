@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { CURSOR_MODEL_IDS, resolveCursorModelVariant, isCursorFullModelId } from '../../src/agent/cursor-runtime.ts';
+import { CURSOR_MODEL_IDS, CURSOR_REGISTRY_MODELS, resolveCursorModelVariant, isCursorFullModelId } from '../../src/agent/cursor-runtime.ts';
 import { buildArgs, buildResumeArgs } from '../../src/agent/args.ts';
 import { shouldResumeBucketSession } from '../../src/agent/spawn/resume.ts';
 
@@ -19,6 +19,11 @@ test('Cursor effort resolves to model IDs instead of CLI flags', () => {
     assert.equal(resolveCursorModelVariant('claude-opus-4-7-thinking', 'high'), 'claude-opus-4-7-thinking-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-8-thinking', 'high'), 'claude-opus-4-8-thinking-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-8', 'max'), 'claude-opus-4-8-max');
+    // claude-opus-5 must resolve like its opus siblings. xhigh stays verbatim
+    // here (only gpt-5.5 maps xhigh -> extra-high, see cursorEffortSuffix).
+    assert.equal(resolveCursorModelVariant('claude-opus-5', 'max'), 'claude-opus-5-max');
+    assert.equal(resolveCursorModelVariant('claude-opus-5', 'xhigh'), 'claude-opus-5-xhigh');
+    assert.equal(resolveCursorModelVariant('claude-opus-5', 'xhigh-fast'), 'claude-opus-5-xhigh-fast');
 });
 
 test('Cursor full model IDs stay unchanged', () => {
@@ -29,7 +34,7 @@ test('Cursor full model IDs stay unchanged', () => {
 });
 
 test('Cursor model inventory mirrors observed cursor-agent list-models support', () => {
-    assert.equal(CURSOR_MODEL_IDS.length, 135);
+    assert.equal(CURSOR_MODEL_IDS.length, 145);
     assert.ok(CURSOR_MODEL_IDS.includes('composer-2.5-fast'));
     assert.ok(!CURSOR_MODEL_IDS.includes('grok-composer-2.5-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('gpt-5.5-extra-high-fast'));
@@ -38,6 +43,15 @@ test('Cursor model inventory mirrors observed cursor-agent list-models support',
     assert.ok(CURSOR_MODEL_IDS.includes('gemini-3.1-pro'));
     assert.ok(!CURSOR_MODEL_IDS.includes('grok-4.3'));
     for (const model of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-sonnet-5', 'glm-5.2', 'kimi-k2.7-code', 'gemini-3-pro']) assert.ok(CURSOR_MODEL_IDS.includes(model));
+    // claude-opus-5 (opencodex src/adapters/cursor/{discovery,effort-map}.ts):
+    // base entry plus the low..max ladder in both plain and -fast forms.
+    assert.ok(CURSOR_REGISTRY_MODELS.includes('claude-opus-5'));
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
+        assert.ok(CURSOR_MODEL_IDS.includes(`claude-opus-5-${effort}`), `missing claude-opus-5-${effort}`);
+        assert.ok(CURSOR_MODEL_IDS.includes(`claude-opus-5-${effort}-fast`), `missing claude-opus-5-${effort}-fast`);
+    }
+    // Upstream lists no opus-5 thinking variant, unlike fable-5 / opus-4-8.
+    assert.ok(!CURSOR_MODEL_IDS.includes('claude-opus-5-thinking-high'));
     assert.ok(CURSOR_MODEL_IDS.includes('grok-4.5'));
     assert.ok(CURSOR_MODEL_IDS.includes('grok-4.5-fast'));
 });

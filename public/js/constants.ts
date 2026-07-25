@@ -126,6 +126,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex',
             'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5.1',
             'claude-sonnet-5', 'claude-fable-5', 'claude-fable-5-thinking',
+            'claude-opus-5',
             'claude-opus-4-8', 'claude-opus-4-8-thinking',
             'claude-opus-4-7', 'claude-opus-4-7-thinking',
             'claude-4.6-opus', 'claude-4.6-sonnet',

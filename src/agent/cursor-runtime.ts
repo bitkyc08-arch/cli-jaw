@@ -95,6 +95,19 @@ export const CURSOR_MODEL_IDS = [
     'claude-opus-4-8-thinking-xhigh-fast',
     'claude-opus-4-8-thinking-max',
     'claude-opus-4-8-thinking-max-fast',
+    // claude-opus-5: effort ladder low..max per opencodex
+    // src/adapters/cursor/effort-map.ts. No `-thinking` variants — upstream
+    // CURSOR_STATIC_MODELS does not list one (unlike fable-5 / opus-4-8).
+    'claude-opus-5-low',
+    'claude-opus-5-low-fast',
+    'claude-opus-5-medium',
+    'claude-opus-5-medium-fast',
+    'claude-opus-5-high',
+    'claude-opus-5-high-fast',
+    'claude-opus-5-xhigh',
+    'claude-opus-5-xhigh-fast',
+    'claude-opus-5-max',
+    'claude-opus-5-max-fast',
     'grok-4.5',
     'grok-4.5-fast',
     'gpt-5.4-low',
@@ -163,6 +176,7 @@ export const CURSOR_REGISTRY_MODELS = [
     'claude-sonnet-5',
     'claude-fable-5',
     'claude-fable-5-thinking',
+    'claude-opus-5',
     'claude-opus-4-8',
     'claude-opus-4-8-thinking',
     'claude-opus-4-7',
