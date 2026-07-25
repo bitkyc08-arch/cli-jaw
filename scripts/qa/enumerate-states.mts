@@ -20,10 +20,13 @@ import ts from 'typescript';
 const ROOT = resolve(import.meta.dirname, '..', '..');
 const SRC = join(ROOT, 'public/dashboard2/src');
 
-type Axis = 'empty' | 'loading' | 'error' | 'prerequisite' | 'unsupported';
-type Target = 'StatePanel' | 'InlineState' | 'Alert' | 'FieldError' | 'Skeleton';
+export type Axis = 'empty' | 'loading' | 'error' | 'prerequisite' | 'unsupported';
+export type Target = 'StatePanel' | 'InlineState' | 'Alert' | 'FieldError' | 'Skeleton';
 
-interface Branch {
+/** The primitives DS-4 migrates onto. Recognised as callsites once they exist. */
+const PRIMITIVES = new Set<Target>(['StatePanel', 'InlineState', 'Alert', 'FieldError', 'Skeleton']);
+
+export interface Branch {
     id: string;
     file: string;
     line: number;
@@ -31,9 +34,11 @@ interface Branch {
     target: Target;
     guard: string;
     text: string;
+    /** `raw` = still a hand-rolled div; `primitive` = already migrated. */
+    form: 'raw' | 'primitive';
 }
 
-function tsxFiles(dir: string): string[] {
+export function tsxFiles(dir: string): string[] {
     const out: string[] = [];
     for (const entry of readdirSync(dir)) {
         const full = join(dir, entry);
@@ -60,33 +65,61 @@ function attrText(el: ts.JsxOpeningLikeElement, name: string): string {
     return found.initializer.getText();
 }
 
+/** Roles that mean "I am content or a control", not "I am a state message". */
+const CONTENT_ROLE = /listitem|list\b|tree\b|treeitem|button|link|tab\b|tablist|menu|menuitem|row|grid|table|article|region|dialog|listbox|option|form|search|toolbar|navigation|banner|main|complementary/;
+
 /**
  * Does this element announce itself as a state surface?
  *
  * `role={...}` counts: SettingsToast and TerminalPanel compute their role from
  * severity, and a line-based check missed both.
+ *
+ * `aria-busy` deliberately does NOT count on its own. It is an accessibility
+ * annotation on content that already exists — a board card being saved, a tree
+ * whose children are refreshing — and treating it as a state surface both
+ * over-counted controls and double-counted the real loading branch nested
+ * inside the busy container.
  */
-function isStateElement(el: ts.JsxOpeningLikeElement): boolean {
+export function isStateElement(el: ts.JsxOpeningLikeElement): boolean {
     const cls = attrText(el, 'className');
     const role = attrText(el, 'role');
+    // A migrated callsite is a state branch by definition.
+    if (PRIMITIVES.has(el.tagName.getText() as Target)) return true;
     if (NOT_A_STATE.test(cls)) return false;
     // A screen-reader-only live region has no visible typography to migrate.
     if (/sr-only/.test(cls)) return false;
+    // A tag that is itself a control or a content container cannot be a
+    // placeholder, however it is annotated.
+    const tag = el.tagName.getText();
+    if (/^(button|a|input|select|textarea|article|li|ol|ul|form|nav|table|tr|td)$/.test(tag)) return false;
+    if (CONTENT_ROLE.test(role)) return false;
     if (cls && STATE_WORD.test(cls)) return true;
     if (/alert|status/.test(role)) return true;
-    if (attrText(el, 'aria-busy')) return true;
     return false;
 }
 
-/** Visible text inside an element, so `dynamic` stays a last resort. */
-function textOf(node: ts.Node): string {
+/**
+ * The element's OWN visible text.
+ *
+ * Collecting the whole subtree let a container absorb its children's axis: the
+ * reminders wrapper read as `error` because an error banner was nested three
+ * levels down. Descend only through elements that carry no state of their own.
+ */
+export function textOf(node: ts.Node): string {
     const parts: string[] = [];
-    const walk = (n: ts.Node): void => {
-        if (ts.isJsxText(n)) parts.push(n.text);
-        else if (ts.isStringLiteral(n)) parts.push(n.text);
-        n.forEachChild(walk);
+    const walk = (n: ts.Node, depth: number): void => {
+        if (ts.isJsxText(n)) { parts.push(n.text); return; }
+        if (depth > 0) {
+            const inner = ts.isJsxElement(n) ? n.openingElement
+                : ts.isJsxSelfClosingElement(n) ? n
+                    : undefined;
+            // A nested state element owns its text; do not steal it.
+            if (inner && isStateElement(inner)) return;
+        }
+        if (ts.isStringLiteral(n) && depth <= 2) parts.push(n.text);
+        n.forEachChild(child => walk(child, depth + 1));
     };
-    walk(node);
+    walk(node, 0);
     return parts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -95,24 +128,47 @@ function textOf(node: ts.Node): string {
  * see: `status === 'error'` names the axis even when the element renders a
  * runtime string.
  */
-function guardOf(node: ts.Node): string {
+export function guardOf(node: ts.Node): string {
     for (let n: ts.Node | undefined = node; n; n = n.parent) {
         if (ts.isConditionalExpression(n)) {
-            // Only the true-branch is guarded by the condition.
-            if (n.whenTrue === node || n.whenTrue.getStart() <= node.getStart() && node.getEnd() <= n.whenTrue.getEnd()) {
-                return n.condition.getText();
-            }
-            return `!(${n.condition.getText()})`;
+            const inTrue = n.whenTrue.getStart() <= node.getStart() && node.getEnd() <= n.whenTrue.getEnd();
+            return inTrue ? n.condition.getText() : `!(${n.condition.getText()})`;
         }
         if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
             return n.left.getText();
         }
-        if (ts.isIfStatement(n)) return n.expression.getText();
+        if (ts.isIfStatement(n)) {
+            // An early-return chain guards each branch with the negation of every
+            // condition before it. Without that, the else-side reads as if the
+            // `if` had matched.
+            const inThen = n.thenStatement.getStart() <= node.getStart() && node.getEnd() <= n.thenStatement.getEnd();
+            return inThen ? n.expression.getText() : `!(${n.expression.getText()})`;
+        }
+        // A `return` that merely follows a guard chain is not inside any `if`.
+        // FileTreePanel and TerminalPanel are written this way, and reading no
+        // guard at all made their final branches unclassifiable.
+        if (ts.isReturnStatement(n) && n.parent && ts.isBlock(n.parent)) {
+            const preceding = n.parent.statements
+                .filter((s): s is ts.IfStatement => ts.isIfStatement(s) && s.getEnd() <= n.getStart())
+                .map(s => `!(${s.expression.getText()})`);
+            if (preceding.length) return preceding.join(' && ');
+        }
     }
     return '';
 }
 
-function axisOf(guard: string, text: string, cls: string): Axis {
+/** Is `error` present other than under a negation? */
+export function hasPositiveError(guard: string): boolean {
+    // Strip every negated comparison and every `!foo` before looking. Without
+    // this, `status !== 'error'` and `!error && ...` both read as errors.
+    const stripped = guard
+        .replace(/!==\s*'[^']*'/g, '')
+        .replace(/!\(?[\w.?[\]]*error[\w.?[\]]*\)?/gi, '')
+        .replace(/no matching|unavailable/gi, '');
+    return /error|conflict|failed/i.test(stripped);
+}
+
+export function axisOf(guard: string, text: string, cls: string): Axis {
     const g = guard.toLowerCase();
     const t = `${text} ${cls}`.toLowerCase();
 
@@ -124,13 +180,15 @@ function axisOf(guard: string, text: string, cls: string): Axis {
 
     // Guard next: it states intent, while remaining text may be a runtime value.
     if (/unsupported|unavailable|not_?supported|missing_binary|acp_unsupported|capability/.test(g)) return 'unsupported';
-    // A negated guard is not the axis. `!error && commands.length === 0` is an
-    // empty list, and matching bare `error` inside it put that branch in Alert.
-    const positiveError = /(^|[^!\w])error\b|=== ?'error'|\.error\b|iserror|haserror|conflict|failed/.test(g)
-        && !/^!/.test(g.trim());
-    if (positiveError) return 'error';
+    if (hasPositiveError(guard)) return 'error';
+    // Loading outranks empty: `loading && tasks.length === 0` is the first load
+    // of an empty-so-far list, which is a spinner, not an empty state. But
+    // `!loading && ... .length === 0` is the settled empty result, so a negated
+    // loading flag must not win.
+    const loadingActive = /=== ?'loading'|isloading|\bloading\b|busy|probing|=== ?'saving'|submitting/.test(g)
+        && !/![\w.?]*loading/.test(g);
+    if (loadingActive) return 'loading';
     if (/\.length === 0|!\w+\.length|isempty|=== ?'empty'|!selected|!path/.test(g)) return 'empty';
-    if (/=== ?'loading'|isloading|\bloading\b|busy|probing|=== ?'saving'|submitting/.test(g)) return 'loading';
     if (/=== ?null|!port|!reporoot|!session|!instance|needssession|!question|!\w+selected/.test(g)) return 'prerequisite';
 
     if (/coming soon|not supported|unsupported|unavailable|requires /.test(t)) return 'unsupported';
@@ -142,7 +200,7 @@ function axisOf(guard: string, text: string, cls: string): Axis {
     return 'loading';
 }
 
-function targetOf(cls: string, axis: Axis, role: string, file: string): Target {
+export function targetOf(cls: string, axis: Axis, role: string, file: string): Target {
     if (/field-error/.test(cls)) return 'FieldError';
     if (/skeleton/i.test(cls)) return 'Skeleton';
     if (axis === 'error' && !/placeholder|pane-empty|side-pane|gate/.test(cls)) return 'Alert';
@@ -154,15 +212,36 @@ function targetOf(cls: string, axis: Axis, role: string, file: string): Target {
 }
 
 /**
- * A stable identifier that survives edits. Line numbers move on every commit,
- * so DS-4 cannot track branches by position.
+ * A stable identifier that must survive the migration itself.
+ *
+ * The first version hashed file + className + guard + text. That breaks the
+ * moment a branch migrates: `<div className="d2-panel-state">Loading…</div>`
+ * becomes `<StatePanel kind="loading">`, the class and text both change, and
+ * the branch reads as one id vanishing and a different one appearing — which
+ * regenerating the manifest would silently absorb. A gate that cannot tell
+ * "migrated" from "deleted" is not a gate.
+ *
+ * The guard is the one thing migration preserves: the condition that decides
+ * whether the branch renders is the same before and after. So identity is
+ * file + guard, with the enclosing function to separate branches that share a
+ * guard expression.
  */
-function branchId(file: string, cls: string, guard: string, text: string): string {
-    const base = `${file}|${cls}|${guard}|${text}`;
+export function branchId(file: string, fn: string, guard: string): string {
+    const base = `${file}|${fn}|${guard}`;
     let h = 0;
     for (let i = 0; i < base.length; i += 1) h = (Math.imul(31, h) + base.charCodeAt(i)) | 0;
-    const slug = (cls.match(/[a-z0-9-]{4,}/i)?.[0] ?? 'state').slice(0, 24);
-    return `${slug}-${(h >>> 0).toString(36)}`;
+    const slug = (guard.match(/[a-zA-Z][\w.]{2,}/)?.[0] ?? 'state').replace(/[^\w]/g, '').slice(0, 20);
+    return `${file.split('/').pop()?.replace('.tsx', '')}-${slug}-${(h >>> 0).toString(36)}`;
+}
+
+/** The nearest named function, so two branches with one guard stay distinct. */
+function enclosingFunction(node: ts.Node): string {
+    for (let n: ts.Node | undefined = node; n; n = n.parent) {
+        if (ts.isFunctionDeclaration(n) && n.name) return n.name.getText();
+        if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) return n.name.getText();
+        if (ts.isMethodDeclaration(n) && n.name) return n.name.getText();
+    }
+    return '';
 }
 
 const branches: Branch[] = [];
@@ -183,7 +262,8 @@ for (const file of tsxFiles(SRC)) {
             const text = textOf(node);
             const guard = guardOf(node);
             const axis = axisOf(guard, text, cls);
-            const base = branchId(rel, cls, guard, text);
+            const tag = opening.tagName.getText();
+            const base = branchId(rel, enclosingFunction(node), guard);
             // CodeTab renders the same listError banner in two layouts. They are
             // separate branches, so the id must separate them too.
             const nth = (seen.get(base) ?? 0) + 1;
@@ -196,6 +276,7 @@ for (const file of tsxFiles(SRC)) {
                 target: targetOf(cls, axis, role, rel),
                 guard: guard.slice(0, 80),
                 text: text.slice(0, 80),
+                form: PRIMITIVES.has(tag as Target) ? 'primitive' : 'raw',
             });
         }
         node.forEachChild(visit);
@@ -211,12 +292,18 @@ const duplicateIds = Object.entries(
     branches.reduce<Record<string, number>>((acc, b) => ({ ...acc, [b.id]: (acc[b.id] ?? 0) + 1 }), {}),
 ).filter(([, n]) => n > 1);
 
-console.log(JSON.stringify({
+export const manifest = {
     total: branches.length,
     files: Object.keys(byFile).length,
     byAxis: tally('axis'),
     byTarget: tally('target'),
+    byForm: tally('form'),
     duplicateIds,
     byFileDesc: Object.fromEntries(Object.entries(byFile).sort((a, b) => b[1] - a[1])),
     branches: branches.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line),
-}, null, 2));
+};
+
+// Printing only when run directly keeps this importable by the gate test.
+if (process.argv[1]?.endsWith('enumerate-states.mts')) {
+    console.log(JSON.stringify(manifest, null, 2));
+}
