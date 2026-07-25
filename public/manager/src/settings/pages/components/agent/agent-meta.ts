@@ -53,7 +53,7 @@ export const CLI_META: Record<string, CliMeta> = {
         models: ['opus', 'sonnet', 'haiku', ...CODEX_MODELS, 'gemini-3-flash-preview', 'grok-build', 'grok-composer-2.5-fast', 'gpt-5-mini'],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         modelsByProvider: {
-            claude: ['claude-fable-5', 'claude-opus-4-8', 'opus', 'sonnet', 'haiku'],
+            claude: ['claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'opus', 'sonnet', 'haiku'],
             codex: CODEX_MODELS,
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
@@ -76,7 +76,7 @@ export const CLI_META: Record<string, CliMeta> = {
         // firstPartyNameToCanonical resolution; pinned IDs reach the API
         // verbatim for stable prompt-cache prefixes. The `[1m]` suffix is
         // parsed by Claude Code (stripped before send, enables 1M context
-        // on Fable 5 + Sonnet 5 + Opus 4.8/4.7/4.6 + Sonnet 4.6). Mirrors getDefaultClaudeChoices()
+        // on Fable 5 + Sonnet 5 + Opus 5 + Opus 4.8/4.7/4.6 + Sonnet 4.6). Mirrors getDefaultClaudeChoices()
         // in src/cli/claude-models.ts. Verified via Grok web research
         // 2026-05-01 (devlog/_plan/260501_claude_model_passthrough/).
         models: [

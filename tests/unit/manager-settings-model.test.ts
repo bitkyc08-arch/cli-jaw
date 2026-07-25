@@ -138,6 +138,20 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     assert.equal(PRIMARY_CLIS.includes('jwc'), true);
     assert.equal(jwcMeta.label, 'JWC');
     assert.deepEqual(jwcMeta.models, ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5']);
+    // metaFor() falls back to the static CLI_META when runtime metadata is
+    // unavailable, so the manager AI-E claude list must not drift behind the
+    // backend registry (260725: claude-opus-5 was missing here).
+    const aiEClaudeFallback = metaFor('ai-e').modelsByProvider?.claude ?? [];
+    for (const model of aiEClaudeFallback) {
+        assert.equal(
+            CLI_REGISTRY['ai-e'].modelsByProvider.claude.includes(model),
+            true,
+            `manager fallback lists ${model} for provider=claude but the backend registry does not`,
+        );
+    }
+    for (const model of ['claude-opus-5', 'claude-opus-4-8', 'claude-fable-5']) {
+        assert.equal(aiEClaudeFallback.includes(model), true, `manager fallback is missing ${model}`);
+    }
     assert.deepEqual(jwcMeta.efforts, CLI_REGISTRY.jwc.efforts);
     assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('jwc'), true);
     assert.equal(PRIMARY_CLIS.indexOf('jwc') < PRIMARY_CLIS.indexOf('agy'), true);
