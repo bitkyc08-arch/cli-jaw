@@ -59,6 +59,25 @@ const browser = await chromium.launch({ channel: 'chrome' });
              threshold produced no row at all — and no row reads as a pass. */
           #near { background:#787878; color:#777 }
           #nearicon { background:#787878; color:#777 }
+          /* Translucent foregrounds. The computed colour is pure black in every
+             one of these, so reading the computed colour and ignoring alpha
+             scored them 21:1 while they render at about 1.25:1. */
+          #op { color:#000; opacity:.1 }
+          #alphafg { color:rgba(0,0,0,.1) }
+          #ancop { opacity:.1 }
+          /* Gradient text clipped to the glyphs. dashboard2 ships this on
+             .d2-turn-shimmer: the computed colour is transparent, so a naive
+             reading scores a perfectly legible label at 1:1. The oracle must
+             say it cannot judge rather than invent either verdict. */
+          #grad { background:linear-gradient(100deg,#ddd 30%,#eee 50%,#ddd 70%); background-clip:text; -webkit-background-clip:text; color:transparent }
+          /* Group opacity: the browser renders the element AND its background,
+             then fades both. Sampling the faded backdrop while using the unfaded
+             glyph colour computed 21:1 for a pair that renders near 3.95:1. */
+          #group { background:#fff; color:#000; opacity:.5 }
+          /* A 1%-wide real dark stripe. Any share-based exemption drops it. */
+          #stripe { background:linear-gradient(90deg,#fff 0%,#fff 49.5%,#444 49.5%,#444 50.5%,#fff 50.5%,#fff 100%); color:#000 }
+          /* -webkit-text-fill-color wins over color; reading color scored 21:1. */
+          #fill { background:#fff; color:#000; -webkit-text-fill-color:#777 }
         </style>
         <div class="case" id="plain">Sample</div>
         <div class="case" id="tinted">Sample</div>
@@ -68,6 +87,13 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div class="case" id="thin">Sample text spanning</div>
         <div class="case" id="near">Nearly invisible text</div>
         <div class="case" id="nearicon"><button aria-label="Close" style="background:transparent;border:0;color:#777"><svg width="16" height="16"><path d="M2 2 L14 14" stroke="currentColor" stroke-width="2"/></svg></button></div>
+        <div class="case" id="op">Element opacity</div>
+        <div class="case" id="alphafg">Alpha foreground</div>
+        <div id="ancop"><div class="case">Ancestor opacity</div></div>
+        <div class="case" id="grad">Shimmering label</div>
+        <div class="case" id="group">Group opacity text</div>
+        <div class="case" id="stripe">Stripe under text spanning wide</div>
+        <div class="case" id="fill">Text fill override</div>
     `);
     await installMeasure(page);
 
@@ -152,6 +178,72 @@ const browser = await chromium.launch({ channel: 'chrome' });
         note: 'an icon the same colour as its background must not vanish either',
     });
     if (!nearIconOk) failures.push(`counterexample/near-equal-icon: ${nearIcon ? nearIcon.ratio : 'produced no row'}`);
+
+    // Alpha and inherited opacity must land in the contrast maths. Each of these
+    // computes to solid black, and each renders as pale grey.
+    for (const [id, label] of [
+        ['op', 'Element opacity'],
+        ['alphafg', 'Alpha foreground'],
+        ['ancop', 'Ancestor opacity'],
+    ]) {
+        const rows = await surfacePixelContrast(page, `#${id}`);
+        const row = rows?.find((r) => r.label.startsWith(label.split(' ')[0]));
+        const ok = Boolean(row) && row.ratio < 1.6 && !row.pass;
+        results.push({
+            name: `counterexample/${id}`,
+            measured: row ? row.ratio : 'NO ROW',
+            expected: '<1.6 and failing',
+            ok,
+            note: `${label}: computed colour is solid black, rendered is pale grey`,
+        });
+        if (!ok) failures.push(`counterexample/${id}: ${row ? row.ratio : 'produced no row'}`);
+    }
+
+    // A foreground the CSSOM cannot describe must be reported as unmeasurable,
+    // not guessed. Guessing a pass hides defects; guessing a fail sends someone
+    // to "fix" working code.
+    const gradRows = await surfacePixelContrast(page, '#grad');
+    const gradRow = gradRows?.[0];
+    const gradOk = Boolean(gradRow) && gradRow.unmeasurable === 'background-clip:text' && gradRow.ratio === null && !gradRow.pass;
+    results.push({
+        name: 'counterexample/gradient-text',
+        measured: gradRow ? (gradRow.unmeasurable ?? gradRow.ratio) : 'NO ROW',
+        expected: 'unmeasurable, fail-closed',
+        ok: gradOk,
+        note: 'background-clip:text means the computed colour is not the glyph colour',
+    });
+    if (!gradOk) failures.push(`counterexample/gradient-text: ${JSON.stringify(gradRow ?? null)}`);
+
+    // Group opacity cannot be resolved from a paired capture: it needs the
+    // colour behind the whole group. Say so rather than compute the wrong pair.
+    const groupRows = await surfacePixelContrast(page, '#group');
+    const groupRow = groupRows?.[0];
+    const groupOk = Boolean(groupRow) && String(groupRow.unmeasurable ?? '').startsWith('group-opacity') && !groupRow.pass;
+    results.push({
+        name: 'counterexample/group-opacity',
+        measured: groupRow ? (groupRow.unmeasurable ?? groupRow.ratio) : 'NO ROW',
+        expected: 'unmeasurable, fail-closed',
+        ok: groupOk,
+        note: 'opacity on a painted group fades glyph and backdrop together',
+    });
+    if (!groupOk) failures.push(`counterexample/group-opacity: ${JSON.stringify(groupRow ?? null)}`);
+
+    for (const [id, ceiling, note] of [
+        ['stripe', 2.6, 'a 1%-wide real dark stripe is still a real backdrop'],
+        ['fill', 4.5, '-webkit-text-fill-color is the painted colour, not `color`'],
+    ]) {
+        const rows = await surfacePixelContrast(page, `#${id}`);
+        const row = rows?.[0];
+        const ok = Boolean(row) && row.ratio !== null && row.ratio < ceiling && !row.pass;
+        results.push({
+            name: `counterexample/${id}`,
+            measured: row ? row.ratio : 'NO ROW',
+            expected: `<${ceiling} and failing`,
+            ok,
+            note,
+        });
+        if (!ok) failures.push(`counterexample/${id}: ${row ? row.ratio : 'produced no row'}`);
+    }
 
     await page.close();
 }

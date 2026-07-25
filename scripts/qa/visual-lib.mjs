@@ -236,6 +236,66 @@ export const MEASURE_SOURCE = String.raw`
         || ['button', 'tab', 'menuitem', 'menuitemcheckbox', 'switch', 'option', 'link'].includes(role(el))));
   }
 
+
+  /**
+   * Can a single computed colour describe this element's glyphs?
+   *
+   * Not when the text is painted by a gradient clipped to the glyphs, or by a
+   * blend mode, or by a filter. dashboard2 does this for real:
+   * .d2-turn-shimmer paints its label with background-clip:text and
+   * color:transparent, and reading its computed colour yields rgba(0,0,0,0) — which
+   * scored a legible label 1:1.
+   *
+   * Returning a reason rather than a boolean so the scan can report WHY it
+   * cannot judge, instead of guessing a pass or a fail.
+   */
+  function complexForeground(el) {
+    for (let n = el; n; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      const clip = s.backgroundClip || s.webkitBackgroundClip;
+      if (clip === 'text') return 'background-clip:text';
+      if (s.mixBlendMode && s.mixBlendMode !== 'normal') return 'mix-blend-mode:' + s.mixBlendMode;
+      if (s.filter && s.filter !== 'none') return 'filter:' + s.filter.slice(0, 24);
+
+      // Group opacity: when an element with opacity < 1 also paints a
+      // background, the browser renders the group and THEN fades it, so both
+      // the glyph and its backdrop are composited toward whatever is behind.
+      //
+      //   F' = oF + (1-o)O      B' = oB + (1-o)O
+      //
+      // Sampling B' from the pixels while using F unfaded computes
+      // contrast(F, B'), which is not the rendered pair: white-on-black at
+      // opacity .5 renders about 3.95:1 and scored 21:1. Modelling this needs
+      // the colour behind the whole group, which the paired capture does not
+      // give us, so say so instead of guessing.
+      const o = Number(s.opacity);
+      if (o < 1) {
+        const own = parseColour(s.backgroundColor);
+        if (own && own.a > 0) return 'group-opacity:' + o;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The colour the glyphs are actually painted with.
+   *
+   * The -webkit-text-fill-color property wins over color when both are set, so
+   * a rule like color:black with -webkit-text-fill-color:#777 renders grey.
+   * Reading the computed color there scored a 4.48:1 failure as 21:1.
+   */
+  function foregroundColour(el) {
+    const s = getComputedStyle(el);
+    const fill = s.webkitTextFillColor;
+    if (fill && fill !== s.color) {
+      const parsed = parseColour(fill);
+      // A transparent fill with a visible color means something else paints
+      // the glyphs; complexForeground catches that case and fails closed.
+      if (parsed && parsed.a > 0) return parsed;
+    }
+    return parseColour(s.color);
+  }
+
   function describe(el) {
     return {
       tag: el.tagName,
@@ -346,7 +406,7 @@ export const MEASURE_SOURCE = String.raw`
   window.__d2measure = {
     parseColour, composite, luminance, contrast, effectiveBackground,
     requiredContrast, isVisible, textNodes, controls, describe,
-    targetAudit, accessibleName, occlusion, clippedOut, clippingAncestors,
+    targetAudit, accessibleName, occlusion, clippedOut, clippingAncestors, complexForeground, foregroundColour,
     unreachableControl,
   };
 })();
@@ -442,6 +502,18 @@ export async function freezeMotion(page) {
     });
 }
 
+/**
+ * The alpha to composite a foreground with, given where its opacity is applied.
+ *
+ * Element opacity flattens the element AND its background together, so the
+ * backdrop sampled from the rendered pixels ALREADY carries it. Multiplying the
+ * glyph by that same opacity a second time double-counts it: the disabled send
+ * button measured 2.7:1 where the rendered pair is 4.54:1.
+ *
+ * Only alpha that applies to the foreground alone — the colour's own alpha
+ * channel, and opacity on ancestors that do not paint the sampled backdrop —
+ * belongs in the composite.
+ */
 /** Install the measurement helpers into a page. */
 export async function installMeasure(page) {
     await page.evaluate(MEASURE_SOURCE);
@@ -488,6 +560,57 @@ export async function surfacePixelContrast(page, selectorScope) {
     // makes text transparent, which leaves the backdrop untouched. Pixels that
     // differ between the two are glyph coverage, and the backdrop is read from
     // the SAME coordinates in the text-free image.
+    // Snapshot the foreground BEFORE touching the page.
+    //
+    // Reading `color` after removing the hide/freeze styles measures whatever
+    // the colour transition happens to be passing through on its way back:
+    // notes text read as rgba(146,146,155,0.557) mid-transition and scored
+    // 1.21:1 while the settled value passes comfortably. The oracle was
+    // causing the very change it then measured.
+    //
+    // The snapshot also flattens alpha and every ancestor opacity, because
+    // `color: #000` at `opacity: .1` renders as light grey no matter what the
+    // computed colour says. Without this, black-at-10%-opacity scored 21:1.
+    await installMeasure(page);
+    const foregrounds = await page.evaluate((sel) => {
+        const m = window.__d2measure;
+        const root = document.querySelector(sel);
+        return m.textNodes()
+            .filter((el) => !root || root.contains(el))
+            .map((el, index) => {
+                el.setAttribute('data-d2-fg', String(index));
+                const style = getComputedStyle(el);
+                const complex = m.complexForeground(el);
+                const colour = m.foregroundColour(el);
+                // Opacity is only already in the backdrop when the element that
+                // carries it also PAINTS that backdrop. A translucent button
+                // with its own fill dims glyph and fill together, so folding it
+                // in again double-counts (the disabled send button read 2.7:1
+                // where the rendered pair is 4.54:1). A translucent wrapper over
+                // an opaque page dims only the text, so it must be folded in
+                // (black at 10% opacity renders pale grey, not black).
+                let alpha = colour.a ?? 1;
+                for (let n = el; n; n = n.parentElement) {
+                    const os = getComputedStyle(n);
+                    const o = Number(os.opacity);
+                    if (o === 1) continue;
+                    const own = m.parseColour(os.backgroundColor);
+                    const paintsBackdrop = Boolean(own && own.a > 0);
+                    if (!paintsBackdrop) alpha *= o;
+                }
+                const r = el.getBoundingClientRect();
+                return {
+                    index,
+                    colour,
+                    alpha,
+                    complex,
+                    need: m.requiredContrast(style),
+                    rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+                    describe: m.describe(el),
+                };
+            });
+    }, selectorScope);
+
     const freeze = await freezeMotion(page);
     let shot;
     let bare;
@@ -501,13 +624,16 @@ export async function surfacePixelContrast(page, selectorScope) {
         });
         bare = await page.screenshot({ clip });
     } finally {
-        // Restore even if a capture threw, or every later gate measures a page
-        // with no text in it.
+        // Order matters. Removing the hide style first, while motion is still
+        // frozen, means the colour snaps back instead of animating: an unfrozen
+        // restore leaves a transition running that the NEXT measurement then
+        // samples mid-flight. Unfreeze last, after a beat for the paint.
         await hideText?.evaluate((node) => node.remove()).catch(() => {});
+        await page.waitForTimeout(80);
         await freeze.evaluate((node) => node.remove()).catch(() => {});
     }
 
-    return page.evaluate(async ({ data, bareData, origin, scope }) => {
+    return page.evaluate(async ({ data, bareData, origin, snapshots }) => {
         const m = window.__d2measure;
         const decode = async (b64) => {
             const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
@@ -520,25 +646,42 @@ export async function surfacePixelContrast(page, selectorScope) {
         const { bitmap, ctx } = await decode(data);
         const { ctx: bareCtx } = await decode(bareData);
 
-        const root = document.querySelector(scope);
         const dpr = bitmap.width / origin.width;
         const results = [];
 
-        for (const el of m.textNodes()) {
-            if (root && !root.contains(el)) continue;
-            const r = el.getBoundingClientRect();
-            const pad = Math.max(1, Math.round(dpr));
-            const sx = Math.round((r.x - origin.x) * dpr) + pad;
-            const sy = Math.round((r.y - origin.y) * dpr) + pad;
-            const sw = Math.round(r.width * dpr) - pad * 2;
-            const sh = Math.round(r.height * dpr) - pad * 2;
+        for (const snap of snapshots) {
+            // Fail closed, loudly. Guessing a pass would hide a real problem and
+            // guessing a fail would send someone to "fix" working code; both are
+            // worse than saying the oracle cannot judge this shape.
+            if (snap.complex) {
+                results.push({
+                    ...snap.describe,
+                    ratio: null,
+                    need: snap.need,
+                    backdrop: null,
+                    unmeasurable: snap.complex,
+                    pass: false,
+                });
+                continue;
+            }
+            const r = snap.rect;
+            // No inset. Trimming a pixel was meant to avoid a pill's own border
+            // bleeding in, but on a 13px-tall label it clips the tops of the
+            // glyphs and leaves only their antialiased skirts, which read as a
+            // mid-grey "backdrop" and scored 15:1 body text at 4.37:1. The
+            // paired capture already solves the border problem: whatever the
+            // border is, it is identical in both images and so is never counted
+            // as glyph coverage.
+            const sx = Math.round((r.x - origin.x) * dpr);
+            const sy = Math.round((r.y - origin.y) * dpr);
+            const sw = Math.round(r.width * dpr);
+            const sh = Math.round(r.height * dpr);
             if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) continue;
 
             const { data: px } = ctx.getImageData(sx, sy, sw, sh);
             const { data: bx } = bareCtx.getImageData(sx, sy, sw, sh);
-            const style = getComputedStyle(el);
-            const fg = m.parseColour(style.color);
-            const need = m.requiredContrast(style);
+            const need = snap.need;
+            const rawFg = snap.colour;
 
             // Backdrop colours beneath glyph coverage, sampled from the
             // text-free capture so a mid-grey band cannot be mistaken for an
@@ -549,23 +692,29 @@ export async function surfacePixelContrast(page, selectorScope) {
             // #787878 produced no row at all, and an element with no row is an
             // element that silently passes.
             const counts = new Map();
+            const bareCounts = new Map();
             let covered = 0;
+            const totalPixels = px.length / 4;
             for (let i = 0; i < px.length; i += 4) {
+                const key = bx[i] + ',' + bx[i + 1] + ',' + bx[i + 2];
+                bareCounts.set(key, (bareCounts.get(key) ?? 0) + 1);
                 const diff = Math.abs(px[i] - bx[i]) + Math.abs(px[i + 1] - bx[i + 1]) + Math.abs(px[i + 2] - bx[i + 2]);
                 if (diff < 2) continue;
                 covered += 1;
-                const key = bx[i] + ',' + bx[i + 1] + ',' + bx[i + 2];
                 counts.set(key, (counts.get(key) ?? 0) + 1);
             }
+            const backdropShare = new Map(
+                [...bareCounts.entries()].map(([k, n]) => [k, n / totalPixels]),
+            );
 
             // No detectable coverage does not mean "fine". Either the text is
             // invisible against its background or the capture failed; both need
             // a row so the scan can fail rather than fall silent.
             if (covered === 0) {
                 const bg = { r: bx[0], g: bx[1], b: bx[2], a: 1 };
-                const ratio = m.contrast(fg, bg);
+                const ratio = m.contrast(m.composite({ ...rawFg, a: snap.alpha }, bg), bg);
                 results.push({
-                    ...m.describe(el),
+                    ...snap.describe,
                     ratio: Number(ratio.toFixed(2)),
                     need,
                     backdrop: bg,
@@ -579,15 +728,37 @@ export async function surfacePixelContrast(page, selectorScope) {
             let worst = Infinity;
             let worstColour = null;
             for (const [key, n] of counts) {
+                // Small text is mostly edge pixels: at 11px a path label is
+                // hundreds of partly covered samples whose backdrop reads
+                // lighter than the real one, and taking the single worst scored
+                // 15:1 body text as 4.37:1.
+                //
+                // A share threshold alone is the wrong fix — a genuinely dark
+                // 6%-wide band would be excused by it. Exclude a colour only
+                // when it is BOTH rare and a blend between the foreground and a
+                // more common backdrop, which is what an antialiased edge is
+                // No share-based exemption. Every colour here comes from the
+                // TEXT-FREE capture, so it is by construction a real backdrop
+                // pixel and not an antialiasing artefact -- the artefacts live
+                // in the other image. A 1%-wide dark stripe is as real as a
+                // 40%-wide one, and filtering by share let a genuine 2.16:1
+                // failure through at 21:1.
+                //
+                // The small-text problem this once tried to solve is handled by
+                // sampling the whole element box instead of an inset one, so the
+                // glyph tops are no longer clipped away.
                 const parts = key.split(',').map(Number);
                 const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
-                const ratio = m.contrast(fg, candidate);
+                // Flatten the foreground onto THIS backdrop: a translucent glyph
+                // is only as dark as what shows through it.
+                const effective = m.composite({ ...rawFg, a: snap.alpha }, candidate);
+                const ratio = m.contrast(effective, candidate);
                 if (ratio < worst) { worst = ratio; worstColour = candidate; }
             }
             if (!Number.isFinite(worst)) continue;
 
             results.push({
-                ...m.describe(el),
+                ...snap.describe,
                 ratio: Number(worst.toFixed(2)),
                 need,
                 backdrop: worstColour,
@@ -596,7 +767,7 @@ export async function surfacePixelContrast(page, selectorScope) {
             });
         }
         return results;
-    }, { data: shot.toString('base64'), bareData: bare.toString('base64'), origin: clip, scope: selectorScope });
+    }, { data: shot.toString('base64'), bareData: bare.toString('base64'), origin: clip, snapshots: foregrounds });
 }
 /**
  * Icon contrast from rendered pixels, using the same paired-capture trick.
@@ -615,6 +786,32 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
         width: Math.max(1, Math.round(box.width)),
         height: Math.max(1, Math.round(box.height)),
     };
+    // Same lifecycle rule as text: snapshot the foreground before mutating the
+    // page, and flatten alpha plus every ancestor opacity into it.
+    await installMeasure(page);
+    const foregrounds = await page.evaluate((sel) => {
+        const m = window.__d2measure;
+        const root = document.querySelector(sel);
+        return m.controls()
+            .filter((el) => (!root || root.contains(el)) && !el.textContent?.trim() && el.querySelector('svg'))
+            .map((el) => {
+                const style = getComputedStyle(el);
+                const colour = m.foregroundColour(el);
+                const complex = m.complexForeground(el);
+                // Same rule as text: see the note above surfacePixelContrast.
+                let alpha = colour.a ?? 1;
+                for (let n = el; n; n = n.parentElement) {
+                    const os = getComputedStyle(n);
+                    const o = Number(os.opacity);
+                    if (o === 1) continue;
+                    const own = m.parseColour(os.backgroundColor);
+                    if (!(own && own.a > 0)) alpha *= o;
+                }
+                const r = el.getBoundingClientRect();
+                return { colour, alpha, complex, rect: { x: r.x, y: r.y, width: r.width, height: r.height }, describe: m.describe(el) };
+            });
+    }, selectorScope);
+
     const freeze = await freezeMotion(page);
     let shot;
     let bare;
@@ -626,11 +823,14 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
         });
         bare = await page.screenshot({ clip });
     } finally {
+        // Same ordering rule as the text pass: unhide under the freeze so the
+        // colour snaps rather than animates.
         await hideIcons?.evaluate((node) => node.remove()).catch(() => {});
+        await page.waitForTimeout(80);
         await freeze.evaluate((node) => node.remove()).catch(() => {});
     }
 
-    return page.evaluate(async ({ data, bareData, origin, scope, threshold }) => {
+    return page.evaluate(async ({ data, bareData, origin, threshold, snapshots }) => {
         const m = window.__d2measure;
         const decode = async (b64) => {
             const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
@@ -643,16 +843,22 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
         const { bitmap, ctx } = await decode(data);
         const { ctx: bareCtx } = await decode(bareData);
 
-        const root = document.querySelector(scope);
         const dpr = bitmap.width / origin.width;
         const results = [];
 
-        for (const el of m.controls()) {
-            if (root && !root.contains(el)) continue;
-            if (el.textContent?.trim()) continue;      // not icon-only
-            if (!el.querySelector('svg')) continue;
-
-            const r = el.getBoundingClientRect();
+        for (const snap of snapshots) {
+            if (snap.complex) {
+                results.push({
+                    ...snap.describe,
+                    ratio: null,
+                    need: threshold,
+                    backdrop: null,
+                    unmeasurable: snap.complex,
+                    pass: false,
+                });
+                continue;
+            }
+            const r = snap.rect;
             const sx = Math.round((r.x - origin.x) * dpr);
             const sy = Math.round((r.y - origin.y) * dpr);
             const sw = Math.round(r.width * dpr);
@@ -661,7 +867,7 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
 
             const { data: px } = ctx.getImageData(sx, sy, sw, sh);
             const { data: bx } = bareCtx.getImageData(sx, sy, sw, sh);
-            const fg = m.parseColour(getComputedStyle(el).color);
+            const rawFg = snap.colour;
 
             const counts = new Map();
             let covered = 0;
@@ -678,8 +884,8 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
             if (covered === 0) {
                 const bg = { r: bx[0], g: bx[1], b: bx[2], a: 1 };
                 results.push({
-                    ...m.describe(el),
-                    ratio: Number(m.contrast(fg, bg).toFixed(2)),
+                    ...snap.describe,
+                    ratio: Number(m.contrast(m.composite({ ...rawFg, a: snap.alpha }, bg), bg).toFixed(2)),
                     need: threshold,
                     backdrop: bg,
                     iconPixels: 0,
@@ -692,15 +898,24 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
             let worst = Infinity;
             let worstColour = null;
             for (const [key, n] of counts) {
+                // An icon stroke is a pixel or two wide, so most of what changes
+                // between captures is a partly covered edge whose backdrop reads
+                // lighter than the real one. Taking the single worst pixel called
+                // a 4.84:1 sidebar toggle 1.83:1. Require a colour to back a real
+                // share of the stroke before it decides the verdict.
+                if (n / covered < 0.15) continue;
                 const parts = key.split(',').map(Number);
                 const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
-                const ratio = m.contrast(fg, candidate);
+                // Flatten the foreground onto THIS backdrop: a translucent glyph
+                // is only as dark as what shows through it.
+                const effective = m.composite({ ...rawFg, a: snap.alpha }, candidate);
+                const ratio = m.contrast(effective, candidate);
                 if (ratio < worst) { worst = ratio; worstColour = candidate; }
             }
             if (!Number.isFinite(worst)) continue;
 
             results.push({
-                ...m.describe(el),
+                ...snap.describe,
                 ratio: Number(worst.toFixed(2)),
                 need: threshold,
                 backdrop: worstColour,
@@ -709,5 +924,5 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
             });
         }
         return results;
-    }, { data: shot.toString('base64'), bareData: bare.toString('base64'), origin: clip, scope: selectorScope, threshold: minRatio });
+    }, { data: shot.toString('base64'), bareData: bare.toString('base64'), origin: clip, threshold: minRatio, snapshots: foregrounds });
 }

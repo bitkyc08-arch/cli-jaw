@@ -78,7 +78,10 @@
 
 .d2-code-session-row span {
     font-size: var(--fs-xs);
-    opacity: 0.6;
+    /* Was opacity .6, which multiplies the body colour down to roughly 4.4:1
+       against white -- under AA for 11px text. A muted token gets the same
+       "secondary" reading without dimming the glyph. */
+    color: var(--text-3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

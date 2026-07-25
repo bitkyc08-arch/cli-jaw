@@ -135,6 +135,41 @@
     gap: 2px;
 }
 
+/* The wrapper had layout and the buttons inside it had nothing, so they kept the
+   browser's default chrome: a light grey fill that the themed icon colour sat on
+   at 1.01:1 in dark mode -- an icon the same colour as its own background. */
+.d2-notes-tree-header-actions button {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    transition: background .12s ease, color .12s ease;
+}
+
+.d2-notes-tree-header-actions button:hover:not(:disabled) {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-notes-tree-header-actions button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.d2-notes-tree-header-actions button:disabled {
+    cursor: default;
+    /* Still legible: a control the user cannot read is not saying "unavailable",
+       it is just noise. */
+    opacity: .62;
+}
+
 .d2-notes-tree-icon {
     display: inline-flex;
     width: 14px;

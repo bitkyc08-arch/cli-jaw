@@ -54,6 +54,12 @@ for (const name of Object.keys(SURFACES)) {
 
             let iconRows = null;
             try {
+                // Wait for the text pass to settle first. Removing its hide
+                // style restarts any colour transition, and sampling the icon
+                // foreground mid-transition read 1.26:1 for notes buttons that
+                // measure 5.63:1 on their own — the same self-inflicted
+                // transition bug the text path already had to fix.
+                await page.waitForTimeout(400);
                 iconRows = await surfaceIconContrast(page, root, MIN_ICON_CONTRAST);
             } catch (error) {
                 pixelError = pixelError ?? String(error?.message ?? error).slice(0, 200);
@@ -144,12 +150,18 @@ for (const name of Object.keys(SURFACES)) {
                 };
             }, { rootSel: root, minIcon: MIN_ICON_CONTRAST });
 
-            const contrastFailures = (pixelContrastRows ?? []).filter((row) => !row.pass);
-            const iconFailures = (iconRows ?? []).filter((row) => !row.pass);
+            // Separate "this is wrong" from "I cannot judge this". Both block a
+            // green gate, but only the first is a defect to go fix.
+            const contrastFailures = (pixelContrastRows ?? []).filter((row) => !row.pass && !row.unmeasurable);
+            const iconFailures = (iconRows ?? []).filter((row) => !row.pass && !row.unmeasurable);
+            const unmeasurable = [...(pixelContrastRows ?? []), ...(iconRows ?? [])]
+                .filter((row) => row.unmeasurable)
+                .map((row) => ({ ...row.describe ?? {}, cls: row.cls, label: row.label, reason: row.unmeasurable }));
             report.surfaces[name][theme] = {
                 ...measured,
                 contrastFailures,
                 iconFailures,
+                unmeasurable,
                 contrastMeasured: pixelContrastRows?.length ?? 0,
                 iconMeasured: iconRows?.length ?? 0,
                 contrastSource: pixelContrastRows ? 'pixels' : 'unavailable',
@@ -175,7 +187,7 @@ for (const name of Object.keys(SURFACES)) {
                 );
             }
             const f = measured.reached
-                ? `contrast ${contrastFailures.length}/${pixelContrastRows?.length ?? 0}px, icon ${iconFailures.length}/${iconRows?.length ?? 0}px, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), unreachable ${measured.unreachable.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
+                ? `contrast ${contrastFailures.length}/${pixelContrastRows?.length ?? 0}px, icon ${iconFailures.length}/${iconRows?.length ?? 0}px, unmeasurable ${unmeasurable.length}, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), unreachable ${measured.unreachable.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
                 : 'NOT REACHED';
             console.error(`${name}/${theme}: ${f}`);
             if (!measured.reached) notReached.push(`${name}/${theme}`);
@@ -199,6 +211,26 @@ if (outPath) {
     console.log(JSON.stringify(report, null, 2));
 }
 
+// Defect totals, so the gate can fail on what it found and not only on whether
+// it managed to look. Reporting 26 contrast failures and exiting 0 is a report,
+// not a gate.
+const defects = { contrast: 0, icon: 0, target: 0, unreachable: 0, unnamed: 0, occluded: 0, clipped: 0, unmeasurable: 0 };
+for (const themes of Object.values(report.surfaces)) {
+    for (const measured of Object.values(themes)) {
+        if (!measured?.reached) continue;
+        defects.contrast += measured.contrastFailures?.length ?? 0;
+        defects.icon += measured.iconFailures?.length ?? 0;
+        defects.target += measured.targetFailures?.length ?? 0;
+        defects.unreachable += measured.unreachable?.length ?? 0;
+        defects.unnamed += measured.unnamed?.length ?? 0;
+        defects.occluded += measured.occluded?.length ?? 0;
+        defects.clipped += measured.clipped?.length ?? 0;
+        defects.unmeasurable += measured.unmeasurable?.length ?? 0;
+    }
+}
+report.defects = defects;
+const defectTotal = Object.values(defects).reduce((a, b) => a + b, 0);
+
 if (notReached.length) {
     console.error(`\nFAIL: ${notReached.length} surface/theme pairs were never rendered: ${notReached.join(', ')}`);
 }
@@ -206,4 +238,13 @@ if (oracleFailures.length) {
     console.error(`\nFAIL: the pixel oracle did not run on ${oracleFailures.length} surface/theme pairs:`);
     for (const f of oracleFailures) console.error(`  ${f}`);
 }
-if (notReached.length || oracleFailures.length) process.exit(1);
+if (defectTotal) {
+    console.error(`\nFAIL: ${defectTotal} visual defects`);
+    for (const [kind, n] of Object.entries(defects)) if (n) console.error(`  ${kind}: ${n}`);
+}
+
+// `--report` records the current state without failing, for a baseline capture.
+// The default is a gate.
+if (!args.includes('--report') && (notReached.length || oracleFailures.length || defectTotal)) {
+    process.exit(1);
+}

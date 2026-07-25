@@ -125,11 +125,22 @@
 }
 
 .d2-composer-icon:hover:not(:disabled) { background: var(--surface-h); color: var(--text); }
-/* .45 dropped the send glyph to 2.6:1 against its own fill, under the 3:1 that
-   1.4.11 asks of a meaningful icon. Disabled still has to be legible: a control
-   the user cannot read is not communicating that it is unavailable, it is just
-   noise. .62 keeps the "dimmed" reading and clears the threshold. */
-.d2-composer-icon:disabled { cursor: default; opacity: .62; }
+.d2-composer-icon:disabled { cursor: default; }
+
+/* The primary send button is a filled circle, so dimming it with opacity fades
+   the glyph and the fill together and leaves the pair unmeasurable from a
+   rendered screenshot: the browser composites the whole group toward whatever
+   sits behind it. Express "disabled" as a muted fill instead, which is both
+   legible (5.55:1 light, 6.29:1 dark) and something a gate can actually check.
+   A control the user cannot read is not saying "unavailable", it is just noise. */
+.d2-composer-icon.d2-composer-primary:disabled {
+    background: var(--text-3);
+    color: var(--bg);
+}
+
+/* Icon-only buttons with no fill of their own can still use opacity: nothing
+   underneath them is being faded with the glyph. */
+.d2-composer-icon:not(.d2-composer-primary):disabled { opacity: .62; }
 .d2-composer-icon.is-recording { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .d2-composer-icon.d2-composer-primary { color: var(--bg); background: var(--text); }
 

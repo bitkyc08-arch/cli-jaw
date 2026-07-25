@@ -31,6 +31,21 @@ test('the injected measure source contains no backtick', () => {
     assert.equal(line, -1, `line ${line + 1} of MEASURE_SOURCE contains a backtick`);
 });
 
+test('the whole QA library parses, including its comments', () => {
+    // I broke this six separate times by quoting a CSS property in a comment
+    // inside MEASURE_SOURCE. Half the time the error surfaced at import, half
+    // the time only inside page.evaluate as "Invalid or unexpected token" with
+    // no location. Checking the file itself catches both immediately.
+    const file = readFileSync(LIB, 'utf8');
+    assert.doesNotThrow(() => new Function(`return async () => { ${''} }`));
+    // Node's own parser, not a regex: any syntax error anywhere fails here.
+    assert.doesNotThrow(() => {
+        // eslint-disable-next-line no-new-func
+        new Function('exports', 'require', 'module', '__filename', '__dirname',
+            file.replace(/^export /gm, '').replace(/^import .*$/gm, ''));
+    });
+});
+
 test('the injected measure source parses as a script', () => {
     const source = measureSource();
     assert.doesNotThrow(() => new Function(source), 'MEASURE_SOURCE must be valid JavaScript');
