@@ -54,24 +54,42 @@ try {
             return { total: els.length, names: els.map(label) };
         }, { rootSelector: surface.root ?? null, focusable: FOCUSABLE });
 
+        /*
+         * Tab until the focus ring returns to where it started, rather than for a
+         * fixed budget.
+         *
+         * A fixed budget produced 51 false positives on the sidebar: controls that
+         * only become focusable once their row has :focus-within are revealed as
+         * Tab arrives, so the walk needs to actually finish the cycle. It never
+         * did with 50 instance rows in the list. Stopping on wrap-around also
+         * makes the result independent of how many rows happen to be present.
+         */
         const seen = new Set();
-        // Three passes worth of Tab so a roving-tabindex group still gets a
-        // chance to expose each of its members.
-        for (let step = 0; step < Math.max(inventory.total * 3, 20); step += 1) {
+        const readActive = () => page.evaluate((rootSelector) => {
+            const el = document.activeElement;
+            const root = rootSelector ? document.querySelector(rootSelector) : document.body;
+            const label = el ? (el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 40) || el.tagName) : null;
+            return { label, inside: Boolean(el && root && root.contains(el)) };
+        }, surface.root ?? null);
+
+        const HARD_CAP = 4000;
+        let first = null;
+        let wrapped = false;
+        for (let step = 0; step < HARD_CAP; step += 1) {
             await page.keyboard.press('Tab');
-            const active = await page.evaluate((rootSelector) => {
-                const el = document.activeElement;
-                const root = rootSelector ? document.querySelector(rootSelector) : document.body;
-                if (!el || !root || !root.contains(el)) return null;
-                return el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 40) || el.tagName;
-            }, surface.root ?? null);
-            if (active) seen.add(active);
+            const { label, inside } = await readActive();
+            if (inside && label) {
+                seen.add(label);
+                if (first === null) first = label;
+                else if (label === first && seen.size > 1 && step > 2) { wrapped = true; break; }
+            }
         }
 
         const unreachable = inventory.names.filter((name) => !seen.has(name));
         payload = {
             mode, surface: surfaceName, owner: surface.owner,
             total: inventory.total, reached: seen.size, unreachable,
+            tabCycleCompleted: wrapped,
             verdict: inventory.error ? 'fail' : (unreachable.length === 0 ? 'pass' : 'fail'),
             error: inventory.error,
         };
