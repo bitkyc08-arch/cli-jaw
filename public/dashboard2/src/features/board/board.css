@@ -20,7 +20,7 @@
 .d2-board-summary {
     flex: 1;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
 }
 
@@ -36,7 +36,7 @@
     align-items: center;
     gap: 6px;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-board-lane-picker select {
@@ -93,7 +93,7 @@
 
 .d2-board-field > span {
     color: var(--text-3);
-    font-size: 10.5px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     text-transform: uppercase;
 }
@@ -107,7 +107,7 @@
     background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 12.5px;
+    font-size: var(--fs-md);
     outline: none;
 }
 
@@ -128,7 +128,7 @@
     background: var(--accent);
     color: var(--bg);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     transition: opacity 120ms;
 }
@@ -149,7 +149,7 @@
     padding: 8px 12px;
     background: rgba(248, 113, 113, .08);
     color: var(--danger);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-board-error button {
@@ -160,7 +160,7 @@
     background: transparent;
     color: var(--danger);
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-board-state {
@@ -171,7 +171,7 @@
     justify-items: center;
     gap: 8px;
     color: var(--text-4);
-    font-size: 13px;
+    font-size: var(--fs-md);
 }
 
 .d2-board-canvas {
@@ -216,7 +216,7 @@
 .d2-board-lane-header h2 {
     flex: 1;
     margin: 0;
-    font-size: 11.5px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--text-2);
     text-transform: uppercase;
@@ -229,7 +229,7 @@
     border-radius: var(--r-full);
     background: var(--surface-h);
     color: var(--text-4);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-weight: 600;
     line-height: 18px;
     text-align: center;
@@ -249,7 +249,7 @@
     min-height: 60px;
     place-content: center;
     color: var(--text-4);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-board-card {
@@ -290,7 +290,7 @@
 .d2-board-card-summary {
     margin: 0;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     line-height: 1.4;
     white-space: pre-wrap;
     word-break: break-word;
@@ -320,7 +320,7 @@
     min-width: 0;
     margin: 0;
     color: var(--text);
-    font-size: 12.5px;
+    font-size: var(--fs-md);
     font-weight: 500;
     line-height: 1.4;
     word-break: break-word;
@@ -362,7 +362,7 @@
     border-radius: var(--r-full);
     background: var(--surface-h);
     color: var(--text-3);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-weight: 600;
 }
 
@@ -437,7 +437,7 @@
     gap: 10px;
 }
 
-.d2-board-dialog-header h2 { margin: 0; font-size: 16px; }
+.d2-board-dialog-header h2 { margin: 0; font-size: var(--fs-lg); }
 
 .d2-board-dialog-header button,
 .d2-board-dialog-footer button {
@@ -459,7 +459,7 @@
 .d2-board-dialog-footer button:disabled { opacity: .45; cursor: default; }
 
 .d2-board-dialog-field { display: flex; flex-direction: column; gap: 5px; }
-.d2-board-dialog-field > span { color: var(--text-3); font-size: 11px; font-weight: 600; }
+.d2-board-dialog-field > span { color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; }
 
 .d2-board-dialog-field input,
 .d2-board-dialog-field textarea,
@@ -472,7 +472,7 @@
     background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 12.5px;
+    font-size: var(--fs-md);
     outline: none;
 }
 
