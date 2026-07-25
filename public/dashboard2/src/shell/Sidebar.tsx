@@ -305,13 +305,28 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         }
     }, [sessionsByPort, selected, guardedSelectSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    /*
+     * Close the instance menu and put focus back on the trigger.
+     *
+     * Escape and outside-click already restored focus; the action paths did not,
+     * so completing a menu item dropped focus onto document.body and a keyboard
+     * user lost their place. This applies whether the action succeeded or failed.
+     */
+    const dismissMenu = useCallback((): void => {
+        setMenuPort(null);
+        menuTriggerRef.current?.focus();
+        menuTriggerRef.current = null;
+    }, []);
+
     const copyPath = async (path: string | null | undefined): Promise<void> => {
         if (!path) return;
         try {
             await navigator.clipboard.writeText(path);
-            setMenuPort(null);
-        } catch {
-            // Keep the menu open so the user can retry after clipboard permission changes.
+            dismissMenu();
+        } catch (error) {
+            // Keep the menu open so the user can retry after a permission prompt,
+            // but say why — a silently-failing Copy looks like a dead button.
+            setInstancesError(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
     };
 
@@ -329,7 +344,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         }
 
         setInstancesError(null);
-        setMenuPort(null);
+        dismissMenu();
         await lifecycleControl.run(action, instance);
     };
 
@@ -603,7 +618,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
                                                         disabled={!isOnline || selected?.port !== instance.port}
                                                         title={!isOnline ? 'Instance is offline' : selected?.port !== instance.port ? 'Select this instance to open a terminal' : 'Open in terminal'}
                                                         onClick={() => {
-                                                            setMenuPort(null);
+                                                            dismissMenu();
                                                             openSidePane();
                                                             openPanel({ type: 'terminal', key: 'terminal', title: 'Terminal', keepAlive: true });
                                                         }}

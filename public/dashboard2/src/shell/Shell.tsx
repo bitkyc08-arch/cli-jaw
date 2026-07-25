@@ -66,9 +66,14 @@ export function Shell(): JSX.Element {
             handle.classList.remove('is-dragging');
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', up);
+            // A cancelled pointer sequence never sends pointerup, so without this
+            // the drag listeners and the is-dragging class outlive the gesture.
+            // Workbench's divider already handles it this way.
+            document.removeEventListener('pointercancel', up);
         };
         document.addEventListener('pointermove', move);
         document.addEventListener('pointerup', up);
+        document.addEventListener('pointercancel', up);
     }, []);
 
     const onResizeKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
