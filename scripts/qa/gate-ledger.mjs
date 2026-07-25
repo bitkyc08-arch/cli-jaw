@@ -11,8 +11,17 @@
 // the DOM and box model are identical, so doubling target-size checks by theme
 // would be padding. Colour can, and did — the light-only accent failure is real.
 
-/** Surfaces, in the order the scanner opens them. */
-export const SURFACES = ['sidebar', 'workbench', 'composer', 'side-pane', 'settings', 'hover-dock'];
+/**
+ * Surfaces, in the order the scanner opens them.
+ *
+ * notes, board and code were missing at first, and `side-pane` does not stand
+ * in for them: it measures whichever panel happened to be restored. Each of the
+ * three has its own typography, controls and empty states.
+ */
+export const SURFACES = [
+    'sidebar', 'workbench', 'composer', 'side-pane', 'settings', 'hover-dock',
+    'notes', 'board', 'code',
+];
 
 /** Widths that exercise different layout branches, not arbitrary numbers. */
 export const VIEWPORTS = [
@@ -63,21 +72,31 @@ const RUNTIME_GATES = [
     ['http-unknown-session', 'operations on an unknown session return 404'],
 ];
 
+// Scoped to what the frontend can actually reach.
+//
+// The first draft counted session-fork and session-config, neither of which
+// exists on CodeApiClient — phantom gates with a stable id and no activation
+// path. Meanwhile closeSession, which the client does expose, was missing, as
+// was the gate's own Suspense loading state. Every entry below maps to a method
+// on the client or a branch of CodeTabGate.
 const JAWCODE_GATES = [
-    ['gate-probing', 'the capability gate renders a probing state'],
+    ['gate-probing', 'the capability gate renders a probing state while the probe is in flight'],
     ['gate-missing-binary', 'missing_binary renders its guidance and a retry affordance'],
     ['gate-acp-unsupported', 'acp_unsupported explains the version requirement'],
     ['gate-unavailable', 'temporarily_unavailable offers a retry'],
     ['gate-retry-succeeds', 'retry after a transient failure reaches the working tab'],
-    ['session-create', 'a new session appears in the list'],
-    ['session-load-stored', 'a stored session loads its history'],
-    ['session-fork', 'forking produces a distinct session id'],
-    ['session-model-change', 'changing the model persists and is reflected'],
-    ['session-prompt-stream', 'a prompt streams updates and terminates'],
+    ['gate-lazy-loading', 'the Suspense fallback renders while the Code chunk loads'],
+    ['session-create', 'newSession adds a session and selects it'],
+    ['session-list', 'listSessions reflects live sessions after a create'],
+    ['session-load-stored', 'loadSession restores a stored conversation with its history'],
+    ['session-model-change', 'setSessionModel persists and the picker reflects the new model'],
+    ['session-model-rollback', 'a rejected model change restores the previous selection'],
+    ['session-prompt-stream', 'prompt streams updates and terminates with a done event'],
     ['session-cancel', 'cancel stops a running prompt and settles the UI'],
-    ['session-config', 'config changes apply to the right session only'],
-    ['permission-approve', 'approving a permission unblocks the prompt'],
-    ['permission-deny', 'denying a permission surfaces the refusal'],
+    ['session-close', 'closeSession removes the session without disturbing its siblings'],
+    ['permission-approve', 'answerPermission unblocks the waiting prompt'],
+    ['permission-deny', 'a denied permission surfaces the refusal in the transcript'],
+    ['recovery-after-child-exit', 'a session reports itself recoverable after the ACP child exits'],
 ];
 
 export function buildLedger() {

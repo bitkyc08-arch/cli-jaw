@@ -63,6 +63,57 @@ export const SURFACES = {
     },
 };
 
+/**
+ * Open one of the side pane's feature panels.
+ *
+ * `side-pane` on its own only ever showed whichever panel happened to be
+ * restored, so notes, board and the code tab were never measured. Each is a
+ * separate surface with its own typography, controls and empty states.
+ */
+async function openPanel(page, title) {
+    await selectFirstOnlineInstance(page);
+    const paneToggle = page.getByRole('button', { name: /open side pane/i });
+    if (await paneToggle.count()) await paneToggle.first().click().catch(() => {});
+    await page.waitForTimeout(400);
+
+    // Already open? Select its tab instead of opening a duplicate.
+    const tab = page.locator(`.d2-side-pane-tab-group [role="tab"]`, { hasText: title });
+    if (await tab.count()) {
+        await tab.first().click().catch(() => {});
+        await page.waitForTimeout(900);
+        return;
+    }
+
+    const picker = page.getByRole('button', { name: /^open panel$/i });
+    if (await picker.count()) {
+        await picker.first().click().catch(() => {});
+        await page.waitForTimeout(400);
+        const choice = page.locator('.d2-side-pane-picker-button', { hasText: title });
+        if (await choice.count()) await choice.first().click().catch(() => {});
+    }
+    await page.waitForTimeout(1200);
+}
+
+SURFACES.notes = {
+    owner: 'wp13',
+    root: '.d2-notes-panel',
+    reach: (page) => openPanel(page, 'Notes'),
+};
+
+SURFACES.board = {
+    owner: 'wp13',
+    root: '.d2-board-panel',
+    reach: (page) => openPanel(page, 'Board'),
+};
+
+SURFACES.code = {
+    owner: 'wp13',
+    // The gate renders first and swaps itself for the tab; both are in scope
+    // because the gate's four states are part of what has to look right.
+    root: '.d2-code-tab, .d2-code-gate',
+    reach: (page) => openPanel(page, 'Code'),
+};
+
 async function selectFirstOnlineInstance(page) {
     const online = page.locator('.d2-instance-main:not([disabled])');
     if (await online.count()) {
