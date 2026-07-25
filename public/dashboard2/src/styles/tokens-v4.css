@@ -115,8 +115,12 @@
     --border-h: rgba(0, 0, 0, .14);
     --text: #18202a;
     --text-2: #3d4854;
-    --text-3: #586574;
-    --text-4: #5e6b7a;
+    /* Measured against the worst light backdrop in the product: a selected
+       sidebar row, where --accent-soft over the glass gradient lands at
+       rgb(214,225,238). #586574 sits exactly on 4.50 there and #5e6b7a fails at
+       4.11, so both move darker with room to spare (5.16 and 5.16). */
+    --text-3: #4f5c6b;
+    --text-4: #4f5c6b;
     /* #0969da reads 4.22:1 on its own 10% tint over the sidebar's glass, which
        is where the active segmented buttons and dock tabs live. Darkened until
        the worst of those backdrops clears AA with room to spare (5.21:1). */
@@ -156,8 +160,9 @@
         --border-h: rgba(0, 0, 0, .14);
         --text: #18202a;
         --text-2: #3d4854;
-        --text-3: #586574;
-        --text-4: #5e6b7a;
+        /* Same AA correction as the explicit light palette above. */
+        --text-3: #4f5c6b;
+        --text-4: #4f5c6b;
         /* Same AA correction as the explicit light palette above. */
         --accent: #0757b8;
         --accent-soft: rgba(7, 87, 184, .10);

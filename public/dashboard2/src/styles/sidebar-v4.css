@@ -339,9 +339,18 @@
     outline-offset: 1px;
 }
 
+/* Disabled is expressed as colour, not opacity.
+ *
+ * These buttons carry a border, so fading them fades the border with the glyph
+ * and the browser composites the whole group toward whatever is behind it. That
+ * pair cannot be recovered from a screenshot, so a contrast gate can only
+ * report "cannot judge" — which is exactly what it did for the stop button.
+ * Muting the two colours instead keeps the dimmed reading and stays checkable.
+ */
 .d2-instance-control:disabled {
     cursor: not-allowed;
-    opacity: 0.72;
+    border-color: var(--border);
+    color: var(--text-3);
 }
 
 .d2-instance-control.is-start {
