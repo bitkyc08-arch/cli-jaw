@@ -47,11 +47,35 @@ try {
     if (mode === 'keyboard') {
         const inventory = await page.evaluate(({ rootSelector, focusable }) => {
             const root = rootSelector ? document.querySelector(rootSelector) : document.body;
-            if (!root) return { error: 'surface root not found', total: 0, names: [] };
+            if (!root) return { error: 'surface root not found', total: 0, names: [], roving: [] };
             const els = [...root.querySelectorAll(focusable)]
                 .filter((el) => !el.hasAttribute('disabled') && el.getBoundingClientRect().width > 0);
             const label = (el) => el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 40) || el.tagName;
-            return { total: els.length, names: els.map(label) };
+
+            /*
+             * Members of a roving-tabindex group are reached with arrow keys, not
+             * Tab, so counting them as unreachable is wrong. This produced a false
+             * positive on the sidebar mode tabs. Composite widgets keep exactly one
+             * tabbable member; the rest carry tabindex="-1" by design.
+             */
+            const ROVING = { tablist: 'tab', listbox: 'option', menu: 'menuitem', tree: 'treeitem' };
+            const roving = [];
+            for (const [container, member] of Object.entries(ROVING)) {
+                for (const group of root.querySelectorAll(`[role="${container}"]`)) {
+                    const members = [...group.querySelectorAll(`[role="${member}"]`)]
+                        .filter((el) => !el.hasAttribute('disabled'));
+                    if (members.length < 2) continue;
+                    const entryPoints = members.filter((el) => el.tabIndex >= 0);
+                    for (const el of members) {
+                        if (el.tabIndex < 0) roving.push({ name: label(el), group: container });
+                    }
+                    // A well-formed group has exactly one entry point.
+                    if (entryPoints.length !== 1) {
+                        roving.push({ name: `${container}: ${entryPoints.length} entry points`, group: container, malformed: true });
+                    }
+                }
+            }
+            return { total: els.length, names: els.map(label), roving };
         }, { rootSelector: surface.root ?? null, focusable: FOCUSABLE });
 
         /*
@@ -85,12 +109,21 @@ try {
             }
         }
 
-        const unreachable = inventory.names.filter((name) => !seen.has(name));
+        /*
+         * Reachable = landed on by Tab, OR a member of a roving group that Tab is
+         * not supposed to visit. Malformed groups stay in the failure list.
+         */
+        const rovingNames = new Set((inventory.roving ?? []).filter((entry) => !entry.malformed).map((entry) => entry.name));
+        const malformed = (inventory.roving ?? []).filter((entry) => entry.malformed);
+        const unreachable = inventory.names.filter((name) => !seen.has(name) && !rovingNames.has(name));
         payload = {
             mode, surface: surfaceName, owner: surface.owner,
             total: inventory.total, reached: seen.size, unreachable,
             tabCycleCompleted: wrapped,
-            verdict: inventory.error ? 'fail' : (unreachable.length === 0 ? 'pass' : 'fail'),
+            reachableViaRoving: [...rovingNames],
+            malformedRovingGroups: malformed,
+            verdict: inventory.error ? 'fail'
+                : (unreachable.length === 0 && malformed.length === 0 ? 'pass' : 'fail'),
             error: inventory.error,
         };
     } else if (mode === 'overlay') {

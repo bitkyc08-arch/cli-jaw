@@ -163,6 +163,14 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
     }, [store, pendingStore, historyController, sync, api, scope.port, scopeKey]);
 
     const [echoes, setEchoes] = useState<ComposerEcho[]>([]);
+    /*
+     * Echoes belong to the session that produced them.
+     *
+     * ChatView is reused across a scope switch, so without this a "sending" or
+     * failed echo from session A stayed on screen under session B, and a late
+     * completion from the old composer could still mutate the shared list.
+     */
+    useEffect(() => { setEchoes([]); }, [scopeKey]);
     const composer = useRef<ComposerRegistration | null>(null);
     const [announcement, setAnnouncement] = useState('');
     const ports = useMemo(() => ({
@@ -259,7 +267,12 @@ function ChatComposerSlot({ store, scopeKey, port, onEcho, onRegister }: ChatCom
                 }}
                 isRunning={live.turnIds.length > 0}
                 phase={orcPhase}
-                onStop={() => { void api.instance(port).stopAgent().catch(() => { /* snapshot recovers */ }); }}
+                onStop={() => { void api.instance(port).stopAgent().catch((error: unknown) => {
+                    // A silent failure looks like Stop worked while the agent keeps
+                    // running. Surface it through the echo lane the composer already uses.
+                    onEcho({ id: `stop:${Date.now()}`, source: 'composer', prompt: '중지하지 못했습니다', status: 'error',
+                        error: error instanceof Error ? error.message : String(error) });
+                }); }}
                 onEcho={onEcho}
                 onRegister={onRegister}
             />
