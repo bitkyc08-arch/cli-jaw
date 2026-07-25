@@ -295,7 +295,16 @@
     background: transparent;
     opacity: 0;
     pointer-events: none;
-    transition: background 120ms, color 120ms, opacity 120ms, visibility 120ms;
+    /*
+     * visibility is delayed on the way OUT and instant on the way IN.
+     *
+     * A visibility:hidden element is not focusable, so animating visibility on
+     * reveal creates a race: a fast Tab lands before the first style commit and
+     * skips the control entirely. Keyboard users could not reach the instance
+     * overflow menu at all unless they tabbed slowly. Delaying only the hide
+     * keeps the fade-out while making focus available immediately.
+     */
+    transition: background 120ms, color 120ms, opacity 120ms, visibility 0s linear 120ms;
     visibility: hidden;
 }
 
@@ -308,12 +317,14 @@
     opacity: 1;
     pointer-events: auto;
     visibility: visible;
+    transition-delay: 0s;
 }
 
 .d2-instance-control.is-always-visible {
     opacity: 1;
     pointer-events: auto;
     visibility: visible;
+    transition-delay: 0s;
 }
 
 .d2-instance-row:hover .d2-instance-spinner,

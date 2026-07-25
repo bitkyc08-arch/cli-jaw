@@ -134,7 +134,9 @@ export function Workbench({
                 <header className="d2-workbench-left-header">
                     {sidebarCollapsed ? (
                         <button
-                            className="d2-workbench-header-button"
+                            // Shell hands focus here when the sidebar closes, so the
+                            // class is part of that contract, not just styling.
+                            className="d2-workbench-header-button d2-workbench-side-toggle-open"
                             type="button"
                             onClick={onOpenSidebar}
                             aria-label="Open sidebar"

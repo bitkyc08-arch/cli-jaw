@@ -106,11 +106,25 @@ export function Shell(): JSX.Element {
         >
             <a href="#d2-chat-area" className="d2-skip-nav">Skip to main content</a>
             <h1 className="d2-sr-only">cli-jaw dashboard</h1>
-            <Sidebar onClose={() => {
-                // User explicitly closed → mark as manual so auto-restore skips it
-                autoCollapsedRef.current = false;
-                setSidebarCollapsed(true);
-            }} />
+            <Sidebar
+                collapsed={sidebarCollapsed}
+                onClose={() => {
+                    // User explicitly closed → mark as manual so auto-restore skips it
+                    autoCollapsedRef.current = false;
+                    setSidebarCollapsed(true);
+                    /*
+                     * The close button is inside the subtree that is about to go
+                     * inert, so focus would be stranded on an unreachable node.
+                     * Hand it to the workbench header button that reopens the
+                     * sidebar, which mounts as part of this same state change.
+                     */
+                    requestAnimationFrame(() => {
+                        shellRef.current
+                            ?.querySelector<HTMLElement>('.d2-workbench-side-toggle-open')
+                            ?.focus();
+                    });
+                }}
+            />
             {!sidebarCollapsed && (
                 <div
                     className="d2-sidebar-resize"

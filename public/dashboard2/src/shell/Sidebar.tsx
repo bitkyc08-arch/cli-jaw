@@ -83,6 +83,8 @@ async function fetchJwcConversations(port: number): Promise<JwcConversation[]> {
 }
 
 export interface SidebarProps {
+    /** True while the shell has folded the sidebar to a zero-width track. */
+    collapsed?: boolean;
     onClose?: () => void;
 }
 
@@ -122,7 +124,7 @@ function ThemeToggle(): JSX.Element {
     );
 }
 
-export function Sidebar({ onClose }: SidebarProps): JSX.Element {
+export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Element {
     const api = useManagerApi();
     const { selected, expandedPorts, guardedSelectSession, toggleInstance, openSidePane, openPanel } = useAppScope();
     const [mode, setMode] = useState<SidebarMode>('jaw');
@@ -367,7 +369,19 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
 
     return (
         <>
-            <aside className="d2-sidebar d2-sidebar-v4" aria-label="Instances and sessions">
+            {/*
+              * A collapsed sidebar is folded to a zero-width grid track but stays
+              * mounted, so without inert its buttons keep their place in the tab
+              * order and focus vanishes into a 1px-wide strip. The button that
+              * reopens it lives in the workbench header, outside this subtree, so
+              * marking the whole aside inert cannot trap the user.
+              */}
+            <aside
+                className="d2-sidebar d2-sidebar-v4"
+                aria-label="Instances and sessions"
+                inert={collapsed}
+                aria-hidden={collapsed}
+            >
             <div className="d2-sidebar-topbar">
                 <button
                     className="d2-sidebar-toggle"
