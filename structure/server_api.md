@@ -293,6 +293,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |
 | `bgtask_update` | background task lifecycle/status update for manager/runtime monitors; running and changed entries include native `status` plus shared `statusCategory` |
 | `widget_updated` | file-backed diagram widget changed on disk; payload `{chatId, widgetId}` for targeted iframe refetch |
+| `policy_verdict` | runtime policy hook 판정 broadcast (`src/core/policy-hooks.ts` `emitVerdict`); `internal` scope로 발행되며 payload는 verdict + optional `channel` |
 
 ---
 
