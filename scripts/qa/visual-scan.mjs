@@ -8,7 +8,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { SURFACES, launch, resolveSurface } from './qa-lib.mjs';
-import { installMeasure, setTheme, surfacePixelContrast, THEMES } from './visual-lib.mjs';
+import { installMeasure, setTheme, surfaceIconContrast, surfacePixelContrast, THEMES } from './visual-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -20,6 +20,7 @@ const MIN_ICON_CONTRAST = 3; // WCAG 1.4.11 non-text
 
 const report = { url, when: new Date().toISOString(), surfaces: {} };
 const notReached = [];
+const oracleFailures = [];
 
 for (const name of Object.keys(SURFACES)) {
     report.surfaces[name] = {};
@@ -40,7 +41,23 @@ for (const name of Object.keys(SURFACES)) {
             // CSSOM path cannot see pseudo-element backdrops, gradients,
             // backdrop-filter or images, and this is the check most likely to be
             // quietly wrong in exactly those places.
-            const pixelContrastRows = await surfacePixelContrast(page, root).catch(() => null);
+            //
+            // Errors are NOT swallowed. Catching them and reporting zero
+            // failures is how an oracle silently stops testing anything.
+            let pixelContrastRows = null;
+            let pixelError = null;
+            try {
+                pixelContrastRows = await surfacePixelContrast(page, root);
+            } catch (error) {
+                pixelError = String(error?.message ?? error).slice(0, 200);
+            }
+
+            let iconRows = null;
+            try {
+                iconRows = await surfaceIconContrast(page, root, MIN_ICON_CONTRAST);
+            } catch (error) {
+                pixelError = pixelError ?? String(error?.message ?? error).slice(0, 200);
+            }
 
             const measured = await page.evaluate(({ rootSel, minIcon }) => {
                 const m = window.__d2measure;
@@ -70,15 +87,20 @@ for (const name of Object.keys(SURFACES)) {
                     if (!audit.ok) targetFailures.push({ ...m.describe(el), ...audit });
                 }
 
-                // Icon-only controls need 3:1 between their glyph and backdrop.
-                const iconFailures = [];
-                for (const el of controls) {
-                    if (el.textContent?.trim()) continue;
-                    const svg = el.querySelector('svg');
-                    if (!svg) continue;
-                    const s = getComputedStyle(el);
-                    const ratio = m.contrast(m.parseColour(s.color), m.effectiveBackground(el));
-                    if (ratio < minIcon) iconFailures.push({ ...m.describe(el), ratio: +ratio.toFixed(2) });
+                // Icon contrast is measured from pixels alongside text; the
+                // count here only records how many icon-only controls exist so
+                // the pixel pass can be checked for coverage.
+                const iconOnly = controls.filter((el) => !el.textContent?.trim() && el.querySelector('svg')).length;
+
+                // Controls cut off by overflow:hidden. These never appear in
+                // `controls` because isVisible drops them, which is exactly how
+                // the tool-copy defect disappeared from the scan once clipping
+                // awareness was added.
+                const unreachable = [];
+                const candidates = scope.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="switch"]');
+                for (const el of candidates) {
+                    const verdict = m.unreachableControl(el);
+                    if (verdict) unreachable.push(verdict);
                 }
 
                 // Accessible name per the platform algorithm: a checkbox wrapped
@@ -111,7 +133,8 @@ for (const name of Object.keys(SURFACES)) {
                     cssomContrast,
                     targetFailures,
                     targetExempt,
-                    iconFailures,
+                    iconOnly,
+                    unreachable,
                     unnamed,
                     occluded,
                     clipped,
@@ -122,14 +145,23 @@ for (const name of Object.keys(SURFACES)) {
             }, { rootSel: root, minIcon: MIN_ICON_CONTRAST });
 
             const contrastFailures = (pixelContrastRows ?? []).filter((row) => !row.pass);
+            const iconFailures = (iconRows ?? []).filter((row) => !row.pass);
             report.surfaces[name][theme] = {
                 ...measured,
                 contrastFailures,
+                iconFailures,
                 contrastMeasured: pixelContrastRows?.length ?? 0,
+                iconMeasured: iconRows?.length ?? 0,
                 contrastSource: pixelContrastRows ? 'pixels' : 'unavailable',
+                pixelError,
             };
+
+            // An oracle that errors and reports nothing is worse than no oracle.
+            if (measured.reached && (pixelError || pixelContrastRows === null || iconRows === null)) {
+                oracleFailures.push(`${name}/${theme}: pixel oracle unavailable${pixelError ? ` (${pixelError})` : ''}`);
+            }
             const f = measured.reached
-                ? `contrast ${contrastFailures.length}/${pixelContrastRows?.length ?? 0}px, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), icon ${measured.iconFailures.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
+                ? `contrast ${contrastFailures.length}/${pixelContrastRows?.length ?? 0}px, icon ${iconFailures.length}/${iconRows?.length ?? 0}px, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), unreachable ${measured.unreachable.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
                 : 'NOT REACHED';
             console.error(`${name}/${theme}: ${f}`);
             if (!measured.reached) notReached.push(`${name}/${theme}`);
@@ -143,6 +175,7 @@ for (const name of Object.keys(SURFACES)) {
 // "not reached" as "no defects" is how three of six surfaces silently reported
 // zero problems in the first run.
 report.notReached = notReached;
+report.oracleFailures = oracleFailures;
 
 if (outPath) {
     await mkdir(dirname(outPath), { recursive: true });
@@ -154,5 +187,9 @@ if (outPath) {
 
 if (notReached.length) {
     console.error(`\nFAIL: ${notReached.length} surface/theme pairs were never rendered: ${notReached.join(', ')}`);
-    process.exit(1);
 }
+if (oracleFailures.length) {
+    console.error(`\nFAIL: the pixel oracle did not run on ${oracleFailures.length} surface/theme pairs:`);
+    for (const f of oracleFailures) console.error(`  ${f}`);
+}
+if (notReached.length || oracleFailures.length) process.exit(1);

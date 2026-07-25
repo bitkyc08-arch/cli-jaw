@@ -68,8 +68,12 @@ const RUNTIME_GATES = [
     ['acp-permission-cancel-race', 'cancelling while a permission is pending resolves both cleanly'],
     ['acp-diagnostics', 'the diagnostic snapshot reports child liveness, pending RPCs and last protocol error'],
     ['http-status-mapping', 'transport failures map to 503/504 rather than a blanket 500'],
-    ['http-validation', 'malformed request bodies return 422 with a reason'],
+    // 400, not 422: existing routes already answer 400 for malformed bodies and
+    // changing it would break the client contract for no benefit.
+    ['http-validation', 'malformed request bodies return 400 with a reason'],
     ['http-unknown-session', 'operations on an unknown session return 404'],
+    ['acp-close-timeout-terminates', 'a close RPC timeout terminates the poisoned shared child rather than leaving it'],
+    ['acp-survivors-reestablished', 'sessions that were live when the child died are re-established, not silently dropped'],
 ];
 
 // Scoped to what the frontend can actually reach.
@@ -96,7 +100,8 @@ const JAWCODE_GATES = [
     ['session-close', 'closeSession removes the session without disturbing its siblings'],
     ['permission-approve', 'answerPermission unblocks the waiting prompt'],
     ['permission-deny', 'a denied permission surfaces the refusal in the transcript'],
-    ['recovery-after-child-exit', 'a session reports itself recoverable after the ACP child exits'],
+    ['recovery-in-progress-visible', 'the UI shows that a session is being re-established after a child exit'],
+    ['recovery-failure-visible', 'a re-establishment that fails is surfaced instead of leaving a dead-looking session'],
 ];
 
 export function buildLedger() {

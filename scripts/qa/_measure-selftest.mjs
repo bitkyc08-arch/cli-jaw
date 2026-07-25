@@ -47,11 +47,19 @@ const browser = await chromium.launch({ channel: 'chrome' });
              the text sits over a dark band. A "most common backdrop" reading
              passes this; a worst-case reading fails it. */
           #band { background: linear-gradient(90deg, #ffffff 0%, #ffffff 60%, #9aa4b0 60%, #9aa4b0 100%); color: #b9c2cc; }
+          /* Two cases a reviewer used to break the previous classifier. Both
+             have a mid-grey backdrop, which lies on the RGB line between black
+             text and white — exactly what the old antialiasing filter threw
+             away, scoring each of them 21:1. */
+          #half { background: linear-gradient(90deg,#fff 0%,#fff 60%,#666 60%,#666 100%); color:#000 }
+          #thin { background: linear-gradient(90deg,#fff 0%,#fff 47%,#444 47%,#444 53%,#fff 53%,#fff 100%); color:#000 }
         </style>
         <div class="case" id="plain">Sample</div>
         <div class="case" id="tinted">Sample</div>
         <div class="case" id="pseudo"><span>Sample</span></div>
         <div class="case" id="band">Sample text spanning the band</div>
+        <div class="case" id="half">Sample text spanning</div>
+        <div class="case" id="thin">Sample text spanning</div>
     `);
     await installMeasure(page);
 
@@ -90,6 +98,25 @@ const browser = await chromium.launch({ channel: 'chrome' });
         note: 'a dark band under part of the text must not hide behind a white majority',
     });
     if (!bandOk) failures.push(`synthetic/gradient-band: measured ${bandRow?.ratio ?? 'nothing'}`);
+
+    // Regression guards for the reviewer's counterexamples. A mid-grey backdrop
+    // must not be excused as antialiasing.
+    for (const [id, ceiling, note] of [
+        ['half', 4.0, 'black text over a 40% #666 field (true worst ~3.66)'],
+        ['thin', 3.0, 'black text over a 6% #444 band (true worst ~2.16)'],
+    ]) {
+        const rows = await surfacePixelContrast(page, `#${id}`);
+        const row = rows?.find((r) => r.label.startsWith('Sample'));
+        const ok = row ? row.ratio < ceiling && !row.pass : false;
+        results.push({
+            name: `counterexample/${id}`,
+            measured: row ? row.ratio : null,
+            expected: `<${ceiling} and failing`,
+            ok,
+            note,
+        });
+        if (!ok) failures.push(`counterexample/${id}: measured ${row?.ratio ?? 'nothing'} (must fail)`);
+    }
 
     await page.close();
 }

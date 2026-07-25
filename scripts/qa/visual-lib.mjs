@@ -93,12 +93,20 @@ export const MEASURE_SOURCE = String.raw`
     return (size >= 24 || (size >= 18.66 && weight >= 700)) ? 3 : 4.5;
   }
 
-  // The scrollports that clip this element, innermost first.
+  // The ancestors that clip this element, innermost first.
+  //
+  // scrollable matters: auto/scroll means the user can bring the element into
+  // view, so being outside is normal. hidden/clip means it can never be seen,
+  // which is a defect rather than a reason to stop looking.
   function clippingAncestors(el) {
     const out = [];
     for (let n = el.parentElement; n; n = n.parentElement) {
       const s = getComputedStyle(n);
-      if (/auto|scroll|hidden|clip/.test(s.overflowY) || /auto|scroll|hidden|clip/.test(s.overflowX)) out.push(n);
+      const y = s.overflowY, x = s.overflowX;
+      const clips = /auto|scroll|hidden|clip/.test(y) || /auto|scroll|hidden|clip/.test(x);
+      if (!clips) continue;
+      const scrollable = /auto|scroll/.test(y) || /auto|scroll/.test(x);
+      out.push({ el: n, scrollable });
     }
     return out;
   }
@@ -112,13 +120,33 @@ export const MEASURE_SOURCE = String.raw`
   // are 60px apart and perfectly legal.
   function clippedOut(el) {
     const r = el.getBoundingClientRect();
-    for (const anc of clippingAncestors(el)) {
+    for (const { el: anc, scrollable } of clippingAncestors(el)) {
       const a = anc.getBoundingClientRect();
       if (r.bottom <= a.top || r.top >= a.bottom || r.right <= a.left || r.left >= a.right) {
-        return { clipped: true, by: String(anc.className ?? anc.tagName).slice(0, 40) };
+        return { clipped: true, scrollable, by: String(anc.className ?? anc.tagName).slice(0, 40) };
       }
     }
-    return { clipped: false, by: null };
+    return { clipped: false, scrollable: false, by: null };
+  }
+
+  /**
+   * A control the user can never reach, because an overflow:hidden ancestor
+   * cuts it off entirely.
+   *
+   * Treating all clipping alike fixed the scroll-out false positives and
+   * immediately hid a real defect: .d2-tool-copy is enabled, focusable and cut
+   * off by .d2-tool-line's overflow:hidden, so dropping it as "invisible" made
+   * the scan report a clean workbench.
+   *
+   * Deliberately collapsed UI is excluded: inert, aria-hidden and disabled all
+   * say the author meant it.
+   */
+  function unreachableControl(el) {
+    if (el.hasAttribute('disabled') || el.hasAttribute('inert')) return null;
+    if (el.closest('[inert], [aria-hidden="true"]')) return null;
+    const clip = clippedOut(el);
+    if (!clip.clipped || clip.scrollable) return null;
+    return { ...describe(el), clippedBy: clip.by };
   }
 
   // Visible means visible to a user, which is stricter than a non-zero box.
@@ -140,7 +168,9 @@ export const MEASURE_SOURCE = String.raw`
     }
     // Outside the viewport is not rendered.
     if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
-    // Scrolled out of an ancestor scrollport is equally not rendered.
+    // Scrolled out of a scrollport is not rendered but is reachable, so it is
+    // not measured here. Being cut off by overflow:hidden is a defect and is
+    // reported separately by unreachableControl.
     if (clippedOut(el).clipped) return false;
     return true;
   }
@@ -306,6 +336,7 @@ export const MEASURE_SOURCE = String.raw`
     parseColour, composite, luminance, contrast, effectiveBackground,
     requiredContrast, isVisible, textNodes, controls, describe,
     targetAudit, accessibleName, occlusion, clippedOut, clippingAncestors,
+    unreachableControl,
   };
 })();
 `;
@@ -409,14 +440,39 @@ export async function surfacePixelContrast(page, selectorScope) {
         width: Math.max(1, Math.round(box.width)),
         height: Math.max(1, Math.round(box.height)),
     };
+
+    // Two captures, not one.
+    //
+    // Classifying pixels into "glyph" and "backdrop" from a single image cannot
+    // be done reliably, and a reviewer proved it with a counterexample: black
+    // text over a half-white, half-#666 background scored 21:1, because the
+    // grey lies on the RGB line between the text colour and white and my
+    // antialiasing filter therefore discarded exactly the pixels that made it
+    // fail. Any mid-grey backdrop sits on that line.
+    //
+    // So the glyphs are removed rather than guessed at. The second capture
+    // makes text transparent, which leaves the backdrop untouched. Pixels that
+    // differ between the two are glyph coverage, and the backdrop is read from
+    // the SAME coordinates in the text-free image.
     const shot = await page.screenshot({ clip });
-    return page.evaluate(async ({ data, origin, scope }) => {
+    const hideText = await page.addStyleTag({
+        content: '*, *::before, *::after { color: transparent !important; text-shadow: none !important; -webkit-text-fill-color: transparent !important; }',
+    });
+    const bare = await page.screenshot({ clip });
+    await hideText.evaluate((node) => node.remove());
+
+    return page.evaluate(async ({ data, bareData, origin, scope }) => {
         const m = window.__d2measure;
-        const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
-        const bitmap = await createImageBitmap(blob);
-        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(bitmap, 0, 0);
+        const decode = async (b64) => {
+            const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
+            const bitmap = await createImageBitmap(blob);
+            const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+            const c = canvas.getContext('2d');
+            c.drawImage(bitmap, 0, 0);
+            return { bitmap, ctx: c };
+        };
+        const { bitmap, ctx } = await decode(data);
+        const { ctx: bareCtx } = await decode(bareData);
 
         const root = document.querySelector(scope);
         const dpr = bitmap.width / origin.width;
@@ -425,11 +481,7 @@ export async function surfacePixelContrast(page, selectorScope) {
         for (const el of m.textNodes()) {
             if (root && !root.contains(el)) continue;
             const r = el.getBoundingClientRect();
-            // Inset by a pixel: a bounding rect includes the element's own edge,
-            // and on a small pill the strip of parent background just outside
-            // the fill was 12% of the box — enough to be picked as "backdrop"
-            // and report 1.5:1 for white-on-blue that is really 4.84:1.
-            const pad = Math.max(1, Math.round(1 * dpr));
+            const pad = Math.max(1, Math.round(dpr));
             const sx = Math.round((r.x - origin.x) * dpr) + pad;
             const sy = Math.round((r.y - origin.y) * dpr) + pad;
             const sw = Math.round(r.width * dpr) - pad * 2;
@@ -437,66 +489,139 @@ export async function surfacePixelContrast(page, selectorScope) {
             if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) continue;
 
             const { data: px } = ctx.getImageData(sx, sy, sw, sh);
-            const counts = new Map();
-            for (let i = 0; i < px.length; i += 4) {
-                const key = `${px[i]},${px[i + 1]},${px[i + 2]}`;
-                counts.set(key, (counts.get(key) ?? 0) + 1);
-            }
-            const total = px.length / 4;
+            const { data: bx } = bareCtx.getImageData(sx, sy, sw, sh);
             const style = getComputedStyle(el);
             const fg = m.parseColour(style.color);
             const need = m.requiredContrast(style);
 
-            // Choosing the worst colour above a small share sounded safe and was
-            // not: on a 15px badge the antialiased edge between white glyphs and
-            // a blue field is several percent of the box, and reading that blend
-            // as "the background" reported 1.5:1 where the real pair is 4.84:1.
-            //
-            // So candidates must be BACKGROUND, which means two things: a
-            // meaningful share of the box, and not on the line between the text
-            // colour and another candidate. Antialiased pixels are exactly the
-            // colours that sit between two others, so they are excluded by
-            // construction rather than by a magic threshold.
-            const entries = [...counts.entries()]
-                .map(([key, n]) => {
-                    const [cr, cg, cb] = key.split(',').map(Number);
-                    return { colour: { r: cr, g: cg, b: cb, a: 1 }, share: n / total };
-                })
-                .filter((e) => e.share >= 0.08)
-                .sort((a, b) => b.share - a.share);
+            // Backdrop colours beneath glyph coverage, sampled from the
+            // text-free capture so a mid-grey band cannot be mistaken for an
+            // antialiasing artefact.
+            const counts = new Map();
+            let covered = 0;
+            for (let i = 0; i < px.length; i += 4) {
+                const diff = Math.abs(px[i] - bx[i]) + Math.abs(px[i + 1] - bx[i + 1]) + Math.abs(px[i + 2] - bx[i + 2]);
+                if (diff < 20) continue;
+                covered += 1;
+                const key = bx[i] + ',' + bx[i + 1] + ',' + bx[i + 2];
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+            }
+            if (covered < 6) continue;
 
-            const isBlendOfTextAnd = (candidate, other) => {
-                // A pixel produced by blending `fg` with `other` lies on the
-                // segment between them. Allow a small tolerance for rounding.
-                const dx = other.r - fg.r, dy = other.g - fg.g, dz = other.b - fg.b;
-                const len2 = dx * dx + dy * dy + dz * dz;
-                if (len2 < 1) return false;
-                const t = ((candidate.r - fg.r) * dx + (candidate.g - fg.g) * dy + (candidate.b - fg.b) * dz) / len2;
-                if (t <= 0.02 || t >= 0.98) return false;
-                const px = fg.r + dx * t, py = fg.g + dy * t, pz = fg.b + dz * t;
-                return Math.hypot(candidate.r - px, candidate.g - py, candidate.b - pz) < 12;
-            };
-
+            // The worst backdrop under a meaningful run of glyph pixels. Two
+            // percent of coverage is roughly one character, so a stray sample
+            // cannot fail an element by itself.
             let worst = Infinity;
             let worstColour = null;
-            for (const entry of entries) {
-                const c = entry.colour;
-                // The glyph colour itself is not a backdrop.
-                if (Math.abs(c.r - fg.r) + Math.abs(c.g - fg.g) + Math.abs(c.b - fg.b) < 24) continue;
-                // Nor is an edge pixel between the glyph and a larger field.
-                if (entries.some((o) => o !== entry && o.share > entry.share && isBlendOfTextAnd(c, o.colour))) continue;
-                const ratio = m.contrast(fg, c);
-                if (ratio < worst) { worst = ratio; worstColour = c; }
+            for (const [key, n] of counts) {
+                if (n / covered < 0.02) continue;
+                const parts = key.split(',').map(Number);
+                const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
+                const ratio = m.contrast(fg, candidate);
+                if (ratio < worst) { worst = ratio; worstColour = candidate; }
             }
             if (!Number.isFinite(worst)) continue;
+
             results.push({
                 ...m.describe(el),
                 ratio: Number(worst.toFixed(2)),
                 need,
                 backdrop: worstColour,
+                glyphPixels: covered,
                 pass: worst >= need,
             });
         }
         return results;
-    }, { data: shot.toString('base64'), origin: clip, scope: selectorScope });
+    }, { data: shot.toString('base64'), bareData: bare.toString('base64'), origin: clip, scope: selectorScope });
+}
+/**
+ * Icon contrast from rendered pixels, using the same paired-capture trick.
+ *
+ * Icons were still measured through the CSSOM after text moved to pixels, so
+ * "the whole scan reads pixels" was only true of half of it. An SVG stroke is
+ * drawn with `currentColor`, so hiding it the way text is hidden needs a
+ * different lever: stroke and fill are forced transparent instead.
+ */
+export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
+    const box = await page.locator(selectorScope).boundingBox();
+    if (!box) return null;
+    const clip = {
+        x: Math.max(0, Math.round(box.x)),
+        y: Math.max(0, Math.round(box.y)),
+        width: Math.max(1, Math.round(box.width)),
+        height: Math.max(1, Math.round(box.height)),
+    };
+    const shot = await page.screenshot({ clip });
+    const hideIcons = await page.addStyleTag({
+        content: 'svg, svg * { stroke: transparent !important; fill: transparent !important; }',
+    });
+    const bare = await page.screenshot({ clip });
+    await hideIcons.evaluate((node) => node.remove());
+
+    return page.evaluate(async ({ data, bareData, origin, scope, threshold }) => {
+        const m = window.__d2measure;
+        const decode = async (b64) => {
+            const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
+            const bitmap = await createImageBitmap(blob);
+            const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+            const c = canvas.getContext('2d');
+            c.drawImage(bitmap, 0, 0);
+            return { bitmap, ctx: c };
+        };
+        const { bitmap, ctx } = await decode(data);
+        const { ctx: bareCtx } = await decode(bareData);
+
+        const root = document.querySelector(scope);
+        const dpr = bitmap.width / origin.width;
+        const results = [];
+
+        for (const el of m.controls()) {
+            if (root && !root.contains(el)) continue;
+            if (el.textContent?.trim()) continue;      // not icon-only
+            if (!el.querySelector('svg')) continue;
+
+            const r = el.getBoundingClientRect();
+            const sx = Math.round((r.x - origin.x) * dpr);
+            const sy = Math.round((r.y - origin.y) * dpr);
+            const sw = Math.round(r.width * dpr);
+            const sh = Math.round(r.height * dpr);
+            if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) continue;
+
+            const { data: px } = ctx.getImageData(sx, sy, sw, sh);
+            const { data: bx } = bareCtx.getImageData(sx, sy, sw, sh);
+            const fg = m.parseColour(getComputedStyle(el).color);
+
+            const counts = new Map();
+            let covered = 0;
+            for (let i = 0; i < px.length; i += 4) {
+                const diff = Math.abs(px[i] - bx[i]) + Math.abs(px[i + 1] - bx[i + 1]) + Math.abs(px[i + 2] - bx[i + 2]);
+                if (diff < 20) continue;
+                covered += 1;
+                const key = bx[i] + ',' + bx[i + 1] + ',' + bx[i + 2];
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+            }
+            if (covered < 4) continue;
+
+            let worst = Infinity;
+            let worstColour = null;
+            for (const [key, n] of counts) {
+                if (n / covered < 0.05) continue;
+                const parts = key.split(',').map(Number);
+                const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
+                const ratio = m.contrast(fg, candidate);
+                if (ratio < worst) { worst = ratio; worstColour = candidate; }
+            }
+            if (!Number.isFinite(worst)) continue;
+
+            results.push({
+                ...m.describe(el),
+                ratio: Number(worst.toFixed(2)),
+                need: threshold,
+                backdrop: worstColour,
+                iconPixels: covered,
+                pass: worst >= threshold,
+            });
+        }
+        return results;
+    }, { data: shot.toString('base64'), bareData: bare.toString('base64'), origin: clip, scope: selectorScope, threshold: minRatio });
 }
