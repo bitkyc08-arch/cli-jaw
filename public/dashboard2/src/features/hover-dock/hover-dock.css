@@ -48,7 +48,7 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: pointer;
 }
 
@@ -98,7 +98,7 @@
 .dock-loading {
     padding: 4px 0;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .dock-error {
@@ -107,7 +107,7 @@
     border: 1px solid var(--danger);
     border-radius: var(--r-md);
     color: var(--danger);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .dock-mini-btn {
@@ -117,7 +117,7 @@
     border-radius: var(--r-md);
     background: var(--surface);
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: pointer;
 }
 
@@ -141,7 +141,7 @@
     border-radius: var(--r-full);
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
 }
 
 /* Switch (d2 settings switch values: settings.css .d2-settings-switch) */
@@ -192,7 +192,7 @@
     flex-direction: column;
     gap: 4px;
     margin-bottom: 8px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     color: var(--text-3);
 }
 
@@ -212,7 +212,7 @@
     background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     outline: 0;
 }
 
@@ -233,7 +233,7 @@
 
 .dock-mono {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--text-2);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -258,7 +258,7 @@
     border: 0;
     background: none;
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     cursor: pointer;
 }
@@ -297,7 +297,7 @@
 
 .dock-emp-name {
     flex: 1;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
 }
 
@@ -306,7 +306,7 @@
     border: 0;
     background: none;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     outline: none;
 }
@@ -316,7 +316,7 @@
     border-radius: var(--r-full);
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     letter-spacing: 0.3px;
 }
 
@@ -330,7 +330,7 @@
     margin-top: 4px;
     height: 48px;
     resize: vertical;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .dock-emp-status {
@@ -338,7 +338,7 @@
     align-items: center;
     gap: 6px;
     margin-top: 4px;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .dock-status-running {
@@ -354,12 +354,12 @@
     border-radius: var(--r-full);
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
 }
 
 .dock-model-card-title {
     margin-bottom: 6px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
 }
 
@@ -383,7 +383,7 @@
     border-radius: var(--r-full);
     background: transparent;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     cursor: pointer;
 }
 
@@ -405,14 +405,14 @@
 }
 
 .dock-skill-name {
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
 }
 
 .dock-skill-desc {
     margin-top: 2px;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 /* ── Settings tab ── */
@@ -435,7 +435,7 @@
 
 .dock-field-label {
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 /* Segmented control (tab bar parity, used for TG/DC) */
@@ -456,7 +456,7 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: pointer;
 }
 
@@ -503,7 +503,7 @@
     flex: none;
     width: 72px;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .dock-field-row select {
@@ -514,7 +514,7 @@
     border-radius: var(--r-md);
     background: var(--bg);
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     outline: 0;
 }
 
@@ -550,12 +550,12 @@
 .dock-prompt-editor {
     min-height: 120px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     line-height: 1.5;
     resize: vertical;
 }
 
 .dock-mcp-row {
     padding: 2px 0;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
