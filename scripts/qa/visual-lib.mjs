@@ -93,6 +93,34 @@ export const MEASURE_SOURCE = String.raw`
     return (size >= 24 || (size >= 18.66 && weight >= 700)) ? 3 : 4.5;
   }
 
+  // The scrollports that clip this element, innermost first.
+  function clippingAncestors(el) {
+    const out = [];
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (/auto|scroll|hidden|clip/.test(s.overflowY) || /auto|scroll|hidden|clip/.test(s.overflowX)) out.push(n);
+    }
+    return out;
+  }
+
+  // Is the element scrolled out of one of its own scrollports?
+  //
+  // This is the check that turned two "defects" into nothing. 37 of the 50
+  // instance controls sit below the sidebar list's scrollport: they have real
+  // coordinates, so a naive reading treats them as on-screen, and their
+  // neighbours compute as impossibly close together. Scrolled into view they
+  // are 60px apart and perfectly legal.
+  function clippedOut(el) {
+    const r = el.getBoundingClientRect();
+    for (const anc of clippingAncestors(el)) {
+      const a = anc.getBoundingClientRect();
+      if (r.bottom <= a.top || r.top >= a.bottom || r.right <= a.left || r.left >= a.right) {
+        return { clipped: true, by: String(anc.className ?? anc.tagName).slice(0, 40) };
+      }
+    }
+    return { clipped: false, by: null };
+  }
+
   // Visible means visible to a user, which is stricter than a non-zero box.
   //
   // Checking only the element's own opacity missed the tool-copy button: it is
@@ -112,6 +140,8 @@ export const MEASURE_SOURCE = String.raw`
     }
     // Outside the viewport is not rendered.
     if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
+    // Scrolled out of an ancestor scrollport is equally not rendered.
+    if (clippedOut(el).clipped) return false;
     return true;
   }
 
@@ -122,14 +152,33 @@ export const MEASURE_SOURCE = String.raw`
    * not a reason to skip the element. .d2-tool-copy is laid out, opaque, and
    * completely hidden behind .d2-segment-toggle.
    */
+  // Sampled at several points, because a control covered at its centre may still
+  // be operable at a corner, and one covered everywhere is a real defect.
+  //
+  // top.contains(el) is deliberately NOT treated as "not covered": an ancestor
+  // being the hit target means the child is behind its own parent's painted
+  // content, which is exactly the tool-copy case.
   function occlusion(el) {
     const r = el.getBoundingClientRect();
-    const x = Math.min(innerWidth - 1, Math.max(0, r.x + r.width / 2));
-    const y = Math.min(innerHeight - 1, Math.max(0, r.y + r.height / 2));
-    const top = document.elementFromPoint(x, y);
-    if (!top) return { covered: true, by: null };
-    if (top === el || el.contains(top) || top.contains(el)) return { covered: false, by: null };
-    return { covered: true, by: String(top.className ?? top.tagName).slice(0, 44) };
+    if (r.width < 1 || r.height < 1) return { covered: true, by: null, hits: 0 };
+    const inset = Math.min(3, r.width / 4, r.height / 4);
+    const points = [
+      [r.x + r.width / 2, r.y + r.height / 2],
+      [r.x + inset, r.y + inset],
+      [r.x + r.width - inset, r.y + inset],
+      [r.x + inset, r.y + r.height - inset],
+      [r.x + r.width - inset, r.y + r.height - inset],
+    ];
+    let reachable = 0;
+    let coveredBy = null;
+    for (const [px, py] of points) {
+      if (px < 0 || py < 0 || px >= innerWidth || py >= innerHeight) continue;
+      const top = document.elementFromPoint(px, py);
+      if (!top) continue;
+      if (top === el || el.contains(top)) reachable += 1;
+      else if (!coveredBy) coveredBy = String(top.className ?? top.tagName).slice(0, 44);
+    }
+    return { covered: reachable === 0, by: coveredBy, hits: reachable };
   }
 
   // Elements whose own text is rendered, not wrappers that merely contain it.
@@ -163,32 +212,59 @@ export const MEASURE_SOURCE = String.raw`
   // violations without this check would be wrong.
   function targetAudit(el, all) {
     const r = el.getBoundingClientRect();
-    const big = r.width >= 24 && r.height >= 24;
-    if (big) return { ok: true, reason: 'meets-24' };
+    if (r.width >= 24 && r.height >= 24) return { ok: true, reason: 'meets-24' };
 
-    // Inline links inside a sentence are exempt.
-    if (el.tagName === 'A' && el.closest('p, li, span, td')) return { ok: true, reason: 'inline-exception' };
+    // The inline exception covers a link in a run of text, not any link that
+    // happens to sit in a list item. Require actual sibling text around it.
+    if (el.tagName === 'A') {
+      const parent = el.parentElement;
+      const siblingText = parent
+        ? [...parent.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
+        : false;
+      if (siblingText) return { ok: true, reason: 'inline-exception' };
+    }
 
     const cx = r.x + r.width / 2;
     const cy = r.y + r.height / 2;
-    let nearest = Infinity;
-    let nearestOf = null;
+
+    // 2.5.8 Spacing: a 24px circle centred on this target must not intersect
+    // another target's circle (if that one is also undersized) or its actual
+    // area (if it is large enough). Comparing centre distances alone lets a
+    // wide neighbouring button pass while its edge sits under our circle.
+    let worst = null;
     for (const other of all) {
       if (other === el) continue;
       const o = other.getBoundingClientRect();
       if (o.width < 1 || o.height < 1) continue;
-      const d = Math.hypot(cx - (o.x + o.width / 2), cy - (o.y + o.height / 2));
-      if (d < nearest) { nearest = d; nearestOf = other; }
+      const otherBig = o.width >= 24 && o.height >= 24;
+
+      let clash = false;
+      let metric;
+      if (otherBig) {
+        // Circle (radius 12 around cx,cy) vs rectangle.
+        const nx = Math.max(o.left, Math.min(cx, o.right));
+        const ny = Math.max(o.top, Math.min(cy, o.bottom));
+        const d = Math.hypot(cx - nx, cy - ny);
+        clash = d < 12;
+        metric = { kind: 'circle-vs-rect', distance: Math.round(d) };
+      } else {
+        const d = Math.hypot(cx - (o.x + o.width / 2), cy - (o.y + o.height / 2));
+        clash = d < 24;
+        metric = { kind: 'circle-vs-circle', distance: Math.round(d) };
+      }
+      if (clash && (!worst || metric.distance < worst.metric.distance)) {
+        worst = { other, metric };
+      }
     }
-    // Two 24px circles overlap when their centres are closer than 24px.
-    const spaced = nearest >= 24;
+
     return {
-      ok: spaced,
-      reason: spaced ? 'spacing-exception' : 'undersized-and-crowded',
+      ok: !worst,
+      reason: worst ? 'undersized-and-crowded' : 'spacing-exception',
       width: Math.round(r.width),
       height: Math.round(r.height),
-      nearestCentre: Number.isFinite(nearest) ? Math.round(nearest) : null,
-      nearestCls: nearestOf ? String(nearestOf.className ?? '').slice(0, 40) : null,
+      ...(worst
+        ? { conflict: worst.metric, conflictCls: String(worst.other.className ?? '').slice(0, 40) }
+        : {}),
     };
   }
 
@@ -229,7 +305,7 @@ export const MEASURE_SOURCE = String.raw`
   window.__d2measure = {
     parseColour, composite, luminance, contrast, effectiveBackground,
     requiredContrast, isVisible, textNodes, controls, describe,
-    targetAudit, accessibleName, occlusion,
+    targetAudit, accessibleName, occlusion, clippedOut, clippingAncestors,
   };
 })();
 `;
@@ -312,4 +388,115 @@ export const THEMES = ['dark', 'light'];
 export async function setTheme(page, theme) {
     await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
     await page.waitForTimeout(350);
+}
+/**
+ * Contrast for many elements at once, read from one screenshot.
+ *
+ * `pixelContrast` takes a screenshot per element, which is far too slow for a
+ * full-surface sweep. This captures the surface once, then samples each text
+ * element's own box out of that single bitmap inside the page.
+ *
+ * For each element it reports the WORST contrast across the sampled backdrop
+ * colours rather than the most common one, so a small dark band under a line of
+ * text cannot hide behind a large light majority.
+ */
+export async function surfacePixelContrast(page, selectorScope) {
+    const box = await page.locator(selectorScope).boundingBox();
+    if (!box) return null;
+    const clip = {
+        x: Math.max(0, Math.round(box.x)),
+        y: Math.max(0, Math.round(box.y)),
+        width: Math.max(1, Math.round(box.width)),
+        height: Math.max(1, Math.round(box.height)),
+    };
+    const shot = await page.screenshot({ clip });
+    return page.evaluate(async ({ data, origin, scope }) => {
+        const m = window.__d2measure;
+        const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
+        const bitmap = await createImageBitmap(blob);
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0);
+
+        const root = document.querySelector(scope);
+        const dpr = bitmap.width / origin.width;
+        const results = [];
+
+        for (const el of m.textNodes()) {
+            if (root && !root.contains(el)) continue;
+            const r = el.getBoundingClientRect();
+            // Inset by a pixel: a bounding rect includes the element's own edge,
+            // and on a small pill the strip of parent background just outside
+            // the fill was 12% of the box — enough to be picked as "backdrop"
+            // and report 1.5:1 for white-on-blue that is really 4.84:1.
+            const pad = Math.max(1, Math.round(1 * dpr));
+            const sx = Math.round((r.x - origin.x) * dpr) + pad;
+            const sy = Math.round((r.y - origin.y) * dpr) + pad;
+            const sw = Math.round(r.width * dpr) - pad * 2;
+            const sh = Math.round(r.height * dpr) - pad * 2;
+            if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) continue;
+
+            const { data: px } = ctx.getImageData(sx, sy, sw, sh);
+            const counts = new Map();
+            for (let i = 0; i < px.length; i += 4) {
+                const key = `${px[i]},${px[i + 1]},${px[i + 2]}`;
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+            }
+            const total = px.length / 4;
+            const style = getComputedStyle(el);
+            const fg = m.parseColour(style.color);
+            const need = m.requiredContrast(style);
+
+            // Choosing the worst colour above a small share sounded safe and was
+            // not: on a 15px badge the antialiased edge between white glyphs and
+            // a blue field is several percent of the box, and reading that blend
+            // as "the background" reported 1.5:1 where the real pair is 4.84:1.
+            //
+            // So candidates must be BACKGROUND, which means two things: a
+            // meaningful share of the box, and not on the line between the text
+            // colour and another candidate. Antialiased pixels are exactly the
+            // colours that sit between two others, so they are excluded by
+            // construction rather than by a magic threshold.
+            const entries = [...counts.entries()]
+                .map(([key, n]) => {
+                    const [cr, cg, cb] = key.split(',').map(Number);
+                    return { colour: { r: cr, g: cg, b: cb, a: 1 }, share: n / total };
+                })
+                .filter((e) => e.share >= 0.08)
+                .sort((a, b) => b.share - a.share);
+
+            const isBlendOfTextAnd = (candidate, other) => {
+                // A pixel produced by blending `fg` with `other` lies on the
+                // segment between them. Allow a small tolerance for rounding.
+                const dx = other.r - fg.r, dy = other.g - fg.g, dz = other.b - fg.b;
+                const len2 = dx * dx + dy * dy + dz * dz;
+                if (len2 < 1) return false;
+                const t = ((candidate.r - fg.r) * dx + (candidate.g - fg.g) * dy + (candidate.b - fg.b) * dz) / len2;
+                if (t <= 0.02 || t >= 0.98) return false;
+                const px = fg.r + dx * t, py = fg.g + dy * t, pz = fg.b + dz * t;
+                return Math.hypot(candidate.r - px, candidate.g - py, candidate.b - pz) < 12;
+            };
+
+            let worst = Infinity;
+            let worstColour = null;
+            for (const entry of entries) {
+                const c = entry.colour;
+                // The glyph colour itself is not a backdrop.
+                if (Math.abs(c.r - fg.r) + Math.abs(c.g - fg.g) + Math.abs(c.b - fg.b) < 24) continue;
+                // Nor is an edge pixel between the glyph and a larger field.
+                if (entries.some((o) => o !== entry && o.share > entry.share && isBlendOfTextAnd(c, o.colour))) continue;
+                const ratio = m.contrast(fg, c);
+                if (ratio < worst) { worst = ratio; worstColour = c; }
+            }
+            if (!Number.isFinite(worst)) continue;
+            results.push({
+                ...m.describe(el),
+                ratio: Number(worst.toFixed(2)),
+                need,
+                backdrop: worstColour,
+                pass: worst >= need,
+            });
+        }
+        return results;
+    }, { data: shot.toString('base64'), origin: clip, scope: selectorScope });
 }

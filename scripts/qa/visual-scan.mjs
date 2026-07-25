@@ -8,7 +8,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { SURFACES, launch, resolveSurface } from './qa-lib.mjs';
-import { installMeasure, setTheme, THEMES } from './visual-lib.mjs';
+import { installMeasure, setTheme, surfacePixelContrast, THEMES } from './visual-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -36,6 +36,12 @@ for (const name of Object.keys(SURFACES)) {
             await installMeasure(page);
 
             const root = SURFACES[name].root;
+            // Contrast comes from rendered pixels, not from a CSSOM guess. The
+            // CSSOM path cannot see pseudo-element backdrops, gradients,
+            // backdrop-filter or images, and this is the check most likely to be
+            // quietly wrong in exactly those places.
+            const pixelContrastRows = await surfacePixelContrast(page, root).catch(() => null);
+
             const measured = await page.evaluate(({ rootSel, minIcon }) => {
                 const m = window.__d2measure;
                 const scope = document.querySelector(rootSel);
@@ -46,12 +52,13 @@ for (const name of Object.keys(SURFACES)) {
                 const controls = m.controls().filter(within);
                 const allControls = m.controls();
 
-                const contrastFailures = [];
+                // Kept only as a cross-check against the pixel reading.
+                const cssomContrast = [];
                 for (const el of text) {
                     const s = getComputedStyle(el);
                     const ratio = m.contrast(m.parseColour(s.color), m.effectiveBackground(el));
                     const need = m.requiredContrast(s);
-                    if (ratio < need) contrastFailures.push({ ...m.describe(el), ratio: +ratio.toFixed(2), need });
+                    if (ratio < need) cssomContrast.push({ ...m.describe(el), ratio: +ratio.toFixed(2), need });
                 }
 
                 // 2.5.8 with its spacing and inline exceptions, not a bare 24px rule.
@@ -101,7 +108,7 @@ for (const name of Object.keys(SURFACES)) {
                 return {
                     reached: true,
                     counts: { text: text.length, controls: controls.length, elements: all.length },
-                    contrastFailures,
+                    cssomContrast,
                     targetFailures,
                     targetExempt,
                     iconFailures,
@@ -114,9 +121,15 @@ for (const name of Object.keys(SURFACES)) {
                 };
             }, { rootSel: root, minIcon: MIN_ICON_CONTRAST });
 
-            report.surfaces[name][theme] = measured;
+            const contrastFailures = (pixelContrastRows ?? []).filter((row) => !row.pass);
+            report.surfaces[name][theme] = {
+                ...measured,
+                contrastFailures,
+                contrastMeasured: pixelContrastRows?.length ?? 0,
+                contrastSource: pixelContrastRows ? 'pixels' : 'unavailable',
+            };
             const f = measured.reached
-                ? `contrast ${measured.contrastFailures.length}, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), icon ${measured.iconFailures.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
+                ? `contrast ${contrastFailures.length}/${pixelContrastRows?.length ?? 0}px, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), icon ${measured.iconFailures.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
                 : 'NOT REACHED';
             console.error(`${name}/${theme}: ${f}`);
             if (!measured.reached) notReached.push(`${name}/${theme}`);

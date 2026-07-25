@@ -12,7 +12,7 @@
 //   2. a known false-positive shape (color(srgb ...) with alpha)
 //   3. a known CSSOM blind spot (a pseudo-element gradient backdrop)
 import { chromium } from 'playwright';
-import { installMeasure, pixelContrast, pixelHistogram, setTheme } from './visual-lib.mjs';
+import { installMeasure, pixelContrast, pixelHistogram, setTheme, surfacePixelContrast } from './visual-lib.mjs';
 
 const TOLERANCE = 0.06;
 const failures = [];
@@ -43,10 +43,15 @@ const browser = await chromium.launch({ channel: 'chrome' });
           #pseudo { position: relative; color: #586574; background: transparent; }
           #pseudo::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, #eef1f5 0%, #eef1f5 100%); }
           #pseudo span { position: relative; }
+          /* a gradient whose ends differ: the modal colour is light, but part of
+             the text sits over a dark band. A "most common backdrop" reading
+             passes this; a worst-case reading fails it. */
+          #band { background: linear-gradient(90deg, #ffffff 0%, #ffffff 60%, #9aa4b0 60%, #9aa4b0 100%); color: #b9c2cc; }
         </style>
         <div class="case" id="plain">Sample</div>
         <div class="case" id="tinted">Sample</div>
         <div class="case" id="pseudo"><span>Sample</span></div>
+        <div class="case" id="band">Sample text spanning the band</div>
     `);
     await installMeasure(page);
 
@@ -71,6 +76,20 @@ const browser = await chromium.launch({ channel: 'chrome' });
     const parseOk = ['r', 'g', 'b'].every((k) => Math.abs(parsed[k] - expected[k]) < 0.5) && Math.abs(parsed.a - 0.08) < 1e-6;
     results.push({ name: 'parser/color(srgb)', measured: parsed, expected, ok: parseOk, note: 'floats must scale to 0-255' });
     if (!parseOk) failures.push(`parser/color(srgb): got ${JSON.stringify(parsed)}`);
+
+    // The worst-case sampler must notice the dark band even though most of the
+    // box is white. Without this, a low-contrast region hides behind a majority.
+    const bandRows = await surfacePixelContrast(page, '#band');
+    const bandRow = bandRows?.find((r) => r.label.startsWith('Sample'));
+    const bandOk = bandRow ? bandRow.ratio < 2.2 : false;
+    results.push({
+        name: 'synthetic/gradient-band',
+        measured: bandRow ? bandRow.ratio : null,
+        expected: '<2.2 (worst point, not modal colour)',
+        ok: bandOk,
+        note: 'a dark band under part of the text must not hide behind a white majority',
+    });
+    if (!bandOk) failures.push(`synthetic/gradient-band: measured ${bandRow?.ratio ?? 'nothing'}`);
 
     await page.close();
 }
