@@ -85,7 +85,7 @@
 .d2-tool-detail.is-gone .d2-tool-detail__state, .d2-tool-detail.is-unavailable .d2-tool-detail__state { color: var(--text-3); }
 .d2-detail-progress, .d2-copy-progress { accent-color: var(--accent); color: var(--text-3); }
 .d2-ansi-b { font-weight: 700; } .d2-ansi-dim { opacity: .7; } .d2-ansi-i { font-style: italic; } .d2-ansi-u { text-decoration: underline; }
-.d2-ansi-fg-0 { color: var(--syntax-fg); } .d2-ansi-fg-1 { color: var(--syntax-delete); } .d2-ansi-fg-2 { color: var(--syntax-insert); } .d2-ansi-fg-3 { color: var(--syntax-keyword); } .d2-ansi-fg-4 { color: var(--syntax-link); } .d2-ansi-fg-5 { color: var(--syntax-string); } .d2-ansi-fg-6 { color: var(--syntax-number); } .d2-ansi-fg-7 { color: var(--text); }
+.d2-ansi-fg-0 { color: var(--syntax-fg); } .d2-ansi-fg-1 { color: var(--syntax-delete); } .d2-ansi-fg-2 { color: var(--syntax-insert); } .d2-ansi-fg-3 { color: var(--syntax-keyword); } .d2-ansi-fg-4 { color: var(--syntax-function); } .d2-ansi-fg-5 { color: var(--syntax-string); } .d2-ansi-fg-6 { color: var(--syntax-number); } .d2-ansi-fg-7 { color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .d2-tool-detail__skeleton span { animation: none; } }
 
 .elicitation-block,.search-results-block,.dataframe-block,.chart-json-block,.compose-block,.d2-widget-segment,.d2-link-preview { margin: 10px 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); }

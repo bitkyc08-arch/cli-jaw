@@ -40,7 +40,18 @@ function parse(raw: string, finalized: boolean): MarkdownRenderResult {
     const extracted = finalized
         ? extractMarkdownSlots(parseSource, contentHash(normalizedSource), true)
         : { source: parseSource, slots: [] as readonly MarkdownSlot[] };
-    const unsafe = marked.parse(extracted.source, { async: false });
+    /*
+     * marked emits a formatting newline after the outermost closing tag. Any
+     * container that inherits white-space: pre-wrap — the user bubble does —
+     * renders that as a real blank line, so a one-line message measured 68px
+     * instead of 44px.
+     *
+     * Trimming only the outer edge is safe: whitespace a user actually meant to
+     * keep lives INSIDE a tag (fenced code, for example), so it is untouched.
+     *
+     * Done before sanitizing so the sanitizer's branded return type survives.
+     */
+    const unsafe = marked.parse(extracted.source, { async: false }).trim();
     const html = sanitizeHtml(unsafe, 'markdown');
     const result = { html, normalizedSource, cacheKey, finalized, slots: extracted.slots };
     if (finalized) cache.set('markdown', cacheKey, html);

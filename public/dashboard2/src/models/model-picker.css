@@ -21,7 +21,7 @@
     padding: 7px 10px;
     border: 1px solid var(--border-h);
     border-radius: var(--r-md);
-    background: var(--surface-raised);
+    background: var(--surface);
     color: var(--text-2);
     text-align: left;
 }
@@ -35,7 +35,7 @@
 
 .d2-model-picker-trigger:hover:not(:disabled),
 .d2-model-picker.is-open .d2-model-picker-trigger {
-    border-color: var(--accent-dim);
+    border-color: var(--accent-soft);
     color: var(--text);
 }
 
@@ -89,7 +89,7 @@
 }
 
 .d2-model-picker-option.is-highlighted {
-    background: var(--surface-hover);
+    background: var(--surface-h);
     color: var(--text);
 }
 

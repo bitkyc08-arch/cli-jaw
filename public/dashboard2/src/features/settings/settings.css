@@ -91,7 +91,7 @@
     padding: 10px 12px;
     border: 1px solid var(--border-h);
     border-radius: var(--r-md);
-    background: var(--surface-raised);
+    background: var(--surface);
     color: var(--text-3);
     font-size: 11.5px;
 }
