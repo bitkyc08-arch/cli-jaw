@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "gate": "090-dashboard2-a11y",
-  "generatedAt": "2026-07-23T14:50:03.894Z",
-  "baselineCommit": "5196313b45a17b68d0a1fb65c163cba4f6cd14ef",
+  "generatedAt": "2026-07-23T20:15:03.481Z",
+  "baselineCommit": "b0530083080a4a89c9d6148528b07f70bd738104",
   "sourceUnderTest": "working-tree",
   "command": "npx tsx --test tests/browser/dashboard2-a11y.test.ts",
   "thresholds": {

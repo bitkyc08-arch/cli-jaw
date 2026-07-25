@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "suite": "dashboard2-shortcuts-responsive",
-  "baselineSha": "481aac65f0a43c036dea1fd6412217174ef4b5e4",
+  "baselineSha": "b0530083080a4a89c9d6148528b07f70bd738104",
   "dispatch": {
     "cmdN": "browser provider",
     "cmdK": "browser provider",
