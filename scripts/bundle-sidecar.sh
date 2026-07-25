@@ -57,6 +57,11 @@ cd "$SIDECAR_DIR"
 install_locked_production_dependencies
 
 echo "Pruning frontend-only dependencies..."
+# NOTE: only genuinely frontend-only packages belong here. Anything imported by
+# dist/src/** is a SERVER dependency and pruning it makes the packaged sidecar
+# crash at import time with ERR_MODULE_NOT_FOUND. `node-fetch` was in this list
+# by mistake even though src/telegram/bot.ts imports it, which killed every
+# packaged instance that touched the Telegram path.
 PRUNE_PKGS=(
   "@codemirror/autocomplete" "@codemirror/lang-markdown" "@codemirror/language"
   "@codemirror/language-data" "@codemirror/state" "@codemirror/view"
@@ -64,7 +69,7 @@ PRUNE_PKGS=(
   "@tanstack/virtual-core" "@uiw/react-codemirror" "@xterm/addon-fit" "@xterm/xterm"
   "d3" "dompurify" "highlight.js" "katex" "marked-highlight" "mermaid"
   "react" "react-dom" "react-markdown" "rehype-katex" "rehype-sanitize"
-  "remark-breaks" "remark-gfm" "remark-math" "node-fetch"
+  "remark-breaks" "remark-gfm" "remark-math"
 )
 for pkg in "${PRUNE_PKGS[@]}"; do
   rm -rf "$SIDECAR_DIR/node_modules/$pkg" 2>/dev/null || true
