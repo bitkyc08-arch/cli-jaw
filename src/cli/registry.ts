@@ -14,11 +14,14 @@ export const CLI_REGISTRY = {
         defaultModel: 'Gemini 3.5 Flash (Medium)',
         defaultEffort: '',
         efforts: [],
-        // Labels are what `agy models` prints and what `agy --model` accepts
-        // verbatim. Refreshed 2026-07-25 against AGY 1.1.4, which added the
-        // Gemini 3.6 Flash tier. `defaultModel` intentionally stays on 3.5
-        // Flash: promoting a default changes every new session's model, which
-        // is a policy decision, not a catalog sync.
+        // Tier-bearing label form, which is what `agy --model` accepts on its
+        // own. cli-jaw never sends --effort for AGY, and a tier-less slug is
+        // rejected in that shape ("requires --effort"). `agy models` prints a
+        // DIFFERENT, effort-suffixed slug form (gemini-3.6-flash-medium) — do
+        // not paste that output here. Refreshed 2026-07-25 against AGY 1.1.4,
+        // which added the Gemini 3.6 Flash tier. `defaultModel` intentionally
+        // stays on 3.5 Flash: promoting a default changes every new session's
+        // model, which is a policy decision, not a catalog sync.
         models: [
             'Gemini 3.6 Flash (High)',
             'Gemini 3.6 Flash (Medium)',

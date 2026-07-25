@@ -262,7 +262,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 ## WebSocket Events
 
-이 heading은 `structure/check-doc-drift.sh`의 anchor로 유지한다. X-01 이후 current server는 public browser events를 WebSocket으로 broadcast하지 않는다. 아래 catalog는 `src/core/bus.ts` → `src/core/event-bus.ts` → `GET /api/events`로 전달되는 public SSE event type surface다. WebSocket은 `public/js/ws.ts`와 `bin/commands/tui/channel.ts`가 `/api/events`를 한 번도 열 수 없는 pre-X-01 server에 붙을 때만 fallback path로 사용한다. Current Web UI는 reconnect 시 REST snapshot hydration으로 `agent_status`, `queue_update`, 비-IDLE `orc_state` 상태를 보강한다.
+이 heading은 `structure/check-doc-drift.sh`의 anchor로 유지한다. X-01 이후 current server는 public browser events를 WebSocket으로 broadcast하지 않는다. 아래 catalog는 `broadcast()`가 발행하는 event type 전체다. 기본 audience인 `public` 항목은 `src/core/bus.ts` → `src/core/event-bus.ts` → `GET /api/events`로 전달되는 SSE surface이고, `broadcast(..., 'internal')`로 발행되는 항목은 audience gate에서 SSE로 나가지 않고 in-process listener만 받으므로 해당 행에 **internal audience**로 명시한다. WebSocket은 `public/js/ws.ts`와 `bin/commands/tui/channel.ts`가 `/api/events`를 한 번도 열 수 없는 pre-X-01 server에 붙을 때만 fallback path로 사용한다. Current Web UI는 reconnect 시 REST snapshot hydration으로 `agent_status`, `queue_update`, 비-IDLE `orc_state` 상태를 보강한다.
 
 | Type | 설명 |
 | --- | --- |
@@ -293,7 +293,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |
 | `bgtask_update` | background task lifecycle/status update for manager/runtime monitors; running and changed entries include native `status` plus shared `statusCategory` |
 | `widget_updated` | file-backed diagram widget changed on disk; payload `{chatId, widgetId}` for targeted iframe refetch |
-| `policy_verdict` | runtime policy hook 판정 broadcast (`src/core/policy-hooks.ts` `emitVerdict`); `internal` scope로 발행되며 payload는 verdict + optional `channel` |
+| `policy_verdict` | **internal audience 전용** — runtime policy hook 판정 broadcast (`src/core/policy-hooks.ts` `emitVerdict`). `broadcast(..., 'internal')`이므로 `src/core/bus.ts`의 audience gate에서 SSE로 발행되지 않고 in-process listener만 받는다. payload는 verdict + optional `channel` |
 
 ---
 

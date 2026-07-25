@@ -236,7 +236,7 @@ CLI → 서버 API 호출 시 인증 토큰을 관리하는 경량 헬퍼. 포�
 | CLI | Default Model | Notable model aliases |
 | --- | --- | --- |
 | `pi` | `grok-composer-2.5-fast` | Pi RPC runtime with isolated profile/model registration |
-| `agy` | AGY-selected | print-mode runtime; `--model` is capability-gated (observed in AGY 1.1.4); no separate effort flag. Model values are the label form `agy models` prints (`Gemini 3.6 Flash (Medium)`); a bare tier-less slug is rejected because cli-jaw never sends `--effort` for AGY |
+| `agy` | AGY-selected | print-mode runtime; `--model` is capability-gated (observed in AGY 1.1.4); no separate effort flag. Model values must be the tier-bearing label form that `agy --model` accepts on its own, e.g. `Gemini 3.6 Flash (Medium)`. A bare tier-less slug such as `gemini-3.5-flash` is rejected (`requires --effort`) because cli-jaw never sends `--effort` for AGY. Note `agy models` prints effort-suffixed slugs (`gemini-3.6-flash-medium`), which is a different form — do not copy that output into the registry |
 | `ai-e` | `sonnet` | AI-E wrapper runtime |
 | `claude` | `claude-opus-4-8` | canonical choices include `opus`, `sonnet`, `sonnet[1m]`, `haiku`; pinned full IDs include `claude-opus-5`/`claude-opus-5[1m]`; legacy aliases normalize |
 | `claude-e` | `claude-opus-4-8` | helper-backed Claude E runtime |

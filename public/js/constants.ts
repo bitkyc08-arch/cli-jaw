@@ -24,7 +24,9 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         // case 'agy'), and cli-jaw never sends --effort for AGY. The bare slug
         // form is rejected in that shape — AGY 1.1.4 answers
         // `--model gemini-3.5-flash` with "requires --effort" — so the offline
-        // fallback must use the label form that `agy models` prints.
+        // fallback must use the tier-bearing label form that `agy --model`
+        // accepts on its own. (`agy models` prints effort-suffixed slugs like
+        // `gemini-3.6-flash-medium`; that is a different form, not this one.)
         // The old bare slug is deliberately NOT offered: it fails every time it
         // is picked. A user who already persisted it still sees it, because
         // renderCliSettings appends an absent selected value as a custom option
