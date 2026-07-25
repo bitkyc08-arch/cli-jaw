@@ -51,6 +51,12 @@ interface JwcSidebarState {
     capability: JwcCapabilityReason | 'loading' | 'error';
     conversations: JwcConversation[];
     loading: boolean;
+    /*
+     * The port this list came from. Selecting a conversation has to target that
+     * port, not whatever jaw instance happens to be selected — they are not the
+     * same thing and the code panel needs the former.
+     */
+    port: number | null;
 }
 
 const JWC_CAPABILITY_REASONS = new Set<JwcCapabilityReason>(['ok', 'missing_binary', 'acp_unsupported', 'temporarily_unavailable']);
@@ -139,6 +145,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         capability: 'loading',
         conversations: [],
         loading: true,
+        port: null,
     });
     const [jwcRefresh, setJwcRefresh] = useState(0);
     const instancesRequestRef = useRef<{ generation: number; controller: AbortController | null }>({
@@ -224,7 +231,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         if (mode !== 'jwc') return;
         const port = selected?.port ?? instances.find(i => i.status === 'online')?.port;
         if (!port) {
-            setJwcState({ capability: 'temporarily_unavailable', conversations: [], loading: false });
+            setJwcState({ capability: 'temporarily_unavailable', conversations: [], loading: false, port: null });
             return;
         }
         let mounted = true;
@@ -233,12 +240,12 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
             const capability = await fetchJwcCapability(port);
             if (!mounted) return;
             if (capability !== 'ok') {
-                setJwcState({ capability, conversations: [], loading: false });
+                setJwcState({ capability, conversations: [], loading: false, port });
                 return;
             }
             const conversations = await fetchJwcConversations(port);
             if (!mounted) return;
-            setJwcState({ capability: 'ok', conversations, loading: false });
+            setJwcState({ capability: 'ok', conversations, loading: false, port });
         })();
         return () => { mounted = false; };
     }, [mode, selected?.port, instances, jwcRefresh]);
@@ -468,7 +475,22 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
                                 key={conv.sessionId}
                                 className="d2-instance-row d2-jwc-conv-row"
                                 type="button"
-                                onClick={() => openSidePane()}
+                                onClick={() => {
+                                    /*
+                                     * Previously this only opened the side pane and
+                                     * dropped sessionId/cwd, so every row did the
+                                     * same nothing. The payload is what lets the
+                                     * code panel load THIS conversation.
+                                     */
+                                    if (jwcState.port === null) { openSidePane(); return; }
+                                    openPanel({
+                                        type: 'code',
+                                        key: 'code',
+                                        title: 'Code',
+                                        keepAlive: true,
+                                        payload: { port: jwcState.port, sessionId: conv.sessionId, cwd: conv.cwd },
+                                    });
+                                }}
                                 title={conv.title}
                             >
                                 <div className="d2-instance-main">

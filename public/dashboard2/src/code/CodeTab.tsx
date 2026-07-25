@@ -19,6 +19,11 @@ import { createCodeSessionForGeneration, isCurrentCodeSessionGeneration } from '
 
 export interface CodeTabProps {
     port: number;
+    /**
+     * A conversation the user picked elsewhere (the jwc sidebar list) that this
+     * tab should open instead of starting empty.
+     */
+    sessionIntent?: { sessionId: string; cwd: string };
 }
 
 interface PermissionOption {
@@ -49,7 +54,7 @@ function permissionOptions(event: JwcPermissionEvent): PermissionOption[] {
     return parsed;
 }
 
-export function CodeTab({ port }: CodeTabProps): JSX.Element {
+export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
     const api = useManagerApi();
     const sync = useManagerSync();
     const client = useMemo(() => createCodeApiClient(port), [port]);
@@ -132,6 +137,23 @@ export function CodeTab({ port }: CodeTabProps): JSX.Element {
     }
 
     const pendingEntryRef = useRef<CodeHistorySummary | null>(null);
+
+    /*
+     * Open the conversation the sidebar asked for.
+     *
+     * Keyed on the intent itself so re-opening the SAME panel with a different
+     * conversation loads the new one; without that the panel would keep showing
+     * whichever session it happened to open first.
+     */
+    const intentKey = sessionIntent ? `${sessionIntent.sessionId}::${sessionIntent.cwd}` : null;
+    const appliedIntentRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!sessionIntent || !intentKey) return;
+        if (appliedIntentRef.current === intentKey) return;
+        appliedIntentRef.current = intentKey;
+        openStoredSession({ sessionId: sessionIntent.sessionId, cwd: sessionIntent.cwd } as CodeHistorySummary);
+    }, [intentKey, sessionIntent]);
+
     useEffect(() => {
         if (!store || !adapter || !sessionId) return;
         const entry = pendingEntryRef.current;

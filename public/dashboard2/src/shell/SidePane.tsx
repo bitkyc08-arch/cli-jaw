@@ -135,8 +135,25 @@ function TabContent({ panel, active, terminalRequests, consumeTerminalRequests, 
             return <BrowserPanel panelId={panel.id} />;
         case 'files':
             return <FileTreePanel />;
-        case 'code':
-            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Code...</div>}><LazyCodeTab port={port!} /></Suspense>;
+        case 'code': {
+            /*
+             * A conversation intent carries its own port: the sidebar list is
+             * fetched from a runtime that is not necessarily the selected jaw
+             * instance. Prefer the payload's port and fall back to the ambient
+             * selection only when the panel was opened without an intent.
+             */
+            const raw = payloadObject(panel.payload);
+            const codePort = typeof raw['port'] === 'number' ? raw['port'] : port;
+            const intent = typeof raw['sessionId'] === 'string' && typeof raw['cwd'] === 'string'
+                ? { sessionId: raw['sessionId'], cwd: raw['cwd'] }
+                : null;
+            if (codePort === null || codePort === undefined) return null;
+            return (
+                <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Code...</div>}>
+                    <LazyCodeTab port={codePort} {...(intent ? { sessionIntent: intent } : {})} />
+                </Suspense>
+            );
+        }
         case 'doc': {
             const raw = payloadObject(panel.payload);
             const payload: DocPayload = {

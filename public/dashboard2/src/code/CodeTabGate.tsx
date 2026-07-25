@@ -10,6 +10,8 @@ const LazyCodeTabImpl = lazy(() => import('./CodeTab.tsx'));
 
 export interface CodeTabGateProps {
     port: number;
+    /** Conversation the sidebar asked this tab to open; passed straight through. */
+    sessionIntent?: { sessionId: string; cwd: string };
 }
 
 const REASON_GUIDANCE: Record<Exclude<CodeCapabilityState['reason'], 'ok'>, { title: string; body: string; retry: boolean }> = {
@@ -30,7 +32,7 @@ const REASON_GUIDANCE: Record<Exclude<CodeCapabilityState['reason'], 'ok'>, { ti
     },
 };
 
-export function CodeTabGate({ port }: CodeTabGateProps): JSX.Element {
+export function CodeTabGate({ port, sessionIntent }: CodeTabGateProps): JSX.Element {
     const [state, setState] = useState<CodeCapabilityState | null>(null);
     const [probing, setProbing] = useState(false);
 
@@ -83,7 +85,7 @@ export function CodeTabGate({ port }: CodeTabGateProps): JSX.Element {
                 </div>
             )}
         >
-            <LazyCodeTabImpl port={port} />
+            <LazyCodeTabImpl port={port} {...(sessionIntent ? { sessionIntent } : {})} />
         </Suspense>
     );
 }
