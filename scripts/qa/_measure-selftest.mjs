@@ -192,18 +192,23 @@ const browser = await chromium.launch({ channel: 'chrome' });
 
     // Alpha and inherited opacity must land in the contrast maths. Each of these
     // computes to solid black, and each renders as pale grey.
-    for (const [id, label] of [
-        ['op', 'Element opacity'],
-        ['alphafg', 'Alpha foreground'],
-        ['ancop', 'Ancestor opacity'],
+    // `op` and `ancop` became unmeasurable when group opacity started failing
+    // closed, and `null < 1.6` is true in JavaScript, so they kept passing for
+    // the wrong reason. Assert what each one actually promises now.
+    for (const [id, label, expectation] of [
+        ['op', 'Element opacity', 'group-opacity'],
+        ['alphafg', 'Alpha foreground', 'ratio'],
+        ['ancop', 'Ancestor opacity', 'group-opacity'],
     ]) {
         const rows = await surfacePixelContrast(page, `#${id}`);
         const row = rows?.find((r) => r.label.startsWith(label.split(' ')[0]));
-        const ok = Boolean(row) && row.ratio < 1.6 && !row.pass;
+        const ok = expectation === 'group-opacity'
+            ? Boolean(row) && String(row.unmeasurable ?? '').startsWith('group-opacity') && !row.pass
+            : Boolean(row) && typeof row.ratio === 'number' && row.ratio < 1.6 && !row.pass;
         results.push({
             name: `counterexample/${id}`,
             measured: row ? row.ratio : 'NO ROW',
-            expected: '<1.6 and failing',
+            expected: expectation === 'group-opacity' ? 'unmeasurable, fail-closed' : '<1.6 and failing',
             ok,
             note: `${label}: computed colour is solid black, rendered is pale grey`,
         });
