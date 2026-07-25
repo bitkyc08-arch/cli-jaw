@@ -17,6 +17,56 @@
     --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
 }
 
+/* ── 260726 wp12 S1 — type scale (theme-invariant) ──
+
+   dashboard2 had 198 hard-coded type sizes across 17 stylesheets using 15
+   distinct values, including 9, 10.5, 11.5, 12.5 and 13.5px. The same "small
+   label" was 10px in one file and 10.5px in another, which reads as sloppiness
+   rather than hierarchy.
+
+   Nine steps, because six erased real distinctions: 15px prose, 16px small
+   heading, 18px panel heading and 22px page heading each do a different job.
+   Half-pixels are absorbed UPWARD (9→10, 10.5→11, 11.5→12, 12.5→13, 13.5→14,
+   17→18) so nothing shrinks.
+
+   Each step carries its line-height in px, not a ratio, because several are
+   load-bearing: the composer computes its height from scrollHeight, and the
+   tool-detail virtualiser pairs with ROW_HEIGHT. Ratios would make those
+   couplings invisible.
+
+   IMPORTANT: --lh-* is only applied where a line-height already exists (57 of
+   198). The other 141 declarations inherit or resolve to `normal`; giving them
+   an explicit line-height would change row heights across dense UI. That is a
+   separate cycle. */
+:root {
+    --fs-2xs: 10px;      /* caption */
+    --fs-xs: 11px;       /* metadata */
+    --fs-sm: 12px;       /* default UI text */
+    --fs-md: 13px;       /* emphasised UI, code */
+    --fs-base: 14px;     /* body and input */
+    --fs-prose: 15px;    /* long-form prose */
+    --fs-lg: 16px;       /* small heading */
+    --fs-xl: 18px;       /* panel heading */
+    --fs-2xl: 22px;      /* page heading */
+
+    --lh-2xs: 14px;
+    --lh-xs: 16px;
+    --lh-sm: 18px;
+    --lh-md: 18px;
+    --lh-base: 22px;
+    --lh-prose: 24px;
+    --lh-lg: 22px;
+    --lh-xl: 24px;
+    --lh-2xl: 28px;
+
+    /* Geometry, not typography. These are paired with JavaScript constants and
+       must not be retuned for looks alone: --lh-code-row matches ROW_HEIGHT in
+       turn-stream/detail/ToolDetailLineWindow.tsx, and the composer row height
+       feeds the auto-grow calculation in chat/composer/Composer.tsx. */
+    --lh-code-row: 20px;
+    --lh-composer-row: 21px;
+}
+
 /* ── dark palette (default) ── */
 :root,
 :root[data-theme='dark'] {

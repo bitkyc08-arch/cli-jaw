@@ -52,7 +52,7 @@ body {
     border-radius: var(--r-md, 10px);
     background: var(--accent, #6ea8fe);
     color: var(--bg, #0d0d0f);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 600;
     text-decoration: none;
     transition: top 150ms ease;
@@ -126,14 +126,14 @@ textarea:focus-visible,
 
 .d2-sidebar-header strong,
 .d2-workbench-header strong {
-    font-size: 13px;
-    line-height: 18px;
+    font-size: var(--fs-md);
+    line-height: var(--lh-md);
 }
 
 .d2-sidebar-header span,
 .d2-workbench-header span {
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     line-height: 15px;
 }
 
@@ -201,7 +201,7 @@ textarea:focus-visible,
 .d2-instance-copy strong,
 .d2-session-copy > span {
     overflow: hidden;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     line-height: 17px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -211,7 +211,7 @@ textarea:focus-visible,
 .d2-session-copy small {
     overflow: hidden;
     color: var(--text-3);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     line-height: 15px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -226,7 +226,7 @@ textarea:focus-visible,
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-3);
-    font-size: 9px;
+    font-size: var(--fs-2xs);
     line-height: 16px;
     text-transform: capitalize;
 }
@@ -277,8 +277,8 @@ textarea:focus-visible,
     gap: 7px;
     padding: 7px 9px;
     color: var(--text-3);
-    font-size: 11px;
-    line-height: 16px;
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
 }
 
 .d2-error-block,
@@ -336,7 +336,7 @@ textarea:focus-visible,
     min-height: 32px;
     gap: 7px;
     padding: 0 10px;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-command-button > span:last-child {
@@ -390,7 +390,7 @@ textarea:focus-visible,
     padding: 0 8px 0 14px;
     border-bottom: 1px solid var(--border);
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-pane-header .d2-icon-button {
@@ -410,7 +410,7 @@ textarea:focus-visible,
 
 .d2-pane-empty {
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--fs-md);
 }
 
 .d2-pane-scope {
@@ -421,7 +421,7 @@ textarea:focus-visible,
     gap: 7px;
     color: var(--text-3);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     overflow-wrap: anywhere;
 }
 
@@ -437,7 +437,7 @@ textarea:focus-visible,
     place-items: center;
     padding: 24px;
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--fs-md);
 }
 
 .d2-sidebar-footer {

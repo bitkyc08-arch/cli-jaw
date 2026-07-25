@@ -95,7 +95,7 @@
     border-radius: calc(var(--r-lg) - 2px);
     background: transparent;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
     transition: background 150ms, color 150ms;
 }
@@ -123,7 +123,7 @@
     border-radius: var(--r-full);
     background: var(--accent);
     color: var(--bg);
-    font-size: 9px;
+    font-size: var(--fs-2xs);
     font-weight: 700;
     line-height: 16px;
 }
@@ -234,15 +234,15 @@
 
 .d2-sidebar-v4 .d2-instance-copy strong {
     color: var(--text);
-    font-size: 13.5px;
+    font-size: var(--fs-base);
     font-weight: 500;
     line-height: 19px;
 }
 
 .d2-sidebar-v4 .d2-instance-copy > span {
     color: var(--text-3);
-    font-size: 11px;
-    line-height: 16px;
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
 }
 
 .d2-instance-port {
@@ -357,7 +357,7 @@
 .d2-instance-lifecycle-message {
     margin: 2px 30px 5px 40px;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     line-height: 1.35;
 }
 
@@ -410,7 +410,7 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-2);
-    font-size: 11.5px;
+    font-size: var(--fs-sm);
     text-align: left;
 }
 
@@ -440,7 +440,7 @@
 .d2-sidebar-empty {
     padding: 14px 10px;
     color: var(--text-3);
-    font-size: 11.5px;
+    font-size: var(--fs-sm);
 }
 
 .d2-sidebar-footer-v4 {
@@ -455,7 +455,7 @@
     min-width: 0;
     flex: 1;
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 700;
     letter-spacing: 0.5px;
 }
@@ -548,9 +548,9 @@
 
 .d2-settings-panel h2 {
     margin: 0 36px 20px 0;
-    font-size: 17px;
+    font-size: var(--fs-xl);
     font-weight: 600;
-    line-height: 24px;
+    line-height: var(--lh-xl);
 }
 
 .d2-settings-form {
@@ -569,7 +569,7 @@
 
 .d2-settings-label {
     color: var(--text-2);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 500;
 }
 
@@ -590,7 +590,7 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-settings-segmented button:hover:not(:disabled) {
@@ -633,7 +633,7 @@
     background: var(--bg);
     color: var(--text-2);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-settings-close {
@@ -684,7 +684,7 @@
 }
 
 .d2-jwc-conv-row .d2-instance-copy span {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     opacity: 0.55;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -699,7 +699,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     cursor: pointer;
 }
 

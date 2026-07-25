@@ -67,7 +67,7 @@
     flex: 1;
     overflow: hidden;
     padding: 0 16px;
-    font-size: 13.5px;
+    font-size: var(--fs-base);
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -148,7 +148,7 @@
     border: 1px solid var(--border-h);
     border-radius: var(--r-md);
     background: rgba(255, 255, 255, .07);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
     white-space: nowrap;
     transition: color 150ms ease, background 150ms ease;
@@ -261,14 +261,14 @@
 .d2-side-pane-picker h2 {
     margin: 0 0 4px;
     color: var(--text);
-    font-size: 18px;
+    font-size: var(--fs-xl);
     font-weight: 600;
 }
 
 .d2-side-pane-picker p {
     margin: 0 0 16px;
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--fs-md);
 }
 
 .d2-side-pane-picker-button {
@@ -281,7 +281,7 @@
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     background: rgba(255, 255, 255, .04);
-    font-size: 14px;
+    font-size: var(--fs-base);
     font-weight: 500;
     transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
 }
@@ -313,7 +313,7 @@
 .d2-side-pane-picker-label {
     padding: 0 4px 4px;
     color: var(--text-4);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     letter-spacing: 0;
     text-transform: uppercase;
@@ -347,13 +347,13 @@
 
 .d2-feature-panel-placeholder h3 {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-lg);
     font-weight: 600;
 }
 
 .d2-feature-panel-placeholder p {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--fs-md);
     color: var(--text-4);
 }
 
@@ -366,7 +366,7 @@
     border-radius: var(--r-lg);
     background: rgba(255, 255, 255, .04);
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-side-pane-placeholder {
@@ -379,7 +379,7 @@
     padding: 24px;
     overflow: auto;
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--fs-md);
     text-align: center;
 }
 
@@ -429,7 +429,7 @@
     background: var(--surface-h);
     color: var(--text);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-browser-url-bar input:focus {
@@ -484,7 +484,7 @@
     justify-content: center;
     gap: 7px;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-browser-empty {
@@ -512,7 +512,7 @@
     overflow-y: auto;
     background: var(--surface);
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-file-tree-message {

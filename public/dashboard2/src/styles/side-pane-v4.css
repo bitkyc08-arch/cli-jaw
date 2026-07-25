@@ -11,7 +11,7 @@
     border-radius: var(--r-md);
     background: rgba(255, 255, 255, .05);
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
     white-space: nowrap;
     cursor: pointer;
@@ -62,7 +62,7 @@
 .d2-side-pane-overflow-group-label {
     padding: 6px 10px 4px;
     color: var(--text-4);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -79,7 +79,7 @@
     border-radius: var(--r-md);
     background: transparent;
     color: var(--text-2);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 450;
     cursor: pointer;
     transition: background 120ms ease, color 120ms ease;
