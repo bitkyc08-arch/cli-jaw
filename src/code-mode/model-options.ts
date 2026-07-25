@@ -94,7 +94,7 @@ export const JWC_MODEL_ASSIGNMENT_TARGETS: Record<JwcModelAssignmentRole, {
 };
 
 export const JWC_PROVIDER_MODEL_DEFAULTS: Record<string, string[]> = {
-    anthropic: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+    anthropic: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
     'openai-codex': ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     xai: ['grok-4.5', 'grok-4.3', 'grok-build-0.1', 'grok-composer-2.5-fast'],
     cursor: ['auto', 'claude-sonnet-5', 'composer-2.5', 'composer-2.5-fast', 'gemini-3-pro', 'gpt-5.5', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'glm-5.2', 'kimi-k2.7-code', 'grok-4.5', 'grok-4.5-fast'],

@@ -88,6 +88,8 @@ export const CLI_META: Record<string, CliMeta> = {
             'claude-fable-5[1m]',
             'claude-sonnet-5',
             'claude-sonnet-5[1m]',
+            'claude-opus-5',
+            'claude-opus-5[1m]',
             'claude-opus-4-8',
             'claude-opus-4-8[1m]',
             'claude-opus-4-7',
@@ -104,7 +106,7 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'Claude E',
         models: [
             'opus', 'sonnet', 'haiku',
-            'claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+            'claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
         ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
@@ -112,12 +114,13 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'JWC',
         defaultProvider: 'anthropic',
         providers: ['anthropic'],
-        models: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+        models: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
         efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
         modelsByProvider: {
             anthropic: [
                 'claude-fable-5',
                 'claude-sonnet-5',
+                'claude-opus-5',
                 'claude-opus-4-8',
                 'claude-opus-4-7',
                 'claude-opus-4-6',

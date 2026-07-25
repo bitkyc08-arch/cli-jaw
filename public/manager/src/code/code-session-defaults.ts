@@ -4,7 +4,7 @@ import { normalizeCodeCommands, type CodeCommand } from './code-types';
 export const FALLBACK_MODEL_OPTIONS: CodeModelOptions = {
     providers: [{
         id: 'anthropic',
-        models: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
+        models: ['claude-sonnet-4-6', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
         efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
     }],
     defaultProvider: 'anthropic',
