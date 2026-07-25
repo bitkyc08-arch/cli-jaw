@@ -167,7 +167,24 @@ export class PendingQueueMachine {
         this.timers.set(key, { handle, token });
         this.overlays.set(key, { action, phase: 'armed' });
         this.emit();
-        if (action === 'steer') void this.api.hold(itemId).catch(() => undefined);
+        /*
+         * Hold keeps the queue from draining this item while the steer is armed.
+         * If it fails the arm still runs to completion, so the item can be
+         * dispatched underneath the user and the steer then targets something
+         * that is gone. Swallowing that made it look like the button did nothing.
+         */
+        if (action === 'steer') {
+            void this.api.hold(itemId).catch((error: unknown) => {
+                const current = this.overlays.get(key);
+                if (!current || current.phase !== 'armed') return;
+                this.overlays.set(key, {
+                    action,
+                    phase: 'error',
+                    message: error instanceof Error ? `Could not hold the queue: ${error.message}` : 'Could not hold the queue',
+                });
+                this.emit();
+            });
+        }
     }
 
     dispose(): void {

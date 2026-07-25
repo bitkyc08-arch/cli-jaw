@@ -70,11 +70,32 @@ export function useVoiceRecorder({ client, onTranscript, permissionTimeoutMs = 1
             recorder.ondataavailable = event => {
                 if (event.data.size) chunksRef.current.push(event.data);
             };
+            /*
+             * A recorder can fail asynchronously (device removed, tab throttled).
+             * Without this the recorder goes inactive while React still says
+             * 'recording', and Stop returns immediately because stop() on an
+             * inactive recorder is a no-op — the UI is then stuck with the mic
+             * held open.
+             */
+            recorder.onerror = () => {
+                stopStream(streamRef.current);
+                streamRef.current = null;
+                recorderRef.current = null;
+                if (!mountedRef.current) return;
+                setError('Recording stopped unexpectedly');
+                setState('error');
+            };
             recorder.start();
             setState('recording');
         } catch (cause) {
             window.clearTimeout(timer);
             if (timedOut) mediaPromise.then(stopStream).catch(() => undefined);
+            // The stream may already be held: permission succeeded and only the
+            // recorder construction or start() threw. Release the mic now rather
+            // than leaving it live until the user happens to dismiss the error.
+            stopStream(streamRef.current);
+            streamRef.current = null;
+            recorderRef.current = null;
             if (!mountedRef.current) return;
             setError(cause instanceof Error ? cause.message : 'Microphone unavailable');
             setState('error');
