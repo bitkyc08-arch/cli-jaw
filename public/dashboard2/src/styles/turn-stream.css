@@ -73,6 +73,62 @@
     letter-spacing: 0;
 }
 
+/* The copy button never had a rule, so it rendered as a browser-default button
+   -- 2px outset border, grey fill -- and, because this container was a block,
+   the toggle beside it took the full width and pushed it onto a second line
+   that `overflow: hidden` then cut off. Twenty-one of them were laid out,
+   enabled and focusable, and impossible to see or click. */
+.d2-tool-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.d2-tool-line > .d2-segment-toggle {
+    min-width: 0;
+    flex: 1;
+}
+
+.d2-tool-copy {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s ease, background .12s ease, color .12s ease;
+}
+
+/* Revealed on hover like the instance controls, but always present for keyboard
+   users -- an action that only exists under a pointer is not an action. */
+.d2-tool-line:hover .d2-tool-copy,
+.d2-tool-line:focus-within .d2-tool-copy,
+.d2-tool-copy:focus-visible {
+    opacity: 1;
+}
+
+.d2-tool-copy:hover {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-tool-copy:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.d2-tool-copy:disabled {
+    cursor: default;
+    opacity: 0;
+}
+
 .d2-segment-toggle {
     width: 100%;
     padding: 0;

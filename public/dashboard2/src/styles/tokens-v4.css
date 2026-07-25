@@ -78,7 +78,8 @@
     --text: #f0f0f2;
     --text-2: #b0b0b8;
     --text-3: #92929b;
-    --text-4: #82828b;
+    /* 4.17:1 on --surface-h, under AA for the board's 10px lane counts. */
+    --text-4: #9a9aa4;
     --accent: #6ea8fe;
     --accent-soft: rgba(110, 168, 254, .12);
     --accent-glow: rgba(110, 168, 254, .25);
@@ -116,9 +117,12 @@
     --text-2: #3d4854;
     --text-3: #586574;
     --text-4: #5e6b7a;
-    --accent: #0969da;
-    --accent-soft: rgba(9, 105, 218, .10);
-    --accent-glow: rgba(9, 105, 218, .20);
+    /* #0969da reads 4.22:1 on its own 10% tint over the sidebar's glass, which
+       is where the active segmented buttons and dock tabs live. Darkened until
+       the worst of those backdrops clears AA with room to spare (5.21:1). */
+    --accent: #0757b8;
+    --accent-soft: rgba(7, 87, 184, .10);
+    --accent-glow: rgba(7, 87, 184, .20);
     --positive: #16794b;
     --pos-dim: rgba(22, 121, 75, .10);
     --warn: #9a6700;
@@ -154,9 +158,10 @@
         --text-2: #3d4854;
         --text-3: #586574;
         --text-4: #5e6b7a;
-        --accent: #0969da;
-        --accent-soft: rgba(9, 105, 218, .10);
-        --accent-glow: rgba(9, 105, 218, .20);
+        /* Same AA correction as the explicit light palette above. */
+        --accent: #0757b8;
+        --accent-soft: rgba(7, 87, 184, .10);
+        --accent-glow: rgba(7, 87, 184, .20);
         --positive: #16794b;
         --pos-dim: rgba(22, 121, 75, .10);
         --warn: #9a6700;

@@ -125,7 +125,11 @@
 }
 
 .d2-composer-icon:hover:not(:disabled) { background: var(--surface-h); color: var(--text); }
-.d2-composer-icon:disabled { cursor: default; opacity: .45; }
+/* .45 dropped the send glyph to 2.6:1 against its own fill, under the 3:1 that
+   1.4.11 asks of a meaningful icon. Disabled still has to be legible: a control
+   the user cannot read is not communicating that it is unavailable, it is just
+   noise. .62 keeps the "dimmed" reading and clears the threshold. */
+.d2-composer-icon:disabled { cursor: default; opacity: .62; }
 .d2-composer-icon.is-recording { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .d2-composer-icon.d2-composer-primary { color: var(--bg); background: var(--text); }
 

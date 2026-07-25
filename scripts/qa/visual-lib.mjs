@@ -144,6 +144,17 @@ export const MEASURE_SOURCE = String.raw`
   function unreachableControl(el) {
     if (el.hasAttribute('disabled') || el.hasAttribute('inert')) return null;
     if (el.closest('[inert], [aria-hidden="true"]')) return null;
+    // A hidden file input is the standard way to drive a styled upload button.
+    // It is meant to be unreachable; the visible button is the real control.
+    if (el.hasAttribute('hidden') || el.type === 'hidden') return null;
+    if (el.tagName === 'INPUT' && el.type === 'file' && getComputedStyle(el).display === 'none') return null;
+    // Inside a collapsed branch. display:none on an ancestor means the whole
+    // subtree is deliberately not rendered -- the notes editor in its
+    // non-compact layout, for instance -- which is a layout state, not a defect.
+    for (let n = el; n; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (s.display === 'none' || s.visibility === 'hidden') return null;
+    }
     const clip = clippedOut(el);
     if (!clip.clipped || clip.scrollable) return null;
     return { ...describe(el), clippedBy: clip.by };
