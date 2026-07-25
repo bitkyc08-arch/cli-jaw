@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import ts from 'typescript';
-import { axisOf, branchId, guardOf, hasPositiveError, isStateElement, textOf } from '../../scripts/qa/enumerate-states.mts';
+import { axisOf, branchId, guardOf, hasPositiveError, isStateElement, readPrimitive, textOf } from '../../scripts/qa/enumerate-states.mts';
 
 function parse(source: string): ts.SourceFile {
     return ts.createSourceFile('fixture.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -116,11 +116,66 @@ test('the else side of an early return is negated', () => {
     assert.equal(found[1], '!(port === null)');
 });
 
-test('a branch id survives migration', () => {
-    // The whole point: the id is derived from the guard, which migration keeps.
-    // If the id changed, "migrated" would be indistinguishable from "deleted".
+test('a branch id is derived only from things migration preserves', () => {
     const before = branchId('shell/Workbench.tsx', 'Workbench', 'status === "loading"');
     const after = branchId('shell/Workbench.tsx', 'Workbench', 'status === "loading"');
     assert.equal(before, after);
     assert.notEqual(before, branchId('shell/Workbench.tsx', 'Workbench', 'status === "error"'));
+});
+
+test('a raw branch and its migrated form parse to the same id', () => {
+    // End-to-end, not just two calls with equal arguments: parse both shapes,
+    // walk them the way the enumerator does, and require one identity. If this
+    // ever fails, "migrated" starts looking like "deleted plus added" again.
+    const shapes = [
+        'function Pane() { return <>{status === "loading" ? <div className="d2-pane-empty">Loading…</div> : null}</>; }',
+        'function Pane() { return <>{status === "loading" ? <StatePanel kind="loading" title="Loading…" /> : null}</>; }',
+    ];
+
+    const ids = shapes.map(source => {
+        const file = parse(source);
+        let id = '';
+        const visit = (n: ts.Node): void => {
+            const open = ts.isJsxElement(n) ? n.openingElement : ts.isJsxSelfClosingElement(n) ? n : undefined;
+            if (open && isStateElement(open) && !id) id = branchId('shell/Pane.tsx', 'Pane', guardOf(n));
+            n.forEachChild(visit);
+        };
+        visit(file);
+        return id;
+    });
+
+    assert.ok(ids[0], 'the raw branch must be enumerated');
+    assert.equal(ids[0], ids[1]);
+});
+
+test('a primitive callsite declares its own target and kind', () => {
+    // Re-inferring target from class names marked a correct <InlineState> as a
+    // StatePanel reroute, so every primitive must be read literally.
+    for (const tag of ['StatePanel', 'InlineState', 'Alert', 'FieldError', 'Skeleton']) {
+        const { open } = firstElement(`<${tag} kind="empty" />`);
+        assert.deepEqual(readPrimitive(open), { target: tag, kind: 'empty' });
+    }
+    assert.equal(readPrimitive(firstElement('<div className="d2-pane-empty" />').open), null);
+});
+
+test('a primitive with no kind reports null rather than guessing', () => {
+    assert.deepEqual(readPrimitive(firstElement('<Alert>Boom</Alert>').open), { target: 'Alert', kind: null });
+});
+
+test('ordinary content that merely contains a state word is not a branch', () => {
+    // `d2-explore-aggregate` ends in "gate"; substring matching put a file-count
+    // segment in the manifest as a loading placeholder.
+    const aggregate = firstElement('<div className="d2-turn-segment d2-explore-aggregate" />');
+    assert.equal(isStateElement(aggregate.open), false);
+});
+
+test('camelCase loading flags are loading, not empty', () => {
+    // Sidebar `instancesLoading && instances.length === 0`.
+    assert.equal(axisOf('instancesLoading && instances.length === 0', 'Loading instances', 'd2-inline-state'), 'loading');
+});
+
+test('explicit loading copy outranks a nullable guard', () => {
+    // SidePane's Suspense fallbacks sit under `codePort === null` checks.
+    assert.equal(axisOf('codePort === null', 'Loading Code...', 'd2-side-pane-placeholder'), 'loading');
+    assert.equal(axisOf('content === null && !status', '로딩 중...', 'dock-loading'), 'loading');
 });

@@ -36,6 +36,8 @@ export interface Branch {
     text: string;
     /** `raw` = still a hand-rolled div; `primitive` = already migrated. */
     form: 'raw' | 'primitive';
+    /** For migrated branches: the axis the guard implies, to check `kind`. */
+    inferredAxis?: Axis;
 }
 
 export function tsxFiles(dir: string): string[] {
@@ -48,7 +50,14 @@ export function tsxFiles(dir: string): string[] {
     return out;
 }
 
-const STATE_WORD = /(empty|placeholder|loading|error|notice|unavailable|missing|skeleton|state|message|conflict|offline|unsupported|warning|gate)/i;
+/**
+ * Class-name words that mark a state surface.
+ *
+ * Anchored to BEM/kebab boundaries. Substring matching put
+ * `d2-explore-aggregate` in the manifest because `aggregate` ends in `gate`,
+ * and that element is ordinary turn content showing a file count.
+ */
+const STATE_WORD = /(?<![a-z])(empty|placeholder|loading|error|notice|unavailable|missing|skeleton|state|message|conflict|offline|unsupported|warning|gate)(?![a-z])/i;
 
 /** Class names that name a state surface but are not one. */
 const NOT_A_STATE = /d2-(employee-state|widget-state|status|active-mark|pending-status|schedule-dispatch-result|code-model-note|model-settings-status)\b/;
@@ -177,6 +186,10 @@ export function axisOf(guard: string, text: string, cls: string): Axis {
     // unavailable" — which is the unsupported axis, not an error banner.
     if (/coming soon|not supported|requires |unavailable/.test(t)) return 'unsupported';
     if (/select an? |open a |enter a url|no instance selected/.test(t)) return 'prerequisite';
+    // An element that literally says "Loading…" is loading, whatever guarded it.
+    // Suspense fallbacks sit under `port === null` checks, and reading the guard
+    // first labelled `Loading Code...` a prerequisite.
+    if (/loading|로딩|불러오는/.test(t)) return 'loading';
 
     // Guard next: it states intent, while remaining text may be a runtime value.
     if (/unsupported|unavailable|not_?supported|missing_binary|acp_unsupported|capability/.test(g)) return 'unsupported';
@@ -185,7 +198,9 @@ export function axisOf(guard: string, text: string, cls: string): Axis {
     // of an empty-so-far list, which is a spinner, not an empty state. But
     // `!loading && ... .length === 0` is the settled empty result, so a negated
     // loading flag must not win.
-    const loadingActive = /=== ?'loading'|isloading|\bloading\b|busy|probing|=== ?'saving'|submitting/.test(g)
+    // camelCase counts: `instancesLoading` is a loading flag, and requiring a
+    // word boundary made that branch read as an empty list.
+    const loadingActive = /=== ?'loading'|loading|busy|probing|=== ?'saving'|submitting/.test(g)
         && !/![\w.?]*loading/.test(g);
     if (loadingActive) return 'loading';
     if (/\.length === 0|!\w+\.length|isempty|=== ?'empty'|!selected|!path/.test(g)) return 'empty';
@@ -244,6 +259,24 @@ function enclosingFunction(node: ts.Node): string {
     return '';
 }
 
+/**
+ * Read a primitive callsite literally.
+ *
+ * Once a branch is migrated, the code states its own target and kind. Guessing
+ * them again from class names and guards would mark a correct `<InlineState>`
+ * as a `StatePanel` reroute, and would never notice `<StatePanel kind="empty">`
+ * sitting under a loading guard. What the callsite declares is the truth; the
+ * guard is then the independent check that the declaration is honest.
+ */
+export function readPrimitive(el: ts.JsxOpeningLikeElement): { target: Target; kind: Axis | null } | null {
+    const tag = el.tagName.getText() as Target;
+    if (!PRIMITIVES.has(tag)) return null;
+    const raw = attrText(el, 'kind').replace(/^["'{]|["'}]$/g, '').trim();
+    const kind = (['empty', 'loading', 'error', 'prerequisite', 'unsupported'] as Axis[])
+        .find(a => a === raw) ?? null;
+    return { target: tag, kind };
+}
+
 const branches: Branch[] = [];
 /** Distinguishes branches that are identical apart from where they appear. */
 const seen = new Map<string, number>();
@@ -261,8 +294,11 @@ for (const file of tsxFiles(SRC)) {
             const role = attrText(opening, 'role');
             const text = textOf(node);
             const guard = guardOf(node);
-            const axis = axisOf(guard, text, cls);
-            const tag = opening.tagName.getText();
+            const primitive = readPrimitive(opening);
+            // A migrated callsite declares its own routing; only infer for raw JSX.
+            const inferredAxis = axisOf(guard, text, cls);
+            const axis = primitive?.kind ?? inferredAxis;
+            const target = primitive?.target ?? targetOf(cls, inferredAxis, role, rel);
             const base = branchId(rel, enclosingFunction(node), guard);
             // CodeTab renders the same listError banner in two layouts. They are
             // separate branches, so the id must separate them too.
@@ -273,10 +309,13 @@ for (const file of tsxFiles(SRC)) {
                 file: rel,
                 line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1,
                 axis,
-                target: targetOf(cls, axis, role, rel),
+                target,
                 guard: guard.slice(0, 80),
                 text: text.slice(0, 80),
-                form: PRIMITIVES.has(tag as Target) ? 'primitive' : 'raw',
+                form: primitive ? 'primitive' : 'raw',
+                // What the guard implies, kept alongside what the callsite
+                // declares, so a dishonest `kind` is visible instead of assumed.
+                ...(primitive ? { inferredAxis } : {}),
             });
         }
         node.forEachChild(visit);

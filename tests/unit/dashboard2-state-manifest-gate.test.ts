@@ -24,7 +24,14 @@ const ENUMERATOR = join(ROOT, 'scripts/qa/enumerate-states.mts');
 // must not go quiet.
 const MANIFEST = join(ROOT, 'tests/fixtures/wp12-state-manifest.json');
 
-interface Branch { id: string; file: string; axis: string; target: string; form: 'raw' | 'primitive' }
+interface Branch {
+    id: string;
+    file: string;
+    axis: string;
+    target: string;
+    form: 'raw' | 'primitive';
+    inferredAxis?: string;
+}
 interface Manifest {
     total: number;
     byTarget: Record<string, number>;
@@ -84,7 +91,7 @@ test('every branch routes to a primitive the manifest declares', { skip: !haveMa
         { appeared, rerouted, reclassified, vanished },
         { appeared: [], rerouted: [], reclassified: [], vanished: [] },
         'regenerate the manifest in the same commit: '
-        + 'npx tsx scripts/qa/enumerate-states.mts > devlog/260725_dashboard2_overnight_qa_stabilization/evidence/wp12-state-manifest.json',
+        + 'npx tsx scripts/qa/enumerate-states.mts > tests/fixtures/wp12-state-manifest.json',
     );
 });
 
@@ -101,6 +108,29 @@ test('migration never loses a branch: raw + primitive always totals the baseline
         recorded.total,
         'a branch was added or dropped; migration should only change form raw -> primitive',
     );
+});
+
+test('a migrated branch declares a kind its guard agrees with', () => {
+    // `<StatePanel kind="empty">` under a loading guard is the failure this
+    // catches: the routing is right, the state the user is told about is wrong.
+    // Raw branches have nothing to disagree with, so only migrated ones apply.
+    const live = enumerate();
+    const dishonest = live.branches
+        .filter(b => b.form === 'primitive' && b.inferredAxis && b.inferredAxis !== b.axis)
+        .map(b => `${b.file}: ${b.id} declares kind="${b.axis}" but its guard implies ${b.inferredAxis}`);
+
+    assert.deepEqual(dishonest, []);
+});
+
+// DS-4 is complete only when nothing hand-rolled is left. Kept skipped until S2
+// starts so it states the finish line without failing S1, then flipped on.
+test('DS-4 completion: every branch is a primitive callsite', { skip: 'enable when S2 (state surfaces) begins' }, () => {
+    const live = enumerate();
+    const recorded = JSON.parse(readFileSync(MANIFEST, 'utf8')) as Manifest;
+    const raw = live.branches.filter(b => b.form === 'raw').map(b => `${b.file}: ${b.id}`);
+
+    assert.deepEqual(raw, [], 'these branches still render hand-rolled state markup');
+    assert.equal(live.byForm?.['primitive'], recorded.total);
 });
 
 test('the manifest denominator matches what the enumerator finds', { skip: !haveManifest }, () => {
