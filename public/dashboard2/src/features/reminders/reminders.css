@@ -875,6 +875,16 @@ body:has(.d2-tray-reminders-root),
     line-height: var(--lh-md);
 }
 
+/* A bare <small> inherits the browser default of 0.83em, which resolved to
+   13.33px here -- the only rendered size in dashboard2 that lands between two
+   scale steps. A live audit found it; source-level linting could not, because
+   there was no declaration to look at. */
+.d2-tray-reminders-header small {
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
+}
+
 .d2-tray-reminders-header small {
     color: var(--text-3);
     font-size: var(--fs-2xs);

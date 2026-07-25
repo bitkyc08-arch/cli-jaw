@@ -32,7 +32,11 @@
 .d2-settings-field textarea { resize: vertical; line-height: 1.5; }
 .d2-settings-field input:focus, .d2-settings-field select:focus, .d2-settings-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .d2-settings-field.invalid input, .d2-settings-field.invalid select, .d2-settings-field.invalid textarea { border-color: var(--danger); }
-.d2-settings-field > small[role] { grid-column: 2; }
+/* This rule placed the note but never sized it, so a bare <small> fell back to
+   the browser's 0.83em (13.33px) -- between two scale steps, and the only such
+   size left in the product. `label small` right above was styled; this sibling
+   was not, which is exactly the kind of gap a source-level gate cannot see. */
+.d2-settings-field > small[role] { grid-column: 2; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.4; }
 .d2-settings-field-error { color: var(--danger); font-size: var(--fs-xs); line-height: 1.4; }
 .d2-settings-switch { justify-self: end; width: 38px; height: 22px; padding: 2px; border: 0; border-radius: var(--r-full); background: var(--text-4); cursor: pointer; transition: background .15s ease; }
 .d2-settings-switch span { display: block; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: var(--shadow-md); transition: transform .15s ease; }
