@@ -17,5 +17,11 @@ export function isQuickSwitcherShortcut(event: NotesShortcutEvent): boolean {
 }
 
 export function isCommandPaletteShortcut(event: NotesShortcutEvent): boolean {
-    return hasPrimaryModifier(event) && event.shiftKey && event.key.toLowerCase() === 'p';
+    return hasPrimaryModifier(event)
+        && event.shiftKey
+        && event.key.toLowerCase() === 'p'
+        // Without this guard, Cmd+Shift+P inside an open quick switcher stacks a
+        // second modal on top of it. The quick-switcher helper has always had the
+        // guard; this one was missing it.
+        && !isInsideNotesPalette(event.target);
 }

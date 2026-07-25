@@ -69,7 +69,7 @@ export function NotesCommandPalette(props: NotesCommandPaletteProps): JSX.Elemen
 
     return (
         <div className="d2-notes-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose(); }}>
-            <div ref={dialogRef} className="d2-notes-command-palette" role="dialog" aria-modal="true" aria-label="Notes command palette" onKeyDown={handleKeyDown}>
+            <div ref={dialogRef} className="d2-notes-command-palette" data-notes-palette="command" role="dialog" aria-modal="true" aria-label="Notes command palette" onKeyDown={handleKeyDown}>
                 <div className="d2-notes-modal-search">
                     <Icon icon={Search} size={16} />
                     <input ref={inputRef} type="search" value={query} placeholder="Run a command" aria-label="Filter commands" aria-controls="d2-notes-command-results" aria-activedescendant={activeId} onChange={event => { setQuery(event.currentTarget.value); setActiveIndex(0); }} />

@@ -69,7 +69,7 @@ export function NotesQuickSwitcher(props: NotesQuickSwitcherProps): JSX.Element 
 
     return (
         <div className="d2-notes-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose(); }}>
-            <div ref={dialogRef} className="d2-notes-quick-switcher" role="dialog" aria-modal="true" aria-label="Quick switch note" onKeyDown={handleKeyDown}>
+            <div ref={dialogRef} className="d2-notes-quick-switcher" data-notes-palette="switcher" role="dialog" aria-modal="true" aria-label="Quick switch note" onKeyDown={handleKeyDown}>
                 <div className="d2-notes-modal-search">
                     <Icon icon={Search} size={16} />
                     <input ref={inputRef} type="search" value={query} placeholder="Search notes" aria-label="Search notes" aria-controls="d2-notes-switcher-results" aria-activedescendant={activeId} onChange={event => { setQuery(event.currentTarget.value); setActiveIndex(0); }} />

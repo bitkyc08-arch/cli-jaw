@@ -7,6 +7,7 @@ import { NotesFrontmatterStrip } from './NotesFrontmatterStrip';
 import { NotesQuickSwitcher } from './NotesQuickSwitcher';
 import { NotesToolbar } from './NotesToolbar';
 import { NotesCommandProvider, useRegisterNoteCommands, type NoteCommand } from './notes-command-registry';
+import { isCommandPaletteShortcut, isQuickSwitcherShortcut } from './notes-shortcuts';
 import type { NotesViewMode } from './notes-types';
 import { MarkdownRenderer } from './rendering/MarkdownRenderer';
 import { useNoteDocument } from './useNoteDocument';
@@ -118,8 +119,21 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
     useEffect(() => {
         if (!active) return;
         const handler = (event: KeyboardEvent): void => {
-            if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'o') {
-                event.preventDefault(); setQuickSwitcherOpen(open => !open);
+            /*
+             * Keys come from notes-shortcuts.ts, which is the migration contract:
+             * Cmd/Ctrl+P opens the quick switcher, Cmd/Ctrl+Shift+P opens the
+             * command palette (071_notes_card.md:266, 002.1_notes_feature.md:219-220).
+             * This handler used to inline Cmd+O, so both helpers were dead code and
+             * the palette had no way to open at all.
+             */
+            if (isQuickSwitcherShortcut(event)) {
+                event.preventDefault();
+                setQuickSwitcherOpen(open => !open);
+                return;
+            }
+            if (isCommandPaletteShortcut(event)) {
+                event.preventDefault();
+                setCommandPaletteOpen(open => !open);
             }
         };
         window.addEventListener('keydown', handler);
@@ -137,7 +151,7 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
 
     const commands = useMemo<NoteCommand[]>(() => [
         { id: 'notes:save', section: 'File', label: 'Save note', shortcut: 'Cmd+S', disabled: !selectedPath || !noteDocument.dirty || noteDocument.saving, run: () => void noteDocument.save() },
-        { id: 'notes:open', section: 'File', label: 'Open note…', shortcut: 'Cmd+O', run: () => setQuickSwitcherOpen(true) },
+        { id: 'notes:open', section: 'File', label: 'Open note…', shortcut: 'Cmd+P', run: () => setQuickSwitcherOpen(true) },
         ...(['edit', 'split', 'preview'] as const).map<NoteCommand>(mode => ({ id: `notes:view-${mode}`, section: 'View', label: `Switch to ${mode} view`, disabled: !selectedPath, run: () => setViewMode(mode) })),
         { id: 'notes:refresh', section: 'File', label: 'Refresh notes', run: () => void model.refresh(selectedPath) },
     ], [model.refresh, noteDocument.dirty, noteDocument.save, noteDocument.saving, selectedPath]);

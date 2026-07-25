@@ -112,10 +112,21 @@ export function ManagerShortcutProvider(props: PropsWithChildren): JSX.Element {
                 const difference = left[priority] - right[priority];
                 if (difference !== 0) return difference;
             }
-            return 0;
+        return 0;
         })[0];
         selected?.callback(source);
     }, []);
+
+    /*
+     * Whether ANY handler is registered for this action right now.
+     *
+     * Read from the ref at event time, never captured in a closure, so a handler
+     * registered or removed after the listener was installed is still seen
+     * correctly.
+     */
+    const hasHandler = useCallback((action: ShortcutAction): boolean => (
+        (handlersRef.current.get(action)?.length ?? 0) > 0
+    ), []);
 
     const registerHandler = useCallback((
         action: ShortcutAction,
@@ -148,18 +159,23 @@ export function ManagerShortcutProvider(props: PropsWithChildren): JSX.Element {
                 && event.target.closest('.xterm')) {
                 return;
             }
-            if (action === 'newSession') {
-                console.log('newSession');
-            }
-            if (action === 'commandPalette') {
-                console.log('commandPalette');
-            }
+            /*
+             * Do not steal a key we cannot act on.
+             *
+             * Every action ships a default chord, but a chord with no registered
+             * handler used to be preventDefault()-ed anyway and then dispatched
+             * into an empty handler map. The result was worse than a missing
+             * feature: the app swallowed Alt+I/J/K/N/P and Meta+K/Meta+N and did
+             * nothing, blocking the browser and OS defaults too. Let those
+             * through until something actually handles them.
+             */
+            if (!hasHandler(action)) return;
             event.preventDefault();
             dispatch(action, 'dom');
         }
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [dispatch, shortcuts.keymap, shortcuts.shortcutsEnabled]);
+    }, [dispatch, hasHandler, shortcuts.keymap, shortcuts.shortcutsEnabled]);
 
     const value = useMemo<ManagerShortcuts>(() => ({ dispatch, registerHandler }), [
         dispatch,
