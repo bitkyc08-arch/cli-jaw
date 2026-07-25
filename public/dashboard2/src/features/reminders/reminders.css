@@ -44,7 +44,7 @@
     background: transparent;
     color: var(--text-3);
     font: inherit;
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     cursor: pointer;
 }
 
@@ -55,17 +55,17 @@
 
 .d2-reminders-toolbar strong {
     overflow: hidden;
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 600;
-    line-height: 18px;
+    line-height: var(--lh-md);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .d2-reminders-toolbar span {
     color: var(--text-3);
-    font-size: 10px;
-    line-height: 14px;
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-2xs);
 }
 
 .d2-reminders-toolbar > button,
@@ -162,9 +162,9 @@
 
 .d2-reminders-form label > span {
     color: var(--text-3);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-weight: 600;
-    line-height: 14px;
+    line-height: var(--lh-2xs);
     text-transform: uppercase;
 }
 
@@ -180,7 +180,7 @@
     background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-reminders-form input:hover,
@@ -216,7 +216,7 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-2);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     cursor: pointer;
 }
 
@@ -253,9 +253,9 @@
 .d2-reminders-completed-toggle h2 {
     margin: 0;
     color: var(--text-2);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
-    line-height: 16px;
+    line-height: var(--lh-xs);
     text-transform: uppercase;
 }
 
@@ -267,7 +267,7 @@
     border-radius: var(--r-full, 9999px);
     background: var(--surface-h);
     color: var(--text-3);
-    font-size: 9px;
+    font-size: var(--fs-2xs);
     line-height: 18px;
     text-align: center;
 }
@@ -348,7 +348,7 @@
     display: -webkit-box;
     overflow: hidden;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
     line-height: 16px;
     overflow-wrap: anywhere;
@@ -360,8 +360,8 @@
 .d2-reminders-card-copy > span,
 .d2-reminders-schedule-row > time {
     color: var(--text-3);
-    font-size: 10px;
-    line-height: 14px;
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-2xs);
 }
 
 .d2-reminders-card[data-overdue='true'] .d2-reminders-card-copy time {
@@ -406,14 +406,14 @@
     align-items: flex-end;
     gap: 1px;
     color: var(--text-3);
-    font-size: 9px;
+    font-size: var(--fs-2xs);
     line-height: 13px;
     text-align: right;
 }
 
 .d2-reminders-schedule-status strong {
     color: var(--positive);
-    font-size: 9px;
+    font-size: var(--fs-2xs);
     font-weight: 600;
 }
 
@@ -475,7 +475,7 @@
 .d2-schedule-decision-note {
     margin: -2px 2px 12px;
     color: var(--text-3);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     line-height: 15px;
     text-wrap: balance;
 }
@@ -499,8 +499,8 @@
     margin: 0;
     padding: 14px 10px;
     color: var(--text-3);
-    font-size: 11px;
-    line-height: 16px;
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
 }
 
 .d2-reminders-loading {
@@ -527,8 +527,8 @@
     border-radius: var(--r-sm);
     background: var(--surface);
     color: var(--danger);
-    font-size: 10px;
-    line-height: 14px;
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-2xs);
 }
 
 .d2-reminders-error > span {
@@ -594,7 +594,7 @@
     gap: 2px;
     color: var(--text-3);
     cursor: pointer;
-    font-size: 9px;
+    font-size: var(--fs-2xs);
 }
 
 .d2-schedule-switch input {
@@ -681,7 +681,7 @@
 }
 
 .d2-reminder-edit header strong {
-    font-size: 13px;
+    font-size: var(--fs-md);
 }
 
 .d2-reminder-edit header button {
@@ -702,7 +702,7 @@
     display: grid;
     gap: 4px;
     color: var(--text-3);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     font-weight: 600;
     text-transform: uppercase;
 }
@@ -719,7 +719,7 @@
     background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     resize: vertical;
 }
 
@@ -776,8 +776,8 @@
 .d2-schedule-field-error {
     margin: -6px 0 0;
     color: var(--danger);
-    font-size: 10px;
-    line-height: 14px;
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-2xs);
 }
 
 .d2-schedule-editor-spacer {
@@ -870,15 +870,15 @@ body:has(.d2-tray-reminders-root),
 }
 
 .d2-tray-reminders-header strong {
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 600;
-    line-height: 18px;
+    line-height: var(--lh-md);
 }
 
 .d2-tray-reminders-header small {
     color: var(--text-3);
-    font-size: 10px;
-    line-height: 14px;
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-2xs);
 }
 
 .d2-tray-reminders-mark {
@@ -914,7 +914,7 @@ body:has(.d2-tray-reminders-root),
 .d2-tray-quick-add input {
     min-width: 0;
     padding: 0 9px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-tray-quick-add input::placeholder {

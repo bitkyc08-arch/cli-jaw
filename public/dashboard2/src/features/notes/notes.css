@@ -79,7 +79,7 @@
 }
 
 .d2-notes-sidebar-title {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--text-3);
     text-transform: uppercase;
@@ -154,7 +154,7 @@
 .d2-notes-tree-state {
     padding: 16px 12px;
     color: var(--text-4);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     text-align: center;
 }
 
@@ -231,7 +231,7 @@
 .d2-notes-tree-empty {
     padding: 16px 12px;
     color: var(--text-4);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     text-align: center;
 }
 
@@ -246,7 +246,7 @@
     background: transparent;
     color: var(--text-3);
     cursor: pointer;
-    font-size: 12.5px;
+    font-size: var(--fs-md);
     text-align: left;
     transition: background 80ms, color 80ms;
 }
@@ -319,7 +319,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
 }
 
@@ -345,7 +345,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 500;
 }
 
@@ -374,7 +374,7 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     cursor: pointer;
 }
 
@@ -396,7 +396,7 @@
     flex: none;
     padding: 0 4px;
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     white-space: nowrap;
 }
 
@@ -410,7 +410,7 @@
     border-radius: var(--r-md);
     background: var(--surface);
     color: var(--text-2);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     cursor: pointer;
 }
 
@@ -431,7 +431,7 @@
     gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-notes-conflict {
@@ -459,7 +459,7 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-notes-mode-btn {
@@ -469,7 +469,7 @@
     background: transparent;
     color: var(--text-4);
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 500;
     transition: color 120ms, background 120ms, border-color 120ms;
 }
@@ -547,7 +547,7 @@
     background: var(--bg);
     color: var(--text);
     font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 13px;
+    font-size: var(--fs-md);
     line-height: 1.6;
     outline: none;
 }
@@ -564,7 +564,7 @@
     margin: 0;
     color: var(--text);
     font-family: -apple-system, 'SF Pro Text', 'Pretendard', sans-serif;
-    font-size: 13.5px;
+    font-size: var(--fs-base);
     line-height: 1.65;
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -576,7 +576,7 @@
     height: 100%;
     place-content: center;
     color: var(--text-4);
-    font-size: 13px;
+    font-size: var(--fs-md);
 }
 
 /* ── notices (071 gap) ── */
@@ -587,7 +587,7 @@
     flex: none;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-notes-notice > span {
@@ -603,7 +603,7 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-notes-notice.is-error {
@@ -631,7 +631,7 @@
     border-radius: var(--r-full);
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 500;
 }
 
@@ -645,7 +645,7 @@
     gap: 10px;
     padding: 24px;
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--fs-md);
     text-align: center;
 }
 
@@ -656,7 +656,7 @@
     background: var(--surface);
     color: var(--text-2);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-notes-empty-state button:hover {
@@ -704,7 +704,7 @@
     background: transparent;
     color: var(--text);
     font: inherit;
-    font-size: 13px;
+    font-size: var(--fs-md);
     outline: none;
 }
 
@@ -759,7 +759,7 @@
 
 .d2-notes-result-title {
     overflow: hidden;
-    font-size: 13px;
+    font-size: var(--fs-md);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -768,7 +768,7 @@
 .d2-notes-command-section {
     overflow: hidden;
     color: var(--text-4);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -777,6 +777,6 @@
     margin: 0;
     padding: 18px 12px;
     color: var(--text-4);
-    font-size: 12.5px;
+    font-size: var(--fs-md);
     text-align: center;
 }
