@@ -257,22 +257,25 @@ export const MEASURE_SOURCE = String.raw`
       if (s.mixBlendMode && s.mixBlendMode !== 'normal') return 'mix-blend-mode:' + s.mixBlendMode;
       if (s.filter && s.filter !== 'none') return 'filter:' + s.filter.slice(0, 24);
 
-      // Group opacity: when an element with opacity < 1 also paints a
-      // background, the browser renders the group and THEN fades it, so both
-      // the glyph and its backdrop are composited toward whatever is behind.
+      // Group opacity: the browser renders the whole group and THEN fades it,
+      // so glyph and backdrop are both composited toward whatever is behind.
       //
       //   F' = oF + (1-o)O      B' = oB + (1-o)O
       //
       // Sampling B' from the pixels while using F unfaded computes
-      // contrast(F, B'), which is not the rendered pair: white-on-black at
-      // opacity .5 renders about 3.95:1 and scored 21:1. Modelling this needs
-      // the colour behind the whole group, which the paired capture does not
-      // give us, so say so instead of guessing.
+      // contrast(F, B'), which is not the rendered pair.
+      //
+      // The first attempt only failed closed when the faded node painted its
+      // OWN background, on the theory that a bare wrapper fades nothing but
+      // text. That is wrong: a child, a background-image, or a pseudo-element
+      // inside the group paints too, and an opacity:.5 wrapper around a white
+      // child on black measured 2.63:1 where it renders 5.32:1 — a false
+      // failure this time rather than a false pass.
+      //
+      // Resolving it needs the colour behind the entire group, which a paired
+      // capture cannot supply. Any group opacity is unmeasurable.
       const o = Number(s.opacity);
-      if (o < 1) {
-        const own = parseColour(s.backgroundColor);
-        if (own && own.a > 0) return 'group-opacity:' + o;
-      }
+      if (o < 1) return 'group-opacity:' + o;
     }
     return null;
   }
@@ -898,12 +901,14 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
             let worst = Infinity;
             let worstColour = null;
             for (const [key, n] of counts) {
-                // An icon stroke is a pixel or two wide, so most of what changes
-                // between captures is a partly covered edge whose backdrop reads
-                // lighter than the real one. Taking the single worst pixel called
-                // a 4.84:1 sidebar toggle 1.83:1. Require a colour to back a real
-                // share of the stroke before it decides the verdict.
-                if (n / covered < 0.15) continue;
+                // No share exemption here either. This is the same logic the text
+                // path already dropped, and it survived one round too long: a
+                // black icon crossing a 2%-wide #444 stripe measured 21:1 where
+                // the real worst pair is 2.16:1.
+                //
+                // The edge-pixel problem it was meant to solve does not exist in
+                // this loop: every candidate comes from the icon-free capture,
+                // so it is a real backdrop colour by construction.
                 const parts = key.split(',').map(Number);
                 const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
                 // Flatten the foreground onto THIS backdrop: a translucent glyph

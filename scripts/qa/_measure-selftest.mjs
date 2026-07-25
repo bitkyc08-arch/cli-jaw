@@ -30,7 +30,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
 // ── 1. synthetic fixtures ────────────────────────────────────────────────────
 // Built in isolation so the expected value is arithmetic, not observation.
 {
-    const page = await browser.newPage({ viewport: { width: 400, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 400, height: 1400 } });
     await page.setContent(`
         <style>
           body { margin: 0; background: #ffffff; }
@@ -78,6 +78,15 @@ const browser = await chromium.launch({ channel: 'chrome' });
           #stripe { background:linear-gradient(90deg,#fff 0%,#fff 49.5%,#444 49.5%,#444 50.5%,#fff 50.5%,#fff 100%); color:#000 }
           /* -webkit-text-fill-color wins over color; reading color scored 21:1. */
           #fill { background:#fff; color:#000; -webkit-text-fill-color:#777 }
+          /* An opacity wrapper that paints nothing itself, with a child that
+             does. The first fail-closed rule only checked the faded node's own
+             background and let this through as a 2.63:1 failure where it
+             renders 5.32:1 -- a false alarm rather than a miss, but wrong. */
+          #wrapop { opacity:.5 }
+          #wrapop .inner { background:#fff; color:#000 }
+          /* An icon crossing a 2%-wide dark stripe: the share exemption the text
+             path dropped survived in the icon path for one round. */
+          #istripe { background:linear-gradient(90deg,#fff 0%,#fff 49%,#444 49%,#444 51%,#fff 51%,#fff 100%) }
         </style>
         <div class="case" id="plain">Sample</div>
         <div class="case" id="tinted">Sample</div>
@@ -94,6 +103,8 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div class="case" id="group">Group opacity text</div>
         <div class="case" id="stripe">Stripe under text spanning wide</div>
         <div class="case" id="fill">Text fill override</div>
+        <div id="wrapop"><div class="case"><span class="inner">Child paints inside wrapper</span></div></div>
+        <div class="case" id="istripe"><button aria-label="Close" style="background:transparent;border:0;color:#000"><svg width="120" height="20"><path d="M0 10 L120 10" stroke="currentColor" stroke-width="3"/></svg></button></div>
     `);
     await installMeasure(page);
 
@@ -244,6 +255,32 @@ const browser = await chromium.launch({ channel: 'chrome' });
         });
         if (!ok) failures.push(`counterexample/${id}: ${row ? row.ratio : 'produced no row'}`);
     }
+
+    // Any group opacity is unmeasurable, whoever inside it does the painting.
+    const wrapRows = await surfacePixelContrast(page, '#wrapop');
+    const wrapRow = wrapRows?.[0];
+    const wrapOk = Boolean(wrapRow) && String(wrapRow.unmeasurable ?? '').startsWith('group-opacity');
+    results.push({
+        name: 'counterexample/wrapper-opacity',
+        measured: wrapRow ? (wrapRow.unmeasurable ?? wrapRow.ratio) : 'NO ROW',
+        expected: 'unmeasurable, fail-closed',
+        ok: wrapOk,
+        note: 'a child, image or pseudo-element inside the group paints too',
+    });
+    if (!wrapOk) failures.push(`counterexample/wrapper-opacity: ${JSON.stringify(wrapRow ?? null)}`);
+
+    // The icon path must not keep an exemption the text path already dropped.
+    const iconStripeRows = await surfaceIconContrast(page, '#istripe');
+    const iconStripe = iconStripeRows?.[0];
+    const iconStripeOk = Boolean(iconStripe) && iconStripe.ratio !== null && iconStripe.ratio < 2.6 && !iconStripe.pass;
+    results.push({
+        name: 'counterexample/icon-stripe',
+        measured: iconStripe ? iconStripe.ratio : 'NO ROW',
+        expected: '<2.6 and failing',
+        ok: iconStripeOk,
+        note: 'a 2%-wide dark stripe under an icon stroke is a real backdrop',
+    });
+    if (!iconStripeOk) failures.push(`counterexample/icon-stripe: ${iconStripe ? iconStripe.ratio : 'produced no row'}`);
 
     await page.close();
 }
