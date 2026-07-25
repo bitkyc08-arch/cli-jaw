@@ -21,16 +21,45 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): JSX.Elem
         if (!isOpen) return undefined;
         const previouslyFocused = document.activeElement;
 
-        /* set inert on main content to block background interaction */
-        const root = document.getElementById('dashboard2-root');
-        const dialogEl = dialogRef.current?.closest('.d2-settings-modal') as HTMLElement | null;
-        if (root && dialogEl) {
-            /* inert everything except the modal overlay */
-            for (const child of Array.from(root.children)) {
-                if (child !== dialogEl && child instanceof HTMLElement) {
-                    child.setAttribute('inert', '');
+        /*
+         * Block background interaction by marking the overlay's SIBLINGS inert.
+         *
+         * The overlay is NOT a direct child of #dashboard2-root: Shell renders a
+         * single <main class="d2-shell"> and Sidebar renders this modal inside it.
+         * Walking root.children therefore inerted .d2-shell itself, and because
+         * inert is inherited by the whole subtree that disabled the modal too —
+         * every control died and only the document-level Escape handler survived.
+         *
+         * We also track exactly which nodes WE marked, so cleanup never clears an
+         * inert attribute owned by someone else (Workbench sets inert on its
+         * workspace surfaces and side-pane slot).
+         */
+        const overlay = dialogRef.current?.closest('.d2-settings-modal') as HTMLElement | null;
+        const backdropParent = overlay?.parentElement ?? null;
+        const selfInerted = new Set<HTMLElement>();
+
+        const inertSibling = (node: Node): void => {
+            if (!(node instanceof HTMLElement)) return;
+            if (node === overlay) return;
+            if (node.hasAttribute('inert')) return;
+            node.setAttribute('inert', '');
+            selfInerted.add(node);
+        };
+
+        let observer: MutationObserver | null = null;
+        if (backdropParent && overlay) {
+            for (const child of Array.from(backdropParent.children)) inertSibling(child);
+            /*
+             * Siblings can mount while the modal is open (e.g. Shell's sidebar
+             * resize separator is conditional on the responsive breakpoint), and
+             * this effect does not re-run for that. Watch for them.
+             */
+            observer = new MutationObserver((records) => {
+                for (const record of records) {
+                    for (const added of Array.from(record.addedNodes)) inertSibling(added);
                 }
-            }
+            });
+            observer.observe(backdropParent, { childList: true });
         }
 
         const closeOnEscape = (event: KeyboardEvent): void => {
@@ -53,14 +82,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): JSX.Elem
 
         return () => {
             document.removeEventListener('keydown', closeOnEscape);
-            /* remove inert from siblings */
-            if (root) {
-                for (const child of Array.from(root.children)) {
-                    if (child instanceof HTMLElement) {
-                        child.removeAttribute('inert');
-                    }
-                }
-            }
+            observer?.disconnect();
+            /* restore ONLY the inert attributes this effect added */
+            for (const node of selfInerted) node.removeAttribute('inert');
+            selfInerted.clear();
             if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
         };
     }, [isOpen, onClose]);
