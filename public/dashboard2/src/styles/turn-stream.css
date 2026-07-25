@@ -10,8 +10,8 @@
 
 .d2-turn-segment {
     color: var(--text-3);
-    font-size: 12px;
-    line-height: 18px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
 }
 
 .d2-turn-segment > .d2-icon,
@@ -31,7 +31,7 @@
 .d2-widget-state {
     flex: none;
     color: var(--text-3);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     line-height: 16px;
     letter-spacing: 0;
 }
@@ -79,8 +79,8 @@
     border: 0;
     background: transparent;
     color: var(--text-3);
-    font-size: 12px;
-    line-height: 18px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
     text-align: left;
     cursor: pointer;
 }
@@ -125,7 +125,7 @@
     max-width: 100%;
     margin: 5px 0 10px;
     color: var(--text);
-    font-size: 14px;
+    font-size: var(--fs-base);
     line-height: 1.55;
     letter-spacing: 0;
     overflow-wrap: anywhere;
@@ -137,8 +137,8 @@
     padding-left: 10px;
     border-left: 1px solid var(--border);
     color: var(--text-2);
-    font-size: 12px;
-    line-height: 18px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
     letter-spacing: 0;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
@@ -216,7 +216,7 @@
     background: var(--surface, #1a1a1d);
     border-radius: var(--r-2xl, 20px);
     padding: 10px 14px;
-    font-size: 13.5px;
+    font-size: var(--fs-base);
     line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-word;
@@ -246,7 +246,7 @@
     padding: 0 8px 0 12px;
     border-bottom: 1px solid var(--border);
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-code-block__language { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -268,7 +268,10 @@
     margin: 0;
     padding: 12px 14px;
     overflow-x: auto;
-    font: 400 12.5px/19px var(--font-mono);
+    font-weight: 400;
+    font-size: var(--fs-md);
+    line-height: 19px;
+    font-family: var(--font-mono);
     tab-size: 4;
     white-space: pre;
 }
@@ -289,7 +292,7 @@
 .d2-math-slot { display: inline-block; min-height: 1em; color: var(--text-2); }
 .d2-math-slot.is-ready { color: var(--text); }
 .d2-math-slot.is-error { padding: 2px 5px; border-left: 2px solid var(--danger); }
-.d2-math-slot__label { margin-right: 6px; color: var(--danger); font-size: 12px; }
+.d2-math-slot__label { margin-right: 6px; color: var(--danger); font-size: var(--fs-sm); }
 .d2-math-slot__source { font-family: var(--font-mono); white-space: pre-wrap; }
 
 @media (max-width: 480px) {

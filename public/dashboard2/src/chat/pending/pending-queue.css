@@ -11,7 +11,7 @@
 }
 
 .d2-pending-header h2 {
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 650;
     margin: 0;
 }
@@ -19,7 +19,7 @@
 .d2-pending-header span,
 .d2-pending-copy > span {
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-pending-list {
@@ -45,7 +45,7 @@
 
 .d2-pending-copy p {
     display: -webkit-box;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     line-height: 1.35;
     margin: 0;
     overflow: hidden;
