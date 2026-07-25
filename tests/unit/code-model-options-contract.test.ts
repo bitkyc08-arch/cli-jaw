@@ -68,6 +68,9 @@ test('code model options keep static fallback for missing or empty cache rows', 
     );
 
     assert.deepEqual(options.providers[0]?.models.slice(0, 3), ['auto', 'claude-sonnet-5', 'composer-2.5']);
+    // The static cursor fallback must carry the current catalog ids, not just
+    // keep its first three entries stable.
+    assert.equal(options.providers[0]?.models.includes('claude-opus-5'), true, 'cursor static fallback is missing claude-opus-5');
     assert.equal(options.providers[0]?.modelSource, 'static-fallback');
     assert.equal(options.defaultProvider, 'cursor');
     assert.equal(options.defaultModel, 'auto');

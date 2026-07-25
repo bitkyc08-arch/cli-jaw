@@ -25,11 +25,13 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         // form is rejected in that shape — AGY 1.1.4 answers
         // `--model gemini-3.5-flash` with "requires --effort" — so the offline
         // fallback must use the label form that `agy models` prints.
-        // `gemini-3.5-flash` is kept last for older persisted selections.
+        // The old bare slug is deliberately NOT offered: it fails every time it
+        // is picked. A user who already persisted it still sees it, because
+        // renderCliSettings appends an absent selected value as a custom option
+        // (public/js/features/settings-core.ts).
         models: [
             'Gemini 3.6 Flash (Medium)',
             'Gemini 3.5 Flash (Medium)',
-            'gemini-3.5-flash',
         ],
     },
     'ai-e': {

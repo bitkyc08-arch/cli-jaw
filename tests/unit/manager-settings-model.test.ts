@@ -122,12 +122,16 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     assert.ok(source.includes('Model defaults'));
     assert.deepEqual(metaFor('codex').models, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
     assert.equal(metaFor('agy').label, 'Antigravity');
-    assert.equal(metaFor('agy').models.includes('gemini-3.5-flash'), true);
+    // Label form only: AGY rejects a tier-less slug when no --effort is sent,
+    // and cli-jaw never sends one for AGY.
+    assert.equal(metaFor('agy').models.includes('Gemini 3.6 Flash (Medium)'), true);
+    assert.equal(metaFor('agy').models.includes('gemini-3.5-flash'), false);
     assert.match(metaFor('agy').modelNote || '', /probes the installed binary/);
     assert.match(metaFor('agy').modelNote || '', /--model/);
     assert.match(metaFor('agy').effortNote || '', /no separate effort flag/);
     assert.equal(metaFor('cursor').models.includes('gpt-5.5'), true);
     assert.equal(metaFor('cursor').models.includes('gpt-5.1-codex-mini'), true);
+    assert.equal(metaFor('cursor').models.includes('claude-opus-5'), true);
     assert.equal(metaFor('cursor').efforts.includes('medium-fast'), true);
     assert.equal(PRIMARY_CLIS.includes('agy'), true);
     assert.equal(PRIMARY_CLIS.includes('cursor'), true);

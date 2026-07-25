@@ -35,11 +35,12 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'Antigravity',
         // Label form is what `agy --model` accepts when no --effort is sent
         // (cli-jaw never sends one for AGY); the bare slug is rejected by
-        // AGY 1.1.4 with "requires --effort". Kept last for legacy selections.
+        // AGY 1.1.4 with "requires --effort", so it is not offered at all.
+        // A persisted legacy value still renders: optionList() prepends the
+        // current value even when it is absent from this catalog.
         models: [
             'Gemini 3.6 Flash (Medium)',
             'Gemini 3.5 Flash (Medium)',
-            'gemini-3.5-flash',
         ],
         efforts: [],
         modelNote: 'AGY model override is version-dependent. Observed AGY 1.1.4 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',

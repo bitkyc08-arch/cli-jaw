@@ -21,6 +21,7 @@ test('frontend cursor meta exposes model-ID effort choices', () => {
     assert.ok(meta, 'cursor metadata missing');
     assert.ok(meta.models.includes('gpt-5.5'));
     assert.ok(meta.models.includes('gpt-5.1-codex-mini'));
+    assert.ok(meta.models.includes('claude-opus-5'), 'web cursor fallback is missing claude-opus-5');
     assert.ok(meta.efforts.includes('medium-fast'));
     assert.match(meta.effortNote || '', /model IDs/);
     assert.equal(meta.modelNote, undefined);
@@ -30,7 +31,7 @@ test('frontend AGY fallback keeps legacy model select enabled', () => {
     const meta = getCliMeta('agy');
     assert.ok(meta, 'agy metadata missing');
     assert.equal(meta.modelNote, undefined);
-    assert.ok(meta.models.includes('gemini-3.5-flash'));
+    assert.ok(meta.models.length > 0);
     assert.match(meta.effortNote || '', /no separate effort flag/);
 });
 
@@ -45,6 +46,16 @@ test('frontend AGY fallback offers a label-form model that AGY accepts without -
     const labelForm = meta.models.filter((model) => /\((Low|Medium|High)\)$/.test(model));
     assert.ok(labelForm.length > 0, `AGY fallback has no label-form model: ${meta.models.join(', ')}`);
     assert.ok(meta.models.includes('Gemini 3.6 Flash (Medium)'));
+    // Every offered value must be usable as-is. A tier-less slug like
+    // `gemini-3.5-flash` fails with "requires --effort" and must not be listed;
+    // persisted values still render via the custom-option path in settings-core.
+    for (const model of meta.models) {
+        assert.match(
+            model,
+            /\((Low|Medium|High)\)$/,
+            `AGY fallback offers ${model}, which AGY rejects without --effort`,
+        );
+    }
 });
 
 test('frontend Kiro fallback exposes gateway effort choices', () => {

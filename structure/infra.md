@@ -236,13 +236,13 @@ CLI → 서버 API 호출 시 인증 토큰을 관리하는 경량 헬퍼. 포�
 | CLI | Default Model | Notable model aliases |
 | --- | --- | --- |
 | `pi` | `grok-composer-2.5-fast` | Pi RPC runtime with isolated profile/model registration |
-| `agy` | AGY-selected | print-mode runtime; `--model` is capability-gated (observed in AGY 1.0.12); no separate effort flag |
+| `agy` | AGY-selected | print-mode runtime; `--model` is capability-gated (observed in AGY 1.1.4); no separate effort flag. Model values are the label form `agy models` prints (`Gemini 3.6 Flash (Medium)`); a bare tier-less slug is rejected because cli-jaw never sends `--effort` for AGY |
 | `ai-e` | `sonnet` | AI-E wrapper runtime |
-| `claude` | `claude-opus-4-8` | canonical choices include `opus`, `sonnet`, `sonnet[1m]`, `haiku`; legacy aliases normalize |
+| `claude` | `claude-opus-4-8` | canonical choices include `opus`, `sonnet`, `sonnet[1m]`, `haiku`; pinned full IDs include `claude-opus-5`/`claude-opus-5[1m]`; legacy aliases normalize |
 | `claude-e` | `claude-opus-4-8` | helper-backed Claude E runtime |
 | `codex` | `gpt-5.5` | inactive ocx fallback shows only `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`; when ocx health is ok, `/model` completions and `/api/cli-registry` expand from ocx `/v1/models` including routed models |
 | `codex-app` | `gpt-5.5` | Codex app-server runtime using the same inactive fallback / active ocx model choices as `codex` |
-| `cursor` | `composer-2.5` | uses `cursor-agent --model <resolvedModelId>`; effort resolves into model ids such as `composer-2.5-fast`, `gpt-5.5-medium-fast`, or `claude-opus-4-7-thinking-high-fast` |
+| `cursor` | `composer-2.5` | uses `cursor-agent --model <resolvedModelId>`; effort resolves into model ids such as `composer-2.5-fast`, `gpt-5.5-medium-fast`, `claude-opus-5-xhigh`, or `claude-opus-4-7-thinking-high-fast` |
 | `grok` | `grok-build` | effort disabled because `grok-build` rejects `reasoningEffort`; auth/readiness via `grok models` |
 | `opencode` | `opencode-go/kimi-k2.6` | includes current opencode-go provider aliases such as `glm-5.1`, `kimi-k2.6`, `mimo-v2.5`, `minimax-m2.7`, `qwen3.6-plus`, `deepseek-v4-*` |
 | `copilot` | `claude-sonnet-4.6` | includes `gpt-5.5`, Claude 4.x aliases, `gpt-5.4*`, `gpt-5.3-codex`, `gpt-5.2-codex` |
