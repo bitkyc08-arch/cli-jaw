@@ -3,7 +3,7 @@
 // subscription surfaces to reducer actions, and stacks committed list + live
 // tail + composer inside one 700px content wrapper. The transport stays
 // provider-owned: this component never creates an EventSource.
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { SessionScope } from '../state/scope.tsx';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useManagerSync } from '../providers/sync-provider.tsx';
@@ -171,6 +171,30 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
      * completion from the old composer could still mutate the shared list.
      */
     useEffect(() => { setEchoes([]); }, [scopeKey]);
+    /*
+     * Clearing on switch is not enough on its own.
+     *
+     * The previous scope's Composer is unmounted and its in-flight request is
+     * aborted, but that rejection lands afterwards and would re-insert a stale
+     * error echo into the new session's list. Stamp the live scope and drop
+     * anything that arrives for a different one.
+     */
+    const liveScopeRef = useRef(scopeKey);
+    liveScopeRef.current = scopeKey;
+    /*
+     * Late echoes carry the scope that produced them.
+     *
+     * Keying the slot unmounts the old Composer, but its send controller aborts
+     * asynchronously and the catch still fires onEcho afterwards. Stamping the
+     * scope at callback-creation time is what lets us drop that straggler.
+     */
+    const makeEchoHandler = useCallback((forScope: string) => (echo: ComposerEcho): void => {
+        if (liveScopeRef.current !== forScope) return;
+        setEchoes(current => {
+            const rest = current.filter(item => item.id !== echo.id);
+            return [...rest.slice(-9), echo];
+        });
+    }, []);
     const composer = useRef<ComposerRegistration | null>(null);
     const [announcement, setAnnouncement] = useState('');
     const ports = useMemo(() => ({
@@ -197,12 +221,7 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
                 ))}
             </div>
             <PendingQueueView store={pendingStore} />
-            <ChatComposerSlot store={store} scopeKey={scopeKey} port={scope.port} onRegister={registration => { composer.current = registration; }} onEcho={(echo) => {
-                setEchoes(current => {
-                    const rest = current.filter(item => item.id !== echo.id);
-                    return [...rest.slice(-9), echo];
-                });
-            }} />
+            <ChatComposerSlot key={scopeKey} store={store} scopeKey={scopeKey} port={scope.port} onRegister={registration => { composer.current = registration; }} onEcho={makeEchoHandler(scopeKey)} />
             <div className="d2-sr-only" aria-live="polite">{announcement}</div>
         </div></RenderActionPortsProvider>
     );
@@ -270,7 +289,7 @@ function ChatComposerSlot({ store, scopeKey, port, onEcho, onRegister }: ChatCom
                 onStop={() => { void api.instance(port).stopAgent().catch((error: unknown) => {
                     // A silent failure looks like Stop worked while the agent keeps
                     // running. Surface it through the echo lane the composer already uses.
-                    onEcho({ id: `stop:${Date.now()}`, source: 'composer', prompt: '중지하지 못했습니다', status: 'error',
+                    onEcho({ id: `stop:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`, source: 'button', prompt: '중지하지 못했습니다', status: 'error',
                         error: error instanceof Error ? error.message : String(error) });
                 }); }}
                 onEcho={onEcho}

@@ -79,3 +79,47 @@ test('a failed submit shows the real reason and leaves a way forward', async () 
     // Something has to be actionable, otherwise the answer is stranded.
     assert.match(html, /<button/, 'a retry path must remain');
 });
+
+test('retrying after a failure submits once, with the answer intact', async () => {
+    const dom = installDom();
+    const { createRoot } = await import('react-dom/client');
+    const { ElicitationFence } = await import('../../public/dashboard2/src/turn-stream/render/fences/ElicitationFence.tsx');
+    const { RenderActionPortsProvider } = await import('../../public/dashboard2/src/providers/render-action-ports.tsx');
+
+    const submissions: string[] = [];
+    let failNext = true;
+    const ports = {
+        submitMessage: async (prompt: string) => {
+            submissions.push(prompt);
+            if (failNext) { failNext = false; throw new Error('network down'); }
+        },
+        copyText: async () => {},
+        openExternalUrl: () => {},
+        openProtocolUrl: () => {},
+    };
+
+    const root = createRoot(dom.window.document.getElementById('root')!);
+    await act(async () => root.render(
+        h(RenderActionPortsProvider, { ports } as never, h(ElicitationFence, { spec: SPEC } as never)),
+    ));
+
+    const pick = () => [...dom.window.document.querySelectorAll('button')].find(b => b.textContent === 'A');
+    await act(async () => { pick()!.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+
+    // The failure must leave the same question answerable again, not a dead end.
+    const retry = pick();
+    assert.ok(retry, 'the question must be answerable again after a failure');
+
+    await act(async () => { retry.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+
+    assert.equal(submissions.length, 2, 'exactly one retry, not a double submit');
+    // The rewind must not smuggle the failed attempt's answer into the retry.
+    assert.equal(submissions[1], submissions[0], 'the retry carries the same single answer, not a duplicated one');
+    assert.match(
+        dom.window.document.getElementById('root')!.innerHTML,
+        /응답 완료/,
+        'a successful retry completes the wizard',
+    );
+});
