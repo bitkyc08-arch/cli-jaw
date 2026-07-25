@@ -14,12 +14,20 @@ export const CLI_REGISTRY = {
         defaultModel: 'Gemini 3.5 Flash (Medium)',
         defaultEffort: '',
         efforts: [],
+        // Labels are what `agy models` prints and what `agy --model` accepts
+        // verbatim. Refreshed 2026-07-25 against AGY 1.1.4, which added the
+        // Gemini 3.6 Flash tier. `defaultModel` intentionally stays on 3.5
+        // Flash: promoting a default changes every new session's model, which
+        // is a policy decision, not a catalog sync.
         models: [
+            'Gemini 3.6 Flash (High)',
+            'Gemini 3.6 Flash (Medium)',
+            'Gemini 3.6 Flash (Low)',
             'Gemini 3.5 Flash (Medium)',
             'Gemini 3.5 Flash (High)',
             'Gemini 3.5 Flash (Low)',
-            'Gemini 3.1 Pro (Low)',
             'Gemini 3.1 Pro (High)',
+            'Gemini 3.1 Pro (Low)',
             'Claude Sonnet 4.6 (Thinking)',
             'Claude Opus 4.6 (Thinking)',
             'GPT-OSS 120B (Medium)',
@@ -58,8 +66,12 @@ export const CLI_REGISTRY = {
             copilot: ['gpt-5-mini', 'claude-sonnet-4.6', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5'],
             kiro: [
                 'auto',
+                'gpt-5.6-sol',
+                'gpt-5.6-terra',
+                'gpt-5.6-luna',
                 'claude-fable-5',
                 'claude-sonnet-5',
+                'claude-opus-5',
                 'claude-opus-4.8',
                 'claude-opus-4.7',
                 'claude-opus-4.6',
@@ -171,10 +183,18 @@ export const CLI_REGISTRY = {
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh'],
         effortNote: 'Kiro CLI forwards --effort; cli-jaw maps xhigh to Kiro max on the wire',
+        // Static fallback for when `kiro-cli` is absent or its inventory probe
+        // fails (registry-live.ts replaces this wholesale on success). Mirrors
+        // opencodex KIRO_MODELS (src/providers/kiro-models.ts) in dot form.
+        // `claude-fable-5` is cli-jaw-only and intentionally retained.
         models: [
             'auto',
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
             'claude-fable-5',
             'claude-sonnet-5',
+            'claude-opus-5',
             'claude-opus-4.8',
             'claude-opus-4.7',
             'claude-opus-4.6',

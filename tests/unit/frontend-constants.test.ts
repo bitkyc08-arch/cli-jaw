@@ -34,11 +34,44 @@ test('frontend AGY fallback keeps legacy model select enabled', () => {
     assert.match(meta.effortNote || '', /no separate effort flag/);
 });
 
+// AGY takes the picker string as `agy --model <value>` verbatim and cli-jaw
+// never sends --effort for AGY (src/agent/args.ts case 'agy'). AGY 1.1.4
+// rejects a bare tier-less slug in that shape ("--model gemini-3.5-flash
+// requires --effort"), so the offline fallback has to offer at least one
+// label-form entry that works on its own.
+test('frontend AGY fallback offers a label-form model that AGY accepts without --effort', () => {
+    const meta = getCliMeta('agy');
+    assert.ok(meta, 'agy metadata missing');
+    const labelForm = meta.models.filter((model) => /\((Low|Medium|High)\)$/.test(model));
+    assert.ok(labelForm.length > 0, `AGY fallback has no label-form model: ${meta.models.join(', ')}`);
+    assert.ok(meta.models.includes('Gemini 3.6 Flash (Medium)'));
+});
+
 test('frontend Kiro fallback exposes gateway effort choices', () => {
     const meta = getCliMeta('kiro-code');
     assert.ok(meta, 'kiro metadata missing');
     assert.deepEqual(meta.efforts, ['low', 'medium', 'high', 'xhigh']);
     assert.match(meta.effortNote || '', /xhigh to Kiro max/);
+});
+
+// Web fallback parity for Kiro: these arrays are what the picker shows when
+// GET /api/cli-registry fails, so they must not drift behind the backend.
+test('frontend Kiro fallbacks stay in parity with the backend Kiro catalogs', () => {
+    const required = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-opus-5'];
+    const kiro = getCliMeta('kiro-code');
+    const aiE = getCliMeta('ai-e');
+    assert.ok(kiro, 'kiro metadata missing');
+    assert.ok(aiE, 'ai-e metadata missing');
+    for (const model of required) {
+        assert.ok(kiro.models.includes(model), `web kiro-code fallback is missing ${model}`);
+        assert.ok(aiE.modelsByProvider?.kiro?.includes(model), `web ai-e kiro fallback is missing ${model}`);
+    }
+    for (const model of kiro.models) {
+        assert.ok(
+            CLI_REGISTRY['kiro-code'].models.includes(model),
+            `web kiro-code fallback lists ${model} but the backend registry does not`,
+        );
+    }
 });
 
 test('frontend Codex fallback shows only inactive ocx default models', () => {

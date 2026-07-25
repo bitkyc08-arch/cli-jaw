@@ -33,9 +33,16 @@ export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 
 export const CLI_META: Record<string, CliMeta> = {
     agy: {
         label: 'Antigravity',
-        models: ['gemini-3.5-flash'],
+        // Label form is what `agy --model` accepts when no --effort is sent
+        // (cli-jaw never sends one for AGY); the bare slug is rejected by
+        // AGY 1.1.4 with "requires --effort". Kept last for legacy selections.
+        models: [
+            'Gemini 3.6 Flash (Medium)',
+            'Gemini 3.5 Flash (Medium)',
+            'gemini-3.5-flash',
+        ],
         efforts: [],
-        modelNote: 'AGY model override is version-dependent. Current observed AGY 1.0.12 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',
+        modelNote: 'AGY model override is version-dependent. Observed AGY 1.1.4 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',
         effortNote: 'AGY has no separate effort flag.',
     },
     pi: {
@@ -58,7 +65,7 @@ export const CLI_META: Record<string, CliMeta> = {
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini'],
-            kiro: ['auto', 'claude-sonnet-5', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
+            kiro: ['auto', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-sonnet-5', 'claude-opus-5', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
         },
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -164,8 +171,12 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'Kiro',
         models: [
             'auto',
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
             'claude-fable-5',
             'claude-sonnet-5',
+            'claude-opus-5',
             'claude-opus-4.8',
             'claude-opus-4.7',
             'claude-opus-4.6',

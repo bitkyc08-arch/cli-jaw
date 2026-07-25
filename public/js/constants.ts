@@ -20,7 +20,17 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         label: 'Antigravity',
         efforts: [],
         effortNote: 'AGY has no separate effort flag',
-        models: ['gemini-3.5-flash'],
+        // These strings are passed to `agy --model` verbatim (src/agent/args.ts
+        // case 'agy'), and cli-jaw never sends --effort for AGY. The bare slug
+        // form is rejected in that shape — AGY 1.1.4 answers
+        // `--model gemini-3.5-flash` with "requires --effort" — so the offline
+        // fallback must use the label form that `agy models` prints.
+        // `gemini-3.5-flash` is kept last for older persisted selections.
+        models: [
+            'Gemini 3.6 Flash (Medium)',
+            'Gemini 3.5 Flash (Medium)',
+            'gemini-3.5-flash',
+        ],
     },
     'ai-e': {
         label: 'AI-E',
@@ -40,7 +50,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini'],
-            kiro: ['auto', 'claude-sonnet-5', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
+            kiro: ['auto', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-sonnet-5', 'claude-opus-5', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
         },
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -130,8 +140,12 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         effortNote: 'Kiro CLI forwards --effort; cli-jaw maps xhigh to Kiro max on the wire',
         models: [
             'auto',
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
             'claude-fable-5',
             'claude-sonnet-5',
+            'claude-opus-5',
             'claude-opus-4.8',
             'claude-opus-4.7',
             'claude-opus-4.6',

@@ -111,6 +111,26 @@ test('Kiro registry exposes kiro-code as a top-level runtime', () => {
     assert.equal(CLI_REGISTRY['ai-e'].providers.includes('kiro-code'), false);
 });
 
+// Both Kiro arrays are static fallbacks, and they are NOT equivalent in reach:
+// registry-live.ts replaces only `kiro-code.models` from the live kiro-cli
+// inventory, while `ai-e.modelsByProvider.kiro` stays static even when that
+// probe succeeds. A model missing from the AI-E mirror is therefore permanently
+// missing. Mirrors opencodex KIRO_MODELS (src/providers/kiro-models.ts).
+test('Kiro catalogs carry the current opencodex model ids on both surfaces', () => {
+    const required = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-opus-5'];
+    const topLevel = CLI_REGISTRY['kiro-code'].models;
+    const aiEKiro = CLI_REGISTRY['ai-e'].modelsByProvider.kiro;
+    for (const model of required) {
+        assert.ok(topLevel.includes(model), `kiro-code.models is missing ${model}`);
+        assert.ok(aiEKiro.includes(model), `ai-e.modelsByProvider.kiro is missing ${model}`);
+    }
+    // `auto` must stay the first entry: it is the default and any first-entry
+    // fallback must not resolve to a concrete model.
+    assert.equal(topLevel[0], 'auto');
+    assert.equal(aiEKiro[0], 'auto');
+    assert.equal(CLI_REGISTRY['kiro-code'].defaultModel, 'auto');
+});
+
 test('Cursor registry exposes Cursor as a top-level runtime, not an ai-e provider', () => {
     assert.equal(CLI_REGISTRY.cursor.label, 'Cursor');
     assert.equal(CLI_REGISTRY.cursor.binary, 'cursor-agent');
