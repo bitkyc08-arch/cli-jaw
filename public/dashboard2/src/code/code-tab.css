@@ -36,7 +36,7 @@
 
 .d2-code-model-note,
 .d2-code-model-error {
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-code-model-note {
@@ -77,7 +77,7 @@
 }
 
 .d2-code-session-row span {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     opacity: 0.6;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -93,7 +93,7 @@
     padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-code-composer {
@@ -128,7 +128,7 @@
     color: inherit;
     cursor: pointer;
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
 }
 
 .d2-code-composer-actions button:disabled {
@@ -138,6 +138,6 @@
 
 .d2-code-error {
     margin: 4px 16px 12px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     color: var(--danger);
 }

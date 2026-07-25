@@ -7,7 +7,7 @@
 
 .d2-model-picker-label {
     color: var(--text-3);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
 }
 
@@ -124,19 +124,19 @@
 }
 
 .d2-model-picker-option-copy strong {
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
 }
 
 .d2-model-picker-option-copy small,
 .d2-model-picker-scope {
     color: var(--text-4);
-    font-size: 10.5px;
+    font-size: var(--fs-xs);
 }
 
 .d2-model-picker-error {
     color: var(--danger);
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }
 
 .d2-model-picker-spinner {
@@ -163,5 +163,5 @@
     padding: 4px 8px;
     border-color: transparent;
     background: transparent;
-    font-size: 11px;
+    font-size: var(--fs-xs);
 }

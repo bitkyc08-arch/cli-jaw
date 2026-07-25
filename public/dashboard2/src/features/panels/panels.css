@@ -33,7 +33,11 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-2);
-    font: 500 11px var(--font-sans);
+    /* No line-height, by design: these inherit `normal`, and adding an explicit
+       one here would change the toolbar row height. Sizes only in this cycle. */
+    font-weight: 500;
+    font-size: var(--fs-xs);
+    font-family: var(--font-sans);
     cursor: pointer;
 }
 
@@ -59,7 +63,8 @@
     flex: 1;
     overflow: hidden;
     color: var(--text-3);
-    font: 11px var(--font-mono);
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -68,7 +73,7 @@
     place-self: center;
     padding: 24px;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     text-align: center;
 }
 
@@ -86,7 +91,7 @@
     margin: 0 auto;
     padding: 24px 28px 48px;
     color: var(--text-2);
-    font-size: 13px;
+    font-size: var(--fs-md);
     line-height: 1.65;
 }
 
@@ -105,7 +110,11 @@
     padding: 16px;
     background: var(--bg);
     color: var(--text-2);
-    font: 12px/1.6 var(--font-mono);
+    /* 1.6 is the one unitless ratio left in dashboard2. Kept as-is: converting
+       it to a px step would resolve to 19.2px and shift every diff row. */
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+    font-family: var(--font-mono);
     tab-size: 4;
 }
 
@@ -121,7 +130,8 @@
 .d2-design-size {
     flex: 1;
     color: var(--text-3);
-    font: 11px var(--font-mono);
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
 }
 
 .d2-design-viewport {
