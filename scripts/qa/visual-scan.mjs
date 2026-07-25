@@ -160,6 +160,20 @@ for (const name of Object.keys(SURFACES)) {
             if (measured.reached && (pixelError || pixelContrastRows === null || iconRows === null)) {
                 oracleFailures.push(`${name}/${theme}: pixel oracle unavailable${pixelError ? ` (${pixelError})` : ''}`);
             }
+
+            // Coverage, not just liveness. An element that produces no row has
+            // not passed, it has gone unmeasured, and the worst contrast failures
+            // are exactly the ones most likely to vanish that way.
+            if (measured.reached && pixelContrastRows && pixelContrastRows.length < measured.counts.text) {
+                oracleFailures.push(
+                    `${name}/${theme}: measured ${pixelContrastRows.length} of ${measured.counts.text} text nodes`,
+                );
+            }
+            if (measured.reached && iconRows && iconRows.length < measured.iconOnly) {
+                oracleFailures.push(
+                    `${name}/${theme}: measured ${iconRows.length} of ${measured.iconOnly} icon-only controls`,
+                );
+            }
             const f = measured.reached
                 ? `contrast ${contrastFailures.length}/${pixelContrastRows?.length ?? 0}px, icon ${iconFailures.length}/${iconRows?.length ?? 0}px, target ${measured.targetFailures.length} (exempt ${measured.targetExempt.length}), unreachable ${measured.unreachable.length}, unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}, clipped ${measured.clipped.length}`
                 : 'NOT REACHED';

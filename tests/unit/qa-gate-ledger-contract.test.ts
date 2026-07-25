@@ -103,3 +103,33 @@ test('the plan document quotes the ledger it actually generates', () => {
     assert.ok(quoted, 'the plan must quote the ledger output');
     assert.equal(Number(quoted[1]), gates.length, 'the plan quotes a stale gate total');
 });
+
+test('the plan document quotes every group count, not just the total', () => {
+    // Checking the total alone let the sub-counts drift: the document said
+    // runtime 15 and recovery 1 while the ledger had 17 and 2.
+    const doc = join(
+        resolve(import.meta.dirname, '..', '..'),
+        'devlog/260725_dashboard2_overnight_qa_stabilization/090_wp13_visual_gates_runtime_jawcode.md',
+    );
+    if (!existsSync(doc)) return;
+    const text = readFileSync(doc, 'utf8');
+    const quoted = text.match(/visual (\d+) \| runtime (\d+) \| jawcode (\d+)/);
+    assert.ok(quoted, 'the plan must quote the per-group counts');
+
+    const actual = gates.reduce<Record<string, number>>(
+        (acc, g) => ({ ...acc, [g.group]: (acc[g.group] ?? 0) + 1 }),
+        {},
+    );
+    assert.deepEqual(
+        { visual: Number(quoted[1]), runtime: Number(quoted[2]), jawcode: Number(quoted[3]) },
+        { visual: actual['visual'], runtime: actual['runtime'], jawcode: actual['jawcode'] },
+        'the plan quotes stale per-group counts',
+    );
+});
+
+test('control reachability is a gate, not just a metric', () => {
+    const ids = new Set(gates.map((g) => g.id));
+    for (const surface of ['workbench', 'notes', 'composer']) {
+        assert.ok(ids.has(`visual/control-reachability/${surface}`), `${surface} has no reachability gate`);
+    }
+});

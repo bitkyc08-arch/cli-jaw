@@ -12,7 +12,7 @@
 //   2. a known false-positive shape (color(srgb ...) with alpha)
 //   3. a known CSSOM blind spot (a pseudo-element gradient backdrop)
 import { chromium } from 'playwright';
-import { installMeasure, pixelContrast, pixelHistogram, setTheme, surfacePixelContrast } from './visual-lib.mjs';
+import { installMeasure, pixelContrast, pixelHistogram, setTheme, surfaceIconContrast, surfacePixelContrast } from './visual-lib.mjs';
 
 const TOLERANCE = 0.06;
 const failures = [];
@@ -30,7 +30,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
 // ── 1. synthetic fixtures ────────────────────────────────────────────────────
 // Built in isolation so the expected value is arithmetic, not observation.
 {
-    const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
+    const page = await browser.newPage({ viewport: { width: 400, height: 900 } });
     await page.setContent(`
         <style>
           body { margin: 0; background: #ffffff; }
@@ -53,6 +53,12 @@ const browser = await chromium.launch({ channel: 'chrome' });
              away, scoring each of them 21:1. */
           #half { background: linear-gradient(90deg,#fff 0%,#fff 60%,#666 60%,#666 100%); color:#000 }
           #thin { background: linear-gradient(90deg,#fff 0%,#fff 47%,#444 47%,#444 53%,#fff 53%,#fff 100%); color:#000 }
+          /* Text and icon almost the same colour as their background. This is
+             the worst possible outcome and the easiest to lose: hiding the
+             foreground barely moves the pixels, so a generous difference
+             threshold produced no row at all — and no row reads as a pass. */
+          #near { background:#787878; color:#777 }
+          #nearicon { background:#787878; color:#777 }
         </style>
         <div class="case" id="plain">Sample</div>
         <div class="case" id="tinted">Sample</div>
@@ -60,6 +66,8 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div class="case" id="band">Sample text spanning the band</div>
         <div class="case" id="half">Sample text spanning</div>
         <div class="case" id="thin">Sample text spanning</div>
+        <div class="case" id="near">Nearly invisible text</div>
+        <div class="case" id="nearicon"><button aria-label="Close" style="background:transparent;border:0;color:#777"><svg width="16" height="16"><path d="M2 2 L14 14" stroke="currentColor" stroke-width="2"/></svg></button></div>
     `);
     await installMeasure(page);
 
@@ -117,6 +125,33 @@ const browser = await chromium.launch({ channel: 'chrome' });
         });
         if (!ok) failures.push(`counterexample/${id}: measured ${row?.ratio ?? 'nothing'} (must fail)`);
     }
+
+    // Near-equal foreground and background must produce a FAILING row, not a
+    // missing one. The distinction matters: an element with no row is invisible
+    // to the gate, so the worst defect would be the one it never reports.
+    const nearRows = await surfacePixelContrast(page, '#near');
+    const nearRow = nearRows?.find((r) => r.label.startsWith('Nearly'));
+    const nearOk = Boolean(nearRow) && nearRow.ratio < 1.2 && !nearRow.pass;
+    results.push({
+        name: 'counterexample/near-equal-text',
+        measured: nearRow ? nearRow.ratio : 'NO ROW',
+        expected: '~1.0 and failing',
+        ok: nearOk,
+        note: 'text the same colour as its background must not vanish from the report',
+    });
+    if (!nearOk) failures.push(`counterexample/near-equal-text: ${nearRow ? nearRow.ratio : 'produced no row'}`);
+
+    const nearIconRows = await surfaceIconContrast(page, '#nearicon');
+    const nearIcon = nearIconRows?.[0];
+    const nearIconOk = Boolean(nearIcon) && nearIcon.ratio < 1.2 && !nearIcon.pass;
+    results.push({
+        name: 'counterexample/near-equal-icon',
+        measured: nearIcon ? nearIcon.ratio : 'NO ROW',
+        expected: '~1.0 and failing',
+        ok: nearIconOk,
+        note: 'an icon the same colour as its background must not vanish either',
+    });
+    if (!nearIconOk) failures.push(`counterexample/near-equal-icon: ${nearIcon ? nearIcon.ratio : 'produced no row'}`);
 
     await page.close();
 }

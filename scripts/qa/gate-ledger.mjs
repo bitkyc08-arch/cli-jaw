@@ -42,6 +42,10 @@ const ORACLES = [
     { id: 'target-size', themed: false, scope: 'surface', what: 'controls meet 24px or qualify for the spacing exception' },
     { id: 'accessible-name', themed: false, scope: 'surface', what: 'every control has a computed accessible name' },
     { id: 'occlusion', themed: false, scope: 'surface', what: 'no control is painted over by another element' },
+    // The scan grew an `unreachable` metric before the ledger grew a gate for
+    // it, so 21 clipped copy buttons were being found by a check nothing
+    // enforced. A metric without a gate is a report, not a contract.
+    { id: 'control-reachability', themed: false, scope: 'surface', what: 'no enabled control is cut off by an overflow:hidden ancestor' },
     { id: 'text-clipping', themed: false, scope: 'surface', what: 'text is not silently cut off without ellipsis' },
     { id: 'focus-visible', themed: true, scope: 'surface', what: 'keyboard focus draws a ring of at least 3:1' },
     { id: 'type-scale', themed: false, scope: 'surface', what: 'rendered font sizes land on the nine-step scale' },

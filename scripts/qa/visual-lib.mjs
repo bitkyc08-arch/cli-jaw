@@ -419,6 +419,29 @@ export async function pixelContrast(page, locator) {
     }, { modal, colour });
 }
 
+
+/**
+ * Stop the page moving before taking a pair of screenshots.
+ *
+ * The two captures are compared pixel by pixel, so anything that changes
+ * between them is read as glyph coverage: a shimmer, a spinner, a colour
+ * transition, a blinking caret, a clock. Freezing first makes the difference
+ * mean only what it is supposed to mean.
+ */
+export async function freezeMotion(page) {
+    return page.addStyleTag({
+        content: [
+            '*, *::before, *::after {',
+            '  animation-play-state: paused !important;',
+            '  animation-duration: 0s !important;',
+            '  animation-delay: 0s !important;',
+            '  transition: none !important;',
+            '  caret-color: transparent !important;',
+            '}',
+        ].join('\n'),
+    });
+}
+
 /** Install the measurement helpers into a page. */
 export async function installMeasure(page) {
     await page.evaluate(MEASURE_SOURCE);
@@ -465,12 +488,24 @@ export async function surfacePixelContrast(page, selectorScope) {
     // makes text transparent, which leaves the backdrop untouched. Pixels that
     // differ between the two are glyph coverage, and the backdrop is read from
     // the SAME coordinates in the text-free image.
-    const shot = await page.screenshot({ clip });
-    const hideText = await page.addStyleTag({
-        content: '*, *::before, *::after { color: transparent !important; text-shadow: none !important; -webkit-text-fill-color: transparent !important; }',
-    });
-    const bare = await page.screenshot({ clip });
-    await hideText.evaluate((node) => node.remove());
+    const freeze = await freezeMotion(page);
+    let shot;
+    let bare;
+    let hideText;
+    try {
+        shot = await page.screenshot({ clip });
+        // Only the foreground is removed. `color` alone is not enough: a
+        // -webkit-text-fill-color or a text-shadow would keep painting.
+        hideText = await page.addStyleTag({
+            content: '*, *::before, *::after { color: transparent !important; text-shadow: none !important; -webkit-text-fill-color: transparent !important; }',
+        });
+        bare = await page.screenshot({ clip });
+    } finally {
+        // Restore even if a capture threw, or every later gate measures a page
+        // with no text in it.
+        await hideText?.evaluate((node) => node.remove()).catch(() => {});
+        await freeze.evaluate((node) => node.remove()).catch(() => {});
+    }
 
     return page.evaluate(async ({ data, bareData, origin, scope }) => {
         const m = window.__d2measure;
@@ -508,24 +543,42 @@ export async function surfacePixelContrast(page, selectorScope) {
             // Backdrop colours beneath glyph coverage, sampled from the
             // text-free capture so a mid-grey band cannot be mistaken for an
             // antialiasing artefact.
+            // Delta of 1, not 20. Text that is nearly the same colour as its
+            // background barely moves the pixels when it is hidden, so a
+            // generous threshold discards exactly the worst case: #777 on
+            // #787878 produced no row at all, and an element with no row is an
+            // element that silently passes.
             const counts = new Map();
             let covered = 0;
             for (let i = 0; i < px.length; i += 4) {
                 const diff = Math.abs(px[i] - bx[i]) + Math.abs(px[i + 1] - bx[i + 1]) + Math.abs(px[i + 2] - bx[i + 2]);
-                if (diff < 20) continue;
+                if (diff < 2) continue;
                 covered += 1;
                 const key = bx[i] + ',' + bx[i + 1] + ',' + bx[i + 2];
                 counts.set(key, (counts.get(key) ?? 0) + 1);
             }
-            if (covered < 6) continue;
 
-            // The worst backdrop under a meaningful run of glyph pixels. Two
-            // percent of coverage is roughly one character, so a stray sample
-            // cannot fail an element by itself.
+            // No detectable coverage does not mean "fine". Either the text is
+            // invisible against its background or the capture failed; both need
+            // a row so the scan can fail rather than fall silent.
+            if (covered === 0) {
+                const bg = { r: bx[0], g: bx[1], b: bx[2], a: 1 };
+                const ratio = m.contrast(fg, bg);
+                results.push({
+                    ...m.describe(el),
+                    ratio: Number(ratio.toFixed(2)),
+                    need,
+                    backdrop: bg,
+                    glyphPixels: 0,
+                    indistinguishable: true,
+                    pass: false,
+                });
+                continue;
+            }
+
             let worst = Infinity;
             let worstColour = null;
             for (const [key, n] of counts) {
-                if (n / covered < 0.02) continue;
                 const parts = key.split(',').map(Number);
                 const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
                 const ratio = m.contrast(fg, candidate);
@@ -562,12 +615,20 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
         width: Math.max(1, Math.round(box.width)),
         height: Math.max(1, Math.round(box.height)),
     };
-    const shot = await page.screenshot({ clip });
-    const hideIcons = await page.addStyleTag({
-        content: 'svg, svg * { stroke: transparent !important; fill: transparent !important; }',
-    });
-    const bare = await page.screenshot({ clip });
-    await hideIcons.evaluate((node) => node.remove());
+    const freeze = await freezeMotion(page);
+    let shot;
+    let bare;
+    let hideIcons;
+    try {
+        shot = await page.screenshot({ clip });
+        hideIcons = await page.addStyleTag({
+            content: 'svg, svg * { stroke: transparent !important; fill: transparent !important; }',
+        });
+        bare = await page.screenshot({ clip });
+    } finally {
+        await hideIcons?.evaluate((node) => node.remove()).catch(() => {});
+        await freeze.evaluate((node) => node.remove()).catch(() => {});
+    }
 
     return page.evaluate(async ({ data, bareData, origin, scope, threshold }) => {
         const m = window.__d2measure;
@@ -606,17 +667,31 @@ export async function surfaceIconContrast(page, selectorScope, minRatio = 3) {
             let covered = 0;
             for (let i = 0; i < px.length; i += 4) {
                 const diff = Math.abs(px[i] - bx[i]) + Math.abs(px[i + 1] - bx[i + 1]) + Math.abs(px[i + 2] - bx[i + 2]);
-                if (diff < 20) continue;
+                if (diff < 2) continue;
                 covered += 1;
                 const key = bx[i] + ',' + bx[i + 1] + ',' + bx[i + 2];
                 counts.set(key, (counts.get(key) ?? 0) + 1);
             }
-            if (covered < 4) continue;
+
+            // An icon indistinguishable from its backdrop is the worst outcome,
+            // so it must produce a failing row rather than disappear.
+            if (covered === 0) {
+                const bg = { r: bx[0], g: bx[1], b: bx[2], a: 1 };
+                results.push({
+                    ...m.describe(el),
+                    ratio: Number(m.contrast(fg, bg).toFixed(2)),
+                    need: threshold,
+                    backdrop: bg,
+                    iconPixels: 0,
+                    indistinguishable: true,
+                    pass: false,
+                });
+                continue;
+            }
 
             let worst = Infinity;
             let worstColour = null;
             for (const [key, n] of counts) {
-                if (n / covered < 0.05) continue;
                 const parts = key.split(',').map(Number);
                 const candidate = { r: parts[0], g: parts[1], b: parts[2], a: 1 };
                 const ratio = m.contrast(fg, candidate);
