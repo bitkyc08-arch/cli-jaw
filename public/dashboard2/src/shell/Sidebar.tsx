@@ -73,9 +73,17 @@ async function fetchJwcCapability(port: number): Promise<JwcCapabilityReason> {
     }
 }
 
+/*
+ * Throws on failure instead of returning [].
+ *
+ * Returning an empty array made a failed fetch indistinguishable from a real
+ * empty list, so the user saw "No conversations" with no way to retry, and an
+ * outright network rejection escaped the caller entirely and left the list
+ * spinning forever.
+ */
 async function fetchJwcConversations(port: number): Promise<JwcConversation[]> {
     const res = await fetch(`/i/${port}/api/code/sessions/stored?scope=all`, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error(`stored sessions request failed (${res.status})`);
     const body = await res.json() as Record<string, unknown>;
     const sessions = Array.isArray(body['sessions']) ? body['sessions'] as Array<Record<string, unknown>> : [];
     return sessions
@@ -243,9 +251,16 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
                 setJwcState({ capability, conversations: [], loading: false, port });
                 return;
             }
-            const conversations = await fetchJwcConversations(port);
-            if (!mounted) return;
-            setJwcState({ capability: 'ok', conversations, loading: false, port });
+            try {
+                const conversations = await fetchJwcConversations(port);
+                if (!mounted) return;
+                setJwcState({ capability: 'ok', conversations, loading: false, port });
+            } catch {
+                if (!mounted) return;
+                // 'error' renders the retry affordance; previously this state was
+                // unreachable, so the branch existed but nothing could enter it.
+                setJwcState({ capability: 'error', conversations: [], loading: false, port });
+            }
         })();
         return () => { mounted = false; };
     }, [mode, selected?.port, instances, jwcRefresh]);
