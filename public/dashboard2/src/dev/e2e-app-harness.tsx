@@ -447,6 +447,7 @@ class FakeApiRouter {
             || url.pathname.startsWith(`/i/${PORT}/api/mcp`)
             || url.pathname === `/i/${PORT}/api/prompt`
             || url.pathname === `/i/${PORT}/api/health`
+            || url.pathname.startsWith(`/i/${PORT}/api/memory-files`)
             || url.pathname.startsWith(`/i/${PORT}/api/employees/`)
             || (url.pathname === `/i/${PORT}/api/employees` && method !== 'GET')) {
             return this.hoverDockApi(url, method, payload);
@@ -659,6 +660,12 @@ class FakeApiRouter {
         if (path === '/health') {
             if (cfg.healthStatus && cfg.healthStatus >= 400) return json({ error: 'health unavailable' }, cfg.healthStatus);
             return json(cfg.health ?? { ok: true, status: 'ok' });
+        }
+
+        if (path.startsWith('/memory-files')) {
+            if (method === 'PUT' || method === 'POST') return json({ ok: true });
+            if (cfg.mutationStatus && cfg.mutationStatus >= 400) return json({ error: 'memory files unreadable' }, cfg.mutationStatus);
+            return json({ ok: true, data: cfg.mcp ?? { flushCli: '', flushModel: '' } });
         }
 
         if (path.startsWith('/employees/')) {
