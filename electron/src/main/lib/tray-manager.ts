@@ -150,8 +150,8 @@ function rebuildMenu(): void {
       case 'checkbox': return {
         label: item.label, type: 'checkbox' as const, checked: item.checked,
         click: (mi) => {
-          if (item.label === 'Keep Running in Background') { prefs.keepRunningInBackground = mi.checked; savePrefs(); }
-          else { prefs.startAtLogin = mi.checked; savePrefs(); syncLoginItemSetting(); }
+          if (item.pref === 'keepRunning') { prefs.keepRunningInBackground = mi.checked; savePrefs(); }
+          else if (item.pref === 'startAtLogin') { prefs.startAtLogin = mi.checked; savePrefs(); syncLoginItemSetting(); }
         },
       };
       case 'install-cli': return {
@@ -167,12 +167,10 @@ function rebuildMenu(): void {
         },
       };
       case 'quit': return { label: item.label, click: cb.onQuit };
-      default: return {
-        label: item.label,
-        click: item.label === 'Open Dashboard' ? cb.onOpenDashboard
-          : item.label === 'Copy URL' ? () => clipboard.writeText(cb.getManagerUrl())
-          : cb.onRestartServer,
-      };
+      case 'open-dashboard': return { label: item.label, click: cb.onOpenDashboard };
+      case 'copy-url': return { label: item.label, click: () => clipboard.writeText(cb.getManagerUrl()) };
+      case 'restart-server': return { label: item.label, click: cb.onRestartServer };
+      default: return { label: item.label };
     }
   }));
   currentMenu = menu;

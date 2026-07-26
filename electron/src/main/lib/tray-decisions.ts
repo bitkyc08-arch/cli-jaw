@@ -24,10 +24,12 @@ export function decideCrashNotification(notificationSupported: boolean): 'notify
 }
 
 export interface TrayMenuItem {
-    kind: 'status' | 'action' | 'checkbox' | 'separator' | 'install-cli' | 'quit';
+    kind: 'status' | 'open-dashboard' | 'copy-url' | 'restart-server' | 'checkbox' | 'separator' | 'install-cli' | 'quit';
     label?: string;
     checked?: boolean;
     enabled?: boolean;
+    /** Which preference a checkbox toggles, so the manager need not match by label. */
+    pref?: 'keepRunning' | 'startAtLogin';
 }
 
 /**
@@ -46,12 +48,12 @@ export function buildTrayMenuPlan(input: {
     return [
         { kind: 'status', label: input.serverStatus, enabled: false },
         { kind: 'separator' },
-        { kind: 'action', label: 'Open Dashboard' },
-        { kind: 'action', label: 'Copy URL' },
-        { kind: 'action', label: 'Restart Server' },
+        { kind: 'open-dashboard', label: 'Open Dashboard' },
+        { kind: 'copy-url', label: 'Copy URL' },
+        { kind: 'restart-server', label: 'Restart Server' },
         { kind: 'separator' },
-        { kind: 'checkbox', label: 'Keep Running in Background', checked: input.keepRunning },
-        { kind: 'checkbox', label: 'Start at Login', checked: input.startAtLogin },
+        { kind: 'checkbox', label: 'Keep Running in Background', checked: input.keepRunning, pref: 'keepRunning' },
+        { kind: 'checkbox', label: 'Start at Login', checked: input.startAtLogin, pref: 'startAtLogin' },
         {
             kind: 'install-cli',
             label: input.cliInstalled ? 'CLI Installed ✓' : 'Install CLI to Terminal',
