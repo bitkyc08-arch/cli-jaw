@@ -379,6 +379,14 @@ export function branchCoverageStatus() {
                 delegatedBroken.push(`${branchId}: a mutationError branch has no mutation request (${entry.delegate})`);
             }
         }
+        // wp5c C-gate round 7: a load-load cross-component swap (reminders
+        // loadError vs schedule error) passes all of the above. The remaining
+        // discriminator is the component the scenario measures against the
+        // component the branch belongs to.
+        const branchComponent = String(branch.file ?? '').split('/').pop()?.replace('.tsx', '') ?? '';
+        if (scenario.component && branchComponent && !branchComponent.startsWith(scenario.component)) {
+            delegatedBroken.push(`${branchId}: branch in ${branchComponent} is proven by a ${scenario.component} scenario (${entry.delegate})`);
+        }
     }
     // wp5c C-gate round 2: a duplicate claim (two scenarios naming the same
     // feature branch) is detected in featureScenarioStatus().malformed but

@@ -11,10 +11,10 @@
 
 /** The side-pane panel each tab opens, and its ready selector. */
 const PANEL = {
-    notes: { panel: 'notes', waitFor: '.d2-notes-panel' },
-    board: { panel: 'board', waitFor: '.d2-board-canvas, .d2-board-state, .d2-board-error' },
-    reminders: { panel: 'reminders', waitFor: '.d2-reminders-loading, .d2-reminders-error, .d2-reminders-list, .d2-reminders-empty, .d2-reminders-form' },
-    employees: { panel: 'employees', waitFor: '.d2-employees-panel' },
+    notes: { panel: 'notes', component: 'Notes', waitFor: '.d2-notes-panel' },
+    board: { panel: 'board', component: 'Board', waitFor: '.d2-board-canvas, .d2-board-state, .d2-board-error' },
+    reminders: { panel: 'reminders', component: 'Reminders', waitFor: '.d2-reminders-loading, .d2-reminders-error, .d2-reminders-list, .d2-reminders-empty, .d2-reminders-form' },
+    employees: { panel: 'employees', component: 'Employees', waitFor: '.d2-employees-panel' },
 };
 
 // The side pane is narrow, which puts the board in compact mode at the
@@ -786,6 +786,13 @@ export function featureScenarioStatus(manifestIntegrationBranchIds = null) {
     for (const scenario of FEATURE_SCENARIOS) {
         if (ids.has(scenario.id)) duplicate.push(scenario.id);
         ids.add(scenario.id);
+        // Carry the surface the scenario measures, derived from its panel, so
+        // a claim can be checked against the branch's own component. Schedule
+        // shares the reminders panel but is a distinct component.
+        if (!scenario.component && scenario.panel) {
+            scenario.component = PANEL[scenario.panel]?.component ?? scenario.panel;
+        }
+        if (scenario.id.startsWith('schedule-') || scenario.id.startsWith('dispatch-')) scenario.component = 'Schedule';
         const evidence = scenario.evidenceStatus ?? 'planned';
         if (!REACHABILITIES.has(scenario.reachability)) malformed.push(`${scenario.id}: unknown reachability ${scenario.reachability}`);
         if (!EVIDENCE_STATUSES.has(evidence)) malformed.push(`${scenario.id}: unknown evidenceStatus ${evidence}`);
