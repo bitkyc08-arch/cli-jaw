@@ -146,6 +146,10 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
     const [instancesLoading, setInstancesLoading] = useState(true);
     const [instancesError, setInstancesError] = useState<string | null>(null);
     const [sessionsByPort, setSessionsByPort] = useState<Record<number, SessionsCacheEntry>>({});
+    // A ref mirror so the shortcut api's activeSessionFor always reads the
+    // LATEST cache, not the state it closed over at registration time.
+    const sessionsByPortRef = useRef(sessionsByPort);
+    sessionsByPortRef.current = sessionsByPort;
     const [menuPort, setMenuPort] = useState<number | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     // 062 — jwc sidebar state (raw fetch, no code/ import)
@@ -247,7 +251,9 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
             });
         },
         activeSessionFor(port) {
-            const entry = sessionsByPort[port];
+            // Read the ref, not the closed-over state, so ensureSessions-then-
+            // read sees the freshly loaded active session.
+            const entry = sessionsByPortRef.current[port];
             return entry?.status === 'ready' ? entry.data.active : null;
         },
         ensureSessions(port) {

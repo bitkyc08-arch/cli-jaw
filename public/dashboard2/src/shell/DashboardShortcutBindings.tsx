@@ -15,7 +15,7 @@ import { useAppScope } from '../state/scope.tsx';
 
 export function DashboardShortcutBindings(): JSX.Element | null {
     const shortcuts = useManagerShortcuts();
-    const { openPanel, sidebarApi, selected, guardedSelectSession } = useAppScope();
+    const { openPanel, sidebarApi, selected, guardedSelectSession, guardedSetWorkspaceMode } = useAppScope();
 
     useEffect(() => shortcuts.registerHandler('focusNotes', () => {
         openPanel({ type: 'notes', key: 'notes', title: 'Notes', keepAlive: true });
@@ -31,12 +31,13 @@ export function DashboardShortcutBindings(): JSX.Element | null {
     useEffect(() => shortcuts.registerHandler('focusActiveSession', () => {
         const api = sidebarApi();
         if (selected) {
-            // A session is selected: focus its composer — the actionable input
-            // of the active chat, which is what the legacy "preview the active
-            // session" maps to in dashboard2's single-chat workspace.
-            requestAnimationFrame(() => {
-                document.querySelector<HTMLElement>('.d2-chat-composer-slot textarea, [data-testid="chat-view"] textarea')
-                    ?.focus();
+            // A session is selected: switch to the chat workspace (Settings may
+            // be showing), then focus the active chat's composer.
+            void guardedSetWorkspaceMode('chat').then(() => {
+                requestAnimationFrame(() => {
+                    document.querySelector<HTMLElement>('.d2-chat-composer-slot textarea, [data-testid="chat-view"] textarea')
+                        ?.focus();
+                });
             });
             return;
         }
@@ -49,7 +50,7 @@ export function DashboardShortcutBindings(): JSX.Element | null {
             if (sessionId) void guardedSelectSession(firstOnline.port, sessionId);
             else api?.focusInstanceRow(firstOnline.port);
         });
-    }), [sidebarApi, selected, guardedSelectSession, shortcuts]);
+    }), [sidebarApi, selected, guardedSelectSession, guardedSetWorkspaceMode, shortcuts]);
 
     useEffect(() => {
         const cycle = (direction: 1 | -1): void => {
