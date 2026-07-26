@@ -100,6 +100,52 @@ export interface CodeFixtureConfig {
     replayEvents?: JsonRecord[];
 }
 
+/**
+ * How the employees surface should answer. The panel fans out to three
+ * endpoints with `Promise.allSettled` (employees-api.ts:100): `/employees` is
+ * required and a failure throws, while the two orchestrate reads degrade to a
+ * warning each instead of failing. That is why each sub-request gets its own
+ * independent lever — the warning states are only reachable by failing one
+ * sub-request while the others succeed.
+ */
+export interface EmployeesFixtureConfig {
+    /** /api/employees rows. */
+    employees?: JsonRecord[];
+    employeesStatus?: number;
+    holdEmployees?: boolean;
+    /** /orchestrate/workers — degrades to a warning when it fails. */
+    workersStatus?: number;
+    workers?: JsonRecord[];
+    /** /orchestrate/worker-progress — also degrades to a warning. */
+    progressStatus?: number;
+    progress?: JsonRecord[];
+    holdWorkers?: boolean;
+    holdProgress?: boolean;
+}
+
+/**
+ * How the schedule sub-view should answer. Each verb is independently
+ * bendable because ScheduleView surfaces a mutation failure in the same
+ * role=alert as a load failure (ScheduleView.tsx:213), and only the request
+ * tells them apart. `hold*` never settles, which is the only way to observe a
+ * busy row.
+ */
+export interface ScheduleFixtureConfig {
+    items?: JsonRecord[];
+    listStatus?: number;
+    holdList?: boolean;
+    createStatus?: number;
+    holdCreate?: boolean;
+    updateStatus?: number;
+    holdUpdate?: boolean;
+    deleteStatus?: number;
+    holdDelete?: boolean;
+    dispatchStatus?: number;
+    /** The dispatch decision the panel renders. */
+    dispatchResult?: { status?: string; message?: string; targetPort?: number | null };
+    holdDispatch?: boolean;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -164,6 +210,10 @@ class FakeApiRouter {
     capabilityResponse: { available?: boolean; reason?: string } | null = null;
     /** Whole-tab scenario config; see CodeFixtureConfig. */
     code: CodeFixtureConfig = {};
+    /** Employees surface; see EmployeesFixtureConfig. */
+    employees: EmployeesFixtureConfig = {};
+    /** Schedule sub-view; see ScheduleFixtureConfig. */
+    schedule: ScheduleFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -249,6 +299,11 @@ class FakeApiRouter {
         }
         if (url.pathname === `/i/${PORT}/api/cli-registry`) return json({ ok: true, data: { codex: { defaultModel: 'gpt-5.5', models: ['gpt-5.5'], efforts: ['low', 'medium', 'high'] } } });
         if (url.pathname.startsWith(`/i/${PORT}/api/code/`)) return this.codeApi(url, method, payload);
+        if (url.pathname === `/i/${PORT}/api/employees`
+            || url.pathname === `/i/${PORT}/api/orchestrate/workers`
+            || url.pathname === `/i/${PORT}/api/orchestrate/worker-progress`) {
+            return this.employeesApi(url);
+        }
         if (url.pathname === `/i/${PORT}/api/files`) {
             // Overridable like the capability probe: a visual gate cannot judge
             // the file tree's error or empty branch without being able to
@@ -274,7 +329,7 @@ class FakeApiRouter {
         if (url.pathname.startsWith('/api/dashboard/notes/')) return this.notes(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/board/tasks')) return this.board(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/reminders')) return this.reminder(url, method, payload);
-        if (url.pathname === '/api/dashboard/schedule/work') return json({ ok: true, items: [] });
+        if (url.pathname.startsWith('/api/dashboard/schedule/work')) return this.schedule(url, method, payload);
 
         this.unknownRequests.push(key);
         return json({ ok: true, data: [], items: [], sessions: [] });
@@ -398,6 +453,109 @@ class FakeApiRouter {
         // than absorbed by the catch-all.
         this.unknownRequests.push(`${method} ${url.pathname}${url.search}`);
         return json({ ok: false, error: `unhandled code endpoint ${path}` }, 501);
+    }
+
+    /**
+     * The three reads the employees surface makes. Before this existed they
+     * fell through to the catch-all's `{ok:true, data:[], items:[], sessions:[]}`,
+     * which `normalizeEmployees` reads as an empty list — so "No employees
+     * configured." could be the real empty state or the catch-all, exactly the
+     * ambiguity that motivated the code handlers.
+     *
+     * Each is independently bendable because the panel degrades the two
+     * orchestrate reads to warnings rather than failing, and those warnings
+     * are the states under test.
+     */
+    private employeesApi(url: URL): Response {
+        const cfg = this.employees;
+        if (url.pathname.endsWith('/api/employees')) {
+            if (cfg.holdEmployees) return pending();
+            if (cfg.employeesStatus && cfg.employeesStatus >= 400) {
+                return json({ ok: false, error: 'employee registry unreadable' }, cfg.employeesStatus);
+            }
+            return json(cfg.employees ?? []);
+        }
+        if (url.pathname.endsWith('/orchestrate/workers')) {
+            if (cfg.holdWorkers) return pending();
+            if (cfg.workersStatus && cfg.workersStatus >= 400) {
+                return json({ ok: false, error: 'active workers unavailable' }, cfg.workersStatus);
+            }
+            return json(cfg.workers ?? []);
+        }
+        // /orchestrate/worker-progress
+        if (cfg.holdProgress) return pending();
+        if (cfg.progressStatus && cfg.progressStatus >= 400) {
+            return json({ ok: false, error: 'worker progress unavailable' }, cfg.progressStatus);
+        }
+        return json({ workers: cfg.progress ?? [] });
+    }
+
+    /**
+     * The schedule sub-view's CRUD plus its dispatch decision.
+     *
+     * The old handler matched the exact path only, so `/:id` and
+     * `/:id/dispatch` fell through to the catch-all and a mutation scenario
+     * would have silently measured the wrong screen.
+     */
+    private schedule(url: URL, method: string, payload: JsonRecord): Response {
+        const cfg = this.schedule;
+        const rest = url.pathname.slice('/api/dashboard/schedule/work'.length);
+        const item = (overrides: JsonRecord = {}): JsonRecord => ({
+            id: 'sched-1',
+            title: 'wp5c scheduled work',
+            enabled: true,
+            createdAt: new Date(BASE_TIME).toISOString(),
+            updatedAt: new Date(BASE_TIME).toISOString(),
+            ...overrides,
+        });
+
+        if (rest === '' || rest === '/') {
+            if (method === 'GET') {
+                if (cfg.holdList) return pending();
+                if (cfg.listStatus && cfg.listStatus >= 400) {
+                    return json({ ok: false, error: 'schedule unreadable' }, cfg.listStatus);
+                }
+                return json({ ok: true, items: cfg.items ?? [] });
+            }
+            if (method === 'POST') {
+                if (cfg.holdCreate) return pending();
+                if (cfg.createStatus && cfg.createStatus >= 400) {
+                    return json({ ok: false, error: 'schedule create rejected' }, cfg.createStatus);
+                }
+                return json({ ok: true, item: item({ title: String(payload['title'] ?? 'wp5c scheduled work') }) });
+            }
+        }
+
+        const match = /^\/([^/]+)(\/dispatch)?$/.exec(rest);
+        if (match) {
+            const id = decodeURIComponent(match[1]!);
+            if (match[2] === '/dispatch') {
+                if (cfg.holdDispatch) return pending();
+                if (cfg.dispatchStatus && cfg.dispatchStatus >= 400) {
+                    return json({ ok: false, error: 'dispatch decision failed' }, cfg.dispatchStatus);
+                }
+                return json({
+                    ok: true,
+                    item: item({ id }),
+                    result: cfg.dispatchResult ?? { status: 'dispatched', message: 'Dispatched to the target worker', targetPort: PORT },
+                });
+            }
+            if (method === 'PATCH') {
+                if (cfg.holdUpdate) return pending();
+                if (cfg.updateStatus && cfg.updateStatus >= 400) {
+                    return json({ ok: false, error: 'schedule update rejected' }, cfg.updateStatus);
+                }
+                return json({ ok: true, item: item({ id, ...payload }) });
+            }
+            if (method === 'DELETE') {
+                if (cfg.holdDelete) return pending();
+                if (cfg.deleteStatus && cfg.deleteStatus >= 400) {
+                    return json({ ok: false, error: 'schedule delete rejected' }, cfg.deleteStatus);
+                }
+                return json({ ok: true });
+            }
+        }
+        return json({ ok: true, items: [] });
     }
 
     private notes(url: URL, method: string, payload: JsonRecord): Response {
@@ -550,6 +708,10 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         setCapability(response) { router.capabilityResponse = response; },
         setCode(config) { router.code = config ?? {}; },
         resetCode() { router.code = {}; router.capabilityResponse = null; },
+        setEmployees(config) { router.employees = config ?? {}; },
+        resetEmployees() { router.employees = {}; },
+        setSchedule(config) { router.schedule = config ?? {}; },
+        resetSchedule() { router.schedule = {}; },
         markRequests() { return router.recorded.length; },
         codeRequests(since = 0) {
             return router.recorded
@@ -595,6 +757,10 @@ declare global {
             setCapability(response: { available?: boolean; reason?: string } | null): void;
             setCode(config: CodeFixtureConfig | null): void;
             resetCode(): void;
+            setEmployees(config: EmployeesFixtureConfig | null): void;
+            resetEmployees(): void;
+            setSchedule(config: ScheduleFixtureConfig | null): void;
+            resetSchedule(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];
