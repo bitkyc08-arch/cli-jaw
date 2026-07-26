@@ -957,6 +957,56 @@ export const FEATURE_SCENARIOS = [
         selector: '.d2-settings-page',
         absent: '.d2-settings-save-bar',
     },
+
+    // ── settings: ModelSettingsPanel (a separate state machine) ──────────────
+    // Agent page hosts it. snapshot.status drives loading/ready/saving/empty/
+    // error; port-null is a prerequisite.
+    {
+        id: 'model-loading',
+        branchId: 'ModelSettingsPanel',
+        reachability: 'integration',
+        axis: 'loading', target: 'Control',
+        why: 'the cli-registry catalog is in flight',
+        ...SETTINGS,
+        levers: { settingsConfig: { holdCliRegistry: true } },
+        actions: [{ kind: 'click', selector: '.d2-settings-nav-item:has-text("Agent")' }],
+        selector: '.d2-model-picker, .d2-settings-fields',
+        requires: '.d2-model-picker-spinner, [aria-busy="true"]',
+    },
+    {
+        id: 'model-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the cli-registry read failed, with a reload button',
+        ...SETTINGS,
+        levers: { settingsConfig: { cliRegistryStatus: 500 } },
+        actions: [{ kind: 'click', selector: '.d2-settings-nav-item:has-text("Agent")' }],
+        selector: '.d2-settings-page',
+        requires: '.d2-sidebar-retry',
+    },
+    {
+        id: 'model-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'Note',
+        why: 'the registry has no usable model inventory, so mutation is disabled',
+        ...SETTINGS,
+        levers: { settingsConfig: { cliRegistry: { ok: true, data: {} } } },
+        actions: [{ kind: 'click', selector: '.d2-settings-nav-item:has-text("Agent")' }],
+        selector: '.d2-settings-page [role="note"]',
+        expected: 'unavailable',
+    },
+    {
+        id: 'model-ready',
+        reachability: 'integration',
+        axis: 'ready', target: 'Control',
+        why: 'the catalog loaded and the picker is active',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [{ kind: 'click', selector: '.d2-settings-nav-item:has-text("Agent")' }],
+        selector: '.d2-model-picker-trigger:not([disabled])',
+        // The fixture's codex model appears in the picker.
+        pattern: 'gpt-5\\.5',
+    },
 ];
 
 const EVIDENCE_STATUSES = new Set([
