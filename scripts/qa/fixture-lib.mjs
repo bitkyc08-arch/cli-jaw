@@ -135,6 +135,31 @@ export const FIXTURE_SURFACES = {
 };
 
 /**
+ * The six tool tabs, which share the side pane but not much else.
+ *
+ * `side-pane` only ever measured whichever panel was open, so five of these
+ * were never looked at. Each opens through the same harness call and asserts on
+ * its own root, and each excludes the pane chrome so the tab bar is not
+ * re-measured six times.
+ */
+for (const [name, root] of [
+    ['terminal', '.d2-terminal-panel'],
+    ['browser', '.d2-browser-panel'],
+    ['files', '.d2-file-tree'],
+    ['doc', '.d2-doc-panel'],
+    ['design', '.d2-design-panel'],
+    ['diff', '.d2-diff-panel'],
+]) {
+    FIXTURE_SURFACES[`tab-${name}`] = {
+        root,
+        reach: async (page) => {
+            await page.evaluate((t) => window.__jawE2E.openPanel(t), name);
+            await page.locator(root).waitFor({ timeout: 15_000 });
+        },
+    };
+}
+
+/**
  * States a surface can be in that change what the gates see.
  *
  * The default render exercises none of the 27 opacity rules in dashboard2:

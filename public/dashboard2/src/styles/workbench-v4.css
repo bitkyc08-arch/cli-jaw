@@ -397,6 +397,21 @@
     background: #000;
 }
 
+/* The same element carries the xterm canvas AND the "not available" messages,
+   so the hard black that a terminal needs was also the backdrop for themed
+   status text: in the light theme that read 1.28:1. The status states get the
+   surface treatment; only a panel actually hosting a terminal stays black. */
+.d2-terminal-panel:not(:has(.xterm)) {
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    text-align: center;
+}
+
 .d2-terminal-panel .xterm {
     height: 100%;
 }
@@ -458,7 +473,11 @@
 
 .d2-browser-url-bar button:disabled {
     cursor: default;
-    opacity: .45;
+    /* Colour rather than opacity: this button has a background and a border, so
+       fading it fades those with the label and leaves a pair no rendered-pixel
+       check can resolve. */
+    border-color: var(--border);
+    color: var(--text-3);
 }
 
 .d2-browser-frame-wrap {

@@ -111,6 +111,24 @@ const CASES = [
         // the 28px overflow:hidden boundary.
         revert: '.d2-tool-line { display: block; } .d2-tool-copy { opacity: 1; }',
     },
+    {
+        id: 'D13-terminal-status-on-black',
+        defect: 'the terminal panel kept a hard black background for its status messages, reading 1.28:1 in the light theme',
+        surface: 'tab-terminal',
+        theme: 'light',
+        state: 'default',
+        expect: 'contrast',
+        revert: '.d2-terminal-panel:not(:has(.xterm)) { background: #000; color: var(--text-2); display: block; }',
+    },
+    {
+        id: 'D14-browser-go-group-opacity',
+        defect: 'the disabled Go button faded its own background, leaving a pair no rendered check can resolve',
+        surface: 'tab-browser',
+        theme: 'dark',
+        state: 'disabled',
+        expect: 'unmeasurable',
+        revert: '.d2-browser-url-bar button:disabled { opacity: .45; border-color: revert; color: revert; }',
+    },
 ];
 
 const server = await startFixtureServer();
