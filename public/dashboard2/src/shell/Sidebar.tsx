@@ -213,16 +213,18 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         refreshInstances: loadInstances,
     });
 
-    const loadSessions = useCallback(async (port: number) => {
+    const loadSessions = useCallback(async (port: number): Promise<string | null> => {
         setSessionsByPort((cache) => ({ ...cache, [port]: { status: 'loading' } }));
         try {
             const data = await api.fetchSessions(port);
             setSessionsByPort((cache) => ({ ...cache, [port]: { status: 'ready', data } }));
+            return data.active ?? null;
         } catch (error) {
             setSessionsByPort((cache) => ({
                 ...cache,
                 [port]: { status: 'error', message: errorMessage(error) },
             }));
+            return null;
         }
     }, [api]);
     // The shortcut-callable surface (wp9): the four instance shortcuts reach
@@ -257,13 +259,9 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
             return entry?.status === 'ready' ? entry.data.active : null;
         },
         ensureSessions(port) {
-            // Return the active session from the freshly loaded data, not a
-            // later cache read — the caller's .then() fires before the state
-            // re-render, so a ref or state read would still be stale.
-            return Promise.resolve(loadSessions(port)).then(() => {
-                const entry = sessionsByPortRef.current[port];
-                return entry?.status === 'ready' ? entry.data.active : null;
-            });
+            // Return the active session from the freshly fetched response, not
+            // a cache read — the caller's .then() fires before the re-render.
+            return loadSessions(port);
         },
     }), [registerSidebarApi, instances, sessionsByPort, expandedPorts, toggleInstance, loadSessions]);
 
