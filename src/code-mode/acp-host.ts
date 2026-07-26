@@ -137,7 +137,14 @@ class AcpHost implements CodeSessionTransport {
             this.#child = null;
             throw err;
         });
-        void this.#initialized.then(() => { this.#ready = true; }, () => { /* handled above */ });
+        void this.#initialized.then(
+            () => {
+                this.#ready = true;
+                // A replacement child inherits the previous one's live sessions.
+                void this.#reestablish();
+            },
+            () => { /* handled above */ },
+        );
         this.#startIdleReaper();
         return this.#initialized;
     }
@@ -157,15 +164,58 @@ class AcpHost implements CodeSessionTransport {
             d.reject(new CodeTransportError('unavailable', `acp child exited (code ${code})`));
         }
         this.#pendingRpc.clear();
-        for (const s of this.#sessions.values()) s.status = 'closed';
+        // Sessions that were live are recoverable, not simply gone: the next
+        // prompt can re-establish them through session/load. Marking them
+        // 'closed' told the UI they were finished, which is why a dead child
+        // looked like the user's conversations had been thrown away.
+        const recoverable: string[] = [];
+        for (const s of this.#sessions.values()) {
+            if (s.status !== 'closed') recoverable.push(s.sessionId);
+            s.status = 'closed';
+        }
         this.#permissions.clear();
         this.#child = null;
         this.#readline?.close();
         this.#readline = null;
         this.#initialized = null;
-        publish('jwc', 'code_child_exit', { code });
-        // Lazy respawn: next newSession()/prompt() re-runs #ensureChild().
-        // TODO(S3): auto loadSession replay for sessions that were live (B4 recovery).
+        this.#recoverable = recoverable;
+        // The event carries the survivor list so the UI can say "re-establishing
+        // two conversations" instead of leaving them looking dead.
+        publish('jwc', 'code_child_exit', { code, recoverable });
+        // Respawn stays lazy: the next newSession()/prompt() re-runs
+        // #ensureChild(), which replays the list above through session/load.
+    }
+
+    /** Sessions that were live when the child died, pending re-establishment. */
+    #recoverable: string[] = [];
+
+    /**
+     * Re-establish the sessions that a dead child took with it.
+     *
+     * Called once the replacement child is ready. Each session is loaded back by
+     * id; one that cannot be restored is reported rather than dropped, because a
+     * conversation vanishing without explanation is the failure this whole path
+     * exists to prevent.
+     */
+    async #reestablish(): Promise<void> {
+        const pending = this.#recoverable;
+        if (!pending.length) return;
+        this.#recoverable = [];
+        publish('jwc', 'code_recovery_started', { sessionIds: pending });
+
+        const restored: string[] = [];
+        const failed: Array<{ sessionId: string; reason: string }> = [];
+        for (const sessionId of pending) {
+            const session = this.#sessions.get(sessionId);
+            try {
+                await this.#request('session/load', { sessionId, cwd: session?.cwd });
+                if (session) session.status = 'idle';
+                restored.push(sessionId);
+            } catch (error) {
+                failed.push({ sessionId, reason: error instanceof Error ? error.message : String(error) });
+            }
+        }
+        publish('jwc', 'code_recovery_finished', { restored, failed });
     }
 
     #startIdleReaper(): void {
@@ -433,11 +483,36 @@ class AcpHost implements CodeSessionTransport {
             publish('jwc', 'code_session_closed', { sessionId });
             return;
         }
-        await this.#request('session/close', { sessionId }).catch(async () => {
+        try {
+            await this.#request('session/close', { sessionId });
+        } catch {
+            // A close that never answers leaves a transport we cannot reason
+            // about, so the child does have to go. What must NOT happen is the
+            // silent collateral damage the old code caused: every other session
+            // on the shared child died with it and the user was told nothing.
+            //
+            // Terminating now runs #onChildExit, which records the survivors and
+            // hands them to #reestablish() on the next request.
+            const siblings = [...this.#sessions.values()]
+                .filter(s => s.sessionId !== sessionId && s.status !== 'closed')
+                .map(s => s.sessionId);
+            if (siblings.length) {
+                publish('jwc', 'code_session_close_failed', { sessionId, affected: siblings });
+            }
             await this.#terminateChild();
-        });
+            // Bring the siblings back now rather than on the next request.
+            // Waiting means `listSessions()` reports them gone in the meantime,
+            // which is exactly the "my other conversation disappeared" symptom.
+            if (siblings.length) {
+                this.#recoverable = this.#recoverable.filter(id => id !== sessionId);
+                await this.#ensureChild().catch(() => { /* reported by the events below */ });
+            }
+        }
         session.status = 'closed';
         this.#sessions.delete(sessionId);
+        // The closed session must not be re-established: the user asked for it
+        // to end, and the close only failed to be acknowledged.
+        this.#recoverable = this.#recoverable.filter(id => id !== sessionId);
         publish('jwc', 'code_session_closed', { sessionId });
     }
 
@@ -527,6 +602,17 @@ class AcpHost implements CodeSessionTransport {
 
 const acpHostInstance = new AcpHost();
 export const acpHost: CodeSessionTransport = acpHostInstance;
+
+/**
+ * Tear the singleton down. Tests only.
+ *
+ * Each test that imports this module with a cache-busting query gets its own
+ * spawned agent and idle-reaper interval, both of which keep the runner alive
+ * long after the assertions finish.
+ */
+export function __disposeForTests(): Promise<void> {
+    return acpHostInstance.dispose();
+}
 export function getAcpHostDiagnosticSnapshot(): { childAlive: boolean; pendingRpcCount: number; sessionCount: number } {
     return acpHostInstance.diagnosticSnapshot();
 }
