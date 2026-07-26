@@ -422,6 +422,97 @@
     height: 100%;
 }
 
+/* The runtime shell sits on a near-black canvas, so it cannot inherit the theme
+   text colours: in the light theme the tab labels landed at 2.42:1 and the
+   empty-state copy at 1.21:1 against #0a0a0a. These branches were unreachable
+   from a plain page until the fixture learned to inject a desktop bridge, which
+   is why they had never been measured.
+
+   Fixed light-on-dark values rather than tokens, because the backdrop here is
+   the terminal canvas and does not follow the theme. */
+.d2-terminal-tab,
+.d2-terminal-new,
+.d2-terminal-empty,
+.d2-terminal-status,
+.d2-terminal-close {
+    color: #d4d4d8;
+}
+
+.d2-terminal-tab,
+.d2-terminal-new,
+.d2-terminal-close,
+.d2-terminal-restart {
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, .06);
+    cursor: pointer;
+    font-size: var(--fs-xs);
+}
+
+.d2-terminal-close {
+    margin-left: 2px;
+    padding: 0 6px;
+}
+
+/* The status line reports the active session and any rejection, and it sits on
+   the same near-black canvas as the tabs. */
+.d2-terminal-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    font-size: var(--fs-xs);
+}
+
+.d2-terminal-restart {
+    color: #fafafa;
+}
+
+.d2-terminal-tab[aria-selected='true'] {
+    border-color: rgba(255, 255, 255, .28);
+    background: rgba(255, 255, 255, .14);
+    color: #fafafa;
+}
+
+.d2-terminal-tab:hover,
+.d2-terminal-new:hover,
+.d2-terminal-close:hover,
+.d2-terminal-restart:hover {
+    border-color: rgba(255, 255, 255, .28);
+    color: #fafafa;
+}
+
+.d2-terminal-tab:focus-visible,
+.d2-terminal-new:focus-visible,
+.d2-terminal-close:focus-visible,
+.d2-terminal-restart:focus-visible,
+.d2-terminal-empty button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.d2-terminal-empty {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    padding: 24px;
+    font-size: var(--fs-sm);
+}
+
+.d2-terminal-empty button {
+    min-height: 28px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, .08);
+    color: #fafafa;
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--fs-sm);
+}
+
 .d2-browser-panel {
     display: flex;
     width: 100%;
@@ -484,6 +575,22 @@
        check can resolve. */
     border-color: var(--border);
     color: var(--text-3);
+}
+
+/* Every other control in this bar is a 30px icon square, but the agent toggle
+   carries a text label. Inheriting the icon rule squeezed the label into a
+   30px box and left it at --text-2, which measured 4.33:1 on --surface-h in
+   the dark theme. Give it its own width and the primary text colour. */
+.d2-browser-url-bar .d2-browser-agent-toggle {
+    width: auto;
+    padding: 0 10px;
+    color: var(--text);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+}
+
+.d2-browser-url-bar .d2-browser-agent-toggle[data-shared='true'] {
+    border-color: var(--accent);
 }
 
 .d2-browser-frame-wrap {

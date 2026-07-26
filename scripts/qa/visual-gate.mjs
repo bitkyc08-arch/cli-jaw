@@ -31,6 +31,8 @@ try {
             const key = stateName === 'default' ? theme : `${theme}/${stateName}`;
             const { browser, page } = await openFixture(server.url, {
                 historyCount: name === 'workbench' ? 40 : 10,
+                // Some states need the bridge injected before the page loads.
+                ...(state.needsBridge ? { desktopBridge: state.needsBridge } : {}),
             });
             try {
                 // Reaching a surface either works or throws. The live scan used

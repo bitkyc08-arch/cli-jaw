@@ -245,6 +245,7 @@ export function TerminalPanel({
                                 aria-controls={`terminal-panel-${session.key}`}
                                 tabIndex={active ? 0 : -1}
                                 onClick={() => controllerRef.current?.activateSession(session.key)}
+                                className="d2-terminal-tab"
                                 onKeyDown={(event) => handleTabKeyDown(event, session.key)}
                                 title={session.cwd}
                             >
@@ -252,6 +253,7 @@ export function TerminalPanel({
                             </button>
                             <button
                                 type="button"
+                                className="d2-terminal-close"
                                 aria-label={`Close ${shellLabel(session.shell, session.ordinal)}`}
                                 title="Close terminal session"
                                 onClick={() => controllerRef.current?.closeSession(session.key)}
@@ -263,6 +265,7 @@ export function TerminalPanel({
                 })}
                 <button
                     type="button"
+                    className="d2-terminal-new"
                     aria-label="New terminal session"
                     title="New terminal session"
                     disabled={snapshot.creating || snapshot.sessions.length >= MAX_TERMINAL_SESSIONS}
@@ -289,20 +292,26 @@ export function TerminalPanel({
                     );
                 })}
                 {snapshot.sessions.length === 0 ? (
-                    <div role="status">
+                    <div className="d2-terminal-empty" role="status">
+                        <span>No terminal sessions</span>
                         <button type="button" onClick={requestSession}>New terminal</button>
                     </div>
                 ) : null}
             </div>
 
             <div
+                className="d2-terminal-status"
                 role={snapshot.rejection || activeSession?.status === 'error' ? 'alert' : 'status'}
                 aria-live="polite"
                 style={{ minHeight: 24 }}
             >
                 {snapshot.rejection ?? activeSession?.message ?? 'No terminal sessions'}
                 {activeSession && (activeSession.status === 'exited' || activeSession.status === 'error') ? (
-                    <button type="button" onClick={() => controllerRef.current?.restartSession(activeSession.key)}>
+                    <button
+                        type="button"
+                        className="d2-terminal-restart"
+                        onClick={() => controllerRef.current?.restartSession(activeSession.key)}
+                    >
                         Restart terminal
                     </button>
                 ) : null}

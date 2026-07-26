@@ -272,6 +272,22 @@ export const FIXTURE_STATES = {
             return 1;
         },
     },
+    /**
+     * The Electron-only halves of the terminal, browser and diff panels.
+     *
+     * Ten branches live behind the desktop bridge and a plain page never sees
+     * any of them: it gets the "requires the Electron app" fallback every time.
+     * The bridge has to exist before React mounts, so this is a `pre` state.
+     */
+    'desktop-bridge': {
+        pre: null,   // handled by openFixture via the desktopBridge option
+        needsBridge: { terminal: true, diff: true, browser: true },
+        apply: async (page, root) => {
+            if (!/terminal|browser|diff/.test(root)) return 0;
+            await page.waitForTimeout(500);
+            return 1;
+        },
+    },
     disabled: {
         apply: (page, root) => page.evaluate((sel) => {
             const scope = document.querySelector(sel);

@@ -129,6 +129,30 @@ const CASES = [
         expect: 'unmeasurable',
         revert: '.d2-browser-url-bar button:disabled { opacity: .45; border-color: revert; color: revert; }',
     },
+    {
+        id: 'D15-terminal-runtime-children-unstyled',
+        // Only reachable once the fixture injects a desktop bridge: without it
+        // the panel renders the "requires the Electron app" fallback and the
+        // runtime shell never mounts.
+        defect: 'the terminal runtime tabs and empty state had no CSS, so they inherited theme text onto the near-black canvas (2.42:1 and 1.21:1 in light)',
+        surface: 'tab-terminal',
+        theme: 'light',
+        state: 'desktop-bridge',
+        expect: 'contrast',
+        revert: '.d2-terminal-tab, .d2-terminal-new, .d2-terminal-empty {'
+            + ' all: revert; color: var(--text-2); }'
+            + ' .d2-terminal-empty { display: block; }',
+    },
+    {
+        id: 'D16-browser-agent-toggle-icon-rule',
+        defect: 'the agent toggle is the only labelled control in the URL bar, so the 30px icon rule squeezed it and left the label at 4.33:1',
+        surface: 'tab-browser',
+        theme: 'dark',
+        state: 'desktop-bridge',
+        expect: 'contrast',
+        revert: '.d2-browser-url-bar .d2-browser-agent-toggle {'
+            + ' width: 30px; padding: 0; color: var(--text-2); font-size: revert; white-space: revert; }',
+    },
 ];
 
 const server = await startFixtureServer();
@@ -140,8 +164,17 @@ async function measure(surface, theme, stateName, revertCss, liveUrl) {
     // copy button lives on never exists there.
     const { browser, page } = liveUrl
         ? await openLive(liveUrl)
-        : await openFixture(server.url, { historyCount: surface === FIXTURE_SURFACES.workbench ? 40 : 10 });
+        : await openFixture(server.url, {
+            historyCount: surface === FIXTURE_SURFACES.workbench ? 40 : 10,
+            // Bridge-gated states must be armed before React mounts, exactly as
+            // the gate does it; otherwise the case measures the fallback screen.
+            ...(FIXTURE_STATES[stateName].needsBridge
+                ? { desktopBridge: FIXTURE_STATES[stateName].needsBridge }
+                : {}),
+        });
     try {
+        // Same order as the gate: arm the state, reach the surface, then apply.
+        await FIXTURE_STATES[stateName].pre?.(page);
         await surface.reach(page);
         if (revertCss) await page.addStyleTag({ content: revertCss });
         const applied = await FIXTURE_STATES[stateName].apply(page, surface.root);

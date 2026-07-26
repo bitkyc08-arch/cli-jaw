@@ -223,6 +223,8 @@ function ElectronWebviewBrowser({ panelId, initialUrl }: BrowserPanelProps & { i
                 <button type="submit" aria-label="Go" title="Go" disabled={!draftUrl.trim()}><Icon icon={ArrowRight} size={15} /></button>
                 <button
                     type="button"
+                    className="d2-browser-agent-toggle"
+                    data-shared={state?.sharedWithAgent ? 'true' : 'false'}
                     aria-label={state?.sharedWithAgent ? 'Stop sharing with agent' : 'Share with agent'}
                     title={state?.sharedWithAgent ? 'Shared with agent' : 'Not shared with agent'}
                     disabled={!state}
