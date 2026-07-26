@@ -1,0 +1,15 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetSettingsConfig(); window.__jawE2E.setSettingsConfig({}); });
+await page.evaluate(() => window.__jawE2E.setSettings());
+await page.waitForTimeout(1500);
+const mark = await page.evaluate(() => window.__jawE2E.markRequests());
+await page.locator('#dashboard\\:3506\\:ui-uiTheme').selectOption('light');
+await page.waitForTimeout(300);
+console.log('SAVEBAR:', await page.evaluate(() => document.querySelector('.d2-settings-save-bar') ? 'visible' : 'hidden'));
+await page.locator('.d2-settings-save-bar .d2-settings-button.primary:not([disabled])').click();
+await page.waitForTimeout(1500);
+console.log('PATCHES:', await page.evaluate((s) => window.__jawE2E.allRequests(s).filter(r=>r.method==='PATCH'&&r.pathname.includes('registry')).length, mark));
+console.log('DATA-THEME:', await page.evaluate(() => document.documentElement.getAttribute('data-theme')));
+await browser.close(); await server.close();

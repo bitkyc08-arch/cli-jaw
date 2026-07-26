@@ -1,0 +1,12 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetSettingsConfig(); window.__jawE2E.setSettingsConfig({}); });
+await page.evaluate(() => window.__jawE2E.setSettings());
+await page.waitForTimeout(1500);
+const mark = await page.evaluate(() => window.__jawE2E.markRequests());
+await page.locator('#dashboard\\:3506\\:ui-uiTheme').selectOption('light');
+await page.locator('.d2-settings-save-bar .d2-settings-button.primary:not([disabled])').click();
+await page.waitForTimeout(1500);
+console.log('ALL PATCH bodies:', await page.evaluate((s) => window.__jawE2E.allRequests(s).filter(r=>r.method==='PATCH').map(r=>JSON.stringify(r.body)), mark));
+await browser.close(); await server.close();

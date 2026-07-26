@@ -62,7 +62,7 @@ async function perform(page, action) {
             return;
         }
         case 'select': {
-            const target = page.locator(action.selector).first();
+            const target = page.locator(action.selector).nth(action.nth ?? 0);
             await target.waitFor({ state: 'visible', timeout: 5_000 });
             await target.selectOption(action.value);
             return;

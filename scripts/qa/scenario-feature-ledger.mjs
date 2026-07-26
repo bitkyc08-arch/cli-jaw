@@ -853,6 +853,110 @@ export const FEATURE_SCENARIOS = [
         selector: '.d2-settings-workspace input[disabled]',
         requires: '[role="note"]',
     },
+
+    // ── settings: theme / locale (saving AND applying) ───────────────────────
+    // Theme save is TWO PATCHes: the shell's saveDashboardSettings, then
+    // setMode -> saveRegistry (SettingsPageShell.tsx:140,150). The data-theme
+    // attribute is the applied mode.
+    {
+        id: 'settings-theme-save-and-apply',
+        reachability: 'integration',
+        axis: 'ready', target: 'Control',
+        why: 'saving theme to light issues two PATCHes and applies data-theme=light',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'select', selector: '#dashboard\\:3506\\:ui-uiTheme', value: 'light' },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button.primary:not([disabled])' },
+        ],
+        // THREE PATCHes: the shell writes the whole ui slice, then setMode
+        // and setLocale each write their own field (SettingsPageShell.tsx:150-151).
+        expectRequests: [{ method: 'PATCH', path: '/api/dashboard/registry', count: 3 }],
+        selector: 'html[data-theme="light"]',
+        requires: '.d2-settings-toast',
+    },
+    {
+        id: 'settings-locale-save-and-apply',
+        reachability: 'integration',
+        axis: 'ready', target: 'Control',
+        why: 'saving locale to Korean issues three PATCHes and applies lang=ko',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'select', selector: '#dashboard\\:3506\\:ui-locale', value: 'ko' },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button.primary:not([disabled])' },
+        ],
+        expectRequests: [{ method: 'PATCH', path: '/api/dashboard/registry', count: 3 }],
+        selector: 'html[lang="ko"]',
+        requires: '.d2-settings-toast',
+    },
+
+    // ── settings: SaveBar + dirty ────────────────────────────────────────────
+    {
+        id: 'settings-dirty-bar',
+        reachability: 'integration',
+        axis: 'prerequisite', target: 'Region',
+        why: 'editing a field shows the unsaved-changes bar',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [{ kind: 'select', selector: '#dashboard\\:3506\\:ui-locale', value: 'ko' }],
+        selector: '.d2-settings-save-bar[role="region"]',
+        expected: 'You have unsaved changes.',
+    },
+    {
+        id: 'settings-discard',
+        reachability: 'integration',
+        axis: 'ready', target: 'Control',
+        why: 'Discard reverts the field and removes the bar',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'select', selector: '#dashboard\\:3506\\:ui-uiTheme', value: 'light' },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button:not(.primary):not([disabled])' },
+        ],
+        selector: '.d2-settings-workspace',
+        absent: '.d2-settings-save-bar',
+    },
+
+    // ── settings: sidebar navigation ─────────────────────────────────────────
+    {
+        id: 'settings-sidebar-active',
+        branchId: 'SettingsSidebar',
+        reachability: 'integration',
+        axis: 'ready', target: 'Nav',
+        why: 'the active page is marked in the sidebar',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        selector: '.d2-settings-nav-item.active[aria-current="page"]',
+        expected: 'Display',
+    },
+    {
+        id: 'settings-sidebar-search-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'Nav',
+        why: 'a search with no match shows the empty state',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [{ kind: 'type', selector: '.d2-settings-search input', text: 'wp6-no-such-setting' }],
+        selector: '.d2-settings-empty',
+        expected: 'No matching settings.',
+    },
+    {
+        id: 'settings-leave-guard-page-switch',
+        reachability: 'integration',
+        axis: 'prerequisite', target: 'Guard',
+        why: 'switching page while dirty confirms and discards',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'select', selector: '#dashboard\\:3506\\:ui-uiTheme', value: 'light' },
+            { kind: 'click', selector: '.d2-settings-nav-item:not(.active)' },
+        ],
+        // confirm() returns true in the harness, so the navigation happens and
+        // the dirty edit is discarded.
+        selector: '.d2-settings-page',
+        absent: '.d2-settings-save-bar',
+    },
 ];
 
 const EVIDENCE_STATUSES = new Set([
