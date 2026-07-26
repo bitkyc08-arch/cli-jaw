@@ -52,14 +52,19 @@ function pruneList() {
     return list;
 }
 
+// Scan BOTH the source dist (what the build produces) and the packaged
+// sidecar dist (what the app actually runs). They can drift — the sidecar is
+// only refreshed by a rebundle — so guarding only one proves the wrong tree.
 const distImports = scanImports(join(ROOT, 'dist/src'), new Set());
 const binImports = scanImports(join(ROOT, 'dist/bin'), new Set());
-const allImports = new Set([...distImports, ...binImports]);
+const sidecarSrc = scanImports(join(ROOT, 'electron/sidecar/server/dist/src'), new Set());
+const sidecarBin = scanImports(join(ROOT, 'electron/sidecar/server/bin'), new Set());
+const allImports = new Set([...distImports, ...binImports, ...sidecarSrc, ...sidecarBin]);
 const pruned = pruneList();
 
 const overlap = [...allImports].filter((name) => pruned.has(name));
 
-console.log(`[sidecar-deps-guard] dist/src imports: ${distImports.size}, dist/bin imports: ${binImports.size}`);
+console.log(`[sidecar-deps-guard] dist/src: ${distImports.size}, dist/bin: ${binImports.size}, sidecar/src: ${sidecarSrc.size}, sidecar/bin: ${sidecarBin.size}`);
 console.log(`[sidecar-deps-guard] prune list: ${pruned.size} packages`);
 
 if (overlap.length) {
