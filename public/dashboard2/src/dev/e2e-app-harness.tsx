@@ -201,6 +201,32 @@ export interface NotesFixtureConfig {
     mutationStatus?: number;
 }
 
+/**
+ * How the settings workspace should answer. SettingsPageShell loads on mount
+ * and saves through two paths (registry PATCH for dashboard slices, instance
+ * PUT for per-instance pages), and ModelSettingsPanel reads cli-registry. Each
+ * is independently bendable so the loading/error/validation frames can be
+ * observed rather than inferred.
+ */
+export interface SettingsFixtureConfig {
+    /** GET /api/dashboard/registry hold/error (shell load). */
+    holdRegistry?: boolean;
+    registryStatus?: number;
+    /** PATCH /api/dashboard/registry hold/error (dashboard save). */
+    registrySaveStatus?: number;
+    holdRegistrySave?: boolean;
+    /** GET /i/:port/api/settings hold/error (instance shell load). */
+    holdInstanceSettings?: boolean;
+    instanceSettingsStatus?: number;
+    /** PUT /i/:port/api/settings hold/error (instance save). */
+    instanceSaveStatus?: number;
+    holdInstanceSave?: boolean;
+    /** GET /i/:port/api/cli-registry for ModelSettingsPanel catalog. */
+    holdCliRegistry?: boolean;
+    cliRegistryStatus?: number;
+    cliRegistry?: JsonRecord | null;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -275,6 +301,8 @@ class FakeApiRouter {
     reminders: RemindersFixtureConfig = {};
     /** Notes surface; see NotesFixtureConfig. */
     notes: NotesFixtureConfig = {};
+    /** Settings workspace; see SettingsFixtureConfig. */
+    settingsConfig: SettingsFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -343,6 +371,17 @@ class FakeApiRouter {
         }
         if (url.pathname === `/api/dashboard/instances/${PORT}`) return json({ ok: true, platform: 'darwin', instance: { port: PORT, label: 'WP4 fixture', workingDir: '/tmp/wp4-e2e', status: 'online', version: 'e2e' } });
         if (url.pathname === '/api/dashboard/registry') {
+            const cfg = this.settingsConfig;
+            if (method === 'GET' && cfg.holdRegistry) return pending();
+            if (method === 'GET' && cfg.registryStatus && cfg.registryStatus >= 400) {
+                return json({ error: 'registry unreadable' }, cfg.registryStatus);
+            }
+            if (method === 'PATCH') {
+                if (cfg.holdRegistrySave) return pending();
+                if (cfg.registrySaveStatus && cfg.registrySaveStatus >= 400) {
+                    return json({ error: 'registry save rejected' }, cfg.registrySaveStatus);
+                }
+            }
             if (method === 'PATCH' && payload['ui'] && typeof payload['ui'] === 'object') {
                 Object.assign(this.ui, payload['ui']);
                 sessionStorage.setItem('jaw.e2e.registry', JSON.stringify(this.ui));
@@ -355,10 +394,28 @@ class FakeApiRouter {
         if (url.pathname === `/i/${PORT}/api/stop`) return json({ ok: true });
         if (url.pathname === `/i/${PORT}/api/orchestrate/snapshot`) return json({ queued: [] });
         if (url.pathname === `/i/${PORT}/api/settings`) {
-            if (method === 'PUT') Object.assign(this.worker, payload);
+            const cfg = this.settingsConfig;
+            if (method === 'GET' && cfg.holdInstanceSettings) return pending();
+            if (method === 'GET' && cfg.instanceSettingsStatus && cfg.instanceSettingsStatus >= 400) {
+                return json({ error: 'instance settings unreadable' }, cfg.instanceSettingsStatus);
+            }
+            if (method === 'PUT') {
+                if (cfg.holdInstanceSave) return pending();
+                if (cfg.instanceSaveStatus && cfg.instanceSaveStatus >= 400) {
+                    return json({ error: 'instance settings save rejected' }, cfg.instanceSaveStatus);
+                }
+                Object.assign(this.worker, payload);
+            }
             return json({ ok: true, data: this.worker });
         }
-        if (url.pathname === `/i/${PORT}/api/cli-registry`) return json({ ok: true, data: { codex: { defaultModel: 'gpt-5.5', models: ['gpt-5.5'], efforts: ['low', 'medium', 'high'] } } });
+        if (url.pathname === `/i/${PORT}/api/cli-registry`) {
+            const cfg = this.settingsConfig;
+            if (cfg.holdCliRegistry) return pending();
+            if (cfg.cliRegistryStatus && cfg.cliRegistryStatus >= 400) {
+                return json({ error: 'cli registry unreadable' }, cfg.cliRegistryStatus);
+            }
+            return json(cfg.cliRegistry ?? { ok: true, data: { codex: { defaultModel: 'gpt-5.5', models: ['gpt-5.5'], efforts: ['low', 'medium', 'high'] } } });
+        }
         if (url.pathname.startsWith(`/i/${PORT}/api/code/`)) return this.codeApi(url, method, payload);
         if (url.pathname === `/i/${PORT}/api/employees`
             || url.pathname === `/i/${PORT}/api/orchestrate/workers`
@@ -849,6 +906,8 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetReminders() { router.reminders = {}; },
         setNotes(config) { router.notes = config ?? {}; },
         resetNotes() { router.notes = {}; },
+        setSettingsConfig(config) { router.settingsConfig = config ?? {}; },
+        resetSettingsConfig() { router.settingsConfig = {}; },
         markRequests() { return router.recorded.length; },
         codeRequests(since = 0) {
             return router.recorded
@@ -908,6 +967,8 @@ declare global {
             resetReminders(): void;
             setNotes(config: NotesFixtureConfig | null): void;
             resetNotes(): void;
+            setSettingsConfig(config: SettingsFixtureConfig | null): void;
+            resetSettingsConfig(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];

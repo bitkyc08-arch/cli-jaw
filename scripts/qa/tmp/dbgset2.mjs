@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetSettings(); window.__jawE2E.setSettings({ holdRegistry: true }); });
+await page.evaluate(() => window.__jawE2E.setSettings());
+await page.waitForTimeout(1500);
+console.log('LOADING STATE:', await page.evaluate(() => document.querySelector('.d2-settings-state')?.outerHTML?.slice(0,200) ?? 'none'));
+console.log('CONTENT:', await page.evaluate(() => document.querySelector('.d2-settings-content')?.outerHTML?.slice(0,250) ?? 'none'));
+console.log('CONSOLE:', page.consoleErrors.slice(0,3));
+await browser.close(); await server.close();

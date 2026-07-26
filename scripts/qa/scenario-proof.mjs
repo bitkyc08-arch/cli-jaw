@@ -247,7 +247,13 @@ try {
             }
             if (scenario.dropWorkingDir) await page.evaluate(() => window.__jawE2E.setDropWorkingDir(true));
 
-            await page.evaluate((panel) => window.__jawE2E.openPanel(panel), scenario.panel ?? 'code');
+            if (scenario.openSettings) {
+                // The settings workspace replaces the chat area rather than
+                // opening in the side pane.
+                await page.evaluate(() => window.__jawE2E.setSettings());
+            } else {
+                await page.evaluate((panel) => window.__jawE2E.openPanel(panel), scenario.panel ?? 'code');
+            }
             await page.locator(scenario.waitFor ?? '.d2-code-tab, .d2-code-gate').first().waitFor({ timeout: 15_000 });
 
             // Mark AFTER mount so the oracle sees only what the actions caused.

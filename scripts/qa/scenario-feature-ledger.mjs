@@ -17,6 +17,14 @@ const PANEL = {
     employees: { panel: 'employees', component: 'Employees', waitFor: '.d2-employees-panel' },
 };
 
+/** The settings workspace is not a side-pane panel; it replaces the chat area. */
+const SETTINGS = {
+    component: 'Settings',
+    // Opened via __jawE2E.setSettings(), and a page is chosen in the sidebar.
+    openSettings: true,
+    waitFor: '.d2-settings-page, .d2-settings-workspace, .d2-settings-sidebar',
+};
+
 // The side pane is narrow, which puts the board in compact mode at the
 // default 1440x900 viewport: it renders one lane as a <select> instead of
 // every lane (BoardPanel.tsx:96,364). A wider viewport keeps the pane wide
@@ -771,6 +779,80 @@ export const FEATURE_SCENARIOS = [
         selector: '.d2-schedule-editor',
         requires: 'input',
     },
+
+    // ── settings: SettingsPageShell (shared state machine) ───────────────────
+    {
+        id: 'settings-loading',
+        reachability: 'integration',
+        axis: 'loading', target: 'StatePanel',
+        why: 'the registry has not answered the first load',
+        ...SETTINGS,
+        levers: { settingsConfig: { holdRegistry: true } },
+        selector: '.d2-settings-state[role="status"]',
+        expected: 'Loading settings',
+    },
+    {
+        id: 'settings-load-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the registry read failed',
+        ...SETTINGS,
+        levers: { settingsConfig: { registryStatus: 500 } },
+        selector: '.d2-settings-state.error[role="alert"]',
+        requires: '.d2-settings-state button',
+    },
+    {
+        id: 'settings-save-success',
+        reachability: 'integration',
+        axis: 'ready', target: 'Toast',
+        why: 'changing a dashboard field and saving shows the success toast',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'select', selector: 'select', value: 'light', nth: 0 },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button.primary:not([disabled])' },
+        ],
+        selector: '.d2-settings-toast',
+        pattern: 'settings saved',
+    },
+    {
+        id: 'settings-save-busy',
+        reachability: 'integration',
+        axis: 'loading', target: 'Control',
+        why: 'the save bar shows Saving… while the PATCH is in flight',
+        ...SETTINGS,
+        levers: { settingsConfig: { holdRegistrySave: true } },
+        actions: [
+            { kind: 'select', selector: 'select', value: 'light', nth: 0 },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button.primary:not([disabled])' },
+        ],
+        selector: '.d2-settings-save-bar .d2-settings-button.primary[disabled]',
+        expected: 'Saving…',
+    },
+    {
+        id: 'settings-save-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Toast',
+        why: 'the save PATCH was rejected; error toast, dirty kept',
+        ...SETTINGS,
+        levers: { settingsConfig: { registrySaveStatus: 500 } },
+        actions: [
+            { kind: 'select', selector: 'select', value: 'light', nth: 0 },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button.primary:not([disabled])' },
+        ],
+        expectRequests: [{ method: 'PATCH', path: '/api/dashboard/registry', count: 1 }],
+        selector: '.d2-settings-toast.error, .d2-settings-toast[role="alert"]',
+    },
+    {
+        id: 'settings-unsupported-field',
+        reachability: 'integration',
+        axis: 'prerequisite', target: 'Note',
+        why: 'the fontSize field is unsupported, rendered disabled with a note',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        selector: '.d2-settings-workspace input[disabled]',
+        requires: '[role="note"]',
+    },
 ];
 
 const EVIDENCE_STATUSES = new Set([
@@ -800,7 +882,7 @@ export function featureScenarioStatus(manifestIntegrationBranchIds = null) {
         if (scenario.reachability === 'shadowed' && evidence === 'proven') malformed.push(`${scenario.id}: a shadowed row cannot be proven`);
         if (scenario.reachability === 'integration') {
             if (!scenario.selector) malformed.push(`${scenario.id}: integration row has no selector`);
-            if (!scenario.panel || !scenario.waitFor) malformed.push(`${scenario.id}: integration row has no panel/waitFor`);
+            if ((!scenario.panel && !scenario.openSettings) || !scenario.waitFor) malformed.push(`${scenario.id}: integration row has no panel/waitFor`);
             if (!scenario.expected && !scenario.pattern
                 && scenario.draftEquals === undefined && !scenario.expectRequests
                 && !scenario.requires && !scenario.absent) {
