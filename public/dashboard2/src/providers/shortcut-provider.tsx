@@ -154,11 +154,6 @@ export function ManagerShortcutProvider(props: PropsWithChildren): JSX.Element {
             if (!shortcuts.shortcutsEnabled || isEditableTarget(event.target)) return;
             const action = actionForEvent(event, shortcuts.keymap);
             if (!action) return;
-            if (action === 'commandPalette'
-                && event.target instanceof HTMLElement
-                && event.target.closest('.xterm')) {
-                return;
-            }
             /*
              * Do not steal a key we cannot act on.
              *

@@ -80,11 +80,35 @@ export interface AppScopeState {
     pendingNotesIntent: PendingNotesIntent | null;
 }
 
+/**
+ * The sidebar's shortcut-callable surface. Sidebar registers an
+ * implementation; the shortcut bindings consume it. Kept narrow so the
+ * sidebar does not leak its whole local state — just what the four instance
+ * shortcuts need.
+ */
+export interface SidebarShortcutApi {
+    /** Open the sidebar (if collapsed), switch to the jaw instance list, focus it. */
+    focusInstances(): void;
+    /** The ordered online instances, for cycling. */
+    onlineInstances(): Array<{ port: number }>;
+    /** Focus/expand an instance row without changing `selected`. */
+    focusInstanceRow(port: number): void;
+    /** The active session for an instance, if one exists. */
+    activeSessionFor(port: number): string | null;
+}
+
 export interface AppScopeValue extends AppScopeState {
     toggleInstance(port: number): void;
     openSidePane(): void;
     openPanel(input: OpenPanelInput): void;
     showPanelPicker(): void;
+    /**
+     * The sidebar's shortcut-callable surface, registered by Sidebar so the
+     * shortcut bindings (which cannot reach Sidebar's local state directly)
+     * can focus the instance list and cycle instances.
+     */
+    registerSidebarApi(api: SidebarShortcutApi): () => void;
+    sidebarApi(): SidebarShortcutApi | null;
     openNotesAt(path: string): Promise<boolean>;
     consumeNotesIntent(seq: number): void;
     registerLeaveGuard(key: string, guard: LeaveGuard): void;
@@ -321,7 +345,14 @@ export function AppScopeProvider(props: PropsWithChildren): JSX.Element {
     const leaveGuards = useRef(new Map<string, LeaveGuard>());
     const dirtyChecks = useRef(new Map<string, () => boolean>());
     const notesIntentSeq = useRef(0);
+    const sidebarApiRef = useRef<SidebarShortcutApi | null>(null);
     stateRef.current = state;
+
+    const registerSidebarApi = useCallback((api: SidebarShortcutApi): (() => void) => {
+        sidebarApiRef.current = api;
+        return () => { if (sidebarApiRef.current === api) sidebarApiRef.current = null; };
+    }, []);
+    const sidebarApi = useCallback((): SidebarShortcutApi | null => sidebarApiRef.current, []);
 
     const registerLeaveGuard = useCallback((key: string, guard: LeaveGuard): void => {
         leaveGuards.current.set(key, guard);
@@ -394,6 +425,8 @@ export function AppScopeProvider(props: PropsWithChildren): JSX.Element {
         openSidePane: () => dispatch({ type: 'open-side-pane' }),
         openPanel: (input) => dispatch({ type: 'open-panel', input, at: Date.now() }),
         showPanelPicker: () => dispatch({ type: 'show-panel-picker' }),
+        registerSidebarApi,
+        sidebarApi,
         openNotesAt,
         consumeNotesIntent: (seq) => dispatch({ type: 'consume-notes-intent', seq }),
         registerLeaveGuard,

@@ -19,8 +19,6 @@ import type {
 export const SHORTCUT_ACTIONS = [
     'focusInstances',
     'focusActiveSession',
-    'newSession',
-    'commandPalette',
     'focusNotes',
     'previousInstance',
     'nextInstance',

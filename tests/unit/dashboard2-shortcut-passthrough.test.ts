@@ -65,8 +65,6 @@ function pressChord(dom: JSDOM, chord: { key: string; alt?: boolean; meta?: bool
 const CHORDS: Record<string, { key: string; alt?: boolean; ctrl?: boolean }> = {
     focusInstances: { key: 'i', alt: true },
     focusActiveSession: { key: 'p', alt: true },
-    newSession: { key: 'n', ctrl: true },
-    commandPalette: { key: 'k', ctrl: true },
     focusNotes: { key: 'n', alt: true },
     previousInstance: { key: 'k', alt: true },
     nextInstance: { key: 'j', alt: true },

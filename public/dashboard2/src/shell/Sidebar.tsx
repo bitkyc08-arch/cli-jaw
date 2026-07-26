@@ -140,7 +140,7 @@ function ThemeToggle(): JSX.Element {
 
 export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Element {
     const api = useManagerApi();
-    const { selected, expandedPorts, guardedSelectSession, toggleInstance, openSidePane, openPanel } = useAppScope();
+    const { selected, expandedPorts, guardedSelectSession, toggleInstance, openSidePane, openPanel, registerSidebarApi } = useAppScope();
     const [mode, setMode] = useState<SidebarMode>('jaw');
     const [instances, setInstances] = useState<DashboardInstance[]>([]);
     const [instancesLoading, setInstancesLoading] = useState(true);
@@ -156,6 +156,37 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         port: null,
     });
     const [jwcRefresh, setJwcRefresh] = useState(0);
+    const sidebarRootRef = useRef<HTMLElement | null>(null);
+
+    // The shortcut-callable surface (wp9): the four instance shortcuts reach
+    // the sidebar's local mode/instances through this, since the bindings
+    // cannot see them directly.
+    useEffect(() => registerSidebarApi({
+        focusInstances() {
+            setMode('jaw');
+            requestAnimationFrame(() => {
+                sidebarRootRef.current?.querySelector<HTMLElement>('.d2-sidebar-list')
+                    ?.focus?.();
+            });
+        },
+        onlineInstances() {
+            return instances
+                .filter((instance) => instance.status === 'online')
+                .map((instance) => ({ port: instance.port }));
+        },
+        focusInstanceRow(port) {
+            if (!expandedPorts.includes(port)) toggleInstance(port);
+            requestAnimationFrame(() => {
+                sidebarRootRef.current
+                    ?.querySelector<HTMLElement>(`[data-instance-port="${port}"]`)
+                    ?.focus?.();
+            });
+        },
+        activeSessionFor(port) {
+            const entry = sessionsByPort[port];
+            return entry?.status === 'ready' ? entry.data.active : null;
+        },
+    }), [registerSidebarApi, instances, sessionsByPort, expandedPorts, toggleInstance]);
     const instancesRequestRef = useRef<{ generation: number; controller: AbortController | null }>({
         generation: 0,
         controller: null,
@@ -416,6 +447,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
             <aside
                 className="d2-sidebar d2-sidebar-v4"
                 aria-label="Instances and sessions"
+                ref={sidebarRootRef}
                 inert={collapsed}
                 aria-hidden={collapsed}
             >
@@ -570,6 +602,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
                                 <div className="d2-instance-node" key={instance.port}>
                                     <div
                                         className={`d2-instance-row${selected?.port === instance.port ? ' is-selected' : ''}`}
+                                        data-instance-port={instance.port}
                                         aria-busy={lifecycleBusy || undefined}
                                     >
                                         {/*

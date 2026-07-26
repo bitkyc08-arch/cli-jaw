@@ -340,7 +340,7 @@ class FakeApiRouter {
     dropWorkingDir = false;
     ui: JsonRecord = {
         uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true,
-        dashboardShortcutKeymap: { newSession: 'Meta+N', commandPalette: 'Meta+K' },
+        dashboardShortcutKeymap: { focusNotes: 'Meta+N', focusInstances: 'Meta+K' },
         chatLinkPreviewsEnabled: false,
     };
     worker: JsonRecord = {

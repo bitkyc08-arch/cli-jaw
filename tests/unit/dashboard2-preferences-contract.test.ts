@@ -34,11 +34,12 @@ test('dashboard2 keymap extends persisted navigation shortcuts with local app ac
     const dashboardActions = arrayMembers(preferences, 'SHORTCUT_ACTIONS');
     const persistedActions = arrayMembers(registry, 'SHORTCUT_ACTIONS');
 
-    assert.deepEqual(dashboardActions.filter((action) => !['commandPalette', 'newSession'].includes(action)), persistedActions);
-    assert.deepEqual(dashboardActions.filter((action) => ['commandPalette', 'newSession'].includes(action)), ['commandPalette', 'newSession']);
-    assert.equal(dashboardActions.length, 7);
-    assert.match(preferences, /newSession:\s*isMac \? 'Meta\+N' : 'Control\+N'/);
-    assert.match(preferences, /commandPalette:\s*isMac \? 'Meta\+K' : 'Control\+K'/);
+    // wp9 removed newSession/commandPalette: they had no target anywhere. The
+    // dashboard keymap now matches the persisted navigation shortcuts exactly.
+    assert.deepEqual(dashboardActions, persistedActions);
+    assert.equal(dashboardActions.length, 5);
+    assert.ok(!preferences.includes("'newSession'"), 'newSession action removed');
+    assert.ok(!preferences.includes("'commandPalette'"), 'commandPalette action removed');
 });
 
 test('dashboard2 boots the saved theme before the application module', () => {

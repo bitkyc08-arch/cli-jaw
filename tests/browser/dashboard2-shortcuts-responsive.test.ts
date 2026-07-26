@@ -49,7 +49,7 @@ function json(route: Route, body: unknown): Promise<void> {
 }
 
 async function installAppRoutes(page: Page): Promise<void> {
-    const ui = { uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: { newSession: 'Meta+N', commandPalette: 'Meta+K' }, chatLinkPreviewsEnabled: false };
+    const ui = { uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: { focusNotes: 'Meta+N', focusInstances: 'Meta+K' }, chatLinkPreviewsEnabled: false };
     await page.route('**/api/dashboard/**', route => json(route, { ok: true, data: [], items: [] }));
     await page.route('**/api/browser/**', route => json(route, { ok: true, tabs: [], data: [] }));
     await page.route('**/i/**', route => json(route, { ok: true, data: [], sessions: [] }));
@@ -121,7 +121,7 @@ async function collectProviderCollisions(browser: Browser, origin: string): Prom
             const event = new KeyboardEvent('keydown', { key: selectedKey, code: `Key${selectedKey.toUpperCase()}`, metaKey: true, bubbles: true, cancelable: true });
             if (isComposing) Object.defineProperty(event, 'isComposing', { value: true });
             target.dispatchEvent(event);
-            const action = selectedKey === 'n' ? 'newSession' : 'commandPalette';
+            const action = selectedKey === 'n' ? 'focusNotes' : 'focusInstances';
             return window.__jawShortcutEvidence!.counts[action] > before[action];
         }, { selectedSurface: surface, selectedKey: key, isComposing: composing });
     }
@@ -130,9 +130,9 @@ async function collectProviderCollisions(browser: Browser, origin: string): Prom
     for (const surface of SURFACES) {
         matrix[surface] = { cmdN: await dispatch(surface, 'n') ? 'allowed' : 'suppressed', cmdK: await dispatch(surface, 'k') ? 'allowed' : 'suppressed' };
     }
-    const before = await page.evaluate(() => window.__jawShortcutEvidence!.counts.newSession);
+    const before = await page.evaluate(() => window.__jawShortcutEvidence!.counts.focusNotes);
     await dispatch('code-history', 'n', true);
-    const afterIme = await page.evaluate(() => window.__jawShortcutEvidence!.counts.newSession);
+    const afterIme = await page.evaluate(() => window.__jawShortcutEvidence!.counts.focusNotes);
     await context.close();
     return { matrix, imeGuard: before === afterIme };
 }

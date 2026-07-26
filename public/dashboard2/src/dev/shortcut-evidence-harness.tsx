@@ -6,7 +6,7 @@ import { ManagerShortcutProvider, useManagerShortcuts } from '../providers/short
 
 declare global {
     interface Window {
-        __jawShortcutEvidence?: { counts: Record<'newSession' | 'commandPalette', number> };
+        __jawShortcutEvidence?: { counts: Record<'focusNotes' | 'focusInstances', number> };
     }
 }
 
@@ -14,7 +14,7 @@ let root: Root | null = null;
 const registry = {
     ui: {
         uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true,
-        dashboardShortcutKeymap: { newSession: 'Meta+N', commandPalette: 'Meta+K' },
+        dashboardShortcutKeymap: { focusNotes: 'Meta+N', focusInstances: 'Meta+K' },
         chatLinkPreviewsEnabled: false,
     },
 } as unknown as DashboardRegistry;
@@ -24,11 +24,11 @@ function Probe(): JSX.Element {
     const shortcuts = useManagerShortcuts();
     const [, rerender] = useState(0);
     useEffect(() => {
-        const evidence = window.__jawShortcutEvidence ?? { counts: { newSession: 0, commandPalette: 0 } };
+        const evidence = window.__jawShortcutEvidence ?? { counts: { focusNotes: 0, focusInstances: 0 } };
         window.__jawShortcutEvidence = evidence;
-        const unregisterNew = shortcuts.registerHandler('newSession', () => { evidence.counts.newSession += 1; rerender(value => value + 1); });
-        const unregisterPalette = shortcuts.registerHandler('commandPalette', () => { evidence.counts.commandPalette += 1; rerender(value => value + 1); });
-        return () => { unregisterNew(); unregisterPalette(); };
+        const unregisterNotes = shortcuts.registerHandler('focusNotes', () => { evidence.counts.focusNotes += 1; rerender(value => value + 1); });
+        const unregisterInstances = shortcuts.registerHandler('focusInstances', () => { evidence.counts.focusInstances += 1; rerender(value => value + 1); });
+        return () => { unregisterNotes(); unregisterInstances(); };
     }, [shortcuts]);
     return (
         <main data-testid="shortcut-harness">
@@ -48,7 +48,7 @@ function Probe(): JSX.Element {
 
 export function mountShortcutEvidenceHarness(target: HTMLElement): void {
     root?.unmount();
-    window.__jawShortcutEvidence = { counts: { newSession: 0, commandPalette: 0 } };
+    window.__jawShortcutEvidence = { counts: { focusNotes: 0, focusInstances: 0 } };
     root = createRoot(target);
     root.render(<ManagerPreferencesProvider client={client}><ManagerShortcutProvider><Probe /></ManagerShortcutProvider></ManagerPreferencesProvider>);
 }
