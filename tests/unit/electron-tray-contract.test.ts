@@ -16,7 +16,8 @@ test('tray manager preserves left-click for reminders and right-click for server
 
     assert.ok(trayManager.includes('let currentMenu: Menu | null = null'));
     assert.ok(trayManager.includes('let onTrayClick: (() => void) | null = null'));
-    assert.ok(trayManager.includes("tray.on('click', () => (onTrayClick ? onTrayClick() : cb.onOpenDashboard()))"));
+    // The left-click routing is now decided in tray-decisions and delegated.
+    assert.ok(trayManager.includes("tray.on('click', () => (decideTrayLeftClick(Boolean(onTrayClick)) === 'custom' && onTrayClick ? onTrayClick() : cb.onOpenDashboard()))"));
     assert.ok(trayManager.includes("tray.on('right-click', () => popUpTrayMenu())"));
     assert.ok(trayManager.includes('export function setTrayClickHandler'));
     assert.ok(trayManager.includes('export function popUpTrayMenu'));
