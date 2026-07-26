@@ -1,5 +1,5 @@
 {
-  "when": "2026-07-26T10:44:43.031Z",
+  "when": "2026-07-26T10:55:26.865Z",
   "total": 36,
   "integration": 35,
   "shadowed": 1,
@@ -51,7 +51,7 @@
       "id": "tab-suspense",
       "axis": "loading",
       "target": "StatePanel",
-      "branchId": "CodeTab-state-1d583p4",
+      "branchId": "CodeTabGate-state-1d583p4",
       "ok": true,
       "saw": "Loading Code…"
     },
