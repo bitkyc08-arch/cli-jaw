@@ -28,7 +28,7 @@
 // The lock file remains, but only as a human-readable note about who holds it.
 // It is never the thing that grants exclusion.
 import { createServer } from 'node:net';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { readFileSync, unlinkSync } from 'node:fs';
 
 /** Loopback port that stands for "a wplive runner is active". */
@@ -101,9 +101,4 @@ export function releaseLockSync(path, id) {
 /** Drop a note without holding the lock — used only by tests. */
 export async function writeNote(path, contents) {
     await writeFile(path, contents);
-}
-
-/** Remove a note. */
-export async function clearNote(path) {
-    await rm(path, { force: true }).catch(() => {});
 }

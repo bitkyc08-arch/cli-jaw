@@ -178,9 +178,11 @@ test('many contenders yield exactly one holder', async () => {
     winners[0]!.release!();
 });
 
-test('the lock survives repeated crash-and-reclaim cycles', async () => {
-    // A hundred rounds of "hold, die, next run takes it" — the shape that
-    // orphaned a guard file and then deadlocked every subsequent run.
+test('the lock survives repeated acquire-and-release cycles', async () => {
+    // Note what this does NOT do: these are clean releases, not crashes. The
+    // crash path has its own test above, where a holder is SIGKILLed and the
+    // next run takes over. This one only proves the lock does not accumulate
+    // state across ordinary use.
     const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
     dirs.push(dir);
     const lockPath = join(dir, 'runner.lock');
