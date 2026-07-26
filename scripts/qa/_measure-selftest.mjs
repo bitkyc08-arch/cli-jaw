@@ -58,6 +58,13 @@ const browser = await chromium.launch({ channel: 'chrome' });
              foreground barely moves the pixels, so a generous difference
              threshold produced no row at all — and no row reads as a pass. */
           #near { background:#787878; color:#777 }
+          /* A scrollport narrower than its content. The reviewer's
+             counterexample: text at 1.02:1 that a user plainly sees at the
+             left edge, on a line far wider than the captured panel. The
+             element rect falls outside the clip, so an oracle that skips or
+             excuses those pixels passes a defect it can see. */
+          #scrollport { width: 220px; overflow-x: auto; background:#787878; }
+          #scrollport > span { display: inline-block; width: 1200px; color:#777; font: 16px sans-serif; }
           #nearicon { background:#787878; color:#777 }
           /* Translucent foregrounds. The computed colour is pure black in every
              one of these, so reading the computed colour and ignoring alpha
@@ -95,6 +102,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div class="case" id="half">Sample text spanning</div>
         <div class="case" id="thin">Sample text spanning</div>
         <div class="case" id="near">Nearly invisible text</div>
+        <div id="scrollport"><span>Wide overflowing low contrast text that runs past the panel</span></div>
         <div class="case" id="nearicon"><button aria-label="Close" style="background:transparent;border:0;color:#777"><svg width="16" height="16"><path d="M2 2 L14 14" stroke="currentColor" stroke-width="2"/></svg></button></div>
         <div class="case" id="op">Element opacity</div>
         <div class="case" id="alphafg">Alpha foreground</div>
@@ -177,6 +185,25 @@ const browser = await chromium.launch({ channel: 'chrome' });
         note: 'text the same colour as its background must not vanish from the report',
     });
     if (!nearOk) failures.push(`counterexample/near-equal-text: ${nearRow ? nearRow.ratio : 'produced no row'}`);
+
+    // Content wider than its own scrollport must still be measured on the part
+    // a user can see. Reporting it as unmeasurable is a fail-open: the row
+    // exists, carries no ratio, and the gate counts nothing.
+    const wideRows = await surfacePixelContrast(page, '#scrollport');
+    const wideRow = wideRows?.find((r) => (r.label ?? '').startsWith('Wide overflowing'));
+    const wideOk = Boolean(wideRow) && typeof wideRow.ratio === 'number'
+        && wideRow.ratio < 1.5 && !wideRow.pass && !wideRow.offCapture;
+    results.push({
+        name: 'counterexample/overflow-visible-intersection',
+        measured: wideRow ? (wideRow.offCapture ? 'offCapture' : wideRow.ratio) : 'NO ROW',
+        expected: '~1.0 and failing',
+        ok: wideOk,
+        note: 'visible pixels of an element wider than the capture must be measured, not excused',
+    });
+    if (!wideOk) {
+        failures.push(`counterexample/overflow-visible-intersection: ${
+            wideRow ? (wideRow.offCapture ? 'excused as offCapture' : wideRow.ratio) : 'produced no row'}`);
+    }
 
     const nearIconRows = await surfaceIconContrast(page, '#nearicon');
     const nearIcon = nearIconRows?.[0];

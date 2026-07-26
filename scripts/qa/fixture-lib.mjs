@@ -32,6 +32,203 @@ export async function startFixtureServer() {
     };
 }
 
+/** Build the Electron preload fixture without requiring a browser. */
+export function buildDesktopBridgeFixture(want, target = globalThis) {
+    const scenario = want.scenario ?? 'ready';
+    const sub = (register) => (handler) => {
+        if (register) register(handler);
+        return () => {};
+    };
+
+    let dataHandler = null;
+    let exitHandler = null;
+    let nextId = 1;
+    const live = new Map();
+
+    const terminalSession = (id, cwd) => ({
+        id,
+        shell: '/bin/zsh',
+        cwd,
+        cols: 80,
+        rows: 24,
+        port: 4242,
+        seq: 1,
+        buffer: 'fixture $ ',
+    });
+
+    // `restored` hydrates through list(); `ready` creates on demand;
+    // `create-error` and `exited` drive the panel's failure copy.
+    const seeded = scenario === 'restored' || scenario === 'exited'
+        ? [terminalSession('fixture-1', '/tmp/wp5a-fixture')]
+        : [];
+    for (const session of seeded) live.set(session.id, session);
+
+    const terminal = {
+        list: async () => (scenario === 'list-error'
+            ? { ok: false, error: 'Failed to restore terminal sessions' }
+            : { ok: true, sessions: [...live.values()].map((session) => ({ ...session })) }),
+        create: async ({ cwd, cols, rows, port } = {}) => {
+            if (scenario === 'create-error') {
+                return { ok: false, error: 'Unable to create native terminal' };
+            }
+            const session = terminalSession(`fixture-${nextId++}`, cwd ?? '/tmp/wp5a-fixture');
+            session.cols = cols ?? session.cols;
+            session.rows = rows ?? session.rows;
+            if (port !== undefined) session.port = port;
+            session.buffer = '';
+            session.seq = 0;
+            live.set(session.id, session);
+            // The panel expects output to arrive through onData, not from
+            // create(), so emit the way the real bridge does.
+            queueMicrotask(() => dataHandler?.(session.id, 'fixture $ ', 1));
+            return { ok: true, id: session.id, shell: session.shell, cwd: session.cwd };
+        },
+        write: async (id, data) => {
+            const session = live.get(id);
+            if (session) session.buffer += data;
+        },
+        resize: async (id, cols, rows) => {
+            const session = live.get(id);
+            if (session) Object.assign(session, { cols, rows });
+        },
+        kill: async (id) => { live.delete(id); },
+        onData: sub((handler) => { dataHandler = handler; }),
+        onExit: sub((handler) => { exitHandler = handler; }),
+    };
+
+    // Exit cannot be fired on subscribe. The panel binds the session id to a
+    // key only after list()/create() resolves, so this remains an explicit hook.
+    target.__wp5aKillTerminals = (code = 137) => {
+        if (!exitHandler) return 0;
+        let count = 0;
+        for (const id of live.keys()) {
+            exitHandler(id, code);
+            count += 1;
+        }
+        return count;
+    };
+
+    const webviewIds = new Map();
+    const browserState = (tabId, extra = {}) => ({
+        tabId,
+        webContentsId: webviewIds.get(tabId) ?? 1,
+        url: 'https://example.invalid/',
+        title: 'Fixture page',
+        loading: false,
+        canGoBack: false,
+        canGoForward: false,
+        crashed: false,
+        sharedWithAgent: false,
+        ...extra,
+    });
+    const browserOverlay = {
+        loading: { loading: true },
+        shared: { sharedWithAgent: true, canGoBack: true },
+        crashed: { crashed: true, error: 'Browser process crashed. Reload to retry.' },
+    }[scenario] ?? {};
+    const stateFor = (tabId) => browserState(tabId, browserOverlay);
+    let webviewStateHandler = null;
+
+    const browser = {
+        registerWebview: async ({ tabId, webContentsId }) => {
+            webviewIds.set(tabId, webContentsId);
+            return { ok: true, state: stateFor(tabId) };
+        },
+        unregisterWebview: async ({ tabId }) => {
+            webviewIds.delete(tabId);
+            return { ok: true };
+        },
+        controlWebview: async ({ tabId }) => ({ ok: true, state: stateFor(tabId) }),
+        performWebviewAction: async ({ tabId, shared }) => ({
+            ok: true,
+            state: browserState(tabId, { ...browserOverlay, sharedWithAgent: Boolean(shared) }),
+        }),
+        getWebviewTabs: async () => ({ ok: true, tabs: [] }),
+        onOpenUrl: sub(),
+        onElementPicked: sub(),
+        onWebviewState: sub((handler) => { webviewStateHandler = handler; }),
+    };
+
+    // Electron fires `dom-ready` on a real <webview>; Chrome never creates one,
+    // so expose a deterministic hook that drives the panel's real register().
+    target.__wp5aArmBrowserWebview = () => {
+        const element = target.document?.querySelector('.d2-browser-frame-wrap webview');
+        if (!element) return false;
+        element.getWebContentsId = () => 1;
+        element.dispatchEvent(new target.Event('dom-ready'));
+        return true;
+    };
+    target.__wp5aPushBrowserState = (tabId) => {
+        if (!webviewStateHandler) return false;
+        webviewStateHandler(stateFor(tabId));
+        return true;
+    };
+
+    const diffSummaryFiles = scenario === 'diff-empty' ? [] : [
+        { path: 'src/fixture.ts', status: 'modified', insertions: 2, deletions: 1 },
+    ];
+    const scmFiles = diffSummaryFiles.map((file) => ({
+        path: file.path,
+        repoRelativePath: file.path,
+        kind: file.status,
+        staged: false,
+        unstaged: true,
+        conflict: false,
+    }));
+    const scmSnapshot = () => ({
+        repoRoot: '/tmp/wp5a-fixture',
+        branch: 'dev2',
+        head: '24923b6d',
+        dirty: scmFiles.length > 0,
+        groups: [{ id: 'changes', label: 'Changes', files: scmFiles.map((file) => ({ ...file })) }],
+    });
+    const diff = {
+        getRepoRoot: async () => (scenario === 'diff-error'
+            ? { ok: false, error: 'not a git repository' }
+            : scenario === 'diff-resolving'
+                // Held open so the "Resolving repository..." frame can be
+                // observed. Racing it would report whatever the machine was
+                // fast enough to render.
+                ? new Promise(() => {})
+                : { ok: true, root: '/tmp/wp5a-fixture' }),
+        getRepoCandidates: async (candidates) => (scenario === 'diff-error'
+            ? { ok: false, error: 'not a git repository' }
+            : {
+                ok: true,
+                candidates: candidates.map((candidate) => ({
+                    ...candidate,
+                    root: '/tmp/wp5a-fixture',
+                    branch: 'dev2',
+                    head: '24923b6d',
+                    dirty: scmFiles.length > 0,
+                })),
+            }),
+        getScmSnapshot: async () => ({ ok: true, snapshot: scmSnapshot() }),
+        runScmOperation: async (_repoRoot, operation) => ({
+            ok: true,
+            result: { operation: operation.kind, paths: [...operation.paths], snapshot: scmSnapshot() },
+        }),
+        getDiffSummary: async () => ({
+            ok: true,
+            files: diffSummaryFiles.map((file) => ({ ...file })),
+        }),
+        getFileDiff: async () => ({
+            ok: true,
+            diff: '--- a/src/fixture.ts\n+++ b/src/fixture.ts\n@@ -1 +1,2 @@\n-old\n+new\n+line\n',
+        }),
+    };
+
+    const bridge = {
+        identify: () => ({ name: 'cli-jaw-desktop', electron: true }),
+        getHomePath: () => '/tmp/wp5a-fixture',
+        ...(want.terminal ? { terminal } : {}),
+        ...(want.diff ? { diff } : {}),
+        ...(want.browser ? { browser } : {}),
+    };
+    target.cliJawDesktop = bridge;
+    return bridge;
+}
+
 /**
  * A page running the fixture harness rather than the live app.
  *
@@ -75,135 +272,7 @@ export async function openFixture(url, {
     // of ten branches. Each surface now answers with its real contract, and
     // `scenario` picks which answer, so a branch is driven rather than implied.
     if (desktopBridge) {
-        await page.addInitScript((want) => {
-            const scenario = want.scenario ?? 'ready';
-            const sub = (register) => (handler) => {
-                if (register) register(handler);
-                return () => {};
-            };
-
-            let dataHandler = null;
-            let exitHandler = null;
-            let nextId = 1;
-            const live = new Map();
-
-            const terminalSession = (id, cwd) => ({
-                id, cwd, shell: '/bin/zsh', cols: 80, rows: 24, port: 4242,
-            });
-
-            // `restored` hydrates through list(); `ready` creates on demand;
-            // `create-error` and `exited` drive the panel's failure copy.
-            const seeded = scenario === 'restored' || scenario === 'exited'
-                ? [terminalSession('fixture-1', '/tmp/wp5a-fixture')]
-                : [];
-            for (const s of seeded) live.set(s.id, s);
-
-            const terminal = {
-                list: async () => (scenario === 'list-error'
-                    ? { ok: false, error: 'Failed to restore terminal sessions' }
-                    : { ok: true, sessions: [...live.values()] }),
-                create: async ({ cwd, cols, rows, port }) => {
-                    if (scenario === 'create-error') {
-                        return { ok: false, error: 'Unable to create native terminal' };
-                    }
-                    const session = { ...terminalSession(`fixture-${nextId++}`, cwd ?? '/tmp/wp5a-fixture'), cols, rows, port };
-                    live.set(session.id, session);
-                    // The panel expects output to arrive through onData, not
-                    // from create(), so emit the way the real bridge does.
-                    queueMicrotask(() => dataHandler?.(session.id, 'fixture $ ', 1));
-                    return { ok: true, ...session };
-                },
-                write: async () => ({ ok: true }),
-                resize: async () => ({ ok: true }),
-                kill: async (id) => { live.delete(id); return { ok: true }; },
-                onData: sub((h) => { dataHandler = h; }),
-                onExit: sub((h) => { exitHandler = h; }),
-            };
-
-            // Exit cannot be fired on subscribe. The panel binds the session id
-            // to a key only after list()/create() resolves, and an exit that
-            // arrives before that binding is parked as a pre-bind event and
-            // never reaches the visible session. The state machine is right to
-            // do that; the fixture just has to wait until the session exists.
-            window.__wp5aKillTerminals = (code = 137) => {
-                if (!exitHandler) return 0;
-                let n = 0;
-                for (const id of live.keys()) { exitHandler(id, code); n += 1; }
-                return n;
-            };
-
-            // The panel ignores any state whose tabId is not its own, so the
-            // bridge has to echo the id it was handed — exactly like the real
-            // one. A fixed 'fixture-tab' was silently dropped every time.
-            const browserState = (tabId, extra = {}) => ({
-                tabId, url: 'https://example.invalid/', title: 'Fixture page',
-                loading: false, canGoBack: false, canGoForward: false,
-                crashed: false, sharedWithAgent: false, error: null, ...extra,
-            });
-            const browserOverlay = {
-                loading: { loading: true },
-                shared: { sharedWithAgent: true, canGoBack: true },
-                crashed: { crashed: true, error: 'Browser process crashed. Reload to retry.' },
-            }[scenario] ?? {};
-            const stateFor = (tabId) => browserState(tabId, browserOverlay);
-            let webviewStateHandler = null;
-
-            const browser = {
-                registerWebview: async ({ tabId }) => ({ ok: true, state: stateFor(tabId) }),
-                unregisterWebview: async () => ({ ok: true }),
-                controlWebview: async ({ tabId }) => ({ ok: true, state: stateFor(tabId) }),
-                performWebviewAction: async ({ tabId, shared }) => ({
-                    ok: true,
-                    state: browserState(tabId, { ...browserOverlay, sharedWithAgent: Boolean(shared) }),
-                }),
-                getWebviewTabs: async () => ({ ok: true, tabs: [] }),
-                onOpenUrl: sub(), onElementPicked: sub(),
-                onWebviewState: sub((h) => { webviewStateHandler = h; }),
-            };
-
-            // Electron fires `dom-ready` on a real <webview>; Chrome never
-            // creates one, so the panel's registration path — the only way it
-            // ever gets a state object — is unreachable from a plain page. The
-            // fixture fires the same event on the same element, which drives
-            // the panel's real register() rather than replacing it.
-            window.__wp5aArmBrowserWebview = () => {
-                const el = document.querySelector('.d2-browser-frame-wrap webview');
-                if (!el) return false;
-                el.getWebContentsId = () => 1;
-                el.dispatchEvent(new Event('dom-ready'));
-                return true;
-            };
-            window.__wp5aPushBrowserState = (tabId) => {
-                if (!webviewStateHandler) return false;
-                webviewStateHandler(stateFor(tabId));
-                return true;
-            };
-
-            const diffFiles = scenario === 'diff-empty' ? [] : [
-                { path: 'src/fixture.ts', status: 'modified', additions: 2, deletions: 1 },
-            ];
-            const diff = {
-                getRepoRoot: async () => (scenario === 'diff-error'
-                    ? { ok: false, error: 'not a git repository' }
-                    : { ok: true, root: '/tmp/wp5a-fixture' }),
-                getRepoCandidates: async () => ({ ok: true, roots: ['/tmp/wp5a-fixture'] }),
-                getScmSnapshot: async () => ({ ok: true, branch: 'dev2', staged: [], unstaged: diffFiles }),
-                runScmOperation: async () => ({ ok: true }),
-                getDiffSummary: async () => ({ ok: true, files: diffFiles }),
-                getFileDiff: async () => ({
-                    ok: true,
-                    diff: '--- a/src/fixture.ts\n+++ b/src/fixture.ts\n@@ -1 +1,2 @@\n-old\n+new\n+line\n',
-                }),
-            };
-
-            window.cliJawDesktop = {
-                identify: () => ({ electron: true, version: 'fixture' }),
-                getHomePath: async () => '/tmp/wp5a-fixture',
-                ...(want.terminal ? { terminal } : {}),
-                ...(want.diff ? { diff } : {}),
-                ...(want.browser ? { browser } : {}),
-            };
-        }, desktopBridge);
+        await page.addInitScript(buildDesktopBridgeFixture, desktopBridge);
     }
 
     await page.route('**/dashboard2/src/main.tsx*', (route) => route.fulfill({
@@ -305,9 +374,13 @@ for (const [name, root] of [
     ['terminal', '.d2-terminal-panel'],
     ['browser', '.d2-browser-panel'],
     ['files', '.d2-file-tree'],
-    ['doc', '.d2-doc-panel'],
-    ['design', '.d2-design-panel'],
-    ['diff', '.d2-diff-panel'],
+    // Doc, design and diff render `hidden` when inactive and a second instance
+    // can be open at once (a widget handoff opens its own design panel), so the
+    // bare class matches two elements and the oracle's boundingBox call fails
+    // in strict mode. Measure the one that is actually showing.
+    ['doc', '.d2-doc-panel:not([hidden])'],
+    ['design', '.d2-design-panel:not([hidden])'],
+    ['diff', '.d2-diff-panel:not([hidden])'],
 ]) {
     FIXTURE_SURFACES[`tab-${name}`] = {
         root,
@@ -633,6 +706,114 @@ export const FIXTURE_STATES = {
             if (!root.includes('terminal')) return 0;
             await page.locator('.d2-terminal-panel.is-state[aria-busy="true"]',
                 { hasText: 'Loading terminal working directory' }).waitFor({ timeout: 5_000 });
+            return 1;
+        },
+    },
+    /** An instance the server knows about but that reports no working directory. */
+    'terminal-cwd-error': {
+        only: /terminal/,
+        pre: (page) => page.evaluate(() => window.__jawE2E.setDropWorkingDir(true)),
+        needsBridge: { terminal: true, diff: true, browser: true },
+        apply: async (page, root) => {
+            if (!root.includes('terminal')) return 0;
+            await page.locator('.d2-terminal-panel.is-state[role="alert"]',
+                { hasText: 'No working directory for this instance' }).waitFor({ timeout: 5_000 });
+            return 1;
+        },
+    },
+    /**
+     * Electron with no browser surface on the bridge.
+     *
+     * Distinct from the plain web page: the environment says Electron, so the
+     * panel takes the desktop path and finds nothing wired, which is its own
+     * "Desktop browser unavailable" branch.
+     */
+    'browser-bridge-missing': {
+        only: /browser/,
+        pre: null,
+        needsBridge: { terminal: true, diff: true, browser: false },
+        apply: async (page, root) => {
+            if (!root.includes('browser')) return 0;
+            await page.locator('.d2-browser-panel [role="alert"]',
+                { hasText: 'Desktop browser unavailable' }).waitFor({ timeout: 5_000 });
+            return 1;
+        },
+    },
+    /** The Electron browser before any navigation: no webview, empty prompt. */
+    'browser-idle': {
+        only: /browser/,
+        pre: null,
+        needsBridge: { terminal: true, diff: true, browser: true },
+        apply: async (page, root) => {
+            if (!root.includes('browser')) return 0;
+            await page.locator('.d2-browser-agent-toggle').waitFor({ timeout: 5_000 });
+            await page.locator('.d2-browser-empty',
+                { hasText: 'Enter a URL to start browsing' }).waitFor({ timeout: 5_000 });
+            return 1;
+        },
+    },
+    /** The file tree while its first directory read is still in flight. */
+    'files-loading': {
+        only: /file-tree/,
+        pre: (page) => page.evaluate(() => window.__jawE2E.setFileTree({ __hold: true })),
+        apply: async (page, root) => {
+            if (!root.includes('file-tree')) return 0;
+            await page.locator('.d2-file-tree-message[role="status"]',
+                { hasText: 'Loading files' }).waitFor({ timeout: 5_000 });
+            return 1;
+        },
+    },
+    /** The diff panel while it is still resolving the repository root. */
+    'diff-resolving': {
+        only: /diff/,
+        pre: null,
+        needsBridge: { terminal: true, diff: true, browser: true, scenario: 'diff-resolving' },
+        apply: async (page, root) => {
+            if (!root.includes('diff')) return 0;
+            await page.locator('.d2-diff-panel .d2-panel-state[role="status"]',
+                { hasText: 'Resolving repository' }).waitFor({ timeout: 8_000 });
+            return 1;
+        },
+    },
+    /** A design panel handed a widget that has not been promoted yet. */
+    'design-widget-pending': {
+        only: /design-panel/,
+        pre: null,
+        apply: async (page, root) => {
+            if (!root.includes('design-panel')) return 0;
+            // The payload is validated hard: `source` must be 'turn-widget',
+            // the descriptor must be complete, and panelKey/rowKey must be the
+            // values derived from chatId, widgetId and identity. A plausible
+            // object is rejected and the panel silently shows its empty state,
+            // which is how a looser version of this passed while proving
+            // nothing. Derived here exactly as widget-panel-key.ts derives them.
+            await page.evaluate(() => {
+                const chatId = 'wp5a';
+                const widgetId = 'fixture-widget';
+                const identity = { scopeKey: 'wp5a-scope', turnId: 'turn-1', segmentId: 'seg-1' };
+                const enc = encodeURIComponent;
+                const payload = {
+                    kind: 'widget',
+                    source: 'turn-widget',
+                    panelKey: `widget:${enc(chatId)}:${enc(widgetId)}`,
+                    rowKey: `widget-row:${enc(identity.scopeKey)}:${enc(identity.turnId)}:${enc(identity.segmentId)}`,
+                    chatId,
+                    descriptor: {
+                        widgetId,
+                        title: 'Fixture widget',
+                        revision: '1',
+                        storage: 'inline',
+                        source: '<div>fixture</div>',
+                        estimatedHeight: 240,
+                        capabilities: ['stateful'],
+                    },
+                    identity,
+                };
+                // SidePane forwards the payload only when key === panelKey.
+                window.__jawE2E.openPanel('design', false, payload, payload.panelKey);
+            });
+            await page.locator('.d2-design-panel .d2-panel-state',
+                { hasText: 'Preparing widget panel' }).waitFor({ timeout: 5_000 });
             return 1;
         },
     },

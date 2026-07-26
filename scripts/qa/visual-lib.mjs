@@ -689,25 +689,37 @@ export async function surfacePixelContrast(page, selectorScope) {
             // paired capture already solves the border problem: whatever the
             // border is, it is identical in both images and so is never counted
             // as glyph coverage.
-            const sx = Math.round((r.x - origin.x) * dpr);
-            const sy = Math.round((r.y - origin.y) * dpr);
-            const sw = Math.round(r.width * dpr);
-            const sh = Math.round(r.height * dpr);
-            // An element wider or taller than the captured surface cannot be
-            // sampled: the screenshot is clipped to the panel, and a diff line
-            // 4116px wide inside a horizontal scrollport runs off it. Dropping
-            // it silently is what produced "measured 9 of 17" with no way to
-            // tell a scroll overhang from a capture bug, so say which it is.
-            if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) {
+            // Measure the VISIBLE intersection, not the element's whole box.
+            //
+            // A diff line inside a horizontal scrollport is 4116px wide while
+            // the capture is clipped to the panel, so the full rect falls
+            // outside the bitmap. Skipping those elements is what produced
+            // "measured 9 of 17"; excusing them as `outside-capture` was worse,
+            // because a reviewer showed #777 on #787878 — plainly visible at
+            // the left edge — then passed the gate at ratio null. The pixels a
+            // user can see are exactly the pixels inside the clip, so clamp to
+            // that region and measure it.
+            const rawX = (r.x - origin.x) * dpr;
+            const rawY = (r.y - origin.y) * dpr;
+            const x0 = Math.round(Math.max(0, rawX));
+            const y0 = Math.round(Math.max(0, rawY));
+            const x1 = Math.round(Math.min(bitmap.width, rawX + r.width * dpr));
+            const y1 = Math.round(Math.min(bitmap.height, rawY + r.height * dpr));
+            const sx = x0;
+            const sy = y0;
+            const sw = x1 - x0;
+            const sh = y1 - y0;
+            // Nothing of this element is inside the capture at all: it is
+            // scrolled fully out of view, so there is nothing to look at.
+            if (sw < 2 || sh < 2) {
                 results.push({
                     ...snap.describe,
                     ratio: null,
                     need: snap.need,
                     backdrop: null,
                     unmeasurable: 'outside-capture',
-                    // Not a defect in the page: the element is simply larger
-                    // than the captured surface. Flagged so the gate can
-                    // account for it without counting it as one.
+                    // No visible pixels, so no visual claim either way. The
+                    // gate records it rather than counting it.
                     offCapture: true,
                     pass: false,
                 });

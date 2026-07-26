@@ -199,7 +199,17 @@
     user-select: none;
 }
 
+/* --positive on --pos-dim lands at 4.4:1 in the light theme, just under the
+   4.5 line. The tinted row is a darker backdrop than the plain surface the
+   token was chosen against, so this row needs its own slightly deeper green
+   rather than a change to --positive everywhere. Only the light theme is
+   affected; the dark pair already passes. */
 .d2-diff-line.is-add { background: var(--pos-dim); color: var(--positive); }
+:root[data-theme='light'] .d2-diff-line.is-add { color: #12613c; }
+
+@media (prefers-color-scheme: light) {
+    :root[data-theme='auto'] .d2-diff-line.is-add { color: #12613c; }
+}
 .d2-diff-line.is-del { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
 .d2-diff-line.is-hunk { background: var(--accent-soft); color: var(--accent); }
 .d2-diff-line.is-meta { color: var(--text-3); }

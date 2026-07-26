@@ -99,9 +99,13 @@ const ACTIVATION = {
         reset: 'remount with the default bridge',
     },
     'harness:git': {
-        lever: 'fake /api/code/git-info response',
-        provider: 'FakeApiRouter (needs the same override as files)',
-        reset: 'clear the override',
+        // Planned as an HTTP override before the panel was read properly. The
+        // diff panel does not call /api/code/git-info: it goes through the
+        // desktop bridge's diff surface, so the lever is a bridge scenario
+        // (diff-resolving / diff-empty / diff-error).
+        lever: 'desktop bridge diff scenario (getRepoRoot / getDiffSummary)',
+        provider: 'buildDesktopBridgeFixture diff surface',
+        reset: 'remount with the default scenario',
     },
 };
 
@@ -145,6 +149,11 @@ export function buildTabStateLedger() {
                 ...ACTIVATION[route],
                 // What proves the branch rendered rather than a lookalike.
                 expectSelector: b.cls ? `.${b.cls.split(' ')[0]}` : `[role="${b.axis === 'error' ? 'alert' : 'status'}"]`,
+                // The copy this branch renders, straight from the manifest. A
+                // selector alone does not identify a branch — several branches
+                // of a panel share one — so the coverage check compares a
+                // fixture's predicate against this.
+                text: b.text ?? null,
             };
         });
 }

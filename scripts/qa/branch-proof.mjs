@@ -83,7 +83,11 @@ if (status.uncovered.length) {
 if (status.stale.length) {
     console.error(`\nFAIL: ${status.stale.length} coverage entries name branches the manifest no longer has: ${status.stale.join(', ')}`);
 }
+if (status.mismatched?.length) {
+    console.error(`\nFAIL: ${status.mismatched.length} predicates do not assert their own branch's copy:`);
+    for (const m of status.mismatched) console.error(`  ${m.id} should assert ${JSON.stringify(m.expected)}`);
+}
 if (failed.length) console.error(`\nFAIL: ${failed.length} of ${results.length} branches did not render as claimed`);
 
-if (failed.length || status.uncovered.length || status.stale.length) process.exit(1);
+if (failed.length || status.uncovered.length || status.stale.length || status.mismatched?.length) process.exit(1);
 console.error(`\nOK: ${results.length}/${status.integration} integration branches proven (${status.total - status.integration} shadowed, excluded by audit)`);

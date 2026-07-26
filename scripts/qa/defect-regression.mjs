@@ -184,6 +184,26 @@ const CASES = [
             + ' background: rgb(107, 107, 107) !important; color: var(--text) !important;'
             + ' border: 0 !important; }',
     },
+    {
+        id: 'D19-browser-unavailable-overlay',
+        defect: 'the Electron-without-a-browser message reused the absolute overlay rule with no frame-wrap to anchor to, stretching to the full viewport and painting no readable glyphs',
+        surface: 'tab-browser',
+        theme: 'dark',
+        state: 'browser-bridge-missing',
+        expect: 'contrast',
+        revert: '.d2-browser-unavailable {'
+            + ' position: absolute; inset: 0; display: flex; align-items: center;'
+            + ' justify-content: center; color: var(--text-3) !important; }',
+    },
+    {
+        id: 'D20-diff-added-line-light',
+        defect: 'an added diff line put --positive on the --pos-dim tint, which is 4.4:1 in the light theme',
+        surface: 'tab-diff',
+        theme: 'light',
+        state: 'desktop-bridge',
+        expect: 'contrast',
+        revert: ':root[data-theme="light"] .d2-diff-line.is-add { color: var(--positive); }',
+    },
 ];
 
 const server = await startFixtureServer();

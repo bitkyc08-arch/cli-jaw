@@ -254,7 +254,16 @@ export function BrowserPanel({ panelId }: BrowserPanelProps): JSX.Element {
 
     if (!bridge.environment.isElectron) return <WebIframeBrowser initialUrl={initialUrl} />;
     if (!bridge.browser.nativeAvailable || !bridge.browser.nativeWired || !bridge.browser.native) {
-        return <section className="d2-browser-panel" aria-label="Browser"><div className="d2-browser-empty" role="alert">Desktop browser unavailable</div></section>;
+        // Not `.d2-browser-empty`: that rule is `position:absolute; inset:0`
+        // for the overlay inside `.d2-browser-frame-wrap`. There is no
+        // frame-wrap on this branch, so it anchored to the panel and stretched
+        // to the full viewport with its text pinned at the centre of a 1440x900
+        // box — which is why the gate read zero glyph pixels for it.
+        return (
+            <section className="d2-browser-panel" aria-label="Browser">
+                <div className="d2-browser-unavailable" role="alert">Desktop browser unavailable</div>
+            </section>
+        );
     }
     return <ElectronWebviewBrowser panelId={panelId} initialUrl={initialUrl} />;
 }

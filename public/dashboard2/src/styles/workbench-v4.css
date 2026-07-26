@@ -623,6 +623,20 @@
     background: var(--surface);
 }
 
+/* The Electron-without-a-browser-surface branch. It has no frame-wrap to
+   overlay, so it is laid out rather than positioned. */
+.d2-browser-unavailable {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    text-align: center;
+}
+
 .d2-browser-loading {
     inset: 8px 8px auto auto;
     padding: 5px 8px;
