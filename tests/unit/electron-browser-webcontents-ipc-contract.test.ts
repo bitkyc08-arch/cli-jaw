@@ -30,7 +30,10 @@ test('sender origin is validated on every handler', () => {
     const guardCount = (ipcSource.match(/if \(!isManagerSender\(event\)\)/g) ?? []).length;
     assert.ok(handlerCount >= 5, 'expected browser:* handlers present');
     assert.equal(guardCount, handlerCount, 'every handler checks the Manager sender guard');
-    assert.ok(ipcSource.includes('isAllowedSender(event)'), 'the Manager sender guard must validate origin');
+    // wp7b moved the origin check into the shared ipc-origin-guard, which
+    // isManagerSender delegates to. The file imports the shared guard.
+    assert.ok(ipcSource.includes('isManagerSenderGuard') || ipcSource.includes('isAllowedSender'),
+        'the Manager sender guard must validate origin');
 });
 
 test('DevTools attempts docked open and falls back to detached', () => {
