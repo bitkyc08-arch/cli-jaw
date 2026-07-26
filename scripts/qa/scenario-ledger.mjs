@@ -135,7 +135,7 @@ export const CODE_SCENARIOS = [
     },
     {
         id: 'tab-suspense',
-        branchId: 'CodeTab-state-1d583p4',
+        branchId: 'CodeTabGate-state-1d583p4',
         reachability: 'integration',
         axis: 'loading', target: 'StatePanel',
         why: 'the lazy code chunk is still downloading after the gate opened',

@@ -204,6 +204,7 @@ report.branchCoverage = {
     uncovered: coverage.uncovered,
     stale: coverage.stale,
     underspecified: coverage.underspecified,
+    delegatedBroken: coverage.delegatedBroken,
 };
 
 // The code tab is the second denominator: its user-visible states are not AST
@@ -242,6 +243,10 @@ if (coverage.underspecified?.length) {
     console.error(`\nFAIL: ${coverage.underspecified.length} coverage entries do not say what they expect to see:`
         + ` ${coverage.underspecified.join(', ')}`);
 }
+if (coverage.delegatedBroken?.length) {
+    console.error(`\nFAIL: ${coverage.delegatedBroken.length} code delegations point at a missing or mismatched scenario:`
+        + ` ${coverage.delegatedBroken.join(', ')}`);
+}
 if (scenarios.malformed.length) {
     console.error(`\nFAIL: ${scenarios.malformed.length} code scenarios are malformed: ${scenarios.malformed.join('; ')}`);
 }
@@ -255,4 +260,5 @@ console.error(`code scenarios: ${scenarios.integration} integration, ${scenarios
 
 if (!reportOnly && (notReached.length || oracleFailures.length || total
     || coverage.uncovered.length || coverage.stale.length || coverage.underspecified?.length
+    || coverage.delegatedBroken?.length
     || scenarios.malformed.length || scenarios.duplicate.length)) process.exit(1);

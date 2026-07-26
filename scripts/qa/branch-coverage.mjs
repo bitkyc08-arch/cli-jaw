@@ -15,6 +15,7 @@
 // performs the observation, and the words it compares come from the manifest
 // rather than from this file.
 import { buildTabStateLedger } from './tab-state-ledger.mjs';
+import { scenarioLedgerStatus } from './scenario-ledger.mjs';
 
 // wp5b — the code tab's branches are measured by the SCENARIO ledger, not by a
 // {surface, state} fixture pair, because the screen each renders depends on
@@ -257,6 +258,19 @@ export function branchCoverageStatus() {
         })
         .map(r => r.id);
 
+    // wp5b C-gate: a delegated branch must name a scenario that exists and
+    // whose own branchId is this branch. The first cut had
+    // `CodeTabGate-state-1d583p4` delegating to a scenario that declared
+    // `CodeTab-state-1d583p4` — a delegation that looked wired and pointed at
+    // an identity nothing owns.
+    const scenarioById = new Map(scenarioLedgerStatus().scenarios.map(s => [s.id, s]));
+    const delegatedBroken = Object.entries(CODE_BRANCH_COVERAGE)
+        .filter(([branchId, entry]) => {
+            const scenario = scenarioById.get(entry.delegate);
+            return !scenario || scenario.branchId !== branchId;
+        })
+        .map(([branchId, entry]) => `${branchId} -> ${entry.delegate}`);
+
     return {
         total: rows.length,
         integration: integration.length,
@@ -264,6 +278,7 @@ export function branchCoverageStatus() {
         uncovered,
         stale,
         underspecified,
+        delegatedBroken,
         entries: covered.map(r => ({
             id: r.id,
             ...BRANCH_COVERAGE[r.id],

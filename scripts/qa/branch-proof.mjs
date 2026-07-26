@@ -123,9 +123,12 @@ if (status.stale.length) {
 if (status.underspecified?.length) {
     console.error(`\nFAIL: ${status.underspecified.length} entries do not say what they expect to see: ${status.underspecified.join(', ')}`);
 }
+if (status.delegatedBroken?.length) {
+    console.error(`\nFAIL: ${status.delegatedBroken.length} delegations point at a missing or mismatched scenario: ${status.delegatedBroken.join(', ')}`);
+}
 if (failed.length) console.error(`\nFAIL: ${failed.length} of ${results.length} branches did not render as claimed`);
 
-if (failed.length || status.uncovered.length || status.stale.length || status.underspecified?.length) process.exit(1);
+if (failed.length || status.uncovered.length || status.stale.length || status.underspecified?.length || status.delegatedBroken?.length) process.exit(1);
 const delegated = status.entries.filter(e => e.delegate).length;
 console.error(`\nOK: ${results.length}/${status.integration - delegated} fixture branches proven`
     + ` (${delegated} delegated to the scenario ledger, ${status.total - status.integration} shadowed)`);

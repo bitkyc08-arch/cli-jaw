@@ -111,9 +111,17 @@ function judgeRequests(scenario, sent) {
                 if (search !== want.query) return false;
             }
             if (want.bodyIncludes) {
+                // Exact equality, not a subset. A subset match lets a request
+                // carrying an unexpected field — a stale modelId, an extra
+                // cwd — satisfy the oracle while doing something the scenario
+                // never authorised.
                 const body = entry.body ?? {};
-                for (const [key, value] of Object.entries(want.bodyIncludes)) {
-                    if (body[key] !== value) return false;
+                const wanted = want.bodyIncludes;
+                const sentKeys = Object.keys(body).sort();
+                const wantKeys = Object.keys(wanted).sort();
+                if (sentKeys.length !== wantKeys.length
+                    || sentKeys.some((key, i) => key !== wantKeys[i] || body[key] !== wanted[key])) {
+                    return false;
                 }
             }
             return true;
