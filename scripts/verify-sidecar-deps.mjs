@@ -5,9 +5,16 @@
 // twice now that list has taken something the server needs. First `node-fetch`
 // itself, which killed every instance touching the Telegram path. Then, after
 // that was fixed, `web-streams-polyfill` — which is not frontend-only either:
-// node-fetch depends on fetch-blob, and fetch-blob depends on it. The packaged
-// app died at boot with ERR_MODULE_NOT_FOUND for `node-fetch` while node-fetch
-// was sitting right there, because its own dependency was gone.
+// node-fetch depends on fetch-blob, and fetch-blob declares it.
+//
+// Be precise about that second one, because the first version of this comment
+// was not. fetch-blob only reaches for the polyfill when `globalThis.ReadableStream`
+// is absent, and on the bundled Node 24 it is present, so the missing package
+// does not currently throw. It is still a package the server's dependency tree
+// asks for and the bundle does not have, which is a loaded gun: any Node
+// downgrade, any other consumer of that polyfill, and it fires. The point of
+// this check is to catch that shape before it becomes a crash rather than
+// after.
 //
 // A comment saying "only genuinely frontend-only packages belong here" is a
 // rule. This is the check. It walks the production dependency closure from the

@@ -88,20 +88,19 @@ rm -rf "$SIDECAR_DIR/node_modules/cytoscape" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/cytoscape-fcose" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/es-toolkit" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/lodash" 2>/dev/null || true
-# web-streams-polyfill is NOT frontend-only: node-fetch -> fetch-blob depends on
-# it, so pruning it left the packaged sidecar unable to import node-fetch and
-# every instance that touched the Telegram path died at boot. This is the same
-# mistake the note above describes, one level deeper in the tree.
+# web-streams-polyfill is NOT frontend-only: node-fetch -> fetch-blob declares
+# it. It does not throw on the bundled Node 24, because fetch-blob only falls
+# back to the polyfill when globalThis.ReadableStream is missing — but it is a
+# package the server's tree asks for and the bundle does not have, which is the
+# same shape as the node-fetch mistake one level deeper.
 
 echo "Removing stale .bin symlinks after dependency pruning..."
 find "$SIDECAR_DIR/node_modules/.bin" -type l ! -exec test -e {} \; -print -delete 2>/dev/null || true
 
 echo "Verifying the prune did not take a server dependency..."
 # The note above the prune list is a rule; this enforces it. `node-fetch` was
-# pruned once and killed every packaged instance on the Telegram path. After
-# that was fixed the same bug came back one level deeper, through
-# fetch-blob -> web-streams-polyfill, and the app died at boot with
-# ERR_MODULE_NOT_FOUND for node-fetch while node-fetch was sitting right there.
+# pruned once and killed every packaged instance on the Telegram path. The same
+# shape came back one level deeper through fetch-blob -> web-streams-polyfill.
 node "$PROJECT_ROOT/scripts/verify-sidecar-deps.mjs" "$SIDECAR_DIR"
 
 NODE_BIN="$SIDECAR_DIR/node"
