@@ -1,11 +1,11 @@
 {
-  "when": "2026-07-26T14:45:12.358Z",
-  "total": 107,
-  "integration": 105,
+  "when": "2026-07-26T15:52:17.666Z",
+  "total": 118,
+  "integration": 116,
   "shadowed": 2,
-  "withActions": 68,
-  "withRequestOracle": 42,
-  "proven": 105,
+  "withActions": 70,
+  "withRequestOracle": 43,
+  "proven": 116,
   "results": [
     {
       "id": "gate-probing",
@@ -846,6 +846,94 @@
       "branchId": "ModelSettingsPanel-port-20qgxb",
       "ok": true,
       "saw": "Select an instance to edit model settings."
+    },
+    {
+      "id": "dock-no-session",
+      "axis": "prerequisite",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "세션을 선택하면 인스턴스 제어 탭이 열립니다"
+    },
+    {
+      "id": "dock-open-agents",
+      "axis": "ready",
+      "target": "Panel",
+      "branchId": null,
+      "ok": true,
+      "saw": "활성 CLIcodex모델defaultgpt-5.5직접 입력…추론 강도— nonelowmediumhigh권한Auto작업 디렉토리Flush Agent (codex*)▸직원+ 추가직원을"
+    },
+    {
+      "id": "dock-tab-switch-skills",
+      "axis": "ready",
+      "target": "Panel",
+      "branchId": null,
+      "ok": true,
+      "saw": "전체설치됨생산성커뮤개발AI유틸홈기타활성 0/0검색 결과가 없습니다"
+    },
+    {
+      "id": "dock-skills-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "로딩 중..."
+    },
+    {
+      "id": "dock-skills-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "SkillsTab",
+      "ok": true,
+      "saw": "스킬 로드 실패: GET /api/skills?locale=ko → 500: {\"error\":\"skills unreadable\"}"
+    },
+    {
+      "id": "dock-skills-empty",
+      "axis": "empty",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "전체설치됨생산성커뮤개발AI유틸홈기타활성 0/0검색 결과가 없습니다"
+    },
+    {
+      "id": "dock-agents-offline",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "인스턴스 오프라인"
+    },
+    {
+      "id": "dock-settings-offline",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "인스턴스 오프라인"
+    },
+    {
+      "id": "dock-skills-search-empty",
+      "axis": "empty",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "전체설치됨생산성커뮤개발AI유틸홈기타0개 표시 · 활성 1/1검색 결과가 없습니다"
+    },
+    {
+      "id": "dock-skills-disable-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "POST /api/skills/disable → 500: {\"ok\":false,\"error\":\"dock mutation rejected\"}"
+    },
+    {
+      "id": "dock-settings-mcp-empty",
+      "axis": "empty",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "시스템 프롬프트 편집▸Active ChannelTGDCTelegram 활성화봇 토큰허용 채팅 ID (쉼표 구분)저장자동 전송Mention OnlyFallbackCLI별 모델전체 저"
     }
   ]
 }

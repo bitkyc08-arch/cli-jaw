@@ -312,6 +312,15 @@ try {
                     .waitFor({ state: 'attached', timeout: 6_000 })
                     .catch(() => {});
             }
+            // An expected-text claim needs the same wait: an async load can
+            // resolve after the selector first matches, and the skills tab
+            // shows a loading frame until its list arrives.
+            if (scenario.expected) {
+                await page.locator(scenario.selector).first()
+                    .filter({ hasText: scenario.expected })
+                    .waitFor({ state: 'attached', timeout: 6_000 })
+                    .catch(() => {});
+            }
             const seen = await observe(page, scenario);
             // All requests, not a per-surface subset: the oracle's path filter
             // is what scopes the claim, so a board/notes/schedule request must
