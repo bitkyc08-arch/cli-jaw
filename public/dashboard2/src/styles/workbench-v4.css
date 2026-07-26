@@ -397,11 +397,17 @@
     background: #000;
 }
 
-/* The same element carries the xterm canvas AND the "not available" messages,
-   so the hard black that a terminal needs was also the backdrop for themed
-   status text: in the light theme that read 1.28:1. The status states get the
-   surface treatment; only a panel actually hosting a terminal stays black. */
-.d2-terminal-panel:not(:has(.xterm)) {
+/* The same element carries the xterm canvas AND the messages that replace it,
+   so the hard black a terminal needs was also the backdrop for themed status
+   text: 1.28:1 in the light theme.
+
+   The split is declared by the component, not inferred from whether .xterm
+   exists yet. Keying on the canvas looked equivalent and was not: the runtime
+   branch renders before terminal.open() attaches anything, so for one frame a
+   live terminal matched the status rule and jumped from 8px padding to 24px and
+   from 16px text to 12px. A zero-session runtime panel never has .xterm at all
+   and would have stayed wrong indefinitely. */
+.d2-terminal-panel.is-state {
     display: grid;
     place-items: center;
     padding: 24px;

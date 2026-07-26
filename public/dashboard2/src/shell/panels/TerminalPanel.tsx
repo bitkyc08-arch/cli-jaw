@@ -210,21 +210,21 @@ export function TerminalPanel({
     }, [snapshot.sessions]);
 
     if (!nativeTerminal) {
-        return <div className="d2-terminal-panel" role="status">Terminal requires the cli-jaw Electron app</div>;
+        return <div className="d2-terminal-panel is-state" role="status">Terminal requires the cli-jaw Electron app</div>;
     }
     if (port === null) {
-        return <div className="d2-terminal-panel" role="status">No instance selected</div>;
+        return <div className="d2-terminal-panel is-state" role="status">No instance selected</div>;
     }
     if (workingDirectoryError) {
-        return <div className="d2-terminal-panel" role="alert">{workingDirectoryError}</div>;
+        return <div className="d2-terminal-panel is-state" role="alert">{workingDirectoryError}</div>;
     }
     if (!terminalTargetMatches(port, workingDirectory)) {
-        return <div className="d2-terminal-panel" role="status" aria-busy="true">Loading terminal working directory…</div>;
+        return <div className="d2-terminal-panel is-state" role="status" aria-busy="true">Loading terminal working directory…</div>;
     }
 
     return (
         <div
-            className="d2-terminal-panel"
+            className="d2-terminal-panel is-runtime"
             aria-label={`Terminal for instance ${port}`}
             style={{ display: 'grid', gridTemplateRows: '32px minmax(0, 1fr) auto', gap: 4, background: '#0a0a0a' }}
         >
