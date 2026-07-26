@@ -642,6 +642,36 @@ export async function surfacePixelContrast(page, selectorScope) {
                         }
                         return out;
                     })(),
+                    // Are those glyphs on screen and unclipped?
+                    //
+                    // Text outside the surface capture has two very different
+                    // causes. Scrolled or overflow-clipped text is invisible
+                    // and there is nothing to judge. Text that escaped its
+                    // panel while still being painted in the viewport is a
+                    // layout defect the user can see, and excusing it was a
+                    // hiding place a reviewer found. Resolved here, where the
+                    // ancestors and the live viewport are available.
+                    glyphsOnScreen: (() => {
+                        const range = document.createRange();
+                        for (const node of el.childNodes) {
+                            if (node.nodeType !== Node.TEXT_NODE || !node.nodeValue?.trim()) continue;
+                            range.selectNodeContents(node);
+                            for (const box of range.getClientRects()) {
+                                if (box.width < 1 || box.height < 1) continue;
+                                if (box.right <= 0 || box.bottom <= 0
+                                    || box.left >= innerWidth || box.top >= innerHeight) continue;
+                                // Clipped away by an ancestor's overflow?
+                                let clipped = false;
+                                for (const { el: anc } of m.clippingAncestors(el)) {
+                                    const a = anc.getBoundingClientRect();
+                                    if (box.right <= a.left || box.left >= a.right
+                                        || box.bottom <= a.top || box.top >= a.bottom) { clipped = true; break; }
+                                }
+                                if (!clipped) return true;
+                            }
+                        }
+                        return false;
+                    })(),
                     describe: m.describe(el),
                 };
             });
@@ -752,19 +782,22 @@ export async function surfacePixelContrast(page, selectorScope) {
             const sy = Math.round(box.y0);
             const sw = Math.round(box.x1) - sx;
             const sh = Math.round(box.y1) - sy;
-            // None of this element's glyphs are inside the capture: it is
-            // scrolled or clipped fully out of view, so there is nothing a user
-            // can see and nothing to judge.
+            // None of this element's glyphs are inside the capture. Why not
+            // decides everything: text scrolled or clipped out of sight is not
+            // a visual claim, but text still painted on screen that has simply
+            // left its own surface is a layout defect the user can see.
             if (sw < 2 || sh < 2) {
+                const escaped = snap.glyphsOnScreen === true;
                 results.push({
                     ...snap.describe,
                     ratio: null,
                     need: snap.need,
                     backdrop: null,
-                    unmeasurable: 'outside-capture',
-                    // No visible pixels, so no visual claim either way. The
-                    // gate records it rather than counting it.
-                    offCapture: true,
+                    unmeasurable: escaped ? 'escaped-capture' : 'outside-capture',
+                    // `escapedCapture` is a defect: the glyphs are on screen,
+                    // unclipped, and outside the surface that owns them.
+                    // `offCapture` is not: there is nothing to see.
+                    ...(escaped ? { escapedCapture: true } : { offCapture: true }),
                     pass: false,
                 });
                 continue;

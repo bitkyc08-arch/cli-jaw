@@ -120,7 +120,7 @@ try {
                 const contrastFailures = (textRows ?? []).filter((r) => !r.pass && !r.unmeasurable);
                 const iconFailures = (iconRows ?? []).filter((r) => !r.pass && !r.unmeasurable);
                 const unmeasurable = [...(textRows ?? []), ...(iconRows ?? [])]
-                    .filter((r) => r.unmeasurable && !r.offCapture)
+                    .filter((r) => r.unmeasurable && !r.offCapture && !r.escapedCapture)
                     .map((r) => ({ cls: r.cls, label: r.label, reason: r.unmeasurable }));
                 // Content wider than its own panel (a diff line in a horizontal
                 // scrollport) cannot be sampled from a panel-clipped capture.
@@ -128,6 +128,13 @@ try {
                 // coverage check below needs it to reconcile its totals.
                 const offCapture = [...(textRows ?? []), ...(iconRows ?? [])]
                     .filter((r) => r.offCapture)
+                    .map((r) => ({ cls: r.cls, label: r.label }));
+                // Text still painted on screen that has left the surface that
+                // owns it. This IS a defect: excusing it alongside genuinely
+                // clipped glyphs was a hiding place, and the browser-unavailable
+                // overlay reached the gate through exactly that gap.
+                const escapedCapture = [...(textRows ?? []), ...(iconRows ?? [])]
+                    .filter((r) => r.escapedCapture)
                     .map((r) => ({ cls: r.cls, label: r.label }));
 
                 if (oracleError || textRows === null || iconRows === null) {
@@ -144,7 +151,7 @@ try {
                 }
 
                 report.surfaces[name][key] = {
-                    ...measured, contrastFailures, iconFailures, unmeasurable, offCapture,
+                    ...measured, contrastFailures, iconFailures, unmeasurable, offCapture, escapedCapture,
                     consoleErrors: page.consoleErrors.slice(0, 5),
                 };
                 console.error(
@@ -165,13 +172,14 @@ try {
     await server.close();
 }
 
-const defects = { contrast: 0, icon: 0, unmeasurable: 0, target: 0, unreachable: 0, unnamed: 0, occluded: 0 };
+const defects = { contrast: 0, icon: 0, unmeasurable: 0, escaped: 0, target: 0, unreachable: 0, unnamed: 0, occluded: 0 };
 for (const themes of Object.values(report.surfaces)) {
     for (const m of Object.values(themes)) {
         if (!m?.reached) continue;
         defects.contrast += m.contrastFailures.length;
         defects.icon += m.iconFailures.length;
         defects.unmeasurable += m.unmeasurable.length;
+        defects.escaped += m.escapedCapture?.length ?? 0;
         defects.target += m.targetFailures.length;
         defects.unreachable += m.unreachable.length;
         defects.unnamed += m.unnamed.length;

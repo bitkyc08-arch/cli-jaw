@@ -193,12 +193,14 @@ const CASES = [
     },
     {
         id: 'D19-browser-unavailable-overlay',
-        defect: 'the Electron-without-a-browser message reused the absolute overlay rule with no frame-wrap to anchor to, so it stretched across the whole viewport and its text ended up outside the panel entirely',
+        defect: 'the Electron-without-a-browser message reused the absolute overlay rule with no frame-wrap to anchor to, so it stretched across the whole viewport and centred its text outside the side pane, where the pane clips it away entirely',
         surface: 'tab-browser',
         theme: 'dark',
         state: 'browser-bridge-missing',
-        // Not a contrast failure: the element leaves its own panel, so no part
-        // of its text is inside the captured surface at all.
+        // Not a contrast failure, and not `escaped` either: the box spans the
+        // viewport but the centred glyphs land outside the side pane, which
+        // clips them, so the message is simply not readable anywhere. That is
+        // the offCapture axis — a message the user never sees.
         expect: 'offCapture',
         revert: '.d2-browser-unavailable {'
             + ' position: absolute; inset: 0; display: flex; align-items: center;'
@@ -265,12 +267,11 @@ async function measure(surface, theme, stateName, revertCss, liveUrl) {
         return {
             contrast: (text ?? []).filter((r) => !r.pass && !r.unmeasurable).length,
             icon: (icons ?? []).filter((r) => !r.pass && !r.unmeasurable).length,
-            unmeasurable: rows.filter((r) => r.unmeasurable && !r.offCapture).length,
-            // An element whose glyphs land entirely outside its own panel: the
-            // gate excludes these from its defect counts because they are a
-            // limit of the capture, but a control that got there by stretching
-            // across the viewport is a real layout defect and this is the axis
-            // that shows it.
+            unmeasurable: rows.filter((r) => r.unmeasurable && !r.offCapture && !r.escapedCapture).length,
+            // Glyphs outside their own panel but still painted on screen. The
+            // gate counts these; genuinely clipped ones (`offCapture`) it does
+            // not, because there is nothing to see.
+            escaped: rows.filter((r) => r.escapedCapture).length,
             offCapture: rows.filter((r) => r.offCapture).length,
             unreachable,
             worst: rows.filter((r) => typeof r.ratio === 'number').sort((a, b) => a.ratio - b.ratio)[0] ?? null,

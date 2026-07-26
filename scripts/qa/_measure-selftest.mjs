@@ -71,6 +71,11 @@ const browser = await chromium.launch({ channel: 'chrome' });
              its background — a defect the user cannot see. */
           #clippedglyphs { width: 220px; overflow: hidden; background:#ffffff; }
           #clippedglyphs > span { display: inline-block; width: 1200px; padding-left: 1000px; color:#000; font: 16px sans-serif; white-space: nowrap; }
+          /* And the third case: text that LEFT its panel but is still
+             painted on screen, unclipped. Not invisible, so not an
+             exclusion — a layout defect the gate has to report. */
+          #escaped { width: 220px; overflow: visible; background:#ffffff; position: relative; }
+          #escaped > span { position: absolute; left: 300px; top: 0; white-space: nowrap; color:#000; font: 16px sans-serif; }
           #nearicon { background:#787878; color:#777 }
           /* Translucent foregrounds. The computed colour is pure black in every
              one of these, so reading the computed colour and ignoring alpha
@@ -110,6 +115,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div class="case" id="near">Nearly invisible text</div>
         <div id="scrollport"><span>Wide overflowing low contrast text that runs past the panel</span></div>
         <div id="clippedglyphs"><span>Letters only in the clipped part</span></div>
+        <div id="escaped"><span>Visible outside panel</span></div>
         <div class="case" id="nearicon"><button aria-label="Close" style="background:transparent;border:0;color:#777"><svg width="16" height="16"><path d="M2 2 L14 14" stroke="currentColor" stroke-width="2"/></svg></button></div>
         <div class="case" id="op">Element opacity</div>
         <div class="case" id="alphafg">Alpha foreground</div>
@@ -228,6 +234,26 @@ const browser = await chromium.launch({ channel: 'chrome' });
     });
     if (!clippedOk) {
         failures.push(`counterexample/clipped-glyphs-not-a-defect: reported ${clippedRow.ratio} as a failure`);
+    }
+
+    // The third case, and the one that separates the other two: glyphs painted
+    // on screen, unclipped, outside the surface that owns them. Excusing this
+    // alongside genuinely clipped text let escaped layout through the gate.
+    const escapedRows = await surfacePixelContrast(page, '#escaped');
+    const escapedRow = escapedRows?.find((r) => (r.label ?? '').startsWith('Visible outside'));
+    const escapedOk = Boolean(escapedRow) && escapedRow.escapedCapture === true && !escapedRow.offCapture;
+    results.push({
+        name: 'counterexample/escaped-capture-is-a-defect',
+        measured: escapedRow
+            ? (escapedRow.escapedCapture ? 'escaped-capture' : (escapedRow.offCapture ? 'excused as offCapture' : escapedRow.ratio))
+            : 'NO ROW',
+        expected: 'escaped-capture, counted as a defect',
+        ok: escapedOk,
+        note: 'text still on screen but outside its own surface must not be excused',
+    });
+    if (!escapedOk) {
+        failures.push(`counterexample/escaped-capture-is-a-defect: ${
+            escapedRow ? JSON.stringify({ off: escapedRow.offCapture, esc: escapedRow.escapedCapture }) : 'produced no row'}`);
     }
 
     const nearIconRows = await surfaceIconContrast(page, '#nearicon');
