@@ -15,9 +15,11 @@
 //        [--evidence evidence/wplive.window.json] [--out evidence/wplive.dom.json]
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { chromium } from 'playwright';
+import { cleanupDecision, lockVerdict, recoveryDecision, stopConfirmed } from './live-ownership.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -33,6 +35,27 @@ if (!origin) {
 }
 
 const report = { when: new Date().toISOString(), origin, checks: {}, identity: {} };
+/** Everything this run can prove about the instance it started. */
+function ownership() {
+    if (!startedPort) return null;
+    return { port: startedPort, managerPid: health?.pid ?? null, instancePid: startedInstancePid };
+}
+
+/** What the manager says about one port, right now. Never throws. */
+async function observePort(port) {
+    try {
+        const body = await getJson('/api/dashboard/instances');
+        if (!Array.isArray(body?.instances)) return { queryFailed: true };
+        const health = await getJson('/api/dashboard/health');
+        return {
+            managerPid: health?.pid ?? null,
+            instance: body.instances.find((x) => x.port === port) ?? null,
+        };
+    } catch {
+        return { queryFailed: true };
+    }
+}
+
 // Ownership journal: written before any lifecycle mutation, removed only once
 // the stop is confirmed. A run that dies outright leaves it behind for the next.
 //
@@ -138,16 +161,26 @@ if (evidence) {
 // Refuse to run two of these at once. Two runners sharing one journal would
 // overwrite each other's ownership record, and then neither can prove what it
 // started.
+const alivePid = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 try {
     await writeFile(LOCK, RUN_ID, { flag: 'wx' });
 } catch {
-    let holder = 'unknown';
-    try { holder = (await readFile(LOCK, 'utf8')).trim(); } catch { /* raced */ }
-    console.error(`[wplive] another run holds ${LOCK} (${holder}).`);
-    console.error('Wait for it, or remove the lock if that run is gone.');
-    process.exit(1);
+    // A lock left by a crashed run must not block every future run, but one
+    // held by a live run must. Ask the holder's pid rather than a human.
+    let contents = '';
+    try { contents = await readFile(LOCK, 'utf8'); } catch { /* raced */ }
+    const verdict = lockVerdict(contents, alivePid);
+    if (verdict.verdict === 'held') {
+        console.error(`[wplive] another run holds ${LOCK}: ${verdict.reason}`);
+        process.exit(1);
+    }
+    console.error(`[wplive] reclaiming a stale lock (${verdict.reason})`);
+    await writeFile(LOCK, RUN_ID);
 }
-process.on('exit', () => { try { require('node:fs').unlinkSync(LOCK); } catch { /* fine */ } });
+// `require` does not exist in an ES module — the old handler threw on every
+// exit and swallowed it, so the lock was never released and the next run was
+// refused. Import the sync unlink properly.
+process.on('exit', () => { try { unlinkSync(LOCK); } catch { /* already gone */ } });
 
 // Adopt anything a previous run started and could not stop. This has to happen
 // after alignment (so we know we are talking to the right manager) and before
@@ -320,7 +353,10 @@ try {
 async function scrollAfterSelection() {
     const instances = (await getJson('/api/dashboard/instances')).instances ?? [];
     let target = instances.find((i) => i.status === 'online');
-    let startedByUs = null;
+    // What this run owns, filled in as the start progresses. A port alone is never
+// enough to justify a stop: `instancePid` is what proves the process on that
+// port is the one we created.
+let startedByUs = null;
 
     if (!target) {
         const candidate = instances.find((i) => i.lifecycle?.canStart);
@@ -397,7 +433,7 @@ async function scrollAfterSelection() {
         if (!target) {
             record('sidebar-scrolls-after-selection', false,
                 { unavailable: `instance ${candidate.port} never came online` });
-            await stopIfOurs(startedByUs);
+            await stopIfOurs(ownership());
             return;
         }
     }
@@ -488,7 +524,7 @@ async function scrollAfterSelection() {
         record('sidebar-scrolls-after-selection', after !== before.top,
             { before: before.top, after, delta: after - before.top, ...selection });
     } finally {
-        await stopIfOurs(startedByUs);
+        await stopIfOurs(ownership());
     }
 }
 
@@ -499,47 +535,54 @@ async function scrollAfterSelection() {
  * evidence would claim cleanup that never happened. The stop has to be
  * confirmed by the instance actually going offline, and a failure is a failure.
  */
-async function stopIfOurs(port) {
-    if (!port) return;
+async function stopIfOurs(owned) {
+    if (!owned?.port) return;
+
+    // Ask again, immediately before the POST. Between deciding to clean up and
+    // sending the request the world can change, and the thing we would be
+    // stopping might no longer be ours.
+    const before = await observePort(owned.port);
+    const decision = cleanupDecision(owned, before);
+    if (decision.action !== 'stop') {
+        report.cleanup = { port: owned.port, stopped: decision.action === 'none', decision };
+        if (decision.action === 'refuse') {
+            failures.push('cleanup-could-not-prove-ownership');
+            console.error(`FAIL cleanup-could-not-prove-ownership  ${decision.reason}`);
+            return;   // journal stays for a human
+        }
+        report.startedAndStopped = owned.port;
+        await rm(JOURNAL, { force: true }).catch(() => {});
+        return;
+    }
+
     let stopped = false;
     let detail = null;
     try {
         const res = await fetch(`${origin}/api/dashboard/lifecycle/stop`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ port }),
+            body: JSON.stringify({ port: owned.port }),
             signal: AbortSignal.timeout(30_000),
         });
         detail = res.ok ? null : `HTTP ${res.status}`;
-        // A failed query is not evidence of anything. Swallowing it into `{}`
-        // yielded an empty list, "no online instance with that port" came out
-        // true, and cleanup reported success while the process kept running.
-        // Only an instance the manager explicitly reports as not-online counts.
         for (let i = 0; i < 12 && !stopped; i += 1) {
             await new Promise((r) => setTimeout(r, 1200));
-            let fresh = null;
-            try { fresh = (await getJson('/api/dashboard/instances')).instances; }
-            catch (error) { detail = `instances query failed: ${String(error.message).slice(0, 60)}`; continue; }
-            if (!Array.isArray(fresh)) { detail = 'instances response was not a list'; continue; }
-            const row = fresh.find((x) => x.port === port);
-            if (!row) { detail = `instance ${port} vanished from the list`; continue; }
-            // Only `offline` proves it stopped. `timeout`, `error` and
-            // `unknown` all describe a manager that cannot reach the instance,
-            // which is exactly what a live-but-wedged process looks like —
-            // treating those as success would delete the journal and abandon it.
-            stopped = row.status === 'offline';
-            detail = stopped ? null : `instance ${port} is '${row.status}', not 'offline'`;
+            const now = await observePort(owned.port);
+            const confirmed = stopConfirmed(now);
+            stopped = confirmed.done;
+            detail = confirmed.reason;
         }
     } catch (error) {
         detail = String(error.message).slice(0, 90);
     }
-    report.cleanup = { port, stopped, detail };
+
+    report.cleanup = { port: owned.port, stopped, detail };
     if (!stopped) {
         failures.push('cleanup-left-an-instance-running');
         console.error(`FAIL cleanup-left-an-instance-running  ${JSON.stringify(report.cleanup)}`);
         return;   // journal stays on disk for the next run to pick up
     }
-    report.startedAndStopped = port;
+    report.startedAndStopped = owned.port;
     await rm(JOURNAL, { force: true }).catch(() => {});
 }
 
@@ -559,42 +602,33 @@ async function stopIfOurs(port) {
  */
 async function recoverOrphans() {
     let journal = null;
-    try { journal = JSON.parse(await readFile(JOURNAL, 'utf8')); }
-    catch { return 'clean'; }   // no journal, or unreadable: nothing claimed
-
-    if (!journal?.port) {
-        console.error('[wplive] journal is malformed; refusing to act on it');
-        return 'blocked';
-    }
-    if (journal.origin !== origin) {
-        console.error(`[wplive] journal belongs to ${journal.origin}, not ${origin}; leaving it alone`);
-        return 'blocked';
-    }
-    if (journal.phase === 'intent') {
-        console.error(`[wplive] previous run recorded intent to start :${journal.port} but never confirmed it.`
-            + ' Not stopping anything — it may be yours. Remove ' + JOURNAL + ' once checked.');
-        return 'blocked';
-    }
-    if (journal.managerPid !== health.pid) {
-        console.error(`[wplive] journal was written against manager ${journal.managerPid}, now ${health.pid};`
-            + ' the port\'s occupant is not ours. Leaving it alone.');
-        return 'blocked';
+    try {
+        journal = JSON.parse(await readFile(JOURNAL, 'utf8'));
+    } catch (error) {
+        // Distinguish "no journal" from "a journal we cannot read". The second
+        // means something claimed ownership and we cannot tell what, which is
+        // exactly when guessing is dangerous.
+        if (error?.code === 'ENOENT') return 'clean';
+        journal = 'unreadable';
     }
 
-    const live = (await getJson('/api/dashboard/instances').catch(() => ({}))).instances ?? [];
-    const row = live.find((x) => x.port === journal.port);
-    if (!row || row.status !== 'online') {
-        await rm(JOURNAL, { force: true }).catch(() => {});
-        return 'clean';   // already gone
+    const port = journal === 'unreadable' ? null : journal?.port;
+    const observed = Number.isInteger(port) ? await observePort(port) : null;
+    const decision = recoveryDecision(journal, observed, origin);
+    report.identity.recoveryDecision = decision;
+
+    if (decision.action === 'none') {
+        if (journal !== 'unreadable') await rm(JOURNAL, { force: true }).catch(() => {});
+        return 'clean';
     }
-    if (journal.instancePid && row.lifecycle?.pid && row.lifecycle.pid !== journal.instancePid) {
-        console.error(`[wplive] :${journal.port} is now pid ${row.lifecycle.pid}, not the ${journal.instancePid}`
-            + ' we started. Someone else owns it; leaving it alone.');
+    if (decision.action === 'refuse') {
+        console.error(`[wplive] not touching anything: ${decision.reason}`);
+        console.error(`         inspect ${JOURNAL} and remove it once you are satisfied.`);
         return 'blocked';
     }
 
-    console.error(`[wplive] a previous run left instance ${journal.port} (pid ${journal.instancePid}) running; stopping it`);
-    await stopIfOurs(journal.port);
+    console.error(`[wplive] a previous run left :${journal.port} running (${decision.reason}); stopping it`);
+    await stopIfOurs({ port: journal.port, managerPid: journal.managerPid, instancePid: journal.instancePid });
     return report.cleanup?.stopped ? 'clean' : 'blocked';
 }
 
@@ -605,7 +639,7 @@ function armSignalCleanup() {
     for (const sig of ['SIGINT', 'SIGTERM']) {
         process.once(sig, async () => {
             console.error(`\n[wplive] ${sig} — stopping the instance this run started`);
-            await stopIfOurs(startedPort);
+            await stopIfOurs(ownership());
             process.exit(130);
         });
     }

@@ -115,6 +115,21 @@ function identify(pid) {
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
+/** Every live process in our group, whatever its parent has become. */
+function groupMembers(pgid) {
+    try {
+        const out = execFileSync('/bin/ps', ['-eo', 'pid=,pgid=,lstart=,command='], { encoding: 'utf8' });
+        const found = [];
+        for (const line of out.trim().split('\n')) {
+            const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/);
+            if (!m) continue;
+            if (Number(m[2]) !== pgid) continue;
+            found.push({ pid: Number(m[1]), started: m[3], command: m[4] });
+        }
+        return found;
+    } catch { return []; }
+}
+
 /** Which port did our own instance settle on? It picks a free one from 24577. */
 async function findOurManager(ownedPids) {
     for (let port = 24577; port <= 24590; port += 1) {
@@ -147,11 +162,17 @@ const registry = new Map();
 const remember = (entries) => { for (const e of entries) if (e?.started) registry.set(e.pid, e); };
 
 try {
+    // Its own process group. Without one, a helper spawned after the last scan
+    // and immediately reparented to PID 1 leaves the tree we can walk, so a
+    // "zero survivors" claim based on descendants could not actually see it.
+    // The group id is an OS-level fact about who started what, and it does not
+    // move when a parent dies.
     child = spawn(binary, [`--remote-debugging-port=${debugPort}`], {
         env: { ...process.env, JAW_ELECTRON_USER_DATA: userData },
         stdio: 'ignore',
-        detached: false,
+        detached: true,   // setsid: the child becomes its own group leader
     });
+    child.unref();
     report.launchedPid = child.pid;
     report.debugPort = debugPort;
     // Pin the root the same way as every child. Without this it had no identity
@@ -164,6 +185,9 @@ try {
         // leave an unowned Electron tree behind that the leftover check cannot
         // even see, because the root never entered the registry.
         record('root-process-identified', false, { pid: child.pid });
+        // Kill the GROUP: by the time identification failed, children may
+        // already exist that the handle does not own.
+        try { process.kill(-child.pid, 'SIGKILL'); } catch { /* no group */ }
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
         await new Promise((r) => setTimeout(r, 1500));
         await rm(userData, { recursive: true, force: true }).catch(() => {});
@@ -248,6 +272,11 @@ try {
     // reparenting) plus a fresh walk to catch anything spawned since.
     const scan = () => {
         if (!child) return [];
+        // Three sources, because each misses something the others catch: the
+        // process group (survives reparenting), a descendants walk (catches
+        // anything that left the group), and the registry (remembers what we
+        // have already seen).
+        remember(groupMembers(child.pid));
         remember(descendants(child.pid));
         if (rootIdentity) registry.set(rootIdentity.pid, rootIdentity);
         return [...registry.values()].filter((e) => alive(e.pid) && stillOurs(e));
@@ -268,7 +297,14 @@ try {
     // our manager's port is free again.
     // Check the registry, not the tree: a reparented survivor is no longer a
     // descendant of anything we launched.
+    // Survivors from both angles: anything we recorded that is still ours, and
+    // anything still sitting in our process group that we never even saw.
+    remember(groupMembers(child?.pid ?? -1));
     const leftovers = [...registry.values()].filter((e) => alive(e.pid) && stillOurs(e));
+    const strayGroup = child ? groupMembers(child.pid).filter((e) => !registry.has(e.pid)) : [];
+    for (const stray of strayGroup) {
+        try { process.kill(stray.pid, 'SIGKILL'); signalled.push(stray.pid); } catch { /* gone */ }
+    }
     let portFreed = true;
     if (report.checks['manager-came-up']?.port) {
         try {
@@ -277,7 +313,8 @@ try {
             portFreed = false;
         } catch { portFreed = true; }
     }
-    report.teardown = { signalled: [...new Set(signalled)], leftovers: leftovers.map((e) => e.pid), portFreed };
+    report.teardown = { signalled: [...new Set(signalled)], leftovers: leftovers.map((e) => e.pid),
+                        strayGroupMembers: strayGroup.map((e) => e.pid), portFreed };
     if (leftovers.length || !portFreed) {
         failures.push('teardown-left-processes');
         console.error(`FAIL teardown-left-processes  ${JSON.stringify(report.teardown)}`);

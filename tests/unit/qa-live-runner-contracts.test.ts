@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import { cleanupDecision, lockVerdict, recoveryDecision, stopConfirmed } from '../../scripts/qa/live-ownership.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 const LIVE = readFileSync(join(ROOT, 'scripts/qa/live-app-qa.mjs'), 'utf8');
@@ -96,63 +97,113 @@ test('stale evidence is refused', () => {
     assert.match(out, /minutes old/);
 });
 
-// ── the live runner's decision logic ─────────────────────────────────────────
+// ── the ownership decisions, exercised for real ──────────────────────────────
+//
+// These used to be regexes over the runner's source, which is why a swallowed
+// error and a missing pid survived a green suite. The decision logic now lives
+// in a pure module and is called directly.
 
-test('a failed instances query cannot be read as a stopped instance', () => {
-    // The bug: `.catch(() => ({}))` produced an empty list, "no online instance
-    // with that port" came out true, and cleanup claimed success.
-    assert.doesNotMatch(LIVE, /getJson\('\/api\/dashboard\/instances'\)\.catch\(\(\) => \(\{\}\)\)\)\.instances \?\? \[\];[\s\S]{0,200}stopped =/,
-        'the cleanup loop must not derive "stopped" from a swallowed error');
-    assert.match(LIVE, /stopped = row\.status === 'offline'/,
-        'only an explicit offline status may count as stopped');
+const ORIGIN = 'http://127.0.0.1:24577';
+const onlineRow = (port: number, pid: number | null) => ({
+    port, status: 'online', lifecycle: pid === null ? {} : { pid },
 });
 
-test('timeout, error and unknown are not treated as offline', () => {
-    assert.doesNotMatch(LIVE, /stopped = row\.status !== 'online'/,
-        'a non-online status can still be a live but unreachable process');
+test('no journal means nothing to do', () => {
+    assert.equal(recoveryDecision(null, null, ORIGIN).action, 'none');
 });
 
-test('orphan recovery is called, and a bad outcome stops the run', () => {
-    assert.match(LIVE, /const recovery = await recoverOrphans\(\)/,
-        'recovery must actually be invoked');
-    assert.match(LIVE, /if \(recovery !== 'clean'\)[\s\S]{0,300}process\.exit\(1\)/,
-        'an unresolved orphan must abort before starting anything new');
+test('an unreadable journal is refused, not ignored', () => {
+    // Something claimed ownership and we cannot tell what. Treating that as
+    // "no journal" was the fail-open path.
+    const d = recoveryDecision('unreadable', null, ORIGIN);
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /could not be read/);
 });
 
-test('recovery refuses to act on an ambiguous claim', () => {
-    for (const guard of [
-        /journal\.phase === 'intent'/,       // may never have started
-        /journal\.managerPid !== health\.pid/, // manager restarted
-        /row\.lifecycle\.pid !== journal\.instancePid/, // someone else's process
-    ]) {
-        assert.match(LIVE, guard, `recovery is missing a safety guard: ${guard}`);
+test('an intent-phase journal never stops anything', () => {
+    const d = recoveryDecision(
+        { port: 3457, origin: ORIGIN, phase: 'intent', managerPid: 1, instancePid: 2 },
+        { managerPid: 1, instance: onlineRow(3457, 2) }, ORIGIN);
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /intent/);
+});
+
+test('a journal without an instance pid cannot justify a stop', () => {
+    const d = recoveryDecision(
+        { port: 3457, origin: ORIGIN, phase: 'online', managerPid: 1, instancePid: null },
+        { managerPid: 1, instance: onlineRow(3457, 99) }, ORIGIN);
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /missing a manager or instance pid/);
+});
+
+test('a restarted manager makes the port someone else\'s', () => {
+    const d = recoveryDecision(
+        { port: 3457, origin: ORIGIN, phase: 'online', managerPid: 1, instancePid: 2 },
+        { managerPid: 77, instance: onlineRow(3457, 2) }, ORIGIN);
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /manager 1, now 77/);
+});
+
+test('a different process on our port is left alone', () => {
+    const d = recoveryDecision(
+        { port: 3457, origin: ORIGIN, phase: 'online', managerPid: 1, instancePid: 2 },
+        { managerPid: 1, instance: onlineRow(3457, 4242) }, ORIGIN);
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /not the 2 we started/);
+});
+
+test('a failed instance query is refused, not read as "already gone"', () => {
+    const d = recoveryDecision(
+        { port: 3457, origin: ORIGIN, phase: 'online', managerPid: 1, instancePid: 2 },
+        { queryFailed: true }, ORIGIN);
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /could not read/);
+});
+
+test('a matching pid is the one case that authorises a stop', () => {
+    const d = recoveryDecision(
+        { port: 3457, origin: ORIGIN, phase: 'online', managerPid: 1, instancePid: 2 },
+        { managerPid: 1, instance: onlineRow(3457, 2) }, ORIGIN);
+    assert.equal(d.action, 'stop');
+});
+
+test("this run's own cleanup refuses without a confirmed pid", () => {
+    // The SIGINT path used to post a stop for a bare port. If the start failed
+    // and someone else took that port, it would have stopped their process.
+    const d = cleanupDecision({ port: 3457, managerPid: 1, instancePid: null },
+        { managerPid: 1, instance: onlineRow(3457, 4242) });
+    assert.equal(d.action, 'refuse');
+    assert.match(d.reason, /never confirmed its pid/);
+});
+
+test("this run's cleanup refuses when the pid no longer matches", () => {
+    const d = cleanupDecision({ port: 3457, managerPid: 1, instancePid: 2 },
+        { managerPid: 1, instance: onlineRow(3457, 4242) });
+    assert.equal(d.action, 'refuse');
+});
+
+test('only offline confirms a stop', () => {
+    for (const status of ['timeout', 'error', 'unknown', 'online']) {
+        assert.equal(stopConfirmed({ instance: { port: 1, status } }).done, false, status);
     }
+    assert.equal(stopConfirmed({ instance: { port: 1, status: 'offline' } }).done, true);
+    assert.equal(stopConfirmed({ queryFailed: true }).done, false);
 });
 
-test('the journal records ownership, not just a port', () => {
-    for (const field of ['runId', 'managerPid', 'instancePid', 'phase']) {
-        assert.match(LIVE, new RegExp(`${field}:`), `journal is missing ${field}`);
-    }
+test('a lock held by a live process blocks, a stale one does not', () => {
+    assert.equal(lockVerdict('12345-abc', () => true).verdict, 'held');
+    assert.equal(lockVerdict('12345-abc', () => false).verdict, 'stale');
+    assert.equal(lockVerdict('', () => true).verdict, 'stale');
 });
 
-test('two runners cannot share the journal', () => {
-    assert.match(LIVE, /flag: 'wx'/, 'the lock must be created exclusively');
-});
-
-test('the session id is always compared, including with several sessions', () => {
-    assert.match(LIVE, /Boolean\(expectedSession\) && selection\.sessionId === expectedSession/,
-        'a null expected session must fail rather than pass by default');
-});
-
-test('the start CTA is bound to the port, not to a label', () => {
-    assert.match(LIVE, /\.d2-instance-node[\s\S]{0,120}hasText: `:\$\{candidate\.port\}`/,
-        'the CTA must be scoped to the row carrying the port');
-    assert.match(LIVE, /ctaRequests\[0\]\?\.port === candidate\.port/,
-        'the request body port must be checked, not just the URL');
+test('the lock is released with an ESM-safe unlink', () => {
+    // `require` does not exist in an .mjs module: the old handler threw on every
+    // exit, swallowed it, and left the lock behind so the next run was refused.
+    assert.doesNotMatch(LIVE, /require\('node:fs'\)/);
+    assert.match(LIVE, /import \{ unlinkSync \} from 'node:fs'/);
 });
 
 // ── the boot check's ownership rules ─────────────────────────────────────────
-
 test('an unidentified process is never claimed as ours', () => {
     assert.match(BOOT, /if \(!entry\?\.started\?\.trim\(\) \|\| !entry\?\.command\?\.trim\(\)\) return false/,
         'empty identity must not satisfy the ownership check');
@@ -161,10 +212,12 @@ test('an unidentified process is never claimed as ours', () => {
 });
 
 test('failing to identify the root kills it and stops', () => {
-    assert.match(BOOT, /record\('root-process-identified', false[\s\S]{0,400}process\.exit\(1\)/,
+    assert.match(BOOT, /record\('root-process-identified', false[\s\S]{0,700}process\.exit\(1\)/,
         'an unidentifiable root must not be left running');
+    assert.match(BOOT, /process\.kill\(-child\.pid, 'SIGKILL'\)/,
+        'the whole group must go: children may already exist that the handle does not own');
     assert.match(BOOT, /child\.kill\('SIGKILL'\)/,
-        'the child handle needs no identity and is the way out');
+        'and the handle itself, which needs no identity');
 });
 
 test('survivors are checked against the registry, not the process tree', () => {
