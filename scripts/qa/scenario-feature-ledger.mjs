@@ -17,6 +17,12 @@ const PANEL = {
     employees: { panel: 'employees', waitFor: '.d2-employees-panel' },
 };
 
+// The side pane is narrow, which puts the board in compact mode at the
+// default 1440x900 viewport: it renders one lane as a <select> instead of
+// every lane (BoardPanel.tsx:96,364). A wider viewport keeps the pane wide
+// enough to show all lanes, which is what the lane-level rows assert on.
+const BOARD_WIDE = { width: 1920, height: 1000 };
+
 export const FEATURE_SCENARIOS = [
     // ── employees ───────────────────────────────────────────────────────────
     // Three sub-requests, fan-out via Promise.allSettled. employees is
@@ -118,6 +124,159 @@ export const FEATURE_SCENARIOS = [
         },
         selector: '.d2-employee-row .is-attention',
         expected: 'blocked',
+    },
+
+    // ── board ───────────────────────────────────────────────────────────────
+    // BoardPanel tracks loading, a shared error, creating and per-task busyIds.
+    {
+        id: 'board-loading',
+        branchId: 'BoardPanel-loading-65ewcf',
+        reachability: 'integration',
+        axis: 'loading', target: 'StatePanel',
+        why: 'the task list is in flight and there is nothing cached',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { holdList: true } },
+        selector: '.d2-board-state[role="status"]',
+        expected: 'Loading board',
+    },
+    {
+        id: 'board-load-error',
+        branchId: 'BoardPanel-error-100jhrs',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the list read failed',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { listStatus: 500 } },
+        selector: '.d2-board-error[role="alert"]',
+        requires: '.d2-board-error button',
+    },
+    {
+        id: 'board-all-empty',
+        branchId: 'BoardPanel-laneTaskslength-d5vk33',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'every lane renders its own "No tasks" placeholder',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [] } },
+        selector: '.d2-board-lane-empty',
+        expected: 'No tasks',
+    },
+    {
+        id: 'board-some-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'a lane with tasks sits beside lanes that are empty',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [{ id: 'task-1', title: 'wp5c board task', lane: 'ready' }] } },
+        // The pane is always compact, so the task sits in the Todo lane and
+        // must be selected before it is visible. In compact mode the OTHER
+        // lanes are not rendered, so the empty-lane placeholder cannot
+        // co-exist with a visible card — that combination is a wide-mode-only
+        // state and is delegated to the visual gate instead of asserted here.
+        actions: [{ kind: 'select', selector: '.d2-board-lane-picker select', value: 'todo' }],
+        selector: '.d2-board-card',
+        expected: 'wp5c board task',
+    },
+    {
+        id: 'board-composer-open',
+        reachability: 'integration',
+        axis: 'ready', target: 'Form',
+        why: 'opening the create form shows Title/Lane before any POST',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [] } },
+        actions: [{ kind: 'click', selector: '.d2-board-create-button' }],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/board/tasks', count: 0 }],
+        selector: '#d2-board-composer',
+        requires: '.d2-board-title-field input',
+    },
+    {
+        id: 'board-create-busy',
+        reachability: 'integration',
+        axis: 'loading', target: 'Form',
+        why: 'creating disables the submit while the POST is in flight',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [], holdCreate: true } },
+        actions: [
+            { kind: 'click', selector: '.d2-board-create-button' },
+            { kind: 'type', selector: '.d2-board-title-field input', text: 'wp5c new board task' },
+            { kind: 'click', selector: '.d2-board-submit:not([disabled])' },
+        ],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/board/tasks', count: 1, bodyIncludes: { title: 'wp5c new board task', lane: 'backlog' } }],
+        selector: '.d2-board-submit[disabled]',
+        expected: 'Creating',
+    },
+    {
+        id: 'board-create-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the create POST was rejected',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [], createStatus: 500 } },
+        actions: [
+            { kind: 'click', selector: '.d2-board-create-button' },
+            { kind: 'type', selector: '.d2-board-title-field input', text: 'wp5c failing task' },
+            { kind: 'click', selector: '.d2-board-submit:not([disabled])' },
+        ],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/board/tasks', count: 1 }],
+        selector: '.d2-board-error[role="alert"]',
+    },
+    {
+        id: 'board-edit-busy',
+        reachability: 'integration',
+        axis: 'loading', target: 'Form',
+        why: 'the edit dialog disables its fields while the save is in flight',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [{ id: 'task-1', title: 'wp5c busy task', lane: 'ready' }], holdUpdate: true } },
+        actions: [
+            { kind: 'select', selector: '.d2-board-lane-picker select', value: 'todo' },
+            { kind: 'click', selector: '.d2-board-card-body[data-board-task-id="task-1"]' },
+            { kind: 'type', selector: '.d2-board-dialog-field input', text: 'wp5c busy task edited' },
+            { kind: 'click', selector: '.d2-board-dialog-save:not([disabled])' },
+        ],
+        expectRequests: [{ method: 'PATCH', path: '/api/dashboard/board/tasks/task-1', count: 1 }],
+        selector: '.d2-board-dialog-save[disabled]',
+        expected: 'Saving',
+    },
+    {
+        id: 'board-edit-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the edit PATCH was rejected; one of the shared-error producers',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [{ id: 'task-1', title: 'wp5c edit task', lane: 'ready' }], updateStatus: 500 } },
+        actions: [
+            { kind: 'select', selector: '.d2-board-lane-picker select', value: 'todo' },
+            { kind: 'click', selector: '.d2-board-card-body[data-board-task-id="task-1"]' },
+            { kind: 'type', selector: '.d2-board-dialog-field input', text: 'wp5c edit task changed' },
+            { kind: 'click', selector: '.d2-board-dialog-save:not([disabled])' },
+        ],
+        expectRequests: [{ method: 'PATCH', path: '/api/dashboard/board/tasks/task-1', count: 1 }],
+        selector: '.d2-board-error[role="alert"]',
+    },
+    {
+        id: 'board-delete-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the delete was rejected; the other shared-error producer',
+        ...PANEL.board,
+        viewport: BOARD_WIDE,
+        levers: { board: { tasks: [{ id: 'task-1', title: 'wp5c delete task', lane: 'ready' }], deleteStatus: 500 } },
+        actions: [
+            { kind: 'select', selector: '.d2-board-lane-picker select', value: 'todo' },
+            { kind: 'click', selector: '.d2-board-card-body[data-board-task-id="task-1"]' },
+            { kind: 'click', selector: '.d2-board-dialog-delete' },
+        ],
+        expectRequests: [{ method: 'DELETE', path: '/api/dashboard/board/tasks/task-1', count: 1 }],
+        selector: '.d2-board-error[role="alert"]',
     },
 ];
 

@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetBoard(); window.__jawE2E.setBoard({ tasks: [{id:'task-1',title:'wp5c busy task',lane:'todo'}] }); });
+await page.evaluate(() => window.__jawE2E.openPanel('board'));
+await page.waitForTimeout(1500);
+console.log('ERR TEXT:', await page.evaluate(() => document.querySelector('.d2-board-error')?.textContent));
+console.log('REQS:', await page.evaluate(() => window.__jawE2E.diagnostics().requests));
+console.log('BODY:', await page.evaluate(async () => { const r = await fetch('/api/dashboard/board/tasks'); return r.status + ' ' + (await r.text()).slice(0,200); }));
+await browser.close(); await server.close();

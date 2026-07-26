@@ -61,6 +61,12 @@ async function perform(page, action) {
             await target.fill(action.text);
             return;
         }
+        case 'select': {
+            const target = page.locator(action.selector).first();
+            await target.waitFor({ state: 'visible', timeout: 5_000 });
+            await target.selectOption(action.value);
+            return;
+        }
         case 'pick-model': {
             // Scoped to the code tab's own control. The chat composer renders
             // a model picker too, and an unscoped `.first()` drove THAT one —
@@ -189,7 +195,13 @@ function judgeDom(scenario, seen) {
 try {
     for (const scenario of status.integrationScenarios) {
         if (only && scenario.id !== only) continue;
-        const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+        // A scenario may pin a viewport: the board collapses to a compact
+        // single-lane picker below 420px and only shows every lane at a wide
+        // width, which changes what its rows can assert.
+        const { browser, page } = await openFixture(server.url, {
+            historyCount: 10,
+            ...(scenario.viewport ? { viewport: scenario.viewport } : {}),
+        });
         try {
             if (scenario.chunkDelay) {
                 // The harness replaces window.fetch, which a dynamic import
@@ -258,7 +270,10 @@ try {
                     .catch(() => {});
             }
             const seen = await observe(page, scenario);
-            const sent = await page.evaluate((since) => window.__jawE2E.codeRequests(since), mark);
+            // All requests, not a per-surface subset: the oracle's path filter
+            // is what scopes the claim, so a board/notes/schedule request must
+            // be visible here just as a code one is.
+            const sent = await page.evaluate((since) => window.__jawE2E.allRequests(since), mark);
             const domProblem = judgeDom(scenario, seen);
             const requestProblems = judgeRequests(scenario, sent);
             const why = [domProblem, ...requestProblems].filter(Boolean).join('; ');

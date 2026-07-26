@@ -1,0 +1,18 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetBoard(); window.__jawE2E.setBoard({ tasks: [], holdCreate: true }); });
+await page.evaluate(() => window.__jawE2E.openPanel('board'));
+await page.waitForTimeout(1200);
+await page.locator('.d2-board-create-button').click();
+await page.waitForTimeout(300);
+console.log('FORM:', await page.evaluate(() => document.querySelector('#d2-board-composer') ? 'open' : 'closed'));
+await page.locator('.d2-board-title-field input').fill('wp5c new board task');
+const mark = await page.evaluate(() => window.__jawE2E.markRequests());
+const btn = page.locator('.d2-board-submit:not([disabled])');
+console.log('BTN enabled:', await btn.count());
+await btn.click();
+await page.waitForTimeout(1200);
+console.log('REQS:', await page.evaluate((s) => window.__jawE2E.codeRequests(s).map(r=>r.method+' '+r.pathname+' '+JSON.stringify(r.body)), mark));
+console.log('ALL REQS tail:', await page.evaluate(() => window.__jawE2E.api.recorded.slice(-4).map(r=>r.method+' '+r.pathname)));
+await browser.close(); await server.close();

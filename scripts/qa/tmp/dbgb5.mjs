@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10, viewport: { width: 1920, height: 1000 } });
+await page.evaluate(() => window.__jawE2E.openPanel('board'));
+await page.waitForTimeout(1500);
+console.log('DIAG:', await page.evaluate(() => JSON.stringify(window.__jawE2E.diagnostics())));
+console.log('PANE WIDTH:', await page.evaluate(() => document.querySelector('.d2-side-pane')?.getBoundingClientRect().width));
+console.log('BOARD CLASS:', await page.evaluate(() => document.querySelector('.d2-board-panel')?.className));
+console.log('REQS:', await page.evaluate(() => window.__jawE2E.diagnostics().requests));
+await browser.close(); await server.close();

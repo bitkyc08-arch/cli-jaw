@@ -146,6 +146,24 @@ export interface ScheduleFixtureConfig {
     holdDispatch?: boolean;
 }
 
+/**
+ * How the board should answer. The panel tracks `loading`, a shared
+ * `error`, `creating` and per-task `busyIds` (BoardPanel.tsx:51-61), so each
+ * verb is independently bendable to reach the in-flight frames and to split
+ * the shared error's producers.
+ */
+export interface BoardFixtureConfig {
+    tasks?: JsonRecord[];
+    listStatus?: number;
+    holdList?: boolean;
+    createStatus?: number;
+    holdCreate?: boolean;
+    updateStatus?: number;
+    holdUpdate?: boolean;
+    deleteStatus?: number;
+    holdDelete?: boolean;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -214,6 +232,8 @@ class FakeApiRouter {
     employees: EmployeesFixtureConfig = {};
     /** Schedule sub-view; see ScheduleFixtureConfig. */
     schedule: ScheduleFixtureConfig = {};
+    /** Board surface; see BoardFixtureConfig. */
+    board: BoardFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -327,7 +347,7 @@ class FakeApiRouter {
         }
 
         if (url.pathname.startsWith('/api/dashboard/notes/')) return this.notes(url, method, payload);
-        if (url.pathname.startsWith('/api/dashboard/board/tasks')) return this.board(url, method, payload);
+        if (url.pathname.startsWith('/api/dashboard/board/tasks')) return this.boardApi(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/reminders')) return this.reminder(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/schedule/work')) return this.schedule(url, method, payload);
 
@@ -576,17 +596,38 @@ class FakeApiRouter {
         return json({});
     }
 
-    private board(url: URL, method: string, payload: JsonRecord): Response {
-        if (method === 'GET') return json({ ok: true, tasks: this.tasks });
+    private boardApi(url: URL, method: string, payload: JsonRecord): Response {
+        const cfg = this.board;
+        if (method === 'GET') {
+            if (cfg.holdList) return pending();
+            if (cfg.listStatus && cfg.listStatus >= 400) {
+                return json({ ok: false, error: 'board unreadable' }, cfg.listStatus);
+            }
+            return json({ ok: true, tasks: cfg.tasks ?? this.tasks });
+        }
         const id = decodeURIComponent(url.pathname.split('/').pop() ?? '');
         if (method === 'PATCH') {
+            if (cfg.holdUpdate) return pending();
+            if (cfg.updateStatus && cfg.updateStatus >= 400) {
+                return json({ ok: false, error: 'task update rejected' }, cfg.updateStatus);
+            }
             const task = this.tasks.find(item => item['id'] === id)!;
             Object.assign(task, payload, { updatedAt: new Date(BASE_TIME + 1_000).toISOString() });
             return json({ ok: true, task });
         }
         if (method === 'POST') {
+            if (cfg.holdCreate) return pending();
+            if (cfg.createStatus && cfg.createStatus >= 400) {
+                return json({ ok: false, error: 'task create rejected' }, cfg.createStatus);
+            }
             const task = { id: `task-${this.tasks.length + 1}`, title: String(payload['title']), summary: null, detail: null, lane: String(payload['lane'] ?? 'backlog'), port: PORT, threadKey: null, notePath: null, source: 'user', createdAt: new Date(BASE_TIME).toISOString(), updatedAt: new Date(BASE_TIME).toISOString() };
             this.tasks.push(task); return json({ ok: true, task });
+        }
+        if (method === 'DELETE') {
+            if (cfg.holdDelete) return pending();
+            if (cfg.deleteStatus && cfg.deleteStatus >= 400) {
+                return json({ ok: false, error: 'task delete rejected' }, cfg.deleteStatus);
+            }
         }
         return json({ ok: true });
     }
@@ -712,11 +753,17 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetEmployees() { router.employees = {}; },
         setSchedule(config) { router.schedule = config ?? {}; },
         resetSchedule() { router.schedule = {}; },
+        setBoard(config) { router.board = config ?? {}; },
+        resetBoard() { router.board = {}; },
         markRequests() { return router.recorded.length; },
         codeRequests(since = 0) {
             return router.recorded
                 .slice(since)
                 .filter(entry => entry.pathname.includes('/api/code/'));
+        },
+        /** Every recorded request since `since`, regardless of surface. */
+        allRequests(since = 0) {
+            return router.recorded.slice(since);
         },
         setFileTree(response) { router.fileTreeResponse = response; },
         setHoldInstances(hold) { router.holdInstances = hold; },
@@ -761,9 +808,12 @@ declare global {
             resetEmployees(): void;
             setSchedule(config: ScheduleFixtureConfig | null): void;
             resetSchedule(): void;
+            setBoard(config: BoardFixtureConfig | null): void;
+            resetBoard(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];
+            allRequests(since?: number): RecordedRequest[];
             setFileTree(response: Record<string, unknown> | null): void;
             setHoldInstances(hold: boolean): void;
             setDropWorkingDir(drop: boolean): void;
