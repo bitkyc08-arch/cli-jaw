@@ -24,11 +24,11 @@ import { WidgetSegment } from './segments/WidgetSegment.tsx';
 
 const OVERSIZE_BYTES = 1024 * 1024;
 
-function StructuredSlot({ slot }: { slot: Extract<MarkdownSlot, { kind: 'structured' }> }): ReactElement {
+function StructuredSlot({ slot, identity }: { slot: Extract<MarkdownSlot, { kind: 'structured' }>; identity: RenderIdentity }): ReactElement {
     const resolved = resolveStructuredFence({ fenceKind: slot.fenceKind, rawSpec: slot.rawSpec, ordinal: slot.ordinal });
     if (resolved.kind === 'fallback') return <CodeBlockSegment code={resolved.escapedSource} language={slot.fenceKind} openFence={false} />;
     const Adapter = resolved.component;
-    return <Adapter spec={resolved.spec as never} />;
+    return <Adapter spec={resolved.spec as never} identity={identity} slotId={slot.id} />;
 }
 function WidgetSlot({ descriptor, identity }: { descriptor: WidgetDescriptor; identity: RenderIdentity }): ReactElement {
     const [expanded, setExpanded] = useState(false);
@@ -69,7 +69,7 @@ function MarkdownWithSlots({ result, identity }: { result: MarkdownRenderResult;
         else if (slot.kind === 'math') content = <MathSlot slot={slot} scrollRoot={scrollRoot} />;
         else if (slot.kind === 'mermaid') content = <MermaidSegment source={slot.source} identity={identity} scrollRoot={scrollRoot} />;
         else if (slot.kind === 'diff') content = <UnifiedDiffSegment source={slot.source} identity={identity} />;
-        else if (slot.kind === 'structured') content = <StructuredSlot slot={slot} />;
+        else if (slot.kind === 'structured') content = <StructuredSlot slot={slot} identity={identity} />;
         else if (slot.kind === 'widget') { const descriptor = normalizeWidgetSlot({ kind: 'widget', ...slot.widget }); content = descriptor ? <WidgetSlot descriptor={descriptor} identity={identity} /> : <CodeBlockSegment code={slot.widget.storage === 'inline' ? slot.widget.source : slot.widget.widgetId} language="text" openFence={false} />; }
         else content = <ImageSegment src={slot.src} alt={slot.alt} title={slot.title} identity={identity} />;
         return createPortal(content, target, slot.id);
