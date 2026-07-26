@@ -18,7 +18,12 @@ test('the ledger covers every tool-tab branch the manifest knows about', () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/wp12-state-manifest.json'), 'utf8')) as {
         branches: Array<{ id: string; file: string }>;
     };
-    const expected = manifest.branches.filter(b => /(Terminal|Browser|FileTree|Doc|Design|Diff)Panel\.tsx$/.test(b.file));
+    // wp5b widened the sweep from the six tool tabs to the code tab too, so the
+    // denominator is no longer only *Panel.tsx components.
+    const expected = manifest.branches.filter(
+        b => /(Terminal|Browser|FileTree|Doc|Design|Diff)Panel\.tsx$/.test(b.file)
+            || /(CodeTabGate|CodeTab|CodeModelControl|CodeHistoryList)\.tsx$/.test(b.file),
+    );
     assert.equal(rows.length, expected.length, 'a branch in the manifest with no ledger row is unswept by definition');
     assert.deepEqual(
         rows.map(r => r.id).sort(),
@@ -69,7 +74,10 @@ test('every branch has one of the three reachability verdicts', () => {
     assert.deepEqual(invalid, [], 'reachability must use the audited three-class vocabulary');
 });
 
-test('the real integration gate denominator stays at the audited 24 branches', () => {
+test('the real integration gate denominator stays at the audited 33 branches', () => {
+    // wp5a audited 24 tool-tab integration branches; wp5b swept the code tab
+    // and found 9 more (a tenth, historystate-9e0ueb, is shadowed because
+    // nothing produces it). This number only moves with an audited change.
     const integration = rows.filter(r => r.reachability === 'integration').length;
-    assert.equal(integration, 24);
+    assert.equal(integration, 33);
 });
