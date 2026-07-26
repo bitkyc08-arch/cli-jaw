@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => window.__jawE2E.openPanel('notes'));
+await page.waitForTimeout(2000);
+console.log('NOTES PANEL:', await page.evaluate(() => document.querySelector('.d2-notes-panel, .d2-notes-workspace, .d2-notes-empty-state')?.className ?? 'NONE'));
+console.log('TREE STATE:', await page.evaluate(() => document.querySelector('.d2-notes-tree-state')?.textContent?.trim() ?? 'none'));
+console.log('UNKNOWN:', await page.evaluate(() => window.__jawE2E.diagnostics().unknownRequests));
+console.log('CONSOLE:', page.consoleErrors.slice(0,3));
+await browser.close(); await server.close();

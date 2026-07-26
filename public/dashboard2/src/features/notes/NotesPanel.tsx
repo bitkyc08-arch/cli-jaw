@@ -35,6 +35,13 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
     const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
     const [flashPath, setFlashPath] = useState<string | null>(null);
+    /*
+     * A create/folder/rename/trash failure. These four mutations used to
+     * `await` with no `catch`, so a rejected request was an unhandled
+     * rejection that rendered nothing at all — unlike a save error, which has
+     * a notice, the user got no signal that their action did not happen.
+     */
+    const [mutationError, setMutationError] = useState<string | null>(null);
     const flashTimer = useRef<number | null>(null);
     const noteDocument = useNoteDocument();
     const scope = useAppScope();
@@ -84,16 +91,24 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
         const name = prompt('Note name:');
         if (!name) return;
         const path = name.endsWith('.md') ? name : `${name}.md`;
-        await createNoteFile(path);
-        setSelectedPath(path);
-        void model.refresh(path);
+        try {
+            await createNoteFile(path);
+            setSelectedPath(path);
+            void model.refresh(path);
+        } catch (cause) {
+            setMutationError(cause instanceof Error ? cause.message : String(cause));
+        }
     }, [model]);
 
     const handleCreateFolder = useCallback(async () => {
         const name = prompt('Folder name:');
         if (!name) return;
-        await createNoteFolder(name);
-        void model.refresh(selectedPath);
+        try {
+            await createNoteFolder(name);
+            void model.refresh(selectedPath);
+        } catch (cause) {
+            setMutationError(cause instanceof Error ? cause.message : String(cause));
+        }
     }, [model, selectedPath]);
 
     const handleRename = useCallback(async (path: string) => {
@@ -102,16 +117,24 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
         const newName = prompt('Rename to:', current);
         if (!newName || newName === current) return;
         const newPath = parts.length > 1 ? [...parts.slice(0, -1), newName].join('/') : newName;
-        await renameNotePath(path, newPath);
-        if (selectedPath === path) setSelectedPath(newPath);
-        void model.refresh(selectedPath === path ? newPath : selectedPath);
+        try {
+            await renameNotePath(path, newPath);
+            if (selectedPath === path) setSelectedPath(newPath);
+            void model.refresh(selectedPath === path ? newPath : selectedPath);
+        } catch (cause) {
+            setMutationError(cause instanceof Error ? cause.message : String(cause));
+        }
     }, [model, selectedPath]);
 
     const handleTrash = useCallback(async (path: string) => {
         if (!confirm(`Delete "${path.split('/').pop()}"?`)) return;
-        await trashNotePath(path);
-        if (selectedPath === path) setSelectedPath(null);
-        void model.refresh(null);
+        try {
+            await trashNotePath(path);
+            if (selectedPath === path) setSelectedPath(null);
+            void model.refresh(null);
+        } catch (cause) {
+            setMutationError(cause instanceof Error ? cause.message : String(cause));
+        }
     }, [model, selectedPath]);
 
     useEffect(() => { if (active && selectedPath) void noteDocument.load(selectedPath); }, [active, selectedPath, noteDocument.load]);
@@ -170,6 +193,7 @@ function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
     return (
         <section className={`d2-feature-panel d2-notes-panel${compactEditorOpen ? ' is-compact-editor-open' : ''}`} style={{ '--notes-tree-width': `${treeWidth}px` } as CSSProperties} aria-label="Notes workspace">
             <aside className="d2-notes-sidebar" aria-label="Notes browser">
+                {mutationError ? <div className="d2-notes-notice is-error" role="alert"><span>{mutationError}</span><button type="button" onClick={() => setMutationError(null)}>Dismiss</button></div> : null}
                 <NotesFileTree tree={model.filteredTree} selectedPath={selectedPath} expandedDirs={expandedDirs} loading={model.loading} flashPath={flashPath} onSelect={selectPath} onToggleDir={path => setExpandedDirs(prev => { const n = new Set(prev); if (n.has(path)) n.delete(path); else n.add(path); return n; })} onCreateFile={() => void handleCreateFile()} onCreateFolder={() => void handleCreateFolder()} onRename={path => void handleRename(path)} onTrash={path => void handleTrash(path)} onRefresh={() => void model.refresh(selectedPath)} />
             </aside>
             <div className="d2-notes-divider" role="separator" aria-orientation="vertical" onPointerDown={resizeTree} />

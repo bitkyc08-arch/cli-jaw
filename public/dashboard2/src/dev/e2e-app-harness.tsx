@@ -180,6 +180,27 @@ export interface RemindersFixtureConfig {
     holdUpdate?: boolean;
 }
 
+/**
+ * How the notes surface should answer. NotesPanel splits errors between the
+ * model (tree/index) and the document (open note), and a 409 on save is what
+ * produces the conflict screen. Each is independently bendable.
+ */
+export interface NotesFixtureConfig {
+    holdTree?: boolean;
+    treeStatus?: number;
+    tree?: JsonRecord[] | null;
+    indexStatus?: number;
+    holdFile?: boolean;
+    fileStatus?: number;
+    /** Force a 409 on PUT /file, the revision-conflict the UI turns into the
+     *  Reload/Overwrite screen. */
+    fileConflict?: boolean;
+    saveStatus?: number;
+    holdSave?: boolean;
+    /** Status for create/rename/trash mutations (DEFECT-C regression). */
+    mutationStatus?: number;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -252,6 +273,8 @@ class FakeApiRouter {
     board: BoardFixtureConfig = {};
     /** Reminders surface; see RemindersFixtureConfig. */
     reminders: RemindersFixtureConfig = {};
+    /** Notes surface; see NotesFixtureConfig. */
+    notes: NotesFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -364,7 +387,7 @@ class FakeApiRouter {
             return json({ ok: true, entries: [{ name: 'fixture.txt', path: '/tmp/wp4-e2e/fixture.txt', type: 'file', size: 12 }] });
         }
 
-        if (url.pathname.startsWith('/api/dashboard/notes/')) return this.notes(url, method, payload);
+        if (url.pathname.startsWith('/api/dashboard/notes/')) return this.notesApi(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/board/tasks')) return this.boardApi(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/reminders')) return this.reminder(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/schedule/work')) return this.scheduleApi(url, method, payload);
@@ -597,19 +620,42 @@ class FakeApiRouter {
         return json({ ok: true, items: [] });
     }
 
-    private notes(url: URL, method: string, payload: JsonRecord): Response {
+    private notesApi(url: URL, method: string, payload: JsonRecord): Response {
+        const cfg = this.notes;
         if (url.pathname.endsWith('/info')) return json({ root: '/tmp/wp4-e2e/notes' });
         if (url.pathname.endsWith('/version')) return json({ version: 1 });
-        if (url.pathname.endsWith('/tree')) return json([{ path: 'daily', name: 'daily', kind: 'folder', mtimeMs: 1, size: 0, children: [{ path: this.note.path, name: this.note.name, kind: 'file', mtimeMs: 1, size: this.note.content.length }] }]);
-        if (url.pathname.endsWith('/index')) return json({ version: 1, notes: [{ path: this.note.path, title: 'Today', aliases: [], tags: ['wp4'], mtimeMs: 1, size: this.note.content.length, revision: this.note.revision }], outgoingLinks: {}, backlinks: {}, unresolvedLinks: [] });
+        if (url.pathname.endsWith('/tree')) {
+            if (cfg.holdTree) return pending();
+            if (cfg.treeStatus && cfg.treeStatus >= 400) return json({ error: 'notes tree unreadable' }, cfg.treeStatus);
+            if (cfg.tree) return json(cfg.tree);
+            return json([{ path: 'daily', name: 'daily', kind: 'folder', mtimeMs: 1, size: 0, children: [{ path: this.note.path, name: this.note.name, kind: 'file', mtimeMs: 1, size: this.note.content.length }] }]);
+        }
+        if (url.pathname.endsWith('/index')) {
+            if (cfg.indexStatus && cfg.indexStatus >= 400) return json({ error: 'notes index unreadable' }, cfg.indexStatus);
+            return json({ version: 1, notes: [{ path: this.note.path, title: 'Today', aliases: [], tags: ['wp4'], mtimeMs: 1, size: this.note.content.length, revision: this.note.revision }], outgoingLinks: {}, backlinks: {}, unresolvedLinks: [] });
+        }
         if (url.pathname.endsWith('/search')) return json(url.searchParams.get('q')?.toLowerCase().includes('wp4') ? [{ path: this.note.path, title: 'Today', snippet: 'WP4 note', line: 3, score: 1 }] : []);
         if (url.pathname.endsWith('/file')) {
+            if (cfg.holdFile) return pending();
+            if (cfg.fileStatus && cfg.fileStatus >= 400) return json({ error: 'note unreadable' }, cfg.fileStatus);
             if (method === 'PUT') {
+                if (cfg.holdSave) return pending();
+                if (cfg.fileConflict) {
+                    // isRevisionConflict requires BOTH the 409 and this exact
+                    // code (note-revisions.ts:6); a bare 409 is just an error.
+                    return json({ error: 'Note revision conflict', code: 'note_revision_conflict', revision: 'r99' }, 409);
+                }
+                if (cfg.saveStatus && cfg.saveStatus >= 400) return json({ error: 'note save rejected' }, cfg.saveStatus);
                 this.note.content = String(payload['content'] ?? this.note.content);
                 this.note.revision = `r${Number(this.note.revision.slice(1)) + 1}`;
                 this.note.size = this.note.content.length;
             }
             return json(this.note);
+        }
+        if (url.pathname.endsWith('/folder') || url.pathname.endsWith('/rename') || url.pathname.endsWith('/trash')) {
+            if (cfg.mutationStatus && cfg.mutationStatus >= 400) {
+                return json({ error: 'notes mutation rejected' }, cfg.mutationStatus);
+            }
         }
         if (url.pathname.endsWith('/templates')) return json([]);
         return json({});
@@ -764,6 +810,9 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
     }
     Object.defineProperty(window, 'EventSource', { configurable: true, value: FakeEventSource });
     Object.defineProperty(window, 'confirm', { configurable: true, value: () => true });
+    // The notes create/rename flows prompt for a name; a fixed answer keeps
+    // them deterministic and lets a mutation actually fire.
+    Object.defineProperty(window, 'prompt', { configurable: true, value: () => 'wp5c-renamed.md' });
 
     window.__jawE2E = {
         api: router,
@@ -793,6 +842,8 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetBoard() { router.board = {}; },
         setReminders(config) { router.reminders = config ?? {}; },
         resetReminders() { router.reminders = {}; },
+        setNotes(config) { router.notes = config ?? {}; },
+        resetNotes() { router.notes = {}; },
         markRequests() { return router.recorded.length; },
         codeRequests(since = 0) {
             return router.recorded
@@ -850,6 +901,8 @@ declare global {
             resetBoard(): void;
             setReminders(config: RemindersFixtureConfig | null): void;
             resetReminders(): void;
+            setNotes(config: NotesFixtureConfig | null): void;
+            resetNotes(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];

@@ -1,0 +1,619 @@
+{
+  "when": "2026-07-26T12:37:16.251Z",
+  "total": 78,
+  "integration": 76,
+  "shadowed": 2,
+  "withActions": 44,
+  "withRequestOracle": 34,
+  "proven": 76,
+  "results": [
+    {
+      "id": "gate-probing",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-state-1kxofnn",
+      "ok": true,
+      "saw": "Checking Code runtime…"
+    },
+    {
+      "id": "gate-missing-binary",
+      "axis": "prerequisite",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "jwc is not installedInstall the external JWC runtime (jaw jwc install) to use Code sessions. Jaw kee"
+    },
+    {
+      "id": "gate-acp-unsupported",
+      "axis": "unsupported",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "jwc version is not ACP-compatibleThe installed jwc does not answer the ACP handshake. Update jwc to "
+    },
+    {
+      "id": "gate-temporarily-unavailable",
+      "axis": "error",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "Code runtime is temporarily unavailableThe capability probe could not reach a working jwc runtime. R"
+    },
+    {
+      "id": "gate-retry",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "Checking…"
+    },
+    {
+      "id": "tab-suspense",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-state-1d583p4",
+      "ok": true,
+      "saw": "Loading Code…"
+    },
+    {
+      "id": "history-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "CodeHistoryList-historystate-1rc35h3",
+      "ok": true,
+      "saw": "Loading Code history…"
+    },
+    {
+      "id": "history-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": "CodeHistoryList-historystate-1k3sbx",
+      "ok": true,
+      "saw": "No Code sessions yet"
+    },
+    {
+      "id": "history-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeHistoryList-historystate-1ee5oob",
+      "ok": true,
+      "saw": "History unavailable: Stored Code sessions request failed (500)"
+    },
+    {
+      "id": "history-live-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp5b live session/tmp/wp4-e2e"
+    },
+    {
+      "id": "history-stored-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp5b stored session/tmp/wp4-e2e"
+    },
+    {
+      "id": "model-loading",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Provider and model for new Code sessionsLoading models…Loading model inventory"
+    },
+    {
+      "id": "model-ready",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Provider and model for new Code sessionsjwc · sonnet-4.6"
+    },
+    {
+      "id": "model-degraded",
+      "axis": "ready",
+      "target": "Note",
+      "branchId": null,
+      "ok": true,
+      "saw": "Using the available fallback model inventory."
+    },
+    {
+      "id": "model-empty-catalog",
+      "axis": "empty",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "No models available"
+    },
+    {
+      "id": "model-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeModelControl-error-59bdpt",
+      "ok": true,
+      "saw": "Code models request failed (400)"
+    },
+    {
+      "id": "model-switching",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Active Code session provider and modelsonnet-4.6"
+    },
+    {
+      "id": "model-switch-committed",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Active Code session provider and modeljwc · opus-4.2"
+    },
+    {
+      "id": "model-switch-unknown-model",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code model switch returned an unknown model"
+    },
+    {
+      "id": "model-switch-http-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code model switch request failed (400)"
+    },
+    {
+      "id": "new-session-no-model",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Select an available provider and model before starting a Code session"
+    },
+    {
+      "id": "new-session-no-cwd",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "No working directory for this instance"
+    },
+    {
+      "id": "list-error-no-session",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeTab-listError-uj7lsx",
+      "ok": true,
+      "saw": "Code session create request failed (500)"
+    },
+    {
+      "id": "composer-active",
+      "axis": "ready",
+      "target": "Composer",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "active-empty-transcript",
+      "axis": "empty",
+      "target": "Transcript",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "composer-send-disabled",
+      "axis": "disabled",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Send"
+    },
+    {
+      "id": "composer-busy",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Send"
+    },
+    {
+      "id": "prompt-success",
+      "axis": "ready",
+      "target": "Composer",
+      "branchId": null,
+      "ok": true,
+      "saw": "Send"
+    },
+    {
+      "id": "list-error-active-session",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeTab-listError-uj7lsx#2",
+      "ok": true,
+      "saw": "Code prompt request failed (500)"
+    },
+    {
+      "id": "cancel-request",
+      "axis": "action",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Stop"
+    },
+    {
+      "id": "intent-load-pending",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Opening conversation…"
+    },
+    {
+      "id": "intent-load-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code session load request failed (500)"
+    },
+    {
+      "id": "permission-pending",
+      "axis": "prerequisite",
+      "target": "Group",
+      "branchId": null,
+      "ok": true,
+      "saw": "Permission requestedAllow onceReject"
+    },
+    {
+      "id": "permission-answered",
+      "axis": "ready",
+      "target": "Group",
+      "branchId": null,
+      "ok": true,
+      "saw": "StopSend"
+    },
+    {
+      "id": "permission-answer-error",
+      "axis": "error",
+      "target": "Group",
+      "branchId": null,
+      "ok": true,
+      "saw": "Permission requestedAllow onceReject"
+    },
+    {
+      "id": "employees-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Loading employees..."
+    },
+    {
+      "id": "employees-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "EmployeesPanel-status-12by3ra",
+      "ok": true,
+      "saw": "/i/3506/api/employees failed (500)"
+    },
+    {
+      "id": "employees-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": "EmployeesPanel-status-prch9g",
+      "ok": true,
+      "saw": "No employees configured."
+    },
+    {
+      "id": "employees-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "AdarunningreviewerNo current taskNo progress yet"
+    },
+    {
+      "id": "employees-warning-workers",
+      "axis": "degraded",
+      "target": "Note",
+      "branchId": null,
+      "ok": true,
+      "saw": "Active worker status is unavailable."
+    },
+    {
+      "id": "employees-warning-progress",
+      "axis": "degraded",
+      "target": "Note",
+      "branchId": null,
+      "ok": true,
+      "saw": "Worker progress is unavailable."
+    },
+    {
+      "id": "employees-warning-both",
+      "axis": "degraded",
+      "target": "Note",
+      "branchId": "EmployeesPanel-state-1kgnjht",
+      "ok": true,
+      "saw": "Active worker status is unavailable."
+    },
+    {
+      "id": "employees-attention",
+      "axis": "prerequisite",
+      "target": "Badge",
+      "branchId": null,
+      "ok": true,
+      "saw": "blocked"
+    },
+    {
+      "id": "board-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "BoardPanel-loading-65ewcf",
+      "ok": true,
+      "saw": "Loading board"
+    },
+    {
+      "id": "board-load-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "BoardPanel-error-100jhrs",
+      "ok": true,
+      "saw": "board unreadableRetry"
+    },
+    {
+      "id": "board-all-empty",
+      "axis": "empty",
+      "target": "List",
+      "branchId": "BoardPanel-laneTaskslength-d5vk33",
+      "ok": true,
+      "saw": "No tasks"
+    },
+    {
+      "id": "board-some-empty",
+      "axis": "empty",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp5c board taskTodo"
+    },
+    {
+      "id": "board-composer-open",
+      "axis": "ready",
+      "target": "Form",
+      "branchId": null,
+      "ok": true,
+      "saw": "TitleLaneBacklogTodoIn ProgressReviewDoneAdd task"
+    },
+    {
+      "id": "board-create-busy",
+      "axis": "loading",
+      "target": "Form",
+      "branchId": null,
+      "ok": true,
+      "saw": "Creating"
+    },
+    {
+      "id": "board-create-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "task create rejectedRetry"
+    },
+    {
+      "id": "board-edit-busy",
+      "axis": "loading",
+      "target": "Form",
+      "branchId": null,
+      "ok": true,
+      "saw": "Saving"
+    },
+    {
+      "id": "board-edit-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "task update rejectedRetry"
+    },
+    {
+      "id": "board-delete-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "task delete rejectedRetry"
+    },
+    {
+      "id": "reminders-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "RemindersCore-loading-1br8rv0",
+      "ok": true,
+      "saw": "Loading reminders..."
+    },
+    {
+      "id": "reminders-load-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "RemindersCore-loadError-hwdkwi",
+      "ok": true,
+      "saw": "reminders unreadable"
+    },
+    {
+      "id": "reminders-active-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": "RemindersCore-activeReminderslengt-yjzvbf",
+      "ok": true,
+      "saw": "No active reminders."
+    },
+    {
+      "id": "reminders-create-busy",
+      "axis": "loading",
+      "target": "Form",
+      "branchId": null,
+      "ok": true,
+      "saw": "Adding"
+    },
+    {
+      "id": "reminders-create-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "reminder create rejected"
+    },
+    {
+      "id": "reminders-complete-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "RemindersCore-mutationError-3z4t2n",
+      "ok": true,
+      "saw": "reminder update rejected"
+    },
+    {
+      "id": "schedule-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "ScheduleView-loading-yw50h4",
+      "ok": true,
+      "saw": "Loading schedule..."
+    },
+    {
+      "id": "schedule-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "ScheduleView-error-cjtzwz",
+      "ok": true,
+      "saw": "schedule unreadable"
+    },
+    {
+      "id": "schedule-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": "ScheduleView-loading-1bgpqm0",
+      "ok": true,
+      "saw": "No scheduled work."
+    },
+    {
+      "id": "schedule-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp5c scheduled workCron 0 9 * * * · :3506No next runEnabled"
+    },
+    {
+      "id": "schedule-create-busy",
+      "axis": "loading",
+      "target": "Form",
+      "branchId": null,
+      "ok": true,
+      "saw": "Scheduled work0Dispatch 판정은 대상 선택과 one-shot claim만 수행하며 실제 작업을 실행하지 않습니다.No scheduled work.New sched"
+    },
+    {
+      "id": "schedule-toggle-busy",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "schedule-toggle-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "schedule update rejected"
+    },
+    {
+      "id": "schedule-delete-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "schedule delete rejected"
+    },
+    {
+      "id": "dispatch-dispatched",
+      "axis": "ready",
+      "target": "Status",
+      "branchId": null,
+      "ok": true,
+      "saw": "Dispatch 판정: 전달 준비 · claim 완료"
+    },
+    {
+      "id": "dispatch-no-target",
+      "axis": "empty",
+      "target": "Status",
+      "branchId": null,
+      "ok": true,
+      "saw": "Dispatch 판정: 대상 없음"
+    },
+    {
+      "id": "dispatch-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "dispatch decision failed"
+    },
+    {
+      "id": "notes-tree-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "NotesFileTree",
+      "ok": true,
+      "saw": "Loading notes…"
+    },
+    {
+      "id": "notes-tree-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "No notes yet"
+    },
+    {
+      "id": "notes-no-selection",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Select a noteChoose a note from the sidebar or create a new oneCreate note"
+    },
+    {
+      "id": "notes-note-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "NotesPanel-noteDocumentloading-1uxq4md",
+      "ok": true,
+      "saw": "Loading note…"
+    },
+    {
+      "id": "notes-conflict",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "NotesPanel-noteDocumentconflict-1a1stvt",
+      "ok": true,
+      "saw": "This note changed on disk.ReloadOverwrite"
+    },
+    {
+      "id": "notes-mutation-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "notes mutation rejectedDismiss"
+    }
+  ]
+}

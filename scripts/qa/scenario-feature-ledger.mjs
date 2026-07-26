@@ -11,7 +11,7 @@
 
 /** The side-pane panel each tab opens, and its ready selector. */
 const PANEL = {
-    notes: { panel: 'notes', waitFor: '.d2-notes-workspace, .d2-notes-empty-state' },
+    notes: { panel: 'notes', waitFor: '.d2-notes-panel' },
     board: { panel: 'board', waitFor: '.d2-board-canvas, .d2-board-state, .d2-board-error' },
     reminders: { panel: 'reminders', waitFor: '.d2-reminders-loading, .d2-reminders-error, .d2-reminders-list, .d2-reminders-empty, .d2-reminders-form' },
     employees: { panel: 'employees', waitFor: '.d2-employees-panel' },
@@ -555,6 +555,90 @@ export const FEATURE_SCENARIOS = [
         ],
         expectRequests: [{ method: 'POST', path: '/api/dashboard/schedule/work/sched-1/dispatch', count: 1 }],
         selector: '.d2-schedule-view .d2-reminders-error[role="alert"]',
+    },
+
+    // ── notes ───────────────────────────────────────────────────────────────
+    // NotesPanel splits errors between the model (tree/index) and the document
+    // (the open note); a 409 on save produces the conflict screen. The four
+    // mutation handlers render their failure only after DEFECT-C's fix.
+    {
+        id: 'notes-tree-loading',
+        branchId: 'NotesFileTree',
+        reachability: 'integration',
+        axis: 'loading', target: 'StatePanel',
+        why: 'the notes tree is in flight',
+        ...PANEL.notes,
+        levers: { notes: { holdTree: true } },
+        selector: '.d2-notes-tree-state[role="status"]',
+        expected: 'Loading notes',
+    },
+    {
+        id: 'notes-tree-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'StatePanel',
+        why: 'the vault has no notes',
+        ...PANEL.notes,
+        levers: { notes: { tree: [] } },
+        selector: '.d2-notes-tree-state',
+        expected: 'No notes yet',
+    },
+    {
+        id: 'notes-no-selection',
+        reachability: 'integration',
+        axis: 'empty', target: 'StatePanel',
+        why: 'no note is selected, so the workspace shows the empty state',
+        ...PANEL.notes,
+        // The default fixture has one note which the panel opens on its own;
+        // an empty tree is the only way to hold "no selection".
+        levers: { notes: { tree: [], indexStatus: 200 } },
+        selector: '.d2-notes-empty-state',
+        // No note open means no editor surface at all.
+        absent: '.d2-notes-textarea',
+    },
+    {
+        id: 'notes-note-loading',
+        branchId: 'NotesPanel-noteDocumentloading-1uxq4md',
+        reachability: 'integration',
+        axis: 'loading', target: 'StatePanel',
+        why: 'a note is open and its content is still being fetched',
+        ...PANEL.notes,
+        levers: { notes: { holdFile: true } },
+        actions: [{ kind: 'click', selector: '.d2-notes-tree-item' }],
+        selector: '.d2-notes-loading',
+        expected: 'Loading note…',
+    },
+    {
+        id: 'notes-conflict',
+        branchId: 'NotesPanel-noteDocumentconflict-1a1stvt',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the note changed on disk while it was being edited, so the user must choose',
+        ...PANEL.notes,
+        levers: { notes: { fileConflict: true } },
+        actions: [
+            { kind: 'click', selector: '.d2-notes-tree-item[role="treeitem"]:has-text("daily")' },
+            { kind: 'click', selector: '.d2-notes-tree-item[role="treeitem"]:has-text("today.md")' },
+            { kind: 'wait', selector: '.d2-notes-textarea' },
+            { kind: 'type', selector: '.d2-notes-textarea', text: '# wp5c edit\n' },
+            { kind: 'click', selector: '.d2-notes-save-button:not([disabled])' },
+        ],
+        selector: '.d2-notes-notice.is-conflict[role="alert"]',
+        pattern: 'This note changed on disk.*Reload.*Overwrite',
+    },
+    {
+        id: 'notes-mutation-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'a create/rename/trash failure now renders (DEFECT-C) instead of an unhandled rejection',
+        ...PANEL.notes,
+        levers: { notes: { mutationStatus: 500 } },
+        actions: [
+            { kind: 'click', selector: '.d2-notes-tree-item[role="treeitem"]:has-text("daily")' },
+            { kind: 'click', selector: 'button[aria-label="Rename today.md"]' },
+        ],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/notes/rename', count: 1 }],
+        selector: '.d2-notes-sidebar .d2-notes-notice.is-error[role="alert"]',
+        requires: '.d2-notes-notice button',
     },
 ];
 

@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => window.__jawE2E.openPanel('notes'));
+await page.waitForTimeout(2000);
+const tree = await page.evaluate(async () => { try { const r = await fetch('/api/dashboard/notes/tree'); return r.status + ' ' + (await r.text()).slice(0,120); } catch(e) { return 'THROW ' + e.message; } });
+console.log('TREE:', tree);
+const idx = await page.evaluate(async () => { try { const r = await fetch('/api/dashboard/notes/index'); return r.status + ' ' + (await r.text()).slice(0,120); } catch(e) { return 'THROW ' + e.message; } });
+console.log('INDEX:', idx);
+await browser.close(); await server.close();
