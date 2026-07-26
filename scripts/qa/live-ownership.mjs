@@ -54,8 +54,15 @@ export function recoveryDecision(journal, observed, origin) {
     if (!observed.instance) {
         return { action: 'refuse', reason: `instance ${journal.port} is not in the list; cannot confirm it is gone` };
     }
+    if (observed.instance.status === 'offline') {
+        return { action: 'none', reason: `instance ${journal.port} is already offline` };
+    }
     if (observed.instance.status !== 'online') {
-        return { action: 'none', reason: `instance ${journal.port} is '${observed.instance.status}'` };
+        // `timeout`, `error` and `unknown` describe a manager that cannot reach
+        // the instance — which is exactly what a live but wedged process looks
+        // like. Treating them as "already stopped" deletes the journal and
+        // abandons a process that may still be running.
+        return { action: 'refuse', reason: `instance ${journal.port} is '${observed.instance.status}', neither online nor offline` };
     }
     const livePid = observed.instance.lifecycle?.pid;
     if (!Number.isInteger(livePid)) {
@@ -91,8 +98,12 @@ export function cleanupDecision(owned, observed) {
     if (!observed.instance) {
         return { action: 'refuse', reason: `instance ${owned.port} vanished from the list` };
     }
+    if (observed.instance.status === 'offline') {
+        return { action: 'none', reason: 'already offline' };
+    }
     if (observed.instance.status !== 'online') {
-        return { action: 'none', reason: `already '${observed.instance.status}'` };
+        // Same rule as recovery: unreachable is not stopped.
+        return { action: 'refuse', reason: `:${owned.port} is '${observed.instance.status}', neither online nor offline` };
     }
     const livePid = observed.instance.lifecycle?.pid;
     if (!Number.isInteger(livePid) || livePid !== owned.instancePid) {
@@ -108,8 +119,14 @@ export function cleanupDecision(owned, observed) {
  * manager that cannot reach the instance, which is exactly what a live but
  * wedged process looks like.
  */
-export function stopConfirmed(observed) {
+export function stopConfirmed(observed, expectedManagerPid = null) {
     if (!observed || observed.queryFailed) return { done: false, reason: 'instance list unavailable' };
+    // A manager that restarted between the stop and this check is answering
+    // about a world we did not act on; its `offline` says nothing about our
+    // request.
+    if (Number.isInteger(expectedManagerPid) && observed.managerPid !== expectedManagerPid) {
+        return { done: false, reason: `manager changed from ${expectedManagerPid} to ${observed.managerPid}` };
+    }
     if (!observed.instance) return { done: false, reason: 'instance missing from the list' };
     return observed.instance.status === 'offline'
         ? { done: true, reason: null }

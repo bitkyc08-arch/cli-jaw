@@ -190,6 +190,29 @@ test('only offline confirms a stop', () => {
     assert.equal(stopConfirmed({ queryFailed: true }).done, false);
 });
 
+test('an unreachable instance is never counted as stopped', () => {
+    // timeout/error/unknown all describe a manager that cannot reach the
+    // instance, which is what a live but wedged process looks like. Reading
+    // them as "already stopped" deletes the journal and abandons it.
+    const journal = { port: 3457, origin: ORIGIN, phase: 'online', managerPid: 1, instancePid: 2 };
+    const owned = { port: 3457, managerPid: 1, instancePid: 2 };
+    for (const status of ['timeout', 'error', 'unknown']) {
+        const observed = { managerPid: 1, instance: { port: 3457, status, lifecycle: { pid: 2 } } };
+        assert.equal(recoveryDecision(journal, observed, ORIGIN).action, 'refuse', `recovery/${status}`);
+        assert.equal(cleanupDecision(owned, observed).action, 'refuse', `cleanup/${status}`);
+    }
+    // And offline really is the one that means done.
+    const off = { managerPid: 1, instance: { port: 3457, status: 'offline', lifecycle: { pid: 2 } } };
+    assert.equal(recoveryDecision(journal, off, ORIGIN).action, 'none');
+    assert.equal(cleanupDecision(owned, off).action, 'none');
+});
+
+test('a manager that restarted cannot confirm our stop', () => {
+    const off = { managerPid: 99, instance: { port: 3457, status: 'offline' } };
+    assert.equal(stopConfirmed(off, 1).done, false, 'a different manager is answering about another world');
+    assert.equal(stopConfirmed({ ...off, managerPid: 1 }, 1).done, true);
+});
+
 test('a lock held by a live process blocks, a stale one does not', () => {
     assert.equal(lockVerdict('12345-abc', () => true).verdict, 'held');
     assert.equal(lockVerdict('12345-abc', () => false).verdict, 'stale');

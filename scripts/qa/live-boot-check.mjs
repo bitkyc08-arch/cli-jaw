@@ -299,12 +299,24 @@ try {
     // descendant of anything we launched.
     // Survivors from both angles: anything we recorded that is still ours, and
     // anything still sitting in our process group that we never even saw.
-    remember(groupMembers(child?.pid ?? -1));
-    const leftovers = [...registry.values()].filter((e) => alive(e.pid) && stillOurs(e));
+    // Sweep the group BEFORE folding it into the registry. Remembering first
+    // made `strayGroup` structurally empty — every member was already known by
+    // the time we looked for unknown ones — so late arrivals were reported as
+    // leftovers and left running on the machine.
     const strayGroup = child ? groupMembers(child.pid).filter((e) => !registry.has(e.pid)) : [];
     for (const stray of strayGroup) {
         try { process.kill(stray.pid, 'SIGKILL'); signalled.push(stray.pid); } catch { /* gone */ }
     }
+    // Kill anything else still in the group, known or not, then prove the group
+    // is empty rather than asserting it.
+    for (const member of child ? groupMembers(child.pid) : []) {
+        if (!alive(member.pid)) continue;
+        try { process.kill(member.pid, 'SIGKILL'); signalled.push(member.pid); } catch { /* gone */ }
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+    const groupRemainder = child ? groupMembers(child.pid).filter((e) => alive(e.pid)) : [];
+    remember(groupMembers(child?.pid ?? -1));
+    const leftovers = [...registry.values()].filter((e) => alive(e.pid) && stillOurs(e));
     let portFreed = true;
     if (report.checks['manager-came-up']?.port) {
         try {
@@ -314,8 +326,9 @@ try {
         } catch { portFreed = true; }
     }
     report.teardown = { signalled: [...new Set(signalled)], leftovers: leftovers.map((e) => e.pid),
-                        strayGroupMembers: strayGroup.map((e) => e.pid), portFreed };
-    if (leftovers.length || !portFreed) {
+                        strayGroupMembers: strayGroup.map((e) => e.pid),
+                        groupRemainder: groupRemainder.map((e) => e.pid), portFreed };
+    if (leftovers.length || groupRemainder.length || !portFreed) {
         failures.push('teardown-left-processes');
         console.error(`FAIL teardown-left-processes  ${JSON.stringify(report.teardown)}`);
     }

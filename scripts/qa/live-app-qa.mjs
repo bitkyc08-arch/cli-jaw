@@ -14,7 +14,7 @@
 //   node scripts/qa/live-app-qa.mjs --origin http://127.0.0.1:24577 \
 //        [--evidence evidence/wplive.window.json] [--out evidence/wplive.dom.json]
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
@@ -174,8 +174,45 @@ try {
         console.error(`[wplive] another run holds ${LOCK}: ${verdict.reason}`);
         process.exit(1);
     }
+    // Reclaiming a stale lock is itself a race: two runners can both read it,
+    // both decide it is stale, and both overwrite it — after which the first to
+    // finish deletes the other's lock. Serialise the reclamation behind its own
+    // exclusive file, remove the stale lock, then go back and compete for the
+    // real lock with `wx` like everyone else.
     console.error(`[wplive] reclaiming a stale lock (${verdict.reason})`);
-    await writeFile(LOCK, RUN_ID);
+    const RECLAIM = `${LOCK}.reclaim`;
+    try {
+        await writeFile(RECLAIM, RUN_ID, { flag: 'wx' });
+    } catch {
+        console.error('[wplive] another run is already reclaiming that lock; stand down.');
+        process.exit(1);
+    }
+    // Take the new lock BEFORE releasing the guard, and never leave a gap
+    // between removing the stale file and creating ours: another runner that
+    // slipped into that gap would also "win". Write to a fresh name and rename
+    // over the stale one — rename is atomic, so exactly one file exists at
+    // every instant and the guard is what serialises who gets to do it.
+    try {
+        // Re-read under the guard. Between deciding the lock was stale and
+        // getting here, whoever held the guard before us may have already
+        // replaced it with a live one — in which case there is nothing stale
+        // left to reclaim and we must stand down like any latecomer.
+        const current = await readFile(LOCK, 'utf8').catch(() => '');
+        if (current && lockVerdict(current, alivePid).verdict === 'held') {
+            console.error('[wplive] the lock was reclaimed while we waited; stand down.');
+            await rm(RECLAIM, { force: true }).catch(() => {});
+            process.exit(1);
+        }
+        const staging = `${LOCK}.${RUN_ID}`;
+        await writeFile(staging, RUN_ID, { flag: 'wx' });
+        await rename(staging, LOCK);
+    } catch {
+        console.error('[wplive] lost the race for the reclaimed lock; stand down.');
+        await rm(RECLAIM, { force: true }).catch(() => {});
+        process.exit(1);
+    } finally {
+        await rm(RECLAIM, { force: true }).catch(() => {});
+    }
 }
 // `require` does not exist in an ES module — the old handler threw on every
 // exit and swallowed it, so the lock was never released and the next run was
@@ -568,7 +605,7 @@ async function stopIfOurs(owned) {
         for (let i = 0; i < 12 && !stopped; i += 1) {
             await new Promise((r) => setTimeout(r, 1200));
             const now = await observePort(owned.port);
-            const confirmed = stopConfirmed(now);
+            const confirmed = stopConfirmed(now, owned.managerPid ?? null);
             stopped = confirmed.done;
             detail = confirmed.reason;
         }
