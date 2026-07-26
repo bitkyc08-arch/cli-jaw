@@ -591,6 +591,15 @@ const REACHABILITIES = new Set(['integration', 'component', 'shadowed']);
  * quietly deleting a state nobody can reach.
  */
 export function scenarioLedgerStatus() {
+    // The runner consumes a generic {levers, panel, waitFor} shape; the code
+    // rows were written before that shape existed and carry their lever as a
+    // bare `code` field. Normalising here keeps the runner surface-agnostic
+    // without rewriting every row.
+    for (const scenario of CODE_SCENARIOS) {
+        if (!scenario.levers) scenario.levers = scenario.code ? { code: scenario.code } : {};
+        if (!scenario.panel) scenario.panel = 'code';
+        if (!scenario.waitFor) scenario.waitFor = '.d2-code-tab, .d2-code-gate';
+    }
     const ids = new Set();
     const duplicate = [];
     const malformed = [];

@@ -15,18 +15,33 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { scenarioLedgerStatus } from './scenario-ledger.mjs';
+import { featureScenarioStatus } from './scenario-feature-ledger.mjs';
 import { openFixture, startFixtureServer } from './fixture-lib.mjs';
 
 const args = process.argv.slice(2);
 const outPath = (() => { const i = args.indexOf('--out'); return i >= 0 ? args[i + 1] : null; })();
 const only = (() => { const i = args.indexOf('--only'); return i >= 0 ? args[i + 1] : null; })();
 
-const status = scenarioLedgerStatus();
-if (status.malformed.length || status.duplicate.length) {
-    for (const problem of status.malformed) console.error(`LEDGER ${problem}`);
-    for (const id of status.duplicate) console.error(`LEDGER duplicate scenario id ${id}`);
+// The runner is surface-agnostic: it merges every registered scenario ledger
+// and drives each row through whatever lever and actions the row declares.
+// The code tab and the feature tabs share it because the hard part — actions,
+// request oracles, wait-for-the-claim — is not specific to either.
+const ledgers = [scenarioLedgerStatus(), featureScenarioStatus()];
+const malformed = ledgers.flatMap(l => l.malformed);
+const duplicate = ledgers.flatMap(l => l.duplicate);
+if (malformed.length || duplicate.length) {
+    for (const problem of malformed) console.error(`LEDGER ${problem}`);
+    for (const id of duplicate) console.error(`LEDGER duplicate scenario id ${id}`);
     process.exit(1);
 }
+const status = {
+    total: ledgers.reduce((a, l) => a + l.total, 0),
+    integration: ledgers.reduce((a, l) => a + l.integration, 0),
+    shadowed: ledgers.reduce((a, l) => a + l.shadowed, 0),
+    withActions: ledgers.reduce((a, l) => a + l.withActions, 0),
+    withRequestOracle: ledgers.reduce((a, l) => a + l.withRequestOracle, 0),
+    integrationScenarios: ledgers.flatMap(l => l.integrationScenarios),
+};
 
 const server = await startFixtureServer();
 const results = [];
@@ -190,14 +205,22 @@ try {
                     await route.continue();
                 });
             }
-            await page.evaluate((cfg) => {
-                window.__jawE2E.resetCode();
-                window.__jawE2E.setCode(cfg);
-            }, scenario.code ?? {});
+            // Apply each lever the row declares. A lever the harness does not
+            // implement fails here by name rather than measuring the default
+            // screen.
+            for (const [lever, value] of Object.entries(scenario.levers ?? {})) {
+                await page.evaluate(([name, config]) => {
+                    const setter = window.__jawE2E[`set${name[0].toUpperCase() + name.slice(1)}`];
+                    const resetter = window.__jawE2E[`reset${name[0].toUpperCase() + name.slice(1)}`];
+                    if (typeof setter !== 'function') throw new Error(`harness has no set${name} lever`);
+                    resetter?.();
+                    setter(config);
+                }, [lever, value]);
+            }
             if (scenario.dropWorkingDir) await page.evaluate(() => window.__jawE2E.setDropWorkingDir(true));
 
-            await page.evaluate(() => window.__jawE2E.openPanel('code'));
-            await page.locator('.d2-code-tab, .d2-code-gate').first().waitFor({ timeout: 15_000 });
+            await page.evaluate((panel) => window.__jawE2E.openPanel(panel), scenario.panel ?? 'code');
+            await page.locator(scenario.waitFor ?? '.d2-code-tab, .d2-code-gate').first().waitFor({ timeout: 15_000 });
 
             // Mark AFTER mount so the oracle sees only what the actions caused.
             const mark = await page.evaluate(() => window.__jawE2E.markRequests());
