@@ -72,10 +72,15 @@ PRUNE_PKGS=(
   # cannot resolve its own dependency is a trap for the next person.
   "@tanstack/react-virtual" "@tanstack/virtual-core"
   "@uiw/react-codemirror" "@xterm/addon-fit" "@xterm/xterm"
-  "d3" "dompurify" "highlight.js" "katex" "marked-highlight" "mermaid"
+  "d3" "dompurify" "katex" "marked-highlight" "mermaid"
   "react" "react-dom" "react-markdown" "rehype-katex" "rehype-sanitize"
   "remark-breaks" "remark-gfm" "remark-math"
 )
+
+# `highlight.js` was in this list by mistake. It is not frontend-only: the
+# packaged CLI loads dist/bin/commands/chat.js -> src/cli/tui/highlight.js,
+# which imports it. The guard at scripts/qa/sidecar-deps-guard.mjs proves the
+# prune list and the packaged runtime's imports no longer intersect.
 for pkg in "${PRUNE_PKGS[@]}"; do
   rm -rf "$SIDECAR_DIR/node_modules/$pkg" 2>/dev/null || true
 done
@@ -102,6 +107,12 @@ echo "Verifying the prune did not take a server dependency..."
 # pruned once and killed every packaged instance on the Telegram path. The same
 # shape came back one level deeper through fetch-blob -> web-streams-polyfill.
 node "$PROJECT_ROOT/scripts/verify-sidecar-deps.mjs" "$SIDECAR_DIR"
+
+# The dependency closure check proves resolution. It does not prove the prune
+# list never names a package the packaged runtime imports — node-fetch and
+# highlight.js both slipped past a package.json-only check. This guard scans
+# the actual dist/bin imports and fails the build if the prune list names one.
+node "$PROJECT_ROOT/scripts/qa/sidecar-deps-guard.mjs" "$PROJECT_ROOT"
 
 NODE_BIN="$SIDECAR_DIR/node"
 if [[ "$PLATFORM" == "win32" ]]; then
