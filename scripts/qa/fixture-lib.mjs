@@ -38,7 +38,7 @@ export async function startFixtureServer() {
  * `historyCount` is the only knob the surfaces need: the turn stream wants
  * enough turns to fill a viewport, everything else is happier small and fast.
  */
-export async function openFixture(url, { historyCount = 40, viewport = { width: 1440, height: 900 } } = {}) {
+export async function openFixture(url, { historyCount = 40, viewport = { width: 1440, height: 900 }, desktopBridge = null } = {}) {
     const browser = await chromium.launch({ headless: true, channel: 'chrome' });
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
@@ -52,6 +52,42 @@ export async function openFixture(url, { historyCount = 40, viewport = { width: 
         localStorage.clear();
         sessionStorage.clear();
     });
+
+    // Ten of the 28 tool-tab branches key off the desktop bridge, which reads
+    // window.cliJawDesktop before React mounts. Injecting a stand-in is the only
+    // way to reach the Electron-only halves of the terminal, browser and diff
+    // panels from a plain page.
+    //
+    // The provider checks for specific method NAMES, so a plausible-looking stub
+    // with the wrong shape silently stays unavailable and the fixture measures
+    // the same fallback screen twice.
+    if (desktopBridge) {
+        await page.addInitScript((want) => {
+            const fn = () => async () => undefined;
+            const sub = () => () => () => {};
+            const surface = (names, extra = {}) =>
+                Object.fromEntries(names.map(n => [n, fn()]).concat(Object.entries(extra)));
+
+            window.cliJawDesktop = {
+                identify: () => ({ electron: true, version: 'fixture' }),
+                getHomePath: async () => '/tmp/wp5a-fixture',
+                ...(want.terminal ? {
+                    terminal: surface(['list', 'create', 'write', 'resize', 'kill'],
+                        { onData: sub(), onExit: sub() }),
+                } : {}),
+                ...(want.diff ? {
+                    diff: surface(['getRepoRoot', 'getRepoCandidates', 'getScmSnapshot',
+                        'runScmOperation', 'getDiffSummary', 'getFileDiff']),
+                } : {}),
+                ...(want.browser ? {
+                    browser: surface(['registerWebview', 'unregisterWebview', 'controlWebview',
+                        'performWebviewAction', 'getWebviewTabs'],
+                        { onOpenUrl: sub(), onWebviewState: sub(), onElementPicked: sub() }),
+                } : {}),
+            };
+        }, desktopBridge);
+    }
+
     await page.route('**/dashboard2/src/main.tsx*', (route) => route.fulfill({
         contentType: 'application/javascript',
         body: `import { mountE2EAppHarness } from "/dist/dashboard2/src/dev/e2e-app-harness.tsx";`
