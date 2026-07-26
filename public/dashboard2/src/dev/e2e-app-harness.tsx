@@ -323,7 +323,7 @@ class FakeApiRouter {
     /** Board surface; see BoardFixtureConfig. */
     board: BoardFixtureConfig = {};
     /** Reminders surface; see RemindersFixtureConfig. */
-    reminders: RemindersFixtureConfig = {};
+    remindersConfig: RemindersFixtureConfig = {};
     /** Notes surface; see NotesFixtureConfig. */
     notes: NotesFixtureConfig = {};
     /** Settings workspace; see SettingsFixtureConfig. */
@@ -861,7 +861,7 @@ class FakeApiRouter {
     }
 
     private reminder(url: URL, method: string, payload: JsonRecord): Response {
-        const cfg = this.reminders;
+        const cfg = this.remindersConfig;
         if (method === 'GET') {
             if (cfg.holdList) return pending();
             if (cfg.listStatus && cfg.listStatus >= 400) {
@@ -1015,8 +1015,8 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetSchedule() { router.schedule = {}; },
         setBoard(config) { router.board = config ?? {}; },
         resetBoard() { router.board = {}; },
-        setReminders(config) { router.reminders = config ?? {}; },
-        resetReminders() { router.reminders = {}; },
+        setReminders(config) { router.remindersConfig = config ?? {}; },
+        resetReminders() { router.remindersConfig = {}; },
         setNotes(config) { router.notes = config ?? {}; },
         resetNotes() { router.notes = {}; },
         setSettingsConfig(config) { router.settingsConfig = config ?? {}; },

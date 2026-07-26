@@ -31,39 +31,51 @@ export function DashboardShortcutBindings(): JSX.Element | null {
     useEffect(() => shortcuts.registerHandler('focusActiveSession', () => {
         const api = sidebarApi();
         if (selected) {
-            // A session is selected: focus its chat. Nothing else to do — the
-            // chat is already the workspace.
+            // A session is selected: focus its composer — the actionable input
+            // of the active chat, which is what the legacy "preview the active
+            // session" maps to in dashboard2's single-chat workspace.
+            requestAnimationFrame(() => {
+                document.querySelector<HTMLElement>('.d2-chat-composer-slot textarea, [data-testid="chat-view"] textarea')
+                    ?.focus();
+            });
             return;
         }
         // No selection: go to the first online instance's active session, or
         // failing that just focus the instance list.
-        const firstOnline = api?.onlineInstances()[0];
-        const sessionId = firstOnline ? api?.activeSessionFor(firstOnline.port) : null;
-        if (firstOnline && sessionId) void guardedSelectSession(firstOnline.port, sessionId);
-        else api?.focusInstances();
+        const firstOnline = api?.orderedInstances().find((instance) => instance.online);
+        if (!firstOnline) { api?.focusInstances(); return; }
+        void api?.ensureSessions(firstOnline.port).then(() => {
+            const sessionId = api?.activeSessionFor(firstOnline.port);
+            if (sessionId) void guardedSelectSession(firstOnline.port, sessionId);
+            else api?.focusInstanceRow(firstOnline.port);
+        });
     }), [sidebarApi, selected, guardedSelectSession, shortcuts]);
 
     useEffect(() => {
         const cycle = (direction: 1 | -1): void => {
             const api = sidebarApi();
-            const online = api?.onlineInstances() ?? [];
-            if (online.length === 0) return;
+            // Cycle the full ordered list (legacy filtered-list semantics).
+            const list = api?.orderedInstances() ?? [];
+            if (list.length === 0) return;
             const currentIndex = selected
-                ? online.findIndex((instance) => instance.port === selected.port)
+                ? list.findIndex((instance) => instance.port === selected.port)
                 : -1;
             const nextIndex = currentIndex < 0
-                ? (direction > 0 ? 0 : online.length - 1)
-                : (currentIndex + direction + online.length) % online.length;
-            const target = online[nextIndex]!;
-            const sessionId = api?.activeSessionFor(target.port);
-            if (sessionId) {
-                // Land on a session: selection actually moves.
-                void guardedSelectSession(target.port, sessionId);
-            } else {
-                // Sessionless instance: focus/expand its row without changing
-                // `selected` (guardedSelectSession requires a sessionId).
+                ? (direction > 0 ? 0 : list.length - 1)
+                : (currentIndex + direction + list.length) % list.length;
+            const target = list[nextIndex]!;
+            if (!target.online) {
+                // An offline instance has no session to open; focus its row.
                 api?.focusInstanceRow(target.port);
+                return;
             }
+            // Load sessions first so activeSessionFor has the active session,
+            // then select it; otherwise focus the row without changing selected.
+            void api?.ensureSessions(target.port).then(() => {
+                const sessionId = api?.activeSessionFor(target.port);
+                if (sessionId) void guardedSelectSession(target.port, sessionId);
+                else api?.focusInstanceRow(target.port);
+            });
         };
         const unregisterPrevious = shortcuts.registerHandler('previousInstance', () => cycle(-1));
         const unregisterNext = shortcuts.registerHandler('nextInstance', () => cycle(1));

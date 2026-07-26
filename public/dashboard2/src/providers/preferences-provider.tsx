@@ -27,13 +27,9 @@ export const SHORTCUT_ACTIONS = [
 export type ShortcutAction = typeof SHORTCUT_ACTIONS[number];
 export type ShortcutKeymap = Record<ShortcutAction, string>;
 
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-
 export const DEFAULT_SHORTCUT_KEYMAP: ShortcutKeymap = {
     focusInstances: 'Alt+I',
     focusActiveSession: 'Alt+P',
-    newSession: isMac ? 'Meta+N' : 'Control+N',
-    commandPalette: isMac ? 'Meta+K' : 'Control+K',
     focusNotes: 'Alt+N',
     previousInstance: 'Alt+K',
     nextInstance: 'Alt+J',

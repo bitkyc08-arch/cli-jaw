@@ -89,12 +89,17 @@ export interface AppScopeState {
 export interface SidebarShortcutApi {
     /** Open the sidebar (if collapsed), switch to the jaw instance list, focus it. */
     focusInstances(): void;
-    /** The ordered online instances, for cycling. */
-    onlineInstances(): Array<{ port: number }>;
+    /**
+     * The ordered instances for cycling. Matches the legacy manager's filtered
+     * list semantics (manager-shortcut-runner.ts), not just online instances.
+     */
+    orderedInstances(): Array<{ port: number; online: boolean }>;
     /** Focus/expand an instance row without changing `selected`. */
     focusInstanceRow(port: number): void;
     /** The active session for an instance, if one exists. */
     activeSessionFor(port: number): string | null;
+    /** Ensure an instance's sessions are loaded (for activeSessionFor). */
+    ensureSessions(port: number): Promise<void>;
 }
 
 export interface AppScopeValue extends AppScopeState {

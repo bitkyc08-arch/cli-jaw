@@ -158,35 +158,6 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
     const [jwcRefresh, setJwcRefresh] = useState(0);
     const sidebarRootRef = useRef<HTMLElement | null>(null);
 
-    // The shortcut-callable surface (wp9): the four instance shortcuts reach
-    // the sidebar's local mode/instances through this, since the bindings
-    // cannot see them directly.
-    useEffect(() => registerSidebarApi({
-        focusInstances() {
-            setMode('jaw');
-            requestAnimationFrame(() => {
-                sidebarRootRef.current?.querySelector<HTMLElement>('.d2-sidebar-list')
-                    ?.focus?.();
-            });
-        },
-        onlineInstances() {
-            return instances
-                .filter((instance) => instance.status === 'online')
-                .map((instance) => ({ port: instance.port }));
-        },
-        focusInstanceRow(port) {
-            if (!expandedPorts.includes(port)) toggleInstance(port);
-            requestAnimationFrame(() => {
-                sidebarRootRef.current
-                    ?.querySelector<HTMLElement>(`[data-instance-port="${port}"]`)
-                    ?.focus?.();
-            });
-        },
-        activeSessionFor(port) {
-            const entry = sessionsByPort[port];
-            return entry?.status === 'ready' ? entry.data.active : null;
-        },
-    }), [registerSidebarApi, instances, sessionsByPort, expandedPorts, toggleInstance]);
     const instancesRequestRef = useRef<{ generation: number; controller: AbortController | null }>({
         generation: 0,
         controller: null,
@@ -250,6 +221,39 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
             }));
         }
     }, [api]);
+    // The shortcut-callable surface (wp9): the four instance shortcuts reach
+    // the sidebar's local mode/instances through this, since the bindings
+    // cannot see them directly.
+    useEffect(() => registerSidebarApi({
+        focusInstances() {
+            setMode('jaw');
+            requestAnimationFrame(() => {
+                sidebarRootRef.current?.querySelector<HTMLElement>('.d2-sidebar-list')
+                    ?.focus?.();
+            });
+        },
+        orderedInstances() {
+            // The full ordered list (legacy filtered-list semantics), each
+            // marked online so the cycle can decide selection vs focus.
+            return instances.map((instance) => ({ port: instance.port, online: instance.status === 'online' }));
+        },
+        focusInstanceRow(port) {
+            if (!expandedPorts.includes(port)) toggleInstance(port);
+            requestAnimationFrame(() => {
+                // Focus the row's actionable control, not the non-focusable div.
+                sidebarRootRef.current
+                    ?.querySelector<HTMLElement>(`[data-instance-port="${port}"] button, [data-instance-port="${port}"]`)
+                    ?.focus?.();
+            });
+        },
+        activeSessionFor(port) {
+            const entry = sessionsByPort[port];
+            return entry?.status === 'ready' ? entry.data.active : null;
+        },
+        ensureSessions(port) {
+            return Promise.resolve(loadSessions(port));
+        },
+    }), [registerSidebarApi, instances, sessionsByPort, expandedPorts, toggleInstance, loadSessions]);
 
     useEffect(() => {
         void loadInstances();
@@ -501,7 +505,7 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
                 </div>
             </div>
 
-            <div className="d2-sidebar-list" role="tabpanel" id="d2-sidebar-panel" aria-labelledby={activeTabId}>
+            <div className="d2-sidebar-list" role="tabpanel" id="d2-sidebar-panel" aria-labelledby={activeTabId} tabIndex={-1}>
                {mode === 'jwc' ? (
                     jwcState.loading ? (
                         <div className="d2-inline-state"><span className="d2-spinner" aria-hidden="true" />Loading Code sessions</div>
