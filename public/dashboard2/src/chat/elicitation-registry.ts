@@ -18,20 +18,33 @@ export interface ElicitationCompletion {
     answers: ElicitationAnswer[];
 }
 
-// Bounded so a long session does not grow the registry without limit, and
-// scoped: completions belong to one ChatView scope at a time, so a session
-// switch clears them rather than letting one session's elicitations bleed
-// into another ChatView with the same turnId/slot.id.
+/**
+ * One registry per ChatView scope, not a module singleton. Each ChatView's
+ * completions live in their own map, so two ChatViews never share state, and
+ * a session switch disposes its own map rather than clearing a global one.
+ */
 const REGISTRY_CAP = 500;
-const registry = new Map<string, ElicitationCompletion>();
-let activeScopeKey: string | null = null;
+const registries = new Map<string, Map<string, ElicitationCompletion>>();
+
+function scopeRegistry(scopeKey: string): Map<string, ElicitationCompletion> {
+    let registry = registries.get(scopeKey);
+    if (!registry) {
+        registry = new Map();
+        registries.set(scopeKey, registry);
+    }
+    return registry;
+}
 
 /** Bind the registry to a ChatView's scope; clears when the scope changes. */
 export function bindElicitationRegistry(scopeKey: string): void {
-    if (activeScopeKey !== null && activeScopeKey !== scopeKey) {
-        registry.clear();
-    }
-    activeScopeKey = scopeKey;
+    // Eagerly create the scope's map; a ChatView switch disposes via
+    // disposeElicitationRegistry on unmount, not by clearing a global.
+    scopeRegistry(scopeKey);
+}
+
+/** Dispose a ChatView's completions on unmount/session switch. */
+export function disposeElicitationRegistry(scopeKey: string): void {
+    registries.delete(scopeKey);
 }
 
 export function elicitationKey(identity: {
@@ -43,11 +56,14 @@ export function elicitationKey(identity: {
     return `${identity.scopeKey}/${identity.turnId}/${identity.segmentId}/${identity.slotId}`;
 }
 
-export function getElicitationCompletion(key: string): ElicitationCompletion | null {
-    return registry.get(key) ?? null;
+export function getElicitationCompletion(scopeKey: string, key: string): ElicitationCompletion | null {
+    // The scope is passed explicitly, never parsed out of the key: a scopeKey
+    // itself contains '/', so key.split('/') cannot recover it.
+    return registries.get(scopeKey)?.get(key) ?? null;
 }
 
-export function setElicitationCompletion(key: string, completion: ElicitationCompletion): void {
+export function setElicitationCompletion(scopeKey: string, key: string, completion: ElicitationCompletion): void {
+    const registry = scopeRegistry(scopeKey);
     if (registry.size >= REGISTRY_CAP && !registry.has(key)) {
         const oldest = registry.keys().next().value;
         if (oldest !== undefined) registry.delete(oldest);
@@ -57,5 +73,5 @@ export function setElicitationCompletion(key: string, completion: ElicitationCom
 
 /** Test seam: drop all completions. */
 export function resetElicitationRegistry(): void {
-    registry.clear();
+    registries.clear();
 }

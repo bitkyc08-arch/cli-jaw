@@ -244,7 +244,7 @@ const FEATURE_BRANCH_COVERAGE = {};
     // override that code branch's own coverage entry.
     const featureBranchIds = new Set(
         buildTabStateLedger()
-            .filter(r => /harness:(notes|board|reminders|employees|settings)/.test(r.route))
+            .filter(r => /harness:(notes|board|reminders|employees|settings|hover-dock)/.test(r.route))
             .map(r => r.id),
     );
     const featureStatus = featureScenarioStatus(featureBranchIds);
@@ -395,6 +395,9 @@ export function branchCoverageStatus() {
         const COMPONENT_FAMILY = {
             SettingsPageShell: 'Settings', SettingsSidebar: 'Settings', SettingsToast: 'Settings',
             ModelSettingsPanel: 'Settings', ModelPicker: 'Settings',
+            // The hover dock's current tabs are proven by HoverDock (dockTab)
+            // scenarios, not by a component-named surface family.
+            SkillsTab: 'HoverDock', AgentsTab: 'HoverDock', FlushAgentSection: 'HoverDock',
         };
         const branchFamily = COMPONENT_FAMILY[branchComponent] ?? branchComponent.match(/^[A-Z][a-z]+/)?.[0] ?? branchComponent;
         if (scenario.component && branchFamily && branchFamily !== scenario.component) {
@@ -406,7 +409,7 @@ export function branchCoverageStatus() {
     // must reach the gates. A non-manifest claim is caught by `stale`; a
     // duplicate on a REAL branch is not, and without this it passes silently.
     for (const problem of featureScenarioStatus(
-        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees|settings)/.test(r.route)).map(r => r.id)),
+        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees|settings|hover-dock)/.test(r.route)).map(r => r.id)),
     ).malformed) {
         if (/claimed by two scenarios|not an integration feature branch/.test(problem)) delegatedBroken.push(problem);
     }

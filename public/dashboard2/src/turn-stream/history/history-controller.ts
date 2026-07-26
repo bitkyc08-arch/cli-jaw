@@ -5,6 +5,7 @@ import type {
     MessagesPageOptions,
 } from './messages-page-client.ts';
 import { diagnoseHistoryPageOverlap, mergeHistoryPage } from './merge-history-page.ts';
+import { evaluateHistoryPageProgress } from './history-page-progress.ts';
 
 const DEFAULT_PAGE_LIMIT = 200;
 const DEFAULT_BACKFILL_MAX_PAGES = 10;
@@ -127,10 +128,7 @@ export function createHistoryController(options: HistoryControllerOptions): Hist
                 // Without this guard, a server that repeats the cursor loops
                 // loadOlder forever.
                 const previousCursor = state.oldestCursor;
-                const cursorAdvanced = page.pageInfo.oldestCursor !== previousCursor
-                    && (previousCursor === null
-                        || (page.pageInfo.oldestCursor !== null && page.pageInfo.oldestCursor < previousCursor));
-                const noProgress = previousCursor !== null && !cursorAdvanced;
+                const { noProgress } = evaluateHistoryPageProgress(previousCursor, page.pageInfo.oldestCursor);
                 update({
                     phase: state.phase === 'backfilling' ? 'backfilling' : 'idle',
                     oldestCursor: page.pageInfo.oldestCursor,

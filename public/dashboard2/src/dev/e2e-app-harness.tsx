@@ -716,7 +716,12 @@ class FakeApiRouter {
         }
 
         if (path.startsWith('/memory-files')) {
-            if (method === 'PUT' || method === 'POST') return json({ ok: true });
+            if (method === 'PUT' || method === 'POST') {
+                // The flush-agent save must be able to fail: a rejected PUT is
+                // what FlushAgentSection's inline error branch renders.
+                if (cfg.mutationStatus && cfg.mutationStatus >= 400) return json({ error: 'memory files save rejected' }, cfg.mutationStatus);
+                return json({ ok: true });
+            }
             if (cfg.mutationStatus && cfg.mutationStatus >= 400) return json({ error: 'memory files unreadable' }, cfg.mutationStatus);
             // FlushAgentSection reads .cli/.model straight off the body
             // (FlushAgentSection.tsx:26-27); it does not unwrap {ok,data}.

@@ -19,14 +19,15 @@ test('the ledger covers every tool-tab branch the manifest knows about', () => {
         branches: Array<{ id: string; file: string }>;
     };
     // wp5b added the code tab; wp5c the feature tabs; wp6 the central settings
-    // workspace plus the legacy hover-dock settings (shadowed). The sweep is
-    // no longer only *Panel.tsx.
+    // workspace plus the legacy hover-dock settings (shadowed); wp11 the
+    // hover dock's current tabs. The sweep is no longer only *Panel.tsx.
     const expected = manifest.branches.filter(
         b => /(Terminal|Browser|FileTree|Doc|Design|Diff)Panel\.tsx$/.test(b.file)
             || /(CodeTabGate|CodeTab|CodeModelControl|CodeHistoryList)\.tsx$/.test(b.file)
             || /(NotesPanel|NotesFileTree|NotesEmptyState|NotesCommandPalette|NotesQuickSwitcher|BoardPanel|RemindersCore|ScheduleView|ScheduleWorkEditor|EmployeesPanel|EmployeesSection)\.tsx$/.test(b.file)
             || /(SettingsPageShell|SettingsSidebar|SettingsToast|ModelPicker|ModelSettingsPanel)\.tsx$/.test(b.file)
-            || /(SettingsTab|SettingsChannelsSection|SettingsMcpSection|SettingsModelsSection|SettingsPromptSection)\.tsx$/.test(b.file),
+            || /(SettingsTab|SettingsChannelsSection|SettingsMcpSection|SettingsModelsSection|SettingsPromptSection)\.tsx$/.test(b.file)
+            || /(SkillsTab|AgentsTab|FlushAgentSection)\.tsx$/.test(b.file),
     );
     assert.equal(rows.length, expected.length, 'a branch in the manifest with no ledger row is unswept by definition');
     assert.deepEqual(
@@ -78,10 +79,11 @@ test('every branch has one of the three reachability verdicts', () => {
     assert.deepEqual(invalid, [], 'reachability must use the audited three-class vocabulary');
 });
 
-test('the real integration gate denominator stays at the audited 64 branches', () => {
+test('the real integration gate denominator stays at the audited 73 branches', () => {
     // wp5a 24 + wp5b 9 code = 33; wp5c 24 feature = 57; wp6 7 central settings
     // = 64 (the legacy hover-dock settings and EmployeesSection are shadowed
-    // as wp7a's surface). This number only moves with an audited change.
+    // as wp7a's surface); wp11 9 hover-dock tabs = 73. This number only moves
+    // with an audited change.
     const integration = rows.filter(r => r.reachability === 'integration').length;
-    assert.equal(integration, 64);
+    assert.equal(integration, 73);
 });

@@ -101,6 +101,18 @@ const LEGACY_SETTINGS_COMPONENTS = [
 ];
 
 /**
+ * The hover dock's CURRENT tabs (SkillsTab/AgentsTab/FlushAgentSection) —
+ * wp7a's surface, gated here so their branches cannot drift from the
+ * scenario ledger the way the pre-wp11 'SkillsTab'/'AgentsTab' claims did
+ * (they named symbolic ids the manifest never had, and branch-proof stayed
+ * red from wp7a to wp11 without a gate noticing).
+ */
+const HOVER_DOCK_COMPONENTS = ['SkillsTab', 'AgentsTab', 'FlushAgentSection'];
+
+/** All nine hover-dock branches are user-reachable; no shadowed verdicts. */
+const HOVER_DOCK_REACHABILITY = {};
+
+/**
  * Reachability is an audited decision keyed by the manifest's full stable id.
  * Keep this explicit: guards alone do not reveal whether SidePane pre-empts a
  * component branch or hardcodes a prop that makes it dead in the application.
@@ -337,6 +349,29 @@ function buildLegacySettingsLedger(manifest) {
         });
 }
 
+/** The hover dock's current tabs, reached through the hover-dock harness. */
+function buildHoverDockLedger(manifest) {
+    return manifest.branches
+        .filter(b => HOVER_DOCK_COMPONENTS.includes(b.file.split('/').pop().replace('.tsx', '')))
+        .map(b => {
+            const component = b.file.split('/').pop().replace('.tsx', '');
+            return {
+                id: b.id,
+                component,
+                axis: b.axis,
+                target: b.target,
+                guard: b.guard,
+                reachability: HOVER_DOCK_REACHABILITY[b.id] ?? 'integration',
+                route: 'harness:hover-dock',
+                lever: 'wp7a hover-dock sweep',
+                provider: 'hover-dock surface',
+                reset: 'n/a',
+                expectSelector: b.cls ? `.${b.cls.split(' ')[0]}` : '[data-state]',
+                text: b.text ?? null,
+            };
+        });
+}
+
 export function buildTabStateLedger() {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
     const toolTabs = manifest.branches
@@ -364,7 +399,7 @@ export function buildTabStateLedger() {
                 text: b.text ?? null,
             };
         });
-    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest), ...buildSettingsLedger(manifest), ...buildLegacySettingsLedger(manifest)];
+    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest), ...buildSettingsLedger(manifest), ...buildLegacySettingsLedger(manifest), ...buildHoverDockLedger(manifest)];
 }
 
 if (process.argv[1]?.endsWith('tab-state-ledger.mjs')) {

@@ -4,7 +4,7 @@
 // tail + composer inside one 700px content wrapper. The transport stays
 // provider-owned: this component never creates an EventSource.
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { bindElicitationRegistry } from './elicitation-registry.ts';
+import { bindElicitationRegistry, disposeElicitationRegistry } from './elicitation-registry.ts';
 import type { SessionScope } from '../state/scope.tsx';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useManagerSync } from '../providers/sync-provider.tsx';
@@ -49,6 +49,7 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
     // another ChatView with the same turnId/slot.id.
     useEffect(() => {
         bindElicitationRegistry(scopeKey);
+        return () => disposeElicitationRegistry(scopeKey);
     }, [scopeKey]);
     const store = useMemo(
         () => createTurnStore(scopeKey, { sessionFilter: scope.sessionId || null }),

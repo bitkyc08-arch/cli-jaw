@@ -44,6 +44,11 @@ function satisfied(entry, seen) {
 
 try {
     for (const entry of status.entries) {
+        // Delegated branches are proven by the scenario ledger, not a fixture
+        // surface; their discrimination is the scenario's own selector/copy,
+        // which scenario-proof already drives. The negative matrix applies to
+        // fixture branches only.
+        if (entry.delegate || !entry.surface) continue;
         const surface = FIXTURE_SURFACES[entry.surface];
         // Every state this surface can actually be driven into, minus the one
         // this branch claims and minus the synthetic probes.

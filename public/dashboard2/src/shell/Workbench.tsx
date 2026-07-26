@@ -7,15 +7,12 @@ import { useManagerApi } from '../providers/api-provider.tsx';
 import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
 import { SidePane } from './SidePane.tsx';
+import { PANE_DEFAULT, PANE_MIN, clampPaneWidth, paneBounds } from './pane-bounds.ts';
+import { beginPaneDrag, type PaneDragSession } from './pane-drag.ts';
 
 const LazySettingsWorkspace = lazy(() =>
     import('../features/settings/SettingsWorkspace.tsx').then((m) => ({ default: m.SettingsWorkspace })),
 );
-
-const PANE_MIN = 280;
-const CHAT_MIN = 280;
-const DIVIDER_WIDTH = 1;
-const PANE_DEFAULT = 340;
 
 export interface WorkbenchProps {
     sidebarCollapsed?: boolean;
@@ -40,30 +37,26 @@ export function Workbench({
     const toggleButtonRef = useRef<HTMLButtonElement>(null);
     const [paneWidth, setPaneWidth] = useState(PANE_DEFAULT);
 
-    // CF-4 — one bounds helper for the state, the CSS, the pointer drag, and
-    // ARIA. The initial PANE_DEFAULT can exceed the max on a narrow workbench,
-    // and the drag clamp can dip below the min when the max itself is smaller,
-    // which produced aria-valuenow > aria-valuemax and aria-valuenow <
-    // aria-valuemin.
-    const paneBounds = useCallback((): { min: number; max: number } => {
+    // CF-4 — one bounds helper (pane-bounds.ts) for the state, the CSS, the
+    // pointer drag, and ARIA, so aria-valuenow cannot escape
+    // [aria-valuemin, aria-valuemax].
+    const currentPaneBounds = useCallback((): { min: number; max: number } => {
         const wb = wbRef.current;
         const rect = wb?.getBoundingClientRect();
-        const max = rect ? Math.max(PANE_MIN, rect.width - CHAT_MIN - DIVIDER_WIDTH) : 600;
-        return { min: PANE_MIN, max };
+        return paneBounds(rect ? rect.width : null);
     }, []);
-    const clampPaneWidth = useCallback((value: number): number => {
-        const { min, max } = paneBounds();
-        return Math.max(min, Math.min(max, value));
-    }, [paneBounds]);
+    const clampCurrentPaneWidth = useCallback((value: number): number => {
+        return clampPaneWidth(currentPaneBounds(), value);
+    }, [currentPaneBounds]);
 
     // Keep the state and CSS inside bounds whenever the bounds change (resize
     // or first open), so the initial width cannot exceed the max.
     useEffect(() => {
-        const clamped = clampPaneWidth(paneWidth);
+        const clamped = clampCurrentPaneWidth(paneWidth);
         if (clamped !== paneWidth) setPaneWidth(clamped);
         wbRef.current?.style.setProperty('--d2-pane-w', `${clamped}px`);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sidePaneOpen, clampPaneWidth]);
+    }, [sidePaneOpen, clampCurrentPaneWidth]);
 
     // CF-4 — the bounds depend on the workbench's width, which changes on
     // window resize without re-running the effect above. Observe it and
@@ -80,11 +73,11 @@ export function Workbench({
     }, []);
     useEffect(() => {
         if (wbWidth === 0) return;
-        const clamped = clampPaneWidth(paneWidth);
+        const clamped = clampCurrentPaneWidth(paneWidth);
         if (clamped !== paneWidth) setPaneWidth(clamped);
         wbRef.current?.style.setProperty('--d2-pane-w', `${clamped}px`);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wbWidth, clampPaneWidth]);
+    }, [wbWidth, clampCurrentPaneWidth]);
 
     const closeSidePaneWithFocusRestore = useCallback(async () => {
         const focusWasInsidePane = Boolean(
@@ -98,7 +91,7 @@ export function Workbench({
 
     const toggleSidePane = sidePaneOpen ? () => void closeSidePaneWithFocusRestore() : openSidePane;
 
-    const dragListenersRef = useRef<{ move: (ev: PointerEvent) => void; up: () => void } | null>(null);
+    const dragSessionRef = useRef<PaneDragSession | null>(null);
 
     const onDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -106,58 +99,42 @@ export function Workbench({
         handle.classList.add('is-dragging');
         handle.setPointerCapture(e.pointerId);
 
-        const move = (ev: PointerEvent) => {
-            const wb = wbRef.current;
-            if (!wb) return;
-            const rect = wb.getBoundingClientRect();
-            const paneWidth = clampPaneWidth(rect.right - ev.clientX);
-            wb.style.setProperty('--d2-pane-w', `${paneWidth}px`);
-            setPaneWidth(paneWidth);
-        };
-        const up = (): void => {
-            handle.classList.remove('is-dragging');
-            document.removeEventListener('pointermove', move);
-            document.removeEventListener('pointerup', up);
-            document.removeEventListener('pointercancel', up);
-            dragListenersRef.current = null;
-        };
         // CF-5 — the document listeners must not outlive the component if it
-        // unmounts mid-drag. Track them so the unmount effect can release.
-        dragListenersRef.current = { move, up };
-        document.addEventListener('pointermove', move);
-        document.addEventListener('pointerup', up);
-        document.addEventListener('pointercancel', up);
-    }, []);
+        // unmounts mid-drag. The drag session owns their lifecycle; the
+        // unmount effect disposes it.
+        dragSessionRef.current = beginPaneDrag(document, {
+            move: (ev) => {
+                const wb = wbRef.current;
+                if (!wb) return;
+                const rect = wb.getBoundingClientRect();
+                const nextWidth = clampCurrentPaneWidth(rect.right - (ev as PointerEvent).clientX);
+                wb.style.setProperty('--d2-pane-w', `${nextWidth}px`);
+                setPaneWidth(nextWidth);
+            },
+            up: () => {
+                handle.classList.remove('is-dragging');
+                dragSessionRef.current = null;
+            },
+        });
+    }, [clampCurrentPaneWidth]);
 
     // CF-5 — release any in-flight drag listeners on unmount, so a drag that
     // outlives the component does not leave document listeners behind.
     useEffect(() => () => {
-        const listeners = dragListenersRef.current;
-        if (listeners) {
-            document.removeEventListener('pointermove', listeners.move);
-            document.removeEventListener('pointerup', listeners.up);
-            document.removeEventListener('pointercancel', listeners.up);
-            dragListenersRef.current = null;
-        }
-    }, []);
-
-    const getPaneMax = useCallback((): number => {
-        const wb = wbRef.current;
-        if (!wb) return 600;
-        const rect = wb.getBoundingClientRect();
-        return rect.width - CHAT_MIN - DIVIDER_WIDTH;
+        dragSessionRef.current?.dispose();
+        dragSessionRef.current = null;
     }, []);
 
     const onDividerKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
-        const { max: paneMax } = paneBounds();
+        const { max: paneMax } = currentPaneBounds();
         let next = paneWidth;
         const step = e.shiftKey ? 50 : 10;
         switch (e.key) {
             case 'ArrowLeft':
-                next = clampPaneWidth(paneWidth + step);
+                next = clampCurrentPaneWidth(paneWidth + step);
                 break;
             case 'ArrowRight':
-                next = clampPaneWidth(paneWidth - step);
+                next = clampCurrentPaneWidth(paneWidth - step);
                 break;
             case 'Home':
                 next = PANE_MIN;
@@ -174,7 +151,7 @@ export function Workbench({
         if (wb) {
             wb.style.setProperty('--d2-pane-w', `${next}px`);
         }
-    }, [paneWidth, getPaneMax]);
+    }, [paneWidth, currentPaneBounds, clampCurrentPaneWidth]);
 
     useEffect(() => {
         let mounted = true;
@@ -272,7 +249,7 @@ export function Workbench({
                     aria-orientation="vertical"
                     aria-valuenow={paneWidth}
                     aria-valuemin={PANE_MIN}
-                    aria-valuemax={paneBounds().max}
+                    aria-valuemax={currentPaneBounds().max}
                     tabIndex={0}
                     onPointerDown={onDividerDown}
                     onKeyDown={onDividerKeyDown}

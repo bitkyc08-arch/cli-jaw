@@ -1114,6 +1114,7 @@ export const FEATURE_SCENARIOS = [
     // ── hover dock: shared snapshot machine (tab-scoped) ────────────────────
     {
         id: 'dock-skills-loading',
+        branchId: 'SkillsTab-skills-5sx3xp',
         reachability: 'integration',
         axis: 'loading', target: 'StatePanel',
         why: 'the skills list is in flight',
@@ -1125,7 +1126,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'dock-skills-error',
-        branchId: 'SkillsTab',
+        branchId: 'SkillsTab-error-m7oidt',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'the skills read failed',
@@ -1148,6 +1149,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'dock-agents-offline',
+        branchId: 'AgentsTab-statekind-hpbjuv',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'the instance is offline, scoped to the agents tab',
@@ -1156,6 +1158,20 @@ export const FEATURE_SCENARIOS = [
         levers: { settingsConfig: { instanceSettingsStatus: 500 } },
         selector: '.hover-dock-body[data-dock-tab="agents"] .dock-error',
         expected: '인스턴스 오프라인',
+    },
+    {
+        id: 'dock-agents-error',
+        branchId: 'AgentsTab-statekind-1ui4yv6',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        // A 4xx is kind 'error' (the message renders); a 5xx is kind 'offline'
+        // ('인스턴스 오프라인') — dock-client.ts useDockSnapshot splits them.
+        why: 'the agents settings read failed with a 4xx, rendering the message',
+        ...DOCK,
+        dockTab: '에이전트',
+        levers: { settingsConfig: { instanceSettingsStatus: 403 } },
+        selector: '.hover-dock-body[data-dock-tab="agents"] .dock-error',
+        expected: '403',
     },
     {
         id: 'dock-settings-offline',
@@ -1184,6 +1200,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'dock-skills-disable-error',
+        branchId: 'SkillsTab-error-1e1rehe',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'disabling a skill was rejected',
@@ -1212,6 +1229,7 @@ export const FEATURE_SCENARIOS = [
     // ── hover dock: agents nested matrix ────────────────────────────────────
     {
         id: 'dock-agents-loading',
+        branchId: 'AgentsTab-registry-k8jlro',
         reachability: 'integration',
         axis: 'loading', target: 'StatePanel',
         why: 'the agents settings/cli-registry are in flight',
@@ -1223,7 +1241,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'dock-agents-cli-registry-error',
-        branchId: 'AgentsTab',
+        branchId: 'AgentsTab-registryError-194u7ul',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'the cli-registry read failed',
@@ -1235,6 +1253,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'dock-agents-save-error',
+        branchId: 'AgentsTab-saveError-1ekcmwt',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'saving the agents settings was rejected',
@@ -1280,6 +1299,23 @@ export const FEATURE_SCENARIOS = [
         levers: { hoverDock: {} },
         selector: '.hover-dock-body[data-dock-tab="agents"] .dock-section-header',
         absent: '.hover-dock-body[data-dock-tab="agents"] .dock-prompt-editor',
+    },
+    {
+        id: 'dock-agents-flush-error',
+        branchId: 'FlushAgentSection-error-ifystw',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'saving the flush-agent cli/model was rejected',
+        ...DOCK,
+        dockTab: '에이전트',
+        levers: { hoverDock: { mutationStatus: 500 } },
+        actions: [
+            { kind: 'click', selector: '.hover-dock-body[data-dock-tab="agents"] .dock-section-header' },
+            { kind: 'select', selector: '.hover-dock-body[data-dock-tab="agents"] .dock-section-body select', value: 'codex', nth: 0 },
+        ],
+        expectRequests: [{ method: 'PUT', path: '/i/3506/api/memory-files/settings', count: 1 }],
+        selector: '.hover-dock-body[data-dock-tab="agents"] .dock-section-body .dock-error',
+        expected: '500',
     },
 
     // ── hover dock: skills list + filters ───────────────────────────────────
@@ -1517,9 +1553,11 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'sidebar-single-session-select',
-        branchId: 'Sidebar-single-session',
         reachability: 'integration',
         axis: 'ready', target: 'Control',
+        // No branchId: CF-7's single-session select is an interaction
+        // behavior, not a render-state branch — the wp12 manifest has no
+        // state branch for it, so there is nothing to claim.
         why: 'clicking an online single-session instance selects its sole session (CF-7)',
         ...SIDEBAR,
         noSession: true,

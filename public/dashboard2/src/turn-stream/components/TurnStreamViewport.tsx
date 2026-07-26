@@ -8,6 +8,7 @@ import type { TurnStore } from '../store/turn-store.ts';
 import { useTurnList } from '../store/use-turn.ts';
 import { LegacyMessageRow } from './LegacyMessageRow.tsx';
 import { TurnRow } from './TurnRow.tsx';
+import { LiveTailFollower } from './live-tail-follower.ts';
 import { getRenderCache, heightCacheKey } from '../render/render-cache.ts';
 
 const OVERSCAN = 4;
@@ -110,29 +111,28 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
         const scroll = scrollRef.current;
         const tailHost = tailRef.current;
         if (!scroll || !tailHost) return undefined;
-        // Track the pinned-at-end state BEFORE the resize. wasAtEnd() evaluated
-        // inside the observer sees the ALREADY-grown scrollHeight, which would
-        // always read "not at end" and never re-follow.
-        let pinned = true;
-        const updatePinned = (): void => {
-            const gap = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
-            pinned = gap <= 4;
-        };
-        scroll.addEventListener('scroll', updatePinned, { passive: true });
-        updatePinned();
-        let lastHeight = tailHost.getBoundingClientRect().height;
-        const observer = new ResizeObserver(() => {
-            const nextHeight = tailHost.getBoundingClientRect().height;
-            // `pinned` is the state before this resize; only then do we follow.
-            if (nextHeight !== lastHeight && pinned) {
+        const follower = new LiveTailFollower(
+            tailHost.getBoundingClientRect().height,
+            () => {
                 scroll.scrollTop = scroll.scrollHeight;
-            }
-            lastHeight = nextHeight;
+            },
+        );
+        const onScroll = (): void => {
+            follower.recordScroll({
+                scrollHeight: scroll.scrollHeight,
+                scrollTop: scroll.scrollTop,
+                clientHeight: scroll.clientHeight,
+            });
+        };
+        scroll.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+        const observer = new ResizeObserver(() => {
+            follower.recordTailResize(tailHost.getBoundingClientRect().height);
         });
         observer.observe(tailHost);
         return () => {
             observer.disconnect();
-            scroll.removeEventListener('scroll', updatePinned);
+            scroll.removeEventListener('scroll', onScroll);
         };
     }, [tail]);
 
