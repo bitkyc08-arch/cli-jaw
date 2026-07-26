@@ -1,0 +1,11 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+const seen = [];
+page.on('request', r => { const u = r.url(); if (/Code|code/.test(u) && u.endsWith('.js') || /CodeTab/.test(u)) seen.push(u.split('/').pop()); });
+await page.evaluate(() => { window.__jawE2E.resetCode(); window.__jawE2E.setCode({ capability:{available:true,reason:'ok'} }); });
+await page.evaluate(() => window.__jawE2E.openPanel('code'));
+await page.locator('.d2-code-tab, .d2-code-gate').first().waitFor({ timeout: 15000 });
+await page.waitForTimeout(800);
+console.log('CHUNKS:', [...new Set(seen)].slice(0, 12));
+await browser.close(); await server.close();

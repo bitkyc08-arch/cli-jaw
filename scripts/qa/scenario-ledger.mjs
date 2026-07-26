@@ -227,7 +227,9 @@ export const CODE_SCENARIOS = [
         why: 'the model catalogue request is still in flight',
         code: { ...OPEN, holdModels: true },
         selector: '.d2-code-model-control[data-state="loading"]',
-        expectRequests: [{ method: 'GET', path: '/i/3506/api/code/models', count: 1 }],
+        // The catalogue is fetched on mount, before any action can be marked,
+        // so this row proves the loading FRAME rather than the request.
+        requires: '.d2-model-picker-spinner',
     },
     {
         id: 'model-ready',
@@ -258,7 +260,7 @@ export const CODE_SCENARIOS = [
         why: 'the server answered with no providers; the picker has nothing to offer',
         code: { ...OPEN, models: { providers: [], defaultProvider: 'jwc', defaultModel: 'sonnet-4.6' } },
         selector: '.d2-code-model-control[data-state="ready"] .d2-model-picker-trigger[disabled]',
-        expectRequests: [{ method: 'GET', path: '/i/3506/api/code/models', count: 1 }],
+        absent: '.d2-model-picker-option',
     },
     {
         id: 'model-error',
@@ -281,8 +283,10 @@ export const CODE_SCENARIOS = [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
             { kind: 'pick-model', value: 'opus-4.2' },
         ],
+        // Model ids are provider-qualified (providerQualifiedModel at
+        // CodeModelControl.tsx:22), so the wire value is not the bare name.
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'opus-4.2' } },
+            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'jwc/opus-4.2' } },
         ],
         selector: '.d2-code-model-control[data-state="switching"]',
     },
@@ -297,7 +301,7 @@ export const CODE_SCENARIOS = [
             { kind: 'pick-model', value: 'opus-4.2' },
         ],
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'opus-4.2' } },
+            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'jwc/opus-4.2' } },
         ],
         selector: '.d2-code-model-control[data-state="ready"]',
         pattern: 'opus-4\\.2',
@@ -307,7 +311,7 @@ export const CODE_SCENARIOS = [
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'the server confirmed a model the client does not know, so the switch is not trustworthy',
-        code: { ...OPEN, liveSessions: [LIVE_SESSION], modelSwitchReturns: 'ghost-model' },
+        code: { ...OPEN, liveSessions: [LIVE_SESSION], modelSwitchReturns: 'jwc/ghost-model' },
         actions: [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
             { kind: 'pick-model', value: 'opus-4.2' },
@@ -393,7 +397,9 @@ export const CODE_SCENARIOS = [
         actions: [{ kind: 'click', selector: '.d2-code-session-row[data-live="1"]' }],
         selector: '.d2-code-tab .d2-code-stream',
         requires: '.d2-code-composer',
-        absent: '.d2-turn-slot',
+        // Scoped: the chat workbench renders its own turn slots, so a bare
+        // `.d2-turn-slot` is always present and this row could never pass.
+        absent: '.d2-code-stream .d2-turn-slot',
         expectRequests: [{ method: 'POST', pathEndsWith: '/prompt', path: '*', count: 0 }],
     },
     {
@@ -404,7 +410,7 @@ export const CODE_SCENARIOS = [
         code: { ...OPEN, liveSessions: [LIVE_SESSION] },
         actions: [{ kind: 'click', selector: '.d2-code-session-row[data-live="1"]' }],
         expectRequests: [{ method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 0 }],
-        selector: '.d2-code-composer-actions button[disabled]',
+        selector: '.d2-code-composer-actions button[data-action="send"][disabled]',
         expected: 'Send',
         // Distinguishes this from composer-busy, where the draft survives.
         emptyDraft: true,
@@ -418,12 +424,12 @@ export const CODE_SCENARIOS = [
         actions: [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
             { kind: 'type', selector: '.d2-code-composer textarea', text: 'wp5b busy probe' },
-            { kind: 'click', selector: '.d2-code-composer-actions button:not([disabled])' },
+            { kind: 'click', selector: '.d2-code-composer-actions button[data-action="send"]:not([disabled])' },
         ],
         expectRequests: [
             { method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 1, bodyIncludes: { text: 'wp5b busy probe' } },
         ],
-        selector: '.d2-code-composer-actions button[disabled]',
+        selector: '.d2-code-composer-actions button[data-action="send"][disabled]',
         expected: 'Send',
         // Round 2 WP5B-COMPOSER-BUSY-COLLISION: the draft is what separates
         // this from prompt-success, which also renders a disabled Send.
@@ -438,12 +444,12 @@ export const CODE_SCENARIOS = [
         actions: [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
             { kind: 'type', selector: '.d2-code-composer textarea', text: 'wp5b accepted prompt' },
-            { kind: 'click', selector: '.d2-code-composer-actions button:not([disabled])' },
+            { kind: 'click', selector: '.d2-code-composer-actions button[data-action="send"]:not([disabled])' },
         ],
         expectRequests: [
             { method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 1, bodyIncludes: { text: 'wp5b accepted prompt' } },
         ],
-        selector: '.d2-code-composer-actions button[disabled]',
+        selector: '.d2-code-composer-actions button[data-action="send"][disabled]',
         expected: 'Send',
         draftEquals: '',
         absent: '.d2-code-error',
@@ -458,7 +464,7 @@ export const CODE_SCENARIOS = [
         actions: [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
             { kind: 'type', selector: '.d2-code-composer textarea', text: 'wp5b rejected prompt' },
-            { kind: 'click', selector: '.d2-code-composer-actions button:not([disabled])' },
+            { kind: 'click', selector: '.d2-code-composer-actions button[data-action="send"]:not([disabled])' },
         ],
         // Round 2 WP5B-LOAD-VS-PROMPT-ERROR: same DOM as intent-load-error,
         // so both directions are pinned.
@@ -478,14 +484,14 @@ export const CODE_SCENARIOS = [
         code: { ...OPEN, liveSessions: [LIVE_SESSION] },
         actions: [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
-            { kind: 'click', selector: '.d2-code-composer-actions button:first-child' },
+            { kind: 'click', selector: '.d2-code-composer-actions button[data-action="cancel"]' },
         ],
         // Round 2 WP5B-CANCEL-SESSION-ID: the exact session id, so cancelling
         // the wrong session cannot pass.
         expectRequests: [
             { method: 'POST', path: '/api/code/sessions/wp5b-live-1/cancel', count: 1 },
         ],
-        selector: '.d2-code-composer-actions button:first-child',
+        selector: '.d2-code-composer-actions button[data-action="cancel"]',
         expected: 'Stop',
     },
 
@@ -554,7 +560,7 @@ export const CODE_SCENARIOS = [
         id: 'permission-answer-error',
         reachability: 'integration',
         axis: 'error', target: 'Group',
-        why: 'the answer failed in transit; the UI dismisses the prompt anyway (CodeTab.tsx:234-241)',
+        why: 'the answer failed in transit, so the choice must stay on screen (DEFECT-B)',
         code: { ...OPEN, liveSessions: [LIVE_SESSION], permissionAnswerStatus: 500 },
         actions: [
             { kind: 'click', selector: '.d2-code-session-row[data-live="1"]' },
@@ -564,11 +570,11 @@ export const CODE_SCENARIOS = [
         expectRequests: [
             { method: 'POST', path: '/api/code/permissions/wp5b-perm-1', count: 1 },
         ],
-        // Recorded as measured behaviour, not endorsed: the prompt vanishes
-        // even though the agent never heard the answer.
-        selector: '.d2-code-composer',
-        absent: '.d2-code-permission',
-        knownDefect: 'DEFECT-B',
+        // The prompt SURVIVES a failed answer, and the failure is reported.
+        // Before the fix it vanished while the agent went on waiting.
+        selector: '.d2-code-permission[role="group"]',
+        requires: '.d2-code-error[role="alert"]',
+        pattern: 'Permission requested',
     },
 ];
 
@@ -611,9 +617,14 @@ export function scenarioLedgerStatus() {
         // row could "pass" by asserting nothing at all.
         if (scenario.reachability === 'integration') {
             if (!scenario.selector) malformed.push(`${scenario.id}: integration row has no selector`);
+            // A selector alone is a presence check, and presence is exactly
+            // what neighbouring states share. Every row must additionally pin
+            // copy, a draft value, a request count, or a discriminating
+            // presence/absence claim.
             if (!scenario.expected && !scenario.pattern
-                && scenario.draftEquals === undefined && !scenario.expectRequests) {
-                malformed.push(`${scenario.id}: integration row asserts no copy, draft or request`);
+                && scenario.draftEquals === undefined && !scenario.expectRequests
+                && !scenario.requires && !scenario.absent) {
+                malformed.push(`${scenario.id}: integration row asserts nothing beyond its own selector`);
             }
             if (!scenario.why) malformed.push(`${scenario.id}: integration row does not say why it exists`);
         }

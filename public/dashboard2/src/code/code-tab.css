@@ -145,6 +145,19 @@
     color: var(--danger);
 }
 
+/* Shown in the composer's place while a stored conversation is being fetched.
+   It occupies the same band so opening a conversation does not shift the
+   transcript up and then back down when the composer returns. */
+.d2-code-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+}
+
 /* The capability gate had no styles at all, so its guidance and its Retry
    button rendered as browser defaults: a grey UA fill that put the label at
    3.08:1, and 1.36:1 once disabled during a probe. This is the screen a user

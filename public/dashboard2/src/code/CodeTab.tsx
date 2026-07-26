@@ -64,6 +64,19 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
     const [busy, setBusy] = useState(false);
     const [permissions, setPermissions] = useState<PendingPermission[]>([]);
     const [modelSelection, setModelSelection] = useState<{ port: number; modelId: string } | null>(null);
+    /*
+     * Which session is still fetching its transcript.
+     *
+     * Opening a stored conversation sets the session id immediately and loads
+     * the history in the effect below, so without this the tab renders an
+     * empty transcript and a ready composer first and the conversation appears
+     * a moment later — indistinguishable from "this conversation is empty".
+     *
+     * It holds the session id rather than a boolean so a late reply from a
+     * conversation the user already navigated away from cannot clear the
+     * indicator for the one now on screen.
+     */
+    const [replayingSessionId, setReplayingSessionId] = useState<string | null>(null);
     const replaySeededRef = useRef<string | null>(null);
     const portGenerationRef = useRef(0);
     const sessionGenerationRef = useRef(0);
@@ -133,6 +146,7 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
         pendingEntryRef.current = entry;
         sessionGenerationRef.current += 1;
         setListError(null);
+        setReplayingSessionId(entry.sessionId);
         setSessionId(entry.sessionId);
     }
 
@@ -168,10 +182,12 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
                 || !isCurrentCodeSessionGeneration(sessionGeneration, sessionGenerationRef.current)) return;
             setModelSelection(session.modelId ? { port, modelId: session.modelId } : null);
             if (actions.length) store.ingest(actions);
+            setReplayingSessionId(current => (current === entry.sessionId ? null : current));
         }).catch((error: unknown) => {
             if (generation !== portGenerationRef.current
                 || !isCurrentCodeSessionGeneration(sessionGeneration, sessionGenerationRef.current)) return;
             setListError(error instanceof Error ? error.message : String(error));
+            setReplayingSessionId(current => (current === entry.sessionId ? null : current));
         });
     }, [store, adapter, sessionId, client, port]);
 
@@ -232,10 +248,19 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
     }
 
     async function answerPermission(requestId: string, optionId: string): Promise<void> {
+        /*
+         * Only dismiss the prompt once the answer is actually delivered.
+         *
+         * This used to clear it in a `finally`, so a failed POST removed the
+         * question from the screen while the agent went on waiting for an
+         * answer it never received: the session appears to hang and the user
+         * has no way back to the choice they thought they made.
+         */
         try {
             await client.answerPermission(requestId, optionId);
-        } finally {
             setPermissions(current => current.filter(p => p.requestId !== requestId));
+        } catch (error: unknown) {
+            setListError(error instanceof Error ? error.message : String(error));
         }
     }
 
@@ -267,6 +292,11 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
         );
     }
 
+    // The transcript is still being fetched for the conversation that is on
+    // screen right now. Showing the composer here would invite the user to
+    // type into a conversation whose contents are about to arrive.
+    const replaying = replayingSessionId !== null && replayingSessionId === sessionId;
+
     return (
         <div className="d2-code-tab" data-testid="code-tab">
             <div className="d2-code-stream">
@@ -294,6 +324,12 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
                     onSelectionChange={handleModelSelection}
                 />
             </div>
+            {replaying ? (
+                <div className="d2-code-loading" data-state="replaying" role="status">
+                    <span className="d2-spinner" aria-hidden="true" />
+                    <span>Opening conversation…</span>
+                </div>
+            ) : (
             <div className="d2-code-composer">
                 <textarea
                     value={draft}
@@ -308,10 +344,11 @@ export function CodeTab({ port, sessionIntent }: CodeTabProps): JSX.Element {
                     rows={2}
                 />
                 <div className="d2-code-composer-actions">
-                    <button type="button" onClick={() => { void client.cancel(sessionId); }}>Stop</button>
-                    <button type="button" disabled={!draft.trim() || busy} onClick={() => { void sendPrompt(); }}>Send</button>
+                    <button type="button" data-action="cancel" onClick={() => { void client.cancel(sessionId); }}>Stop</button>
+                    <button type="button" data-action="send" disabled={!draft.trim() || busy} onClick={() => { void sendPrompt(); }}>Send</button>
                 </div>
             </div>
+            )}
             {listError ? <div className="d2-code-error" role="alert">{listError}</div> : null}
         </div>
     );

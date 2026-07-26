@@ -1,0 +1,11 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetCode(); window.__jawE2E.setCode({ capability:{available:true,reason:'ok'}, storedStatus: 500, liveSessions: [] }); });
+await page.evaluate(() => window.__jawE2E.openPanel('code'));
+await page.locator('.d2-code-tab, .d2-code-gate').first().waitFor({ timeout: 15000 });
+await page.waitForTimeout(1200);
+console.log('PICKER:', await page.evaluate(() => document.querySelector('.d2-code-session-picker')?.outerHTML?.slice(0,400)));
+console.log('UNKNOWN:', await page.evaluate(() => window.__jawE2E.diagnostics().unknownRequests));
+console.log('REQS:', await page.evaluate(() => window.__jawE2E.codeRequests(0).map(r => r.method+' '+r.pathname+r.search)));
+await browser.close(); await server.close();

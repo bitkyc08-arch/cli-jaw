@@ -1,0 +1,18 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+const LIVE = { sessionId:'wp5b-live-1', cwd:'/tmp/wp4-e2e', status:'idle', createdAt:1783000000000, lastUsedAt:1783000000000, modelId:'sonnet-4.6', title:'wp5b live session' };
+await page.evaluate((L) => { window.__jawE2E.resetCode(); window.__jawE2E.setCode({ capability:{available:true,reason:'ok'}, liveSessions:[L] }); }, LIVE);
+await page.evaluate(() => window.__jawE2E.openPanel('code'));
+await page.locator('.d2-code-tab, .d2-code-gate').first().waitFor({ timeout: 15000 });
+await page.locator('.d2-code-session-row[data-live="1"]').click();
+await page.waitForTimeout(800);
+await page.evaluate(() => window.__jawE2E.sse.emit('/i/3506/api/events', { topic:'jwc', event:'code_permission_request', sessionId:'wp5b-live-1', id:'wp5b-perm-1', requestId:'wp5b-perm-1', options:[{optionId:'allow-once',name:'Allow once'},{optionId:'reject',name:'Reject'}] }));
+await page.waitForTimeout(500);
+console.log('PERM:', await page.evaluate(() => document.querySelector('.d2-code-permission')?.outerHTML?.slice(0,300)));
+const mark = await page.evaluate(() => window.__jawE2E.markRequests());
+await page.locator('.d2-code-permission button').first().click();
+await page.waitForTimeout(900);
+console.log('AFTER:', await page.evaluate(() => document.querySelector('.d2-code-permission')?.outerHTML?.slice(0,200) ?? 'GONE'));
+console.log('REQS:', await page.evaluate((s) => window.__jawE2E.codeRequests(s).map(r => r.method+' '+r.pathname+' '+JSON.stringify(r.body)), mark));
+await browser.close(); await server.close();

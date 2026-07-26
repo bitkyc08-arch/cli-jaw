@@ -1,0 +1,291 @@
+{
+  "when": "2026-07-26T10:20:00.423Z",
+  "total": 36,
+  "integration": 35,
+  "shadowed": 1,
+  "withActions": 20,
+  "withRequestOracle": 20,
+  "proven": 35,
+  "results": [
+    {
+      "id": "gate-probing",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-state-1kxofnn",
+      "ok": true,
+      "saw": "Checking Code runtime…"
+    },
+    {
+      "id": "gate-missing-binary",
+      "axis": "prerequisite",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "jwc is not installedInstall the external JWC runtime (jaw jwc install) to use Code sessions. Jaw kee"
+    },
+    {
+      "id": "gate-acp-unsupported",
+      "axis": "unsupported",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "jwc version is not ACP-compatibleThe installed jwc does not answer the ACP handshake. Update jwc to "
+    },
+    {
+      "id": "gate-temporarily-unavailable",
+      "axis": "error",
+      "target": "StatePanel",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "Code runtime is temporarily unavailableThe capability probe could not reach a working jwc runtime. R"
+    },
+    {
+      "id": "gate-retry",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": "CodeTabGate-stateavailable-f8u8ym",
+      "ok": true,
+      "saw": "Checking…"
+    },
+    {
+      "id": "tab-suspense",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "CodeTab-state-1d583p4",
+      "ok": true,
+      "saw": "Loading Code…"
+    },
+    {
+      "id": "history-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "CodeHistoryList-historystate-1rc35h3",
+      "ok": true,
+      "saw": "Loading Code history…"
+    },
+    {
+      "id": "history-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": "CodeHistoryList-historystate-1k3sbx",
+      "ok": true,
+      "saw": "No Code sessions yet"
+    },
+    {
+      "id": "history-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeHistoryList-historystate-1ee5oob",
+      "ok": true,
+      "saw": "History unavailable: Stored Code sessions request failed (500)"
+    },
+    {
+      "id": "history-live-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp5b live session/tmp/wp4-e2e"
+    },
+    {
+      "id": "history-stored-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp5b stored session/tmp/wp4-e2e"
+    },
+    {
+      "id": "model-loading",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Provider and model for new Code sessionsLoading models…Loading model inventory"
+    },
+    {
+      "id": "model-ready",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Provider and model for new Code sessionsjwc · sonnet-4.6"
+    },
+    {
+      "id": "model-degraded",
+      "axis": "ready",
+      "target": "Note",
+      "branchId": null,
+      "ok": true,
+      "saw": "Using the available fallback model inventory."
+    },
+    {
+      "id": "model-empty-catalog",
+      "axis": "empty",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "No models available"
+    },
+    {
+      "id": "model-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeModelControl-error-59bdpt",
+      "ok": true,
+      "saw": "Code models request failed (400)"
+    },
+    {
+      "id": "model-switching",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Active Code session provider and modelsonnet-4.6"
+    },
+    {
+      "id": "model-switch-committed",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Active Code session provider and modeljwc · opus-4.2"
+    },
+    {
+      "id": "model-switch-unknown-model",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code model switch returned an unknown model"
+    },
+    {
+      "id": "model-switch-http-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code model switch request failed (400)"
+    },
+    {
+      "id": "new-session-no-model",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Select an available provider and model before starting a Code session"
+    },
+    {
+      "id": "new-session-no-cwd",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "No working directory for this instance"
+    },
+    {
+      "id": "list-error-no-session",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeTab-listError-uj7lsx",
+      "ok": true,
+      "saw": "Code session create request failed (500)"
+    },
+    {
+      "id": "composer-active",
+      "axis": "ready",
+      "target": "Composer",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "active-empty-transcript",
+      "axis": "empty",
+      "target": "Transcript",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "composer-send-disabled",
+      "axis": "disabled",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Send"
+    },
+    {
+      "id": "composer-busy",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Send"
+    },
+    {
+      "id": "prompt-success",
+      "axis": "ready",
+      "target": "Composer",
+      "branchId": null,
+      "ok": true,
+      "saw": "Send"
+    },
+    {
+      "id": "list-error-active-session",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "CodeTab-listError-uj7lsx#2",
+      "ok": true,
+      "saw": "Code prompt request failed (500)"
+    },
+    {
+      "id": "cancel-request",
+      "axis": "action",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Stop"
+    },
+    {
+      "id": "intent-load-pending",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Opening conversation…"
+    },
+    {
+      "id": "intent-load-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code session load request failed (500)"
+    },
+    {
+      "id": "permission-pending",
+      "axis": "prerequisite",
+      "target": "Group",
+      "branchId": null,
+      "ok": true,
+      "saw": "Permission requestedAllow onceReject"
+    },
+    {
+      "id": "permission-answered",
+      "axis": "ready",
+      "target": "Group",
+      "branchId": null,
+      "ok": true,
+      "saw": "StopSend"
+    },
+    {
+      "id": "permission-answer-error",
+      "axis": "error",
+      "target": "Group",
+      "branchId": null,
+      "ok": true,
+      "saw": "Permission requestedAllow onceReject"
+    }
+  ]
+}

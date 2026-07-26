@@ -94,6 +94,7 @@ export interface CodeFixtureConfig {
     holdPrompt?: boolean;
     modelSwitchStatus?: number;
     holdModelSwitch?: boolean;
+    permissionAnswerStatus?: number;
     /** Answer a model switch with a DIFFERENT model than the one requested. */
     modelSwitchReturns?: string;
     replayEvents?: JsonRecord[];
@@ -384,7 +385,12 @@ class FakeApiRouter {
             return json({ ok: true });
         }
 
-        if (path.startsWith('/permissions/')) return json({ ok: true });
+        if (path.startsWith('/permissions/')) {
+            if (cfg.permissionAnswerStatus && cfg.permissionAnswerStatus >= 400) {
+                return json({ ok: false, error: 'permission answer rejected' }, cfg.permissionAnswerStatus);
+            }
+            return json({ ok: true });
+        }
         if (path === '/permissions') return json({ ok: true, permissions: [] });
         if (path === '/git-info') return json({ ok: true, branch: 'main', dirty: false });
 
