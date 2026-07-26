@@ -67,6 +67,10 @@ test('the popover is NOT classified as a trusted manager window for permissions'
     assert.ok(index.includes('permissionSurfaceForContents'), 'classification is by webContents');
     assert.ok(index.includes("return 'embedded-browser-webview'"),
         'a non-manager same-origin surface gets the narrow embedded surface');
+    // With no live manager window (keep-running background), it must fail
+    // closed rather than fall back to a URL-only manager classification.
+    assert.ok(index.includes('if (!mainWindow || mainWindow.isDestroyed())'),
+        'no live manager window fails closed, not URL-only');
     // The embedded surface is denied-by-default.
     const perms = readFileSync(join(ROOT, 'electron/src/main/lib/electron-permissions.ts'), 'utf8');
     assert.ok(perms.includes("'embedded-browser-webview'") && perms.includes("decision: 'deny'"),

@@ -668,10 +668,13 @@ function permissionSurfaceForUrl(raw: string): ElectronPermissionSurface {
  * gets the narrower embedded surface instead.
  */
 function permissionSurfaceForContents(contents: Electron.WebContents | null, raw: string): ElectronPermissionSurface {
-    if (contents && mainWindow && !mainWindow.isDestroyed() && contents.id !== mainWindow.webContents.id) {
-        // A same-origin but non-manager webContents (the reminders popover).
-        return 'embedded-browser-webview';
-    }
+    if (!contents) return permissionSurfaceForUrl(raw);
+    // With no live manager window (keep-running background mode), a same-origin
+    // webContents cannot be the manager — fail closed rather than let a URL-only
+    // classification call it a manager window.
+    if (!mainWindow || mainWindow.isDestroyed()) return 'embedded-browser-webview';
+    // A same-origin but non-manager webContents (the reminders popover).
+    if (contents.id !== mainWindow.webContents.id) return 'embedded-browser-webview';
     return permissionSurfaceForUrl(raw);
 }
 
