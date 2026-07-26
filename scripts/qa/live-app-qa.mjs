@@ -15,11 +15,11 @@
 //        [--evidence evidence/wplive.window.json] [--out evidence/wplive.dom.json]
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { chromium } from 'playwright';
-import { cleanupDecision, lockVerdict, recoveryDecision, stopConfirmed } from './live-ownership.mjs';
+import { cleanupDecision, recoveryDecision, stopConfirmed } from './live-ownership.mjs';
+import { acquireLock, releaseLockSync } from './live-lock.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -160,64 +160,21 @@ if (evidence) {
 
 // Refuse to run two of these at once. Two runners sharing one journal would
 // overwrite each other's ownership record, and then neither can prove what it
-// started.
-const alivePid = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-try {
-    await writeFile(LOCK, RUN_ID, { flag: 'wx' });
-} catch {
-    // A lock left by a crashed run must not block every future run, but one
-    // held by a live run must. Ask the holder's pid rather than a human.
-    let contents = '';
-    try { contents = await readFile(LOCK, 'utf8'); } catch { /* raced */ }
-    const verdict = lockVerdict(contents, alivePid);
-    if (verdict.verdict === 'held') {
-        console.error(`[wplive] another run holds ${LOCK}: ${verdict.reason}`);
-        process.exit(1);
-    }
-    // Reclaiming a stale lock is itself a race: two runners can both read it,
-    // both decide it is stale, and both overwrite it — after which the first to
-    // finish deletes the other's lock. Serialise the reclamation behind its own
-    // exclusive file, remove the stale lock, then go back and compete for the
-    // real lock with `wx` like everyone else.
-    console.error(`[wplive] reclaiming a stale lock (${verdict.reason})`);
-    const RECLAIM = `${LOCK}.reclaim`;
-    try {
-        await writeFile(RECLAIM, RUN_ID, { flag: 'wx' });
-    } catch {
-        console.error('[wplive] another run is already reclaiming that lock; stand down.');
-        process.exit(1);
-    }
-    // Take the new lock BEFORE releasing the guard, and never leave a gap
-    // between removing the stale file and creating ours: another runner that
-    // slipped into that gap would also "win". Write to a fresh name and rename
-    // over the stale one — rename is atomic, so exactly one file exists at
-    // every instant and the guard is what serialises who gets to do it.
-    try {
-        // Re-read under the guard. Between deciding the lock was stale and
-        // getting here, whoever held the guard before us may have already
-        // replaced it with a live one — in which case there is nothing stale
-        // left to reclaim and we must stand down like any latecomer.
-        const current = await readFile(LOCK, 'utf8').catch(() => '');
-        if (current && lockVerdict(current, alivePid).verdict === 'held') {
-            console.error('[wplive] the lock was reclaimed while we waited; stand down.');
-            await rm(RECLAIM, { force: true }).catch(() => {});
-            process.exit(1);
-        }
-        const staging = `${LOCK}.${RUN_ID}`;
-        await writeFile(staging, RUN_ID, { flag: 'wx' });
-        await rename(staging, LOCK);
-    } catch {
-        console.error('[wplive] lost the race for the reclaimed lock; stand down.');
-        await rm(RECLAIM, { force: true }).catch(() => {});
-        process.exit(1);
-    } finally {
-        await rm(RECLAIM, { force: true }).catch(() => {});
-    }
+// started. The protocol lives in live-lock.mjs — see the note there on why the
+// earlier "reclaim guard" was removed: a run killed while holding that guard
+// blocked every future run forever, which is the opposite of what a
+// crash-recovery tool needs.
+const lock = await acquireLock(LOCK, RUN_ID);
+if (!lock.held) {
+    console.error(`[wplive] another run holds ${LOCK}: ${lock.reason}`);
+    process.exit(1);
 }
-// `require` does not exist in an ES module — the old handler threw on every
-// exit and swallowed it, so the lock was never released and the next run was
-// refused. Import the sync unlink properly.
-process.on('exit', () => { try { unlinkSync(LOCK); } catch { /* already gone */ } });
+if (lock.reclaimedFrom) {
+    console.error(`[wplive] reclaimed a stale lock from pid ${lock.reclaimedFrom}`);
+}
+// Release only if it is still ours: a run that reclaimed our stale lock owns it
+// now, and deleting theirs would put two runs back in play.
+process.on('exit', () => { releaseLockSync(LOCK, RUN_ID); });
 
 // Adopt anything a previous run started and could not stop. This has to happen
 // after alignment (so we know we are talking to the right manager) and before

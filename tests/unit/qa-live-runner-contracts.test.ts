@@ -219,11 +219,20 @@ test('a lock held by a live process blocks, a stale one does not', () => {
     assert.equal(lockVerdict('', () => true).verdict, 'stale');
 });
 
-test('the lock is released with an ESM-safe unlink', () => {
-    // `require` does not exist in an .mjs module: the old handler threw on every
-    // exit, swallowed it, and left the lock behind so the next run was refused.
-    assert.doesNotMatch(LIVE, /require\('node:fs'\)/);
-    assert.match(LIVE, /import \{ unlinkSync \} from 'node:fs'/);
+test('the runner uses the lock module rather than its own file juggling', () => {
+    // The lock protocol lives in live-lock.mjs and is exercised for real in
+    // qa-live-runner-processes.test.ts. What matters here is that the runner
+    // actually goes through it — an earlier version hand-rolled acquisition
+    // inline, including a `require` that throws in an ES module and a reclaim
+    // guard whose orphan blocked every subsequent run.
+    assert.match(LIVE, /import \{ acquireLock, releaseLockSync \} from '\.\/live-lock\.mjs'/);
+    assert.match(LIVE, /const lock = await acquireLock\(LOCK, RUN_ID\)/);
+    assert.match(LIVE, /releaseLockSync\(LOCK, RUN_ID\)/,
+        'release must be conditional on still owning it');
+    assert.doesNotMatch(LIVE, /require\('node:fs'\)/, 'require does not exist in an .mjs module');
+    // The guard was a real file at `${LOCK}.reclaim`; only the explanatory
+    // comment survives, so match the file expression rather than the word.
+    assert.doesNotMatch(LIVE, /`\$\{LOCK\}\.reclaim`/, 'the orphan-prone guard file is gone');
 });
 
 // ── the boot check's ownership rules ─────────────────────────────────────────

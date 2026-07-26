@@ -8,7 +8,16 @@ import { spawn, execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
+import { acquireLock, releaseLockSync } from '../../scripts/qa/live-lock.mjs';
+
+// Temp dirs were piling up between runs; clean them at the end.
+const dirs: string[] = [];
+const children: import('node:child_process').ChildProcess[] = [];
+after(() => {
+    for (const c of children) { try { c.kill('SIGKILL'); } catch { /* gone */ } }
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+});
 
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
@@ -64,71 +73,91 @@ test('a group sweep that remembers first can never find a stray', () => {
     assert.deepEqual(rightOrder(), [22, 33], 'looking first actually finds them');
 });
 
-test('overlapping runners never both hold the lock', async () => {
-    // What actually matters is not who wins a single reclamation, but that two
-    // runs are never live at the same time — because that is what lets one
-    // delete the other's journal and lose ownership of a started instance.
-    //
-    // Each contender claims, holds for a moment, then releases only if the lock
-    // is still its own. A shared counter file records concurrent holders.
+// ── the lock, exercised through the real implementation ─────────────────────
+//
+// Earlier versions of these tests reimplemented the acquisition algorithm
+// inline, which is how a permanent deadlock in the production path passed a
+// green suite. They call `acquireLock`/`releaseLockSync` now.
+//
+// "A live holder" is expressed as a pid that is genuinely running — a long
+// `sleep` we own — rather than a helper process racing its own lifetime, which
+// is what made the previous attempts measure timing instead of exclusion.
+
+/** A process that will stay alive until we kill it, and its pid. */
+function livePid(): { pid: number; kill: () => void } {
+    const p = spawn('/bin/sleep', ['60'], { stdio: 'ignore', detached: true });
+    p.unref();
+    children.push(p);
+    return { pid: p.pid!, kill: () => { try { process.kill(p.pid!, 'SIGKILL'); } catch { /* gone */ } } };
+}
+
+test('a lock held by a live process is not taken', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
-    const lock = join(dir, 'runner.lock');
-    const ledger = join(dir, 'holders.log');
-    writeFileSync(lock, '999999-stale');
-    writeFileSync(ledger, '');
+    dirs.push(dir);
+    const lockPath = join(dir, 'runner.lock');
 
-    const program = `
-        const { writeFileSync, readFileSync, rmSync, renameSync, appendFileSync } = require('node:fs');
-        const [lock, ledger, id] = process.argv.slice(2);
-        const reclaim = lock + '.reclaim';
-        const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-        const mine = process.pid + '-' + id;
-        const claim = () => {
-            try { writeFileSync(lock, mine, { flag: 'wx' }); return true; } catch {}
-            const holder = Number(String(readFileSync(lock, 'utf8')).split('-')[0]);
-            if (alive(holder)) return false;
-            try { writeFileSync(reclaim, mine, { flag: 'wx' }); } catch { return false; }
-            try {
-                const now = String(readFileSync(lock, 'utf8'));
-                if (alive(Number(now.split('-')[0]))) return false;
-                const staging = lock + '.' + mine;
-                writeFileSync(staging, mine, { flag: 'wx' });
-                renameSync(staging, lock);
-                return true;
-            } catch { return false; } finally { rmSync(reclaim, { force: true }); }
-        };
-        if (claim()) {
-            appendFileSync(ledger, 'enter ' + mine + '\\n');
-            setTimeout(() => {
-                appendFileSync(ledger, 'leave ' + mine + '\\n');
-                try { if (String(readFileSync(lock, 'utf8')) === mine) rmSync(lock, { force: true }); } catch {}
-                process.exit(0);
-            }, 250);
-        } else { process.exit(0); }
-    `;
-    const script = join(dir, 'claim.cjs');
-    writeFileSync(script, program);
+    const holder = livePid();
+    writeFileSync(lockPath, `${holder.pid}-holder`);
 
-    await Promise.all(Array.from({ length: 6 }, (_, i) => new Promise<void>((resolve) => {
-        const p = spawn(process.execPath, [script, lock, ledger, String(i)], { stdio: 'ignore' });
-        p.on('close', () => resolve());
-    })));
+    const attempt = await acquireLock(lockPath, 'second');
+    assert.equal(attempt.held, false, 'a live holder blocks the second runner');
+    assert.match(attempt.reason ?? '', /still running/);
+    assert.equal(readFileSync(lockPath, 'utf8'), `${holder.pid}-holder`, 'and the lock is untouched');
 
-    // Replay the ledger: the number of simultaneous holders must never exceed 1.
-    let held = 0;
-    let peak = 0;
-    for (const line of readFileSync(ledger, 'utf8').trim().split('\n').filter(Boolean)) {
-        held += line.startsWith('enter') ? 1 : -1;
-        peak = Math.max(peak, held);
-    }
-    assert.ok(peak >= 1, 'at least one contender should have run');
-    assert.equal(peak, 1, `two runners held the lock at once:\n${readFileSync(ledger, 'utf8')}`);
+    holder.kill();
 });
 
-test('a lock whose holder is alive is never reclaimed', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-held-'));
-    const lock = join(dir, 'runner.lock');
-    writeFileSync(lock, `${process.pid}-mine`);
-    const holder = Number(readFileSync(lock, 'utf8').split('-')[0]);
-    assert.ok(alive(holder), 'this process is the holder and is obviously running');
+test('a lock left by a crashed run is reclaimed, not a permanent block', async () => {
+    // The property the reclaim-guard version broke: a run killed while holding
+    // the guard blocked every future run forever.
+    const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
+    dirs.push(dir);
+    const lockPath = join(dir, 'runner.lock');
+
+    const crashed = livePid();
+    writeFileSync(lockPath, `${crashed.pid}-crashed`);
+    crashed.kill();
+    await new Promise((r) => setTimeout(r, 400));
+
+    const next = await acquireLock(lockPath, `${process.pid}-next`);
+    assert.equal(next.held, true, 'a dead holder must not block the next run');
+    assert.equal(next.reclaimedFrom, crashed.pid);
+
+    // And reclamation must leave a usable state, not debris that blocks the
+    // run after that — which is exactly how the guard file failed.
+    assert.equal(releaseLockSync(lockPath, `${process.pid}-next`), true);
+    const third = await acquireLock(lockPath, `${process.pid}-third`);
+    assert.equal(third.held, true, 'the lock is usable after a reclamation');
+    releaseLockSync(lockPath, `${process.pid}-third`);
 });
+
+test('several runners racing one stale lock produce exactly one holder', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
+    dirs.push(dir);
+    const lockPath = join(dir, 'runner.lock');
+    writeFileSync(lockPath, '999999-stale');   // a pid that is not running
+
+    // All six race the real implementation concurrently.
+    const results = await Promise.all(
+        Array.from({ length: 6 }, (_, i) => acquireLock(lockPath, `${process.pid}-c${i}`)));
+    const winners = results.filter((r) => r.held);
+    assert.equal(winners.length, 1,
+        `exactly one runner may hold it, saw ${JSON.stringify(results.map((r) => r.held))}`);
+    assert.equal(readFileSync(lockPath, 'utf8'), winners[0]!.id, 'the lock names the winner');
+});
+
+test('a runner never deletes a lock that is no longer its own', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
+    dirs.push(dir);
+    const lockPath = join(dir, 'runner.lock');
+
+    writeFileSync(lockPath, 'someone-else');
+    assert.equal(releaseLockSync(lockPath, 'mine'), false, 'not ours to release');
+    assert.ok(existsSync(lockPath), 'and it is still there');
+
+    writeFileSync(lockPath, 'mine');
+    assert.equal(releaseLockSync(lockPath, 'mine'), true);
+    assert.ok(!existsSync(lockPath));
+});
+
+
