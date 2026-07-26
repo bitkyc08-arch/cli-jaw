@@ -294,6 +294,13 @@ export function branchCoverageStatus() {
             delegatedBroken.push(`${branchId} -> ${entry.delegate}`);
         }
     }
+    // wp5c C-gate round 2: a duplicate claim (two scenarios naming the same
+    // feature branch) is detected in featureScenarioStatus().malformed but
+    // must reach the gates. A non-manifest claim is caught by `stale`; a
+    // duplicate on a REAL branch is not, and without this it passes silently.
+    for (const problem of featureScenarioStatus().malformed) {
+        if (/claimed by two scenarios/.test(problem)) delegatedBroken.push(problem);
+    }
 
     return {
         total: rows.length,
