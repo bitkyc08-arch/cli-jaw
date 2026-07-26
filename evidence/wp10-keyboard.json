@@ -1,0 +1,26 @@
+{
+  "mode": "keyboard",
+  "surface": "sidebar",
+  "owner": "wp2",
+  "total": 105,
+  "reached": 104,
+  "unreachable": [],
+  "tabCycleCompleted": true,
+  "reachableViaRoving": [
+    "jwc"
+  ],
+  "malformedRovingGroups": [],
+  "rovingDynamic": {
+    "before": {
+      "selected": 0,
+      "tabbable": 0
+    },
+    "after": {
+      "selectedIndex": 1,
+      "tabbableIndex": 1
+    },
+    "ownershipMoved": true
+  },
+  "verdict": "pass",
+  "capturedAt": "2026-07-26T20:39:57.402Z"
+}

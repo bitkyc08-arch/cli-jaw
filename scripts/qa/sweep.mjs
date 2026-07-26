@@ -23,6 +23,11 @@ const surfaceName = flag('surface');
 const mode = flag('mode');
 const outPath = flag('out');
 const url = flag('url', 'http://127.0.0.1:24577/dashboard2/');
+// t5 — fast vs paced separation. The pass/fail oracle is the FAST sweep: no
+// artificial delay, so a real user's defect is not masked. `--paced` adds a
+// delay between Tab steps for the diagnostic "would it work if slower" question
+// and never decides pass/fail.
+const paced = args.includes('--paced') ? Number(flag('pacedMs', '120')) : 0;
 
 const MODES = ['interact', 'keyboard', 'overlay'];
 if (!surfaceName || !MODES.includes(mode) || !outPath) {
@@ -49,6 +54,12 @@ try {
             const root = rootSelector ? document.querySelector(rootSelector) : document.body;
             if (!root) return { error: 'surface root not found', total: 0, names: [], roving: [] };
             const els = [...root.querySelectorAll(focusable)]
+                // State-aware inventory (t5): do NOT drop visibility:hidden.
+                // A conditional control (e.g. a More button revealed on
+                // focus-within) is hidden until its state arrives, and
+                // excluding it erases the defect from the denominator. Keep
+                // intended interactive controls and model reachability per
+                // state instead. `visibility:hidden` still has a bounding box.
                 .filter((el) => !el.hasAttribute('disabled') && el.getBoundingClientRect().width > 0);
             const label = (el) => el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 40) || el.tagName;
 
@@ -101,6 +112,7 @@ try {
         let wrapped = false;
         for (let step = 0; step < HARD_CAP; step += 1) {
             await page.keyboard.press('Tab');
+            if (paced > 0) await page.waitForTimeout(paced);
             const { label, inside } = await readActive();
             if (inside && label) {
                 seen.add(label);
@@ -116,14 +128,57 @@ try {
         const rovingNames = new Set((inventory.roving ?? []).filter((entry) => !entry.malformed).map((entry) => entry.name));
         const malformed = (inventory.roving ?? []).filter((entry) => entry.malformed);
         const unreachable = inventory.names.filter((name) => !seen.has(name) && !rovingNames.has(name));
+
+        /*
+         * Static exclusion proves the roving members are not counted unreachable.
+         * It does NOT prove the group actually works: that arrow keys move the
+         * tabbable entry point and aria-selected/tabIndex ownership together.
+         * Drive it.
+         */
+        const rovingProof = await page.evaluate(() => {
+            const group = document.querySelector('[role="tablist"]');
+            if (!group) return { skipped: 'no tablist' };
+            const tabs = [...group.querySelectorAll('[role="tab"]')];
+            if (tabs.length < 2) return { skipped: 'fewer than two tabs' };
+            const selectedIndex = tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');
+            const tabbableIndex = tabs.findIndex((tab) => tab.tabIndex >= 0);
+            return {
+                tabs: tabs.map((tab) => ({ selected: tab.getAttribute('aria-selected') === 'true', tabIndex: tab.tabIndex })),
+                selectedIndex,
+                tabbableIndex,
+                coherent: selectedIndex === tabbableIndex,
+            };
+        });
+        let rovingDynamic = { skipped: rovingProof.skipped ?? 'no tablist' };
+        if (!rovingProof.skipped && rovingProof.coherent) {
+            const entryPoint = rovingProof.tabbableIndex;
+            await page.locator('[role="tablist"] [role="tab"]').nth(entryPoint).focus();
+            await page.keyboard.press('ArrowRight');
+            const after = await page.evaluate(() => {
+                const tabs = [...document.querySelectorAll('[role="tablist"] [role="tab"]')];
+                return {
+                    selectedIndex: tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true'),
+                    tabbableIndex: tabs.findIndex((tab) => tab.tabIndex >= 0),
+                };
+            });
+            rovingDynamic = {
+                before: { selected: rovingProof.selectedIndex, tabbable: rovingProof.tabbableIndex },
+                after,
+                ownershipMoved: after.selectedIndex === after.tabbableIndex && after.tabbableIndex !== entryPoint,
+            };
+        }
+
         payload = {
             mode, surface: surfaceName, owner: surface.owner,
+            sweepKind: paced > 0 ? 'paced-diagnostic' : 'fast-oracle',
+            ...(paced > 0 ? { pacedMs: paced, note: 'diagnostic only — pass/fail is decided by the fast sweep' } : {}),
             total: inventory.total, reached: seen.size, unreachable,
             tabCycleCompleted: wrapped,
             reachableViaRoving: [...rovingNames],
             malformedRovingGroups: malformed,
+            rovingDynamic,
             verdict: inventory.error ? 'fail'
-                : (unreachable.length === 0 && malformed.length === 0 ? 'pass' : 'fail'),
+                : (unreachable.length === 0 && malformed.length === 0 && rovingDynamic.ownershipMoved !== false ? 'pass' : 'fail'),
             error: inventory.error,
         };
     } else if (mode === 'overlay') {
