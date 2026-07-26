@@ -95,9 +95,16 @@ function judgeRequests(scenario, sent) {
         const matched = sent.filter((entry) => {
             if (entry.method !== want.method) return false;
             if (want.pathEndsWith) {
+                // Explicit suffix match, chosen where the prefix carries an id
+                // the scenario does not want to pin.
                 if (!entry.pathname.endsWith(want.pathEndsWith)) return false;
-            } else if (entry.pathname !== want.path && !entry.pathname.endsWith(want.path)) {
-                return false;
+            } else {
+                // An exact path must match exactly. Falling back to a suffix
+                // match lets `/sessions/load` satisfy a `/sessions` assertion
+                // and `/model` satisfy a `/prompt` one — a request to the
+                // wrong endpoint proving the right one, which is the failure
+                // this oracle exists to rule out.
+                if (entry.pathname !== want.path) return false;
             }
             if (want.query !== undefined) {
                 const search = entry.search.startsWith('?') ? entry.search.slice(1) : entry.search;

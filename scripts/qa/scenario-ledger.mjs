@@ -128,7 +128,7 @@ export const CODE_SCENARIOS = [
         code: { capability: { available: false, reason: 'temporarily_unavailable' }, holdCapabilityRefresh: true },
         actions: [{ kind: 'click', selector: '.d2-code-gate button' }],
         expectRequests: [
-            { method: 'GET', path: '/api/code/capabilities', query: 'refresh=1', count: 1 },
+            { method: 'GET', path: '/i/3506/api/code/capabilities', query: 'refresh=1', count: 1 },
         ],
         selector: '.d2-code-gate button[disabled]',
         expected: 'Checking…',
@@ -286,7 +286,7 @@ export const CODE_SCENARIOS = [
         // Model ids are provider-qualified (providerQualifiedModel at
         // CodeModelControl.tsx:22), so the wire value is not the bare name.
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'jwc/opus-4.2' } },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'jwc/opus-4.2' } },
         ],
         selector: '.d2-code-model-control[data-state="switching"]',
     },
@@ -301,7 +301,7 @@ export const CODE_SCENARIOS = [
             { kind: 'pick-model', value: 'opus-4.2' },
         ],
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'jwc/opus-4.2' } },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/model', count: 1, bodyIncludes: { modelId: 'jwc/opus-4.2' } },
         ],
         selector: '.d2-code-model-control[data-state="ready"]',
         pattern: 'opus-4\\.2',
@@ -345,7 +345,7 @@ export const CODE_SCENARIOS = [
         why: 'no model is selected, so the tab refuses before sending anything',
         code: { ...OPEN, models: { providers: [], defaultProvider: 'jwc', defaultModel: 'sonnet-4.6' } },
         actions: [{ kind: 'click', selector: '.d2-code-new-session' }],
-        expectRequests: [{ method: 'POST', path: '/api/code/sessions', count: 0 }],
+        expectRequests: [{ method: 'POST', path: '/i/3506/api/code/sessions', count: 0 }],
         selector: '.d2-code-error[role="alert"]',
         expected: 'Select an available provider and model before starting a Code session',
     },
@@ -357,7 +357,7 @@ export const CODE_SCENARIOS = [
         code: { ...OPEN },
         dropWorkingDir: true,
         actions: [{ kind: 'click', selector: '.d2-code-new-session' }],
-        expectRequests: [{ method: 'POST', path: '/api/code/sessions', count: 0 }],
+        expectRequests: [{ method: 'POST', path: '/i/3506/api/code/sessions', count: 0 }],
         selector: '.d2-code-error[role="alert"]',
         expected: 'No working directory for this instance',
     },
@@ -369,7 +369,7 @@ export const CODE_SCENARIOS = [
         why: 'the create request itself failed, on the session-picker screen',
         code: { ...OPEN, createStatus: 500 },
         actions: [{ kind: 'click', selector: '.d2-code-new-session' }],
-        expectRequests: [{ method: 'POST', path: '/api/code/sessions', count: 1 }],
+        expectRequests: [{ method: 'POST', path: '/i/3506/api/code/sessions', count: 1 }],
         selector: '.d2-code-error[role="alert"]',
         // Same words could appear next to a composer; the picker is the tell.
         requires: '.d2-code-session-picker',
@@ -409,7 +409,7 @@ export const CODE_SCENARIOS = [
         why: 'an empty draft cannot be sent',
         code: { ...OPEN, liveSessions: [LIVE_SESSION] },
         actions: [{ kind: 'click', selector: '.d2-code-session-row[data-live="1"]' }],
-        expectRequests: [{ method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 0 }],
+        expectRequests: [{ method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/prompt', count: 0 }],
         selector: '.d2-code-composer-actions button[data-action="send"][disabled]',
         expected: 'Send',
         // Distinguishes this from composer-busy, where the draft survives.
@@ -427,7 +427,7 @@ export const CODE_SCENARIOS = [
             { kind: 'click', selector: '.d2-code-composer-actions button[data-action="send"]:not([disabled])' },
         ],
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 1, bodyIncludes: { text: 'wp5b busy probe' } },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/prompt', count: 1, bodyIncludes: { text: 'wp5b busy probe' } },
         ],
         selector: '.d2-code-composer-actions button[data-action="send"][disabled]',
         expected: 'Send',
@@ -447,7 +447,7 @@ export const CODE_SCENARIOS = [
             { kind: 'click', selector: '.d2-code-composer-actions button[data-action="send"]:not([disabled])' },
         ],
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 1, bodyIncludes: { text: 'wp5b accepted prompt' } },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/prompt', count: 1, bodyIncludes: { text: 'wp5b accepted prompt' } },
         ],
         selector: '.d2-code-composer-actions button[data-action="send"][disabled]',
         expected: 'Send',
@@ -469,8 +469,8 @@ export const CODE_SCENARIOS = [
         // Round 2 WP5B-LOAD-VS-PROMPT-ERROR: same DOM as intent-load-error,
         // so both directions are pinned.
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/prompt', count: 1 },
-            { method: 'POST', path: '/api/code/sessions/load', count: 0 },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/prompt', count: 1 },
+            { method: 'POST', path: '/i/3506/api/code/sessions/load', count: 0 },
         ],
         selector: '.d2-code-error[role="alert"]',
         requires: '.d2-code-composer',
@@ -489,7 +489,7 @@ export const CODE_SCENARIOS = [
         // Round 2 WP5B-CANCEL-SESSION-ID: the exact session id, so cancelling
         // the wrong session cannot pass.
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/wp5b-live-1/cancel', count: 1 },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-live-1/cancel', count: 1 },
         ],
         selector: '.d2-code-composer-actions button[data-action="cancel"]',
         expected: 'Stop',
@@ -503,7 +503,7 @@ export const CODE_SCENARIOS = [
         why: 'a stored conversation was picked and its replay has not arrived',
         code: { ...OPEN, storedSessions: [STORED_SESSION], holdLoad: true },
         actions: [{ kind: 'click', selector: '.d2-code-session-row:not([data-live])' }],
-        expectRequests: [{ method: 'POST', path: '/api/code/sessions/load', count: 1 }],
+        expectRequests: [{ method: 'POST', path: '/i/3506/api/code/sessions/load', count: 1 }],
         selector: '.d2-code-loading[data-state="replaying"]',
         expected: 'Opening conversation…',
         // DEFECT-A: before the fix the composer appears immediately over an
@@ -518,8 +518,8 @@ export const CODE_SCENARIOS = [
         code: { ...OPEN, storedSessions: [STORED_SESSION], loadStatus: 500 },
         actions: [{ kind: 'click', selector: '.d2-code-session-row:not([data-live])' }],
         expectRequests: [
-            { method: 'POST', path: '/api/code/sessions/load', count: 1 },
-            { method: 'POST', path: '/api/code/sessions/wp5b-stored-1/prompt', count: 0 },
+            { method: 'POST', path: '/i/3506/api/code/sessions/load', count: 1 },
+            { method: 'POST', path: '/i/3506/api/code/sessions/wp5b-stored-1/prompt', count: 0 },
         ],
         selector: '.d2-code-error[role="alert"]',
         pattern: 'Code session load',
@@ -551,7 +551,7 @@ export const CODE_SCENARIOS = [
             { kind: 'click', selector: '.d2-code-permission button' },
         ],
         expectRequests: [
-            { method: 'POST', path: '/api/code/permissions/wp5b-perm-1', count: 1, bodyIncludes: { optionId: 'allow-once' } },
+            { method: 'POST', path: '/i/3506/api/code/permissions/wp5b-perm-1', count: 1, bodyIncludes: { optionId: 'allow-once' } },
         ],
         selector: '.d2-code-composer',
         absent: '.d2-code-permission',
@@ -568,7 +568,7 @@ export const CODE_SCENARIOS = [
             { kind: 'click', selector: '.d2-code-permission button' },
         ],
         expectRequests: [
-            { method: 'POST', path: '/api/code/permissions/wp5b-perm-1', count: 1 },
+            { method: 'POST', path: '/i/3506/api/code/permissions/wp5b-perm-1', count: 1 },
         ],
         // The prompt SURVIVES a failed answer, and the failure is reported.
         // Before the fix it vanished while the agent went on waiting.
