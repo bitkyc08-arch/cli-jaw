@@ -206,8 +206,17 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
         announce: setAnnouncement,
     }), [scope.port]);
 
+    // The scope is exposed on the DOM below because "a chat view exists" is not
+    // evidence that a particular session is open. Live QA has to prove it
+    // reached the instance and session it selected, and an instance label is not
+    // identity — several instances here are called the same thing.
     return (
-        <RenderActionPortsProvider ports={ports}><div className="d2-chat-view" data-testid="chat-view">
+        <RenderActionPortsProvider ports={ports}><div
+            className="d2-chat-view"
+            data-testid="chat-view"
+            data-port={scope.port}
+            data-session-id={scope.sessionId}
+        >
             <div className="d2-chat-content">
                 <TurnStreamViewport
                     store={store}

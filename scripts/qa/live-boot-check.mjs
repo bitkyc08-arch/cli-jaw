@@ -94,11 +94,14 @@ function descendants(pid) {
  */
 function stillOurs(entry) {
     if (!entry?.started?.trim() || !entry?.command?.trim()) return false;
-    try {
-        const out = execFileSync('/bin/ps', ['-p', String(entry.pid), '-o', 'lstart=,command='], { encoding: 'utf8' }).trim();
-        if (!out) return false;
-        return out.includes(entry.started.trim()) && out.includes(entry.command.slice(0, 40));
-    } catch { return false; }
+    // Exact equality on the FULL start time and the FULL command. A substring
+    // match on the first 40 characters plus a second-resolution timestamp can
+    // be satisfied by a recycled pid that happens to run a similar command in
+    // the same second — which for a tree of identical Electron helpers is not
+    // far-fetched.
+    const now = identify(entry.pid);
+    if (!now) return false;
+    return now.started === entry.started && now.command === entry.command;
 }
 
 /** Read one process's identity, so the root can be pinned like any child. */
@@ -154,7 +157,14 @@ try {
     // Pin the root the same way as every child. Without this it had no identity
     // to re-verify against and was signalled unconditionally.
     rootIdentity = identify(child.pid);
-    if (rootIdentity) registry.set(rootIdentity.pid, rootIdentity);
+    if (!rootIdentity) {
+        // Without an identity for the root we cannot prove ownership of
+        // anything, and teardown would be guessing. Fail rather than proceed.
+        record('root-process-identified', false, { pid: child.pid });
+    } else {
+        registry.set(rootIdentity.pid, rootIdentity);
+        record('root-process-identified', true, { pid: child.pid, command: rootIdentity.command.slice(0, 60) });
+    }
     console.error(`[boot] launched pid ${child.pid} with userData ${userData}, debug port ${debugPort}`);
 
     // Wait for a manager that belongs to us.

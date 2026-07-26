@@ -45,7 +45,25 @@ const REQUIRED = {
     instanceSnapshotHash: (v) => typeof v === 'string' && v.length >= 8,
     buildIdentity: (v) => typeof v === 'string' && v.length > 0,
     timestamp: (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v)),
+    // Native window resize is criterion 3 and only the OS side can measure it.
+    // Leaving it optional meant a Computer Use pass could skip it entirely and
+    // still validate, so the criterion would never be enforced anywhere.
+    nativeResize: (v) => isResizeEvidence(v),
 };
+
+/** Before/requested/after/restored bounds, and whether the window obeyed. */
+function isResizeEvidence(v) {
+    if (!v || typeof v !== 'object') return false;
+    const bounds = (b) => b && typeof b === 'object'
+        && Number.isFinite(b.width) && Number.isFinite(b.height);
+    if (!['before', 'requested', 'after', 'restored'].every((k) => bounds(v[k]))) return false;
+    if (typeof v.windowRef !== 'string' || !v.windowRef.length) return false;
+    // The measurement has to actually show the window changing size, or it is
+    // not evidence that resizing works.
+    const moved = v.after.width === v.requested.width && v.after.height === v.requested.height;
+    const restored = v.restored.width === v.before.width && v.restored.height === v.before.height;
+    return moved && restored;
+}
 
 const problems = [];
 for (const [key, ok] of Object.entries(REQUIRED)) {

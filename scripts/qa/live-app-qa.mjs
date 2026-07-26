@@ -126,6 +126,11 @@ if (evidence) {
     console.error('[wplive] no --evidence given: running without a cross-checked identity.');
 }
 
+// Adopt anything a previous run started and could not stop. This has to happen
+// after alignment (so we know we are talking to the right manager) and before
+// any mutation of our own.
+await recoverOrphans();
+
 // ── the page ────────────────────────────────────────────────────────────────
 const browser = await chromium.connectOverCDP(cdp);
 const context = browser.contexts()[0];
@@ -308,18 +313,35 @@ async function scrollAfterSelection() {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.d2-shell', { timeout: 20_000 });
         await page.waitForTimeout(1500);
+        // Bind the CTA to the port, not to a label. Instance labels repeat —
+        // several are literally "jwc" — so a label match can click a different
+        // row than the one we journalled, and then cleanup stops the wrong
+        // instance. The port is printed in the row, so scope to that node.
         const ctaRequests = [];
         const onRequest = (req) => {
-            if (req.url().includes('/api/dashboard/lifecycle/')) ctaRequests.push(req.url());
+            if (!req.url().includes('/api/dashboard/lifecycle/')) return;
+            let body = null;
+            try { body = JSON.parse(req.postData() ?? 'null'); } catch { /* not json */ }
+            ctaRequests.push({ url: req.url(), port: body?.port ?? null });
         };
         page.on('request', onRequest);
-        const cta = page.locator(`.d2-instance-control.is-start[aria-label*="${candidate.label ?? ''}"]`).first();
-        const anyCta = (await cta.count()) ? cta : page.locator('.d2-instance-control.is-start').first();
-        await anyCta.click({ timeout: 10_000 });
+        const node = page.locator('.d2-instance-node')
+            .filter({ hasText: `:${candidate.port}` }).first();
+        if (!(await node.count())) {
+            page.off('request', onRequest);
+            record('sidebar-scrolls-after-selection', false,
+                { unavailable: `no row for :${candidate.port} in the sidebar` });
+            return;
+        }
+        await node.locator('.d2-instance-control.is-start').first().click({ timeout: 10_000 });
         await page.waitForTimeout(2500);
         page.off('request', onRequest);
-        record('start-cta-issues-exactly-one-request', ctaRequests.length === 1,
-            { requests: ctaRequests.length, sample: ctaRequests[0] ?? null });
+        // Exactly one request, and for the port we are about to be responsible
+        // for stopping.
+        record('start-cta-issues-exactly-one-request',
+            ctaRequests.length === 1 && ctaRequests[0]?.port === candidate.port,
+            { requests: ctaRequests.length, expectedPort: candidate.port,
+              sawPort: ctaRequests[0]?.port ?? null, url: ctaRequests[0]?.url ?? null });
 
         for (let i = 0; i < 20 && !target; i += 1) {
             await new Promise((r) => setTimeout(r, 1500));
@@ -365,17 +387,25 @@ async function scrollAfterSelection() {
         // been selected, in which case the single-session auto-select never
         // runs (`if (selected) return`) and this would pass while measuring the
         // wrong scope. Require the workbench to be showing OUR instance.
-        const expectedName = target.label?.trim() || `Instance ${target.port}`;
-        const selection = await page.evaluate(() => ({
-            selectedRows: document.querySelectorAll('.d2-session-row.is-selected').length,
-            chatView: Boolean(document.querySelector('[data-testid="chat-view"]')),
-            title: document.querySelector('.d2-workbench-title')?.textContent?.trim() ?? null,
-        }));
-        const showsOurTarget = selection.title === expectedName
-            || selection.title === String(target.port)
-            || (selection.title ?? '').includes(String(target.port));
+        // The workbench title shows an instance LABEL, and labels repeat, so it
+        // cannot identify a scope. Read the port and session id the chat view
+        // is actually bound to.
+        const selection = await page.evaluate(() => {
+            const view = document.querySelector('[data-testid="chat-view"]');
+            return {
+                chatView: Boolean(view),
+                port: view?.getAttribute('data-port') ?? null,
+                sessionId: view?.getAttribute('data-session-id') ?? null,
+                selectedRows: document.querySelectorAll('.d2-session-row.is-selected').length,
+                title: document.querySelector('.d2-workbench-title')?.textContent?.trim() ?? null,
+            };
+        });
+        const expectedSession = sessions.length === 1 ? sessions[0].id : null;
+        const showsOurTarget = selection.port === String(target.port)
+            && (!expectedSession || selection.sessionId === expectedSession);
         const inSelectedState = selection.chatView && showsOurTarget;
-        selection.expected = expectedName;
+        selection.expectedPort = target.port;
+        selection.expectedSession = expectedSession;
         selection.showsOurTarget = showsOurTarget;
         if (!inSelectedState) {
             record('sidebar-scrolls-after-selection', false,
@@ -422,10 +452,20 @@ async function stopIfOurs(port) {
             signal: AbortSignal.timeout(30_000),
         });
         detail = res.ok ? null : `HTTP ${res.status}`;
+        // A failed query is not evidence of anything. Swallowing it into `{}`
+        // yielded an empty list, "no online instance with that port" came out
+        // true, and cleanup reported success while the process kept running.
+        // Only an instance the manager explicitly reports as not-online counts.
         for (let i = 0; i < 12 && !stopped; i += 1) {
             await new Promise((r) => setTimeout(r, 1200));
-            const fresh = (await getJson('/api/dashboard/instances').catch(() => ({}))).instances ?? [];
-            stopped = !fresh.some((x) => x.port === port && x.status === 'online');
+            let fresh = null;
+            try { fresh = (await getJson('/api/dashboard/instances')).instances; }
+            catch (error) { detail = `instances query failed: ${String(error.message).slice(0, 60)}`; continue; }
+            if (!Array.isArray(fresh)) { detail = 'instances response was not a list'; continue; }
+            const row = fresh.find((x) => x.port === port);
+            if (!row) { detail = `instance ${port} vanished from the list`; continue; }
+            stopped = row.status !== 'online';
+            if (stopped) detail = null;
         }
     } catch (error) {
         detail = String(error.message).slice(0, 90);

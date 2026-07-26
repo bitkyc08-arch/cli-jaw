@@ -1,5 +1,5 @@
 {
-  "when": "2026-07-26T07:26:31.416Z",
+  "when": "2026-07-26T07:34:26.833Z",
   "origin": "http://127.0.0.1:24577",
   "checks": {
     "offline-rows-are-not-dead-buttons": {
@@ -32,17 +32,22 @@
     "start-cta-issues-exactly-one-request": {
       "ok": true,
       "requests": 1,
-      "sample": "http://127.0.0.1:24577/api/dashboard/lifecycle/start"
+      "expectedPort": 3457,
+      "sawPort": 3457,
+      "url": "http://127.0.0.1:24577/api/dashboard/lifecycle/start"
     },
     "sidebar-scrolls-after-selection": {
       "ok": true,
       "before": 0,
       "after": 600,
       "delta": 600,
-      "selectedRows": 0,
       "chatView": true,
+      "port": "3457",
+      "sessionId": "default",
+      "selectedRows": 0,
       "title": "jwc",
-      "expected": "jwc",
+      "expectedPort": 3457,
+      "expectedSession": "default",
       "showsOurTarget": true
     }
   },
