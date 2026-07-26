@@ -67,6 +67,15 @@ async function perform(page, action) {
             await target.selectOption(action.value);
             return;
         }
+        case 'check': {
+            // A visually-hidden checkbox (`.d2-schedule-switch` styles the
+            // label, not the input) cannot take a pointer click but still
+            // toggles programmatically, and `check` handles hidden inputs.
+            const target = page.locator(action.selector).first();
+            await target.waitFor({ state: 'attached', timeout: 5_000 });
+            await target.check({ force: true, timeout: 5_000 });
+            return;
+        }
         case 'pick-model': {
             // Scoped to the code tab's own control. The chat composer renders
             // a model picker too, and an unscoped `.first()` drove THAT one —

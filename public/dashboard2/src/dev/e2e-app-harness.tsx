@@ -164,6 +164,22 @@ export interface BoardFixtureConfig {
     holdDelete?: boolean;
 }
 
+/**
+ * How the reminders surface should answer. RemindersCore tracks `loading`,
+ * `loadError`, a shared `mutationError`, `creating` and per-item `busyIds`
+ * (RemindersCore.tsx). The five mutation producers share one error DOM, so
+ * each verb is bendable to split them by request.
+ */
+export interface RemindersFixtureConfig {
+    items?: JsonRecord[];
+    listStatus?: number;
+    holdList?: boolean;
+    createStatus?: number;
+    holdCreate?: boolean;
+    updateStatus?: number;
+    holdUpdate?: boolean;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -234,6 +250,8 @@ class FakeApiRouter {
     schedule: ScheduleFixtureConfig = {};
     /** Board surface; see BoardFixtureConfig. */
     board: BoardFixtureConfig = {};
+    /** Reminders surface; see RemindersFixtureConfig. */
+    reminders: RemindersFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -349,7 +367,7 @@ class FakeApiRouter {
         if (url.pathname.startsWith('/api/dashboard/notes/')) return this.notes(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/board/tasks')) return this.boardApi(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/reminders')) return this.reminder(url, method, payload);
-        if (url.pathname.startsWith('/api/dashboard/schedule/work')) return this.schedule(url, method, payload);
+        if (url.pathname.startsWith('/api/dashboard/schedule/work')) return this.scheduleApi(url, method, payload);
 
         this.unknownRequests.push(key);
         return json({ ok: true, data: [], items: [], sessions: [] });
@@ -517,12 +535,13 @@ class FakeApiRouter {
      * `/:id/dispatch` fell through to the catch-all and a mutation scenario
      * would have silently measured the wrong screen.
      */
-    private schedule(url: URL, method: string, payload: JsonRecord): Response {
+    private scheduleApi(url: URL, method: string, payload: JsonRecord): Response {
         const cfg = this.schedule;
         const rest = url.pathname.slice('/api/dashboard/schedule/work'.length);
         const item = (overrides: JsonRecord = {}): JsonRecord => ({
             id: 'sched-1',
             title: 'wp5c scheduled work',
+            group: 'today',
             enabled: true,
             createdAt: new Date(BASE_TIME).toISOString(),
             updatedAt: new Date(BASE_TIME).toISOString(),
@@ -633,12 +652,29 @@ class FakeApiRouter {
     }
 
     private reminder(url: URL, method: string, payload: JsonRecord): Response {
-        if (method === 'GET') return json({ ok: true, items: this.reminders });
+        const cfg = this.reminders;
+        if (method === 'GET') {
+            if (cfg.holdList) return pending();
+            if (cfg.listStatus && cfg.listStatus >= 400) {
+                return json({ ok: false, error: 'reminders unreadable' }, cfg.listStatus);
+            }
+            return json({ ok: true, items: cfg.items ?? this.reminders });
+        }
         if (method === 'POST') {
+            if (cfg.holdCreate) return pending();
+            if (cfg.createStatus && cfg.createStatus >= 400) {
+                return json({ ok: false, error: 'reminder create rejected' }, cfg.createStatus);
+            }
             const item = { id: `reminder-${this.reminders.length + 1}`, title: String(payload['title']), notes: '', listId: 'default', status: 'open', priority: payload['priority'] ?? 'normal', manualRank: null, dueAt: payload['dueAt'] ?? null, remindAt: null, linkedInstance: null, subtasks: [], sourceCreatedAt: new Date(BASE_TIME).toISOString(), sourceUpdatedAt: new Date(BASE_TIME).toISOString() };
             this.reminders.push(item); return json({ ok: true, item });
         }
         const id = decodeURIComponent(url.pathname.split('/').pop() ?? '');
+        if (method === 'PATCH') {
+            if (cfg.holdUpdate) return pending();
+            if (cfg.updateStatus && cfg.updateStatus >= 400) {
+                return json({ ok: false, error: 'reminder update rejected' }, cfg.updateStatus);
+            }
+        }
         const item = this.reminders.find(candidate => candidate['id'] === id)!;
         Object.assign(item, payload, { sourceUpdatedAt: new Date(BASE_TIME + 1_000).toISOString() });
         return json({ ok: true, item });
@@ -755,6 +791,8 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetSchedule() { router.schedule = {}; },
         setBoard(config) { router.board = config ?? {}; },
         resetBoard() { router.board = {}; },
+        setReminders(config) { router.reminders = config ?? {}; },
+        resetReminders() { router.reminders = {}; },
         markRequests() { return router.recorded.length; },
         codeRequests(since = 0) {
             return router.recorded
@@ -810,6 +848,8 @@ declare global {
             resetSchedule(): void;
             setBoard(config: BoardFixtureConfig | null): void;
             resetBoard(): void;
+            setReminders(config: RemindersFixtureConfig | null): void;
+            resetReminders(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];

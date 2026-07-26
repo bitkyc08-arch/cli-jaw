@@ -1,0 +1,15 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+const ITEM = {id:'sched-1',title:'wp5c scheduled work',group:'today',cron:'0 9 * * *',runAt:null,enabled:true,targetPort:3506,nextRunAt:null,lastRunAt:null,lastStatus:null,createdAt:'2026-07-26T00:00:00.000Z',updatedAt:'2026-07-26T00:00:00.000Z'};
+await page.evaluate((it) => { window.__jawE2E.resetSchedule(); window.__jawE2E.setSchedule({ items: [it] }); }, ITEM);
+await page.evaluate(() => window.__jawE2E.openPanel('reminders'));
+await page.waitForTimeout(800);
+await page.locator('.d2-reminders-tabs button[role="tab"]:nth-child(2)').click();
+await page.waitForTimeout(1500);
+console.log('ROWS:', await page.evaluate(() => document.querySelectorAll('.d2-reminders-schedule-row').length));
+console.log('ERR:', await page.evaluate(() => document.querySelector('.d2-schedule-view .d2-reminders-error')?.textContent?.trim() ?? 'none'));
+console.log('EMPTY:', await page.evaluate(() => document.querySelector('.d2-schedule-view .d2-reminders-empty')?.textContent?.trim() ?? 'none'));
+console.log('GROUPS:', await page.evaluate(() => [...document.querySelectorAll('.d2-schedule-group')].map(g=>g.querySelector('h2')?.textContent)));
+console.log('FETCHED:', await page.evaluate(async () => { const r = await fetch('/api/dashboard/schedule/work'); return (await r.text()).slice(0,200); }));
+await browser.close(); await server.close();

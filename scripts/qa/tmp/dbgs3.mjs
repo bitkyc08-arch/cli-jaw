@@ -1,0 +1,13 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+const ITEM = {id:'sched-1',title:'wp5c scheduled work',group:'today',cron:'0 9 * * *',runAt:null,enabled:true,targetPort:3506,nextRunAt:null,lastRunAt:null,lastStatus:null,createdAt:'2026-07-26T00:00:00.000Z',updatedAt:'2026-07-26T00:00:00.000Z'};
+await page.evaluate((it) => { window.__jawE2E.resetSchedule(); window.__jawE2E.setSchedule({ items: [it] }); }, ITEM);
+await page.evaluate(() => window.__jawE2E.openPanel('reminders'));
+await page.waitForTimeout(600);
+await page.locator('.d2-reminders-tabs button[role="tab"]:nth-child(2)').click();
+await page.waitForTimeout(1500);
+console.log('ERR:', await page.evaluate(() => document.querySelector('.d2-schedule-view .d2-reminders-error')?.textContent?.trim() ?? 'none'));
+console.log('ROWS:', await page.evaluate(() => document.querySelectorAll('.d2-reminders-schedule-row').length));
+console.log('CONSOLE:', page.consoleErrors.slice(0,3));
+await browser.close(); await server.close();
