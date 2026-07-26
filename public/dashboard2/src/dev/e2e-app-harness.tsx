@@ -79,6 +79,8 @@ class FakeApiRouter {
     readonly messages: JsonRecord[];
     requests: string[] = [];
     unknownRequests: string[] = [];
+    /** Set by a test to render a specific capability screen. */
+    capabilityResponse: { available?: boolean; reason?: string } | null = null;
     ui: JsonRecord = {
         uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true,
         dashboardShortcutKeymap: { newSession: 'Meta+N', commandPalette: 'Meta+K' },
@@ -134,7 +136,15 @@ class FakeApiRouter {
             return json({ ok: true, data: this.worker });
         }
         if (url.pathname === `/i/${PORT}/api/cli-registry`) return json({ ok: true, data: { codex: { defaultModel: 'gpt-5.5', models: ['gpt-5.5'], efforts: ['low', 'medium', 'high'] } } });
-        if (url.pathname === `/i/${PORT}/api/code/capabilities`) return json({ ok: true, reason: 'temporarily_unavailable' });
+        if (url.pathname === `/i/${PORT}/api/code/capabilities`) {
+            // Overridable so a test can render the other capability screens.
+            // Uninstalling jwc to see `missing_binary` is not an option, and the
+            // router intercepts window.fetch, so Playwright's own request
+            // interception never sees this call.
+            const forced = this.capabilityResponse;
+            if (forced) return json({ ok: true, ...forced });
+            return json({ ok: true, reason: 'temporarily_unavailable' });
+        }
         if (url.pathname === `/i/${PORT}/api/code/sessions/stored`) return json({ ok: true, sessions: [] });
         if (url.pathname === `/i/${PORT}/api/files`) return json({ ok: true, entries: [{ name: 'fixture.txt', path: '/tmp/wp4-e2e/fixture.txt', type: 'file', size: 12 }] });
 
@@ -282,6 +292,7 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         sse,
         openPanel(type, keepAlive = ['terminal', 'browser', 'notes', 'board'].includes(type)) { scopeValue?.openPanel({ type, key: type, title: type[0]!.toUpperCase() + type.slice(1), keepAlive }); },
         showPicker() { scopeValue?.showPanelPicker(); },
+        setCapability(response) { router.capabilityResponse = response; },
         setSettings() { return scopeValue?.guardedSetWorkspaceMode('settings') ?? Promise.resolve(false); },
         setChat() { return scopeValue?.guardedSetWorkspaceMode('chat') ?? Promise.resolve(false); },
         diagnostics() {
@@ -315,6 +326,7 @@ declare global {
             sse: DeterministicSseController;
             openPanel(type: SidePanePanelType, keepAlive?: boolean): void;
             showPicker(): void;
+            setCapability(response: { available?: boolean; reason?: string } | null): void;
             setSettings(): Promise<boolean>;
             setChat(): Promise<boolean>;
             diagnostics(): E2EHarnessDiagnostics;
