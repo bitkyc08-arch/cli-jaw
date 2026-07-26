@@ -2,6 +2,9 @@ import { Tray, Menu, nativeImage, app, clipboard, Notification, dialog } from 'e
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { isCliInstalled, installCli } from './install-cli.js';
+import {
+  decideTrayLeftClick, trayBadgeTitle, decideCrashNotification, buildTrayMenuPlan,
+} from './tray-decisions.js';
 
 const PREFS_FILENAME = 'tray-preferences.json';
 
@@ -69,7 +72,7 @@ export function createTray(cb: TrayCallbacks): Tray {
   tray = new Tray(icon);
   tray.setToolTip('cli-jaw');
   rebuildMenu();
-  tray.on('click', () => (onTrayClick ? onTrayClick() : cb.onOpenDashboard()));
+  tray.on('click', () => (decideTrayLeftClick(Boolean(onTrayClick)) === 'custom' && onTrayClick ? onTrayClick() : cb.onOpenDashboard()));
   tray.on('right-click', () => popUpTrayMenu());
   return tray;
 }
@@ -81,12 +84,12 @@ export function updateServerStatus(status: string): void {
 
 export function setTrayBadge(count: number): void {
   if (!tray) return;
-  tray.setTitle(count > 0 ? ` ${count}` : '');
+  tray.setTitle(trayBadgeTitle(count));
 }
 
 export function notifyServerCrash(): void {
   setTrayBadge(1);
-  if (Notification.isSupported()) {
+  if (decideCrashNotification(Notification.isSupported()) === 'notify') {
     const n = new Notification({
       title: 'cli-jaw',
       body: 'Server crashed. Use Restart Server from the menu bar.',
@@ -130,56 +133,47 @@ function syncLoginItemSetting(): void {
 function rebuildMenu(): void {
   if (!tray || !callbacks) return;
   const cb = callbacks;
-  const menu = Menu.buildFromTemplate([
-    { label: serverStatus, enabled: false },
-    { type: 'separator' },
-    {
-      label: 'Open Dashboard',
-      click: cb.onOpenDashboard,
-    },
-    {
-      label: 'Copy URL',
-      click: () => clipboard.writeText(cb.getManagerUrl()),
-    },
-    {
-      label: 'Restart Server',
-      click: cb.onRestartServer,
-    },
-    { type: 'separator' },
-    {
-      label: 'Keep Running in Background',
-      type: 'checkbox',
-      checked: prefs.keepRunningInBackground,
-      click: (item) => {
-        prefs.keepRunningInBackground = item.checked;
-        savePrefs();
-      },
-    },
-    {
-      label: 'Start at Login',
-      type: 'checkbox',
-      checked: prefs.startAtLogin,
-      click: (item) => {
-        prefs.startAtLogin = item.checked;
-        savePrefs();
-        syncLoginItemSetting();
-      },
-    },
-    {
-      label: isCliInstalled() ? 'CLI Installed ✓' : 'Install CLI to Terminal',
-      enabled: app.isPackaged && !isCliInstalled(),
-      click: async () => {
-        const result = await installCli();
-        await dialog.showMessageBox({
-          type: result.ok ? 'info' : 'error',
-          message: result.ok ? 'CLI Installed' : 'Installation Failed',
-          detail: result.message,
-        });
-        if (result.ok) rebuildMenu();
-      },
-    },
-    { type: 'separator' },
-    { label: 'Quit cli-jaw', click: cb.onQuit },
-  ]);
+  // The structure and checkbox/enabled states come from the extracted plan so
+  // a node test can assert them without an Electron runtime; only the click
+  // handlers are attached here.
+  const plan = buildTrayMenuPlan({
+    serverStatus,
+    keepRunning: prefs.keepRunningInBackground,
+    startAtLogin: prefs.startAtLogin,
+    cliInstalled: isCliInstalled(),
+    isPackaged: app.isPackaged,
+  });
+  const menu = Menu.buildFromTemplate(plan.map((item) => {
+    switch (item.kind) {
+      case 'status': return { label: item.label, enabled: false };
+      case 'separator': return { type: 'separator' as const };
+      case 'checkbox': return {
+        label: item.label, type: 'checkbox' as const, checked: item.checked,
+        click: (mi) => {
+          if (item.label === 'Keep Running in Background') { prefs.keepRunningInBackground = mi.checked; savePrefs(); }
+          else { prefs.startAtLogin = mi.checked; savePrefs(); syncLoginItemSetting(); }
+        },
+      };
+      case 'install-cli': return {
+        label: item.label, enabled: item.enabled,
+        click: async () => {
+          const result = await installCli();
+          await dialog.showMessageBox({
+            type: result.ok ? 'info' : 'error',
+            message: result.ok ? 'CLI Installed' : 'Installation Failed',
+            detail: result.message,
+          });
+          if (result.ok) rebuildMenu();
+        },
+      };
+      case 'quit': return { label: item.label, click: cb.onQuit };
+      default: return {
+        label: item.label,
+        click: item.label === 'Open Dashboard' ? cb.onOpenDashboard
+          : item.label === 'Copy URL' ? () => clipboard.writeText(cb.getManagerUrl())
+          : cb.onRestartServer,
+      };
+    }
+  }));
   currentMenu = menu;
 }

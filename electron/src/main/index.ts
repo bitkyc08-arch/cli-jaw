@@ -23,6 +23,9 @@ import {
   updateServerStatus, notifyServerCrash, setTrayBadge,
   setTrayClickHandler, popUpTrayMenu, getTrayBoundsSafe,
 } from './lib/tray-manager.js';
+import {
+  decideWindowAllClosed, decideBeforeQuit, decideActivate, decideWindowClose,
+} from './lib/lifecycle-decisions.js';
 import { createReminderPopover, type ReminderPopover } from './lib/reminder-popover.js';
 import { createReminderBadgePoller, type ReminderBadgePoller } from './lib/reminder-badge.js';
 import { waitForManagerReady, isManagerHealthy, probeOnce } from './lib/health-check.js';
@@ -272,7 +275,7 @@ if (!gotLock) {
     }
 
     app.on('activate', () => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
+      if (decideActivate({ windowPresent: Boolean(mainWindow && !mainWindow.isDestroyed()) }) === 'recreate') {
         void createManagerWindow();
       }
     });
@@ -298,13 +301,16 @@ function getInitialWindowBounds(): { width: number; height: number; x: number; y
 }
 
 app.on('window-all-closed', () => {
-  if (isKeepRunning()) return;
-  if (process.platform !== 'darwin') app.quit();
+  if (decideWindowAllClosed({ keepRunning: isKeepRunning(), platform: process.platform }) === 'quit') app.quit();
 });
 
 app.on('before-quit', (event) => {
-  if (shutdownComplete) return;
-  if (isKeepRunning() && !forceQuitRequested) {
+  const decision = decideBeforeQuit({
+    shutdownComplete, keepRunning: isKeepRunning(), forceQuitRequested,
+    windowPresent: Boolean(mainWindow && !mainWindow.isDestroyed()),
+  });
+  if (decision === 'short-circuit') return;
+  if (decision === 'close-window') {
     event.preventDefault();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     return;
@@ -1272,8 +1278,9 @@ async function createWindow(): Promise<void> {
     mainWindow = null;
   });
   mainWindow.on('close', (event) => {
-    if (shutdownComplete || shuttingDown) return;
-    if (isKeepRunning()) {
+    const decision = decideWindowClose({ shutdownComplete, shuttingDown, keepRunning: isKeepRunning() });
+    if (decision === 'allow') return;
+    if (decision === 'background') {
       stopMetricsCollector();
       cleanupTerminals();
       cleanupFolderWatchers();
