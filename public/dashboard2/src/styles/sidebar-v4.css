@@ -205,6 +205,14 @@
     cursor: default;
 }
 
+/* The offline variant is a status line, not a control: same layout, no
+   interactive affordance. It is a div rather than a disabled button, so the
+   row no longer reads as a broken control or sits in the tab order. */
+.d2-instance-main.is-offline {
+    cursor: default;
+    color: var(--text-3);
+}
+
 .d2-instance-dot {
     width: 8px;
     height: 8px;

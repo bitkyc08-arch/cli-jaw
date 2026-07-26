@@ -572,22 +572,42 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
                                         className={`d2-instance-row${selected?.port === instance.port ? ' is-selected' : ''}`}
                                         aria-busy={lifecycleBusy || undefined}
                                     >
-                                        <button
-                                            className="d2-instance-main"
-                                            type="button"
-                                            onClick={() => handleInstanceClick(instance)}
-                                            disabled={!isOnline}
-                                            aria-expanded={isOnline ? isExpanded : undefined}
-                                        >
-                                            <span className={`d2-instance-dot is-${visualStatus}`} aria-hidden="true" />
-                                            <span className="d2-instance-copy">
-                                                <strong>{instanceName(instance)}</strong>
-                                                <span><span className="d2-instance-port">:{instance.port}</span> &middot; {instance.status}</span>
-                                            </span>
-                                            <span className="d2-tree-chevron">
-                                                {isOnline && !isSingleSession ? <Icon icon={isExpanded ? ChevronDown : ChevronRight} /> : null}
-                                            </span>
-                                        </button>
+                                        {/*
+                                          An offline instance has nothing to open, so this is not a
+                                          button that refuses to work — it is a status line. Rendering
+                                          it as `<button disabled>` made every row in a fully offline
+                                          list look broken while still sitting in the tab order, which
+                                          is how "no button is clickable" was reported. Starting is a
+                                          real action and it already has a real control: the Start
+                                          button beside this element. It stays the only start path,
+                                          so a stray click on a large row cannot spawn a process.
+                                        */}
+                                        {isOnline ? (
+                                            <button
+                                                className="d2-instance-main"
+                                                type="button"
+                                                onClick={() => handleInstanceClick(instance)}
+                                                aria-expanded={isExpanded}
+                                            >
+                                                <span className={`d2-instance-dot is-${visualStatus}`} aria-hidden="true" />
+                                                <span className="d2-instance-copy">
+                                                    <strong>{instanceName(instance)}</strong>
+                                                    <span><span className="d2-instance-port">:{instance.port}</span> &middot; {instance.status}</span>
+                                                </span>
+                                                <span className="d2-tree-chevron">
+                                                    {!isSingleSession ? <Icon icon={isExpanded ? ChevronDown : ChevronRight} /> : null}
+                                                </span>
+                                            </button>
+                                        ) : (
+                                            <div className="d2-instance-main is-offline">
+                                                <span className={`d2-instance-dot is-${visualStatus}`} aria-hidden="true" />
+                                                <span className="d2-instance-copy">
+                                                    <strong>{instanceName(instance)}</strong>
+                                                    <span><span className="d2-instance-port">:{instance.port}</span> &middot; {instance.status}</span>
+                                                </span>
+                                                <span className="d2-tree-chevron" />
+                                            </div>
+                                        )}
 
                                         <div className="d2-instance-trail" data-sidebar-instance-menu>
                                             {visualStatus === 'busy' || lifecycleBusy ? <span className="d2-instance-spinner" aria-hidden="true" /> : null}
