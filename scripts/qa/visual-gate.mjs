@@ -36,6 +36,9 @@ try {
                 // Reaching a surface either works or throws. The live scan used
                 // to swallow click failures, which turned an unopened panel into
                 // a clean report.
+                // Some states must be armed before the surface mounts, because
+                // a panel that already has its answer will not ask again.
+                await state.pre?.(page);
                 await surface.reach(page);
                 // States are applied after reaching, because they key off
                 // elements that only exist once the surface is open.

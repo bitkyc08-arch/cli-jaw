@@ -183,6 +183,11 @@ export const FIXTURE_STATES = {
      * D13 turned out to be about.
      */
     'panel-states': {
+        // NOT branch coverage. This substitutes generic markup, so it answers
+        // "would this panel style a status message legibly" and nothing about
+        // whether any real branch renders that way. Counted separately from the
+        // 28-branch ledger, which needs the component's own output.
+        syntheticProbe: true,
         apply: (page, root) => page.evaluate((sel) => {
             const scope = document.querySelector(sel);
             if (!scope) return 0;
@@ -200,6 +205,36 @@ export const FIXTURE_STATES = {
             }));
             return variants.length;
         }, root),
+    },
+    /**
+     * The file tree's real branches, driven through the API rather than by
+     * substituting markup.
+     *
+     * `panel-states` answers "would this panel style a status message legibly";
+     * it cannot answer "does this branch actually render that way", because it
+     * replaces the component's own output. Forcing the response the component
+     * reads gets the real `.d2-file-tree-message` markup, which is the thing
+     * shipped to users.
+     */
+    'files-empty': {
+        // The response has to be in place BEFORE the panel mounts: an already
+        // open file tree has its answer and will not ask again.
+        pre: (page) => page.evaluate(() => window.__jawE2E.setFileTree({ ok: true, entries: [] })),
+        apply: async (page, root) => {
+            if (!root.includes('file-tree')) return 0;
+            await page.waitForTimeout(400);
+            return 1;
+        },
+    },
+    'files-error': {
+        // The response has to be in place BEFORE the panel mounts: an already
+        // open file tree has its answer and will not ask again.
+        pre: (page) => page.evaluate(() => window.__jawE2E.setFileTree({ ok: false, error: 'permission denied reading /tmp' })),
+        apply: async (page, root) => {
+            if (!root.includes('file-tree')) return 0;
+            await page.waitForTimeout(400);
+            return 1;
+        },
     },
     disabled: {
         apply: (page, root) => page.evaluate((sel) => {

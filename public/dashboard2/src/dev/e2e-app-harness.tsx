@@ -81,6 +81,8 @@ class FakeApiRouter {
     unknownRequests: string[] = [];
     /** Set by a test to render a specific capability screen. */
     capabilityResponse: { available?: boolean; reason?: string } | null = null;
+    /** Set by a test to drive the file tree's empty and error branches. */
+    fileTreeResponse: Record<string, unknown> | null = null;
     ui: JsonRecord = {
         uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true,
         dashboardShortcutKeymap: { newSession: 'Meta+N', commandPalette: 'Meta+K' },
@@ -146,7 +148,14 @@ class FakeApiRouter {
             return json({ ok: true, reason: 'temporarily_unavailable' });
         }
         if (url.pathname === `/i/${PORT}/api/code/sessions/stored`) return json({ ok: true, sessions: [] });
-        if (url.pathname === `/i/${PORT}/api/files`) return json({ ok: true, entries: [{ name: 'fixture.txt', path: '/tmp/wp4-e2e/fixture.txt', type: 'file', size: 12 }] });
+        if (url.pathname === `/i/${PORT}/api/files`) {
+            // Overridable like the capability probe: a visual gate cannot judge
+            // the file tree's error or empty branch without being able to
+            // produce one, and faking a directory read is the only way in.
+            const forced = this.fileTreeResponse;
+            if (forced) return json(forced);
+            return json({ ok: true, entries: [{ name: 'fixture.txt', path: '/tmp/wp4-e2e/fixture.txt', type: 'file', size: 12 }] });
+        }
 
         if (url.pathname.startsWith('/api/dashboard/notes/')) return this.notes(url, method, payload);
         if (url.pathname.startsWith('/api/dashboard/board/tasks')) return this.board(url, method, payload);
@@ -293,6 +302,7 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         openPanel(type, keepAlive = ['terminal', 'browser', 'notes', 'board'].includes(type)) { scopeValue?.openPanel({ type, key: type, title: type[0]!.toUpperCase() + type.slice(1), keepAlive }); },
         showPicker() { scopeValue?.showPanelPicker(); },
         setCapability(response) { router.capabilityResponse = response; },
+        setFileTree(response) { router.fileTreeResponse = response; },
         setSettings() { return scopeValue?.guardedSetWorkspaceMode('settings') ?? Promise.resolve(false); },
         setChat() { return scopeValue?.guardedSetWorkspaceMode('chat') ?? Promise.resolve(false); },
         diagnostics() {
@@ -327,6 +337,7 @@ declare global {
             openPanel(type: SidePanePanelType, keepAlive?: boolean): void;
             showPicker(): void;
             setCapability(response: { available?: boolean; reason?: string } | null): void;
+            setFileTree(response: Record<string, unknown> | null): void;
             setSettings(): Promise<boolean>;
             setChat(): Promise<boolean>;
             diagnostics(): E2EHarnessDiagnostics;
