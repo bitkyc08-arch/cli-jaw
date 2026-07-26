@@ -27,7 +27,7 @@
 //
 // Usage: node scripts/verify-sidecar-deps.mjs <sidecar dir>
 import { createRequire, isBuiltin } from 'node:module';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const dir = resolve(process.argv[2] ?? '.');
@@ -118,10 +118,14 @@ function walk(name, chain, prunedRoots) {
         }
     } catch {
         // Some packages hide package.json behind `exports`. Resolving the
-        // package itself still proves it is present.
+        // package itself still proves it is present — but presence is not the
+        // end: its own dependencies still need checking.
         try {
             if (!resolvesInside(name, from)) throw new Error('outside sidecar');
-            return;
+            // Read the bundled package.json directly so the walk continues
+            // into this package's own dependencies instead of stopping here.
+            const pkgJsonPath = join(dir, 'node_modules', name, 'package.json');
+            meta = existsSync(pkgJsonPath) ? JSON.parse(readFileSync(pkgJsonPath, 'utf8')) : null;
         } catch {
             // A top-level package the prune list removed on purpose.
             if (prunedRoots.has(name)) return;

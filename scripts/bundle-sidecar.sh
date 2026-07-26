@@ -85,14 +85,12 @@ for pkg in "${PRUNE_PKGS[@]}"; do
   rm -rf "$SIDECAR_DIR/node_modules/$pkg" 2>/dev/null || true
 done
 # Remove transitive-only packages (types, build tools)
+# Remove only confirmed build-tooling packages. The guard proved the rest are
+# runtime dependencies: @babel/runtime is needed by downshift, and lodash by
+# discord.js's @sapphire/shapeshift. Removing them is the web-streams-polyfill
+# shape one level deeper — a transitive server dep taken by a scope-wide rm.
 rm -rf "$SIDECAR_DIR/node_modules/typescript" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/@types" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/@babel" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/@vue" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/cytoscape" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/cytoscape-fcose" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/es-toolkit" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/lodash" 2>/dev/null || true
 # web-streams-polyfill is NOT frontend-only: node-fetch -> fetch-blob declares
 # it. It does not throw on the bundled Node 24, because fetch-blob only falls
 # back to the polyfill when globalThis.ReadableStream is missing — but it is a

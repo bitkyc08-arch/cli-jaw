@@ -12,11 +12,13 @@
 //   2. telegram/bot.js resolves its imports from the sidecar's own
 //      node_modules, with no escape to the repo parent.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const SIDECAR = resolve(process.argv[2] ?? 'electron/sidecar/server');
+// realpath: on macOS /tmp is a symlink to /private/tmp, and the resolved
+// package path comes back through the real path, so the comparison must too.
+const SIDECAR = realpathSync(resolve(process.argv[2] ?? 'electron/sidecar/server'));
 const NODE = process.execPath;
 
 if (!existsSync(join(SIDECAR, 'dist/src/telegram/bot.js'))) {
@@ -53,6 +55,24 @@ const tg = spawnSync(
 process.stdout.write(tg.stdout ?? '');
 process.stderr.write(tg.stderr ?? '');
 if (tg.status !== 0) {
+    console.error('[sidecar-boot-proof] FAIL: telegram path does not resolve hermetically');
+    process.exit(1);
+}
+
+// Resolving node-fetch is necessary but not sufficient: the module itself
+// must LOAD. The original crash was a top-level import of bot.js, so import it.
+const tgLoad = spawnSync(
+    NODE,
+    ['--input-type=module', '-e',
+     `import('file://${join(SIDECAR, 'dist/src/telegram/bot.js')}').then(
+        () => console.log('tg-load-ok: telegram/bot.js loads'),
+        (e) => { console.error('tg-load-fail: ' + e.message.split('\\n')[0]); process.exit(1); }
+      );`],
+    { cwd: SIDECAR, env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 30000 },
+);
+process.stdout.write(tgLoad.stdout ?? '');
+process.stderr.write(tgLoad.stderr ?? '');
+if (tgLoad.status !== 0) {
     console.error('[sidecar-boot-proof] FAIL: telegram path does not resolve hermetically');
     process.exit(1);
 }
