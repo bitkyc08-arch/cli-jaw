@@ -40,6 +40,31 @@ export function Workbench({
     const toggleButtonRef = useRef<HTMLButtonElement>(null);
     const [paneWidth, setPaneWidth] = useState(PANE_DEFAULT);
 
+    // CF-4 — one bounds helper for the state, the CSS, the pointer drag, and
+    // ARIA. The initial PANE_DEFAULT can exceed the max on a narrow workbench,
+    // and the drag clamp can dip below the min when the max itself is smaller,
+    // which produced aria-valuenow > aria-valuemax and aria-valuenow <
+    // aria-valuemin.
+    const paneBounds = useCallback((): { min: number; max: number } => {
+        const wb = wbRef.current;
+        const rect = wb?.getBoundingClientRect();
+        const max = rect ? Math.max(PANE_MIN, rect.width - CHAT_MIN - DIVIDER_WIDTH) : 600;
+        return { min: PANE_MIN, max };
+    }, []);
+    const clampPaneWidth = useCallback((value: number): number => {
+        const { min, max } = paneBounds();
+        return Math.max(min, Math.min(max, value));
+    }, [paneBounds]);
+
+    // Keep the state and CSS inside bounds whenever the bounds change (resize
+    // or first open), so the initial width cannot exceed the max.
+    useEffect(() => {
+        const clamped = clampPaneWidth(paneWidth);
+        if (clamped !== paneWidth) setPaneWidth(clamped);
+        wbRef.current?.style.setProperty('--d2-pane-w', `${clamped}px`);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sidePaneOpen, clampPaneWidth]);
+
     const closeSidePaneWithFocusRestore = useCallback(async () => {
         const focusWasInsidePane = Boolean(
             wbRef.current?.querySelector('.d2-side-pane')?.contains(document.activeElement),
@@ -52,6 +77,8 @@ export function Workbench({
 
     const toggleSidePane = sidePaneOpen ? () => void closeSidePaneWithFocusRestore() : openSidePane;
 
+    const dragListenersRef = useRef<{ move: (ev: PointerEvent) => void; up: () => void } | null>(null);
+
     const onDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
         const handle = e.currentTarget;
@@ -62,8 +89,7 @@ export function Workbench({
             const wb = wbRef.current;
             if (!wb) return;
             const rect = wb.getBoundingClientRect();
-            const paneMax = rect.width - CHAT_MIN - DIVIDER_WIDTH;
-            const paneWidth = Math.max(0, Math.min(paneMax, Math.max(PANE_MIN, rect.right - ev.clientX)));
+            const paneWidth = clampPaneWidth(rect.right - ev.clientX);
             wb.style.setProperty('--d2-pane-w', `${paneWidth}px`);
             setPaneWidth(paneWidth);
         };
@@ -72,10 +98,26 @@ export function Workbench({
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', up);
             document.removeEventListener('pointercancel', up);
+            dragListenersRef.current = null;
         };
+        // CF-5 — the document listeners must not outlive the component if it
+        // unmounts mid-drag. Track them so the unmount effect can release.
+        dragListenersRef.current = { move, up };
         document.addEventListener('pointermove', move);
         document.addEventListener('pointerup', up);
         document.addEventListener('pointercancel', up);
+    }, []);
+
+    // CF-5 — release any in-flight drag listeners on unmount, so a drag that
+    // outlives the component does not leave document listeners behind.
+    useEffect(() => () => {
+        const listeners = dragListenersRef.current;
+        if (listeners) {
+            document.removeEventListener('pointermove', listeners.move);
+            document.removeEventListener('pointerup', listeners.up);
+            document.removeEventListener('pointercancel', listeners.up);
+            dragListenersRef.current = null;
+        }
     }, []);
 
     const getPaneMax = useCallback((): number => {
@@ -86,15 +128,15 @@ export function Workbench({
     }, []);
 
     const onDividerKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
-        const paneMax = getPaneMax();
+        const { max: paneMax } = paneBounds();
         let next = paneWidth;
         const step = e.shiftKey ? 50 : 10;
         switch (e.key) {
             case 'ArrowLeft':
-                next = Math.min(paneMax, paneWidth + step);
+                next = clampPaneWidth(paneWidth + step);
                 break;
             case 'ArrowRight':
-                next = Math.max(PANE_MIN, paneWidth - step);
+                next = clampPaneWidth(paneWidth - step);
                 break;
             case 'Home':
                 next = PANE_MIN;
@@ -209,7 +251,7 @@ export function Workbench({
                     aria-orientation="vertical"
                     aria-valuenow={paneWidth}
                     aria-valuemin={PANE_MIN}
-                    aria-valuemax={getPaneMax()}
+                    aria-valuemax={paneBounds().max}
                     tabIndex={0}
                     onPointerDown={onDividerDown}
                     onKeyDown={onDividerKeyDown}

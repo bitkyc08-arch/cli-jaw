@@ -122,10 +122,19 @@ export function createHistoryController(options: HistoryControllerOptions): Hist
                 }
                 options.apply([mergeHistoryPage(page)]);
                 const exhausted = page.pageInfo.hasMoreBefore === false;
+                // CF-3 — a same or non-decreasing cursor is no-progress, not a
+                // legitimate boundary (the contract is exclusive `id < before`).
+                // Without this guard, a server that repeats the cursor loops
+                // loadOlder forever.
+                const previousCursor = state.oldestCursor;
+                const cursorAdvanced = page.pageInfo.oldestCursor !== previousCursor
+                    && (previousCursor === null
+                        || (page.pageInfo.oldestCursor !== null && page.pageInfo.oldestCursor < previousCursor));
+                const noProgress = previousCursor !== null && !cursorAdvanced;
                 update({
                     phase: state.phase === 'backfilling' ? 'backfilling' : 'idle',
                     oldestCursor: page.pageInfo.oldestCursor,
-                    exhausted,
+                    exhausted: exhausted || noProgress,
                     error: null,
                 });
                 return { status: 'merged', messageCount: page.data.length };

@@ -21,6 +21,7 @@ export interface TurnStreamViewportProps {
 export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProps): JSX.Element {
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const tailRef = useRef<HTMLDivElement | null>(null);
     const didInitialScroll = useRef(false);
     const pendingHeights = useRef(new Map<string, number>());
     const heightFlushFrame = useRef<number | null>(null);
@@ -100,6 +101,31 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
         didInitialScroll.current = false;
     }, [store]);
 
+    // CF-1 — the live tail grows OUTSIDE the virtualizer, so followOnAppend
+    // only follows committed-list appends, not the tail's height growth. A
+    // user pinned at the bottom falls behind during streaming. Observe the
+    // tail's height and re-follow only if the scrollport was already at the
+    // bottom before the resize (a user reading upward is not yanked back).
+    useEffect(() => {
+        const scroll = scrollRef.current;
+        const tailHost = tailRef.current;
+        if (!scroll || !tailHost) return undefined;
+        const wasAtEnd = (): boolean => {
+            const gap = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+            return gap <= 4;
+        };
+        let lastHeight = tailHost.getBoundingClientRect().height;
+        const observer = new ResizeObserver(() => {
+            const nextHeight = tailHost.getBoundingClientRect().height;
+            if (nextHeight !== lastHeight && wasAtEnd()) {
+                scroll.scrollTop = scroll.scrollHeight;
+            }
+            lastHeight = nextHeight;
+        });
+        observer.observe(tailHost);
+        return () => observer.disconnect();
+    }, [tail]);
+
     return (
         <div
             ref={scrollRef}
@@ -135,7 +161,11 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
                     );
                 })}
             </div>
-            {tail}
+            {tail ? (
+                <div ref={tailRef} className="d2-turn-tail-host">
+                    {tail}
+                </div>
+            ) : null}
         </div>
     );
 }
