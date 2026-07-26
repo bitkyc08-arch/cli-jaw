@@ -50,11 +50,89 @@ export interface E2EHarnessDiagnostics {
     unknownRequests: string[];
 }
 
+/**
+ * One recorded request. The old `requests: string[]` could answer "how many
+ * calls happened" and nothing else, which is not enough to prove a button did
+ * its job: Stop changes no pixels, so the request IS the observable. Body and
+ * timestamp make `expectRequests` able to assert what was sent and to ignore
+ * everything that happened before the action under test.
+ */
+export interface RecordedRequest {
+    method: string;
+    pathname: string;
+    search: string;
+    body: JsonRecord | null;
+    at: number;
+}
+
+/**
+ * How the code tab's endpoints should answer for one scenario.
+ *
+ * Every field defaults to the working path, so a scenario names only the one
+ * thing it wants to bend. `hold*` never settles, which is the only way to
+ * observe a loading frame that is otherwise a few milliseconds long.
+ */
+export interface CodeFixtureConfig {
+    capability?: { available?: boolean; reason?: string } | null;
+    holdCapability?: boolean;
+    /** Hold only the ?refresh=1 probe, so the first paint is a real screen. */
+    holdCapabilityRefresh?: boolean;
+    models?: JsonRecord | null;
+    modelsStatus?: number;
+    holdModels?: boolean;
+    /** Live sessions from GET /sessions. */
+    liveSessions?: JsonRecord[];
+    liveSessionsStatus?: number;
+    /** Stored sessions from GET /sessions/stored. */
+    storedSessions?: JsonRecord[];
+    storedStatus?: number;
+    holdStored?: boolean;
+    createStatus?: number;
+    loadStatus?: number;
+    holdLoad?: boolean;
+    promptStatus?: number;
+    holdPrompt?: boolean;
+    modelSwitchStatus?: number;
+    holdModelSwitch?: boolean;
+    /** Answer a model switch with a DIFFERENT model than the one requested. */
+    modelSwitchReturns?: string;
+    replayEvents?: JsonRecord[];
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
         headers: { 'content-type': 'application/json' },
     });
+}
+
+/** Never settles. The only way to hold a loading frame open for observation. */
+function pending(): Response {
+    return new Promise<Response>(() => { /* deliberately never settles */ }) as unknown as Response;
+}
+
+const CODE_MODEL_CATALOG: JsonRecord = {
+    providers: [{ id: 'jwc', models: ['sonnet-4.6', 'opus-4.2'], efforts: ['low', 'medium', 'high'] }],
+    defaultProvider: 'jwc',
+    defaultModel: 'sonnet-4.6',
+};
+
+/**
+ * A session shaped for `decodeCodeSessionValue`, which rejects a missing
+ * status, a non-finite timestamp or an undefined modelId. A "close enough"
+ * object here surfaces as an invalid_response alert three layers up, which is
+ * how a fixture ends up proving an error screen it never meant to open.
+ */
+function codeSession(overrides: JsonRecord = {}): JsonRecord {
+    return {
+        sessionId: 'code-fixture-1',
+        cwd: '/tmp/wp4-e2e',
+        status: 'idle',
+        createdAt: BASE_TIME,
+        lastUsedAt: BASE_TIME,
+        modelId: 'sonnet-4.6',
+        ...overrides,
+    };
 }
 
 function history(count: number): JsonRecord[] {
@@ -78,9 +156,15 @@ function history(count: number): JsonRecord[] {
 class FakeApiRouter {
     readonly messages: JsonRecord[];
     requests: string[] = [];
+    /** Structured log behind `requests`, used by the request oracle. */
+    recorded: RecordedRequest[] = [];
     unknownRequests: string[] = [];
     /** Set by a test to render a specific capability screen. */
     capabilityResponse: { available?: boolean; reason?: string } | null = null;
+    /** Whole-tab scenario config; see CodeFixtureConfig. */
+    code: CodeFixtureConfig = {};
+    /** Sessions created or loaded during the run, so a switch can echo them. */
+    private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
     fileTreeResponse: Record<string, unknown> | null = null;
     /** Set by a test to hold the instance list in flight (terminal loading). */
@@ -122,6 +206,13 @@ class FakeApiRouter {
         const key = `${method} ${url.pathname}${url.search}`;
         this.requests.push(key);
         const payload = this.body(input, init);
+        this.recorded.push({
+            method,
+            pathname: url.pathname,
+            search: url.search,
+            body: Object.keys(payload).length ? payload : null,
+            at: this.recorded.length,
+        });
 
         if (url.pathname === '/api/dashboard/instances') {
             // The terminal tab shows "Loading terminal working directory…" only
@@ -156,16 +247,7 @@ class FakeApiRouter {
             return json({ ok: true, data: this.worker });
         }
         if (url.pathname === `/i/${PORT}/api/cli-registry`) return json({ ok: true, data: { codex: { defaultModel: 'gpt-5.5', models: ['gpt-5.5'], efforts: ['low', 'medium', 'high'] } } });
-        if (url.pathname === `/i/${PORT}/api/code/capabilities`) {
-            // Overridable so a test can render the other capability screens.
-            // Uninstalling jwc to see `missing_binary` is not an option, and the
-            // router intercepts window.fetch, so Playwright's own request
-            // interception never sees this call.
-            const forced = this.capabilityResponse;
-            if (forced) return json({ ok: true, ...forced });
-            return json({ ok: true, reason: 'temporarily_unavailable' });
-        }
-        if (url.pathname === `/i/${PORT}/api/code/sessions/stored`) return json({ ok: true, sessions: [] });
+        if (url.pathname.startsWith(`/i/${PORT}/api/code/`)) return this.codeApi(url, method, payload);
         if (url.pathname === `/i/${PORT}/api/files`) {
             // Overridable like the capability probe: a visual gate cannot judge
             // the file tree's error or empty branch without being able to
@@ -195,6 +277,121 @@ class FakeApiRouter {
 
         this.unknownRequests.push(key);
         return json({ ok: true, data: [], items: [], sessions: [] });
+    }
+
+    /**
+     * Every `/api/code/*` endpoint the tab can reach.
+     *
+     * Before this existed, two of these had ad-hoc answers and the rest fell
+     * through to a catch-all that returned `{ok:true, data:[], items:[],
+     * sessions:[]}`. That accident is worse than a 404: `/models` failed its
+     * decoder loudly, but `/sessions` happened to contain `sessions: []` and
+     * passed, so "no Code sessions yet" could have been the real empty state
+     * or the catch-all — indistinguishable from outside.
+     *
+     * Response bodies here are pinned to the PRODUCTION decoders in
+     * code-api-client.ts, not to `{ok:true}`. tests/unit/qa-code-fixture-contract
+     * runs each one through its real decoder so this cannot drift.
+     */
+    private codeApi(url: URL, method: string, payload: JsonRecord): Response {
+        const path = url.pathname.slice(`/i/${PORT}/api/code`.length);
+        const cfg = this.code;
+
+        if (path === '/capabilities') {
+            const refresh = url.searchParams.get('refresh') === '1';
+            if (cfg.holdCapability || (refresh && cfg.holdCapabilityRefresh)) return pending();
+            // `capabilityResponse` predates this config and four e2e tests
+            // still set it, so it keeps working and wins when both are set.
+            const forced = this.capabilityResponse ?? cfg.capability;
+            if (forced) return json({ ok: true, ...forced });
+            return json({ ok: true, reason: 'temporarily_unavailable' });
+        }
+
+        if (path === '/models') {
+            if (cfg.holdModels) return pending();
+            if (cfg.modelsStatus && cfg.modelsStatus >= 400) {
+                return json({ ok: false, error: 'Code models unavailable' }, cfg.modelsStatus);
+            }
+            return json({ ok: true, ...(cfg.models ?? CODE_MODEL_CATALOG) });
+        }
+
+        if (path === '/sessions/stored') {
+            if (cfg.holdStored) return pending();
+            if (cfg.storedStatus && cfg.storedStatus >= 400) {
+                return json({ ok: false, error: 'stored session index unreadable' }, cfg.storedStatus);
+            }
+            return json({ ok: true, sessions: cfg.storedSessions ?? [] });
+        }
+
+        if (path === '/sessions/load') {
+            if (cfg.holdLoad) return pending();
+            if (cfg.loadStatus && cfg.loadStatus >= 400) {
+                return json({ ok: false, error: 'session replay failed' }, cfg.loadStatus);
+            }
+            const sessionId = typeof payload['sessionId'] === 'string' ? payload['sessionId'] : 'code-fixture-1';
+            const cwd = typeof payload['cwd'] === 'string' ? payload['cwd'] : '/tmp/wp4-e2e';
+            const session = codeSession({
+                sessionId,
+                cwd,
+                ...(cfg.replayEvents ? { replayEvents: cfg.replayEvents } : {}),
+            });
+            this.codeSessionState.set(sessionId, session);
+            return json({ ok: true, session });
+        }
+
+        if (path === '/sessions' && method === 'POST') {
+            if (cfg.createStatus && cfg.createStatus >= 400) {
+                return json({ ok: false, error: 'unable to start a Code session' }, cfg.createStatus);
+            }
+            const cwd = typeof payload['cwd'] === 'string' ? payload['cwd'] : '/tmp/wp4-e2e';
+            const model = typeof payload['model'] === 'string' ? payload['model'] : 'sonnet-4.6';
+            const session = codeSession({ sessionId: `code-created-${this.codeSessionState.size + 1}`, cwd, modelId: model });
+            this.codeSessionState.set(String(session['sessionId']), session);
+            return json({ ok: true, session }, 201);
+        }
+
+        if (path === '/sessions') return json({ ok: true, sessions: cfg.liveSessions ?? [] });
+
+        const sessionScoped = /^\/sessions\/([^/]+)(\/[a-z]+)?$/.exec(path);
+        if (sessionScoped) {
+            const sessionId = decodeURIComponent(sessionScoped[1]!);
+            const verb = sessionScoped[2] ?? '';
+
+            if (verb === '/model') {
+                if (cfg.holdModelSwitch) return pending();
+                if (cfg.modelSwitchStatus && cfg.modelSwitchStatus >= 400) {
+                    return json({ ok: false, error: 'model switch rejected' }, cfg.modelSwitchStatus);
+                }
+                // The tab confirms the switch by matching the RETURNED modelId
+                // against its options, so answering with a different model is
+                // how the invalid_response path gets driven.
+                const requested = typeof payload['modelId'] === 'string' ? payload['modelId'] : 'sonnet-4.6';
+                const modelId = cfg.modelSwitchReturns ?? requested;
+                const session = codeSession({ ...(this.codeSessionState.get(sessionId) ?? {}), sessionId, modelId });
+                this.codeSessionState.set(sessionId, session);
+                return json({ ok: true, session });
+            }
+
+            if (verb === '/prompt') {
+                if (cfg.holdPrompt) return pending();
+                if (cfg.promptStatus && cfg.promptStatus >= 400) {
+                    return json({ ok: false, error: 'prompt rejected' }, cfg.promptStatus);
+                }
+                return json({ ok: true, accepted: true, sessionId }, 202);
+            }
+
+            // cancel, config, ext, fork, and DELETE all decode through decodeOk.
+            return json({ ok: true });
+        }
+
+        if (path.startsWith('/permissions/')) return json({ ok: true });
+        if (path === '/permissions') return json({ ok: true, permissions: [] });
+        if (path === '/git-info') return json({ ok: true, branch: 'main', dirty: false });
+
+        // Anything else is a genuine gap, and it must be visible as one rather
+        // than absorbed by the catch-all.
+        this.unknownRequests.push(`${method} ${url.pathname}${url.search}`);
+        return json({ ok: false, error: `unhandled code endpoint ${path}` }, 501);
     }
 
     private notes(url: URL, method: string, payload: JsonRecord): Response {
@@ -345,6 +542,14 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         },
         showPicker() { scopeValue?.showPanelPicker(); },
         setCapability(response) { router.capabilityResponse = response; },
+        setCode(config) { router.code = config ?? {}; },
+        resetCode() { router.code = {}; router.capabilityResponse = null; },
+        markRequests() { return router.recorded.length; },
+        codeRequests(since = 0) {
+            return router.recorded
+                .slice(since)
+                .filter(entry => entry.pathname.includes('/api/code/'));
+        },
         setFileTree(response) { router.fileTreeResponse = response; },
         setHoldInstances(hold) { router.holdInstances = hold; },
         setDropWorkingDir(drop) { router.dropWorkingDir = drop; },
@@ -382,6 +587,11 @@ declare global {
             openPanel(type: SidePanePanelType, keepAlive?: boolean, payload?: Record<string, unknown>, key?: string): void;
             showPicker(): void;
             setCapability(response: { available?: boolean; reason?: string } | null): void;
+            setCode(config: CodeFixtureConfig | null): void;
+            resetCode(): void;
+            /** Index to pass to codeRequests so a scenario ignores mount traffic. */
+            markRequests(): number;
+            codeRequests(since?: number): RecordedRequest[];
             setFileTree(response: Record<string, unknown> | null): void;
             setHoldInstances(hold: boolean): void;
             setDropWorkingDir(drop: boolean): void;
