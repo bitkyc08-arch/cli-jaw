@@ -354,8 +354,30 @@ export function branchCoverageStatus() {
         if (branchAxis && scenario.axis && branchAxis !== scenario.axis
             // 'empty' branches are often proven by a 'ready'/'degraded' sibling
             // scenario; only hard axis inversions are a mismatch.
-            && !(branch.axis === 'empty' || scenario.axis === 'empty')) {
+            && !(branchAxis === 'empty' || scenario.axis === 'empty')) {
             delegatedBroken.push(`${branchId}: axis ${branchAxis} proven by a ${scenario.axis} scenario (${entry.delegate})`);
+        }
+        // wp5c C-gate round 6: same-axis, empty-text branches (loadError vs
+        // mutationError) pass all of the above. The remaining discriminator is
+        // the KIND of request that produces the state: a load failure comes
+        // from a GET, a mutation failure from a PATCH/POST/DELETE. A scenario
+        // that fires the wrong verb for the branch it claims is a swap.
+        const guard = String(branch.guard ?? '');
+        if (/loaderror|loading|listerror/i.test(guard)) {
+            // A load-state claim must not be proven by a scenario that ONLY
+            // fires a mutation request.
+            const verbs = new Set((scenario.expectRequests ?? []).map(w => w.method));
+            if (verbs.size && !verbs.has('GET') && (verbs.has('PATCH') || verbs.has('POST') || verbs.has('DELETE'))) {
+                delegatedBroken.push(`${branchId}: a load-state branch is proven by mutation-only requests (${entry.delegate})`);
+            }
+        }
+        if (/mutationerror/i.test(guard)) {
+            // A mutation-error claim must be proven by a mutation request, not
+            // a bare load.
+            const verbs = new Set((scenario.expectRequests ?? []).map(w => w.method));
+            if (![...verbs].some(v => v === 'PATCH' || v === 'POST' || v === 'DELETE')) {
+                delegatedBroken.push(`${branchId}: a mutationError branch has no mutation request (${entry.delegate})`);
+            }
         }
     }
     // wp5c C-gate round 2: a duplicate claim (two scenarios naming the same
