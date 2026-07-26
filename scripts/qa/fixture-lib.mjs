@@ -172,6 +172,35 @@ for (const [name, root] of [
  */
 export const FIXTURE_STATES = {
     default: { apply: async () => 0 },
+    /**
+     * The states a panel shows INSTEAD of its content.
+     *
+     * Every tool tab has several: the terminal alone renders unsupported,
+     * prerequisite, error and loading screens, and the resting fixture shows
+     * exactly one of them. Rendering the rest through React would need the whole
+     * data layer faked, so the markup is substituted directly — enough to
+     * measure whether the panel's own styles make these readable, which is what
+     * D13 turned out to be about.
+     */
+    'panel-states': {
+        apply: (page, root) => page.evaluate((sel) => {
+            const scope = document.querySelector(sel);
+            if (!scope) return 0;
+            const variants = [
+                { role: 'status', text: 'Select an instance to continue' },
+                { role: 'alert', text: 'Something went wrong loading this panel' },
+                { role: 'status', text: 'Loading…', busy: true },
+            ];
+            scope.replaceChildren(...variants.map(({ role, text, busy }) => {
+                const el = document.createElement('div');
+                el.setAttribute('role', role);
+                if (busy) el.setAttribute('aria-busy', 'true');
+                el.textContent = text;
+                return el;
+            }));
+            return variants.length;
+        }, root),
+    },
     disabled: {
         apply: (page, root) => page.evaluate((sel) => {
             const scope = document.querySelector(sel);
