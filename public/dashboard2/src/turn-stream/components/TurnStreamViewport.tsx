@@ -110,20 +110,30 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
         const scroll = scrollRef.current;
         const tailHost = tailRef.current;
         if (!scroll || !tailHost) return undefined;
-        const wasAtEnd = (): boolean => {
+        // Track the pinned-at-end state BEFORE the resize. wasAtEnd() evaluated
+        // inside the observer sees the ALREADY-grown scrollHeight, which would
+        // always read "not at end" and never re-follow.
+        let pinned = true;
+        const updatePinned = (): void => {
             const gap = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
-            return gap <= 4;
+            pinned = gap <= 4;
         };
+        scroll.addEventListener('scroll', updatePinned, { passive: true });
+        updatePinned();
         let lastHeight = tailHost.getBoundingClientRect().height;
         const observer = new ResizeObserver(() => {
             const nextHeight = tailHost.getBoundingClientRect().height;
-            if (nextHeight !== lastHeight && wasAtEnd()) {
+            // `pinned` is the state before this resize; only then do we follow.
+            if (nextHeight !== lastHeight && pinned) {
                 scroll.scrollTop = scroll.scrollHeight;
             }
             lastHeight = nextHeight;
         });
         observer.observe(tailHost);
-        return () => observer.disconnect();
+        return () => {
+            observer.disconnect();
+            scroll.removeEventListener('scroll', updatePinned);
+        };
     }, [tail]);
 
     return (

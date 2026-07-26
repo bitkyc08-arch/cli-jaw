@@ -65,6 +65,27 @@ export function Workbench({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sidePaneOpen, clampPaneWidth]);
 
+    // CF-4 — the bounds depend on the workbench's width, which changes on
+    // window resize without re-running the effect above. Observe it and
+    // re-clamp so the state, CSS, and ARIA stay consistent.
+    const [wbWidth, setWbWidth] = useState(0);
+    useEffect(() => {
+        const wb = wbRef.current;
+        if (!wb) return undefined;
+        const observer = new ResizeObserver(() => {
+            setWbWidth(wb.getBoundingClientRect().width);
+        });
+        observer.observe(wb);
+        return () => observer.disconnect();
+    }, []);
+    useEffect(() => {
+        if (wbWidth === 0) return;
+        const clamped = clampPaneWidth(paneWidth);
+        if (clamped !== paneWidth) setPaneWidth(clamped);
+        wbRef.current?.style.setProperty('--d2-pane-w', `${clamped}px`);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wbWidth, clampPaneWidth]);
+
     const closeSidePaneWithFocusRestore = useCallback(async () => {
         const focusWasInsidePane = Boolean(
             wbRef.current?.querySelector('.d2-side-pane')?.contains(document.activeElement),

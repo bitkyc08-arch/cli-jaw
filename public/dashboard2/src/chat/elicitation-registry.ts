@@ -18,9 +18,21 @@ export interface ElicitationCompletion {
     answers: ElicitationAnswer[];
 }
 
-// Bounded so a long session does not grow the registry without limit.
+// Bounded so a long session does not grow the registry without limit, and
+// scoped: completions belong to one ChatView scope at a time, so a session
+// switch clears them rather than letting one session's elicitations bleed
+// into another ChatView with the same turnId/slot.id.
 const REGISTRY_CAP = 500;
 const registry = new Map<string, ElicitationCompletion>();
+let activeScopeKey: string | null = null;
+
+/** Bind the registry to a ChatView's scope; clears when the scope changes. */
+export function bindElicitationRegistry(scopeKey: string): void {
+    if (activeScopeKey !== null && activeScopeKey !== scopeKey) {
+        registry.clear();
+    }
+    activeScopeKey = scopeKey;
+}
 
 export function elicitationKey(identity: {
     scopeKey: string;
