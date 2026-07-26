@@ -194,7 +194,7 @@ report.branchCoverage = {
     covered: coverage.covered,
     uncovered: coverage.uncovered,
     stale: coverage.stale,
-    mismatched: coverage.mismatched,
+    underspecified: coverage.underspecified,
 };
 
 if (outPath) {
@@ -213,12 +213,12 @@ if (coverage.uncovered.length) {
 if (coverage.stale.length) {
     console.error(`\nFAIL: ${coverage.stale.length} coverage entries name branches the manifest no longer has: ${coverage.stale.join(', ')}`);
 }
-if (coverage.mismatched?.length) {
-    console.error(`\nFAIL: ${coverage.mismatched.length} coverage predicates do not assert their own branch's copy:`
-        + ` ${coverage.mismatched.map((m) => m.id).join(', ')}`);
+if (coverage.underspecified?.length) {
+    console.error(`\nFAIL: ${coverage.underspecified.length} coverage entries do not say what they expect to see:`
+        + ` ${coverage.underspecified.join(', ')}`);
 }
 console.error(`branch coverage: ${coverage.covered}/${coverage.integration} integration branches have a fixture`
     + ` (${coverage.total - coverage.integration} shadowed, excluded by audit)`);
 
 if (!reportOnly && (notReached.length || oracleFailures.length || total
-    || coverage.uncovered.length || coverage.stale.length || coverage.mismatched?.length)) process.exit(1);
+    || coverage.uncovered.length || coverage.stale.length || coverage.underspecified?.length)) process.exit(1);

@@ -39,10 +39,21 @@ try {
                 results.push({ ...ident(entry), ok: false, why: 'state did not apply to this surface' });
                 continue;
             }
-            // The predicate is serialised into the page, so it must be
-            // self-contained: no closure over anything in this file.
-            const proven = await page.evaluate(`(${entry.proof.toString()})()`);
-            results.push({ ...ident(entry), ok: Boolean(proven), why: proven ? null : 'proof predicate was false' });
+            // The observation happens HERE, from the entry's declared selector
+            // and the manifest's own words. Nothing from the coverage file is
+            // executed in the page, so an entry cannot assert `true`.
+            const seen = await page.evaluate(({ selector, absent, requires }) => {
+                const el = document.querySelector(selector);
+                return {
+                    found: Boolean(el),
+                    text: (el?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+                    absentPresent: absent ? Boolean(document.querySelector(absent)) : false,
+                    requiresPresent: requires ? Boolean(document.querySelector(requires)) : true,
+                };
+            }, { selector: entry.selector, absent: entry.absent ?? null, requires: entry.requires ?? null });
+
+            const verdict = judge(entry, seen);
+            results.push({ ...ident(entry), ok: verdict.ok, why: verdict.why, saw: seen.text.slice(0, 120) });
         } catch (error) {
             results.push({ ...ident(entry), ok: false, why: String(error?.message ?? error).split('\n')[0].slice(0, 160) });
         } finally {
@@ -55,6 +66,29 @@ try {
 
 function ident(entry) {
     return { id: entry.id, component: entry.component, axis: entry.axis, surface: entry.surface, state: entry.state };
+}
+
+/**
+ * Does what the page showed match what this branch is supposed to render?
+ *
+ * The expected copy comes from the ledger, so this cannot be satisfied by
+ * anything written in the coverage file itself.
+ */
+function judge(entry, seen) {
+    if (!seen.found) return { ok: false, why: `nothing matched ${entry.selector}` };
+    if (seen.absentPresent) return { ok: false, why: `${entry.absent} was present, so this is the neighbouring branch` };
+    if (!seen.requiresPresent) return { ok: false, why: `${entry.requires} was missing, so this is a different panel` };
+    if (entry.pattern) {
+        return new RegExp(entry.pattern).test(seen.text)
+            ? { ok: true, why: null }
+            : { ok: false, why: `"${seen.text.slice(0, 60)}" does not match /${entry.pattern}/` };
+    }
+    const expected = entry.expected;
+    if (!expected) return { ok: false, why: 'no expected copy for this branch' };
+    const hit = entry.match === 'exact' ? seen.text === expected : seen.text.includes(expected);
+    return hit
+        ? { ok: true, why: null }
+        : { ok: false, why: `expected ${JSON.stringify(expected)}, saw ${JSON.stringify(seen.text.slice(0, 60))}` };
 }
 
 for (const r of results) {
@@ -83,11 +117,10 @@ if (status.uncovered.length) {
 if (status.stale.length) {
     console.error(`\nFAIL: ${status.stale.length} coverage entries name branches the manifest no longer has: ${status.stale.join(', ')}`);
 }
-if (status.mismatched?.length) {
-    console.error(`\nFAIL: ${status.mismatched.length} predicates do not assert their own branch's copy:`);
-    for (const m of status.mismatched) console.error(`  ${m.id} should assert ${JSON.stringify(m.expected)}`);
+if (status.underspecified?.length) {
+    console.error(`\nFAIL: ${status.underspecified.length} entries do not say what they expect to see: ${status.underspecified.join(', ')}`);
 }
 if (failed.length) console.error(`\nFAIL: ${failed.length} of ${results.length} branches did not render as claimed`);
 
-if (failed.length || status.uncovered.length || status.stale.length || status.mismatched?.length) process.exit(1);
+if (failed.length || status.uncovered.length || status.stale.length || status.underspecified?.length) process.exit(1);
 console.error(`\nOK: ${results.length}/${status.integration} integration branches proven (${status.total - status.integration} shadowed, excluded by audit)`);

@@ -623,6 +623,25 @@ export async function surfacePixelContrast(page, selectorScope) {
                     complex,
                     need: m.requiredContrast(style),
                     rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+                    // Where the GLYPHS are, which is not the same as where the
+                    // element is. A 1200px row inside a 220px scrollport has a
+                    // box that reaches the visible edge while every letter sits
+                    // in the clipped-away part; sampling the box then reads a
+                    // blank sliver and calls it indistinguishable text.
+                    textRects: (() => {
+                        const range = document.createRange();
+                        const out = [];
+                        for (const node of el.childNodes) {
+                            if (node.nodeType !== Node.TEXT_NODE || !node.nodeValue?.trim()) continue;
+                            range.selectNodeContents(node);
+                            for (const box of range.getClientRects()) {
+                                if (box.width >= 1 && box.height >= 1) {
+                                    out.push({ x: box.x, y: box.y, width: box.width, height: box.height });
+                                }
+                            }
+                        }
+                        return out;
+                    })(),
                     describe: m.describe(el),
                 };
             });
@@ -689,28 +708,53 @@ export async function surfacePixelContrast(page, selectorScope) {
             // paired capture already solves the border problem: whatever the
             // border is, it is identical in both images and so is never counted
             // as glyph coverage.
-            // Measure the VISIBLE intersection, not the element's whole box.
+            // Measure the visible intersection of the GLYPHS, not of the box.
             //
             // A diff line inside a horizontal scrollport is 4116px wide while
             // the capture is clipped to the panel, so the full rect falls
-            // outside the bitmap. Skipping those elements is what produced
+            // outside the bitmap. Skipping those elements produced
             // "measured 9 of 17"; excusing them as `outside-capture` was worse,
-            // because a reviewer showed #777 on #787878 — plainly visible at
-            // the left edge — then passed the gate at ratio null. The pixels a
-            // user can see are exactly the pixels inside the clip, so clamp to
-            // that region and measure it.
-            const rawX = (r.x - origin.x) * dpr;
-            const rawY = (r.y - origin.y) * dpr;
-            const x0 = Math.round(Math.max(0, rawX));
-            const y0 = Math.round(Math.max(0, rawY));
-            const x1 = Math.round(Math.min(bitmap.width, rawX + r.width * dpr));
-            const y1 = Math.round(Math.min(bitmap.height, rawY + r.height * dpr));
-            const sx = x0;
-            const sy = y0;
-            const sw = x1 - x0;
-            const sh = y1 - y0;
-            // Nothing of this element is inside the capture at all: it is
-            // scrolled fully out of view, so there is nothing to look at.
+            // because #777 on #787878 at the visible left edge then passed at
+            // ratio null. But clamping the ELEMENT box over-corrects in the
+            // other direction: if the text sits entirely in the clipped-away
+            // part, the visible sliver is blank and reads as text that cannot
+            // be told from its background. So intersect the text's own line
+            // boxes with the capture, and only look where letters actually are.
+            const clipRect = (rect) => {
+                const rx = (rect.x - origin.x) * dpr;
+                const ry = (rect.y - origin.y) * dpr;
+                const x0 = Math.max(0, rx);
+                const y0 = Math.max(0, ry);
+                const x1 = Math.min(bitmap.width, rx + rect.width * dpr);
+                const y1 = Math.min(bitmap.height, ry + rect.height * dpr);
+                return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+            };
+            const glyphBoxes = (snap.textRects ?? []).map(clipRect).filter((b) => b.w >= 1 && b.h >= 1);
+            const hasTextRects = (snap.textRects ?? []).length > 0;
+            // If the element HAS glyphs but none of them fall inside the
+            // capture, there is nothing visible to judge. Falling back to the
+            // element box here is what reported 21:1 black-on-white text as
+            // indistinguishable: the box reached the visible edge, the letters
+            // did not, and the sampled sliver was blank.
+            const box = glyphBoxes.length
+                ? {
+                    x0: Math.min(...glyphBoxes.map((b) => b.x0)),
+                    y0: Math.min(...glyphBoxes.map((b) => b.y0)),
+                    x1: Math.max(...glyphBoxes.map((b) => b.x1)),
+                    y1: Math.max(...glyphBoxes.map((b) => b.y1)),
+                }
+                : hasTextRects
+                    ? { x0: 0, y0: 0, x1: 0, y1: 0 }   // glyphs exist, none visible
+                    // No text rects at all: an element whose text lives in a
+                    // child it does not own. Use its own box, clamped the same.
+                    : (() => { const b = clipRect(r); return { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }; })();
+            const sx = Math.round(box.x0);
+            const sy = Math.round(box.y0);
+            const sw = Math.round(box.x1) - sx;
+            const sh = Math.round(box.y1) - sy;
+            // None of this element's glyphs are inside the capture: it is
+            // scrolled or clipped fully out of view, so there is nothing a user
+            // can see and nothing to judge.
             if (sw < 2 || sh < 2) {
                 results.push({
                     ...snap.describe,

@@ -83,8 +83,15 @@ const CASES = [
         theme: 'light',
         state: 'default',
         expect: 'contrast',
-        revert: '.d2-code-gate, .d2-code-gate strong, .d2-code-gate p, .d2-code-gate button {'
-            + ' all: revert; } .d2-code-gate { display: block; }',
+        // `all: revert` alone no longer reproduces it: a broader `button` rule
+        // in the app supplies a colour, so the UA button face never comes
+        // back. Restate what the browser actually painted — the same
+        // correction D17 needed.
+        revert: '.d2-code-gate, .d2-code-gate strong, .d2-code-gate p {'
+            + ' all: revert; } .d2-code-gate { display: block; }'
+            + ' .d2-code-gate button { all: revert;'
+            + ' background: rgb(107, 107, 107) !important; color: rgb(48, 48, 48) !important;'
+            + ' border: 0 !important; }',
     },
     {
         id: 'D12-disabled-group-opacity',
@@ -186,11 +193,13 @@ const CASES = [
     },
     {
         id: 'D19-browser-unavailable-overlay',
-        defect: 'the Electron-without-a-browser message reused the absolute overlay rule with no frame-wrap to anchor to, stretching to the full viewport and painting no readable glyphs',
+        defect: 'the Electron-without-a-browser message reused the absolute overlay rule with no frame-wrap to anchor to, so it stretched across the whole viewport and its text ended up outside the panel entirely',
         surface: 'tab-browser',
         theme: 'dark',
         state: 'browser-bridge-missing',
-        expect: 'contrast',
+        // Not a contrast failure: the element leaves its own panel, so no part
+        // of its text is inside the captured surface at all.
+        expect: 'offCapture',
         revert: '.d2-browser-unavailable {'
             + ' position: absolute; inset: 0; display: flex; align-items: center;'
             + ' justify-content: center; color: var(--text-3) !important; }',
@@ -256,7 +265,13 @@ async function measure(surface, theme, stateName, revertCss, liveUrl) {
         return {
             contrast: (text ?? []).filter((r) => !r.pass && !r.unmeasurable).length,
             icon: (icons ?? []).filter((r) => !r.pass && !r.unmeasurable).length,
-            unmeasurable: rows.filter((r) => r.unmeasurable).length,
+            unmeasurable: rows.filter((r) => r.unmeasurable && !r.offCapture).length,
+            // An element whose glyphs land entirely outside its own panel: the
+            // gate excludes these from its defect counts because they are a
+            // limit of the capture, but a control that got there by stretching
+            // across the viewport is a real layout defect and this is the axis
+            // that shows it.
+            offCapture: rows.filter((r) => r.offCapture).length,
             unreachable,
             worst: rows.filter((r) => typeof r.ratio === 'number').sort((a, b) => a.ratio - b.ratio)[0] ?? null,
         };

@@ -65,6 +65,12 @@ const browser = await chromium.launch({ channel: 'chrome' });
              excuses those pixels passes a defect it can see. */
           #scrollport { width: 220px; overflow-x: auto; background:#787878; }
           #scrollport > span { display: inline-block; width: 1200px; color:#777; font: 16px sans-serif; }
+          /* The mirror image: a wide row whose letters live ONLY in the
+             clipped-away part. The visible sliver is blank, so an oracle
+             that samples the element box reports text it cannot tell from
+             its background — a defect the user cannot see. */
+          #clippedglyphs { width: 220px; overflow: hidden; background:#ffffff; }
+          #clippedglyphs > span { display: inline-block; width: 1200px; padding-left: 1000px; color:#000; font: 16px sans-serif; white-space: nowrap; }
           #nearicon { background:#787878; color:#777 }
           /* Translucent foregrounds. The computed colour is pure black in every
              one of these, so reading the computed colour and ignoring alpha
@@ -103,6 +109,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div class="case" id="thin">Sample text spanning</div>
         <div class="case" id="near">Nearly invisible text</div>
         <div id="scrollport"><span>Wide overflowing low contrast text that runs past the panel</span></div>
+        <div id="clippedglyphs"><span>Letters only in the clipped part</span></div>
         <div class="case" id="nearicon"><button aria-label="Close" style="background:transparent;border:0;color:#777"><svg width="16" height="16"><path d="M2 2 L14 14" stroke="currentColor" stroke-width="2"/></svg></button></div>
         <div class="case" id="op">Element opacity</div>
         <div class="case" id="alphafg">Alpha foreground</div>
@@ -203,6 +210,24 @@ const browser = await chromium.launch({ channel: 'chrome' });
     if (!wideOk) {
         failures.push(`counterexample/overflow-visible-intersection: ${
             wideRow ? (wideRow.offCapture ? 'excused as offCapture' : wideRow.ratio) : 'produced no row'}`);
+    }
+
+    // And the mirror image: a visible sliver with no glyphs in it must NOT be
+    // reported as a contrast failure. Clamping the element box rather than the
+    // text's own line boxes produced exactly that — 21:1 black-on-white text
+    // flagged `indistinguishable` because the sampled region was blank.
+    const clippedRows = await surfacePixelContrast(page, '#clippedglyphs');
+    const clippedRow = clippedRows?.find((r) => (r.label ?? '').startsWith('Letters only'));
+    const clippedOk = !clippedRow || clippedRow.pass || clippedRow.offCapture;
+    results.push({
+        name: 'counterexample/clipped-glyphs-not-a-defect',
+        measured: clippedRow ? (clippedRow.offCapture ? 'offCapture' : `${clippedRow.ratio}/${clippedRow.pass}`) : 'NO ROW',
+        expected: 'passing or excluded, never a failure',
+        ok: clippedOk,
+        note: 'a blank visible sliver is not low-contrast text',
+    });
+    if (!clippedOk) {
+        failures.push(`counterexample/clipped-glyphs-not-a-defect: reported ${clippedRow.ratio} as a failure`);
     }
 
     const nearIconRows = await surfaceIconContrast(page, '#nearicon');
