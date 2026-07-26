@@ -257,7 +257,13 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
             return entry?.status === 'ready' ? entry.data.active : null;
         },
         ensureSessions(port) {
-            return Promise.resolve(loadSessions(port));
+            // Return the active session from the freshly loaded data, not a
+            // later cache read — the caller's .then() fires before the state
+            // re-render, so a ref or state read would still be stale.
+            return Promise.resolve(loadSessions(port)).then(() => {
+                const entry = sessionsByPortRef.current[port];
+                return entry?.status === 'ready' ? entry.data.active : null;
+            });
         },
     }), [registerSidebarApi, instances, sessionsByPort, expandedPorts, toggleInstance, loadSessions]);
 

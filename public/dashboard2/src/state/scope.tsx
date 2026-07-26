@@ -98,8 +98,12 @@ export interface SidebarShortcutApi {
     focusInstanceRow(port: number): void;
     /** The active session for an instance, if one exists. */
     activeSessionFor(port: number): string | null;
-    /** Ensure an instance's sessions are loaded (for activeSessionFor). */
-    ensureSessions(port: number): Promise<void>;
+    /**
+     * Load an instance's sessions and return the active session id (or null).
+     * Returning it avoids the stale-read where a caller loads then reads a
+     * cache that has not re-rendered yet.
+     */
+    ensureSessions(port: number): Promise<string | null>;
 }
 
 export interface AppScopeValue extends AppScopeState {

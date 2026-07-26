@@ -45,8 +45,7 @@ export function DashboardShortcutBindings(): JSX.Element | null {
         // failing that just focus the instance list.
         const firstOnline = api?.orderedInstances().find((instance) => instance.online);
         if (!firstOnline) { api?.focusInstances(); return; }
-        void api?.ensureSessions(firstOnline.port).then(() => {
-            const sessionId = api?.activeSessionFor(firstOnline.port);
+        void api?.ensureSessions(firstOnline.port).then((sessionId) => {
             if (sessionId) void guardedSelectSession(firstOnline.port, sessionId);
             else api?.focusInstanceRow(firstOnline.port);
         });
@@ -72,8 +71,7 @@ export function DashboardShortcutBindings(): JSX.Element | null {
             }
             // Load sessions first so activeSessionFor has the active session,
             // then select it; otherwise focus the row without changing selected.
-            void api?.ensureSessions(target.port).then(() => {
-                const sessionId = api?.activeSessionFor(target.port);
+            void api?.ensureSessions(target.port).then((sessionId) => {
                 if (sessionId) void guardedSelectSession(target.port, sessionId);
                 else api?.focusInstanceRow(target.port);
             });
