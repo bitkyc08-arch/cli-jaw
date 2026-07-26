@@ -242,7 +242,7 @@ const FEATURE_BRANCH_COVERAGE = {};
     // override that code branch's own coverage entry.
     const featureBranchIds = new Set(
         buildTabStateLedger()
-            .filter(r => /harness:(notes|board|reminders|employees)/.test(r.route) && r.reachability === 'integration')
+            .filter(r => /harness:(notes|board|reminders|employees)/.test(r.route))
             .map(r => r.id),
     );
     const featureStatus = featureScenarioStatus(featureBranchIds);
@@ -288,13 +288,25 @@ export function branchCoverageStatus() {
     // `CodeTabGate-state-1d583p4` delegating to a scenario that declared
     // `CodeTab-state-1d583p4` — a delegation that looked wired and pointed at
     // an identity nothing owns.
-    const scenarioById = new Map(scenarioLedgerStatus().scenarios.map(s => [s.id, s]));
+    const codeBranchIds = new Set(
+        // Integration AND shadowed code branches: a scenario may legitimately
+        // name a shadowed branch to record why nothing produces it (e.g.
+        // CodeHistoryList-historystate-9e0ueb). The domain is code, not just
+        // code-integration.
+        buildTabStateLedger().filter(r => r.route === 'harness:code').map(r => r.id),
+    );
+    const codeStatus = scenarioLedgerStatus(codeBranchIds);
+    const scenarioById = new Map(codeStatus.scenarios.map(s => [s.id, s]));
     const delegatedBroken = Object.entries(CODE_BRANCH_COVERAGE)
         .filter(([branchId, entry]) => {
             const scenario = scenarioById.get(entry.delegate);
             return !scenario || scenario.branchId !== branchId;
         })
         .map(([branchId, entry]) => `${branchId} -> ${entry.delegate}`);
+    // wp5c C-gate round 4: a code scenario claiming a non-code branch.
+    for (const problem of codeStatus.malformed) {
+        if (/claims a non-code branch/.test(problem)) delegatedBroken.push(problem);
+    }
 
     // wp5c: the same check for the feature branches — the delegated scenario
     // must exist AND claim this branch id.
@@ -310,7 +322,7 @@ export function branchCoverageStatus() {
     // must reach the gates. A non-manifest claim is caught by `stale`; a
     // duplicate on a REAL branch is not, and without this it passes silently.
     for (const problem of featureScenarioStatus(
-        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees)/.test(r.route) && r.reachability === 'integration').map(r => r.id)),
+        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees)/.test(r.route)).map(r => r.id)),
     ).malformed) {
         if (/claimed by two scenarios|not an integration feature branch/.test(problem)) delegatedBroken.push(problem);
     }

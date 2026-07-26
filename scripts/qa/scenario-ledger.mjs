@@ -590,7 +590,7 @@ const REACHABILITIES = new Set(['integration', 'component', 'shadowed']);
  * excluded from the numerator AND declared, so the count cannot be improved by
  * quietly deleting a state nobody can reach.
  */
-export function scenarioLedgerStatus() {
+export function scenarioLedgerStatus(codeIntegrationBranchIds = null) {
     // The runner consumes a generic {levers, panel, waitFor} shape; the code
     // rows were written before that shape existed and carry their lever as a
     // bare `code` field. Normalising here keeps the runner surface-agnostic
@@ -646,6 +646,13 @@ export function scenarioLedgerStatus() {
             if (typeof want.count !== 'number' || !want.method || !want.path) {
                 malformed.push(`${scenario.id}: expectRequests entry needs method, path and an exact count`);
             }
+        }
+        // wp5c C-gate round 4: a code scenario's branchId must name a branch
+        // in THIS domain. A code scenario claiming a feature branch (e.g.
+        // BoardPanel-loading-65ewcf) would otherwise pass scenario/stale/
+        // delegated checks that only look within one domain.
+        if (codeIntegrationBranchIds && scenario.branchId && !codeIntegrationBranchIds.has(scenario.branchId)) {
+            malformed.push(`${scenario.branchId}: code scenario claims a non-code branch`);
         }
     }
 
