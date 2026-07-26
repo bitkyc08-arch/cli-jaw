@@ -187,5 +187,11 @@ fi
 
 node "$PROJECT_ROOT/scripts/check-electron-sidecar-no-jwc.cjs" --server-root "$SIDECAR_DIR"
 
+# Boot proof, not just dependency resolution: the sidecar's telegram path
+# resolves node-fetch hermetically, and bin/jaw serve actually boots and
+# answers health. This is the check that would have caught the original
+# ERR_MODULE_NOT_FOUND before the app shipped.
+node "$PROJECT_ROOT/scripts/qa/sidecar-boot-proof.mjs" "$SIDECAR_DIR"
+
 echo "=== Sidecar ready ==="
 du -sh "$SIDECAR_DIR"
