@@ -66,7 +66,12 @@ PRUNE_PKGS=(
   "@codemirror/autocomplete" "@codemirror/lang-markdown" "@codemirror/language"
   "@codemirror/language-data" "@codemirror/state" "@codemirror/view"
   "@lezer/highlight" "@lucide/icons" "@milkdown/kit" "@replit/codemirror-vim"
-  "@tanstack/virtual-core" "@uiw/react-codemirror" "@xterm/addon-fit" "@xterm/xterm"
+  # react-virtual goes with virtual-core. Pruning only the inner one left a
+  # half-package in the bundle: @tanstack/react-virtual present, its own
+  # dependency gone. Nothing on the server imports either, but a package that
+  # cannot resolve its own dependency is a trap for the next person.
+  "@tanstack/react-virtual" "@tanstack/virtual-core"
+  "@uiw/react-codemirror" "@xterm/addon-fit" "@xterm/xterm"
   "d3" "dompurify" "highlight.js" "katex" "marked-highlight" "mermaid"
   "react" "react-dom" "react-markdown" "rehype-katex" "rehype-sanitize"
   "remark-breaks" "remark-gfm" "remark-math"
@@ -83,10 +88,21 @@ rm -rf "$SIDECAR_DIR/node_modules/cytoscape" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/cytoscape-fcose" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/es-toolkit" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/lodash" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/web-streams-polyfill" 2>/dev/null || true
+# web-streams-polyfill is NOT frontend-only: node-fetch -> fetch-blob depends on
+# it, so pruning it left the packaged sidecar unable to import node-fetch and
+# every instance that touched the Telegram path died at boot. This is the same
+# mistake the note above describes, one level deeper in the tree.
 
 echo "Removing stale .bin symlinks after dependency pruning..."
 find "$SIDECAR_DIR/node_modules/.bin" -type l ! -exec test -e {} \; -print -delete 2>/dev/null || true
+
+echo "Verifying the prune did not take a server dependency..."
+# The note above the prune list is a rule; this enforces it. `node-fetch` was
+# pruned once and killed every packaged instance on the Telegram path. After
+# that was fixed the same bug came back one level deeper, through
+# fetch-blob -> web-streams-polyfill, and the app died at boot with
+# ERR_MODULE_NOT_FOUND for node-fetch while node-fetch was sitting right there.
+node "$PROJECT_ROOT/scripts/verify-sidecar-deps.mjs" "$SIDECAR_DIR"
 
 NODE_BIN="$SIDECAR_DIR/node"
 if [[ "$PLATFORM" == "win32" ]]; then
