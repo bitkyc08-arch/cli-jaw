@@ -264,6 +264,14 @@ try {
                 // The settings workspace replaces the chat area rather than
                 // opening in the side pane.
                 await page.evaluate(() => window.__jawE2E.setSettings());
+            } else if (scenario.openDock) {
+                // The hover dock opens from its workbench-header trigger, then
+                // a tab is chosen. The three tabs share one snapshot DOM, so
+                // every dock selector is scoped to [data-dock-tab].
+                await page.locator('.hover-dock-trigger').click();
+                if (scenario.dockTab) {
+                    await page.locator(`.hover-dock-tab[role="tab"]:has-text("${scenario.dockTab}")`).click();
+                }
             } else {
                 await page.evaluate((panel) => window.__jawE2E.openPanel(panel), scenario.panel ?? 'code');
             }

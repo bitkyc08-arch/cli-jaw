@@ -25,6 +25,13 @@ const SETTINGS = {
     waitFor: '.d2-settings-page, .d2-settings-workspace, .d2-settings-sidebar',
 };
 
+/** The hover dock opens from a workbench-header trigger; tabs via data-dock-tab. */
+const DOCK = {
+    component: 'HoverDock',
+    openDock: true,
+    waitFor: '.hover-dock-panel',
+};
+
 // The side pane is narrow, which puts the board in compact mode at the
 // default 1440x900 viewport: it renders one lane as a <select> instead of
 // every lane (BoardPanel.tsx:96,364). A wider viewport keeps the pane wide
@@ -1060,6 +1067,140 @@ export const FEATURE_SCENARIOS = [
         selector: '.d2-settings-state.error[role="alert"]',
         expected: 'Select an instance to edit model settings.',
     },
+
+    // ── hover dock: dock state ───────────────────────────────────────────────
+    {
+        id: 'dock-no-session',
+        reachability: 'integration',
+        axis: 'prerequisite', target: 'StatePanel',
+        why: 'with no instance selected, the dock offers no control tabs',
+        ...DOCK,
+        noSession: true,
+        levers: { hoverDock: {} },
+        selector: '.hover-dock-panel .dock-dim',
+        expected: '세션을 선택하면 인스턴스 제어 탭이 열립니다',
+    },
+    {
+        id: 'dock-open-agents',
+        reachability: 'integration',
+        axis: 'ready', target: 'Panel',
+        why: 'the dock opens on the agents tab by default',
+        ...DOCK,
+        dockTab: '에이전트',
+        levers: { hoverDock: {} },
+        selector: '.hover-dock-body[data-dock-tab="agents"]',
+        requires: '.hover-dock-tabs',
+    },
+    {
+        id: 'dock-tab-switch-skills',
+        reachability: 'integration',
+        axis: 'ready', target: 'Panel',
+        why: 'switching to the skills tab scopes the body to skills',
+        ...DOCK,
+        dockTab: '스킬',
+        levers: { hoverDock: { skills: [] } },
+        selector: '.hover-dock-body[data-dock-tab="skills"]',
+        expected: '활성 0/0',
+        requires: '.hover-dock-tab[role="tab"]',
+    },
+
+    // ── hover dock: shared snapshot machine (tab-scoped) ────────────────────
+    {
+        id: 'dock-skills-loading',
+        reachability: 'integration',
+        axis: 'loading', target: 'StatePanel',
+        why: 'the skills list is in flight',
+        ...DOCK,
+        dockTab: '스킬',
+        levers: { hoverDock: { holdSkills: true } },
+        selector: '.hover-dock-body[data-dock-tab="skills"] .dock-loading',
+        expected: '로딩 중',
+    },
+    {
+        id: 'dock-skills-error',
+        branchId: 'SkillsTab',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the skills read failed',
+        ...DOCK,
+        dockTab: '스킬',
+        levers: { hoverDock: { skillsStatus: 500 } },
+        selector: '.hover-dock-body[data-dock-tab="skills"] .dock-error',
+        expected: '스킬 로드 실패',
+    },
+    {
+        id: 'dock-skills-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'no skills are installed',
+        ...DOCK,
+        dockTab: '스킬',
+        levers: { hoverDock: { skills: [] } },
+        selector: '.hover-dock-body[data-dock-tab="skills"]',
+        expected: '활성 0/0',
+    },
+    {
+        id: 'dock-agents-offline',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the instance is offline, scoped to the agents tab',
+        ...DOCK,
+        dockTab: '에이전트',
+        levers: { settingsConfig: { instanceSettingsStatus: 500 } },
+        selector: '.hover-dock-body[data-dock-tab="agents"] .dock-error',
+        expected: '인스턴스 오프라인',
+    },
+    {
+        id: 'dock-settings-offline',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the instance is offline, scoped to the settings tab',
+        ...DOCK,
+        dockTab: '설정',
+        levers: { settingsConfig: { instanceSettingsStatus: 500 } },
+        selector: '.hover-dock-body[data-dock-tab="settings"] .dock-error',
+        expected: '인스턴스 오프라인',
+    },
+
+    // ── hover dock: skills mutations + search ────────────────────────────────
+    {
+        id: 'dock-skills-search-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'a skills search with no match shows the empty state',
+        ...DOCK,
+        dockTab: '스킬',
+        levers: { hoverDock: { skills: [{ id: 's1', name: 'review', enabled: true, description: 'review code' }] } },
+        actions: [{ kind: 'type', selector: '.hover-dock-body[data-dock-tab="skills"] input[type="search"], .hover-dock-body[data-dock-tab="skills"] input[placeholder*="검색"]', text: 'wp7a-no-such-skill' }],
+        selector: '.hover-dock-body[data-dock-tab="skills"]',
+        expected: '검색 결과가 없습니다',
+    },
+    {
+        id: 'dock-skills-disable-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'disabling a skill was rejected',
+        ...DOCK,
+        dockTab: '스킬',
+        levers: { hoverDock: { skills: [{ id: 's1', name: 'review', enabled: true, description: 'review code' }], mutationStatus: 500 } },
+        actions: [{ kind: 'click', selector: '.hover-dock-body[data-dock-tab="skills"] .dock-switch' }],
+        expectRequests: [{ method: 'POST', path: '/i/3506/api/skills/disable', count: 1 }],
+        selector: '.hover-dock-body[data-dock-tab="skills"] .dock-error',
+        expected: '500',
+    },
+
+    // ── hover dock: settings sections ────────────────────────────────────────
+    {
+        id: 'dock-settings-mcp-empty',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'no MCP servers are registered',
+        ...DOCK,
+        dockTab: '설정',
+        levers: { hoverDock: { mcp: { ok: true, data: { servers: {} } } } },
+        selector: '.hover-dock-body[data-dock-tab="settings"]',
+        expected: '등록된 MCP 서버 없음',
+    },
 ];
 
 const EVIDENCE_STATUSES = new Set([
@@ -1089,7 +1230,7 @@ export function featureScenarioStatus(manifestIntegrationBranchIds = null) {
         if (scenario.reachability === 'shadowed' && evidence === 'proven') malformed.push(`${scenario.id}: a shadowed row cannot be proven`);
         if (scenario.reachability === 'integration') {
             if (!scenario.selector) malformed.push(`${scenario.id}: integration row has no selector`);
-            if ((!scenario.panel && !scenario.openSettings) || !scenario.waitFor) malformed.push(`${scenario.id}: integration row has no panel/waitFor`);
+            if ((!scenario.panel && !scenario.openSettings && !scenario.openDock) || !scenario.waitFor) malformed.push(`${scenario.id}: integration row has no panel/waitFor`);
             if (!scenario.expected && !scenario.pattern
                 && scenario.draftEquals === undefined && !scenario.expectRequests
                 && !scenario.requires && !scenario.absent) {

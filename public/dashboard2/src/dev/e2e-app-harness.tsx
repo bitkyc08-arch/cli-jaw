@@ -227,6 +227,29 @@ export interface SettingsFixtureConfig {
     cliRegistry?: JsonRecord | null;
 }
 
+/**
+ * How the hover dock should answer. The three tabs share one snapshot machine
+ * (loading/ready/offline/error), so each dock endpoint is independently
+ * bendable to reach the per-tab offline/error and each section's load/empty.
+ * The snapshot's offline state only exists when a dock endpoint returns 5xx.
+ */
+export interface HoverDockFixtureConfig {
+    skills?: JsonRecord[] | null;
+    skillsStatus?: number;
+    holdSkills?: boolean;
+    mcpStatus?: number;
+    mcp?: JsonRecord | null;
+    promptStatus?: number;
+    prompt?: JsonRecord | null;
+    healthStatus?: number;
+    health?: JsonRecord | null;
+    employeesStatus?: number;
+    employees?: JsonRecord[] | null;
+    /** Mutations: skills enable/disable, mcp sync/install, employees POST/PUT/DELETE, prompt PUT. */
+    mutationStatus?: number;
+    holdMutation?: boolean;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -303,6 +326,8 @@ class FakeApiRouter {
     notes: NotesFixtureConfig = {};
     /** Settings workspace; see SettingsFixtureConfig. */
     settingsConfig: SettingsFixtureConfig = {};
+    /** Hover dock; see HoverDockFixtureConfig. */
+    hoverDock: HoverDockFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -417,6 +442,15 @@ class FakeApiRouter {
             return json(cfg.cliRegistry ?? { ok: true, data: { codex: { defaultModel: 'gpt-5.5', models: ['gpt-5.5'], efforts: ['low', 'medium', 'high'] } } });
         }
         if (url.pathname.startsWith(`/i/${PORT}/api/code/`)) return this.codeApi(url, method, payload);
+        if (url.pathname === `/i/${PORT}/api/skills`
+            || url.pathname.startsWith(`/i/${PORT}/api/skills/`)
+            || url.pathname.startsWith(`/i/${PORT}/api/mcp`)
+            || url.pathname === `/i/${PORT}/api/prompt`
+            || url.pathname === `/i/${PORT}/api/health`
+            || url.pathname.startsWith(`/i/${PORT}/api/employees/`)
+            || (url.pathname === `/i/${PORT}/api/employees` && method !== 'GET')) {
+            return this.hoverDockApi(url, method, payload);
+        }
         if (url.pathname === `/i/${PORT}/api/employees`
             || url.pathname === `/i/${PORT}/api/orchestrate/workers`
             || url.pathname === `/i/${PORT}/api/orchestrate/worker-progress`) {
@@ -584,6 +618,62 @@ class FakeApiRouter {
      * orchestrate reads to warnings rather than failing, and those warnings
      * are the states under test.
      */
+    /**
+     * The hover dock's reads and writes. Before this existed they fell through
+     * to the catch-all, which answered with a successful empty payload — so a
+     * tab's error or offline state was unreachable, exactly the ambiguity the
+     * other surfaces hit. Each is independently bendable.
+     */
+    private hoverDockApi(url: URL, method: string, payload: JsonRecord): Response {
+        const cfg = this.hoverDock;
+        const path = url.pathname.slice(`/i/${PORT}/api`.length);
+        const isMutation = method !== 'GET';
+
+        if (isMutation && cfg.holdMutation) return pending();
+        if (isMutation && cfg.mutationStatus && cfg.mutationStatus >= 400) {
+            return json({ ok: false, error: 'dock mutation rejected' }, cfg.mutationStatus);
+        }
+
+        if (path === '/skills') {
+            if (cfg.holdSkills) return pending();
+            if (cfg.skillsStatus && cfg.skillsStatus >= 400) return json({ error: 'skills unreadable' }, cfg.skillsStatus);
+            // SkillsTab does not unwrap {ok,data}; it reads the body as the
+            // list directly (SkillsTab.tsx:28), so the fixture returns a bare
+            // array.
+            return json(cfg.skills ?? []);
+        }
+        if (path.startsWith('/skills/')) return json({ ok: true });
+
+        if (path.startsWith('/mcp')) {
+            if (method === 'GET' && cfg.mcpStatus && cfg.mcpStatus >= 400) return json({ error: 'mcp unreadable' }, cfg.mcpStatus);
+            if (path === '/mcp/sync' || path === '/mcp/install') return json({ ok: true, synced: 2 });
+            return json(cfg.mcp ?? { ok: true, data: { servers: {} } });
+        }
+
+        if (path === '/prompt') {
+            if (method === 'PUT') return json({ ok: true });
+            if (cfg.promptStatus && cfg.promptStatus >= 400) return json({ error: 'prompt unreadable' }, cfg.promptStatus);
+            return json(cfg.prompt ?? { content: '' });
+        }
+
+        if (path === '/health') {
+            if (cfg.healthStatus && cfg.healthStatus >= 400) return json({ error: 'health unavailable' }, cfg.healthStatus);
+            return json(cfg.health ?? { ok: true, status: 'ok' });
+        }
+
+        if (path.startsWith('/employees/')) {
+            if (cfg.employeesStatus && cfg.employeesStatus >= 400) return json({ error: 'employee mutation rejected' }, cfg.employeesStatus);
+            return json({ ok: true });
+        }
+        if (path === '/employees' && method === 'POST') {
+            if (cfg.employeesStatus && cfg.employeesStatus >= 400) return json({ error: 'employee create rejected' }, cfg.employeesStatus);
+            return json({ ok: true, id: 'emp-new' });
+        }
+
+        this.unknownRequests.push(`${method} ${url.pathname}`);
+        return json({ ok: false, error: `unhandled dock endpoint ${path}` }, 501);
+    }
+
     private employeesApi(url: URL): Response {
         const cfg = this.employees;
         if (url.pathname.endsWith('/api/employees')) {
@@ -920,6 +1010,8 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetNotes() { router.notes = {}; },
         setSettingsConfig(config) { router.settingsConfig = config ?? {}; },
         resetSettingsConfig() { router.settingsConfig = {}; },
+        setHoverDock(config) { router.hoverDock = config ?? {}; },
+        resetHoverDock() { router.hoverDock = {}; },
         markRequests() { return router.recorded.length; },
         confirmCalls() {
             return (window as unknown as { __jawConfirmCalls: string[] }).__jawConfirmCalls.slice();
@@ -984,6 +1076,8 @@ declare global {
             resetNotes(): void;
             setSettingsConfig(config: SettingsFixtureConfig | null): void;
             resetSettingsConfig(): void;
+            setHoverDock(config: HoverDockFixtureConfig | null): void;
+            resetHoverDock(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];

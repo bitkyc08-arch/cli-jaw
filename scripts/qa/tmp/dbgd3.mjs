@@ -1,0 +1,14 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetHoverDock(); window.__jawE2E.setHoverDock({ skills: [{id:'s1',name:'review',enabled:true,description:'review code'}], mutationStatus: 500 }); });
+await page.locator('.hover-dock-trigger').click();
+await page.locator('.hover-dock-tab[role="tab"]:has-text("스킬")').click();
+await page.waitForTimeout(1200);
+console.log('SWITCH:', await page.evaluate(() => document.querySelector('.dock-skills .dock-switch, .dock-skills [role="switch"]')?.outerHTML?.slice(0,150) ?? 'none'));
+const mark = await page.evaluate(() => window.__jawE2E.markRequests());
+await page.locator('.dock-skills .dock-switch').first().click();
+await page.waitForTimeout(1200);
+console.log('REQS:', await page.evaluate((s) => window.__jawE2E.allRequests(s).map(r=>r.method+' '+r.pathname), mark));
+console.log('ERR:', await page.evaluate(() => document.querySelector('.dock-skills .dock-error')?.textContent?.trim() ?? 'none'));
+await browser.close(); await server.close();

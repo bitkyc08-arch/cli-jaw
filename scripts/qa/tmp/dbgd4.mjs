@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => { window.__jawE2E.resetHoverDock(); window.__jawE2E.setHoverDock({ skills: [{id:'s1',name:'review',enabled:true,description:'review code'}] }); });
+await page.locator('.hover-dock-trigger').click();
+await page.locator('.hover-dock-tab[role="tab"]:has-text("스킬")').click();
+await page.waitForTimeout(1500);
+console.log('SWITCHES:', await page.evaluate(() => document.querySelectorAll('.dock-skills [role="switch"]').length));
+console.log('DOCK-SWITCH cls:', await page.evaluate(() => document.querySelectorAll('.dock-skills .dock-switch').length));
+await browser.close(); await server.close();
