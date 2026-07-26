@@ -638,7 +638,7 @@ export function scenarioLedgerStatus() {
             if (!scenario.why) malformed.push(`${scenario.id}: integration row does not say why it exists`);
         }
         for (const action of scenario.actions ?? []) {
-            if (!['click', 'type', 'select', 'check', 'pick-model', 'permission', 'wait'].includes(action.kind)) {
+            if (!['click', 'type', 'select', 'check', 'press', 'pick-model', 'permission', 'wait'].includes(action.kind)) {
                 malformed.push(`${scenario.id}: unknown action ${action.kind}`);
             }
         }

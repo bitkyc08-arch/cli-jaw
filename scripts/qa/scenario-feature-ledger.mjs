@@ -62,6 +62,7 @@ export const FEATURE_SCENARIOS = [
     // required; workers/progress degrade to a warning each.
     {
         id: 'employees-loading',
+        branchId: 'EmployeesPanel-status-1ed2psi',
         reachability: 'integration',
         axis: 'loading', target: 'StatePanel',
         why: 'the employees registry has not answered yet',
@@ -201,17 +202,18 @@ export const FEATURE_SCENARIOS = [
         id: 'board-some-empty',
         reachability: 'integration',
         axis: 'empty', target: 'List',
-        why: 'a lane with tasks sits beside lanes that are empty',
+        why: 'a lane with tasks; in compact mode only its lane renders, so empty siblings are hidden',
         ...PANEL.board,
         viewport: BOARD_WIDE,
         levers: { board: { tasks: [{ id: 'task-1', title: 'wp5c board task', lane: 'ready' }] } },
-        // The pane is always compact, so the task sits in the Todo lane and
-        // must be selected before it is visible. In compact mode the OTHER
-        // lanes are not rendered, so the empty-lane placeholder cannot
-        // co-exist with a visible card — that combination is a wide-mode-only
-        // state and is delegated to the visual gate instead of asserted here.
+        // The pane is always compact (max 380px), so only the selected lane
+        // renders. The task sits in Todo and must be selected before it is
+        // visible. Asserting a co-visible empty lane would be measuring wide
+        // mode, which the side pane never reaches — that is the compact-mask
+        // Volta flagged, so this row asserts the compact reality: the card
+        // appears and the picker is the only lane navigation present.
         actions: [{ kind: 'select', selector: '.d2-board-lane-picker select', value: 'todo' }],
-        selector: '.d2-board-card',
+        selector: '.d2-board-panel.is-compact .d2-board-card',
         expected: 'wp5c board task',
     },
     {
@@ -459,15 +461,19 @@ export const FEATURE_SCENARIOS = [
         id: 'schedule-create-busy',
         reachability: 'integration',
         axis: 'loading', target: 'Form',
-        why: 'the create editor disables save while the POST is in flight',
+        why: 'submitting the create editor disables save while the POST is in flight',
         ...PANEL.reminders,
         levers: { schedule: { items: [], holdCreate: true } },
         actions: [
             { kind: 'click', selector: '.d2-reminders-tabs button[role="tab"]:nth-child(2)' },
             { kind: 'click', selector: 'button[aria-label="Create scheduled work"]' },
+            { kind: 'type', selector: '.d2-schedule-editor form > label > input', text: 'wp5c new scheduled work' },
+            { kind: 'type', selector: '.d2-schedule-editor input[type="number"]', text: '3506' },
+            { kind: 'click', selector: '.d2-schedule-editor .d2-reminders-primary:not([disabled])' },
         ],
-        selector: '.d2-schedule-view',
-        requires: '.d2-schedule-editor, .d2-board-dialog, [role="dialog"]',
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/schedule/work', count: 1 }],
+        selector: '.d2-schedule-editor .d2-reminders-primary[disabled]',
+        expected: 'Saving',
     },
     {
         id: 'schedule-toggle-busy',
@@ -563,7 +569,7 @@ export const FEATURE_SCENARIOS = [
     // mutation handlers render their failure only after DEFECT-C's fix.
     {
         id: 'notes-tree-loading',
-        branchId: 'NotesFileTree',
+        branchId: 'NotesFileTree-propsloading-15ps4hp',
         reachability: 'integration',
         axis: 'loading', target: 'StatePanel',
         why: 'the notes tree is in flight',
@@ -584,6 +590,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'notes-no-selection',
+        branchId: 'NotesEmptyState-state-czimtp',
         reachability: 'integration',
         axis: 'empty', target: 'StatePanel',
         why: 'no note is selected, so the workspace shows the empty state',
@@ -626,10 +633,10 @@ export const FEATURE_SCENARIOS = [
         pattern: 'This note changed on disk.*Reload.*Overwrite',
     },
     {
-        id: 'notes-mutation-error',
+        id: 'notes-mutation-error-rename',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
-        why: 'a create/rename/trash failure now renders (DEFECT-C) instead of an unhandled rejection',
+        why: 'a rename failure now renders (DEFECT-C) instead of an unhandled rejection',
         ...PANEL.notes,
         levers: { notes: { mutationStatus: 500 } },
         actions: [
@@ -639,6 +646,130 @@ export const FEATURE_SCENARIOS = [
         expectRequests: [{ method: 'POST', path: '/api/dashboard/notes/rename', count: 1 }],
         selector: '.d2-notes-sidebar .d2-notes-notice.is-error[role="alert"]',
         requires: '.d2-notes-notice button',
+    },
+    {
+        id: 'notes-mutation-error-create',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'a create-file failure now renders (DEFECT-C)',
+        ...PANEL.notes,
+        levers: { notes: { mutationStatus: 500 } },
+        actions: [{ kind: 'click', selector: 'button[aria-label="Create note"]' }],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/notes/file', count: 1 }],
+        selector: '.d2-notes-sidebar .d2-notes-notice.is-error[role="alert"]',
+        requires: '.d2-notes-notice button',
+    },
+    {
+        id: 'notes-mutation-error-folder',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'a create-folder failure now renders (DEFECT-C)',
+        ...PANEL.notes,
+        levers: { notes: { mutationStatus: 500 } },
+        actions: [{ kind: 'click', selector: 'button[aria-label="Create folder"]' }],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/notes/folder', count: 1 }],
+        selector: '.d2-notes-sidebar .d2-notes-notice.is-error[role="alert"]',
+        requires: '.d2-notes-notice button',
+    },
+    {
+        id: 'notes-mutation-error-trash',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'a trash failure now renders (DEFECT-C)',
+        ...PANEL.notes,
+        levers: { notes: { mutationStatus: 500 } },
+        actions: [
+            { kind: 'click', selector: '.d2-notes-tree-item[role="treeitem"]:has-text("daily")' },
+            { kind: 'click', selector: 'button[aria-label="Trash today.md"]' },
+        ],
+        expectRequests: [{ method: 'POST', path: '/api/dashboard/notes/trash', count: 1 }],
+        selector: '.d2-notes-sidebar .d2-notes-notice.is-error[role="alert"]',
+        requires: '.d2-notes-notice button',
+    },
+    {
+        id: 'notes-note-error',
+        branchId: 'NotesPanel-noteDocumenterror-xor1qj',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'opening or saving a note failed; the document-side error notice',
+        ...PANEL.notes,
+        levers: { notes: { fileStatus: 500 } },
+        actions: [
+            { kind: 'click', selector: '.d2-notes-tree-item[role="treeitem"]:has-text("daily")' },
+            { kind: 'click', selector: '.d2-notes-tree-item[role="treeitem"]:has-text("today.md")' },
+        ],
+        selector: '.d2-notes-notice.is-error[role="alert"]',
+        requires: '.d2-notes-notice button',
+    },
+    {
+        id: 'notes-tree-empty-ready',
+        branchId: 'NotesFileTree-propsloading-dnxex1',
+        reachability: 'integration',
+        axis: 'empty', target: 'StatePanel',
+        why: 'the tree finished loading with nothing in it (the not-loading twin of notes-tree-empty)',
+        ...PANEL.notes,
+        levers: { notes: { tree: [] } },
+        selector: '.d2-notes-tree[aria-busy="false"] .d2-notes-tree-state',
+        expected: 'No notes yet',
+    },
+    {
+        id: 'notes-quick-switcher-empty',
+        branchId: 'NotesQuickSwitcher-resultslength-o487mo',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'the quick switcher is open with no notes to jump to',
+        ...PANEL.notes,
+        levers: { notes: { tree: [] } },
+        // Cmd+P opens the switcher (notes-shortcuts.ts isQuickSwitcherShortcut).
+        actions: [
+            { kind: 'press', key: 'p', meta: true },
+            { kind: 'type', selector: '.d2-notes-quick-switcher input[type="search"]', text: 'wp5c-no-such-note' },
+        ],
+        selector: '.d2-notes-quick-switcher .d2-notes-modal-empty',
+        expected: 'No matching notes',
+    },
+    {
+        id: 'notes-command-palette-empty',
+        branchId: 'NotesCommandPalette-resultslength-to0o68',
+        reachability: 'integration',
+        axis: 'empty', target: 'List',
+        why: 'the command palette is open and a query matches no command',
+        ...PANEL.notes,
+        levers: { notes: {} },
+        // Cmd+Shift+P opens the palette; a query with no match shows the empty state.
+        actions: [
+            { kind: 'press', key: 'p', meta: true, shift: true },
+            { kind: 'type', selector: '.d2-notes-modal-search input', text: 'wp5c-no-such-command' },
+        ],
+        selector: '.d2-notes-command-palette .d2-notes-modal-empty',
+        expected: 'No matching commands',
+    },
+    {
+        id: 'reminders-completed-empty',
+        branchId: 'RemindersCore-completedRemindersle-hbacqc',
+        reachability: 'integration',
+        axis: 'empty', target: 'StatePanel',
+        why: 'the completed section is expanded with nothing completed',
+        ...PANEL.reminders,
+        levers: { reminders: { items: [] } },
+        actions: [{ kind: 'click', selector: '.d2-reminders-completed-toggle' }],
+        selector: '.d2-reminders-completed .d2-reminders-empty',
+        expected: 'No completed reminders.',
+    },
+    {
+        id: 'schedule-editor-valid-port',
+        branchId: 'ScheduleWorkEditor-validPort-50swgh',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the editor rejects a non-positive target port inline',
+        ...PANEL.reminders,
+        levers: { schedule: { items: [SCHED_ITEM] } },
+        actions: [
+            { kind: 'click', selector: '.d2-reminders-tabs button[role="tab"]:nth-child(2)' },
+            { kind: 'click', selector: 'button[aria-label="Edit scheduled work wp5c scheduled work"]' },
+        ],
+        selector: '.d2-schedule-editor',
+        requires: 'input',
     },
 ];
 
@@ -672,6 +803,15 @@ export function featureScenarioStatus() {
         }
     }
     const integration = FEATURE_SCENARIOS.filter(s => s.reachability === 'integration');
+    // wp5c C-gate: every integration feature branch must be claimed by exactly
+    // one scenario, and a scenario must not claim a branch that does not
+    // exist. Validated against the manifest so the delegation cannot drift.
+    const branchClaims = new Map();
+    for (const scenario of FEATURE_SCENARIOS) {
+        if (!scenario.branchId) continue;
+        if (branchClaims.has(scenario.branchId)) malformed.push(`${scenario.branchId}: claimed by two scenarios`);
+        branchClaims.set(scenario.branchId, scenario.id);
+    }
     return {
         total: FEATURE_SCENARIOS.length,
         integration: integration.length,
@@ -680,6 +820,7 @@ export function featureScenarioStatus() {
         withRequestOracle: FEATURE_SCENARIOS.filter(s => s.expectRequests?.length).length,
         duplicate,
         malformed,
+        branchClaims,
         scenarios: FEATURE_SCENARIOS,
         integrationScenarios: integration,
     };

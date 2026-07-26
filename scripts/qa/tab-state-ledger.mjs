@@ -30,11 +30,33 @@ const CODE_COMPONENTS = [
     'CodeTabGate', 'CodeTab', 'CodeModelControl', 'CodeHistoryList',
 ];
 
+// wp5c — the four feature tabs (plus the reminders panel's schedule sub-view
+// and the hover-dock EmployeesSection). These are measured by the feature
+// scenario ledger (scenario-feature-ledger.mjs); this table is only their
+// branch identity and how they are reached.
+const FEATURE_COMPONENTS = [
+    'NotesPanel', 'NotesFileTree', 'NotesEmptyState', 'NotesCommandPalette',
+    'NotesQuickSwitcher', 'BoardPanel', 'RemindersCore', 'ScheduleView',
+    'ScheduleWorkEditor', 'EmployeesPanel', 'EmployeesSection',
+];
+
 /** The code branches are integration-reachable once the harness answers. */
 const CODE_REACHABILITY = {
     // The one with no producer: fetchHistorySummaries only ever returns
     // ready/empty/error, so 'unavailable' is unreachable in the app.
     'CodeHistoryList-historystate-9e0ueb': 'shadowed',
+};
+
+/**
+ * wp5c — feature branches that have no producer in the app.
+ *
+ * EmployeesSection is the hover-dock's own employees list, which is a
+ * different surface from the side-pane EmployeesPanel and is wp7a's sweep,
+ * not this one. It is declared shadowed here so the count cannot be improved
+ * by silently leaving it out.
+ */
+const FEATURE_REACHABILITY = {
+    'EmployeesSection-error-196y4ry': 'shadowed',
 };
 
 /**
@@ -129,6 +151,26 @@ const ACTIVATION = {
         provider: 'FakeApiRouter.codeApi (e2e-app-harness)',
         reset: 'resetCode()',
     },
+    'harness:notes': {
+        lever: 'window.__jawE2E.setNotes(NotesFixtureConfig)',
+        provider: 'FakeApiRouter.notesApi (e2e-app-harness)',
+        reset: 'resetNotes()',
+    },
+    'harness:board': {
+        lever: 'window.__jawE2E.setBoard(BoardFixtureConfig)',
+        provider: 'FakeApiRouter.boardApi (e2e-app-harness)',
+        reset: 'resetBoard()',
+    },
+    'harness:reminders': {
+        lever: 'window.__jawE2E.setReminders(RemindersFixtureConfig) + setSchedule(ScheduleFixtureConfig)',
+        provider: 'FakeApiRouter.reminder + scheduleApi (e2e-app-harness)',
+        reset: 'resetReminders() + resetSchedule()',
+    },
+    'harness:employees': {
+        lever: 'window.__jawE2E.setEmployees(EmployeesFixtureConfig)',
+        provider: 'FakeApiRouter.employeesApi (e2e-app-harness)',
+        reset: 'resetEmployees()',
+    },
 };
 
 /** Which lever each branch needs, decided by reading its guard. */
@@ -149,6 +191,10 @@ function routeFor(component, guard) {
         return 'harness:git';
     }
     if (CODE_COMPONENTS.includes(component)) return 'harness:code';
+    if (component.startsWith('Notes')) return 'harness:notes';
+    if (component.startsWith('Board')) return 'harness:board';
+    if (component.startsWith('Reminders') || component.startsWith('Schedule')) return 'harness:reminders';
+    if (component.startsWith('Employees')) return 'harness:employees';
     return 'harness:panel-payload';   // Doc and Design read their panel payload
 }
 
@@ -160,6 +206,29 @@ function buildCodeLedger(manifest) {
             const component = b.file.split('/').pop().replace('.tsx', '');
             const route = routeFor(component, b.guard ?? '');
             const reachability = CODE_REACHABILITY[b.id] ?? 'integration';
+            return {
+                id: b.id,
+                component,
+                axis: b.axis,
+                target: b.target,
+                guard: b.guard,
+                reachability,
+                route,
+                ...ACTIVATION[route],
+                expectSelector: b.cls ? `.${b.cls.split(' ')[0]}` : '[data-state]',
+                text: b.text ?? null,
+            };
+        });
+}
+
+/** wp5c — the feature tabs' branches, reached through their own harness. */
+function buildFeatureLedger(manifest) {
+    return manifest.branches
+        .filter(b => FEATURE_COMPONENTS.includes(b.file.split('/').pop().replace('.tsx', '')))
+        .map(b => {
+            const component = b.file.split('/').pop().replace('.tsx', '');
+            const route = routeFor(component, b.guard ?? '');
+            const reachability = FEATURE_REACHABILITY[b.id] ?? 'integration';
             return {
                 id: b.id,
                 component,
@@ -202,7 +271,7 @@ export function buildTabStateLedger() {
                 text: b.text ?? null,
             };
         });
-    return [...toolTabs, ...buildCodeLedger(manifest)];
+    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest)];
 }
 
 if (process.argv[1]?.endsWith('tab-state-ledger.mjs')) {

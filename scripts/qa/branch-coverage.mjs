@@ -16,6 +16,7 @@
 // rather than from this file.
 import { buildTabStateLedger } from './tab-state-ledger.mjs';
 import { scenarioLedgerStatus } from './scenario-ledger.mjs';
+import { featureScenarioStatus } from './scenario-feature-ledger.mjs';
 
 // wp5b — the code tab's branches are measured by the SCENARIO ledger, not by a
 // {surface, state} fixture pair, because the screen each renders depends on
@@ -233,6 +234,19 @@ const CODE_BRANCH_COVERAGE = {
 
 Object.assign(BRANCH_COVERAGE, CODE_BRANCH_COVERAGE);
 
+/** wp5c — feature branches, delegated to the feature scenario ledger. */
+const FEATURE_BRANCH_COVERAGE = {};
+for (const [branchId, scenarioId] of featureScenarioStatus().branchClaims) {
+    FEATURE_BRANCH_COVERAGE[branchId] = {
+        delegate: scenarioId,
+        // The scenario owns the discriminating selector and copy; the branch
+        // identity only notes the delegation.
+        selector: '.d2-feature-panel, [data-state], [role="alert"], [role="status"]',
+        pattern: '.',
+    };
+}
+Object.assign(BRANCH_COVERAGE, FEATURE_BRANCH_COVERAGE);
+
 /**
  * Branches that are proven, and branches that are not.
  *
@@ -270,6 +284,16 @@ export function branchCoverageStatus() {
             return !scenario || scenario.branchId !== branchId;
         })
         .map(([branchId, entry]) => `${branchId} -> ${entry.delegate}`);
+
+    // wp5c: the same check for the feature branches — the delegated scenario
+    // must exist AND claim this branch id.
+    const featureScenarioById = new Map(featureScenarioStatus().scenarios.map(s => [s.id, s]));
+    for (const [branchId, entry] of Object.entries(FEATURE_BRANCH_COVERAGE)) {
+        const scenario = featureScenarioById.get(entry.delegate);
+        if (!scenario || scenario.branchId !== branchId) {
+            delegatedBroken.push(`${branchId} -> ${entry.delegate}`);
+        }
+    }
 
     return {
         total: rows.length,

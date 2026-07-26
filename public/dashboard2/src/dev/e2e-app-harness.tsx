@@ -650,6 +650,11 @@ class FakeApiRouter {
                 this.note.revision = `r${Number(this.note.revision.slice(1)) + 1}`;
                 this.note.size = this.note.content.length;
             }
+            // A create is a POST, which DEFECT-C's regression must be able to
+            // reject just like rename/trash.
+            if (method === 'POST' && cfg.mutationStatus && cfg.mutationStatus >= 400) {
+                return json({ error: 'note create rejected' }, cfg.mutationStatus);
+            }
             return json(this.note);
         }
         if (url.pathname.endsWith('/folder') || url.pathname.endsWith('/rename') || url.pathname.endsWith('/trash')) {

@@ -76,6 +76,13 @@ async function perform(page, action) {
             await target.check({ force: true, timeout: 5_000 });
             return;
         }
+        case 'press': {
+            // A keyboard shortcut with modifiers, e.g. Cmd+P for the notes
+            // quick switcher (notes-shortcuts.ts).
+            const modifiers = [action.meta && 'Meta', action.shift && 'Shift', action.ctrl && 'Control'].filter(Boolean);
+            await page.keyboard.press([...modifiers, action.key].join('+'));
+            return;
+        }
         case 'pick-model': {
             // Scoped to the code tab's own control. The chat composer renders
             // a model picker too, and an unscoped `.first()` drove THAT one —
