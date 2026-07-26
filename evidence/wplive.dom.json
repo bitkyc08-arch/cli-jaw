@@ -1,5 +1,5 @@
 {
-  "when": "2026-07-26T07:18:43.771Z",
+  "when": "2026-07-26T07:26:31.416Z",
   "origin": "http://127.0.0.1:24577",
   "checks": {
     "offline-rows-are-not-dead-buttons": {
@@ -26,7 +26,13 @@
       "ok": true,
       "startWidth": 380,
       "afterDrag": 471,
-      "afterKeys": 451
+      "afterRight": 451,
+      "afterLeft": 471
+    },
+    "start-cta-issues-exactly-one-request": {
+      "ok": true,
+      "requests": 1,
+      "sample": "http://127.0.0.1:24577/api/dashboard/lifecycle/start"
     },
     "sidebar-scrolls-after-selection": {
       "ok": true,
@@ -35,12 +41,9 @@
       "delta": 600,
       "selectedRows": 0,
       "chatView": true,
-      "title": "jwc"
-    },
-    "no-list-where-every-control-is-disabled": {
-      "ok": true,
-      "runs": 0,
-      "detail": []
+      "title": "jwc",
+      "expected": "jwc",
+      "showsOurTarget": true
     }
   },
   "identity": {
@@ -62,6 +65,11 @@
       "settled": true
     },
     "verdict": "aligned"
+  },
+  "cleanup": {
+    "port": 3457,
+    "stopped": true,
+    "detail": null
   },
   "startedAndStopped": 3457,
   "failures": []

@@ -14,7 +14,8 @@
 //   node scripts/qa/live-app-qa.mjs --origin http://127.0.0.1:24577 \
 //        [--evidence evidence/wplive.window.json] [--out evidence/wplive.dom.json]
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -32,6 +33,10 @@ if (!origin) {
 }
 
 const report = { when: new Date().toISOString(), origin, checks: {}, identity: {} };
+// Ownership journal: written before any lifecycle mutation, removed only once
+// the stop is confirmed. A run that dies outright leaves it behind for the next.
+const JOURNAL = `${tmpdir()}/wplive-started-instance.json`;
+let startedPort = null;
 const failures = [];
 
 /** A stable fingerprint of the instance list, order-independent. */
@@ -227,15 +232,21 @@ try {
         await page.waitForTimeout(500);
         const afterDrag = await paneWidth();
 
+        // Both directions, separately. Pressing one arrow twice cannot tell a
+        // working control from one that only moves one way.
         await page.locator('.d2-workbench-divider-drag').focus();
         await page.keyboard.press('ArrowRight');
         await page.keyboard.press('ArrowRight');
         await page.waitForTimeout(500);
-        const afterKeys = await paneWidth();
+        const afterRight = await paneWidth();
+        await page.keyboard.press('ArrowLeft');
+        await page.keyboard.press('ArrowLeft');
+        await page.waitForTimeout(500);
+        const afterLeft = await paneWidth();
 
         record('workbench-divider-actually-resizes',
-            afterDrag !== startWidth && afterKeys !== afterDrag,
-            { startWidth, afterDrag, afterKeys });
+            afterDrag !== startWidth && afterRight !== afterDrag && afterLeft !== afterRight,
+            { startWidth, afterDrag, afterRight, afterLeft });
     }
 
     // ── 3. the sidebar scrolls AFTER selecting a session ────────────────────
@@ -249,32 +260,15 @@ try {
     // order and the first child staying put proves nothing.
     await scrollAfterSelection();
 
-    // ── 4. nothing is a dead control anywhere on the shell ──────────────────
+    // ── 4. (removed after review) ───────────────────────────────────────────
     //
-    // The generalisation of symptom 1, narrowed after review. "Disabled with no
-    // title" was the wrong rule: the composer's model picker is disabled with
-    // aria-label="Provider and model unavailable", which states its reason
-    // perfectly well, and it would have failed. A single disabled control is
-    // ordinary UI. What made the app look broken was that EVERY control in a
-    // list was one.
-    const deadRuns = await page.evaluate(() => {
-        const named = (el) => (el.getAttribute('aria-label') || el.title || el.textContent || '').trim();
-        const runs = [];
-        for (const list of document.querySelectorAll('.d2-sidebar-list, .d2-side-pane-tab-group, [role="tablist"]')) {
-            const controls = [...list.querySelectorAll('button, [role="button"], [role="tab"]')]
-                .filter((el) => { const r = el.getBoundingClientRect(); return r.width >= 1 && r.height >= 1; })
-                .filter((el) => !el.closest('[inert], [aria-hidden="true"]'));
-            if (controls.length < 3) continue;
-            const disabled = controls.filter((el) => el.disabled);
-            if (disabled.length === controls.length) {
-                runs.push({ container: String(list.className).split(' ')[0],
-                            controls: controls.length, sample: named(disabled[0]).slice(0, 40) });
-            }
-        }
-        return runs;
-    });
-    record('no-list-where-every-control-is-disabled', deadRuns.length === 0,
-        { runs: deadRuns.length, detail: deadRuns.slice(0, 3) });
+    // A generic "no list where every control is disabled" check lived here. It
+    // is gone rather than tuned. The honest version needs a per-surface manifest
+    // of which controls form a peer group; without one it is trivially
+    // defeated — fifty disabled rows plus one enabled utility button in the
+    // same container passes. The dedicated `offline-rows-are-not-dead-buttons`
+    // check above catches the real regression more precisely, and a gate that
+    // looks thorough while proving little is worse than no gate at all.
 } finally {
     await browser.close();
 }
@@ -300,13 +294,33 @@ async function scrollAfterSelection() {
                 { unavailable: 'no online instance and none can be started' });
             return;
         }
-        await fetch(`${origin}/api/dashboard/lifecycle/start`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ port: candidate.port }),
-            signal: AbortSignal.timeout(30_000),
-        });
+        // Record ownership BEFORE the mutation, and arm the signal handlers, so
+        // a crash or a Ctrl-C between here and the finally does not leave a
+        // process running on the developer's machine. A journal on disk lets
+        // the next run clean up even if this one is killed outright.
         startedByUs = candidate.port;
+        startedPort = candidate.port;
+        await writeFile(JOURNAL, JSON.stringify({ origin, port: candidate.port, at: new Date().toISOString() }));
+        armSignalCleanup();
+        // Start through the CTA the user would press, not the manager API.
+        // Calling the API directly would stay green even if the button's click
+        // handler were severed — which is the whole surface under test here.
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('.d2-shell', { timeout: 20_000 });
+        await page.waitForTimeout(1500);
+        const ctaRequests = [];
+        const onRequest = (req) => {
+            if (req.url().includes('/api/dashboard/lifecycle/')) ctaRequests.push(req.url());
+        };
+        page.on('request', onRequest);
+        const cta = page.locator(`.d2-instance-control.is-start[aria-label*="${candidate.label ?? ''}"]`).first();
+        const anyCta = (await cta.count()) ? cta : page.locator('.d2-instance-control.is-start').first();
+        await anyCta.click({ timeout: 10_000 });
+        await page.waitForTimeout(2500);
+        page.off('request', onRequest);
+        record('start-cta-issues-exactly-one-request', ctaRequests.length === 1,
+            { requests: ctaRequests.length, sample: ctaRequests[0] ?? null });
+
         for (let i = 0; i < 20 && !target; i += 1) {
             await new Promise((r) => setTimeout(r, 1500));
             const fresh = (await getJson('/api/dashboard/instances')).instances ?? [];
@@ -320,6 +334,8 @@ async function scrollAfterSelection() {
         }
     }
 
+    // Everything past the mutation runs inside try/finally, including the
+    // polling above's own failure path, so nothing we started outlives the run.
     try {
         const sessions = await getJson(`/i/${target.port}/api/chat-sessions`)
             .then((r) => r.data?.sessions ?? [])
@@ -345,12 +361,22 @@ async function scrollAfterSelection() {
         }
 
         // Prove the state rather than trusting the click.
+        // A ChatView existing proves nothing: another instance may already have
+        // been selected, in which case the single-session auto-select never
+        // runs (`if (selected) return`) and this would pass while measuring the
+        // wrong scope. Require the workbench to be showing OUR instance.
+        const expectedName = target.label?.trim() || `Instance ${target.port}`;
         const selection = await page.evaluate(() => ({
             selectedRows: document.querySelectorAll('.d2-session-row.is-selected').length,
             chatView: Boolean(document.querySelector('[data-testid="chat-view"]')),
             title: document.querySelector('.d2-workbench-title')?.textContent?.trim() ?? null,
         }));
-        const inSelectedState = selection.chatView || selection.selectedRows > 0;
+        const showsOurTarget = selection.title === expectedName
+            || selection.title === String(target.port)
+            || (selection.title ?? '').includes(String(target.port));
+        const inSelectedState = selection.chatView && showsOurTarget;
+        selection.expected = expectedName;
+        selection.showsOurTarget = showsOurTarget;
         if (!inSelectedState) {
             record('sidebar-scrolls-after-selection', false,
                 { reachedSelection: false, ...selection });
@@ -377,16 +403,63 @@ async function scrollAfterSelection() {
     }
 }
 
-/** Undo only what this run started. A pre-existing instance is left running. */
+/**
+ * Undo only what this run started. A pre-existing instance is left running.
+ *
+ * Swallowing the stop error and recording success anyway was the bug here: the
+ * evidence would claim cleanup that never happened. The stop has to be
+ * confirmed by the instance actually going offline, and a failure is a failure.
+ */
 async function stopIfOurs(port) {
     if (!port) return;
-    await fetch(`${origin}/api/dashboard/lifecycle/stop`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ port }),
-        signal: AbortSignal.timeout(30_000),
-    }).catch(() => {});
+    let stopped = false;
+    let detail = null;
+    try {
+        const res = await fetch(`${origin}/api/dashboard/lifecycle/stop`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ port }),
+            signal: AbortSignal.timeout(30_000),
+        });
+        detail = res.ok ? null : `HTTP ${res.status}`;
+        for (let i = 0; i < 12 && !stopped; i += 1) {
+            await new Promise((r) => setTimeout(r, 1200));
+            const fresh = (await getJson('/api/dashboard/instances').catch(() => ({}))).instances ?? [];
+            stopped = !fresh.some((x) => x.port === port && x.status === 'online');
+        }
+    } catch (error) {
+        detail = String(error.message).slice(0, 90);
+    }
+    report.cleanup = { port, stopped, detail };
+    if (!stopped) {
+        failures.push('cleanup-left-an-instance-running');
+        console.error(`FAIL cleanup-left-an-instance-running  ${JSON.stringify(report.cleanup)}`);
+        return;   // journal stays on disk for the next run to pick up
+    }
     report.startedAndStopped = port;
+    await rm(JOURNAL, { force: true }).catch(() => {});
+}
+
+/** Stop anything a previous run started and could not clean up. */
+async function recoverOrphans() {
+    let journal = null;
+    try { journal = JSON.parse(await readFile(JOURNAL, 'utf8')); } catch { return; }
+    if (!journal?.port || journal.origin !== origin) return;
+    console.error(`[wplive] a previous run left instance ${journal.port} started; stopping it`);
+    await stopIfOurs(journal.port);
+}
+
+/** Ctrl-C and SIGTERM do not run `finally`, so clean up explicitly. */
+function armSignalCleanup() {
+    if (armSignalCleanup.armed) return;
+    armSignalCleanup.armed = true;
+    for (const sig of ['SIGINT', 'SIGTERM']) {
+        process.once(sig, async () => {
+            console.error(`\n[wplive] ${sig} — stopping the instance this run started`);
+            await stopIfOurs(startedPort);
+            process.exit(130);
+        });
+    }
 }
 
 async function save() {

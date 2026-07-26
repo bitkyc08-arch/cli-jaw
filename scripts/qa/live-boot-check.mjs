@@ -84,13 +84,30 @@ function descendants(pid) {
     } catch { return []; }
 }
 
-/** Is this pid still the very process we recorded? */
+/**
+ * Is this pid still the very process we recorded?
+ *
+ * An entry without a recorded start time and command cannot answer that, and
+ * must never be treated as ours — `''.includes('')` is true, which is how the
+ * root pid slipped past this check entirely and could have had TERM sent to
+ * whatever inherited its number.
+ */
 function stillOurs(entry) {
+    if (!entry?.started?.trim() || !entry?.command?.trim()) return false;
     try {
         const out = execFileSync('/bin/ps', ['-p', String(entry.pid), '-o', 'lstart=,command='], { encoding: 'utf8' }).trim();
         if (!out) return false;
         return out.includes(entry.started.trim()) && out.includes(entry.command.slice(0, 40));
     } catch { return false; }
+}
+
+/** Read one process's identity, so the root can be pinned like any child. */
+function identify(pid) {
+    try {
+        const out = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart=,command='], { encoding: 'utf8' }).trim();
+        const m = out.match(/^(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/);
+        return m ? { pid, started: m[1], command: m[2] } : null;
+    } catch { return null; }
 }
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -116,8 +133,15 @@ async function findOurManager(ownedPids) {
 const debugPort = 9333 + Math.floor(Math.random() * 400);
 const userData = await mkdtemp(join(tmpdir(), 'cli-jaw-boot-'));
 let child = null;
+let rootIdentity = null;
 let owned = new Set();
 let ownedEntries = [];
+// Everything we have ever seen in our own tree, keyed by pid. A child that is
+// reparented to PID 1 after the root exits vanishes from a descendants() walk,
+// so a scan-based "zero left" proof would pass while it is still running. The
+// registry remembers it, identity and all.
+const registry = new Map();
+const remember = (entries) => { for (const e of entries) if (e?.started) registry.set(e.pid, e); };
 
 try {
     child = spawn(binary, [`--remote-debugging-port=${debugPort}`], {
@@ -127,6 +151,10 @@ try {
     });
     report.launchedPid = child.pid;
     report.debugPort = debugPort;
+    // Pin the root the same way as every child. Without this it had no identity
+    // to re-verify against and was signalled unconditionally.
+    rootIdentity = identify(child.pid);
+    if (rootIdentity) registry.set(rootIdentity.pid, rootIdentity);
     console.error(`[boot] launched pid ${child.pid} with userData ${userData}, debug port ${debugPort}`);
 
     // Wait for a manager that belongs to us.
@@ -136,6 +164,7 @@ try {
         await new Promise((r) => setTimeout(r, 1000));
         if (!alive(child.pid)) break;
         ownedEntries = descendants(child.pid);
+        remember(ownedEntries);
         owned = new Set([child.pid, ...ownedEntries.map((e) => e.pid)]);
         manager = await findOurManager(owned);
     }
@@ -197,28 +226,31 @@ try {
     // exit and the number be reused, and then the second pass kills a stranger.
     // Re-scan for late children too, since Electron may respawn a manager after
     // the snapshot was taken.
+    // Everything still alive that we know is ours: the registry (which survives
+    // reparenting) plus a fresh walk to catch anything spawned since.
     const scan = () => {
         if (!child) return [];
-        const self = stillOurs({ pid: child.pid, started: '', command: '' }) || alive(child.pid)
-            ? [{ pid: child.pid, started: '', command: 'cli-jaw' }] : [];
-        return [...self, ...descendants(child.pid)];
+        remember(descendants(child.pid));
+        if (rootIdentity) registry.set(rootIdentity.pid, rootIdentity);
+        return [...registry.values()].filter((e) => alive(e.pid) && stillOurs(e));
     };
     const signalled = [];
     for (const entry of scan().reverse()) {
-        if (entry.started && !stillOurs(entry)) continue;   // pid reused: not ours
+        if (!stillOurs(entry)) continue;   // pid reused, or no identity: not ours
         try { process.kill(entry.pid, 'SIGTERM'); signalled.push(entry.pid); } catch { /* gone */ }
     }
     await new Promise((r) => setTimeout(r, 2500));
     for (const entry of scan()) {
-        if (!alive(entry.pid)) continue;
-        if (entry.started && !stillOurs(entry)) continue;
+        if (!alive(entry.pid) || !stillOurs(entry)) continue;
         try { process.kill(entry.pid, 'SIGKILL'); signalled.push(entry.pid); } catch { /* gone */ }
     }
     await new Promise((r) => setTimeout(r, 1500));
 
     // Prove the teardown rather than assuming it: nothing we owned is left, and
     // our manager's port is free again.
-    const leftovers = scan().filter((e) => alive(e.pid));
+    // Check the registry, not the tree: a reparented survivor is no longer a
+    // descendant of anything we launched.
+    const leftovers = [...registry.values()].filter((e) => alive(e.pid) && stillOurs(e));
     let portFreed = true;
     if (report.checks['manager-came-up']?.port) {
         try {
