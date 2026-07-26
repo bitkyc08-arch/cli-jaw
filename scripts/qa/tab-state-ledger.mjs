@@ -21,6 +21,51 @@ const TAB_COMPONENTS = [
 ];
 
 /**
+ * Reachability is an audited decision keyed by the manifest's full stable id.
+ * Keep this explicit: guards alone do not reveal whether SidePane pre-empts a
+ * component branch or hardcodes a prop that makes it dead in the application.
+ *
+ * Evidence for the four shadowed branches:
+ * - Terminal/Diff need a session, so SidePane.tsx:112-119 returns before either
+ *   component can observe port === null (registry flags: SidePane.tsx:47,53).
+ * - SidePane.tsx:157-165 is DocPanel's only consumer and fixes source to
+ *   "native-file"; DocPanel.tsx:40,44-59 confines loading/error to "notes".
+ *
+ * No current manifest branch is component-only. Keep `component` as a valid
+ * class so a future directly-renderable but app-unsupplied prop is explicit.
+ */
+const REACHABILITY = {
+    'DesignPanel-payload-1ob32k3': 'integration',
+    'DesignPanel-payload-p78kgf': 'integration',
+    'DiffPanel-port-wf5dhy': 'shadowed',
+    'DiffPanel-port-828rdo': 'integration',
+    'DiffPanel-status-1fj1xoo': 'integration',
+    'DiffPanel-status-lahktt': 'integration',
+    'DocPanel-payloadtruncated-kz7f4f': 'integration',
+    'DocPanel-path-j822if': 'integration',
+    'DocPanel-payloadbinary-1dkww0g': 'integration',
+    'DocPanel-effectiveStatus-jhvkk9': 'shadowed',
+    'DocPanel-effectiveStatus-doprf1': 'shadowed',
+    'BrowserPanel-currentUrl-1297bqi': 'integration',
+    'BrowserPanel-state-1mgf5dk': 'integration',
+    'BrowserPanel-mountUrl-1jgd8r': 'integration',
+    'BrowserPanel-statusError-o2zfhx': 'integration',
+    'BrowserPanel-bridgebrowsernativeA-v0vowd': 'integration',
+    'FileTreePanel-port-k5swqt': 'integration',
+    'FileTreePanel-isUnavailable-1lt868y': 'integration',
+    'FileTreePanel-rootState-24stex': 'integration',
+    'FileTreePanel-rootStatestatus-152uttk': 'integration',
+    'FileTreePanel-rowslength-1euy9ac': 'integration',
+    'FileTreePanel-fileError-ub7e14': 'integration',
+    'TerminalPanel-nativeTerminal-rohung': 'integration',
+    'TerminalPanel-port-drh6bl': 'shadowed',
+    'TerminalPanel-workingDirectoryErro-44uw78': 'integration',
+    'TerminalPanel-terminalTargetMatche-1x1xl0d': 'integration',
+    'TerminalPanel-snapshotsessionsleng-eohftu': 'integration',
+    'TerminalPanel-nativeTerminal-d80rfi': 'integration',
+};
+
+/**
  * How each branch is driven, keyed by the control surface it depends on.
  *
  * These are decisions, not implementation: which lever exists, what proves the
@@ -87,12 +132,15 @@ export function buildTabStateLedger() {
         .map(b => {
             const component = b.file.split('/').pop().replace('.tsx', '');
             const route = routeFor(component, b.guard ?? '');
+            const reachability = REACHABILITY[b.id];
+            if (!reachability) throw new Error(`Missing reachability verdict for ${b.id}`);
             return {
                 id: b.id,                       // the manifest id, not a truncation
                 component,
                 axis: b.axis,
                 target: b.target,
                 guard: b.guard,
+                reachability,
                 route,
                 ...ACTIVATION[route],
                 // What proves the branch rendered rather than a lookalike.
@@ -105,10 +153,15 @@ if (process.argv[1]?.endsWith('tab-state-ledger.mjs')) {
     const rows = buildTabStateLedger();
     const byComponent = rows.reduce((a, r) => ({ ...a, [r.component]: (a[r.component] ?? 0) + 1 }), {});
     const byRoute = rows.reduce((a, r) => ({ ...a, [r.route]: (a[r.route] ?? 0) + 1 }), {});
+    const byReachability = rows.reduce(
+        (a, r) => ({ ...a, [r.reachability]: a[r.reachability] + 1 }),
+        { integration: 0, component: 0, shadowed: 0 },
+    );
     const unrouted = rows.filter(r => !r.lever).map(r => r.id);
     const duplicates = rows.map(r => r.id).filter((id, i, all) => all.indexOf(id) !== i);
     console.log(JSON.stringify({
-        total: rows.length, byComponent, byRoute,
+        total: rows.length, byComponent, byRoute, byReachability,
+        integration: byReachability.integration ?? 0,
         unrouted, duplicateIds: [...new Set(duplicates)],
         rows,
     }, null, 2));

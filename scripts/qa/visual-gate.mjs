@@ -10,6 +10,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { FIXTURE_STATES, FIXTURE_SURFACES, openFixture, startFixtureServer } from './fixture-lib.mjs';
 import { installMeasure, setTheme, surfaceIconContrast, surfacePixelContrast, THEMES } from './visual-lib.mjs';
+import { branchCoverageStatus } from './branch-coverage.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -27,12 +28,18 @@ try {
     for (const [name, surface] of Object.entries(FIXTURE_SURFACES)) {
         report.surfaces[name] = {};
         for (const [stateName, state] of Object.entries(FIXTURE_STATES)) {
+        // Most branch states belong to exactly one panel. Skipping the other
+        // surfaces before launching a browser turns a 30-minute sweep back
+        // into a usable gate; `apply` still returns 0 as the real guard.
+        if (state.only && !state.only.test(surface.root)) continue;
         for (const theme of THEMES) {
             const key = stateName === 'default' ? theme : `${theme}/${stateName}`;
             const { browser, page } = await openFixture(server.url, {
                 historyCount: name === 'workbench' ? 40 : 10,
                 // Some states need the bridge injected before the page loads.
                 ...(state.needsBridge ? { desktopBridge: state.needsBridge } : {}),
+                // And one needs the app to come up with nothing selected.
+                ...(state.noSession ? { autoSelectSession: false } : {}),
             });
             try {
                 // Reaching a surface either works or throws. The live scan used
@@ -113,8 +120,15 @@ try {
                 const contrastFailures = (textRows ?? []).filter((r) => !r.pass && !r.unmeasurable);
                 const iconFailures = (iconRows ?? []).filter((r) => !r.pass && !r.unmeasurable);
                 const unmeasurable = [...(textRows ?? []), ...(iconRows ?? [])]
-                    .filter((r) => r.unmeasurable)
+                    .filter((r) => r.unmeasurable && !r.offCapture)
                     .map((r) => ({ cls: r.cls, label: r.label, reason: r.unmeasurable }));
+                // Content wider than its own panel (a diff line in a horizontal
+                // scrollport) cannot be sampled from a panel-clipped capture.
+                // Recorded, not counted: it is a limit of the method, and the
+                // coverage check below needs it to reconcile its totals.
+                const offCapture = [...(textRows ?? []), ...(iconRows ?? [])]
+                    .filter((r) => r.offCapture)
+                    .map((r) => ({ cls: r.cls, label: r.label }));
 
                 if (oracleError || textRows === null || iconRows === null) {
                     oracleFailures.push(`${name}/${key}: oracle unavailable${oracleError ? ` (${oracleError})` : ''}`);
@@ -130,7 +144,7 @@ try {
                 }
 
                 report.surfaces[name][key] = {
-                    ...measured, contrastFailures, iconFailures, unmeasurable,
+                    ...measured, contrastFailures, iconFailures, unmeasurable, offCapture,
                     consoleErrors: page.consoleErrors.slice(0, 5),
                 };
                 console.error(
@@ -168,6 +182,20 @@ report.defects = defects;
 report.notReached = notReached;
 report.oracleFailures = oracleFailures;
 
+// The measured rows say "these surfaces look right in these states". They do
+// not say which of the audited tool-tab branches were among them, which is a
+// separate claim and was previously only asserted in prose. Carry the coverage
+// numbers in the report and fail on a branch that has no fixture at all — the
+// per-branch render proof itself lives in branch-proof.mjs.
+const coverage = branchCoverageStatus();
+report.branchCoverage = {
+    total: coverage.total,
+    integration: coverage.integration,
+    covered: coverage.covered,
+    uncovered: coverage.uncovered,
+    stale: coverage.stale,
+};
+
 if (outPath) {
     await mkdir(dirname(outPath), { recursive: true });
     await writeFile(outPath, JSON.stringify(report, null, 2));
@@ -178,5 +206,14 @@ const total = Object.values(defects).reduce((a, b) => a + b, 0);
 if (notReached.length) console.error(`\nFAIL: ${notReached.length} surface/theme pairs unreachable: ${notReached.join(', ')}`);
 if (oracleFailures.length) { console.error(`\nFAIL: oracle problems:`); for (const f of oracleFailures) console.error(`  ${f}`); }
 if (total) { console.error(`\nFAIL: ${total} visual defects`); for (const [k, n] of Object.entries(defects)) if (n) console.error(`  ${k}: ${n}`); }
+if (coverage.uncovered.length) {
+    console.error(`\nFAIL: ${coverage.uncovered.length} integration branches have no fixture: ${coverage.uncovered.join(', ')}`);
+}
+if (coverage.stale.length) {
+    console.error(`\nFAIL: ${coverage.stale.length} coverage entries name branches the manifest no longer has: ${coverage.stale.join(', ')}`);
+}
+console.error(`branch coverage: ${coverage.covered}/${coverage.integration} integration branches have a fixture`
+    + ` (${coverage.total - coverage.integration} shadowed, excluded by audit)`);
 
-if (!reportOnly && (notReached.length || oracleFailures.length || total)) process.exit(1);
+if (!reportOnly && (notReached.length || oracleFailures.length || total
+    || coverage.uncovered.length || coverage.stale.length)) process.exit(1);

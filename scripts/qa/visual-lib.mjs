@@ -148,6 +148,12 @@ export const MEASURE_SOURCE = String.raw`
     // It is meant to be unreachable; the visible button is the real control.
     if (el.hasAttribute('hidden') || el.type === 'hidden') return null;
     if (el.tagName === 'INPUT' && el.type === 'file' && getComputedStyle(el).display === 'none') return null;
+    // xterm's accessibility proxy. The terminal paints to a canvas, so the
+    // textarea that receives keystrokes and screen-reader input is parked far
+    // off-screen at opacity 0 by the library itself. It is focusable and it
+    // works; there is no visual control to clip. Scoped to xterm's own class
+    // inside its own helper container so this cannot excuse anything else.
+    if (el.classList.contains('xterm-helper-textarea') && el.closest('.xterm-helpers')) return null;
     // Inside a collapsed branch. display:none on an ancestor means the whole
     // subtree is deliberately not rendered -- the notes editor in its
     // non-compact layout, for instance -- which is a layout state, not a defect.
@@ -687,7 +693,26 @@ export async function surfacePixelContrast(page, selectorScope) {
             const sy = Math.round((r.y - origin.y) * dpr);
             const sw = Math.round(r.width * dpr);
             const sh = Math.round(r.height * dpr);
-            if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) continue;
+            // An element wider or taller than the captured surface cannot be
+            // sampled: the screenshot is clipped to the panel, and a diff line
+            // 4116px wide inside a horizontal scrollport runs off it. Dropping
+            // it silently is what produced "measured 9 of 17" with no way to
+            // tell a scroll overhang from a capture bug, so say which it is.
+            if (sx < 0 || sy < 0 || sw < 2 || sh < 2 || sx + sw > bitmap.width || sy + sh > bitmap.height) {
+                results.push({
+                    ...snap.describe,
+                    ratio: null,
+                    need: snap.need,
+                    backdrop: null,
+                    unmeasurable: 'outside-capture',
+                    // Not a defect in the page: the element is simply larger
+                    // than the captured surface. Flagged so the gate can
+                    // account for it without counting it as one.
+                    offCapture: true,
+                    pass: false,
+                });
+                continue;
+            }
 
             const { data: px } = ctx.getImageData(sx, sy, sw, sh);
             const { data: bx } = bareCtx.getImageData(sx, sy, sw, sh);

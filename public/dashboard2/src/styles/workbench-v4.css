@@ -657,6 +657,34 @@
     text-align: center;
 }
 
+/* The alert variant carries a Retry button, which inherited the message's
+   --text-3 on a transparent background and measured 1.28:1 in light. A button
+   is not body copy: give it a surface and the primary text colour. */
+.d2-file-tree-message[role='alert'] {
+    color: var(--text-2);
+}
+
+.d2-file-tree-message button {
+    min-height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-sm);
+    background: var(--surface-h);
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--fs-sm);
+}
+
+.d2-file-tree-message button:hover {
+    border-color: var(--accent);
+}
+
+.d2-file-tree-message button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
 .d2-file-tree-virtual {
     position: relative;
     width: 100%;

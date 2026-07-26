@@ -148,10 +148,41 @@ const CASES = [
         defect: 'the agent toggle is the only labelled control in the URL bar, so the 30px icon rule squeezed it and left the label at 4.33:1',
         surface: 'tab-browser',
         theme: 'dark',
-        state: 'desktop-bridge',
+        // browser-shared, not plain desktop-bridge: the label only carries the
+        // failing colour once the toggle is enabled and reading "Agent on",
+        // which needs a bridge state that says the tab is shared.
+        state: 'browser-shared',
         expect: 'contrast',
         revert: '.d2-browser-url-bar .d2-browser-agent-toggle {'
             + ' width: 30px; padding: 0; color: var(--text-2); font-size: revert; white-space: revert; }',
+    },
+    {
+        id: 'D17-file-tree-retry-unstyled',
+        defect: 'the Retry button in the file-open alert had no rule, so it kept the UA grey fill under inherited text and read 1.28:1 in light',
+        surface: 'tab-files',
+        theme: 'light',
+        state: 'files-open-error',
+        expect: 'contrast',
+        // `all: revert` alone does not bring the UA fill back inside this app
+        // (a broader `button` rule already sets colour), so the defect is
+        // reproduced by restating what the browser painted: the grey button
+        // face under the message's own --text-3.
+        revert: '.d2-file-tree-message button {'
+            + ' all: revert; background: rgb(107, 107, 107) !important;'
+            + ' color: var(--text-3) !important; border: 0 !important; }'
+            + ' .d2-file-tree-message[role="alert"] { color: var(--text-3); }',
+    },
+    {
+        id: 'D18-diff-file-list-ua-button',
+        defect: 'the changed-file list had no rule, so its buttons fell back to the UA grey fill and measured 3.08:1 in light',
+        surface: 'tab-diff',
+        theme: 'light',
+        state: 'desktop-bridge',
+        expect: 'contrast',
+        revert: '.d2-diff-file-list button, .d2-diff-file-list button.is-active {'
+            + ' all: revert; font: inherit;'
+            + ' background: rgb(107, 107, 107) !important; color: var(--text) !important;'
+            + ' border: 0 !important; }',
     },
 ];
 
@@ -171,6 +202,7 @@ async function measure(surface, theme, stateName, revertCss, liveUrl) {
             ...(FIXTURE_STATES[stateName].needsBridge
                 ? { desktopBridge: FIXTURE_STATES[stateName].needsBridge }
                 : {}),
+            ...(FIXTURE_STATES[stateName].noSession ? { autoSelectSession: false } : {}),
         });
     try {
         // Same order as the gate: arm the state, reach the surface, then apply.

@@ -60,3 +60,16 @@ test('the six tool tabs are all represented', () => {
     }
     assert.equal(Object.values(byComponent).reduce((a, b) => a + b, 0), rows.length);
 });
+
+test('every branch has one of the three reachability verdicts', () => {
+    const allowed = new Set(['integration', 'component', 'shadowed']);
+    const missing = rows.filter(r => !r.reachability).map(r => r.id);
+    const invalid = rows.filter(r => !allowed.has(r.reachability)).map(r => `${r.id}:${r.reachability}`);
+    assert.deepEqual(missing, [], 'every manifest row needs an explicit reachability verdict');
+    assert.deepEqual(invalid, [], 'reachability must use the audited three-class vocabulary');
+});
+
+test('the real integration gate denominator stays at the audited 24 branches', () => {
+    const integration = rows.filter(r => r.reachability === 'integration').length;
+    assert.equal(integration, 24);
+});

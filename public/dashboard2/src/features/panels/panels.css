@@ -151,6 +151,40 @@
 
 .d2-diff-toggle { display: flex; gap: 2px; margin-right: auto; }
 .d2-diff-toggle button { text-transform: capitalize; }
+/* The changed-file list is not inside the .ln toolbar, so its buttons had no
+   rule at all and fell back to the UA button: a grey fill the theme never
+   picked, which measured 3.08:1 in light. */
+.d2-diff-file-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 10px 0;
+}
+.d2-diff-file-list button {
+    min-height: 26px;
+    padding: 0 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface-h);
+    color: var(--text-2);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
+}
+.d2-diff-file-list button:hover {
+    border-color: var(--border-h);
+    color: var(--text);
+}
+.d2-diff-file-list button.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text);
+}
+.d2-diff-file-list button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
 .d2-diff-lines { display: table; width: 100%; padding: 8px 0 24px; }
 .d2-diff-line { display: table-row; }
 .d2-diff-line > * { display: table-cell; }

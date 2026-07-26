@@ -83,6 +83,8 @@ class FakeApiRouter {
     capabilityResponse: { available?: boolean; reason?: string } | null = null;
     /** Set by a test to drive the file tree's empty and error branches. */
     fileTreeResponse: Record<string, unknown> | null = null;
+    /** Set by a test to hold the instance list in flight (terminal loading). */
+    holdInstances = false;
     ui: JsonRecord = {
         uiTheme: 'dark', locale: 'en', dashboardShortcutsEnabled: true,
         dashboardShortcutKeymap: { newSession: 'Meta+N', commandPalette: 'Meta+K' },
@@ -119,7 +121,16 @@ class FakeApiRouter {
         this.requests.push(key);
         const payload = this.body(input, init);
 
-        if (url.pathname === '/api/dashboard/instances') return json({ manager: null, peerDashboards: [], platform: 'darwin', instances: [{ port: PORT, label: 'WP4 fixture', workingDir: '/tmp/wp4-e2e', status: 'online', version: 'e2e' }] });
+        if (url.pathname === '/api/dashboard/instances') {
+            // The terminal tab shows "Loading terminal working directory…" only
+            // while this call is in flight, which is normally too short to
+            // observe. `holdInstances` keeps that frame open so the branch can
+            // be measured instead of inferred.
+            if (this.holdInstances) {
+                return new Promise<Response>(() => { /* deliberately never settles */ }) as unknown as Response;
+            }
+            return json({ manager: null, peerDashboards: [], platform: 'darwin', instances: [{ port: PORT, label: 'WP4 fixture', workingDir: '/tmp/wp4-e2e', status: 'online', version: 'e2e' }] });
+        }
         if (url.pathname === `/api/dashboard/instances/${PORT}`) return json({ ok: true, platform: 'darwin', instance: { port: PORT, label: 'WP4 fixture', workingDir: '/tmp/wp4-e2e', status: 'online', version: 'e2e' } });
         if (url.pathname === '/api/dashboard/registry') {
             if (method === 'PATCH' && payload['ui'] && typeof payload['ui'] === 'object') {
@@ -152,8 +163,18 @@ class FakeApiRouter {
             // Overridable like the capability probe: a visual gate cannot judge
             // the file tree's error or empty branch without being able to
             // produce one, and faking a directory read is the only way in.
+            //
+            // The status matters. The panel reads `response.ok`, so an error
+            // body served as 200 parses as a successful listing with no
+            // entries and renders the EMPTY branch — which is how the
+            // `files-error` gate went green without ever reaching the error
+            // path. `__status` rides on the override so the caller can force
+            // the transport failure the component actually branches on.
             const forced = this.fileTreeResponse;
-            if (forced) return json(forced);
+            if (forced) {
+                const { __status: status, ...body } = forced as { __status?: number };
+                return json(body, typeof status === 'number' ? status : 200);
+            }
             return json({ ok: true, entries: [{ name: 'fixture.txt', path: '/tmp/wp4-e2e/fixture.txt', type: 'file', size: 12 }] });
         }
 
@@ -299,10 +320,20 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
     window.__jawE2E = {
         api: router,
         sse,
-        openPanel(type, keepAlive = ['terminal', 'browser', 'notes', 'board'].includes(type)) { scopeValue?.openPanel({ type, key: type, title: type[0]!.toUpperCase() + type.slice(1), keepAlive }); },
+        openPanel(type, keepAlive = ['terminal', 'browser', 'notes', 'board'].includes(type), payload) {
+            // The payload matters. Doc and Design read their whole state from
+            // it, so without a way to supply one the gate could only ever see
+            // their empty screens and the truncated/binary/url branches stayed
+            // invisible.
+            scopeValue?.openPanel({
+                type, key: type, title: type[0]!.toUpperCase() + type.slice(1), keepAlive,
+                ...(payload ? { payload } : {}),
+            });
+        },
         showPicker() { scopeValue?.showPanelPicker(); },
         setCapability(response) { router.capabilityResponse = response; },
         setFileTree(response) { router.fileTreeResponse = response; },
+        setHoldInstances(hold) { router.holdInstances = hold; },
         setSettings() { return scopeValue?.guardedSetWorkspaceMode('settings') ?? Promise.resolve(false); },
         setChat() { return scopeValue?.guardedSetWorkspaceMode('chat') ?? Promise.resolve(false); },
         diagnostics() {
@@ -334,10 +365,11 @@ declare global {
         __jawE2E: {
             api: FakeApiRouter;
             sse: DeterministicSseController;
-            openPanel(type: SidePanePanelType, keepAlive?: boolean): void;
+            openPanel(type: SidePanePanelType, keepAlive?: boolean, payload?: Record<string, unknown>): void;
             showPicker(): void;
             setCapability(response: { available?: boolean; reason?: string } | null): void;
             setFileTree(response: Record<string, unknown> | null): void;
+            setHoldInstances(hold: boolean): void;
             setSettings(): Promise<boolean>;
             setChat(): Promise<boolean>;
             diagnostics(): E2EHarnessDiagnostics;
