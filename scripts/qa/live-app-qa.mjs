@@ -92,15 +92,25 @@ if (evidence) {
     // failing, and if it will not settle say `unstable` rather than blaming the
     // target.
     let hash = snapshotHash((await getJson('/api/dashboard/instances')).instances ?? []);
-    let settled = hash === evidence.instanceSnapshotHash;
+    const matchesEvidence = hash === evidence.instanceSnapshotHash;
+    let settled = matchesEvidence;
     for (let attempt = 0; !settled && attempt < 3; attempt += 1) {
         await new Promise((r) => setTimeout(r, 1200));
         const next = snapshotHash((await getJson('/api/dashboard/instances')).instances ?? []);
         settled = next === hash;   // stable across two reads is good enough
         hash = next;
     }
-    report.identity.snapshot = { evidence: evidence.instanceSnapshotHash, runner: hash, settled };
-    report.identity.verdict = settled ? 'aligned' : 'unstable';
+    report.identity.snapshot = { evidence: evidence.instanceSnapshotHash, runner: hash, matchesEvidence, settled };
+
+    // Do not call drift `aligned`. The target is the same app either way —
+    // that is what the pid/port/origin check above established — but the state
+    // has moved, and recording it as full alignment would let a stale evidence
+    // file look like a fresh cross-check. The hash cannot be re-collected on
+    // the OS side from here, so per the plan it stops being an identity field
+    // and becomes point-in-time state evidence.
+    report.identity.verdict = !settled ? 'unstable'
+        : matchesEvidence ? 'aligned'
+        : 'aligned-target/state-drift';
     if (!settled) {
         console.error('[wplive] UNSTABLE — the instance list would not settle. Not a target mismatch.');
         await save();
@@ -143,11 +153,19 @@ try {
         startCtas: [...document.querySelectorAll('.d2-instance-control.is-start')]
             .map((b) => ({ label: b.getAttribute('aria-label'), disabled: b.disabled })),
     }));
-    const ctasUsable = rows.startCtas.length > 0 && rows.startCtas.every((c) => c.label?.startsWith('Start'));
+    // Enabled, not merely labelled. A row of Start buttons that are all disabled
+    // is the same dead end wearing a different hat, and checking the label alone
+    // would have passed it.
+    const ctasUsable = rows.startCtas.length > 0
+        && rows.startCtas.every((c) => c.label?.startsWith('Start') && c.disabled === false);
     record('offline-rows-are-not-dead-buttons',
-        rows.deadButtons === 0 && rows.offlineInTabOrder === 0 && ctasUsable,
+        rows.deadButtons === 0 && rows.offlineInTabOrder === 0 && ctasUsable
+            // One usable start control per offline row, so a row cannot lose
+            // its only way forward and still pass.
+            && rows.startCtas.length >= rows.statusElements,
         { deadButtons: rows.deadButtons, statusElements: rows.statusElements,
-          offlineInTabOrder: rows.offlineInTabOrder, startCtas: rows.startCtas.length });
+          offlineInTabOrder: rows.offlineInTabOrder, startCtas: rows.startCtas.length,
+          disabledCtas: rows.startCtas.filter((c) => c.disabled).length });
 
     // ── 2. resize affordances ───────────────────────────────────────────────
     //
@@ -193,49 +211,182 @@ try {
         Boolean(divider?.cursor === 'col-resize' && divider.role === 'separator'),
         divider ?? { missing: true, note: 'the divider only renders with the side pane open' });
 
-    // ── 3. the sidebar scrolls ──────────────────────────────────────────────
-    //
-    // Observed as a gesture, not as accessibility-tree order. The sidebar is
-    // not virtualized, so a full AX tree keeps offscreen children in document
-    // order — the first child staying put proves nothing.
-    const scroll = await page.evaluate(() => {
-        const el = document.querySelector('.d2-sidebar-list');
-        return el ? { before: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } : null;
-    });
-    if (!scroll || scroll.scrollHeight <= scroll.clientHeight) {
-        record('sidebar-scrolls-on-wheel', true, { skipped: 'nothing to scroll', ...scroll });
-    } else {
-        const box = await page.locator('.d2-sidebar-list').boundingBox();
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await page.mouse.wheel(0, 600);
+    // Existing is not working. A divider that is present, correctly shaped, and
+    // does nothing when dragged is exactly the symptom being chased — so drive
+    // it both ways a user would and require the pane width to move.
+    if (divider) {
+        const paneWidth = () => page.evaluate(() =>
+            Math.round(document.querySelector('.d2-side-pane')?.getBoundingClientRect().width ?? 0));
+        const startWidth = await paneWidth();
+
+        const dbox = await page.locator('.d2-workbench-divider-drag').boundingBox();
+        await page.mouse.move(dbox.x + dbox.width / 2, dbox.y + dbox.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(dbox.x - 90, dbox.y + dbox.height / 2, { steps: 10 });
+        await page.mouse.up();
         await page.waitForTimeout(500);
-        const after = await page.evaluate(() => document.querySelector('.d2-sidebar-list').scrollTop);
-        record('sidebar-scrolls-on-wheel', after !== scroll.before,
-            { before: scroll.before, after, delta: after - scroll.before });
+        const afterDrag = await paneWidth();
+
+        await page.locator('.d2-workbench-divider-drag').focus();
+        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(500);
+        const afterKeys = await paneWidth();
+
+        record('workbench-divider-actually-resizes',
+            afterDrag !== startWidth && afterKeys !== afterDrag,
+            { startWidth, afterDrag, afterKeys });
     }
+
+    // ── 3. the sidebar scrolls AFTER selecting a session ────────────────────
+    //
+    // The report was "can't scroll after selecting an instance". Measuring the
+    // initial offline list instead would pass while never reaching the state
+    // being described, so this drives the app into that state first.
+    //
+    // Observed as a gesture, not as accessibility-tree order: the sidebar is
+    // not virtualized, so a full AX tree keeps offscreen children in document
+    // order and the first child staying put proves nothing.
+    await scrollAfterSelection();
 
     // ── 4. nothing is a dead control anywhere on the shell ──────────────────
     //
-    // Generalises symptom 1: a control that is enabled, visible and clipped out
-    // of reach, or one that is disabled with no explanation beside it, reads to
-    // a user as "the app is broken".
-    const deadControls = await page.evaluate(() => {
-        const out = [];
-        for (const el of document.querySelectorAll('button, [role="button"], [role="tab"]')) {
-            if (!el.disabled) continue;
-            const r = el.getBoundingClientRect();
-            if (r.width < 1 || r.height < 1) continue;
-            if (el.closest('[inert], [aria-hidden="true"]')) continue;
-            // A disabled control is fine when something explains it.
-            const explained = el.getAttribute('title') || el.getAttribute('aria-describedby');
-            if (!explained) out.push((el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 40));
+    // The generalisation of symptom 1, narrowed after review. "Disabled with no
+    // title" was the wrong rule: the composer's model picker is disabled with
+    // aria-label="Provider and model unavailable", which states its reason
+    // perfectly well, and it would have failed. A single disabled control is
+    // ordinary UI. What made the app look broken was that EVERY control in a
+    // list was one.
+    const deadRuns = await page.evaluate(() => {
+        const named = (el) => (el.getAttribute('aria-label') || el.title || el.textContent || '').trim();
+        const runs = [];
+        for (const list of document.querySelectorAll('.d2-sidebar-list, .d2-side-pane-tab-group, [role="tablist"]')) {
+            const controls = [...list.querySelectorAll('button, [role="button"], [role="tab"]')]
+                .filter((el) => { const r = el.getBoundingClientRect(); return r.width >= 1 && r.height >= 1; })
+                .filter((el) => !el.closest('[inert], [aria-hidden="true"]'));
+            if (controls.length < 3) continue;
+            const disabled = controls.filter((el) => el.disabled);
+            if (disabled.length === controls.length) {
+                runs.push({ container: String(list.className).split(' ')[0],
+                            controls: controls.length, sample: named(disabled[0]).slice(0, 40) });
+            }
         }
-        return out;
+        return runs;
     });
-    record('no-unexplained-disabled-controls', deadControls.length === 0,
-        { count: deadControls.length, sample: deadControls.slice(0, 6) });
+    record('no-list-where-every-control-is-disabled', deadRuns.length === 0,
+        { runs: deadRuns.length, detail: deadRuns.slice(0, 3) });
 } finally {
     await browser.close();
+}
+
+/**
+ * Reach the post-selection state, then send a real wheel gesture.
+ *
+ * Starting an instance is a side effect, so it is tracked and undone. Sessions
+ * are never created: `chat-sessions` has no DELETE, so anything created here
+ * could not be cleaned up. If no session exists the check reports
+ * `unavailable` rather than falling back to the offline list, which would be
+ * measuring a different state and calling it a pass.
+ */
+async function scrollAfterSelection() {
+    const instances = (await getJson('/api/dashboard/instances')).instances ?? [];
+    let target = instances.find((i) => i.status === 'online');
+    let startedByUs = null;
+
+    if (!target) {
+        const candidate = instances.find((i) => i.lifecycle?.canStart);
+        if (!candidate) {
+            record('sidebar-scrolls-after-selection', false,
+                { unavailable: 'no online instance and none can be started' });
+            return;
+        }
+        await fetch(`${origin}/api/dashboard/lifecycle/start`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ port: candidate.port }),
+            signal: AbortSignal.timeout(30_000),
+        });
+        startedByUs = candidate.port;
+        for (let i = 0; i < 20 && !target; i += 1) {
+            await new Promise((r) => setTimeout(r, 1500));
+            const fresh = (await getJson('/api/dashboard/instances')).instances ?? [];
+            target = fresh.find((x) => x.port === candidate.port && x.status === 'online');
+        }
+        if (!target) {
+            record('sidebar-scrolls-after-selection', false,
+                { unavailable: `instance ${candidate.port} never came online` });
+            await stopIfOurs(startedByUs);
+            return;
+        }
+    }
+
+    try {
+        const sessions = await getJson(`/i/${target.port}/api/chat-sessions`)
+            .then((r) => r.data?.sessions ?? [])
+            .catch(() => []);
+        if (!sessions.length) {
+            record('sidebar-scrolls-after-selection', false,
+                { unavailable: `instance ${target.port} has no session; not creating one (no DELETE route)` });
+            return;
+        }
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('.d2-shell', { timeout: 20_000 });
+        await page.waitForTimeout(2500);
+
+        // One session auto-selects and the session list is not rendered at all;
+        // more than one requires expanding and clicking a row.
+        const row = page.locator('button.d2-instance-main').filter({ hasText: String(target.port) }).first();
+        await row.click({ timeout: 10_000 });
+        await page.waitForTimeout(1500);
+        if (sessions.length > 1) {
+            await page.locator('.d2-session-row').first().click({ timeout: 10_000 });
+            await page.waitForTimeout(1200);
+        }
+
+        // Prove the state rather than trusting the click.
+        const selection = await page.evaluate(() => ({
+            selectedRows: document.querySelectorAll('.d2-session-row.is-selected').length,
+            chatView: Boolean(document.querySelector('[data-testid="chat-view"]')),
+            title: document.querySelector('.d2-workbench-title')?.textContent?.trim() ?? null,
+        }));
+        const inSelectedState = selection.chatView || selection.selectedRows > 0;
+        if (!inSelectedState) {
+            record('sidebar-scrolls-after-selection', false,
+                { reachedSelection: false, ...selection });
+            return;
+        }
+
+        const before = await page.evaluate(() => {
+            const el = document.querySelector('.d2-sidebar-list');
+            return el ? { top: el.scrollTop, h: el.scrollHeight, c: el.clientHeight } : null;
+        });
+        if (!before || before.h <= before.c) {
+            record('sidebar-scrolls-after-selection', true, { skipped: 'nothing to scroll', ...before, ...selection });
+            return;
+        }
+        const box = await page.locator('.d2-sidebar-list').boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.wheel(0, 600);
+        await page.waitForTimeout(600);
+        const after = await page.evaluate(() => document.querySelector('.d2-sidebar-list').scrollTop);
+        record('sidebar-scrolls-after-selection', after !== before.top,
+            { before: before.top, after, delta: after - before.top, ...selection });
+    } finally {
+        await stopIfOurs(startedByUs);
+    }
+}
+
+/** Undo only what this run started. A pre-existing instance is left running. */
+async function stopIfOurs(port) {
+    if (!port) return;
+    await fetch(`${origin}/api/dashboard/lifecycle/stop`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ port }),
+        signal: AbortSignal.timeout(30_000),
+    }).catch(() => {});
+    report.startedAndStopped = port;
 }
 
 async function save() {

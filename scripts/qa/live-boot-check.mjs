@@ -50,21 +50,47 @@ const record = (name, ok, detail) => {
     console.error(`${ok ? 'OK  ' : 'FAIL'} ${name}  ${JSON.stringify(detail)}`);
 };
 
-/** Every descendant of a pid, so teardown never reaches beyond what we started. */
+/**
+ * Every descendant of a pid, with enough identity to prove ownership later.
+ *
+ * A pid alone is not ownership. Between recording it and sending a signal the
+ * process can exit and the number be reused, and then teardown kills a
+ * stranger. Each entry carries the start time and the command, so the killer
+ * can re-check that the pid is still the same process before signalling.
+ */
 function descendants(pid) {
     try {
-        const out = execFileSync('/bin/ps', ['-eo', 'pid=,ppid='], { encoding: 'utf8' });
+        const out = execFileSync('/bin/ps', ['-eo', 'pid=,ppid=,lstart=,command='], { encoding: 'utf8' });
         const children = new Map();
+        const meta = new Map();
         for (const line of out.trim().split('\n')) {
-            const [p, pp] = line.trim().split(/\s+/).map(Number);
-            if (!children.has(pp)) children.set(pp, []);
-            children.get(pp).push(p);
+            const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/);
+            if (!m) continue;
+            const [, p, pp, started, command] = m;
+            const pidNum = Number(p);
+            if (!children.has(Number(pp))) children.set(Number(pp), []);
+            children.get(Number(pp)).push(pidNum);
+            meta.set(pidNum, { pid: pidNum, started, command });
         }
         const found = [];
-        const walk = (p) => { for (const c of children.get(p) ?? []) { found.push(c); walk(c); } };
+        const walk = (p) => {
+            for (const c of children.get(p) ?? []) {
+                if (meta.has(c)) found.push(meta.get(c));
+                walk(c);
+            }
+        };
         walk(pid);
         return found;
     } catch { return []; }
+}
+
+/** Is this pid still the very process we recorded? */
+function stillOurs(entry) {
+    try {
+        const out = execFileSync('/bin/ps', ['-p', String(entry.pid), '-o', 'lstart=,command='], { encoding: 'utf8' }).trim();
+        if (!out) return false;
+        return out.includes(entry.started.trim()) && out.includes(entry.command.slice(0, 40));
+    } catch { return false; }
 }
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -85,18 +111,23 @@ async function findOurManager(ownedPids) {
     return null;
 }
 
+// A private debugging port so the renderer can be asked what it loaded. It has
+// to differ from any developer session (agbrowse uses 9222).
+const debugPort = 9333 + Math.floor(Math.random() * 400);
 const userData = await mkdtemp(join(tmpdir(), 'cli-jaw-boot-'));
 let child = null;
 let owned = new Set();
+let ownedEntries = [];
 
 try {
-    child = spawn(binary, [], {
+    child = spawn(binary, [`--remote-debugging-port=${debugPort}`], {
         env: { ...process.env, JAW_ELECTRON_USER_DATA: userData },
         stdio: 'ignore',
         detached: false,
     });
     report.launchedPid = child.pid;
-    console.error(`[boot] launched pid ${child.pid} with userData ${userData}`);
+    report.debugPort = debugPort;
+    console.error(`[boot] launched pid ${child.pid} with userData ${userData}, debug port ${debugPort}`);
 
     // Wait for a manager that belongs to us.
     const deadline = Date.now() + timeoutMs;
@@ -104,7 +135,8 @@ try {
     while (Date.now() < deadline && !manager) {
         await new Promise((r) => setTimeout(r, 1000));
         if (!alive(child.pid)) break;
-        owned = new Set([child.pid, ...descendants(child.pid)]);
+        ownedEntries = descendants(child.pid);
+        owned = new Set([child.pid, ...ownedEntries.map((e) => e.pid)]);
         manager = await findOurManager(owned);
     }
 
@@ -130,30 +162,79 @@ try {
             { generations: [...generations], note: 'more than one means a restart loop' });
         record('health-answers-continuously', answeredEvery, { samples: 6 });
 
-        // And the renderer really reached that origin.
+        // Did the RENDERER reach that origin?
+        //
+        // Fetching the URL ourselves only proves the manager serves HTML. It
+        // says nothing about whether the isolated Electron window loaded it —
+        // a window showing a blank error page would pass. So ask the renderer:
+        // the isolated instance is launched with its own remote-debugging port,
+        // and we read the page URL and mounted root out of it.
         try {
-            const res = await fetch(`http://127.0.0.1:${manager.port}/dashboard2/`,
-                { signal: AbortSignal.timeout(4000) });
-            const html = await res.text();
-            record('renderer-origin-serves-dashboard', res.ok && html.includes('dashboard2-root'),
-                { status: res.status, port: manager.port });
+            const targetsRes = await fetch(`http://127.0.0.1:${debugPort}/json/list`,
+                { signal: AbortSignal.timeout(5000) });
+            const targets = await targetsRes.json();
+            const dash = targets.find((t) => typeof t.url === 'string' && t.url.includes('/dashboard2'));
+            record('renderer-loaded-the-dashboard', Boolean(dash),
+                { url: dash?.url ?? null, title: dash?.title ?? null,
+                  targets: targets.length, debugPort,
+                  note: 'read from the isolated window, not from an HTTP fetch' });
+
+            // And it must be OUR manager's origin, not some other one.
+            if (dash) {
+                record('renderer-origin-matches-our-manager',
+                    dash.url.includes(`:${manager.port}/`),
+                    { rendererUrl: dash.url, managerPort: manager.port });
+            }
         } catch (error) {
-            record('renderer-origin-serves-dashboard', false, { error: String(error.message).slice(0, 80) });
+            record('renderer-loaded-the-dashboard', false,
+                { error: String(error.message).slice(0, 90), debugPort });
         }
     }
 } finally {
-    // Only what we started, and only ever by pid we recorded.
-    const toKill = [...new Set([...(child ? [child.pid] : []), ...(child ? descendants(child.pid) : [])])];
-    for (const pid of toKill.reverse()) {
-        try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+    // Only what we started, and re-verified immediately before each signal.
+    //
+    // A pid list captured minutes ago is not proof of ownership: the process can
+    // exit and the number be reused, and then the second pass kills a stranger.
+    // Re-scan for late children too, since Electron may respawn a manager after
+    // the snapshot was taken.
+    const scan = () => {
+        if (!child) return [];
+        const self = stillOurs({ pid: child.pid, started: '', command: '' }) || alive(child.pid)
+            ? [{ pid: child.pid, started: '', command: 'cli-jaw' }] : [];
+        return [...self, ...descendants(child.pid)];
+    };
+    const signalled = [];
+    for (const entry of scan().reverse()) {
+        if (entry.started && !stillOurs(entry)) continue;   // pid reused: not ours
+        try { process.kill(entry.pid, 'SIGTERM'); signalled.push(entry.pid); } catch { /* gone */ }
     }
     await new Promise((r) => setTimeout(r, 2500));
-    for (const pid of toKill) {
-        if (alive(pid)) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+    for (const entry of scan()) {
+        if (!alive(entry.pid)) continue;
+        if (entry.started && !stillOurs(entry)) continue;
+        try { process.kill(entry.pid, 'SIGKILL'); signalled.push(entry.pid); } catch { /* gone */ }
     }
-    report.tornDown = toKill;
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Prove the teardown rather than assuming it: nothing we owned is left, and
+    // our manager's port is free again.
+    const leftovers = scan().filter((e) => alive(e.pid));
+    let portFreed = true;
+    if (report.checks['manager-came-up']?.port) {
+        try {
+            await fetch(`http://127.0.0.1:${report.checks['manager-came-up'].port}/api/dashboard/health`,
+                { signal: AbortSignal.timeout(1500) });
+            portFreed = false;
+        } catch { portFreed = true; }
+    }
+    report.teardown = { signalled: [...new Set(signalled)], leftovers: leftovers.map((e) => e.pid), portFreed };
+    if (leftovers.length || !portFreed) {
+        failures.push('teardown-left-processes');
+        console.error(`FAIL teardown-left-processes  ${JSON.stringify(report.teardown)}`);
+    }
     await rm(userData, { recursive: true, force: true }).catch(() => {});
-    console.error(`[boot] tore down ${toKill.length} owned process(es) and ${userData}`);
+    console.error(`[boot] signalled ${new Set(signalled).size} owned process(es), `
+        + `${leftovers.length} left, port freed: ${portFreed}`);
 }
 
 report.failures = failures;
