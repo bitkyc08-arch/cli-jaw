@@ -1,5 +1,5 @@
 import { ipcMain, webContents as webContentsRegistry, type BrowserWindow, type WebContents } from 'electron';
-import { isAllowedSender } from '../ipc-origin-guard.js';
+import { isAllowedSender, isManagerSender as isManagerSenderGuard } from '../ipc-origin-guard.js';
 import { detachCdp, domSnapshot, isInspecting, performAct, startInspect, stopInspect, type ActPayload, type PickedElement } from './cdp.js';
 
 /**
@@ -192,12 +192,9 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
      * Origin alone is not enough: other same-origin Electron surfaces (e.g.
      * the tray reminders popover) share the manager origin and preload. Only
      * the Manager window's own webContents may drive embedded-browser IPC.
+     * wp7b moved this guard into ipc-origin-guard so every domain shares it.
      */
-    function isManagerSender(event: Parameters<Parameters<typeof ipcMain.handle>[1]>[0]): boolean {
-        if (!isAllowedSender(event)) return false;
-        const win = options.getManagerWindow();
-        return !!win && !win.isDestroyed() && event.sender.id === win.webContents.id;
-    }
+    const isManagerSender = isManagerSenderGuard;
 
     function emitState(entry: RegisteredBrowserTab, contents: WebContents): void {
         const win = options.getManagerWindow();

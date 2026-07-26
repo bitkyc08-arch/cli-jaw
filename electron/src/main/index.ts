@@ -61,7 +61,7 @@ import { registerBrowserIpc, markOwnedEmbeddedBrowserWebContents } from './lib/b
 import { registerClipboardIpc } from './lib/clipboard/ipc.js';
 import { registerPermissionDiagnosticsIpc } from './lib/permission-diagnostics/ipc.js';
 import { registerWindowIpc } from './lib/window/ipc.js';
-import { isAllowedSender, setAllowedOrigin } from './lib/ipc-origin-guard.js';
+import { isAllowedSender, setAllowedOrigin, setManagerWindowIdGetter } from './lib/ipc-origin-guard.js';
 import { primeMacAutomationPermission } from './lib/mac-automation-permission.js';
 import { showQuitProgress } from './lib/quit-progress.js';
 import {
@@ -78,6 +78,7 @@ const FLAGS = parseCliFlags(process.argv.slice(1), DEFAULT_MANAGER_PORT);
 let MANAGER_URL = FLAGS.managerUrl;
 let MANAGER_ORIGIN = new URL(MANAGER_URL).origin;
 setAllowedOrigin(MANAGER_ORIGIN);
+setManagerWindowIdGetter(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null));
 let PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(getManagerUrlPort(MANAGER_URL));
 
 const DEV_TOOLS_ENABLED =
@@ -152,6 +153,9 @@ let trayRemindersShortcutRegistered = false;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PRELOAD_PATH = join(__dirname, '..', 'preload', 'index.js');
+// The reminders popover gets an empty preload: its renderer uses REST, not the
+// desktop bridge, so it has no use for the surface the Manager preload opens.
+const POPOVER_PRELOAD_PATH = join(__dirname, '..', 'preload', 'popover.js');
 const DESKTOP_USER_AGENT_TOKEN = 'cli-jaw-desktop';
 const EMBEDDED_BROWSER_PARTITION = 'persist:cli-jaw-browser';
 const ELECTRON_RENDERER_TOKEN = randomBytes(32).toString('hex');
@@ -372,7 +376,7 @@ function installTrayReminders(): void {
   reminderPopover = createReminderPopover({
     managerUrl: MANAGER_URL,
     managerOrigin: MANAGER_ORIGIN,
-    preloadPath: PRELOAD_PATH,
+    preloadPath: POPOVER_PRELOAD_PATH,
   });
   reminderBadgePoller = createReminderBadgePoller({
     managerUrl: MANAGER_URL,

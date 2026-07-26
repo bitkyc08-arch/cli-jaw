@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { isAllowedSender } from '../ipc-origin-guard.js';
+import { isManagerSender } from '../ipc-origin-guard.js';
 
 /**
  * Window-level reload IPC. The renderer decides focus-aware behavior
@@ -8,11 +8,11 @@ import { isAllowedSender } from '../ipc-origin-guard.js';
  */
 export function registerWindowIpc(): void {
     ipcMain.handle('window:reload', (event) => {
-        if (!isAllowedSender(event)) return;
+        if (!isManagerSender(event)) return;
         BrowserWindow.fromWebContents(event.sender)?.webContents.reload();
     });
     ipcMain.handle('window:hardReload', (event) => {
-        if (!isAllowedSender(event)) return;
+        if (!isManagerSender(event)) return;
         BrowserWindow.fromWebContents(event.sender)?.webContents.reloadIgnoringCache();
     });
 }

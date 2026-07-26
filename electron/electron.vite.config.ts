@@ -13,12 +13,15 @@ export default defineConfig({
     build: {
       outDir: 'out/preload',
       lib: {
-        entry: resolve(__dirname, 'src/preload/index.ts'),
+        entry: {
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          popover: resolve(__dirname, 'src/preload/popover.ts'),
+        },
         formats: ['cjs'],
       },
       rollupOptions: {
         external: ['electron'],
-        output: { entryFileNames: 'index.js' },
+        output: { entryFileNames: '[name].js' },
       },
     },
   },

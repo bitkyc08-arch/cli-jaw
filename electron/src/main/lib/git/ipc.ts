@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { isAllowedSender } from '../ipc-origin-guard.js';
+import { isManagerSender } from '../ipc-origin-guard.js';
 import {
     getDiffSummary,
     getFileDiff,
@@ -22,7 +22,7 @@ import {
 
 export function registerDiffIpc(): void {
     ipcMain.handle('diff:getRepoRoot', async (event, cwd: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const root = await getRepoRoot(cwd);
             return { ok: true, root };
@@ -32,7 +32,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('diff:getRepoCandidates', async (event, rawCandidates: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const candidates = Array.isArray(rawCandidates)
             ? rawCandidates.map(readCandidate).filter((candidate): candidate is DiffRootCandidate => candidate !== null)
             : [];
@@ -40,7 +40,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('diff:getDiffSummary', async (event, repoRoot: string, rawOptions?: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const parsed = readDiffOptions(rawOptions);
         if (!parsed.ok) return parsed;
         try {
@@ -52,7 +52,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('diff:getScmSnapshot', async (event, repoRoot: string, rawOptions?: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const snapshot = await getSourceControlSnapshot(repoRoot, readSourceControlSnapshotOptions(rawOptions));
             return { ok: true, snapshot };
@@ -62,7 +62,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('diff:runScmOperation', async (event, repoRoot: string, rawOperation?: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const operation = readSourceControlOperation(rawOperation);
             const result = await runSourceControlOperation(repoRoot, operation);
@@ -73,7 +73,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('diff:getFileDiff', async (event, repoRoot: string, filePath: string, rawOptions?: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const parsed = readDiffOptions(rawOptions);
         if (!parsed.ok) return parsed;
         try {
@@ -85,7 +85,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('git:getStatusMap', async (event, folderPanelRoot: string, repoRoot?: string, rawOptions?: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const resolved = await resolveFolderGitRoot(folderPanelRoot, repoRoot);
             const status = await getGitStatusMap(resolved.repoRoot, readGitStatusMapOptions(rawOptions));
@@ -96,7 +96,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('git:getWorktrees', async (event, folderPanelRoot: string, repoRoot?: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const resolved = await resolveFolderGitRoot(folderPanelRoot, repoRoot);
             const worktrees = await getGitWorktrees(resolved.repoRoot);
@@ -107,7 +107,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('git:previewWorktreeOperation', async (event, folderPanelRoot: string, repoRoot: string | undefined, rawOperation: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const operation = readGitWorktreeOperation(rawOperation);
             const preview = await validateGitWorktreeOperationPreviewContext({ folderPanelRoot, repoRoot, operation });
@@ -118,7 +118,7 @@ export function registerDiffIpc(): void {
     });
 
     ipcMain.handle('git:runWorktreeOperation', async (event, folderPanelRoot: string, repoRoot: string | undefined, rawOperation: unknown, confirmed?: boolean) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         if (confirmed !== true) return { ok: false, error: 'confirmation required' };
         try {
             const operation = readGitWorktreeOperation(rawOperation);

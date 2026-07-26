@@ -7,7 +7,7 @@ import { statSync } from 'node:fs';
 import { discoverShell } from './shell-discovery.js';
 import { sanitizeEnv } from './env-sanitize.js';
 import { isWithinHome } from '../path-security.js';
-import { isAllowedSender } from '../ipc-origin-guard.js';
+import { isManagerSender } from '../ipc-origin-guard.js';
 
 const MAX_SESSIONS = 8;
 const BUFFER_CAP = 1024 * 1024;
@@ -93,7 +93,7 @@ function trackOwner(session: TermSession, sender: WebContents): void {
 
 export function registerTerminalIpc(): void {
     ipcMain.handle('terminal:list', (event) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         return {
             ok: true,
             sessions: Array.from(sessions.values())
@@ -112,7 +112,7 @@ export function registerTerminalIpc(): void {
     });
 
     ipcMain.handle('terminal:create', (event, opts?: { cwd?: string; cols?: number; rows?: number; port?: number | null }) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         if (sessions.size >= MAX_SESSIONS) {
             return { ok: false, error: 'max sessions reached' };
         }
@@ -162,7 +162,7 @@ export function registerTerminalIpc(): void {
     });
 
     ipcMain.handle('terminal:write', (event, id: string, data: string) => {
-        if (!isAllowedSender(event)) return;
+        if (!isManagerSender(event)) return;
         const session = sessions.get(id);
         if (!session) return;
         if (session.ownerWebContentsId !== event.sender.id) return;
@@ -170,7 +170,7 @@ export function registerTerminalIpc(): void {
     });
 
     ipcMain.handle('terminal:resize', (event, id: string, cols: number, rows: number) => {
-        if (!isAllowedSender(event)) return;
+        if (!isManagerSender(event)) return;
         const session = sessions.get(id);
         if (!session) return;
         if (session.ownerWebContentsId !== event.sender.id) return;
@@ -180,7 +180,7 @@ export function registerTerminalIpc(): void {
     });
 
     ipcMain.handle('terminal:kill', (event, id: string) => {
-        if (!isAllowedSender(event)) return;
+        if (!isManagerSender(event)) return;
         const session = sessions.get(id);
         if (!session) return;
         if (session.ownerWebContentsId !== event.sender.id) return;

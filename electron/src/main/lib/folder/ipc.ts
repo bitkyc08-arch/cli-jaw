@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { statSync, watch, type FSWatcher } from 'node:fs';
 import { isWithinHome, assertContained, assertContainedLexical } from '../path-security.js';
-import { isAllowedSender } from '../ipc-origin-guard.js';
+import { isManagerSender } from '../ipc-origin-guard.js';
 import { resolveDroppedPaths } from './dropped-paths.js';
 import { moveFolderPath } from './move-path.js';
 import { loadApprovedFolderRoots, rememberApprovedFolderRoot } from './approved-roots-store.js';
@@ -150,14 +150,14 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     // FolderPanel starts empty and must not call this on initial render.
     // It remains available for explicit cold-start callers such as DocPanel.
     ipcMain.handle('folder:getDefaultRoot', (event) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const root = resolveDefaultRoot();
         pickedRoots.add(root);
         return { ok: true, path: root };
     });
 
     ipcMain.handle('folder:pick', async (event) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const win = getWindow();
         if (!win) return { ok: false, error: 'no window' };
         const result = await dialog.showOpenDialog(win, {
@@ -169,7 +169,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:pickFile', async (event) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const win = getWindow();
         if (!win) return { ok: false, error: 'no window' };
         const result = await dialog.showOpenDialog(win, {
@@ -181,13 +181,13 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:authorizeRoot', async (event, rootPath: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         if (typeof rootPath !== 'string' || rootPath.trim().length === 0) return { ok: false, error: 'path required' };
         return authorizeFolderRoot(rootPath);
     });
 
     ipcMain.handle('folder:registerGitWorktreeRoot', async (event, folderPanelRoot: string, repoRoot: string | undefined, worktreePath: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             const resolved = await resolveFolderGitRoot(folderPanelRoot, repoRoot);
             const target = resolve(worktreePath);
@@ -208,7 +208,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:listDir', async (event, dirPath: string, _depth?: number) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(dirPath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(dirPath);
@@ -243,7 +243,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:readFile', async (event, filePath: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         await ensureApprovedRootsSeeded();
         const readable = await authorizeReadableFile(filePath);
         if (!readable.ok) return readable;
@@ -260,7 +260,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:movePath', async (event, sourcePath: string, targetDirectory: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized', code: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized', code: 'unauthorized' };
         await ensureApprovedRootsSeeded();
         return moveFolderPath(sourcePath, targetDirectory, {
             allowPath: isAllowedByRoot,
@@ -269,7 +269,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:createFile', async (event, parentDirectory: string, rawName: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             await ensureApprovedRootsSeeded();
             if (!isAllowedByRoot(parentDirectory)) return { ok: false, error: 'path not allowed — pick a folder first' };
@@ -287,7 +287,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:createFolder', async (event, parentDirectory: string, rawName: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             await ensureApprovedRootsSeeded();
             if (!isAllowedByRoot(parentDirectory)) return { ok: false, error: 'path not allowed — pick a folder first' };
@@ -305,7 +305,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:renamePath', async (event, sourcePath: string, rawName: unknown) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         try {
             await ensureApprovedRootsSeeded();
             if (!isAllowedByRoot(sourcePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
@@ -330,7 +330,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:revealPath', async (event, filePath: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(filePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(filePath);
@@ -349,7 +349,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:resolveDroppedItems', async (event, rawPaths: string[]) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         if (!Array.isArray(rawPaths)) return { ok: false, error: 'paths must be an array' };
         try {
             const result = await resolveDroppedPaths(rawPaths, {
@@ -369,7 +369,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:watchDir', async (event, dirPath: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(dirPath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(dirPath);
@@ -396,7 +396,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:unwatchDir', async (event, dirPath: string) => {
-        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const resolved = resolve(dirPath);
         dropWatcher(resolved);
         return { ok: true };
