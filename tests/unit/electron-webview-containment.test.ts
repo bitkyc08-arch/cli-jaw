@@ -37,12 +37,25 @@ test('the popover gets an empty preload, not the Manager preload', () => {
     assert.ok(index.includes('POPOVER_PRELOAD_PATH'), 'popover has its own preload path');
     assert.ok(index.includes('preloadPath: POPOVER_PRELOAD_PATH'),
         'the popover must not use the Manager preload');
+    // The popover preload exposes ONLY the two tray actions its UI calls.
     const popover = readFileSync(join(ROOT, 'electron/src/preload/popover.ts'), 'utf8');
-    // The popover preload exposes nothing: no bridge call, no exposed API.
-    assert.ok(!popover.includes('exposeInMainWorld'), 'popover preload exposes no API');
-    assert.ok(!popover.includes('ipcRenderer'), 'popover preload touches no IPC');
-    // Strip comments before checking for an exposed bridge — the file's own
-    // comment explains why it is empty and would otherwise match.
-    const code = popover.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-    assert.ok(!code.includes('cliJawDesktop'), 'popover preload has no desktop bridge');
+    assert.ok(popover.includes("ipcRenderer.send('tray:popup-menu')"), 'popover keeps its menu action');
+    assert.ok(popover.includes("ipcRenderer.send('tray:open-dashboard')"), 'popover keeps open-dashboard');
+    // And nothing else: no folder/git/terminal/browser surface.
+    for (const closed of ['folder:', 'diff:', 'terminal:', 'git:', 'browser:']) {
+        assert.ok(!popover.includes(`'${closed}`), `popover preload must not expose ${closed}*`);
+    }
+});
+
+test('the BUILT popover preload is the minimal tray-only artifact wired by the build', () => {
+    // Prove the artifact the main process actually loads, not just the source.
+    const vite = readFileSync(join(ROOT, 'electron/electron.vite.config.ts'), 'utf8');
+    assert.ok(vite.includes("popover: resolve(__dirname, 'src/preload/popover.ts')"),
+        'the popover preload is a build entry');
+    const built = readFileSync(join(ROOT, 'electron/out/preload/popover.js'), 'utf8');
+    assert.ok(built.includes('tray:popup-menu'), 'built preload keeps the menu action');
+    assert.ok(built.includes('tray:open-dashboard'), 'built preload keeps open-dashboard');
+    for (const closed of ['folder:listDir', 'diff:getRepoRoot', 'terminal:create', 'browser:register-webview']) {
+        assert.ok(!built.includes(closed), `built popover preload must not expose ${closed}`);
+    }
 });

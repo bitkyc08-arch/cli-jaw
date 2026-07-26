@@ -126,6 +126,16 @@ test('AGY-TR-009c: transcript watcher resets bootstrap acceptance on both retarg
     assert.match(watcherSrc, /transcriptPath = effectiveResolved\.transcriptPath;[\s\S]*offset = 0;[\s\S]*resetBootstrapAcceptance\(\);/);
 });
 
+test('AGY-TR-009d: transcript watcher records transcript mode and activity source', () => {
+    const watcherSrc = fs.readFileSync(path.join(__dirname, '../../src/agent/agy-transcript-watcher.ts'), 'utf8');
+    assert.match(watcherSrc, /import \{ classifyAgyTranscriptMode \} from '\.\/agy-runtime\.js'/);
+    assert.match(watcherSrc, /const updateTranscriptMode = \(\) => \{/);
+    assert.match(watcherSrc, /options\.ctx\.agyTranscriptMode = classifyAgyTranscriptMode\(options\.ctx\)/);
+    assert.match(watcherSrc, /options\.ctx\.agyTranscriptMode = 'fallback-missing'/);
+    assert.match(watcherSrc, /options\.ctx\.agyTranscriptLastReason = effectiveResolved\.reason/);
+    assert.match(watcherSrc, /options\.ctx\.agyLastActivitySource = 'transcript'/);
+});
+
 test('AGY-TR-011: parseTranscriptLine maps SEARCH_WEB and READ_URL_CONTENT to search tools', () => {
     const search = parseTranscriptLine(JSON.stringify({
         step_index: 12,

@@ -17,6 +17,7 @@ import {
     AGY_PLANNER_ONLY_NOTICE,
     formatAgyTimeoutMessage,
     formatAgyTranscriptErrorMessage,
+    formatAgyWatchdogContext,
     getAgyQuietCompletionDelayMs,
     hasRunningAgyTranscriptTool,
     isAgyTimeoutOutput,
@@ -486,6 +487,7 @@ test('AGY-RT-016: AGY unresolved transcript provider error is finalized before s
     assert.match(spawnSrc, /appendTraceEvent\(\{[\s\S]*eventType:\s*'runtime_error'[\s\S]*agyTranscriptErrorMessage/);
 });
 
+<<<<<<< Updated upstream
 test('AGY-RT-017: appendAgyFullText accumulates past the old 102,400 silent cap', () => {
     const ctx = { fullText: '', agyFullTextTruncated: undefined as boolean | undefined };
     const chunk = 'x'.repeat(60_000);
@@ -606,4 +608,29 @@ test('AGY-RT-023: describeAgyFinalSource reports mode and truncation for diagnos
         describeAgyFinalSource({ agyFinalPlannerSeen: undefined, agyFinalPlannerText: undefined, agyFullTextTruncated: true, fullText: 'abc' }),
         '[jaw:agy:final] source=stdout-fallback chars=3 truncated=1',
     );
+||||||| Stash base
+=======
+test('AGY-RT-017: spawn wires AGY transcript mode and watchdog context', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    assert.match(spawnSrc, /classifyAgyTranscriptMode/);
+    assert.match(spawnSrc, /formatAgyWatchdogContext/);
+    assert.match(spawnSrc, /agyTranscriptMode:\s*'not-started'/);
+    assert.match(spawnSrc, /agyLastActivitySource:\s*'none'/);
+    assert.match(spawnSrc, /ctx\.agyLastActivitySource = 'stdout'/);
+    assert.match(spawnSrc, /if \(cli === 'agy'\) ctx\.agyLastActivitySource = 'stderr'/);
+    assert.match(spawnSrc, /ctx\.agyTranscriptMode = classifyAgyTranscriptMode\(ctx\)/);
+    assert.match(spawnSrc, /const agyWatchdogContext = formatAgyWatchdogContext\(ctx\)/);
+    assert.match(spawnSrc, /pushTrace\(ctx, agyWatchdogContext\)/);
+
+    const context = formatAgyWatchdogContext({
+        stallReason: 'first progress timeout',
+        agyTranscriptMode: 'fallback-missing',
+        agyLastActivitySource: 'stdout',
+        sessionId: null,
+        toolLog: [{ icon: '🔧', label: 'run command', toolType: 'tool', status: 'running' }],
+    });
+    assert.match(context, /transcriptMode=fallback-missing/);
+    assert.match(context, /lastActivity=stdout/);
+    assert.match(context, /lastTool=run command status=running/);
+>>>>>>> Stashed changes
 });

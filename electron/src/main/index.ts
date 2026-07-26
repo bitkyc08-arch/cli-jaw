@@ -661,6 +661,20 @@ function permissionSurfaceForUrl(raw: string): ElectronPermissionSurface {
   return isPreviewFrameNavigation(raw, PREVIEW_FRAME_POLICY) ? 'preview-frame' : 'manager-window';
 }
 
+/**
+ * The reminders popover shares the Manager origin, so a URL-only
+ * classification treats it as a trusted manager window and hands it the broad
+ * permission set. It is not the manager: classify it by its webContents so it
+ * gets the narrower embedded surface instead.
+ */
+function permissionSurfaceForContents(contents: Electron.WebContents | null, raw: string): ElectronPermissionSurface {
+    if (contents && mainWindow && !mainWindow.isDestroyed() && contents.id !== mainWindow.webContents.id) {
+        // A same-origin but non-manager webContents (the reminders popover).
+        return 'embedded-browser-webview';
+    }
+    return permissionSurfaceForUrl(raw);
+}
+
 function permissionMediaType(details: unknown): string | undefined {
   if (!details || typeof details !== 'object') return undefined;
   const maybeMediaType = (details as { mediaType?: unknown }).mediaType;
@@ -703,7 +717,7 @@ function installDefaultSessionPermissionHandlers(): void {
     const detailValues = details as { requestingUrl?: string } | undefined;
     const requestingUrl = permissionRequestUrl(contents, detailValues?.requestingUrl);
     callback(isElectronPermissionAllowed(
-      permissionSurfaceForUrl(requestingUrl),
+      permissionSurfaceForContents(contents, requestingUrl),
       String(permission),
       requestingUrl,
       permissionMediaType(details),
@@ -717,7 +731,7 @@ function installDefaultSessionPermissionHandlers(): void {
       detailValues?.requestingUrl || detailValues?.securityOrigin || requestingOrigin,
     );
     return isElectronPermissionAllowed(
-      permissionSurfaceForUrl(requestingUrl),
+      permissionSurfaceForContents(contents, requestingUrl),
       String(permission),
       requestingUrl,
       permissionMediaType(details),

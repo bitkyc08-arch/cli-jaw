@@ -1,12 +1,18 @@
 /**
  * The reminders popover's preload.
  *
- * It is deliberately empty. The popover's renderer mounts TrayRoot without
- * DesktopBridgeProvider and reads reminders over REST fetch, so it never
- * touches window.cliJawDesktop. Until wp7b it shared the Manager preload,
- * which exposed folder writes, git operations, terminal spawn and browser
- * control to the popover's renderer — a surface it had no use for and every
- * reason not to have. Giving it an empty preload closes that surface at the
- * boundary rather than relying on the renderer not to call it.
+ * It exposes ONLY the two tray actions the popover's own UI calls
+ * (TrayRemindersApp.tsx): popUpMenu for the menu button and openDashboard for
+ * Open Dashboard. Everything else the Manager preload opens — folder writes,
+ * git operations, terminal spawn, browser control — stays closed to this
+ * window. The reminders themselves load over REST fetch, so the popover needs
+ * nothing more.
  */
-export {};
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('cliJawDesktop', {
+    trayReminders: {
+        popUpMenu: () => ipcRenderer.send('tray:popup-menu'),
+        openDashboard: () => ipcRenderer.send('tray:open-dashboard'),
+    },
+});
