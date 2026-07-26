@@ -36,9 +36,14 @@ export const BRANCH_COVERAGE = {
     },
     'TerminalPanel-nativeTerminal-d80rfi': {
         // The manifest's copy is the Restart button, which appears only once a
-        // session has exited. A bare runtime root matched three other states.
+        // session has exited. A bare runtime root matched three other states —
+        // and the Restart button alone is not enough either: a failed create
+        // also offers it, which the negative matrix caught. The status line's
+        // own words are what separate the two.
         surface: 'tab-terminal', state: 'terminal-exited',
-        selector: '.d2-terminal-panel.is-runtime button.d2-terminal-restart',
+        selector: '.d2-terminal-panel.is-runtime .d2-terminal-status[role="status"]',
+        requires: '.d2-terminal-restart',
+        pattern: 'Terminal exited with code \\d+.*Restart terminal',
     },
     'TerminalPanel-snapshotsessionsleng-eohftu': {
         // NOT create-error: a failed create leaves a placeholder session behind

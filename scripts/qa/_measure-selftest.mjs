@@ -76,6 +76,14 @@ const browser = await chromium.launch({ channel: 'chrome' });
              exclusion — a layout defect the gate has to report. */
           #escaped { width: 220px; overflow: visible; background:#ffffff; position: relative; }
           #escaped > span { position: absolute; left: 300px; top: 0; white-space: nowrap; color:#000; font: 16px sans-serif; }
+          /* Nested clips that each overlap the glyph but share no common
+             region: outer keeps x=308..348, inner keeps x=368..408, the
+             text spans both. Nothing is painted, so this must NOT be
+             reported as escaped text. */
+          #nestedouter { position: absolute; left: 308px; top: 1240px; width: 40px; height: 40px; background:#fff; }
+          #nestedclipa { position: absolute; left: 0; top: 120px; width: 40px; height: 40px; overflow: hidden; }
+          #nestedclipb { position: absolute; left: 60px; top: 0; width: 40px; height: 40px; overflow: hidden; }
+          #nestedclipb > span { position: absolute; left: -60px; top: 0; width: 356px; white-space: nowrap; color:#000; font: 16px sans-serif; }
           #nearicon { background:#787878; color:#777 }
           /* Translucent foregrounds. The computed colour is pure black in every
              one of these, so reading the computed colour and ignoring alpha
@@ -116,6 +124,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
         <div id="scrollport"><span>Wide overflowing low contrast text that runs past the panel</span></div>
         <div id="clippedglyphs"><span>Letters only in the clipped part</span></div>
         <div id="escaped"><span>Visible outside panel</span></div>
+        <div id="nestedouter"><div id="nestedclipa"><div id="nestedclipb"><span>Nested disjoint clips hide this</span></div></div></div>
         <div class="case" id="nearicon"><button aria-label="Close" style="background:transparent;border:0;color:#777"><svg width="16" height="16"><path d="M2 2 L14 14" stroke="currentColor" stroke-width="2"/></svg></button></div>
         <div class="case" id="op">Element opacity</div>
         <div class="case" id="alphafg">Alpha foreground</div>
@@ -255,6 +264,23 @@ const browser = await chromium.launch({ channel: 'chrome' });
         failures.push(`counterexample/escaped-capture-is-a-defect: ${
             escapedRow ? JSON.stringify({ off: escapedRow.offCapture, esc: escapedRow.escapedCapture }) : 'produced no row'}`);
     }
+
+    // Nested clips that each overlap the glyph while sharing no common region.
+    // Testing ancestors one at a time called this visible; only the cumulative
+    // intersection shows that nothing is painted.
+    const nestedRows = await surfacePixelContrast(page, '#nestedouter');
+    const nestedRow = nestedRows?.find((r) => (r.label ?? '').startsWith('Nested disjoint'));
+    const nestedOk = !nestedRow || nestedRow.escapedCapture !== true;
+    results.push({
+        name: 'counterexample/nested-disjoint-clips-not-escaped',
+        measured: nestedRow
+            ? (nestedRow.escapedCapture ? 'escaped-capture' : (nestedRow.offCapture ? 'offCapture' : nestedRow.ratio))
+            : 'NO ROW',
+        expected: 'never escaped-capture',
+        ok: nestedOk,
+        note: 'clips must be intersected cumulatively, not one at a time',
+    });
+    if (!nestedOk) failures.push('counterexample/nested-disjoint-clips-not-escaped: reported escaped-capture');
 
     const nearIconRows = await surfaceIconContrast(page, '#nearicon');
     const nearIcon = nearIconRows?.[0];

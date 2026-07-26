@@ -658,16 +658,25 @@ export async function surfacePixelContrast(page, selectorScope) {
                             range.selectNodeContents(node);
                             for (const box of range.getClientRects()) {
                                 if (box.width < 1 || box.height < 1) continue;
-                                if (box.right <= 0 || box.bottom <= 0
-                                    || box.left >= innerWidth || box.top >= innerHeight) continue;
-                                // Clipped away by an ancestor's overflow?
-                                let clipped = false;
+                                // Intersect CUMULATIVELY, not ancestor by
+                                // ancestor. Nested clips can each overlap the
+                                // glyph while sharing no common region — outer
+                                // at x=308..348, inner at x=368..408, glyph
+                                // spanning both — and testing them separately
+                                // calls that visible when nothing is painted.
+                                let x0 = Math.max(box.left, 0);
+                                let y0 = Math.max(box.top, 0);
+                                let x1 = Math.min(box.right, innerWidth);
+                                let y1 = Math.min(box.bottom, innerHeight);
                                 for (const { el: anc } of m.clippingAncestors(el)) {
                                     const a = anc.getBoundingClientRect();
-                                    if (box.right <= a.left || box.left >= a.right
-                                        || box.bottom <= a.top || box.top >= a.bottom) { clipped = true; break; }
+                                    x0 = Math.max(x0, a.left);
+                                    y0 = Math.max(y0, a.top);
+                                    x1 = Math.min(x1, a.right);
+                                    y1 = Math.min(y1, a.bottom);
+                                    if (x1 - x0 < 1 || y1 - y0 < 1) break;
                                 }
-                                if (!clipped) return true;
+                                if (x1 - x0 >= 1 && y1 - y0 >= 1) return true;
                             }
                         }
                         return false;

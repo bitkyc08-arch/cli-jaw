@@ -818,6 +818,10 @@ export const FIXTURE_STATES = {
         },
     },
     disabled: {
+        // Not a React branch: this flips `disabled` on whatever is already in
+        // the DOM, so the panel keeps showing the state it was in. It cannot be
+        // confused with a branch and the negative matrix skips it.
+        syntheticProbe: true,
         apply: (page, root) => page.evaluate((sel) => {
             const scope = document.querySelector(sel);
             if (!scope) return 0;
@@ -827,6 +831,8 @@ export const FIXTURE_STATES = {
         }, root),
     },
     dragging: {
+        // Also synthetic: it marks existing elements as being dragged.
+        syntheticProbe: true,
         apply: (page, root) => page.evaluate((sel) => {
             const scope = document.querySelector(sel);
             if (!scope) return 0;
