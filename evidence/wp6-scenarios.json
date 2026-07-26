@@ -1,11 +1,11 @@
 {
-  "when": "2026-07-26T13:24:37.160Z",
-  "total": 87,
-  "integration": 85,
+  "when": "2026-07-26T14:28:40.397Z",
+  "total": 107,
+  "integration": 105,
   "shadowed": 2,
-  "withActions": 52,
-  "withRequestOracle": 38,
-  "proven": 85,
+  "withActions": 68,
+  "withRequestOracle": 42,
+  "proven": 105,
   "results": [
     {
       "id": "gate-probing",
@@ -686,6 +686,166 @@
       "branchId": "ScheduleWorkEditor-validPort-50swgh",
       "ok": true,
       "saw": "Edit scheduled workTitleGroupTodayUpcomingRecurringBlockedTarget portRun atCronPayloadEnabledDeleteC"
+    },
+    {
+      "id": "settings-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": "SettingsPageShell-loading-lxhti3",
+      "ok": true,
+      "saw": "Loading settings…"
+    },
+    {
+      "id": "settings-load-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "SettingsPageShell-loading-ii3avg",
+      "ok": true,
+      "saw": "Settings request failed (500)Retry"
+    },
+    {
+      "id": "settings-save-success",
+      "axis": "ready",
+      "target": "Toast",
+      "branchId": null,
+      "ok": true,
+      "saw": "Display settings saved."
+    },
+    {
+      "id": "settings-save-busy",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Saving…"
+    },
+    {
+      "id": "settings-save-error",
+      "axis": "error",
+      "target": "Toast",
+      "branchId": null,
+      "ok": true,
+      "saw": "Settings request failed (500)"
+    },
+    {
+      "id": "settings-unsupported-field",
+      "axis": "prerequisite",
+      "target": "Note",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "settings-theme-save-and-apply",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Jaw :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sa"
+    },
+    {
+      "id": "settings-locale-save-and-apply",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Jaw :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sa"
+    },
+    {
+      "id": "settings-dirty-bar",
+      "axis": "prerequisite",
+      "target": "Region",
+      "branchId": null,
+      "ok": true,
+      "saw": "You have unsaved changes.DiscardSave changes"
+    },
+    {
+      "id": "settings-discard",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Back to chatSettingsInstance :3506Search settingsDisplayTheme, language, and typeProfileIdentity and"
+    },
+    {
+      "id": "settings-sidebar-active",
+      "axis": "ready",
+      "target": "Nav",
+      "branchId": null,
+      "ok": true,
+      "saw": "DisplayTheme, language, and type"
+    },
+    {
+      "id": "settings-sidebar-search-empty",
+      "axis": "empty",
+      "target": "Nav",
+      "branchId": "SettingsSidebar-visiblelength-ncxzcq",
+      "ok": true,
+      "saw": "No matching settings."
+    },
+    {
+      "id": "settings-leave-guard-page-switch",
+      "axis": "prerequisite",
+      "target": "Guard",
+      "branchId": null,
+      "ok": true,
+      "saw": "ProfileSet the identity shown across dashboard sessions.Loading settings…"
+    },
+    {
+      "id": "model-loading",
+      "axis": "loading",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "model-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "ModelPicker-error-ms2x16",
+      "ok": true,
+      "saw": "Agent defaultsChoose persistent provider, model, and effort defaults for the selected instance. Acti"
+    },
+    {
+      "id": "model-empty",
+      "axis": "empty",
+      "target": "Note",
+      "branchId": null,
+      "ok": true,
+      "saw": "CLI registry is unavailable for the current CLI."
+    },
+    {
+      "id": "model-ready",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "gpt-5.5 · medium"
+    },
+    {
+      "id": "settings-field-validation",
+      "axis": "error",
+      "target": "FieldError",
+      "branchId": "SettingsPageShell-fieldError-1o6dw1b",
+      "ok": true,
+      "saw": ""
+    },
+    {
+      "id": "settings-toast-dismiss",
+      "axis": "action",
+      "target": "Toast",
+      "branchId": "SettingsToast-state-ld8p6d",
+      "ok": true,
+      "saw": "Back to chatSettingsInstance :3506Search settingsDisplayTheme, language, and typeProfileIdentity and"
+    },
+    {
+      "id": "model-port-null",
+      "axis": "prerequisite",
+      "target": "Alert",
+      "branchId": "ModelSettingsPanel-port-20qgxb",
+      "ok": true,
+      "saw": "Select an instance to edit model settings."
     }
   ]
 }

@@ -971,8 +971,11 @@ export const FEATURE_SCENARIOS = [
         ...SETTINGS,
         levers: { settingsConfig: { holdCliRegistry: true } },
         actions: [{ kind: 'click', selector: '.d2-settings-nav-item:has-text("Agent")' }],
-        selector: '.d2-model-picker, .d2-settings-fields',
-        requires: '.d2-model-picker-spinner, [aria-busy="true"]',
+        // The loading spinner is the transient evidence; scope to the model
+        // panel so a keep-alive settings page from a prior scenario cannot
+        // satisfy it.
+        selector: '.d2-model-settings-panel .d2-model-picker-spinner',
+        requires: '.d2-model-settings-panel',
     },
     {
         id: 'model-error',
