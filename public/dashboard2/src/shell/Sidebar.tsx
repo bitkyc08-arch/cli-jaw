@@ -355,10 +355,10 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
         if (!isExpanded && !sessionEntry) {
             // Load, then if it turns out to be a single session, select it.
             void loadSessions(instance.port).then((activeId) => {
-                const entry = sessionsByPortRef.current[instance.port];
-                if (entry?.status === 'ready' && entry.data.sessions.length === 1 && activeId) {
-                    void guardedSelectSession(instance.port, activeId);
-                }
+                // loadSessions returns the active id from the freshly fetched
+                // response, not a cache read (which would be stale here). If a
+                // session came back, select it.
+                if (activeId) void guardedSelectSession(instance.port, activeId);
             });
         }
     };

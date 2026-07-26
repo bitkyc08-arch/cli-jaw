@@ -187,6 +187,7 @@ async function observe(page, scenario) {
             draft: draftEl instanceof HTMLTextAreaElement ? draftEl.value : null,
             fieldValue: fieldEl instanceof HTMLInputElement || fieldEl instanceof HTMLSelectElement || fieldEl instanceof HTMLTextAreaElement ? fieldEl.value : null,
             confirmCalls: (window.__jawConfirmCalls ?? []).slice(),
+            selected: window.__jawE2E.diagnostics().selected,
         };
     }, {
         selector: scenario.selector,
@@ -216,6 +217,9 @@ function judgeDom(scenario, seen) {
         const calls = seen.confirmCalls ?? [];
         const hit = calls.some(c => c.includes(scenario.expectConfirm));
         if (!hit) return `confirm() was not asked ${JSON.stringify(scenario.expectConfirm)} (saw ${calls.length} calls)`;
+    }
+    if (scenario.selectedEquals !== undefined && seen.selected !== scenario.selectedEquals) {
+        return `selected was ${JSON.stringify(seen.selected)}, expected ${JSON.stringify(scenario.selectedEquals)}`;
     }
     return null;
 }
