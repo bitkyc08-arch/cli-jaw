@@ -1,0 +1,54 @@
+{
+  "capturedAt": "2026-07-26T20:38:19.272Z",
+  "surface": "sidebar",
+  "url": "http://127.0.0.1:24577/dashboard2/",
+  "protocol": {
+    "warmup": 5,
+    "samples": 50,
+    "rounds": 3,
+    "statistic": "median of per-round p95",
+    "thresholdMs": 500
+  },
+  "verdict": "pass",
+  "results": [
+    {
+      "id": "sidebar.toggle",
+      "verdict": "pass",
+      "p50": 8.5,
+      "p95": 10.3,
+      "max": 10.6,
+      "sampleCount": 50,
+      "rounds": [
+        10.2,
+        10.6,
+        10.3
+      ]
+    },
+    {
+      "id": "sidebar.mode",
+      "verdict": "pass",
+      "p50": 8.4,
+      "p95": 9.9,
+      "max": 10.3,
+      "sampleCount": 50,
+      "rounds": [
+        9.9,
+        10.2,
+        9.8
+      ]
+    },
+    {
+      "id": "sidebar.instance-expand",
+      "verdict": "pass",
+      "p50": 8.3,
+      "p95": 10.1,
+      "max": 10.3,
+      "sampleCount": 50,
+      "rounds": [
+        10.1,
+        9.8,
+        10.2
+      ]
+    }
+  ]
+}

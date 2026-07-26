@@ -20,6 +20,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { launch } from './qa-lib.mjs';
+import { startFixtureServer, openFixture } from './fixture-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -92,7 +93,27 @@ const median = (values) => {
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
-const { browser, page } = await launch(url);
+// E4 needs an online instance with MULTIPLE sessions, which the live app may
+// not have. `--fixture` runs against the harness with a multi-session sidebar
+// preseed instead, so the interaction can actually fire.
+const useFixture = args.includes('--fixture');
+let browser, page, fixtureServer;
+if (useFixture) {
+    fixtureServer = await startFixtureServer();
+    ({ browser, page } = await openFixture(fixtureServer.url, {
+        historyCount: 10,
+        initScript: (cfg) => { window.__jawE2EPreseed = { sidebar: cfg }; },
+        initScriptArg: {
+            instances: [{ port: 3506, label: 'wp10 perf multi', status: 'online', version: 'e2e', workingDir: '/tmp/wp4-e2e' }],
+            chatSessions: { 3506: { sessions: [
+                { id: 'sess-p1', seq: 1, label: 'wp10 perf one', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 3 },
+                { id: 'sess-p2', seq: 2, label: 'wp10 perf two', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 5 },
+            ], active: 'sess-p1' } },
+        },
+    }));
+} else {
+    ({ browser, page } = await launch(url));
+}
 const results = [];
 
 try {
@@ -180,6 +201,7 @@ try {
         }
     }
 } finally {
+    fixtureServer?.close();
     await browser.close();
 }
 
