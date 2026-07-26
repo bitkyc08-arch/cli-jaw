@@ -40,6 +40,16 @@ const FEATURE_COMPONENTS = [
     'ScheduleWorkEditor', 'EmployeesPanel', 'EmployeesSection',
 ];
 
+// wp6 — the central settings workspace. Its components share the
+// SettingsPageShell state machine plus the model picker. The legacy hover-dock
+// settings components (SettingsTab, SettingsChannelsSection, SettingsMcpSection,
+// SettingsModelsSection, SettingsPromptSection) are wp7a's hover-dock surface,
+// NOT this one, so they stay out of the central sweep.
+const SETTINGS_COMPONENTS = [
+    'SettingsPageShell', 'SettingsSidebar', 'SettingsToast',
+    'ModelPicker', 'ModelSettingsPanel',
+];
+
 /** The code branches are integration-reachable once the harness answers. */
 const CODE_REACHABILITY = {
     // The one with no producer: fetchHistorySummaries only ever returns
@@ -57,6 +67,13 @@ const CODE_REACHABILITY = {
  */
 const FEATURE_REACHABILITY = {
     'EmployeesSection-error-196y4ry': 'shadowed',
+};
+
+/** wp6 — settings branches with no producer in the central workspace. */
+const SETTINGS_REACHABILITY = {
+    // ModelSettingsPanel-port is the port-null prerequisite; reachable only
+    // when no instance is selected, which the settings workspace always has.
+    'ModelSettingsPanel-port-20qgxb': 'integration',
 };
 
 /**
@@ -171,6 +188,11 @@ const ACTIVATION = {
         provider: 'FakeApiRouter.employeesApi (e2e-app-harness)',
         reset: 'resetEmployees()',
     },
+    'harness:settings': {
+        lever: 'window.__jawE2E.setSettingsConfig(SettingsFixtureConfig)',
+        provider: 'FakeApiRouter registry/settings/cli-registry handlers (e2e-app-harness)',
+        reset: 'resetSettingsConfig()',
+    },
 };
 
 /** Which lever each branch needs, decided by reading its guard. */
@@ -195,6 +217,7 @@ function routeFor(component, guard) {
     if (component.startsWith('Board')) return 'harness:board';
     if (component.startsWith('Reminders') || component.startsWith('Schedule')) return 'harness:reminders';
     if (component.startsWith('Employees')) return 'harness:employees';
+    if (SETTINGS_COMPONENTS.includes(component)) return 'harness:settings';
     return 'harness:panel-payload';   // Doc and Design read their panel payload
 }
 
@@ -244,6 +267,29 @@ function buildFeatureLedger(manifest) {
         });
 }
 
+/** wp6 — the central settings workspace's branches. */
+function buildSettingsLedger(manifest) {
+    return manifest.branches
+        .filter(b => SETTINGS_COMPONENTS.includes(b.file.split('/').pop().replace('.tsx', '')))
+        .map(b => {
+            const component = b.file.split('/').pop().replace('.tsx', '');
+            const route = routeFor(component, b.guard ?? '');
+            const reachability = SETTINGS_REACHABILITY[b.id] ?? 'integration';
+            return {
+                id: b.id,
+                component,
+                axis: b.axis,
+                target: b.target,
+                guard: b.guard,
+                reachability,
+                route,
+                ...ACTIVATION[route],
+                expectSelector: b.cls ? `.${b.cls.split(' ')[0]}` : '[data-state]',
+                text: b.text ?? null,
+            };
+        });
+}
+
 export function buildTabStateLedger() {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
     const toolTabs = manifest.branches
@@ -271,7 +317,7 @@ export function buildTabStateLedger() {
                 text: b.text ?? null,
             };
         });
-    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest)];
+    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest), ...buildSettingsLedger(manifest)];
 }
 
 if (process.argv[1]?.endsWith('tab-state-ledger.mjs')) {

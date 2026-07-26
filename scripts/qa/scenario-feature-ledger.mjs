@@ -783,6 +783,7 @@ export const FEATURE_SCENARIOS = [
     // ── settings: SettingsPageShell (shared state machine) ───────────────────
     {
         id: 'settings-loading',
+        branchId: 'SettingsPageShell-loading-lxhti3',
         reachability: 'integration',
         axis: 'loading', target: 'StatePanel',
         why: 'the registry has not answered the first load',
@@ -793,6 +794,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'settings-load-error',
+        branchId: 'SettingsPageShell-loading-ii3avg',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'the registry read failed',
@@ -921,7 +923,6 @@ export const FEATURE_SCENARIOS = [
     // ── settings: sidebar navigation ─────────────────────────────────────────
     {
         id: 'settings-sidebar-active',
-        branchId: 'SettingsSidebar',
         reachability: 'integration',
         axis: 'ready', target: 'Nav',
         why: 'the active page is marked in the sidebar',
@@ -932,6 +933,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'settings-sidebar-search-empty',
+        branchId: 'SettingsSidebar-visiblelength-ncxzcq',
         reachability: 'integration',
         axis: 'empty', target: 'Nav',
         why: 'a search with no match shows the empty state',
@@ -963,7 +965,6 @@ export const FEATURE_SCENARIOS = [
     // error; port-null is a prerequisite.
     {
         id: 'model-loading',
-        branchId: 'ModelSettingsPanel',
         reachability: 'integration',
         axis: 'loading', target: 'Control',
         why: 'the cli-registry catalog is in flight',
@@ -975,6 +976,7 @@ export const FEATURE_SCENARIOS = [
     },
     {
         id: 'model-error',
+        branchId: 'ModelPicker-error-ms2x16',
         reachability: 'integration',
         axis: 'error', target: 'Alert',
         why: 'the cli-registry read failed, with a reload button',
@@ -1006,6 +1008,50 @@ export const FEATURE_SCENARIOS = [
         selector: '.d2-model-picker-trigger:not([disabled])',
         // The fixture's codex model appears in the picker.
         pattern: 'gpt-5\\.5',
+    },
+    {
+        id: 'settings-field-validation',
+        branchId: 'SettingsPageShell-fieldError-1o6dw1b',
+        reachability: 'integration',
+        axis: 'error', target: 'FieldError',
+        why: 'an out-of-range number fails validation before any PATCH is sent',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'click', selector: '.d2-settings-nav-item:has-text("Memory")' },
+            { kind: 'type', selector: '#instance\\:3506\\:Memory-flushEvery', text: '0' },
+        ],
+        expectRequests: [{ method: 'PUT', path: '/i/3506/api/settings', count: 0 }],
+        selector: '.d2-settings-field [aria-invalid="true"], .d2-settings-workspace [id$="-error"]',
+    },
+    {
+        id: 'settings-toast-dismiss',
+        branchId: 'SettingsToast-state-ld8p6d',
+        reachability: 'integration',
+        axis: 'action', target: 'Toast',
+        why: 'the toast can be dismissed manually',
+        ...SETTINGS,
+        levers: { settingsConfig: {} },
+        actions: [
+            { kind: 'select', selector: '#dashboard\\:3506\\:ui-uiTheme', value: 'light' },
+            { kind: 'click', selector: '.d2-settings-save-bar .d2-settings-button.primary:not([disabled])' },
+            { kind: 'click', selector: '.d2-settings-toast button' },
+        ],
+        selector: '.d2-settings-workspace',
+        absent: '.d2-settings-toast',
+    },
+    {
+        id: 'model-port-null',
+        branchId: 'ModelSettingsPanel-port-20qgxb',
+        reachability: 'integration',
+        axis: 'prerequisite', target: 'Alert',
+        why: 'with no instance selected, the panel asks for one',
+        ...SETTINGS,
+        noSession: true,
+        levers: { settingsConfig: {} },
+        actions: [{ kind: 'click', selector: '.d2-settings-nav-item:has-text("Agent")' }],
+        selector: '.d2-settings-state.error[role="alert"]',
+        expected: 'Select an instance to edit model settings.',
     },
 ];
 

@@ -1,0 +1,10 @@
+import { openFixture, startFixtureServer } from '../fixture-lib.mjs';
+const server = await startFixtureServer();
+const { browser, page } = await openFixture(server.url, { historyCount: 10 });
+await page.evaluate(() => window.__jawE2E.setSettings());
+await page.waitForTimeout(1200);
+await page.locator('.d2-settings-nav-item:has-text("Memory")').click();
+await page.waitForTimeout(1200);
+console.log('INPUT IDS:', await page.evaluate(() => [...document.querySelectorAll('.d2-settings-workspace input')].map(i=>i.id)));
+console.log('TOGGLES:', await page.evaluate(() => [...document.querySelectorAll('.d2-settings-workspace [role="switch"]')].map(i=>i.id)));
+await browser.close(); await server.close();

@@ -244,7 +244,7 @@ const FEATURE_BRANCH_COVERAGE = {};
     // override that code branch's own coverage entry.
     const featureBranchIds = new Set(
         buildTabStateLedger()
-            .filter(r => /harness:(notes|board|reminders|employees)/.test(r.route))
+            .filter(r => /harness:(notes|board|reminders|employees|settings)/.test(r.route))
             .map(r => r.id),
     );
     const featureStatus = featureScenarioStatus(featureBranchIds);
@@ -337,6 +337,9 @@ export function branchCoverageStatus() {
         // with role="status", a degraded note, not an error alert. The
         // enumerator read the sibling `status === 'error'` guard.
         'EmployeesPanel-state-1kgnjht': 'degraded',
+        // SettingsToast.tsx:14 is the dismiss (×) button; the enumerator read
+        // a loading guard. The toast's states are success/error, not loading.
+        'SettingsToast-state-ld8p6d': 'action',
     };
     for (const [branchId, entry] of Object.entries(FEATURE_BRANCH_COVERAGE)) {
         const scenario = featureScenarioById.get(entry.delegate);
@@ -384,7 +387,17 @@ export function branchCoverageStatus() {
         // discriminator is the component the scenario measures against the
         // component the branch belongs to.
         const branchComponent = String(branch.file ?? '').split('/').pop()?.replace('.tsx', '') ?? '';
-        if (scenario.component && branchComponent && !branchComponent.startsWith(scenario.component)) {
+        // A scenario's component tag is the surface family (Notes/Board/
+        // Reminders/Schedule/Employees/Settings). The settings family spans
+        // several files — SettingsPageShell, ModelSettingsPanel, ModelPicker,
+        // SettingsToast, SettingsSidebar — so the match is by family, not by
+        // filename prefix.
+        const COMPONENT_FAMILY = {
+            SettingsPageShell: 'Settings', SettingsSidebar: 'Settings', SettingsToast: 'Settings',
+            ModelSettingsPanel: 'Settings', ModelPicker: 'Settings',
+        };
+        const branchFamily = COMPONENT_FAMILY[branchComponent] ?? branchComponent.match(/^[A-Z][a-z]+/)?.[0] ?? branchComponent;
+        if (scenario.component && branchFamily && branchFamily !== scenario.component) {
             delegatedBroken.push(`${branchId}: branch in ${branchComponent} is proven by a ${scenario.component} scenario (${entry.delegate})`);
         }
     }
@@ -393,7 +406,7 @@ export function branchCoverageStatus() {
     // must reach the gates. A non-manifest claim is caught by `stale`; a
     // duplicate on a REAL branch is not, and without this it passes silently.
     for (const problem of featureScenarioStatus(
-        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees)/.test(r.route)).map(r => r.id)),
+        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees|settings)/.test(r.route)).map(r => r.id)),
     ).malformed) {
         if (/claimed by two scenarios|not an integration feature branch/.test(problem)) delegatedBroken.push(problem);
     }

@@ -217,6 +217,7 @@ try {
         const { browser, page } = await openFixture(server.url, {
             historyCount: 10,
             ...(scenario.viewport ? { viewport: scenario.viewport } : {}),
+            ...(scenario.noSession ? { autoSelectSession: false } : {}),
         });
         try {
             if (scenario.chunkDelay) {
