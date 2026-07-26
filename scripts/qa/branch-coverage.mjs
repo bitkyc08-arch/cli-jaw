@@ -16,6 +16,13 @@
 // rather than from this file.
 import { buildTabStateLedger } from './tab-state-ledger.mjs';
 
+// wp5b — the code tab's branches are measured by the SCENARIO ledger, not by a
+// {surface, state} fixture pair, because the screen each renders depends on
+// harness config and on actions (a click, an SSE event), neither of which a
+// fixture state can express. Each entry below names the scenario that proves
+// the branch, and `delegate` keeps branch-proof from re-running it with the
+// wrong machinery.
+
 /**
  * Each entry is:
  *   surface   a key in FIXTURE_SURFACES
@@ -167,6 +174,63 @@ export const BRANCH_COVERAGE = {
         pattern: '^No \\w+ changes\\.$',
     },
 };
+
+/** wp5b — code branches, delegated to the scenario ledger. */
+const CODE_BRANCH_COVERAGE = {
+    'CodeTabGate-state-1kxofnn': {
+        delegate: 'gate-probing',
+        selector: '.d2-code-gate[data-state="probing"]',
+        text: 'Checking Code runtime…',
+    },
+    // One guard, three user meanings. The scenario ledger proves each reason
+    // separately (gate-missing-binary / gate-acp-unsupported /
+    // gate-temporarily-unavailable / gate-retry); the branch identity only
+    // notes the delegation.
+    'CodeTabGate-stateavailable-f8u8ym': {
+        delegate: 'gate-temporarily-unavailable',
+        selector: '.d2-code-gate[data-state="temporarily_unavailable"]',
+        text: 'Code runtime is temporarily unavailable',
+    },
+    'CodeTabGate-state-1d583p4': {
+        delegate: 'tab-suspense',
+        selector: '.d2-code-gate[data-state="loading"]',
+        text: 'Loading Code…',
+    },
+    'CodeHistoryList-historystate-1rc35h3': {
+        delegate: 'history-loading',
+        selector: '.d2-code-session-picker[data-history-state="loading"] .d2-pane-empty',
+        text: 'Loading Code history…',
+    },
+    'CodeHistoryList-historystate-1k3sbx': {
+        delegate: 'history-empty',
+        selector: '.d2-code-session-picker[data-history-state="empty"] .d2-pane-empty',
+        text: 'No Code sessions yet',
+    },
+    'CodeHistoryList-historystate-1ee5oob': {
+        delegate: 'history-error',
+        selector: '.d2-code-session-picker[data-history-state="error"] .d2-code-error[role="alert"]',
+        // The manifest's own words are interpolated, so the branch states its
+        // discriminator as a pattern.
+        pattern: 'History unavailable:',
+    },
+    'CodeModelControl-error-59bdpt': {
+        delegate: 'model-error',
+        selector: '.d2-code-model-control[data-state="error"] .d2-code-model-error[role="alert"]',
+        pattern: 'Code models',
+    },
+    'CodeTab-listError-uj7lsx': {
+        delegate: 'list-error-no-session',
+        selector: '.d2-code-error[role="alert"]',
+        pattern: 'Code session create',
+    },
+    'CodeTab-listError-uj7lsx#2': {
+        delegate: 'list-error-active-session',
+        selector: '.d2-code-error[role="alert"]',
+        pattern: 'Code prompt',
+    },
+};
+
+Object.assign(BRANCH_COVERAGE, CODE_BRANCH_COVERAGE);
 
 /**
  * Branches that are proven, and branches that are not.

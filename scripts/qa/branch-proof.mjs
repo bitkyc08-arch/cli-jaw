@@ -20,6 +20,9 @@ const server = await startFixtureServer();
 
 try {
     for (const entry of status.entries) {
+        // A delegated branch is proven by the scenario ledger with harness
+        // config and actions, none of which this runner can express.
+        if (entry.delegate) continue;
         const surface = FIXTURE_SURFACES[entry.surface];
         const state = FIXTURE_STATES[entry.state];
         if (!surface || !state) {
@@ -123,4 +126,6 @@ if (status.underspecified?.length) {
 if (failed.length) console.error(`\nFAIL: ${failed.length} of ${results.length} branches did not render as claimed`);
 
 if (failed.length || status.uncovered.length || status.stale.length || status.underspecified?.length) process.exit(1);
-console.error(`\nOK: ${results.length}/${status.integration} integration branches proven (${status.total - status.integration} shadowed, excluded by audit)`);
+const delegated = status.entries.filter(e => e.delegate).length;
+console.error(`\nOK: ${results.length}/${status.integration - delegated} fixture branches proven`
+    + ` (${delegated} delegated to the scenario ledger, ${status.total - status.integration} shadowed)`);

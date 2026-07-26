@@ -11,6 +11,7 @@ import { dirname } from 'node:path';
 import { FIXTURE_STATES, FIXTURE_SURFACES, openFixture, startFixtureServer } from './fixture-lib.mjs';
 import { installMeasure, setTheme, surfaceIconContrast, surfacePixelContrast, THEMES } from './visual-lib.mjs';
 import { branchCoverageStatus } from './branch-coverage.mjs';
+import { scenarioLedgerStatus } from './scenario-ledger.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -205,6 +206,22 @@ report.branchCoverage = {
     underspecified: coverage.underspecified,
 };
 
+// The code tab is the second denominator: its user-visible states are not AST
+// branches (one gate branch renders three reasons; the composer and model bar
+// have no branch identity at all), so a separate scenario ledger carries them.
+// Carry the audited numbers and fail on a malformed row — the per-scenario
+// render and request proof itself lives in scenario-proof.mjs.
+const scenarios = scenarioLedgerStatus();
+report.scenarioLedger = {
+    total: scenarios.total,
+    integration: scenarios.integration,
+    shadowed: scenarios.shadowed,
+    withActions: scenarios.withActions,
+    withRequestOracle: scenarios.withRequestOracle,
+    malformed: scenarios.malformed,
+    duplicate: scenarios.duplicate,
+};
+
 if (outPath) {
     await mkdir(dirname(outPath), { recursive: true });
     await writeFile(outPath, JSON.stringify(report, null, 2));
@@ -225,8 +242,17 @@ if (coverage.underspecified?.length) {
     console.error(`\nFAIL: ${coverage.underspecified.length} coverage entries do not say what they expect to see:`
         + ` ${coverage.underspecified.join(', ')}`);
 }
+if (scenarios.malformed.length) {
+    console.error(`\nFAIL: ${scenarios.malformed.length} code scenarios are malformed: ${scenarios.malformed.join('; ')}`);
+}
+if (scenarios.duplicate.length) {
+    console.error(`\nFAIL: duplicate code scenario ids: ${scenarios.duplicate.join(', ')}`);
+}
 console.error(`branch coverage: ${coverage.covered}/${coverage.integration} integration branches have a fixture`
     + ` (${coverage.total - coverage.integration} shadowed, excluded by audit)`);
+console.error(`code scenarios: ${scenarios.integration} integration, ${scenarios.shadowed} shadowed`
+    + ` (${scenarios.withRequestOracle} carrying a request oracle)`);
 
 if (!reportOnly && (notReached.length || oracleFailures.length || total
-    || coverage.uncovered.length || coverage.stale.length || coverage.underspecified?.length)) process.exit(1);
+    || coverage.uncovered.length || coverage.stale.length || coverage.underspecified?.length
+    || scenarios.malformed.length || scenarios.duplicate.length)) process.exit(1);

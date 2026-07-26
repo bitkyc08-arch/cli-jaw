@@ -20,6 +20,23 @@ const TAB_COMPONENTS = [
     'DocPanel', 'DesignPanel', 'DiffPanel',
 ];
 
+// wp5b — the code tab's own components. Separate from TAB_COMPONENTS because
+// they answer a different control surface: not a tool-tab payload but the
+// /api/code harness, and because one of them renders SEVERAL screens from a
+// single AST guard. The scenario ledger (scenario-ledger.mjs) owns the axis
+// for these; this table is only their branch identity and how they are
+// reached.
+const CODE_COMPONENTS = [
+    'CodeTabGate', 'CodeTab', 'CodeModelControl', 'CodeHistoryList',
+];
+
+/** The code branches are integration-reachable once the harness answers. */
+const CODE_REACHABILITY = {
+    // The one with no producer: fetchHistorySummaries only ever returns
+    // ready/empty/error, so 'unavailable' is unreachable in the app.
+    'CodeHistoryList-historystate-9e0ueb': 'shadowed',
+};
+
 /**
  * Reachability is an audited decision keyed by the manifest's full stable id.
  * Keep this explicit: guards alone do not reveal whether SidePane pre-empts a
@@ -107,6 +124,11 @@ const ACTIVATION = {
         provider: 'buildDesktopBridgeFixture diff surface',
         reset: 'remount with the default scenario',
     },
+    'harness:code': {
+        lever: 'window.__jawE2E.setCode(CodeFixtureConfig)',
+        provider: 'FakeApiRouter.codeApi (e2e-app-harness)',
+        reset: 'resetCode()',
+    },
 };
 
 /** Which lever each branch needs, decided by reading its guard. */
@@ -126,12 +148,36 @@ function routeFor(component, guard) {
         if (g.includes('port === null')) return 'harness:scope';
         return 'harness:git';
     }
+    if (CODE_COMPONENTS.includes(component)) return 'harness:code';
     return 'harness:panel-payload';   // Doc and Design read their panel payload
+}
+
+/** wp5b — the code tab's branches, reached through the code harness. */
+function buildCodeLedger(manifest) {
+    return manifest.branches
+        .filter(b => CODE_COMPONENTS.includes(b.file.split('/').pop().replace('.tsx', '')))
+        .map(b => {
+            const component = b.file.split('/').pop().replace('.tsx', '');
+            const route = routeFor(component, b.guard ?? '');
+            const reachability = CODE_REACHABILITY[b.id] ?? 'integration';
+            return {
+                id: b.id,
+                component,
+                axis: b.axis,
+                target: b.target,
+                guard: b.guard,
+                reachability,
+                route,
+                ...ACTIVATION[route],
+                expectSelector: b.cls ? `.${b.cls.split(' ')[0]}` : '[data-state]',
+                text: b.text ?? null,
+            };
+        });
 }
 
 export function buildTabStateLedger() {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
-    return manifest.branches
+    const toolTabs = manifest.branches
         .filter(b => TAB_COMPONENTS.includes(b.file.split('/').pop().replace('.tsx', '')))
         .map(b => {
             const component = b.file.split('/').pop().replace('.tsx', '');
@@ -156,6 +202,7 @@ export function buildTabStateLedger() {
                 text: b.text ?? null,
             };
         });
+    return [...toolTabs, ...buildCodeLedger(manifest)];
 }
 
 if (process.argv[1]?.endsWith('tab-state-ledger.mjs')) {
