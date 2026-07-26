@@ -1,0 +1,56 @@
+{
+  "when": "2026-07-26T07:07:31.710Z",
+  "origin": "http://127.0.0.1:24577",
+  "checks": {
+    "offline-rows-are-not-dead-buttons": {
+      "ok": true,
+      "deadButtons": 0,
+      "statusElements": 50,
+      "offlineInTabOrder": 0,
+      "startCtas": 50
+    },
+    "sidebar-resize-handle": {
+      "ok": true,
+      "cursor": "col-resize",
+      "hitsItself": true,
+      "grabWidth": 6
+    },
+    "workbench-divider-present-when-pane-open": {
+      "ok": true,
+      "cursor": "col-resize",
+      "role": "separator",
+      "grabWidth": 7
+    },
+    "sidebar-scrolls-on-wheel": {
+      "ok": true,
+      "before": 0,
+      "after": 600,
+      "delta": 600
+    },
+    "no-unexplained-disabled-controls": {
+      "ok": true,
+      "count": 0,
+      "sample": []
+    }
+  },
+  "identity": {
+    "runner": {
+      "managerPid": 8955,
+      "managerPort": 24577,
+      "origin": "http://127.0.0.1:24577"
+    },
+    "evidence": {
+      "rendererOrigin": "http://127.0.0.1:24577",
+      "windowPid": 8108,
+      "managerPid": 8955,
+      "managerPort": 24577
+    },
+    "snapshot": {
+      "evidence": "1b7f42aae71b83e9",
+      "runner": "1b7f42aae71b83e9",
+      "settled": true
+    },
+    "verdict": "aligned"
+  },
+  "failures": []
+}
