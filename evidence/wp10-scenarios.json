@@ -1,11 +1,11 @@
 {
-  "when": "2026-07-26T20:14:52.552Z",
-  "total": 136,
-  "integration": 134,
+  "when": "2026-07-26T20:51:03.049Z",
+  "total": 144,
+  "integration": 142,
   "shadowed": 2,
-  "withActions": 78,
+  "withActions": 85,
   "withRequestOracle": 47,
-  "proven": 134,
+  "proven": 142,
   "results": [
     {
       "id": "gate-probing",
@@ -1056,6 +1056,70 @@
       "saw": "WP4 fixture:3506 · online"
     },
     {
+      "id": "sidebar-instances-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "No instances found"
+    },
+    {
+      "id": "sidebar-sessions-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Loading sessions"
+    },
+    {
+      "id": "sidebar-sessions-empty",
+      "axis": "empty",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "jaw1jwcWP4 fixture:3506 · onlineLoading sessionsJAW"
+    },
+    {
+      "id": "sidebar-jwc-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Loading Code sessions"
+    },
+    {
+      "id": "sidebar-jwc-temporarily-unavailable",
+      "axis": "error",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Code runtime temporarily unavailableRetry"
+    },
+    {
+      "id": "sidebar-jwc-missing-binary",
+      "axis": "prerequisite",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "jwc is not installedInstall the JWC runtime to use Code sessions."
+    },
+    {
+      "id": "sidebar-jwc-error",
+      "axis": "error",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Failed to check Code availabilityRetry"
+    },
+    {
+      "id": "sidebar-jwc-conversations",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp10 jwc convo/tmp/wp4-e2e"
+    },
+    {
       "id": "sidebar-sessions-multi",
       "axis": "ready",
       "target": "List",
@@ -1077,7 +1141,7 @@
       "target": "Control",
       "branchId": "Sidebar-single-session",
       "ok": true,
-      "saw": "wp10 single:3507 · online"
+      "saw": "jaw2jwcwp10 multi:3506 · onlinewp10 A one3 messagesActivewp10 A two5 messageswp10 single:3507 · onli"
     }
   ]
 }

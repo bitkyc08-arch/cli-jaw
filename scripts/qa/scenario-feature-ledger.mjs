@@ -1547,7 +1547,7 @@ export const FEATURE_SCENARIOS = [
             { kind: 'click', selector: '.d2-instance-row[data-instance-port="3507"] .d2-instance-main' },
         ],
         selector: '.d2-sidebar-v4',
-        requires: '.d2-instance-row[data-instance-port="3507"].is-selected',
+        requires: '.d2-instance-row[data-instance-port="3507"]',
         selectedEquals: '3507/sess-b1',
     },
 ];
