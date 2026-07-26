@@ -106,8 +106,9 @@
 }
 
 .d2-notes-icon-btn:disabled {
-    opacity: .4;
+    color: var(--text-3);
     cursor: default;
+    border-color: var(--border);
 }
 
 /* ── file tree container (071 gap) ── */
@@ -167,7 +168,8 @@
     cursor: default;
     /* Still legible: a control the user cannot read is not saying "unavailable",
        it is just noise. */
-    opacity: .62;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .d2-notes-tree-icon {
@@ -424,7 +426,8 @@
 
 .d2-notes-view-modes button:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .d2-notes-word-count {
@@ -456,7 +459,8 @@
 
 .d2-notes-save-button:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .d2-notes-conflict,

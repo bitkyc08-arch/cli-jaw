@@ -128,7 +128,8 @@
 
 .dock-mini-btn:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .dock-mini-btn:focus-visible {
@@ -177,7 +178,8 @@
 
 .dock-switch:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .dock-switch:focus-visible {

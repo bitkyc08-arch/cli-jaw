@@ -140,7 +140,9 @@
 
 /* Icon-only buttons with no fill of their own can still use opacity: nothing
    underneath them is being faded with the glyph. */
-.d2-composer-icon:not(.d2-composer-primary):disabled { opacity: .62; }
+.d2-composer-icon:not(.d2-composer-primary):disabled { color: var(--text-3);
+    border-color: var(--border);
+}
 .d2-composer-icon.is-recording { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .d2-composer-icon.d2-composer-primary { color: var(--bg); background: var(--text); }
 

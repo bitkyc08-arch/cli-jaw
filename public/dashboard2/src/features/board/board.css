@@ -69,7 +69,7 @@
     color: var(--text-2);
 }
 
-.d2-board-icon-button:disabled { opacity: .4; cursor: default; }
+.d2-board-icon-button:disabled { cursor: default; color: var(--text-3); border-color: var(--border); }
 
 .d2-board-composer {
     display: flex;
@@ -133,7 +133,7 @@
     transition: opacity 120ms;
 }
 
-.d2-board-submit:disabled { opacity: .5; cursor: default; }
+.d2-board-submit:disabled { cursor: default; color: var(--text-3); border-color: var(--border); }
 
 .d2-board-status-region {
     position: absolute;
@@ -456,7 +456,7 @@
 
 .d2-board-dialog-header button { width: 32px; padding: 0; }
 .d2-board-dialog-header button:disabled,
-.d2-board-dialog-footer button:disabled { opacity: .45; cursor: default; }
+.d2-board-dialog-footer button:disabled { cursor: default; color: var(--text-3); border-color: var(--border); }
 
 .d2-board-dialog-field { display: flex; flex-direction: column; gap: 5px; }
 .d2-board-dialog-field > span { color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; }

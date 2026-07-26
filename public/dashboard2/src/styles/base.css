@@ -329,7 +329,8 @@ textarea:focus-visible,
 
 .d2-icon-button:disabled {
     cursor: wait;
-    opacity: 0.55;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .d2-command-button {

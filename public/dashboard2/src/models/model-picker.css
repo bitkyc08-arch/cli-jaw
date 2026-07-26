@@ -46,7 +46,8 @@
 
 .d2-model-picker-trigger:disabled {
     cursor: not-allowed;
-    opacity: 0.58;
+    color: var(--text-3);
+    border-color: var(--border);
 }
 
 .d2-model-picker-menu {

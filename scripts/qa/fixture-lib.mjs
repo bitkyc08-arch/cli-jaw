@@ -118,4 +118,69 @@ export const FIXTURE_SURFACES = {
             await page.locator('.d2-side-pane').waitFor();
         },
     },
+    code: {
+        root: '.d2-code-tab, .d2-code-gate',
+        reach: async (page) => {
+            await page.evaluate(() => window.__jawE2E.openPanel('code'));
+            await page.locator('.d2-code-tab, .d2-code-gate').first().waitFor();
+        },
+    },
+    'hover-dock': {
+        root: '.hover-dock-panel',
+        reach: async (page) => {
+            await page.locator('.hover-dock-trigger').click();
+            await page.locator('.hover-dock-panel').waitFor();
+        },
+    },
+};
+
+/**
+ * States a surface can be in that change what the gates see.
+ *
+ * The default render exercises none of the 27 opacity rules in dashboard2:
+ * every one keys off `:disabled`, `.is-dragging`, `.active` or a data
+ * attribute. Scanning only the resting state reported "unmeasurable 0" while
+ * five painted controls fade themselves the moment they are disabled.
+ *
+ * Each state is applied AFTER `reach` and is expected to change something; a
+ * state that matches nothing is reported so the list cannot rot.
+ */
+export const FIXTURE_STATES = {
+    default: { apply: async () => 0 },
+    disabled: {
+        apply: (page, root) => page.evaluate((sel) => {
+            const scope = document.querySelector(sel);
+            if (!scope) return 0;
+            const controls = [...scope.querySelectorAll('button, input, select, textarea')];
+            for (const c of controls) c.disabled = true;
+            return controls.length;
+        }, root),
+    },
+    dragging: {
+        apply: (page, root) => page.evaluate((sel) => {
+            const scope = document.querySelector(sel);
+            if (!scope) return 0;
+            let n = 0;
+            for (const card of scope.querySelectorAll('.d2-board-card, .d2-reminders-card')) {
+                card.classList.add('is-dragging');
+                card.setAttribute('data-dragging', 'true');
+                n += 1;
+            }
+            return n;
+        }, root),
+    },
+    busy: {
+        apply: (page, root) => page.evaluate((sel) => {
+            const scope = document.querySelector(sel);
+            if (!scope) return 0;
+            let n = 0;
+            // The shimmer is real gradient text and must be measured, or at
+            // least reported as unmeasurable, rather than never rendered.
+            for (const el of scope.querySelectorAll('.d2-tool-line, .d2-segment-toggle')) {
+                el.classList.add('d2-turn-shimmer', 'is-running');
+                n += 1;
+            }
+            return n;
+        }, root),
+    },
 };

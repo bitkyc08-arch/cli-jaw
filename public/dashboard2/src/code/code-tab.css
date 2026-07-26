@@ -144,3 +144,53 @@
     font-size: var(--fs-sm);
     color: var(--danger);
 }
+
+/* The capability gate had no styles at all, so its guidance and its Retry
+   button rendered as browser defaults: a grey UA fill that put the label at
+   3.08:1, and 1.36:1 once disabled during a probe. This is the screen a user
+   sees when jwc is missing or the wrong version, which makes it the worst
+   place in the product to be unreadable. */
+.d2-code-gate {
+    display: flex;
+    max-width: 420px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 24px auto;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    color: var(--text-2);
+}
+
+.d2-code-gate strong {
+    color: var(--text);
+    font-size: var(--fs-md);
+}
+
+.d2-code-gate p {
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+}
+
+.d2-code-gate button {
+    min-height: 28px;
+    margin-top: 4px;
+    padding: 0 12px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface-h);
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--fs-sm);
+}
+
+.d2-code-gate button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.d2-code-gate button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Disabled as colour, not opacity: this button carries a border and a fill, so
+   fading it makes the pair unmeasurable from a screenshot. */
+.d2-code-gate button:disabled { cursor: default; border-color: var(--border); color: var(--text-3); }

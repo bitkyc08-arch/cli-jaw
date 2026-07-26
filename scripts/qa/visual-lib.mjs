@@ -275,7 +275,15 @@ export const MEASURE_SOURCE = String.raw`
       // Resolving it needs the colour behind the entire group, which a paired
       // capture cannot supply. Any group opacity is unmeasurable.
       const o = Number(s.opacity);
-      if (o < 1) return 'group-opacity:' + o;
+      if (o < 1) {
+        // A drag ghost is meant to be translucent: the card is deliberately
+        // faded so the drop target shows through, and its contrast is judged in
+        // the resting state it returns to. Marking every drag preview
+        // unmeasurable would make the gate permanently red for a working
+        // interaction. Anything else with opacity is still unmeasurable.
+        const transient = n.matches('[data-dragging="true"], .is-dragging, [aria-grabbed="true"]');
+        if (!transient) return 'group-opacity:' + o;
+      }
     }
     return null;
   }

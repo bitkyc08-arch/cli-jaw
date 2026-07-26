@@ -8,7 +8,7 @@
 // every surface is reached by assertion rather than by sleeping.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { FIXTURE_SURFACES, openFixture, startFixtureServer } from './fixture-lib.mjs';
+import { FIXTURE_STATES, FIXTURE_SURFACES, openFixture, startFixtureServer } from './fixture-lib.mjs';
 import { installMeasure, setTheme, surfaceIconContrast, surfacePixelContrast, THEMES } from './visual-lib.mjs';
 
 const args = process.argv.slice(2);
@@ -26,7 +26,9 @@ const server = await startFixtureServer();
 try {
     for (const [name, surface] of Object.entries(FIXTURE_SURFACES)) {
         report.surfaces[name] = {};
+        for (const [stateName, state] of Object.entries(FIXTURE_STATES)) {
         for (const theme of THEMES) {
+            const key = stateName === 'default' ? theme : `${theme}/${stateName}`;
             const { browser, page } = await openFixture(server.url, {
                 historyCount: name === 'workbench' ? 40 : 10,
             });
@@ -35,6 +37,14 @@ try {
                 // to swallow click failures, which turned an unopened panel into
                 // a clean report.
                 await surface.reach(page);
+                // States are applied after reaching, because they key off
+                // elements that only exist once the surface is open.
+                const applied = await state.apply(page, surface.root);
+                if (stateName !== 'default' && applied === 0) {
+                    // Nothing matched: either the state is stale or the surface
+                    // does not have it. Skip rather than report a phantom pass.
+                    continue;
+                }
                 await setTheme(page, theme);
                 await page.waitForTimeout(400);
                 await installMeasure(page);
@@ -93,7 +103,7 @@ try {
                     };
                 }, { rootSel: surface.root, excludes: surface.exclude ?? [] });
 
-                if (!measured.reached) { notReached.push(`${name}/${theme}`); continue; }
+                if (!measured.reached) { notReached.push(`${name}/${key}`); continue; }
 
                 const contrastFailures = (textRows ?? []).filter((r) => !r.pass && !r.unmeasurable);
                 const iconFailures = (iconRows ?? []).filter((r) => !r.pass && !r.unmeasurable);
@@ -102,33 +112,34 @@ try {
                     .map((r) => ({ cls: r.cls, label: r.label, reason: r.unmeasurable }));
 
                 if (oracleError || textRows === null || iconRows === null) {
-                    oracleFailures.push(`${name}/${theme}: oracle unavailable${oracleError ? ` (${oracleError})` : ''}`);
+                    oracleFailures.push(`${name}/${key}: oracle unavailable${oracleError ? ` (${oracleError})` : ''}`);
                 }
                 if (textRows && textRows.length < measured.counts.text) {
-                    oracleFailures.push(`${name}/${theme}: measured ${textRows.length} of ${measured.counts.text} text nodes`);
+                    oracleFailures.push(`${name}/${key}: measured ${textRows.length} of ${measured.counts.text} text nodes`);
                 }
                 if (iconRows && iconRows.length < measured.iconOnly) {
-                    oracleFailures.push(`${name}/${theme}: measured ${iconRows.length} of ${measured.iconOnly} icon-only controls`);
+                    oracleFailures.push(`${name}/${key}: measured ${iconRows.length} of ${measured.iconOnly} icon-only controls`);
                 }
                 if (page.consoleErrors.length) {
-                    oracleFailures.push(`${name}/${theme}: ${page.consoleErrors.length} console errors`);
+                    oracleFailures.push(`${name}/${key}: ${page.consoleErrors.length} console errors`);
                 }
 
-                report.surfaces[name][theme] = {
+                report.surfaces[name][key] = {
                     ...measured, contrastFailures, iconFailures, unmeasurable,
                     consoleErrors: page.consoleErrors.slice(0, 5),
                 };
                 console.error(
-                    `${name}/${theme}: contrast ${contrastFailures.length}/${textRows?.length ?? 0}px,`
+                    `${name}/${key}: contrast ${contrastFailures.length}/${textRows?.length ?? 0}px,`
                     + ` icon ${iconFailures.length}/${iconRows?.length ?? 0}px, unmeasurable ${unmeasurable.length},`
                     + ` target ${measured.targetFailures.length}, unreachable ${measured.unreachable.length},`
                     + ` unnamed ${measured.unnamed.length}, occluded ${measured.occluded.length}`,
                 );
             } catch (error) {
-                notReached.push(`${name}/${theme}: ${String(error?.message ?? error).slice(0, 120)}`);
+                notReached.push(`${name}/${key}: ${String(error?.message ?? error).slice(0, 120)}`);
             } finally {
                 await browser.close();
             }
+        }
         }
     }
 } finally {
