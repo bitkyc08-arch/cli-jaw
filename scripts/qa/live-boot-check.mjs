@@ -159,8 +159,16 @@ try {
     rootIdentity = identify(child.pid);
     if (!rootIdentity) {
         // Without an identity for the root we cannot prove ownership of
-        // anything, and teardown would be guessing. Fail rather than proceed.
+        // anything, and teardown would be guessing. Kill it through the handle
+        // we still hold — that needs no identity — and stop. Carrying on would
+        // leave an unowned Electron tree behind that the leftover check cannot
+        // even see, because the root never entered the registry.
         record('root-process-identified', false, { pid: child.pid });
+        try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        await new Promise((r) => setTimeout(r, 1500));
+        await rm(userData, { recursive: true, force: true }).catch(() => {});
+        console.error('[boot] could not identify the launched process; killed it via the child handle');
+        process.exit(1);
     } else {
         registry.set(rootIdentity.pid, rootIdentity);
         record('root-process-identified', true, { pid: child.pid, command: rootIdentity.command.slice(0, 60) });

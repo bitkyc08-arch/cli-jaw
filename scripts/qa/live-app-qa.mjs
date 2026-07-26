@@ -35,8 +35,17 @@ if (!origin) {
 const report = { when: new Date().toISOString(), origin, checks: {}, identity: {} };
 // Ownership journal: written before any lifecycle mutation, removed only once
 // the stop is confirmed. A run that dies outright leaves it behind for the next.
+//
+// A port alone is not ownership. A journal saying "3457" cannot tell an
+// instance THIS tool started from one the user started later on the same port,
+// or from a manager that has since restarted — and acting on that ambiguity
+// means stopping someone's work. So it records who, which manager, and how far
+// the start actually got.
 const JOURNAL = `${tmpdir()}/wplive-started-instance.json`;
+const LOCK = `${tmpdir()}/wplive-runner.lock`;
+const RUN_ID = `${process.pid}-${Date.now().toString(36)}`;
 let startedPort = null;
+let startedInstancePid = null;
 const failures = [];
 
 /** A stable fingerprint of the instance list, order-independent. */
@@ -126,10 +135,31 @@ if (evidence) {
     console.error('[wplive] no --evidence given: running without a cross-checked identity.');
 }
 
+// Refuse to run two of these at once. Two runners sharing one journal would
+// overwrite each other's ownership record, and then neither can prove what it
+// started.
+try {
+    await writeFile(LOCK, RUN_ID, { flag: 'wx' });
+} catch {
+    let holder = 'unknown';
+    try { holder = (await readFile(LOCK, 'utf8')).trim(); } catch { /* raced */ }
+    console.error(`[wplive] another run holds ${LOCK} (${holder}).`);
+    console.error('Wait for it, or remove the lock if that run is gone.');
+    process.exit(1);
+}
+process.on('exit', () => { try { require('node:fs').unlinkSync(LOCK); } catch { /* fine */ } });
+
 // Adopt anything a previous run started and could not stop. This has to happen
 // after alignment (so we know we are talking to the right manager) and before
-// any mutation of our own.
-await recoverOrphans();
+// any mutation of our own — and if it does not come back clean, stop here
+// rather than starting yet another instance on top of an unresolved one.
+const recovery = await recoverOrphans();
+if (recovery !== 'clean') {
+    console.error('\n[wplive] refusing to start anything while a previous run\'s instance is unresolved.');
+    report.identity.recovery = recovery;
+    await save();
+    process.exit(1);
+}
 
 // ── the page ────────────────────────────────────────────────────────────────
 const browser = await chromium.connectOverCDP(cdp);
@@ -305,7 +335,12 @@ async function scrollAfterSelection() {
         // the next run clean up even if this one is killed outright.
         startedByUs = candidate.port;
         startedPort = candidate.port;
-        await writeFile(JOURNAL, JSON.stringify({ origin, port: candidate.port, at: new Date().toISOString() }));
+        // Phase 1: intent. If the run dies here nothing was started, and
+        // recovery must NOT stop anything on the strength of an intent alone.
+        await writeFile(JOURNAL, JSON.stringify({
+            runId: RUN_ID, origin, port: candidate.port,
+            managerPid: health.pid, phase: 'intent', at: new Date().toISOString(),
+        }, null, 2));
         armSignalCleanup();
         // Start through the CTA the user would press, not the manager API.
         // Calling the API directly would stay green even if the button's click
@@ -348,6 +383,17 @@ async function scrollAfterSelection() {
             const fresh = (await getJson('/api/dashboard/instances')).instances ?? [];
             target = fresh.find((x) => x.port === candidate.port && x.status === 'online');
         }
+        if (target) {
+            // Phase 2: ownership. The pid is what makes a later recovery safe —
+            // if the process behind that port is a different one, it is not
+            // ours and must be left alone.
+            startedInstancePid = target.lifecycle?.pid ?? null;
+            await writeFile(JOURNAL, JSON.stringify({
+                runId: RUN_ID, origin, port: candidate.port,
+                managerPid: health.pid, instancePid: startedInstancePid,
+                phase: 'online', at: new Date().toISOString(),
+            }, null, 2));
+        }
         if (!target) {
             record('sidebar-scrolls-after-selection', false,
                 { unavailable: `instance ${candidate.port} never came online` });
@@ -377,8 +423,18 @@ async function scrollAfterSelection() {
         const row = page.locator('button.d2-instance-main').filter({ hasText: String(target.port) }).first();
         await row.click({ timeout: 10_000 });
         await page.waitForTimeout(1500);
+        // With more than one session the list renders and a row must be picked.
+        // Remember WHICH one, so the scope check has something to compare
+        // against — otherwise any session on the right port would pass.
+        let clickedSession = sessions.length === 1 ? sessions[0].id : null;
         if (sessions.length > 1) {
-            await page.locator('.d2-session-row').first().click({ timeout: 10_000 });
+            const rows = page.locator('.d2-session-row');
+            await rows.first().waitFor({ timeout: 10_000 });
+            const label = (await rows.first().textContent() ?? '').trim();
+            clickedSession = sessions.find((x) => label.includes(x.id))?.id
+                ?? sessions.find((x) => x.label && label.includes(x.label))?.id
+                ?? null;
+            await rows.first().click({ timeout: 10_000 });
             await page.waitForTimeout(1200);
         }
 
@@ -400,9 +456,12 @@ async function scrollAfterSelection() {
                 title: document.querySelector('.d2-workbench-title')?.textContent?.trim() ?? null,
             };
         });
-        const expectedSession = sessions.length === 1 ? sessions[0].id : null;
+        // The session id is always compared. When the row's text did not
+        // identify a session we cannot claim to know which one we opened, so
+        // that is a failure rather than a free pass.
+        const expectedSession = clickedSession;
         const showsOurTarget = selection.port === String(target.port)
-            && (!expectedSession || selection.sessionId === expectedSession);
+            && Boolean(expectedSession) && selection.sessionId === expectedSession;
         const inSelectedState = selection.chatView && showsOurTarget;
         selection.expectedPort = target.port;
         selection.expectedSession = expectedSession;
@@ -464,8 +523,12 @@ async function stopIfOurs(port) {
             if (!Array.isArray(fresh)) { detail = 'instances response was not a list'; continue; }
             const row = fresh.find((x) => x.port === port);
             if (!row) { detail = `instance ${port} vanished from the list`; continue; }
-            stopped = row.status !== 'online';
-            if (stopped) detail = null;
+            // Only `offline` proves it stopped. `timeout`, `error` and
+            // `unknown` all describe a manager that cannot reach the instance,
+            // which is exactly what a live-but-wedged process looks like —
+            // treating those as success would delete the journal and abandon it.
+            stopped = row.status === 'offline';
+            detail = stopped ? null : `instance ${port} is '${row.status}', not 'offline'`;
         }
     } catch (error) {
         detail = String(error.message).slice(0, 90);
@@ -480,13 +543,59 @@ async function stopIfOurs(port) {
     await rm(JOURNAL, { force: true }).catch(() => {});
 }
 
-/** Stop anything a previous run started and could not clean up. */
+/**
+ * Stop anything a previous run started and could not clean up.
+ *
+ * Returns 'clean' when there is nothing to do or the orphan was stopped, and
+ * 'blocked' when something needs a human. Stopping the wrong instance is worse
+ * than leaving one running, so anything ambiguous refuses to act:
+ *
+ *  - `phase: 'intent'` means the start may never have happened; a later
+ *    instance on that port belongs to whoever started it.
+ *  - a different manager pid means the manager restarted, and the port's
+ *    current occupant has nothing to do with our run.
+ *  - a different instance pid means the process we started is already gone and
+ *    something else took the port.
+ */
 async function recoverOrphans() {
     let journal = null;
-    try { journal = JSON.parse(await readFile(JOURNAL, 'utf8')); } catch { return; }
-    if (!journal?.port || journal.origin !== origin) return;
-    console.error(`[wplive] a previous run left instance ${journal.port} started; stopping it`);
+    try { journal = JSON.parse(await readFile(JOURNAL, 'utf8')); }
+    catch { return 'clean'; }   // no journal, or unreadable: nothing claimed
+
+    if (!journal?.port) {
+        console.error('[wplive] journal is malformed; refusing to act on it');
+        return 'blocked';
+    }
+    if (journal.origin !== origin) {
+        console.error(`[wplive] journal belongs to ${journal.origin}, not ${origin}; leaving it alone`);
+        return 'blocked';
+    }
+    if (journal.phase === 'intent') {
+        console.error(`[wplive] previous run recorded intent to start :${journal.port} but never confirmed it.`
+            + ' Not stopping anything — it may be yours. Remove ' + JOURNAL + ' once checked.');
+        return 'blocked';
+    }
+    if (journal.managerPid !== health.pid) {
+        console.error(`[wplive] journal was written against manager ${journal.managerPid}, now ${health.pid};`
+            + ' the port\'s occupant is not ours. Leaving it alone.');
+        return 'blocked';
+    }
+
+    const live = (await getJson('/api/dashboard/instances').catch(() => ({}))).instances ?? [];
+    const row = live.find((x) => x.port === journal.port);
+    if (!row || row.status !== 'online') {
+        await rm(JOURNAL, { force: true }).catch(() => {});
+        return 'clean';   // already gone
+    }
+    if (journal.instancePid && row.lifecycle?.pid && row.lifecycle.pid !== journal.instancePid) {
+        console.error(`[wplive] :${journal.port} is now pid ${row.lifecycle.pid}, not the ${journal.instancePid}`
+            + ' we started. Someone else owns it; leaving it alone.');
+        return 'blocked';
+    }
+
+    console.error(`[wplive] a previous run left instance ${journal.port} (pid ${journal.instancePid}) running; stopping it`);
     await stopIfOurs(journal.port);
+    return report.cleanup?.stopped ? 'clean' : 'blocked';
 }
 
 /** Ctrl-C and SIGTERM do not run `finally`, so clean up explicitly. */
