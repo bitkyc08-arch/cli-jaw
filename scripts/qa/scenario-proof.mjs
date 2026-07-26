@@ -230,6 +230,7 @@ try {
             historyCount: 10,
             ...(scenario.viewport ? { viewport: scenario.viewport } : {}),
             ...(scenario.noSession ? { autoSelectSession: false } : {}),
+            ...(scenario.preseedSidebar ? { initScript: (cfg) => { window.__jawE2EPreseed = { sidebar: cfg }; }, initScriptArg: scenario.preseedSidebar } : {}),
         });
         try {
             if (scenario.chunkDelay) {
@@ -272,6 +273,8 @@ try {
                 if (scenario.dockTab) {
                     await page.locator(`.hover-dock-tab[role="tab"]:has-text("${scenario.dockTab}")`).click();
                 }
+            } else if (scenario.sidebar) {
+                // The sidebar is always visible; only its async levers matter.
             } else {
                 await page.evaluate((panel) => window.__jawE2E.openPanel(panel), scenario.panel ?? 'code');
             }

@@ -1,11 +1,11 @@
 {
-  "when": "2026-07-26T16:25:16.371Z",
-  "total": 130,
-  "integration": 128,
+  "when": "2026-07-26T20:09:41.034Z",
+  "total": 136,
+  "integration": 134,
   "shadowed": 2,
-  "withActions": 75,
+  "withActions": 78,
   "withRequestOracle": 47,
-  "proven": 128,
+  "proven": 133,
   "results": [
     {
       "id": "gate-probing",
@@ -789,7 +789,7 @@
       "target": "Guard",
       "branchId": null,
       "ok": true,
-      "saw": "ProfileSet the identity shown across dashboard sessions.Loading settings…"
+      "saw": "ProfileSet the identity shown across dashboard sessions.Display nameUnsupported: The dashboard regis"
     },
     {
       "id": "model-loading",
@@ -1030,6 +1030,55 @@
       "branchId": null,
       "ok": true,
       "saw": "Skip to main contentcli-jaw dashboardjaw1jwcWP4 fixture:3506 · onlineJAWWP4 fixtureLoading settings."
+    },
+    {
+      "id": "sidebar-instances-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Loading instances"
+    },
+    {
+      "id": "sidebar-instances-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "Request failed (500)Retry"
+    },
+    {
+      "id": "sidebar-instances-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "WP4 fixture:3506 · online"
+    },
+    {
+      "id": "sidebar-sessions-multi",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "wp10 multi:3506 · onlinewp10 first3 messagesActivewp10 second5 messages"
+    },
+    {
+      "id": "sidebar-sessions-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": false,
+      "why": ".d2-error-block, .d2-inline-state was missing, so this is a different screen",
+      "saw": "jaw1jwcWP4 fixture:3506 · onlineRequest failed (500)RetryJAW"
+    },
+    {
+      "id": "sidebar-single-session-select",
+      "axis": "ready",
+      "target": "Control",
+      "branchId": "Sidebar-single-session",
+      "ok": true,
+      "saw": "wp10 single:3507 · online"
     }
   ]
 }

@@ -252,6 +252,25 @@ export interface HoverDockFixtureConfig {
     memoryFiles?: JsonRecord | null;
 }
 
+/**
+ * The sidebar's async surfaces. The instance list and the per-port chat
+ * sessions are hardcoded to one ready item each by default, which makes the
+ * loading/ready/error/empty/multi matrix unreachable. sessionsByPort is keyed
+ * by port, so chat-session overrides are per-port too — the single-session
+ * repro needs a multi-session selected port distinct from a clicked
+ * single-session port.
+ */
+export interface SidebarFixtureConfig {
+    /** /api/dashboard/instances. */
+    instances?: JsonRecord[];
+    instancesStatus?: number;
+    holdInstancesList?: boolean;
+    /** /i/:port/api/chat-sessions, keyed by port. Each entry: sessions + active. */
+    chatSessions?: Record<number, { sessions: JsonRecord[]; active?: string }>;
+    chatSessionsStatus?: number;
+    holdChatSessions?: boolean;
+}
+
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -330,6 +349,8 @@ class FakeApiRouter {
     settingsConfig: SettingsFixtureConfig = {};
     /** Hover dock; see HoverDockFixtureConfig. */
     hoverDock: HoverDockFixtureConfig = {};
+    /** Sidebar async surfaces; see SidebarFixtureConfig. */
+    sidebar: SidebarFixtureConfig = {};
     /** Sessions created or loaded during the run, so a switch can echo them. */
     private codeSessionState = new Map<string, JsonRecord>();
     /** Set by a test to drive the file tree's empty and error branches. */
@@ -382,6 +403,14 @@ class FakeApiRouter {
         });
 
         if (url.pathname === '/api/dashboard/instances') {
+            const sidebarCfg = this.sidebar;
+            if (sidebarCfg.holdInstancesList) return pending();
+            if (sidebarCfg.instancesStatus && sidebarCfg.instancesStatus >= 400) {
+                return json({ error: 'instances unreadable' }, sidebarCfg.instancesStatus);
+            }
+            if (sidebarCfg.instances) {
+                return json({ manager: null, peerDashboards: [], platform: 'darwin', instances: sidebarCfg.instances });
+            }
             // The terminal tab shows "Loading terminal working directory…" only
             // while this call is in flight, which is normally too short to
             // observe. `holdInstances` keeps that frame open so the branch can
@@ -415,7 +444,29 @@ class FakeApiRouter {
             }
             return json({ registry: { ui: this.ui }, status: { source: 'e2e' } });
         }
-        if (url.pathname === `/i/${PORT}/api/chat-sessions`) return json({ ok: true, data: { sessions: [{ id: SESSION, seq: 1, label: 'WP4 E2E', created_at: new Date(BASE_TIME).toISOString(), updated_at: new Date(BASE_TIME).toISOString(), message_count: this.messages.length }], active: SESSION } });
+        {
+            // sessionsByPort is keyed by port, so chat-sessions is routed per
+            // port, with per-port overrides. This is what lets a scenario have
+            // a multi-session instance and a single-session instance at once.
+            const chatMatch = url.pathname.match(/^\/i\/(\d+)\/api\/chat-sessions$/);
+            if (chatMatch) {
+                const port = Number(chatMatch[1]);
+                const sidebarCfg = this.sidebar;
+                if (sidebarCfg.holdChatSessions) return pending();
+                if (sidebarCfg.chatSessionsStatus && sidebarCfg.chatSessionsStatus >= 400) {
+                    return json({ ok: false, error: 'chat sessions unreadable' }, sidebarCfg.chatSessionsStatus);
+                }
+                const override = sidebarCfg.chatSessions?.[port];
+                if (override) {
+                    return json({ ok: true, data: { sessions: override.sessions, active: override.active ?? override.sessions[0]?.['id'] } });
+                }
+                if (port === PORT) {
+                    return json({ ok: true, data: { sessions: [{ id: SESSION, seq: 1, label: 'WP4 E2E', created_at: new Date(BASE_TIME).toISOString(), updated_at: new Date(BASE_TIME).toISOString(), message_count: this.messages.length }], active: SESSION } });
+                }
+                // An instance the fixture knows but has no sessions for.
+                return json({ ok: true, data: { sessions: [], active: null } });
+            }
+        }
         if (url.pathname === `/i/${PORT}/api/messages`) return json({ ok: true, data: this.messages, pageInfo: { oldestCursor: 1, newestCursor: this.messages.length, hasMoreBefore: false, limit: this.messages.length }, snapshotEventSeq: 0 });
         if (url.pathname === `/i/${PORT}/api/message`) return json({ ok: true });
         if (url.pathname === `/i/${PORT}/api/stop`) return json({ ok: true });
@@ -953,6 +1004,12 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
     localStorage.removeItem('d2.sidepane.v1');
     installListenerProbe();
     const router = new FakeApiRouter(options.historyCount ?? 10_000);
+    // Mount-time states (the instance list's first load, the first
+    // chat-sessions fetch) fire before any test can call setSidebar. A preseed
+    // lets the runner place the lever BEFORE navigation, so those states are
+    // observable at all.
+    const preseed = (window as unknown as { __jawE2EPreseed?: { sidebar?: SidebarFixtureConfig } }).__jawE2EPreseed;
+    if (preseed?.sidebar) router.sidebar = preseed.sidebar;
     const sse = new DeterministicSseController();
     const nativeFetch = window.fetch.bind(window);
     window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -1023,6 +1080,8 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         resetSettingsConfig() { router.settingsConfig = {}; },
         setHoverDock(config) { router.hoverDock = config ?? {}; },
         resetHoverDock() { router.hoverDock = {}; },
+        setSidebar(config) { router.sidebar = config ?? {}; },
+        resetSidebar() { router.sidebar = {}; },
         markRequests() { return router.recorded.length; },
         confirmCalls() {
             return (window as unknown as { __jawConfirmCalls: string[] }).__jawConfirmCalls.slice();
@@ -1089,6 +1148,8 @@ declare global {
             resetSettingsConfig(): void;
             setHoverDock(config: HoverDockFixtureConfig | null): void;
             resetHoverDock(): void;
+            setSidebar(config: SidebarFixtureConfig | null): void;
+            resetSidebar(): void;
             /** Index to pass to codeRequests so a scenario ignores mount traffic. */
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];

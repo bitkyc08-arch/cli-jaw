@@ -32,6 +32,13 @@ const DOCK = {
     waitFor: '.hover-dock-panel',
 };
 
+/** The sidebar is always visible; no panel to open. */
+const SIDEBAR = {
+    component: 'Sidebar',
+    sidebar: true,
+    waitFor: '.d2-sidebar-v4',
+};
+
 // The side pane is narrow, which puts the board in compact mode at the
 // default 1440x900 viewport: it renders one lane as a <select> instead of
 // every lane (BoardPanel.tsx:96,364). A wider viewport keeps the pane wide
@@ -1353,6 +1360,101 @@ export const FEATURE_SCENARIOS = [
         selector: '.d2-workbench, .d2-shell',
         absent: '.hover-dock-panel',
     },
+
+    // ── sidebar: the three async surfaces (wp10 t2) ─────────────────────────
+    {
+        id: 'sidebar-instances-loading',
+        reachability: 'integration',
+        axis: 'loading', target: 'StatePanel',
+        why: 'the instance list is in flight',
+        ...SIDEBAR,
+        preseedSidebar: { holdInstancesList: true },
+        selector: '.d2-sidebar-v4 .d2-inline-state',
+        expected: 'Loading instances',
+    },
+    {
+        id: 'sidebar-instances-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'the instance list read failed',
+        ...SIDEBAR,
+        preseedSidebar: { instancesStatus: 500 },
+        selector: '.d2-sidebar-v4 .d2-error-block',
+        requires: 'button',
+    },
+    {
+        id: 'sidebar-instances-ready',
+        reachability: 'integration',
+        axis: 'ready', target: 'List',
+        why: 'the instance list renders with online and offline rows',
+        ...SIDEBAR,
+        levers: { sidebar: { instances: [
+            { port: 3506, label: 'wp10 online', status: 'online', version: 'e2e', workingDir: '/tmp/wp4-e2e' },
+            { port: 3507, label: 'wp10 offline', status: 'offline', version: 'e2e' },
+        ] } },
+        selector: '.d2-sidebar-v4 .d2-instance-row',
+        requires: '.d2-sidebar-v4',
+    },
+    {
+        id: 'sidebar-sessions-multi',
+        reachability: 'integration',
+        axis: 'ready', target: 'List',
+        why: 'an instance with 2+ sessions shows its session list when expanded',
+        ...SIDEBAR,
+        preseedSidebar: {
+            instances: [{ port: 3506, label: 'wp10 multi', status: 'online', version: 'e2e', workingDir: '/tmp/wp4-e2e' }],
+            chatSessions: { 3506: { sessions: [
+                { id: 'sess-1', seq: 1, label: 'wp10 first', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 3 },
+                { id: 'sess-2', seq: 2, label: 'wp10 second', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 5 },
+            ], active: 'sess-1' } },
+        },
+        actions: [{ kind: 'click', selector: '.d2-instance-row[data-instance-port="3506"] .d2-instance-main' }],
+        selector: '.d2-instance-node:has([data-instance-port="3506"])',
+        pattern: 'wp10 (first|second)',
+    },
+    {
+        id: 'sidebar-sessions-error',
+        reachability: 'integration',
+        axis: 'error', target: 'Alert',
+        why: 'an instance session read failed',
+        ...SIDEBAR,
+        levers: { sidebar: { chatSessionsStatus: 500 } },
+        actions: [{ kind: 'click', selector: '.d2-instance-row .d2-instance-main' }],
+        selector: '.d2-session-error',
+        requires: 'button',
+    },
+    {
+        id: 'sidebar-single-session-select',
+        branchId: 'Sidebar-single-session',
+        reachability: 'integration',
+        axis: 'ready', target: 'Control',
+        why: 'clicking an online single-session instance selects its sole session (CF-7)',
+        ...SIDEBAR,
+        noSession: true,
+        preseedSidebar: {
+            instances: [
+                { port: 3506, label: 'wp10 multi', status: 'online', version: 'e2e', workingDir: '/tmp/wp4-e2e' },
+                { port: 3507, label: 'wp10 single', status: 'online', version: 'e2e', workingDir: '/tmp/wp4-single' },
+            ],
+            chatSessions: {
+                3506: { sessions: [
+                    { id: 'sess-a1', seq: 1, label: 'wp10 A one', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 3 },
+                    { id: 'sess-a2', seq: 2, label: 'wp10 A two', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 5 },
+                ], active: 'sess-a1' },
+                3507: { sessions: [
+                    { id: 'sess-b1', seq: 1, label: 'wp10 B only', created_at: '2026-07-26T00:00:00.000Z', updated_at: '2026-07-26T00:00:00.000Z', message_count: 2 },
+                ], active: 'sess-b1' },
+            },
+        },
+        actions: [
+            // Select port A's session first (the "another session selected" state),
+            { kind: 'click', selector: '.d2-instance-row[data-instance-port="3506"] .d2-instance-main' },
+            // Then click the single-session instance — it must select its one session.
+            { kind: 'click', selector: '.d2-instance-row[data-instance-port="3507"] .d2-instance-main' },
+        ],
+        selector: '.d2-instance-row[data-instance-port="3507"].is-selected',
+        requires: '.d2-sidebar-v4',
+    },
 ];
 
 const EVIDENCE_STATUSES = new Set([
@@ -1382,7 +1484,7 @@ export function featureScenarioStatus(manifestIntegrationBranchIds = null) {
         if (scenario.reachability === 'shadowed' && evidence === 'proven') malformed.push(`${scenario.id}: a shadowed row cannot be proven`);
         if (scenario.reachability === 'integration') {
             if (!scenario.selector) malformed.push(`${scenario.id}: integration row has no selector`);
-            if ((!scenario.panel && !scenario.openSettings && !scenario.openDock) || !scenario.waitFor) malformed.push(`${scenario.id}: integration row has no panel/waitFor`);
+            if ((!scenario.panel && !scenario.openSettings && !scenario.openDock && !scenario.sidebar) || !scenario.waitFor) malformed.push(`${scenario.id}: integration row has no panel/waitFor`);
             if (!scenario.expected && !scenario.pattern
                 && scenario.draftEquals === undefined && !scenario.expectRequests
                 && !scenario.requires && !scenario.absent) {

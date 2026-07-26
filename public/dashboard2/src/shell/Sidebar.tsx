@@ -342,9 +342,24 @@ export function Sidebar({ collapsed = false, onClose }: SidebarProps): JSX.Eleme
     const handleInstanceClick = (instance: DashboardInstance): void => {
         if (instance.status !== 'online') return;
         const isExpanded = expandedPorts.includes(instance.port);
+        // A single-session instance has nothing to expand (its chevron and
+        // session list are hidden), so toggling expansion does nothing useful.
+        // Select its sole session directly — even after the sessions finish
+        // loading asynchronously (CF-7).
+        const sessionEntry = sessionsByPort[instance.port];
+        if (sessionEntry?.status === 'ready' && sessionEntry.data.sessions.length === 1) {
+            void guardedSelectSession(instance.port, sessionEntry.data.sessions[0]!.id);
+            return;
+        }
         toggleInstance(instance.port);
-        if (!isExpanded && !sessionsByPort[instance.port]) {
-            void loadSessions(instance.port);
+        if (!isExpanded && !sessionEntry) {
+            // Load, then if it turns out to be a single session, select it.
+            void loadSessions(instance.port).then((activeId) => {
+                const entry = sessionsByPortRef.current[instance.port];
+                if (entry?.status === 'ready' && entry.data.sessions.length === 1 && activeId) {
+                    void guardedSelectSession(instance.port, activeId);
+                }
+            });
         }
     };
 

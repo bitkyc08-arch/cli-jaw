@@ -240,6 +240,8 @@ export async function openFixture(url, {
     viewport = { width: 1440, height: 900 },
     desktopBridge = null,
     autoSelectSession = true,
+    initScript = null,
+    initScriptArg = null,
 } = {}) {
     const browser = await chromium.launch({ headless: true, channel: 'chrome' });
     const context = await browser.newContext({ viewport });
@@ -273,6 +275,11 @@ export async function openFixture(url, {
     // `scenario` picks which answer, so a branch is driven rather than implied.
     if (desktopBridge) {
         await page.addInitScript(buildDesktopBridgeFixture, desktopBridge);
+    }
+    // A scenario may pre-seed mount-time state (e.g. the sidebar's first
+    // instance/session load) before navigation.
+    if (initScript) {
+        await page.addInitScript(initScript, initScriptArg);
     }
 
     await page.route('**/dashboard2/src/main.tsx*', (route) => route.fulfill({
