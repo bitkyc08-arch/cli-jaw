@@ -18,12 +18,15 @@ test('the ledger covers every tool-tab branch the manifest knows about', () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/wp12-state-manifest.json'), 'utf8')) as {
         branches: Array<{ id: string; file: string }>;
     };
-    // wp5b added the code tab; wp5c added the feature tabs (notes/board/
-    // reminders/schedule/employees). The sweep is no longer only *Panel.tsx.
+    // wp5b added the code tab; wp5c the feature tabs; wp6 the central settings
+    // workspace plus the legacy hover-dock settings (shadowed). The sweep is
+    // no longer only *Panel.tsx.
     const expected = manifest.branches.filter(
         b => /(Terminal|Browser|FileTree|Doc|Design|Diff)Panel\.tsx$/.test(b.file)
             || /(CodeTabGate|CodeTab|CodeModelControl|CodeHistoryList)\.tsx$/.test(b.file)
-            || /(NotesPanel|NotesFileTree|NotesEmptyState|NotesCommandPalette|NotesQuickSwitcher|BoardPanel|RemindersCore|ScheduleView|ScheduleWorkEditor|EmployeesPanel|EmployeesSection)\.tsx$/.test(b.file),
+            || /(NotesPanel|NotesFileTree|NotesEmptyState|NotesCommandPalette|NotesQuickSwitcher|BoardPanel|RemindersCore|ScheduleView|ScheduleWorkEditor|EmployeesPanel|EmployeesSection)\.tsx$/.test(b.file)
+            || /(SettingsPageShell|SettingsSidebar|SettingsToast|ModelPicker|ModelSettingsPanel)\.tsx$/.test(b.file)
+            || /(SettingsTab|SettingsChannelsSection|SettingsMcpSection|SettingsModelsSection|SettingsPromptSection)\.tsx$/.test(b.file),
     );
     assert.equal(rows.length, expected.length, 'a branch in the manifest with no ledger row is unswept by definition');
     assert.deepEqual(
@@ -75,10 +78,10 @@ test('every branch has one of the three reachability verdicts', () => {
     assert.deepEqual(invalid, [], 'reachability must use the audited three-class vocabulary');
 });
 
-test('the real integration gate denominator stays at the audited 57 branches', () => {
-    // wp5a 24 tool-tab + wp5b 9 code = 33; wp5c swept the feature tabs and
-    // found 24 more (the 25th, EmployeesSection, is shadowed as wp7a's hover-
-    // dock surface). This number only moves with an audited change.
+test('the real integration gate denominator stays at the audited 64 branches', () => {
+    // wp5a 24 + wp5b 9 code = 33; wp5c 24 feature = 57; wp6 7 central settings
+    // = 64 (the legacy hover-dock settings and EmployeesSection are shadowed
+    // as wp7a's surface). This number only moves with an audited change.
     const integration = rows.filter(r => r.reachability === 'integration').length;
-    assert.equal(integration, 57);
+    assert.equal(integration, 64);
 });
