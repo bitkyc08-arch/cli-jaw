@@ -1,5 +1,5 @@
 {
-  "when": "2026-07-26T08:20:37.851Z",
+  "when": "2026-07-26T08:28:11.689Z",
   "origin": "http://127.0.0.1:24577",
   "checks": {
     "offline-rows-are-not-dead-buttons": {

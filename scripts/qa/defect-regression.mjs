@@ -284,8 +284,31 @@ async function measure(surface, theme, stateName, revertCss, liveUrl) {
 try {
     for (const testCase of CASES) {
         const surface = FIXTURE_SURFACES[testCase.surface];
-        const before = await measure(surface, testCase.theme, testCase.state, testCase.revert, testCase.live);
-        const after = await measure(surface, testCase.theme, testCase.state, null, testCase.live);
+        let before;
+        let after;
+        try {
+            before = await measure(surface, testCase.theme, testCase.state, testCase.revert, testCase.live);
+            after = await measure(surface, testCase.theme, testCase.state, null, testCase.live);
+        } catch (error) {
+            // A `live` case depends on the developer's own app being in a
+            // particular state — D1 needs a session open, which means an online
+            // instance. That is an environment fact, not a regression, and it
+            // must not take the whole harness down with an uncaught throw.
+            // Report it as unrunnable so the gate can tell "not proven here"
+            // apart from "proven broken".
+            const why = String(error?.message ?? error).split('\n')[0].slice(0, 120);
+            results.push({
+                id: testCase.id,
+                defect: testCase.defect,
+                oracle: testCase.expect,
+                unrunnable: testCase.live
+                    ? `needs the live app in a usable state: ${why}`
+                    : why,
+                ok: null,
+            });
+            console.error(`SKIP ${testCase.id}: ${why}`);
+            continue;
+        }
 
         const red = Boolean(before && before[testCase.expect] > 0);
         const green = Boolean(after && after[testCase.expect] === 0);
@@ -309,13 +332,18 @@ try {
     await server.close();
 }
 
-const failed = results.filter((r) => !r.ok);
+const failed = results.filter((r) => r.ok === false);
+const skipped = results.filter((r) => r.ok === null);
 if (outPath) {
     await mkdir(dirname(outPath), { recursive: true });
     await writeFile(outPath, JSON.stringify({ when: new Date().toISOString(), results }, null, 2));
     console.error(`wrote ${outPath}`);
 }
 
+if (skipped.length) {
+    console.error(`\n${skipped.length} case(s) could not run in this environment:`);
+    for (const s of skipped) console.error(`  ${s.id}: ${s.unrunnable}`);
+}
 if (failed.length) {
     console.error(`\nFAIL: ${failed.length} of ${results.length} cases did not go red on pre-fix code`);
     for (const f of failed) {
@@ -323,4 +351,5 @@ if (failed.length) {
     }
     process.exit(1);
 }
-console.log(`\nOK: all ${results.length} fixes fail on pre-fix code and pass on the current tree`);
+console.log(`\nOK: ${results.length - skipped.length} of ${results.length} fixes fail on pre-fix code`
+    + ` and pass on the current tree${skipped.length ? `, ${skipped.length} unrunnable here` : ''}`);

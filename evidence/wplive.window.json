@@ -5,30 +5,30 @@
   "managerPort": 24577,
   "instanceSnapshotHash": "1b7f42aae71b83e9",
   "buildIdentity": "2026-07-25T21:57:30",
-  "timestamp": "2026-07-26T07:34:04.834Z",
+  "timestamp": "2026-07-26T08:27:54.749Z",
   "nativeResize": {
-    "windowRef": "window \"Jaw\"",
+    "windowRef": "window 2 (AXStandardWindow)",
     "before": {
       "x": 1230,
       "y": 75,
-      "width": 1440,
-      "height": 960
+      "width": 1220,
+      "height": 840
     },
     "requested": {
-      "width": 1180,
-      "height": 820
+      "width": 1340,
+      "height": 900
     },
     "after": {
       "x": 1230,
       "y": 75,
-      "width": 1180,
-      "height": 820
+      "width": 1340,
+      "height": 900
     },
     "restored": {
       "x": 1230,
       "y": 75,
-      "width": 1440,
-      "height": 960
+      "width": 1220,
+      "height": 840
     }
   }
 }

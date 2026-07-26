@@ -1,0 +1,747 @@
+{
+  "when": "2026-07-26T08:34:15.582Z",
+  "results": [
+    {
+      "id": "D2-light-accent",
+      "defect": "light --accent on its own soft background measured 4.22:1",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "hover-dock-tab is-active",
+          "label": "에이전트",
+          "ratio": 4.22,
+          "need": 4.5,
+          "backdrop": {
+            "r": 221,
+            "g": 233,
+            "b": 247,
+            "a": 1
+          },
+          "glyphPixels": 289,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "hover-dock-tab is-active",
+          "label": "에이전트",
+          "ratio": 5.48,
+          "need": 4.5,
+          "backdrop": {
+            "r": 221,
+            "g": 231,
+            "b": 243,
+            "a": 1
+          },
+          "glyphPixels": 289,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D6-board-lane-count",
+      "defect": "dark --text-4 on --surface-h measured 4.17:1",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "SPAN",
+          "cls": "",
+          "label": "1",
+          "ratio": 4.17,
+          "need": 4.5,
+          "backdrop": {
+            "r": 34,
+            "g": 34,
+            "b": 37,
+            "a": 1
+          },
+          "glyphPixels": 27,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "SPAN",
+          "cls": "d2-board-status-chip",
+          "label": "Backlog",
+          "ratio": 5.14,
+          "need": 4.5,
+          "backdrop": {
+            "r": 34,
+            "g": 34,
+            "b": 37,
+            "a": 1
+          },
+          "glyphPixels": 235,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D8-notes-header-buttons",
+      "defect": "notes header buttons had no styles and sat at 1.01:1 on the UA fill",
+      "oracle": "icon",
+      "beforeFix": {
+        "contrast": 0,
+        "icon": 3,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "",
+          "label": "Create note",
+          "ratio": 1.01,
+          "need": 3,
+          "backdrop": {
+            "r": 239,
+            "g": 239,
+            "b": 239,
+            "a": 1
+          },
+          "iconPixels": 68,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "SPAN",
+          "cls": "d2-notes-tree-name",
+          "label": "daily",
+          "ratio": 5.63,
+          "need": 4.5,
+          "backdrop": {
+            "r": 26,
+            "g": 26,
+            "b": 29,
+            "a": 1
+          },
+          "glyphPixels": 181,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D11-code-gate-unstyled",
+      "defect": "the capability gate rendered as a browser-default button at 3.08:1",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "",
+          "label": "Retry",
+          "ratio": 2.48,
+          "need": 4.5,
+          "backdrop": {
+            "r": 107,
+            "g": 107,
+            "b": 107,
+            "a": 1
+          },
+          "glyphPixels": 216,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "P",
+          "cls": "",
+          "label": "The capability probe could not r",
+          "ratio": 9.32,
+          "need": 4.5,
+          "backdrop": {
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "a": 1
+          },
+          "glyphPixels": 2261,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D12-disabled-group-opacity",
+      "defect": "disabled controls that paint a background faded the paint with the glyph",
+      "oracle": "unmeasurable",
+      "beforeFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 2,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "SPAN",
+          "cls": "d2-board-status-chip",
+          "label": "Backlog",
+          "ratio": 5.14,
+          "need": 4.5,
+          "backdrop": {
+            "r": 34,
+            "g": 34,
+            "b": 37,
+            "a": 1
+          },
+          "glyphPixels": 235,
+          "pass": true
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "SPAN",
+          "cls": "d2-board-status-chip",
+          "label": "Backlog",
+          "ratio": 5.14,
+          "need": 4.5,
+          "backdrop": {
+            "r": 34,
+            "g": 34,
+            "b": 37,
+            "a": 1
+          },
+          "glyphPixels": 235,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D1-tool-copy-clipped",
+      "defect": "21 tool-copy buttons were pushed onto a clipped second line and could not be clicked",
+      "oracle": "unreachable",
+      "beforeFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 20,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "d2-composer-icon",
+          "label": "Attach files",
+          "ratio": 5.63,
+          "need": 3,
+          "backdrop": {
+            "r": 26,
+            "g": 26,
+            "b": 29,
+            "a": 1
+          },
+          "iconPixels": 44,
+          "pass": true
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "d2-composer-icon",
+          "label": "Attach files",
+          "ratio": 5.63,
+          "need": 3,
+          "backdrop": {
+            "r": 26,
+            "g": 26,
+            "b": 29,
+            "a": 1
+          },
+          "iconPixels": 44,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D13-terminal-status-on-black",
+      "defect": "the terminal panel kept a hard black background for its status messages, reading 1.28:1 in the light theme",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "DIV",
+          "cls": "d2-terminal-panel is-state",
+          "label": "Terminal requires the cli-jaw El",
+          "ratio": 2.25,
+          "need": 4.5,
+          "backdrop": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 1
+          },
+          "glyphPixels": 1234,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "DIV",
+          "cls": "d2-terminal-panel is-state",
+          "label": "Terminal requires the cli-jaw El",
+          "ratio": 9.32,
+          "need": 4.5,
+          "backdrop": {
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "a": 1
+          },
+          "glyphPixels": 1246,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D14-browser-go-group-opacity",
+      "defect": "the disabled Go button faded its own background, leaving a pair no rendered check can resolve",
+      "oracle": "unmeasurable",
+      "beforeFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 1,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "DIV",
+          "cls": "d2-browser-empty",
+          "label": "Enter a URL to start browsing",
+          "ratio": 5.63,
+          "need": 4.5,
+          "backdrop": {
+            "r": 26,
+            "g": 26,
+            "b": 29,
+            "a": 1
+          },
+          "glyphPixels": 831,
+          "pass": true
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "",
+          "label": "Go",
+          "ratio": 5.14,
+          "need": 3,
+          "backdrop": {
+            "r": 34,
+            "g": 34,
+            "b": 37,
+            "a": 1
+          },
+          "iconPixels": 48,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D15-terminal-runtime-children-unstyled",
+      "defect": "the terminal runtime tabs and empty state had no CSS, so they inherited theme text onto the near-black canvas (2.42:1 and 1.21:1 in light)",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "d2-terminal-new",
+          "label": "New terminal session",
+          "ratio": 1.75,
+          "need": 4.5,
+          "backdrop": {
+            "r": 107,
+            "g": 107,
+            "b": 107,
+            "a": 1
+          },
+          "glyphPixels": 26,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "d2-terminal-close",
+          "label": "Close zsh 1",
+          "ratio": 12.01,
+          "need": 4.5,
+          "backdrop": {
+            "r": 24,
+            "g": 24,
+            "b": 24,
+            "a": 1
+          },
+          "glyphPixels": 29,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D16-browser-agent-toggle-icon-rule",
+      "defect": "the agent toggle is the only labelled control in the URL bar, so the 30px icon rule squeezed it and left the label at 4.33:1",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "d2-browser-agent-toggle",
+          "label": "Stop sharing with agent",
+          "ratio": 1.12,
+          "need": 4.5,
+          "backdrop": {
+            "r": 110,
+            "g": 168,
+            "b": 254,
+            "a": 1
+          },
+          "glyphPixels": 335,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "",
+          "label": "Forward",
+          "ratio": 5.14,
+          "need": 3,
+          "backdrop": {
+            "r": 34,
+            "g": 34,
+            "b": 37,
+            "a": 1
+          },
+          "iconPixels": 48,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D17-file-tree-retry-unstyled",
+      "defect": "the Retry button in the file-open alert had no rule, so it kept the UA grey fill under inherited text and read 1.28:1 in light",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "",
+          "label": "Retry",
+          "ratio": 1.28,
+          "need": 4.5,
+          "backdrop": {
+            "r": 107,
+            "g": 107,
+            "b": 107,
+            "a": 1
+          },
+          "glyphPixels": 198,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "SPAN",
+          "cls": "",
+          "label": "File preview requires the cli-ja",
+          "ratio": 9.32,
+          "need": 4.5,
+          "backdrop": {
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "a": 1
+          },
+          "glyphPixels": 1349,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D18-diff-file-list-ua-button",
+      "defect": "the changed-file list had no rule, so its buttons fell back to the UA grey fill and measured 3.08:1 in light",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 1,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "BUTTON",
+          "cls": "is-active",
+          "label": "modified src/fixture.ts",
+          "ratio": 3.08,
+          "need": 4.5,
+          "backdrop": {
+            "r": 107,
+            "g": 107,
+            "b": 107,
+            "a": 1
+          },
+          "glyphPixels": 1046,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "CODE",
+          "cls": "",
+          "label": "-old",
+          "ratio": 4.94,
+          "need": 4.5,
+          "backdrop": {
+            "r": 237,
+            "g": 219,
+            "b": 221,
+            "a": 1
+          },
+          "glyphPixels": 119,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D19-browser-unavailable-overlay",
+      "defect": "the Electron-without-a-browser message reused the absolute overlay rule with no frame-wrap to anchor to, so it stretched across the whole viewport and centred its text outside the side pane, where the pane clips it away entirely",
+      "oracle": "offCapture",
+      "beforeFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 1,
+        "unreachable": 0,
+        "worst": null
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "DIV",
+          "cls": "d2-browser-unavailable",
+          "label": "Desktop browser unavailable",
+          "ratio": 8.06,
+          "need": 4.5,
+          "backdrop": {
+            "r": 26,
+            "g": 26,
+            "b": 29,
+            "a": 1
+          },
+          "glyphPixels": 921,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    },
+    {
+      "id": "D20-diff-added-line-light",
+      "defect": "an added diff line put --positive on the --pos-dim tint, which is 4.4:1 in the light theme",
+      "oracle": "contrast",
+      "beforeFix": {
+        "contrast": 2,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "CODE",
+          "cls": "",
+          "label": "+new",
+          "ratio": 4.4,
+          "need": 4.5,
+          "backdrop": {
+            "r": 222,
+            "g": 234,
+            "b": 232,
+            "a": 1
+          },
+          "glyphPixels": 141,
+          "pass": false
+        }
+      },
+      "afterFix": {
+        "contrast": 0,
+        "icon": 0,
+        "unmeasurable": 0,
+        "escaped": 0,
+        "offCapture": 0,
+        "unreachable": 0,
+        "worst": {
+          "tag": "CODE",
+          "cls": "",
+          "label": "-old",
+          "ratio": 4.94,
+          "need": 4.5,
+          "backdrop": {
+            "r": 237,
+            "g": 219,
+            "b": 221,
+            "a": 1
+          },
+          "glyphPixels": 119,
+          "pass": true
+        }
+      },
+      "failsOnPreFixCode": true,
+      "passesOnFixedCode": true,
+      "ok": true
+    }
+  ]
+}

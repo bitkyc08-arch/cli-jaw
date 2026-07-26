@@ -1,0 +1,61 @@
+{
+  "when": "2026-07-26T08:28:48.652Z",
+  "app": "/Applications/cli-jaw.app",
+  "checks": {
+    "root-process-identified": {
+      "ok": true,
+      "pid": 10534,
+      "command": "/Applications/cli-jaw.app/Contents/MacOS/cli-jaw --remote-de"
+    },
+    "electron-process-alive": {
+      "ok": true,
+      "pid": 10534
+    },
+    "manager-came-up": {
+      "ok": true,
+      "pid": 11394,
+      "port": 24578
+    },
+    "manager-pid-stable": {
+      "ok": true,
+      "generations": [
+        11394
+      ],
+      "note": "more than one means a restart loop"
+    },
+    "health-answers-continuously": {
+      "ok": true,
+      "samples": 6
+    },
+    "renderer-loaded-the-dashboard": {
+      "ok": true,
+      "url": "http://127.0.0.1:24578/dashboard2/",
+      "title": "Jaw",
+      "targets": 1,
+      "debugPort": 9340,
+      "note": "read from the isolated window, not from an HTTP fetch"
+    },
+    "renderer-origin-matches-our-manager": {
+      "ok": true,
+      "rendererUrl": "http://127.0.0.1:24578/dashboard2/",
+      "managerPort": 24578
+    }
+  },
+  "launchedPid": 10534,
+  "debugPort": 9340,
+  "teardown": {
+    "signalled": [
+      11425,
+      11394,
+      11387,
+      10541,
+      10540,
+      10534
+    ],
+    "leftovers": [],
+    "strayGroupMembers": [],
+    "groupRemainder": [],
+    "portFreed": true
+  },
+  "failures": []
+}

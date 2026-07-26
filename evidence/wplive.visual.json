@@ -1,0 +1,2972 @@
+{
+  "when": "2026-07-26T08:34:25.867Z",
+  "fixture": "e2e-app-harness",
+  "surfaces": {
+    "sidebar": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 7,
+          "controls": 7
+        },
+        "iconOnly": 4,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-instance-control is-stop is-always-visible",
+            "label": "Stop WP4 fixture",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 22,
+            "height": 22
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 7,
+          "controls": 7
+        },
+        "iconOnly": 4,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-instance-control is-stop is-always-visible",
+            "label": "Stop WP4 fixture",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 22,
+            "height": 22
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 7,
+          "controls": 7
+        },
+        "iconOnly": 4,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-instance-control is-stop is-always-visible",
+            "label": "Stop WP4 fixture",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 22,
+            "height": 22
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 7,
+          "controls": 7
+        },
+        "iconOnly": 4,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-instance-control is-stop is-always-visible",
+            "label": "Stop WP4 fixture",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 22,
+            "height": 22
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "workbench": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 17,
+          "controls": 3
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 17,
+          "controls": 3
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 17,
+          "controls": 3
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 17,
+          "controls": 3
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "composer": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 6
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 6
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 6
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 6
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "settings": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 9,
+          "controls": 3
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 9,
+          "controls": 3
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 9,
+          "controls": 3
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 9,
+          "controls": 3
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "notes": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 3,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "board": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/dragging": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/dragging": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "side-pane": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "",
+            "label": "Files",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 27,
+            "height": 15
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "",
+            "label": "Files",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 27,
+            "height": 15
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "",
+            "label": "Files",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 27,
+            "height": 15
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 4
+        },
+        "iconOnly": 2,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "",
+            "label": "Files",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 27,
+            "height": 15
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "code": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "hover-dock": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 15,
+          "controls": 8
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "dock-section-header",
+            "label": "Flush Agent (codex*)▸",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 318,
+            "height": 19
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 15,
+          "controls": 8
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "dock-section-header",
+            "label": "Flush Agent (codex*)▸",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 318,
+            "height": 19
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 15,
+          "controls": 8
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "dock-section-header",
+            "label": "Flush Agent (codex*)▸",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 318,
+            "height": 19
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 15,
+          "controls": 8
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "dock-section-header",
+            "label": "Flush Agent (codex*)▸",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 318,
+            "height": 19
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "tab-terminal": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/desktop-bridge": {
+        "reached": true,
+        "counts": {
+          "text": 9,
+          "controls": 3
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-terminal-close",
+            "label": "Close zsh 1",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 21,
+            "height": 24
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/desktop-bridge": {
+        "reached": true,
+        "counts": {
+          "text": 9,
+          "controls": 3
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-terminal-close",
+            "label": "Close zsh 1",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 21,
+            "height": 24
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/terminal-exited": {
+        "reached": true,
+        "counts": {
+          "text": 12,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-terminal-close",
+            "label": "Close zsh 1",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 21,
+            "height": 24
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/terminal-exited": {
+        "reached": true,
+        "counts": {
+          "text": 12,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-terminal-close",
+            "label": "Close zsh 1",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 21,
+            "height": 24
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/terminal-create-error": {
+        "reached": true,
+        "counts": {
+          "text": 8,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-terminal-close",
+            "label": "Close Terminal 1",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 21,
+            "height": 24
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/terminal-create-error": {
+        "reached": true,
+        "counts": {
+          "text": 8,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [
+          {
+            "tag": "BUTTON",
+            "cls": "d2-terminal-close",
+            "label": "Close Terminal 1",
+            "ok": true,
+            "reason": "spacing-exception",
+            "width": 21,
+            "height": 24
+          }
+        ],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/terminal-empty": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/terminal-empty": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/terminal-cwd-loading": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/terminal-cwd-loading": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/terminal-cwd-error": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/terminal-cwd-error": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "tab-browser": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 2
+        },
+        "iconOnly": 1,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 2
+        },
+        "iconOnly": 1,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/desktop-bridge": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/desktop-bridge": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/browser-loading": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/browser-loading": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/browser-crashed": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/browser-crashed": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/browser-shared": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/browser-shared": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/browser-bridge-missing": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/browser-bridge-missing": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/browser-idle": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/browser-idle": {
+        "reached": true,
+        "counts": {
+          "text": 2,
+          "controls": 7
+        },
+        "iconOnly": 5,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 2
+        },
+        "iconOnly": 1,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 2
+        },
+        "iconOnly": 1,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "tab-files": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/files-empty": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/files-empty": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/files-error": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/files-error": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/files-unavailable": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/files-unavailable": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/files-open-error": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/files-open-error": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/no-session": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/no-session": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/files-loading": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/files-loading": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 1,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "tab-doc": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/doc-truncated": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/doc-truncated": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/doc-binary": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/doc-binary": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/doc-ready": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/doc-ready": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 1
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "tab-design": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/design-url": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/design-url": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/design-widget-pending": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/design-widget-pending": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 4,
+          "controls": 2
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    },
+    "tab-diff": {
+      "dark": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/panel-states": {
+        "reached": true,
+        "counts": {
+          "text": 3,
+          "controls": 0
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/desktop-bridge": {
+        "reached": true,
+        "counts": {
+          "text": 17,
+          "controls": 5
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/desktop-bridge": {
+        "reached": true,
+        "counts": {
+          "text": 17,
+          "controls": 5
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/diff-empty": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/diff-empty": {
+        "reached": true,
+        "counts": {
+          "text": 6,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/diff-error": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/diff-error": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/diff-resolving": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/diff-resolving": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "dark/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      },
+      "light/disabled": {
+        "reached": true,
+        "counts": {
+          "text": 5,
+          "controls": 4
+        },
+        "iconOnly": 0,
+        "targetFailures": [],
+        "targetExempt": [],
+        "unreachable": [],
+        "unnamed": [],
+        "occluded": [],
+        "contrastFailures": [],
+        "iconFailures": [],
+        "unmeasurable": [],
+        "offCapture": [],
+        "escapedCapture": [],
+        "consoleErrors": []
+      }
+    }
+  },
+  "defects": {
+    "contrast": 0,
+    "icon": 0,
+    "unmeasurable": 0,
+    "escaped": 0,
+    "target": 0,
+    "unreachable": 0,
+    "unnamed": 0,
+    "occluded": 0
+  },
+  "notReached": [],
+  "oracleFailures": [],
+  "branchCoverage": {
+    "total": 28,
+    "integration": 24,
+    "covered": 24,
+    "uncovered": [],
+    "stale": [],
+    "underspecified": []
+  }
+}
