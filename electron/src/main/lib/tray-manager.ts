@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { isCliInstalled, installCli } from './install-cli.js';
 import {
   decideTrayLeftClick, trayBadgeTitle, decideCrashNotification, buildTrayMenuPlan,
+  mapTrayMenuItem,
 } from './tray-decisions.js';
 
 const PREFS_FILENAME = 'tray-preferences.json';
@@ -143,35 +144,22 @@ function rebuildMenu(): void {
     cliInstalled: isCliInstalled(),
     isPackaged: app.isPackaged,
   });
-  const menu = Menu.buildFromTemplate(plan.map((item) => {
-    switch (item.kind) {
-      case 'status': return { label: item.label, enabled: false };
-      case 'separator': return { type: 'separator' as const };
-      case 'checkbox': return {
-        label: item.label, type: 'checkbox' as const, checked: item.checked,
-        click: (mi) => {
-          if (item.pref === 'keepRunning') { prefs.keepRunningInBackground = mi.checked; savePrefs(); }
-          else if (item.pref === 'startAtLogin') { prefs.startAtLogin = mi.checked; savePrefs(); syncLoginItemSetting(); }
-        },
-      };
-      case 'install-cli': return {
-        label: item.label, enabled: item.enabled,
-        click: async () => {
-          const result = await installCli();
-          await dialog.showMessageBox({
-            type: result.ok ? 'info' : 'error',
-            message: result.ok ? 'CLI Installed' : 'Installation Failed',
-            detail: result.message,
-          });
-          if (result.ok) rebuildMenu();
-        },
-      };
-      case 'quit': return { label: item.label, click: cb.onQuit };
-      case 'open-dashboard': return { label: item.label, click: cb.onOpenDashboard };
-      case 'copy-url': return { label: item.label, click: () => clipboard.writeText(cb.getManagerUrl()) };
-      case 'restart-server': return { label: item.label, click: cb.onRestartServer };
-      default: return { label: item.label };
-    }
-  }));
+  const menu = Menu.buildFromTemplate(plan.map((item) => mapTrayMenuItem(item, {
+    onOpenDashboard: cb.onOpenDashboard,
+    onCopyUrl: () => clipboard.writeText(cb.getManagerUrl()),
+    onRestartServer: cb.onRestartServer,
+    onQuit: cb.onQuit,
+    onToggleKeepRunning: (checked) => { prefs.keepRunningInBackground = checked; savePrefs(); },
+    onToggleStartAtLogin: (checked) => { prefs.startAtLogin = checked; savePrefs(); syncLoginItemSetting(); },
+    onInstallCli: async () => {
+      const result = await installCli();
+      await dialog.showMessageBox({
+        type: result.ok ? 'info' : 'error',
+        message: result.ok ? 'CLI Installed' : 'Installation Failed',
+        detail: result.message,
+      });
+      if (result.ok) rebuildMenu();
+    },
+  })));
   currentMenu = menu;
 }

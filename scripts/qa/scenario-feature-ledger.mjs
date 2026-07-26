@@ -1308,9 +1308,15 @@ export const FEATURE_SCENARIOS = [
         why: 'saving the prompt PUTs to /api/prompt',
         ...DOCK,
         dockTab: '설정',
-        levers: { hoverDock: {} },
-        selector: '.hover-dock-body[data-dock-tab="settings"]',
-        requires: '.dock-settings',
+        levers: { hoverDock: { prompt: { content: 'original prompt' } } },
+        actions: [
+            { kind: 'click', selector: '.hover-dock-body[data-dock-tab="settings"] .dock-section-header:has-text("시스템 프롬프트 편집")' },
+            { kind: 'type', selector: '.dock-prompt-editor', text: 'wp7a edited prompt' },
+            { kind: 'click', selector: '.hover-dock-body[data-dock-tab="settings"] .dock-mini-btn:has-text("저장")' },
+        ],
+        expectRequests: [{ method: 'PUT', path: '/i/3506/api/prompt', count: 1, bodyIncludes: { content: 'wp7a edited prompt' } }],
+        selector: '.hover-dock-body[data-dock-tab="settings"] .dock-dim',
+        expected: '저장됨',
     },
     {
         id: 'dock-settings-mcp-install-disabled',
@@ -1327,12 +1333,14 @@ export const FEATURE_SCENARIOS = [
         id: 'dock-settings-channels-health',
         reachability: 'integration',
         axis: 'ready', target: 'Status',
-        why: 'the channels section shows the instance health',
+        why: 'the channels section shows the per-channel health chips',
         ...DOCK,
         dockTab: '설정',
-        levers: { hoverDock: { health: { ok: true, status: 'ok' } } },
-        selector: '.hover-dock-body[data-dock-tab="settings"]',
-        requires: '.dock-settings',
+        // parseChannelHealth requires channels.activeInbound plus per-channel
+        // configured/sendCapable/activeInbound (channel-health.ts:24-27).
+        levers: { hoverDock: { health: { ok: true, channels: { activeInbound: 'telegram', telegram: { configured: true, sendCapable: true, activeInbound: false }, discord: { configured: false, sendCapable: false, activeInbound: false } } } } },
+        selector: '.hover-dock-body[data-dock-tab="settings"] .dock-health-row .dock-chip',
+        expected: 'configured',
     },
     {
         id: 'dock-close-esc',

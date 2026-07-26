@@ -248,6 +248,8 @@ export interface HoverDockFixtureConfig {
     /** Mutations: skills enable/disable, mcp sync/install, employees POST/PUT/DELETE, prompt PUT. */
     mutationStatus?: number;
     holdMutation?: boolean;
+    /** GET /memory-files bare shape { cli, model } for FlushAgentSection. */
+    memoryFiles?: JsonRecord | null;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -665,7 +667,9 @@ class FakeApiRouter {
         if (path.startsWith('/memory-files')) {
             if (method === 'PUT' || method === 'POST') return json({ ok: true });
             if (cfg.mutationStatus && cfg.mutationStatus >= 400) return json({ error: 'memory files unreadable' }, cfg.mutationStatus);
-            return json({ ok: true, data: cfg.mcp ?? { flushCli: '', flushModel: '' } });
+            // FlushAgentSection reads .cli/.model straight off the body
+            // (FlushAgentSection.tsx:26-27); it does not unwrap {ok,data}.
+            return json(cfg.memoryFiles ?? { cli: '', model: '' });
         }
 
         if (path.startsWith('/employees/')) {
