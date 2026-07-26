@@ -857,9 +857,9 @@ export const FEATURE_SCENARIOS = [
     },
 
     // ── settings: theme / locale (saving AND applying) ───────────────────────
-    // Theme save is TWO PATCHes: the shell's saveDashboardSettings, then
-    // setMode -> saveRegistry (SettingsPageShell.tsx:140,150). The data-theme
-    // attribute is the applied mode.
+    // Theme save is THREE PATCHes: the shell writes the whole ui slice, then
+    // setMode and setLocale each write their own field (SettingsPageShell.tsx:
+    // 140,150-151). data-theme is the applied mode, lang the applied locale.
     {
         id: 'settings-theme-save-and-apply',
         reachability: 'integration',
