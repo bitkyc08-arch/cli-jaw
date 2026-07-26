@@ -1,11 +1,11 @@
 {
-  "when": "2026-07-26T20:09:41.034Z",
+  "when": "2026-07-26T20:14:52.552Z",
   "total": 136,
   "integration": 134,
   "shadowed": 2,
   "withActions": 78,
   "withRequestOracle": 47,
-  "proven": 133,
+  "proven": 134,
   "results": [
     {
       "id": "gate-probing",
@@ -789,7 +789,7 @@
       "target": "Guard",
       "branchId": null,
       "ok": true,
-      "saw": "ProfileSet the identity shown across dashboard sessions.Display nameUnsupported: The dashboard regis"
+      "saw": "ProfileSet the identity shown across dashboard sessions.Loading settings…"
     },
     {
       "id": "model-loading",
@@ -1068,9 +1068,8 @@
       "axis": "error",
       "target": "Alert",
       "branchId": null,
-      "ok": false,
-      "why": ".d2-error-block, .d2-inline-state was missing, so this is a different screen",
-      "saw": "jaw1jwcWP4 fixture:3506 · onlineRequest failed (500)RetryJAW"
+      "ok": true,
+      "saw": "Request failed (500)Retry"
     },
     {
       "id": "sidebar-single-session-select",
