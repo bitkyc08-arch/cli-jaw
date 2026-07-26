@@ -1,11 +1,11 @@
 {
-  "when": "2026-07-26T15:52:17.666Z",
-  "total": 118,
-  "integration": 116,
+  "when": "2026-07-26T16:12:08.421Z",
+  "total": 130,
+  "integration": 128,
   "shadowed": 2,
-  "withActions": 70,
-  "withRequestOracle": 43,
-  "proven": 116,
+  "withActions": 74,
+  "withRequestOracle": 46,
+  "proven": 128,
   "results": [
     {
       "id": "gate-probing",
@@ -789,7 +789,7 @@
       "target": "Guard",
       "branchId": null,
       "ok": true,
-      "saw": "ProfileSet the identity shown across dashboard sessions.Loading settings…"
+      "saw": "ProfileSet the identity shown across dashboard sessions.Display nameUnsupported: The dashboard regis"
     },
     {
       "id": "model-loading",
@@ -934,6 +934,102 @@
       "branchId": null,
       "ok": true,
       "saw": "시스템 프롬프트 편집▸Active ChannelTGDCTelegram 활성화봇 토큰허용 채팅 ID (쉼표 구분)저장자동 전송Mention OnlyFallbackCLI별 모델전체 저"
+    },
+    {
+      "id": "dock-agents-loading",
+      "axis": "loading",
+      "target": "StatePanel",
+      "branchId": null,
+      "ok": true,
+      "saw": "로딩 중..."
+    },
+    {
+      "id": "dock-agents-cli-registry-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": "AgentsTab",
+      "ok": true,
+      "saw": "CLI registry 로드 실패: GET /api/cli-registry → 500: {\"error\":\"cli registry unreadable\"}"
+    },
+    {
+      "id": "dock-agents-save-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "저장 실패: PUT /api/settings → 500: {\"error\":\"instance settings save rejected\"}"
+    },
+    {
+      "id": "dock-agents-employees-empty",
+      "axis": "empty",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "활성 CLIcodex모델defaultgpt-5.5직접 입력…추론 강도— nonelowmediumhigh권한Auto작업 디렉토리Flush Agent (codex*)▸직원+ 추가직원을"
+    },
+    {
+      "id": "dock-agents-employees-delete-error",
+      "axis": "error",
+      "target": "Alert",
+      "branchId": null,
+      "ok": true,
+      "saw": "활성 CLIcodex모델defaultgpt-5.5직접 입력…추론 강도— nonelowmediumhigh권한Auto작업 디렉토리Flush Agent (codex*)▸직원+ 추가×CL"
+    },
+    {
+      "id": "dock-agents-flush-collapsed",
+      "axis": "ready",
+      "target": "Section",
+      "branchId": null,
+      "ok": true,
+      "saw": "Flush Agent (codex*)▸"
+    },
+    {
+      "id": "dock-skills-ready",
+      "axis": "ready",
+      "target": "List",
+      "branchId": null,
+      "ok": true,
+      "saw": "reviewreview code"
+    },
+    {
+      "id": "dock-skills-enable",
+      "axis": "action",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "전체설치됨생산성커뮤개발AI유틸홈기타활성 0/1planplan work"
+    },
+    {
+      "id": "dock-settings-prompt-save",
+      "axis": "action",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "시스템 프롬프트 편집▸Active ChannelTGDCTelegram 활성화봇 토큰허용 채팅 ID (쉼표 구분)저장자동 전송Mention OnlyFallbackCLI별 모델전체 저"
+    },
+    {
+      "id": "dock-settings-mcp-install-disabled",
+      "axis": "prerequisite",
+      "target": "Control",
+      "branchId": null,
+      "ok": true,
+      "saw": "Install bundle (0)"
+    },
+    {
+      "id": "dock-settings-channels-health",
+      "axis": "ready",
+      "target": "Status",
+      "branchId": null,
+      "ok": true,
+      "saw": "시스템 프롬프트 편집▸Active ChannelTGDCTelegram 활성화봇 토큰허용 채팅 ID (쉼표 구분)저장자동 전송Mention OnlyFallbackCLI별 모델전체 저"
+    },
+    {
+      "id": "dock-close-esc",
+      "axis": "action",
+      "target": "Panel",
+      "branchId": null,
+      "ok": true,
+      "saw": "Skip to main contentcli-jaw dashboardjaw1jwcWP4 fixture:3506 · onlineJAWWP4 fixtureLoading settings."
     }
   ]
 }
