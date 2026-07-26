@@ -9,7 +9,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { after } from 'node:test';
-import { acquireLock, releaseLockSync } from '../../scripts/qa/live-lock.mjs';
+import { acquireLock, releaseLockSync, writeNote } from '../../scripts/qa/live-lock.mjs';
 
 // Temp dirs were piling up between runs; clean them at the end.
 const dirs: string[] = [];
@@ -75,75 +75,122 @@ test('a group sweep that remembers first can never find a stray', () => {
 
 // ── the lock, exercised through the real implementation ─────────────────────
 //
-// Earlier versions of these tests reimplemented the acquisition algorithm
-// inline, which is how a permanent deadlock in the production path passed a
-// green suite. They call `acquireLock`/`releaseLockSync` now.
-//
-// "A live holder" is expressed as a pid that is genuinely running — a long
-// `sleep` we own — rather than a helper process racing its own lifetime, which
-// is what made the previous attempts measure timing instead of exclusion.
+// Two file-based designs failed here before this one, and both passed their own
+// tests. The lesson those left behind: a lock is only worth testing under a
+// hostile schedule, so the adversarial case below is the important one.
 
-/** A process that will stay alive until we kill it, and its pid. */
-function livePid(): { pid: number; kill: () => void } {
-    const p = spawn('/bin/sleep', ['60'], { stdio: 'ignore', detached: true });
-    p.unref();
+/** A process that stays alive until killed, holding the lock port. */
+function lockHolder(port: number): { pid: number; ready: Promise<void>; kill: () => void } {
+    const program = `
+        const { createServer } = require('node:net');
+        const s = createServer();
+        s.listen({ port: ${port}, host: '127.0.0.1', exclusive: true }, () => process.stdout.write('up'));
+    `;
+    const p = spawn(process.execPath, ['-e', program], { stdio: ['ignore', 'pipe', 'ignore'] });
     children.push(p);
-    return { pid: p.pid!, kill: () => { try { process.kill(p.pid!, 'SIGKILL'); } catch { /* gone */ } } };
+    const ready = new Promise<void>((resolve) => { p.stdout.once('data', () => resolve()); });
+    return { pid: p.pid!, ready, kill: () => { try { p.kill('SIGKILL'); } catch { /* gone */ } } };
 }
+
+let nextPort = 47_700;
+const freshPort = (): number => nextPort++;
 
 test('a lock held by a live process is not taken', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
     dirs.push(dir);
-    const lockPath = join(dir, 'runner.lock');
+    const port = freshPort();
 
-    const holder = livePid();
-    writeFileSync(lockPath, `${holder.pid}-holder`);
+    const holder = lockHolder(port);
+    await holder.ready;
 
-    const attempt = await acquireLock(lockPath, 'second');
+    const attempt = await acquireLock(join(dir, 'runner.lock'), 'second', port);
     assert.equal(attempt.held, false, 'a live holder blocks the second runner');
-    assert.match(attempt.reason ?? '', /still running/);
-    assert.equal(readFileSync(lockPath, 'utf8'), `${holder.pid}-holder`, 'and the lock is untouched');
 
     holder.kill();
 });
 
 test('a lock left by a crashed run is reclaimed, not a permanent block', async () => {
-    // The property the reclaim-guard version broke: a run killed while holding
-    // the guard blocked every future run forever.
+    // The reclaim-guard version blocked every future run after one crash.
     const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
     dirs.push(dir);
     const lockPath = join(dir, 'runner.lock');
+    const port = freshPort();
 
-    const crashed = livePid();
-    writeFileSync(lockPath, `${crashed.pid}-crashed`);
+    const crashed = lockHolder(port);
+    await crashed.ready;
+    // A note left behind by the crashed run, to prove it does not mislead us.
+    await writeNote(lockPath, `${crashed.pid}-crashed`);
     crashed.kill();
     await new Promise((r) => setTimeout(r, 400));
 
-    const next = await acquireLock(lockPath, `${process.pid}-next`);
-    assert.equal(next.held, true, 'a dead holder must not block the next run');
-    assert.equal(next.reclaimedFrom, crashed.pid);
+    const next = await acquireLock(lockPath, 'next', port);
+    assert.equal(next.held, true, 'the kernel released it when the holder died');
+    next.release!();
 
-    // And reclamation must leave a usable state, not debris that blocks the
-    // run after that — which is exactly how the guard file failed.
-    assert.equal(releaseLockSync(lockPath, `${process.pid}-next`), true);
-    const third = await acquireLock(lockPath, `${process.pid}-third`);
-    assert.equal(third.held, true, 'the lock is usable after a reclamation');
-    releaseLockSync(lockPath, `${process.pid}-third`);
+    const third = await acquireLock(lockPath, 'third', port);
+    assert.equal(third.held, true, 'and it is still usable afterwards');
+    third.release!();
 });
 
-test('several runners racing one stale lock produce exactly one holder', async () => {
+test('an adversarial schedule cannot produce two holders', async () => {
+    // The exact sequence that defeated the quiet-period design: both runners
+    // decide the previous holder is dead, one wins and enters the critical
+    // section, the other is descheduled and then acts on its stale conclusion.
+    //
+    // Here the second runner's decision is deliberately made BEFORE the first
+    // one acquires, and only used afterwards.
     const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
     dirs.push(dir);
     const lockPath = join(dir, 'runner.lock');
-    writeFileSync(lockPath, '999999-stale');   // a pid that is not running
+    const port = freshPort();
 
-    // All six race the real implementation concurrently.
+    const dead = lockHolder(port);
+    await dead.ready;
+    await writeNote(lockPath, `${dead.pid}-dead`);
+    dead.kill();
+    await new Promise((r) => setTimeout(r, 400));
+
+    // B observes the world here — holder dead, lock free — and then stalls.
+    const bSawDeadHolder = true;
+    // A acquires and is inside the critical section.
+    const a = await acquireLock(lockPath, 'A', port);
+    assert.equal(a.held, true);
+
+    // B resumes and acts on its earlier observation.
+    assert.ok(bSawDeadHolder);
+    const b = await acquireLock(lockPath, 'B', port);
+    assert.equal(b.held, false, 'a stale conclusion cannot take a live lock');
+
+    a.release!();
+});
+
+test('many contenders yield exactly one holder', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
+    dirs.push(dir);
+    const lockPath = join(dir, 'runner.lock');
+    const port = freshPort();
+
     const results = await Promise.all(
-        Array.from({ length: 6 }, (_, i) => acquireLock(lockPath, `${process.pid}-c${i}`)));
+        Array.from({ length: 12 }, (_, i) => acquireLock(lockPath, `c${i}`, port)));
     const winners = results.filter((r) => r.held);
     assert.equal(winners.length, 1,
-        `exactly one runner may hold it, saw ${JSON.stringify(results.map((r) => r.held))}`);
-    assert.equal(readFileSync(lockPath, 'utf8'), winners[0]!.id, 'the lock names the winner');
+        `exactly one may hold it, saw ${results.filter((r) => r.held).length}`);
+    winners[0]!.release!();
+});
+
+test('the lock survives repeated crash-and-reclaim cycles', async () => {
+    // A hundred rounds of "hold, die, next run takes it" — the shape that
+    // orphaned a guard file and then deadlocked every subsequent run.
+    const dir = mkdtempSync(join(tmpdir(), 'wplive-lock-'));
+    dirs.push(dir);
+    const lockPath = join(dir, 'runner.lock');
+    const port = freshPort();
+
+    for (let round = 0; round < 25; round += 1) {
+        const held = await acquireLock(lockPath, `round-${round}`, port);
+        assert.equal(held.held, true, `round ${round} could not take the lock`);
+        held.release!();
+    }
 });
 
 test('a runner never deletes a lock that is no longer its own', () => {

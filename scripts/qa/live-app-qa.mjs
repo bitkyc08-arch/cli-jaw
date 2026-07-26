@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { chromium } from 'playwright';
 import { cleanupDecision, recoveryDecision, stopConfirmed } from './live-ownership.mjs';
-import { acquireLock, releaseLockSync } from './live-lock.mjs';
+import { acquireLock } from './live-lock.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -169,12 +169,11 @@ if (!lock.held) {
     console.error(`[wplive] another run holds ${LOCK}: ${lock.reason}`);
     process.exit(1);
 }
-if (lock.reclaimedFrom) {
-    console.error(`[wplive] reclaimed a stale lock from pid ${lock.reclaimedFrom}`);
-}
-// Release only if it is still ours: a run that reclaimed our stale lock owns it
-// now, and deleting theirs would put two runs back in play.
-process.on('exit', () => { releaseLockSync(LOCK, RUN_ID); });
+// Exclusion is a bound loopback port, which the kernel releases on process
+// death however that death happens — so there is no stale lock to detect and
+// nothing left behind to orphan. The file beside it is only a note naming the
+// holder.
+process.on('exit', () => { lock.release(); });
 
 // Adopt anything a previous run started and could not stop. This has to happen
 // after alignment (so we know we are talking to the right manager) and before

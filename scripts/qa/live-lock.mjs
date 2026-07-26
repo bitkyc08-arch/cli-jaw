@@ -1,37 +1,40 @@
-// wplive — one runner at a time, without inventing a new way to deadlock.
+// wplive — one runner at a time, enforced by the OS rather than by timing.
 //
 // Two runs must not overlap: they share a journal, and the second would
-// overwrite the first's record of which instance it started. But a lock that a
-// crashed run leaves behind must not block every future run either — this whole
-// tool exists to recover from crashes.
+// overwrite the first's record of which instance it started. But a lock a
+// crashed run leaves behind must not block every future run either — this tool
+// exists to recover from crashes.
 //
-// The first attempt at reconciling those used a second "reclaim guard" file to
-// serialise reclamation. That moved the deadlock one step sideways: a run
-// killed right after creating the guard left the guard behind, and every
-// subsequent run stood down forever. A lock protocol whose failure mode is a
-// permanent block is not a lock protocol.
+// Two file-based attempts failed, both instructively:
 //
-// There is no need for a guard. The lock already contains the holder's pid, so
-// ownership is checkable at any moment:
+//   A "reclaim guard" file serialised who was allowed to replace a stale lock.
+//   A run killed while holding the guard left it behind and blocked every
+//   subsequent run forever — the same failure it was meant to prevent, one step
+//   sideways.
 //
-//   1. Try to create the lock exclusively. Winning is unambiguous.
-//   2. If it exists, read it. A live holder means stand down — no timeout, no
-//      guessing, just ask the OS whether that pid is running.
-//   3. If the holder is dead, write our claim to a uniquely named file and
-//      `rename` it over the lock. Rename is atomic: several runners may do this
-//      concurrently and the last one wins, with no instant where the lock is
-//      missing.
-//   4. Read the lock back. Exactly one runner sees its own id there; everyone
-//      else lost and stands down.
+//   Then: atomic rename plus a quiet period, waiting for two identical reads
+//   before declaring victory. That is not mutual exclusion, it is a guess about
+//   scheduling. Two runners can both read a stale lock, both conclude the
+//   holder is dead, and the second can be descheduled for longer than the
+//   quiet period — then rename over a live lock and also declare victory.
 //
-// Step 4 is what makes step 3 safe without a guard, and it cannot leave debris,
-// because the only file that outlives the attempt is the lock itself.
-import { readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { unlinkSync, readFileSync } from 'node:fs';
+// Both failures come from the same place: a lock built out of file contents
+// needs someone to notice the holder died, and every "notice" is a race. So use
+// a primitive the kernel releases on process death. Binding a loopback TCP port
+// is exactly that — exclusive by definition, and gone the instant the process
+// exits, however it exits. No staleness to detect, no reclamation to serialise,
+// nothing left behind to orphan.
+//
+// The lock file remains, but only as a human-readable note about who holds it.
+// It is never the thing that grants exclusion.
+import { createServer } from 'node:net';
+import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFileSync, unlinkSync } from 'node:fs';
 
-const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+/** Loopback port that stands for "a wplive runner is active". */
+export const LOCK_PORT = 47_589;
 
-/** The pid embedded in a lock's contents, or null if there is not one. */
+/** The pid embedded in a lock note's contents, or null if there is not one. */
 export function holderPid(contents) {
     const pid = Number(String(contents ?? '').trim().split('-')[0]);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
@@ -40,58 +43,52 @@ export function holderPid(contents) {
 /**
  * Take the lock, or explain why not.
  *
- * @returns { held: true, id } | { held: false, reason, holder }
+ * @returns { held: true, id, release } | { held: false, reason, holder }
  */
-export async function acquireLock(path, id, alive = isAlive) {
-    try {
-        await writeFile(path, id, { flag: 'wx' });
-        return { held: true, id };
-    } catch { /* someone has it; find out whether they are alive */ }
+export async function acquireLock(path, id, port = LOCK_PORT) {
+    const server = createServer();
+    const bound = await new Promise((resolve) => {
+        server.once('error', () => resolve(false));
+        server.once('listening', () => resolve(true));
+        // Exclusive by default: no SO_REUSEADDR, no reuse of a live binding.
+        server.listen({ port, host: '127.0.0.1', exclusive: true });
+    });
 
-    let contents = '';
-    try { contents = await readFile(path, 'utf8'); }
-    catch { /* vanished between the two calls: fall through and try again */ }
-
-    const pid = holderPid(contents);
-    if (pid !== null && alive(pid)) {
-        return { held: false, reason: `pid ${pid} is still running`, holder: pid };
+    if (!bound) {
+        // Someone holds it. The note says who, if they wrote one; it is only a
+        // courtesy, and its absence changes nothing.
+        let contents = '';
+        try { contents = await readFile(path, 'utf8'); } catch { /* no note */ }
+        const pid = holderPid(contents);
+        return {
+            held: false,
+            reason: pid ? `pid ${pid} is still running` : `port ${port} is already bound`,
+            holder: pid,
+        };
     }
 
-    // Stale. Claim it by atomic rename, then confirm we are the one who won.
-    const staging = `${path}.${id}`;
-    try {
-        await writeFile(staging, id);
-        await rename(staging, path);
-    } catch (error) {
-        await rm(staging, { force: true }).catch(() => {});
-        return { held: false, reason: `could not claim: ${String(error.message).slice(0, 60)}`, holder: pid };
-    }
+    // We hold it for as long as this process lives. The kernel takes it back on
+    // exit — crash, SIGKILL, anything — so there is no stale state to recover.
+    server.unref();
+    await writeFile(path, id).catch(() => { /* the note is optional */ });
 
-    // Reading back once is not enough. Several runners can rename over the same
-    // stale lock in quick succession, and each may read its own id back before
-    // the next rename lands — so three of six can all conclude they won.
-    //
-    // Wait for the renames to stop arriving, then read once more. Whoever's id
-    // is there when the file stops changing is the single holder; everyone else
-    // sees somebody else's and stands down.
-    let after = '';
-    let previous = null;
-    for (let settle = 0; settle < 5; settle += 1) {
-        await new Promise((r) => setTimeout(r, 40));
-        try { after = (await readFile(path, 'utf8')).trim(); } catch { after = ''; }
-        if (after === previous) break;   // two identical reads: the dust settled
-        previous = after;
-    }
-    return after === id
-        ? { held: true, id, reclaimedFrom: pid }
-        : { held: false, reason: 'another runner claimed it at the same moment', holder: holderPid(after) };
+    return {
+        held: true,
+        id,
+        release: () => {
+            try { server.close(); } catch { /* already closing */ }
+            try {
+                if (readFileSync(path, 'utf8').trim() === id) unlinkSync(path);
+            } catch { /* someone else's note, or none */ }
+        },
+    };
 }
 
 /**
- * Release the lock, but only if it is still ours.
+ * Remove our note, if it is still ours.
  *
- * Deleting unconditionally is how one run removes another's lock after a
- * reclamation, which is exactly the overlap this is meant to prevent.
+ * Exclusion is the port, not this file, so failing here is harmless. It exists
+ * so a stale note does not mislead the next person reading the directory.
  */
 export function releaseLockSync(path, id) {
     try {
@@ -99,4 +96,14 @@ export function releaseLockSync(path, id) {
         unlinkSync(path);
         return true;
     } catch { return false; }
+}
+
+/** Drop a note without holding the lock — used only by tests. */
+export async function writeNote(path, contents) {
+    await writeFile(path, contents);
+}
+
+/** Remove a note. */
+export async function clearNote(path) {
+    await rm(path, { force: true }).catch(() => {});
 }

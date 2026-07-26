@@ -219,20 +219,22 @@ test('a lock held by a live process blocks, a stale one does not', () => {
     assert.equal(lockVerdict('', () => true).verdict, 'stale');
 });
 
-test('the runner uses the lock module rather than its own file juggling', () => {
-    // The lock protocol lives in live-lock.mjs and is exercised for real in
-    // qa-live-runner-processes.test.ts. What matters here is that the runner
-    // actually goes through it — an earlier version hand-rolled acquisition
-    // inline, including a `require` that throws in an ES module and a reclaim
-    // guard whose orphan blocked every subsequent run.
-    assert.match(LIVE, /import \{ acquireLock, releaseLockSync \} from '\.\/live-lock\.mjs'/);
+test('the runner takes exclusion from the OS, not from file timing', () => {
+    // Two file-based designs failed here: a reclaim guard whose orphan blocked
+    // every future run, and an atomic rename plus a quiet period, which is a
+    // guess about scheduling rather than mutual exclusion. Exclusion is now a
+    // bound loopback port, which the kernel releases on process death.
+    // Behaviour is covered in qa-live-runner-processes.test.ts, including the
+    // adversarial schedule that defeated the quiet period.
+    assert.match(LIVE, /import \{ acquireLock \} from '\.\/live-lock\.mjs'/);
     assert.match(LIVE, /const lock = await acquireLock\(LOCK, RUN_ID\)/);
-    assert.match(LIVE, /releaseLockSync\(LOCK, RUN_ID\)/,
-        'release must be conditional on still owning it');
+    assert.match(LIVE, /lock\.release\(\)/, 'the port must be handed back on exit');
     assert.doesNotMatch(LIVE, /require\('node:fs'\)/, 'require does not exist in an .mjs module');
-    // The guard was a real file at `${LOCK}.reclaim`; only the explanatory
-    // comment survives, so match the file expression rather than the word.
     assert.doesNotMatch(LIVE, /`\$\{LOCK\}\.reclaim`/, 'the orphan-prone guard file is gone');
+
+    const LOCKMOD = readFileSync(join(ROOT, 'scripts/qa/live-lock.mjs'), 'utf8');
+    assert.match(LOCKMOD, /exclusive: true/, 'the port binding must be exclusive');
+    assert.doesNotMatch(LOCKMOD, /settle/, 'no quiet-period heuristic may remain');
 });
 
 // ── the boot check's ownership rules ─────────────────────────────────────────
