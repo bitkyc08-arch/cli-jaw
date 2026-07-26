@@ -9,7 +9,8 @@
  *
  * The key is `scopeKey/turnId/segmentId/slot.id`, so the SAME elicitation
  * remounting after virtualization hydrates its completion instead of
- * restarting.
+ * restarting. scopeKey is in the key, so two ChatViews cannot collide; the
+ * map is bounded by eviction, not by ChatView unmount (a completion is small).
  */
 import type { ElicitationAnswer } from '../turn-stream/render/fences/ElicitationFence.tsx';
 
@@ -17,6 +18,8 @@ export interface ElicitationCompletion {
     answers: ElicitationAnswer[];
 }
 
+// Bounded so a long session does not grow the registry without limit.
+const REGISTRY_CAP = 500;
 const registry = new Map<string, ElicitationCompletion>();
 
 export function elicitationKey(identity: {
@@ -33,6 +36,10 @@ export function getElicitationCompletion(key: string): ElicitationCompletion | n
 }
 
 export function setElicitationCompletion(key: string, completion: ElicitationCompletion): void {
+    if (registry.size >= REGISTRY_CAP && !registry.has(key)) {
+        const oldest = registry.keys().next().value;
+        if (oldest !== undefined) registry.delete(oldest);
+    }
     registry.set(key, completion);
 }
 

@@ -164,8 +164,11 @@ export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
         } else if (row.type === 'assistant_text') {
             if (lastTextKey && row.turnSeq === lastTextKey.turnSeq) {
                 // committed assistant text renders through the full markdown +
-                // sanitize pipeline (streaming preview is the live tail's mode)
-                items.push(<MarkdownSegment key={key} text={body?.text ?? ''} />);
+                // sanitize pipeline (streaming preview is the live tail's mode).
+                // The identity is what lets a structured fence (an elicitation)
+                // key its completion in the ChatView registry (CF-2).
+                items.push(<MarkdownSegment key={key} text={body?.text ?? ''}
+                    identity={{ scopeKey: store.getScopeKey(), turnId: row.turnId, segmentId: row.segmentId }} />);
             }
         }
     }
