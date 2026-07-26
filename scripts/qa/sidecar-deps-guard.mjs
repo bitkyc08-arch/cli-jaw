@@ -55,16 +55,29 @@ function pruneList() {
 // Scan BOTH the source dist (what the build produces) and the packaged
 // sidecar dist (what the app actually runs). They can drift — the sidecar is
 // only refreshed by a rebundle — so guarding only one proves the wrong tree.
+const SIDECAR = join(ROOT, 'electron/sidecar/server');
 const distImports = scanImports(join(ROOT, 'dist/src'), new Set());
 const binImports = scanImports(join(ROOT, 'dist/bin'), new Set());
-const sidecarSrc = scanImports(join(ROOT, 'electron/sidecar/server/dist/src'), new Set());
-const sidecarBin = scanImports(join(ROOT, 'electron/sidecar/server/bin'), new Set());
+// The packaged runtime is what the app ACTUALLY runs, and it can drift from
+// the source dist. Guard both. A missing sidecar is not a pass: it means the
+// packaged tree is unbuilt, which must not read as "no overlap".
+const sidecarPresent = existsSync(join(SIDECAR, 'dist'));
+const sidecarSrc = scanImports(join(SIDECAR, 'dist/src'), new Set());
+const sidecarBin = scanImports(join(SIDECAR, 'dist/bin'), new Set());
 const allImports = new Set([...distImports, ...binImports, ...sidecarSrc, ...sidecarBin]);
 const pruned = pruneList();
+if (!sidecarPresent) {
+    console.warn('[sidecar-deps-guard] WARN: electron/sidecar/server/dist is absent (stale/unbuilt); guarding source dist only. Run bundle-sidecar.sh to prove the packaged tree.');
+}
 
-const overlap = [...allImports].filter((name) => pruned.has(name));
+// Wholesale scope removals (@babel, @vue, @types) match by prefix, not just
+// exact name: a scoped runtime import like @babel/parser must overlap the
+// @babel prune entry.
+const prunedScopes = [...pruned].filter((name) => name.startsWith('@') && !name.includes('/'));
+const overlap = [...allImports].filter((name) =>
+    pruned.has(name) || prunedScopes.some((scope) => name === scope || name.startsWith(`${scope}/`)));
 
-console.log(`[sidecar-deps-guard] dist/src: ${distImports.size}, dist/bin: ${binImports.size}, sidecar/src: ${sidecarSrc.size}, sidecar/bin: ${sidecarBin.size}`);
+console.log(`[sidecar-deps-guard] dist/src: ${distImports.size}, dist/bin: ${binImports.size}, sidecar/src: ${sidecarSrc.size}, sidecar/bin: ${sidecarBin.size}${sidecarPresent ? '' : ' (source-only)'}`);
 console.log(`[sidecar-deps-guard] prune list: ${pruned.size} packages`);
 
 if (overlap.length) {

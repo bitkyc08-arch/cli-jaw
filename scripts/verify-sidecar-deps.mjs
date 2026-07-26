@@ -26,8 +26,8 @@
 // that survived and reports only gaps inside that closure.
 //
 // Usage: node scripts/verify-sidecar-deps.mjs <sidecar dir>
-import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { createRequire, isBuiltin } from 'node:module';
+import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const dir = resolve(process.argv[2] ?? '.');
@@ -44,6 +44,43 @@ const missing = [];
 const seen = new Set();
 
 /**
+ * Hermetic resolution: a package counts as present ONLY if it resolves under
+ * the sidecar itself. createRequire walks up to a parent node_modules, which
+ * is how a pruned package (mermaid) reads as present and its own pruned
+ * dependencies read as missing — a false alarm that hides the real signal.
+ */
+function resolvesInside(name, fromRequire) {
+    try {
+        // Trust the resolver first: it handles npm's nesting (picomatch lives
+        // inside micromatch, not at the top level) and only accepts a path
+        // under the sidecar.
+        const resolved = fromRequire.resolve(name);
+        return resolved.startsWith(dir);
+    } catch {
+        // require.resolve throws for ESM-only packages (dunder-proto has no
+        // CJS exports main). Presence under the sidecar is the fallback: top
+        // level, or nested anywhere in the tree.
+        if (existsSync(join(dir, 'node_modules', name, 'package.json'))) return true;
+        return findNested(join(dir, 'node_modules'), name, 0);
+    }
+}
+
+/** npm nests a dependency inside its parent on version conflict. */
+function findNested(nodeModules, name, depth) {
+    if (depth > 4 || !existsSync(nodeModules)) return false;
+    for (const entry of readdirSyncSafe(nodeModules)) {
+        if (entry === name && existsSync(join(nodeModules, entry, 'package.json'))) return true;
+        const sub = join(nodeModules, entry, 'node_modules');
+        if (findNested(sub, name, depth + 1)) return true;
+    }
+    return false;
+}
+
+function readdirSyncSafe(dir) {
+    try { return readdirSync(dir); } catch { return []; }
+}
+
+/**
  * Resolve a package and recurse into its own dependencies.
  *
  * `pruned` marks a package the bundle deliberately removed. Its absence is
@@ -54,6 +91,9 @@ function walk(name, chain, prunedRoots) {
     const key = `${chain[chain.length - 1] ?? ''}|${name}`;
     if (seen.has(key)) return;
     seen.add(key);
+    // Node builtins (buffer, string_decoder) appear in dependency lists but
+    // are not npm packages to bundle.
+    if (isBuiltin(name)) return;
     let meta;
     // Resolve FROM THE PARENT, not from the sidecar root. npm may nest a
     // dependency inside its parent when versions conflict, and picomatch is
@@ -68,11 +108,19 @@ function walk(name, chain, prunedRoots) {
         : require;
     try {
         meta = from(`${name}/package.json`);
+        // package.json resolved, but it may have come from a parent
+        // node_modules outside the sidecar. Confirm it is really bundled.
+        if (!resolvesInside(name, from)) {
+            if (prunedRoots.has(name)) return;
+            if (name.startsWith('@types/')) return;
+            missing.push({ name, chain: [...chain, name].join(' -> ') });
+            return;
+        }
     } catch {
         // Some packages hide package.json behind `exports`. Resolving the
         // package itself still proves it is present.
         try {
-            from.resolve(name);
+            if (!resolvesInside(name, from)) throw new Error('outside sidecar');
             return;
         } catch {
             // A top-level package the prune list removed on purpose.
@@ -92,11 +140,11 @@ function walk(name, chain, prunedRoots) {
 // Anything declared but absent at the top level was pruned deliberately. The
 // question is what the SURVIVING packages still need.
 const declared = Object.keys(root.dependencies ?? {});
+// Hermetic: a package is pruned if it does NOT resolve under the sidecar.
+// The old logic used bare require.resolve, which finds pruned packages in a
+// parent node_modules and reports them as present — defeating the whole check.
 const prunedRoots = new Set(declared.filter((name) => {
-    try { require.resolve(`${name}/package.json`); return false; }
-    catch {
-        try { require.resolve(name); return false; } catch { return true; }
-    }
+    return !resolvesInside(name, require);
 }));
 
 for (const dep of declared) walk(dep, ['(root)'], prunedRoots);

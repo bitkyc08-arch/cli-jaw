@@ -27,13 +27,27 @@ if (!existsSync(join(SIDECAR, 'dist/src/telegram/bot.js'))) {
 // Proof 1: telegram import resolution, hermetic. cwd is the sidecar so
 // node_modules resolution starts there, and NODE_PATH is cleared so it cannot
 // escape to the repo parent.
+// Hermetic: the telegram import must resolve node-fetch from the SIDECAR's
+// own node_modules, not the repo parent. cwd + cleared NODE_PATH is not
+// enough — Node still walks up to the repo root. So we assert the RESOLVED
+// path of node-fetch stays under the sidecar.
 const tg = spawnSync(
     NODE,
     ['--input-type=module', '-e',
-     `import('file://${join(SIDECAR, 'dist/src/telegram/bot.js')}').then(
-        () => { console.log('tg-ok'); },
-        (e) => { console.error('tg-fail: ' + e.message.split('\\n')[0]); process.exit(1); }
-      );`],
+     `import { createRequire } from 'node:module';
+      const req = createRequire('file://${join(SIDECAR, 'dist/src/telegram/bot.js')}');
+      const sidecarRoot = '${SIDECAR}';
+      try {
+        const resolved = req.resolve('node-fetch');
+        if (!resolved.startsWith(sidecarRoot)) {
+          console.error('tg-fail: node-fetch resolves OUTSIDE the sidecar at ' + resolved);
+          process.exit(1);
+        }
+        console.log('tg-ok: node-fetch resolves inside the sidecar');
+      } catch (e) {
+        console.error('tg-fail: node-fetch does not resolve: ' + e.message.split('\\n')[0]);
+        process.exit(1);
+      }`],
     { cwd: SIDECAR, env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 30000 },
 );
 process.stdout.write(tg.stdout ?? '');
@@ -47,7 +61,9 @@ console.log('[sidecar-boot-proof] telegram path resolves hermetically');
 // Proof 2: bin/jaw serve boots and answers health.
 const home = mkdtempSync(join(tmpdir(), 'jaw-sidecar-home-'));
 const port = 34500 + Math.floor(Math.random() * 500);
-const server = spawn(NODE, [join(SIDECAR, 'bin/jaw'), '--home', home, 'serve', '--port', String(port), '--no-open'], {
+// The shim is a SHELL script (bundle-sidecar.sh:180) that execs
+// `node dist/bin/cli-jaw.js`. Run it directly, not as JS to node.
+const server = spawn(join(SIDECAR, 'bin/jaw'), ['--home', home, 'serve', '--port', String(port), '--no-open'], {
     cwd: SIDECAR,
     env: { PATH: process.env.PATH, HOME: home },
     stdio: ['ignore', 'pipe', 'pipe'],
