@@ -17,6 +17,8 @@
 import { buildTabStateLedger } from './tab-state-ledger.mjs';
 import { scenarioLedgerStatus } from './scenario-ledger.mjs';
 import { featureScenarioStatus } from './scenario-feature-ledger.mjs';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 // wp5b — the code tab's branches are measured by the SCENARIO ledger, not by a
 // {surface, state} fixture pair, because the screen each renders depends on
@@ -315,6 +317,45 @@ export function branchCoverageStatus() {
         const scenario = featureScenarioById.get(entry.delegate);
         if (!scenario || scenario.branchId !== branchId) {
             delegatedBroken.push(`${branchId} -> ${entry.delegate}`);
+        }
+    }
+    // wp5c C-gate round 5: a SWAPPED claim passes every check above because
+    // the delegation is generated from the scenarios' own claims. Validate
+    // each claim against the manifest's own copy and axis instead — a loading
+    // branch delegated to a scenario that proves the error text, or vice
+    // versa, mismatches on the words the manifest says that branch renders.
+    const manifestById = new Map(
+        JSON.parse(readFileSync(join(resolve(import.meta.dirname, '..', '..'), 'tests/fixtures/wp12-state-manifest.json'), 'utf8'))
+            .branches.map(b => [b.id, b]),
+    );
+    // Manifest axis corrections, where the enumerator's guard-derived axis
+    // disagrees with the DOM the branch actually renders. The scenario ledger
+    // owns axis authority (wp5b policy), so these are the audited corrections,
+    // each cited.
+    const AXIS_CORRECTIONS = {
+        // EmployeesPanel.tsx:88 renders warnings as `.d2-employees-warning`
+        // with role="status", a degraded note, not an error alert. The
+        // enumerator read the sibling `status === 'error'` guard.
+        'EmployeesPanel-state-1kgnjht': 'degraded',
+    };
+    for (const [branchId, entry] of Object.entries(FEATURE_BRANCH_COVERAGE)) {
+        const scenario = featureScenarioById.get(entry.delegate);
+        const branch = manifestById.get(branchId);
+        if (!scenario || !branch) continue;
+        const branchText = (branch.text ?? '').trim();
+        // Only check copy the manifest actually states; an empty manifest text
+        // cannot disprove a claim.
+        if (branchText && scenario.expected && !scenario.expected.includes(branchText) && !branchText.includes(scenario.expected)) {
+            delegatedBroken.push(`${branchId}: scenario ${entry.delegate} proves "${scenario.expected}" but the branch renders "${branchText}"`);
+        }
+        // Axis agreement: a loading branch must not be proven by an error
+        // scenario. scenario.axis is the scenario ledger's own verdict.
+        const branchAxis = AXIS_CORRECTIONS[branchId] ?? branch.axis;
+        if (branchAxis && scenario.axis && branchAxis !== scenario.axis
+            // 'empty' branches are often proven by a 'ready'/'degraded' sibling
+            // scenario; only hard axis inversions are a mismatch.
+            && !(branch.axis === 'empty' || scenario.axis === 'empty')) {
+            delegatedBroken.push(`${branchId}: axis ${branchAxis} proven by a ${scenario.axis} scenario (${entry.delegate})`);
         }
     }
     // wp5c C-gate round 2: a duplicate claim (two scenarios naming the same
