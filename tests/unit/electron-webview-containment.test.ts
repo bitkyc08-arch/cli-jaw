@@ -59,3 +59,16 @@ test('the BUILT popover preload is the minimal tray-only artifact wired by the b
         assert.ok(!built.includes(closed), `built popover preload must not expose ${closed}`);
     }
 });
+
+test('the popover is NOT classified as a trusted manager window for permissions', () => {
+    // The permission handler must classify by webContents, not URL alone, so
+    // the same-origin popover does not inherit the manager's broad permissions.
+    const index = readFileSync(join(ROOT, 'electron/src/main/index.ts'), 'utf8');
+    assert.ok(index.includes('permissionSurfaceForContents'), 'classification is by webContents');
+    assert.ok(index.includes("return 'embedded-browser-webview'"),
+        'a non-manager same-origin surface gets the narrow embedded surface');
+    // The embedded surface is denied-by-default.
+    const perms = readFileSync(join(ROOT, 'electron/src/main/lib/electron-permissions.ts'), 'utf8');
+    assert.ok(perms.includes("'embedded-browser-webview'") && perms.includes("decision: 'deny'"),
+        'the embedded surface is denied by default');
+});
