@@ -779,7 +779,7 @@ const EVIDENCE_STATUSES = new Set([
 const REACHABILITIES = new Set(['integration', 'component', 'shadowed']);
 
 /** Same contract as the code ledger: clean, audited, non-overlapping denominators. */
-export function featureScenarioStatus() {
+export function featureScenarioStatus(manifestIntegrationBranchIds = null) {
     const ids = new Set();
     const duplicate = [];
     const malformed = [];
@@ -811,6 +811,17 @@ export function featureScenarioStatus() {
         if (!scenario.branchId) continue;
         if (branchClaims.has(scenario.branchId)) malformed.push(`${scenario.branchId}: claimed by two scenarios`);
         branchClaims.set(scenario.branchId, scenario.id);
+    }
+    // wp5c C-gate round 3: a claim must name a branch in THIS domain. A
+    // feature scenario claiming a code branch (e.g. CodeTabGate-state-1kxofnn)
+    // would override that code branch's coverage entry and pass stale/delegated
+    // checks that only look within one domain.
+    if (manifestIntegrationBranchIds) {
+        for (const branchId of branchClaims.keys()) {
+            if (!manifestIntegrationBranchIds.has(branchId)) {
+                malformed.push(`${branchId}: claimed but not an integration feature branch`);
+            }
+        }
     }
     return {
         total: FEATURE_SCENARIOS.length,

@@ -236,14 +236,25 @@ Object.assign(BRANCH_COVERAGE, CODE_BRANCH_COVERAGE);
 
 /** wp5c — feature branches, delegated to the feature scenario ledger. */
 const FEATURE_BRANCH_COVERAGE = {};
-for (const [branchId, scenarioId] of featureScenarioStatus().branchClaims) {
-    FEATURE_BRANCH_COVERAGE[branchId] = {
-        delegate: scenarioId,
-        // The scenario owns the discriminating selector and copy; the branch
-        // identity only notes the delegation.
-        selector: '.d2-feature-panel, [data-state], [role="alert"], [role="status"]',
-        pattern: '.',
-    };
+{
+    // Validate claims against the integration FEATURE branches only, so a
+    // feature scenario claiming a code branch is rejected rather than let
+    // override that code branch's own coverage entry.
+    const featureBranchIds = new Set(
+        buildTabStateLedger()
+            .filter(r => /harness:(notes|board|reminders|employees)/.test(r.route) && r.reachability === 'integration')
+            .map(r => r.id),
+    );
+    const featureStatus = featureScenarioStatus(featureBranchIds);
+    for (const [branchId, scenarioId] of featureStatus.branchClaims) {
+        FEATURE_BRANCH_COVERAGE[branchId] = {
+            delegate: scenarioId,
+            // The scenario owns the discriminating selector and copy; the branch
+            // identity only notes the delegation.
+            selector: '.d2-feature-panel, [data-state], [role="alert"], [role="status"]',
+            pattern: '.',
+        };
+    }
 }
 Object.assign(BRANCH_COVERAGE, FEATURE_BRANCH_COVERAGE);
 
@@ -298,8 +309,10 @@ export function branchCoverageStatus() {
     // feature branch) is detected in featureScenarioStatus().malformed but
     // must reach the gates. A non-manifest claim is caught by `stale`; a
     // duplicate on a REAL branch is not, and without this it passes silently.
-    for (const problem of featureScenarioStatus().malformed) {
-        if (/claimed by two scenarios/.test(problem)) delegatedBroken.push(problem);
+    for (const problem of featureScenarioStatus(
+        new Set(buildTabStateLedger().filter(r => /harness:(notes|board|reminders|employees)/.test(r.route) && r.reachability === 'integration').map(r => r.id)),
+    ).malformed) {
+        if (/claimed by two scenarios|not an integration feature branch/.test(problem)) delegatedBroken.push(problem);
     }
 
     return {
