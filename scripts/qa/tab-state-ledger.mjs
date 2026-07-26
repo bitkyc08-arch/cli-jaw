@@ -77,6 +77,30 @@ const SETTINGS_REACHABILITY = {
 };
 
 /**
+ * Legacy hover-dock settings — these render in the hover dock, which is
+ * wp7a's surface, not the central settings workspace. Declared shadowed here
+ * so the manifest has no unswept settings id and the count cannot be improved
+ * by silently leaving them out.
+ */
+const LEGACY_SETTINGS_REACHABILITY = {
+    'SettingsChannelsSection-error-uly768': 'shadowed',
+    'SettingsMcpSection-data-fwsyup': 'shadowed',
+    'SettingsModelsSection-error-12g7n42': 'shadowed',
+    'SettingsModelsSection-registry-1ws4t2q': 'shadowed',
+    'SettingsModelsSection-error-18nksm4': 'shadowed',
+    'SettingsPromptSection-content-1bgw602': 'shadowed',
+    'SettingsPromptSection-content-1r9x343': 'shadowed',
+    'SettingsTab-statekind-lxtcvl': 'shadowed',
+    'SettingsTab-statekind-195at64': 'shadowed',
+    'SettingsTab-statekind-uu45at': 'shadowed',
+};
+
+const LEGACY_SETTINGS_COMPONENTS = [
+    'SettingsTab', 'SettingsChannelsSection', 'SettingsMcpSection',
+    'SettingsModelsSection', 'SettingsPromptSection',
+];
+
+/**
  * Reachability is an audited decision keyed by the manifest's full stable id.
  * Keep this explicit: guards alone do not reveal whether SidePane pre-empts a
  * component branch or hardcodes a prop that makes it dead in the application.
@@ -290,6 +314,29 @@ function buildSettingsLedger(manifest) {
         });
 }
 
+/** Legacy hover-dock settings, declared shadowed as wp7a's surface. */
+function buildLegacySettingsLedger(manifest) {
+    return manifest.branches
+        .filter(b => LEGACY_SETTINGS_COMPONENTS.includes(b.file.split('/').pop().replace('.tsx', '')))
+        .map(b => {
+            const component = b.file.split('/').pop().replace('.tsx', '');
+            return {
+                id: b.id,
+                component,
+                axis: b.axis,
+                target: b.target,
+                guard: b.guard,
+                reachability: LEGACY_SETTINGS_REACHABILITY[b.id] ?? 'shadowed',
+                route: 'harness:hover-dock',
+                lever: 'wp7a hover-dock sweep',
+                provider: 'hover-dock surface',
+                reset: 'n/a',
+                expectSelector: '[data-state]',
+                text: b.text ?? null,
+            };
+        });
+}
+
 export function buildTabStateLedger() {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
     const toolTabs = manifest.branches
@@ -317,7 +364,7 @@ export function buildTabStateLedger() {
                 text: b.text ?? null,
             };
         });
-    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest), ...buildSettingsLedger(manifest)];
+    return [...toolTabs, ...buildCodeLedger(manifest), ...buildFeatureLedger(manifest), ...buildSettingsLedger(manifest), ...buildLegacySettingsLedger(manifest)];
 }
 
 if (process.argv[1]?.endsWith('tab-state-ledger.mjs')) {

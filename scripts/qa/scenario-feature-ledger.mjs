@@ -864,7 +864,7 @@ export const FEATURE_SCENARIOS = [
         id: 'settings-theme-save-and-apply',
         reachability: 'integration',
         axis: 'ready', target: 'Control',
-        why: 'saving theme to light issues two PATCHes and applies data-theme=light',
+        why: 'saving theme to light issues three PATCHes and applies data-theme=light',
         ...SETTINGS,
         levers: { settingsConfig: {} },
         actions: [
@@ -918,6 +918,9 @@ export const FEATURE_SCENARIOS = [
         ],
         selector: '.d2-settings-workspace',
         absent: '.d2-settings-save-bar',
+        // The discard must actually revert the field, not just close the bar.
+        field: '#dashboard\\:3506\\:ui-uiTheme',
+        fieldEquals: 'dark',
     },
 
     // ── settings: sidebar navigation ─────────────────────────────────────────
@@ -954,10 +957,11 @@ export const FEATURE_SCENARIOS = [
             { kind: 'select', selector: '#dashboard\\:3506\\:ui-uiTheme', value: 'light' },
             { kind: 'click', selector: '.d2-settings-nav-item:not(.active)' },
         ],
-        // confirm() returns true in the harness, so the navigation happens and
-        // the dirty edit is discarded.
+        // The guard must actually ASK, not just let the navigation happen.
+        // The harness records confirm() calls and answers true.
         selector: '.d2-settings-page',
         absent: '.d2-settings-save-bar',
+        expectConfirm: 'Discard your unsaved settings changes?',
     },
 
     // ── settings: ModelSettingsPanel (a separate state machine) ──────────────

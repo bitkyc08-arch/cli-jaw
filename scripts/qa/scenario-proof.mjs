@@ -178,17 +178,21 @@ async function observe(page, scenario) {
     return page.evaluate((s) => {
         const el = document.querySelector(s.selector);
         const draftEl = document.querySelector('.d2-code-composer textarea');
+        const fieldEl = s.field ? document.querySelector(s.field) : null;
         return {
             found: Boolean(el),
             text: (el?.textContent ?? '').replace(/\s+/g, ' ').trim(),
             absentPresent: s.absent ? Boolean(document.querySelector(s.absent)) : false,
             requiresPresent: s.requires ? Boolean(document.querySelector(s.requires)) : true,
             draft: draftEl instanceof HTMLTextAreaElement ? draftEl.value : null,
+            fieldValue: fieldEl instanceof HTMLInputElement || fieldEl instanceof HTMLSelectElement || fieldEl instanceof HTMLTextAreaElement ? fieldEl.value : null,
+            confirmCalls: (window.__jawConfirmCalls ?? []).slice(),
         };
     }, {
         selector: scenario.selector,
         absent: scenario.absent ?? null,
         requires: scenario.requires ?? null,
+        field: scenario.field ?? null,
     });
 }
 
@@ -204,6 +208,14 @@ function judgeDom(scenario, seen) {
     }
     if (scenario.draftEquals !== undefined && seen.draft !== scenario.draftEquals) {
         return `draft was ${JSON.stringify(seen.draft)}, expected ${JSON.stringify(scenario.draftEquals)}`;
+    }
+    if (scenario.fieldEquals !== undefined && seen.fieldValue !== scenario.fieldEquals) {
+        return `field ${scenario.field} was ${JSON.stringify(seen.fieldValue)}, expected ${JSON.stringify(scenario.fieldEquals)}`;
+    }
+    if (scenario.expectConfirm !== undefined) {
+        const calls = seen.confirmCalls ?? [];
+        const hit = calls.some(c => c.includes(scenario.expectConfirm));
+        if (!hit) return `confirm() was not asked ${JSON.stringify(scenario.expectConfirm)} (saw ${calls.length} calls)`;
     }
     return null;
 }

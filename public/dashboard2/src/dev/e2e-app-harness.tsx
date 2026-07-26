@@ -871,7 +871,19 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         close(): void { this.source.closed = true; this.source.onmessage = null; this.source.onerror = null; }
     }
     Object.defineProperty(window, 'EventSource', { configurable: true, value: FakeEventSource });
-    Object.defineProperty(window, 'confirm', { configurable: true, value: () => true });
+    // A confirm that records it was asked, so a leave-guard scenario can
+    // prove the guard FIRED rather than inferring it from the navigation.
+    // The runner flips `__jawConfirmAnswer` to drive the cancel branch.
+    const confirmCalls: string[] = [];
+    Object.defineProperty(window, '__jawConfirmCalls', { configurable: true, value: confirmCalls });
+    Object.defineProperty(window, '__jawConfirmAnswer', { configurable: true, writable: true, value: true });
+    Object.defineProperty(window, 'confirm', {
+        configurable: true,
+        value: (message?: string) => {
+            confirmCalls.push(String(message ?? ''));
+            return (window as unknown as { __jawConfirmAnswer: boolean }).__jawConfirmAnswer;
+        },
+    });
     // The notes create/rename flows prompt for a name; a fixed answer keeps
     // them deterministic and lets a mutation actually fire.
     Object.defineProperty(window, 'prompt', { configurable: true, value: () => 'wp5c-renamed.md' });
@@ -909,6 +921,9 @@ export function mountE2EAppHarness(target: HTMLElement, options: E2EHarnessOptio
         setSettingsConfig(config) { router.settingsConfig = config ?? {}; },
         resetSettingsConfig() { router.settingsConfig = {}; },
         markRequests() { return router.recorded.length; },
+        confirmCalls() {
+            return (window as unknown as { __jawConfirmCalls: string[] }).__jawConfirmCalls.slice();
+        },
         codeRequests(since = 0) {
             return router.recorded
                 .slice(since)
@@ -973,6 +988,7 @@ declare global {
             markRequests(): number;
             codeRequests(since?: number): RecordedRequest[];
             allRequests(since?: number): RecordedRequest[];
+            confirmCalls(): string[];
             setFileTree(response: Record<string, unknown> | null): void;
             setHoldInstances(hold: boolean): void;
             setDropWorkingDir(drop: boolean): void;
