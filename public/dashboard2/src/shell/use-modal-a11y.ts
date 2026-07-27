@@ -19,27 +19,35 @@
 import { useEffect } from 'react';
 
 // React's autoFocus commits BEFORE passive effects, so an effect-time
-// capture reads the overlay's OWN first field, not the trigger. Track the
-// last element focused outside any overlay continuously instead — that is
-// always the trigger (or the surface the user came from).
+// capture reads the overlay's OWN first field, not the trigger. Keep a
+// trail of recently focused elements instead: the opener is the most recent
+// entry that is not inside the new overlay — correct even when an overlay
+// opens from inside another overlay, where a single free-focus variable
+// would still hold the background element (C-gate round 2).
 const OVERLAY_ROOTS = '[role="dialog"], [role="menu"], .d2-reminder-edit-scrim, .d2-notes-modal-backdrop, .d2-board-dialog-backdrop, .d2-side-pane-overflow-dropdown';
-let lastFreeFocus: HTMLElement | null = null;
+const focusTrail: HTMLElement[] = [];
 if (typeof document !== 'undefined') {
     document.addEventListener('focusin', (event) => {
         const el = event.target;
-        if (el instanceof HTMLElement && !el.closest(OVERLAY_ROOTS)) {
-            lastFreeFocus = el;
+        if (el instanceof HTMLElement && focusTrail[focusTrail.length - 1] !== el) {
+            focusTrail.push(el);
+            if (focusTrail.length > 20) focusTrail.shift();
         }
     }, true);
 }
 
-/**
- * One restore target per OPEN overlay, not one global. An overlay opened
- * from inside another overlay (a palette over a dialog) must restore to ITS
- * OWN opener; a single module-level target restores the inner close to the
- * pre-outer background element instead (C-gate WP14-C-MODAL-RESTORE-STACK).
- */
+/** One restore target per OPEN overlay, so nested closes restore in order. */
 const restoreStack: Array<{ el: HTMLElement | null; label: string | null }> = [];
+
+function openerOutside(overlayRoot: ParentNode | null): HTMLElement | null {
+    for (let i = focusTrail.length - 1; i >= 0; i -= 1) {
+        const el = focusTrail[i]!;
+        if (!el.isConnected) continue;
+        if (overlayRoot && overlayRoot.contains(el)) continue;
+        return el;
+    }
+    return null;
+}
 
 function inertOutsideOverlay(overlay: HTMLElement): () => void {
     const selfInerted = new Set<HTMLElement>();
@@ -94,7 +102,8 @@ export function useModalA11y(overlaySelector: string | null, options: ModalA11yO
     const { inert = false, restore = true, active = true } = options;
     useEffect(() => {
         if (!active) return undefined;
-        const restoreTarget = lastFreeFocus;
+        const overlayEl = overlaySelector ? document.querySelector(overlaySelector) : null;
+        const restoreTarget = openerOutside(overlayEl);
         // Lists that refresh while an overlay is open (the reminders panel
         // swaps rows for a spinner on each poll) disconnect the original
         // trigger. Re-query the equivalent control by its accessible name.
@@ -122,8 +131,9 @@ export function useModalA11y(overlaySelector: string | null, options: ModalA11yO
                     if (target?.isConnected) target.focus();
                 });
             }
-            // The enclosing overlay's own restore must see ITS opener again.
-            if (target0?.isConnected) lastFreeFocus = target0;
+            // The enclosing overlay's opener trails again for ITS restore:
+            // focusing it (above) appends it to the trail, so the outer
+            // close finds its own opener as the most recent outside entry.
         };
         // Re-running on `active` edges is the point; other deps would
         // re-capture focus the overlay itself took.
