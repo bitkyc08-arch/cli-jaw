@@ -9,11 +9,15 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { SURFACES, launch, resolveSurface } from './qa-lib.mjs';
 import { installMeasure, setTheme, surfaceIconContrast, surfacePixelContrast, THEMES } from './visual-lib.mjs';
+import { startFixtureServer, openFixture } from './fixture-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const outPath = flag('out');
 const url = flag('url', 'http://127.0.0.1:24577/dashboard2/');
+const useFixture = args.includes('--fixture');
+let fixtureServer;
+if (useFixture) fixtureServer = await startFixtureServer();
 
 const MIN_TARGET = 24;      // WCAG 2.2 AA 2.5.8
 const MIN_ICON_CONTRAST = 3; // WCAG 1.4.11 non-text
@@ -25,7 +29,7 @@ const oracleFailures = [];
 for (const name of Object.keys(SURFACES)) {
     report.surfaces[name] = {};
     for (const theme of THEMES) {
-        const { browser, page } = await launch(url);
+        const { browser, page } = useFixture ? (await openFixture(fixtureServer.url, { historyCount: 10 })) : await launch(url);
         try {
             // Reach the surface BEFORE switching theme. Setting the attribute
             // first triggers a re-render that swallowed the navigation clicks,
@@ -192,10 +196,12 @@ for (const name of Object.keys(SURFACES)) {
             console.error(`${name}/${theme}: ${f}`);
             if (!measured.reached) notReached.push(`${name}/${theme}`);
         } finally {
-            await browser.close();
+        await browser.close();
         }
     }
 }
+
+fixtureServer?.close();
 
 // A surface that could not be opened has not been shown to be clean. Treating
 // "not reached" as "no defects" is how three of six surfaces silently reported
