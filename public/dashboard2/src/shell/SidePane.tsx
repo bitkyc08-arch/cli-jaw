@@ -205,7 +205,7 @@ interface OverflowPickerProps {
 
 function OverflowPicker({ panels, activePanelId, onSelect }: OverflowPickerProps): JSX.Element {
     // M4 — menu: focus returns to the overflow trigger on close.
-    useModalA11y(null);
+    useModalA11y('.d2-side-pane-overflow-dropdown');
     const [focusIndex, setFocusIndex] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
 

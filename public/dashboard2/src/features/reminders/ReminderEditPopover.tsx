@@ -20,7 +20,9 @@ function toLocal(value: string | null): string {
 
 export function ReminderEditPopover({ item, busy, onClose, onSave }: ReminderEditPopoverProps): JSX.Element {
     // M4 — popover: focus restore on close (no trap, no inert by design).
-    useModalA11y(null);
+    // The selector is how the hook excludes the popover's own fields when
+    // finding the true opener.
+    useModalA11y('.d2-reminder-edit-scrim');
     const [title, setTitle] = useState(item.title);
     const [notes, setNotes] = useState(item.notes);
     const [priority, setPriority] = useState<ReminderPriority>(item.priority);
