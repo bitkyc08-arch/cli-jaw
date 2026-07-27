@@ -27,10 +27,14 @@
 //
 // Usage: node scripts/verify-sidecar-deps.mjs <sidecar dir>
 import { createRequire, isBuiltin } from 'node:module';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const dir = resolve(process.argv[2] ?? '.');
+// realpath matters: macOS resolves /var/folders to /private/var/folders, and
+// without this the resolved package paths never startsWith(dir) — every kept
+// package read as "pruned", so its dependencies were never walked and the
+// guard passed with the very hole it exists to catch (sidecar-prune-safety).
+const dir = realpathSync(resolve(process.argv[2] ?? '.'));
 const pkgPath = join(dir, 'package.json');
 if (!existsSync(pkgPath)) {
     console.error(`[verify-sidecar-deps] no package.json at ${dir}`);
