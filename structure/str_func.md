@@ -375,7 +375,9 @@ cli-jaw/
 ├── bin/
 │   ├── cli-jaw.ts            ← 27개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (300L)
 │   ├── _http-client.ts       ← shared HTTP client helper (35L) ✨
-│   ├── star-prompt.ts        ← `gh` 기반 GitHub star 1회 프롬프트 (129L)
+│   ├── star-prompt.ts        ← `gh` 기반 GitHub star 1회 프롬프트 (169L)
+│   ├── interactive-confirm.ts ← 방향키/`y`/`n`/Enter 인라인 Yes-No 선택기, raw mode 없으면 타이핑 폴백 (128L)
+│   ├── agent-driven.ts       ← 에이전트·CI 실행 감지, 동의 프롬프트를 유저에게 넘기는 판단 (34L)
 │   ├── postinstall.ts        ← npm install 후 CLI 런타임/MCP/스킬 safe 가드; OfficeCLI는 postinstall 자동설치가 아니라 `scripts/install-officecli.sh` 온디맨드 설치 (1036L)
 │   ├── helpers/help.ts       ← CLI help text helper (9L)
 │   └── commands/             ← 33 top-level ts files + `tui/` 10 helper 모듈
