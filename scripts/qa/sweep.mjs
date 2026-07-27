@@ -12,6 +12,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { SURFACES, launch, resolveSurface } from './qa-lib.mjs';
+import { startFixtureServer, openFixture } from './fixture-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -23,6 +24,8 @@ const surfaceName = flag('surface');
 const mode = flag('mode');
 const outPath = flag('out');
 const url = flag('url', 'http://127.0.0.1:24577/dashboard2/');
+const useFixture = args.includes('--fixture');
+let fixtureServer;
 // t5 — fast vs paced separation. The pass/fail oracle is the FAST sweep: no
 // artificial delay, so a real user's defect is not masked. `--paced` adds a
 // delay between Tab steps for the diagnostic "would it work if slower" question
@@ -44,7 +47,8 @@ if (!surface) {
 
 const FOCUSABLE = 'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-const { browser, page } = await launch(url);
+fixtureServer = useFixture ? await startFixtureServer() : null;
+const { browser, page } = useFixture ? (await openFixture(fixtureServer.url, { historyCount: 10 })) : await launch(url);
 let payload;
 try {
     await resolveSurface(page, surface);
@@ -223,7 +227,8 @@ try {
             };
     }
 } finally {
-    await browser.close();
+    fixtureServer?.close();
+await browser.close();
 }
 
 payload.capturedAt = new Date().toISOString();

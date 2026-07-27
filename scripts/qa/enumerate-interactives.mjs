@@ -14,6 +14,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { SURFACES, launch, resolveSurface } from './qa-lib.mjs';
+import { startFixtureServer, openFixture } from './fixture-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -24,6 +25,8 @@ const flag = (name, fallback) => {
 const surfaceName = flag('surface');
 const outPath = flag('out');
 const url = flag('url', 'http://127.0.0.1:24577/dashboard2/');
+const useFixture = args.includes('--fixture');
+let fixtureServer;
 
 if (!surfaceName || !outPath) {
     console.error('Usage: enumerate-interactives.mjs --surface <name> --out <path> [--url <url>]');
@@ -37,7 +40,8 @@ if (!surface) {
     process.exit(2);
 }
 
-const { browser, page } = await launch(url);
+fixtureServer = useFixture ? await startFixtureServer() : null;
+const { browser, page } = useFixture ? (await openFixture(fixtureServer.url, { historyCount: 10 })) : await launch(url);
 try {
     await resolveSurface(page, surface);
 
@@ -99,5 +103,6 @@ try {
     await writeFile(outPath, `${JSON.stringify(payload, null, 2)}\n`);
     console.log(`${surfaceName}: ${elements.length} interactive elements -> ${outPath}`);
 } finally {
-    await browser.close();
+    fixtureServer?.close();
+await browser.close();
 }

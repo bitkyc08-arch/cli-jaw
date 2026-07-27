@@ -14,6 +14,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { SURFACES, launch, resolveSurface } from './qa-lib.mjs';
+import { startFixtureServer, openFixture } from './fixture-lib.mjs';
 
 const require = createRequire(import.meta.url);
 const args = process.argv.slice(2);
@@ -25,6 +26,8 @@ const has = (name) => args.includes(`--${name}`);
 
 const outPath = flag('out');
 const url = flag('url', 'http://127.0.0.1:24577/dashboard2/');
+const useFixture = args.includes('--fixture');
+let fixtureServer;
 const targets = has('all') ? Object.keys(SURFACES) : [flag('surface')].filter(Boolean);
 
 if (!outPath || targets.length === 0) {
@@ -36,6 +39,8 @@ if (!outPath || targets.length === 0) {
 const axeSource = await readFile(require.resolve('axe-core/axe.min.js'), 'utf8');
 const results = [];
 
+fixtureServer = useFixture ? await startFixtureServer() : null;
+
 for (const name of targets) {
     const surface = SURFACES[name];
     if (!surface) {
@@ -43,7 +48,7 @@ for (const name of targets) {
         process.exit(2);
     }
 
-    const { browser, page } = await launch(url);
+    const { browser, page } = useFixture ? (await openFixture(fixtureServer.url, { historyCount: 10 })) : await launch(url);
     try {
         await resolveSurface(page, surface);
         await page.addScriptTag({ content: axeSource });
@@ -67,7 +72,8 @@ for (const name of targets) {
         results.push({ surface: name, owner: surface.owner, error: String(error?.message ?? error), blockingCount: null });
         console.error(`${name}: scan failed — ${error?.message ?? error}`);
     } finally {
-        await browser.close();
+        fixtureServer?.close();
+await browser.close();
     }
 }
 

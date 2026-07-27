@@ -12,7 +12,6 @@
  *   node scripts/qa/fixture-sweep.mjs --surface notes --tool axe --out evidence/x.json
  */
 import { spawn } from 'node:child_process';
-import { startFixtureServer } from './fixture-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -29,19 +28,16 @@ if (!surface || !out) {
     process.exit(2);
 }
 
-const server = await startFixtureServer();
 const command = {
-    sweep: ['scripts/qa/sweep.mjs', '--surface', surface, '--mode', mode, '--url', server.url, '--out', out],
-    enumerate: ['scripts/qa/enumerate-interactives.mjs', '--surface', surface, '--url', server.url, '--out', out],
-    axe: ['scripts/qa/axe-scan.mjs', '--surface', surface, '--url', server.url, '--out', out],
+    sweep: ['scripts/qa/sweep.mjs', '--surface', surface, '--mode', mode, '--fixture', '--out', out],
+    enumerate: ['scripts/qa/enumerate-interactives.mjs', '--surface', surface, '--fixture', '--out', out],
+    axe: ['scripts/qa/axe-scan.mjs', '--surface', surface, '--fixture', '--out', out],
 }[tool];
 if (!command) {
     console.error(`Unknown tool "${tool}"`);
-    server.close();
     process.exit(2);
 }
 
 const child = spawn(process.execPath, command, { stdio: 'inherit' });
 const exitCode = await new Promise((resolvePromise) => child.on('exit', resolvePromise));
-server.close();
 process.exit(exitCode ?? 1);
