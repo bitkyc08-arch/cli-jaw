@@ -147,6 +147,14 @@ async function selectFirstOnlineInstance(page) {
     if (await online.count()) {
         await online.first().click();
         await page.waitForTimeout(1500);
+        // Session-requiring panels (notes/board/reminders/…) render their
+        // "no session" state until one is picked. The fixture's own boot
+        // path auto-selects; the raw sweep path has to do it explicitly.
+        const session = page.locator('.d2-session-row:not([disabled])');
+        if (await session.count()) {
+            await session.first().click();
+            await page.waitForTimeout(800);
+        }
     }
 }
 
