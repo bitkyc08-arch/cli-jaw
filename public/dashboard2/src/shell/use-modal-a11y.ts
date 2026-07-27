@@ -33,6 +33,14 @@ if (typeof document !== 'undefined') {
     }, true);
 }
 
+/**
+ * One restore target per OPEN overlay, not one global. An overlay opened
+ * from inside another overlay (a palette over a dialog) must restore to ITS
+ * OWN opener; a single module-level target restores the inner close to the
+ * pre-outer background element instead (C-gate WP14-C-MODAL-RESTORE-STACK).
+ */
+const restoreStack: Array<{ el: HTMLElement | null; label: string | null }> = [];
+
 function inertOutsideOverlay(overlay: HTMLElement): () => void {
     const selfInerted = new Set<HTMLElement>();
     const observers: MutationObserver[] = [];
@@ -91,6 +99,7 @@ export function useModalA11y(overlaySelector: string | null, options: ModalA11yO
         // swaps rows for a spinner on each poll) disconnect the original
         // trigger. Re-query the equivalent control by its accessible name.
         const restoreLabel = restoreTarget?.getAttribute('aria-label');
+        restoreStack.push({ el: restoreTarget, label: restoreLabel ?? null });
         let cleanupInert: (() => void) | null = null;
         if (inert && overlaySelector) {
             const overlay = document.querySelector(overlaySelector) as HTMLElement | null;
@@ -98,18 +107,23 @@ export function useModalA11y(overlaySelector: string | null, options: ModalA11yO
         }
         return () => {
             cleanupInert?.();
-            if (restore && (restoreTarget || restoreLabel)) {
+            const entry = restoreStack.pop();
+            const target0 = entry?.el ?? restoreTarget;
+            const label0 = entry?.label ?? restoreLabel;
+            if (restore && (target0 || label0)) {
                 // Restore AFTER the close commit settles: unmount removes the
                 // overlay's focused control, and the browser's focus reset to
                 // body (plus any sibling effects) would otherwise override a
                 // restore issued inside the cleanup itself.
                 requestAnimationFrame(() => {
-                    const target = restoreTarget?.isConnected
-                        ? restoreTarget
-                        : (restoreLabel ? document.querySelector<HTMLElement>(`[aria-label="${CSS.escape(restoreLabel)}"]`) : null);
+                    const target = target0?.isConnected
+                        ? target0
+                        : (label0 ? document.querySelector<HTMLElement>(`[aria-label="${CSS.escape(label0)}"]`) : null);
                     if (target?.isConnected) target.focus();
                 });
             }
+            // The enclosing overlay's own restore must see ITS opener again.
+            if (target0?.isConnected) lastFreeFocus = target0;
         };
         // Re-running on `active` edges is the point; other deps would
         // re-capture focus the overlay itself took.
