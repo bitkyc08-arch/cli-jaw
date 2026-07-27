@@ -72,10 +72,11 @@ for (const name of targets) {
         results.push({ surface: name, owner: surface.owner, error: String(error?.message ?? error), blockingCount: null });
         console.error(`${name}: scan failed — ${error?.message ?? error}`);
     } finally {
-        fixtureServer?.close();
-await browser.close();
+        await browser.close();
     }
 }
+
+fixtureServer?.close();
 
 const scanned = results.filter((entry) => entry.blockingCount !== null);
 const totalBlocking = scanned.reduce((sum, entry) => sum + entry.blockingCount, 0);
