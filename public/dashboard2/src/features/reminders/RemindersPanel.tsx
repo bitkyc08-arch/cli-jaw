@@ -18,9 +18,21 @@ export function RemindersPanel({ active }: RemindersPanelProps): JSX.Element {
                     <strong>Reminders</strong>
                     <span>{subview === 'feed' ? 'Tasks and follow-ups' : 'Scheduled work'}</span>
                 </div>
-                <div className="d2-reminders-tabs" role="tablist" aria-label="Reminder views">
-                    <button type="button" role="tab" aria-selected={subview === 'feed'} onClick={() => setSubview('feed')}>Feed</button>
-                    <button type="button" role="tab" aria-selected={subview === 'schedule'} onClick={() => setSubview('schedule')}>Schedule</button>
+                <div className="d2-reminders-tabs" role="tablist" aria-label="Reminder views"
+                    onKeyDown={(event) => {
+                        // Roving tabindex: one tab stop for the group, arrows
+                        // move within it (the "2 entry points" M3 finding).
+                        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                        event.preventDefault();
+                        const next = subview === 'feed' ? 'schedule' : 'feed';
+                        setSubview(next);
+                        requestAnimationFrame(() => {
+                            document.querySelector<HTMLElement>(`.d2-reminders-tabs [role="tab"][aria-selected="true"]`)?.focus();
+                        });
+                    }}
+                >
+                    <button type="button" role="tab" aria-selected={subview === 'feed'} tabIndex={subview === 'feed' ? 0 : -1} onClick={() => setSubview('feed')}>Feed</button>
+                    <button type="button" role="tab" aria-selected={subview === 'schedule'} tabIndex={subview === 'schedule' ? 0 : -1} onClick={() => setSubview('schedule')}>Schedule</button>
                 </div>
             </header>
 
