@@ -513,8 +513,11 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         <aside ref={paneRef} className="d2-side-pane" aria-label="Side pane">
             <header className="d2-side-pane-header">
                 <div className="d2-side-pane-tab-group" role="tablist" aria-label="Open side panels">
+                    {/* A tablist may contain only tabs; the pill wrapper is
+                        presentational so the close button does not become a
+                        required-child violation (axe aria-required-children). */}
                     {inlineTabs.map((panel) => (
-                        <span key={panel.id} className="d2-side-pane-pill">
+                        <span key={panel.id} className="d2-side-pane-pill" role="presentation">
                             <button
                                 ref={(el) => { paneTabRefs.current.set(panel.id, el); }}
                                 id={`d2-pane-tab-${panel.id}`}
@@ -535,7 +538,7 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                         </span>
                     ))}
                     {needsOverflow ? (
-                        <span className="d2-side-pane-overflow-anchor">
+                        <span className="d2-side-pane-overflow-anchor" role="presentation">
                             <button
                                 type="button"
                                 className="d2-side-pane-overflow-trigger"
