@@ -9,6 +9,7 @@ import {
     type SidePanePanelType,
 } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
+import { useModalA11y } from './use-modal-a11y.ts';
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx';
 import { BrowserPanel } from './panels/BrowserPanel.tsx';
 import { FileTreePanel } from './panels/FileTreePanel.tsx';
@@ -203,6 +204,8 @@ interface OverflowPickerProps {
 }
 
 function OverflowPicker({ panels, activePanelId, onSelect }: OverflowPickerProps): JSX.Element {
+    // M4 — menu: focus returns to the overflow trigger on close.
+    useModalA11y(null);
     const [focusIndex, setFocusIndex] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
 

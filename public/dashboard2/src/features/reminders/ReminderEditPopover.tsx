@@ -1,6 +1,7 @@
 import { LoaderCircle, X } from '@lucide/icons';
-import { useEffect, useMemo, useState, type FormEvent, type JSX } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
+import { useModalA11y } from '../../shell/use-modal-a11y.ts';
 import type { Reminder, ReminderPriority, ReminderStatus, UpdateReminderInput } from './reminders-types.ts';
 
 interface ReminderEditPopoverProps {
@@ -18,17 +19,24 @@ function toLocal(value: string | null): string {
 }
 
 export function ReminderEditPopover({ item, busy, onClose, onSave }: ReminderEditPopoverProps): JSX.Element {
+    // M4 — popover: focus restore on close (no trap, no inert by design).
+    useModalA11y(null);
     const [title, setTitle] = useState(item.title);
     const [notes, setNotes] = useState(item.notes);
     const [priority, setPriority] = useState<ReminderPriority>(item.priority);
     const [dueAt, setDueAt] = useState(toLocal(item.dueAt));
     const [status, setStatus] = useState<ReminderStatus>(item.status);
 
-    useEffect(() => {
-        const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose(); };
-        document.addEventListener('keydown', closeOnEscape);
-        return () => document.removeEventListener('keydown', closeOnEscape);
-    }, [onClose]);
+    // Escape is handled on the dialog element (bubble phase), NOT a document
+    // listener: SidePane's document handler runs first and closes the panel
+    // beneath any Escape it sees without defaultPrevented. Handling it here
+    // marks the top layer as handled before document is reached.
+    const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            onClose();
+        }
+    };
 
     const changed = useMemo(() => title.trim() !== item.title || notes !== item.notes || priority !== item.priority || dueAt !== toLocal(item.dueAt) || status !== item.status, [dueAt, item, notes, priority, status, title]);
 
@@ -48,7 +56,7 @@ export function ReminderEditPopover({ item, busy, onClose, onSave }: ReminderEdi
 
     return (
         <div className="d2-reminder-edit-scrim" role="presentation" onMouseDown={onClose}>
-            <section className="d2-reminder-edit" role="dialog" aria-modal="false" aria-label="Edit reminder" onMouseDown={(event) => event.stopPropagation()}>
+            <section className="d2-reminder-edit" role="dialog" aria-modal="false" aria-label="Edit reminder" onMouseDown={(event) => event.stopPropagation()} onKeyDown={handleKeyDown}>
                 <form onSubmit={submit}>
                     <header><strong>Edit reminder</strong><button type="button" onClick={onClose} aria-label="Close editor"><Icon icon={X} size={15} /></button></header>
                     <label><span>Title</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} required /></label>

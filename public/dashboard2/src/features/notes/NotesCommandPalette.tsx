@@ -1,6 +1,7 @@
 import { Command, Search, X } from '@lucide/icons';
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import { Icon } from '../../shell/Icon';
+import { useModalA11y } from '../../shell/use-modal-a11y.ts';
 import { useNoteCommands, type NoteCommand } from './notes-command-registry';
 
 export type NotesCommandPaletteProps = {
@@ -15,6 +16,8 @@ export function NotesCommandPalette(props: NotesCommandPaletteProps): JSX.Elemen
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
+    // M4 — the backdrop blocks the pointer; inert blocks keyboard and AT.
+    useModalA11y('.d2-notes-modal-backdrop', { inert: true, restore: false, active: props.open });
     const results = useMemo(() => {
         const needle = query.trim().toLowerCase();
         return commands.filter(command => !needle || command.label.toLowerCase().includes(needle));

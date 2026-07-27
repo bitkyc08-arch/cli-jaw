@@ -1,6 +1,7 @@
 import { LoaderCircle, Trash2, X } from '@lucide/icons';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
+import { useModalA11y } from '../../shell/use-modal-a11y.ts';
 import type { ScheduleGroup, ScheduleWorkInput, ScheduleWorkItem } from './schedule-api-adapter.ts';
 
 interface ScheduleWorkEditorProps {
@@ -32,6 +33,8 @@ function fromLocal(value: string): string | null {
 }
 
 export function ScheduleWorkEditor({ item, busy, onClose, onSave, onDelete }: ScheduleWorkEditorProps): JSX.Element {
+    // M4 — modal: background inert + focus restore on close.
+    useModalA11y('.d2-reminder-edit-scrim', { inert: true });
     const formRef = useRef<HTMLFormElement>(null);
     const [title, setTitle] = useState(item?.title ?? '');
     const [group, setGroup] = useState<ScheduleGroup>(item?.group ?? 'upcoming');
@@ -68,6 +71,9 @@ export function ScheduleWorkEditor({ item, busy, onClose, onSave, onDelete }: Sc
 
     const handleKeyDown = (event: KeyboardEvent<HTMLFormElement>): void => {
         if (event.key === 'Escape') {
+            // Mark the top layer as handled so SidePane does not close the
+            // panel beneath the editor.
+            event.preventDefault();
             if (!busy) onClose();
             return;
         }

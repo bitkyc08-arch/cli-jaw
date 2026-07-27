@@ -1,6 +1,7 @@
 import { LoaderCircle, Trash2, X } from '@lucide/icons';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
+import { useModalA11y } from '../../shell/use-modal-a11y.ts';
 import { BOARD_LANES, type BoardLaneId, type BoardTask, type UpdateBoardTaskInput } from './board-types.ts';
 
 export type BoardTaskDialogProps = {
@@ -13,6 +14,9 @@ export type BoardTaskDialogProps = {
 
 export function BoardTaskDialog({ task, onClose, onSave, onDelete, saving }: BoardTaskDialogProps): JSX.Element | null {
     const dialogRef = useRef<HTMLFormElement>(null);
+    // M4 — modal: background inert + focus restore on close. The dialog
+    // stays mounted with task=null, so the behavior keys on the open state.
+    useModalA11y('.d2-board-dialog-backdrop', { inert: true, active: Boolean(task) });
     const [title, setTitle] = useState('');
     const [summary, setSummary] = useState('');
     const [detail, setDetail] = useState('');
@@ -36,6 +40,9 @@ export function BoardTaskDialog({ task, onClose, onSave, onDelete, saving }: Boa
 
     const handleKeyDown = (event: KeyboardEvent<HTMLFormElement>): void => {
         if (event.key === 'Escape') {
+            // Mark the top layer as handled so SidePane does not close the
+            // panel beneath the dialog.
+            event.preventDefault();
             if (!saving) onClose();
             return;
         }

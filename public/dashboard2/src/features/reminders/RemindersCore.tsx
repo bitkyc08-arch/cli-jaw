@@ -5,6 +5,7 @@ import {
     ChevronDown,
     Clock3,
     LoaderCircle,
+    Pencil,
     Plus,
     RefreshCw,
     X,
@@ -89,6 +90,12 @@ function ReminderCard({ item, busy, variant, onComplete, onSnooze, onEdit, onDra
             </span>
             {item.status !== 'done' ? (
                 <span className="d2-reminders-card-actions">
+                    {/* M3/M4 — the card click opens the editor, but a keyboard
+                        user needs a real button to reach it (the li cannot be
+                        role=button with nested buttons inside). */}
+                    <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(item); }} disabled={busy} aria-label={`Edit ${item.title}`} title="Edit">
+                        <Icon icon={Pencil} size={14} />
+                    </button>
                     <button type="button" onClick={(event) => { event.stopPropagation(); onComplete(item); }} disabled={busy} aria-label={`Complete ${item.title}`} title="Complete">
                         <Icon icon={Check} size={14} />
                     </button>

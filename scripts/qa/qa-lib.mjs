@@ -95,23 +95,51 @@ async function openPanel(page, title) {
 }
 
 SURFACES.notes = {
-    owner: 'wp13',
+    // 011 acceptance owner is wp5c (wp13 only borrowed the surface for the
+    // visual scan; nothing in the wp13 gates reads `.owner`).
+    owner: 'wp5c',
     root: '.d2-notes-panel',
     reach: (page) => openPanel(page, 'Notes'),
 };
 
 SURFACES.board = {
-    owner: 'wp13',
+    owner: 'wp5c',
     root: '.d2-board-panel',
     reach: (page) => openPanel(page, 'Board'),
 };
 
 SURFACES.code = {
-    owner: 'wp13',
+    owner: 'wp5b',
     // The gate renders first and swaps itself for the tab; both are in scope
     // because the gate's four states are part of what has to look right.
     root: '.d2-code-tab, .d2-code-gate',
     reach: (page) => openPanel(page, 'Code'),
+};
+
+// wp5c's remaining feature panels (011 acceptance owners). Without these the
+// wp5c M1/M3 sweep would silently be an empty-set pass.
+SURFACES.reminders = {
+    owner: 'wp5c',
+    root: '.d2-reminders-panel',
+    reach: (page) => openPanel(page, 'Reminders'),
+};
+
+SURFACES.schedule = {
+    owner: 'wp5c',
+    // Schedule is a sub-view of the reminders panel, not a picker entry.
+    root: '#d2-reminders-schedule-panel',
+    reach: async (page) => {
+        await openPanel(page, 'Reminders');
+        const tab = page.locator('.d2-reminders-tabs [role="tab"]', { hasText: 'Schedule' });
+        if (await tab.count()) await tab.first().click().catch(() => {});
+        await page.waitForTimeout(600);
+    },
+};
+
+SURFACES.employees = {
+    owner: 'wp5c',
+    root: '.d2-employees-panel',
+    reach: (page) => openPanel(page, 'Employees'),
 };
 
 async function selectFirstOnlineInstance(page) {

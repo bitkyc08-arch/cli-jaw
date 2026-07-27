@@ -1,6 +1,7 @@
 import { Search, X } from '@lucide/icons';
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import { Icon } from '../../shell/Icon';
+import { useModalA11y } from '../../shell/use-modal-a11y.ts';
 import type { NoteMetadata } from './notes-types';
 
 export type NotesQuickSwitcherProps = {
@@ -18,6 +19,8 @@ export function NotesQuickSwitcher(props: NotesQuickSwitcherProps): JSX.Element 
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
+    // M4 — the backdrop blocks the pointer; inert blocks keyboard and AT.
+    useModalA11y('.d2-notes-modal-backdrop', { inert: true, restore: false, active: props.open });
     const results = useMemo(() => {
         const needle = query.trim().toLowerCase();
         return (props.notes ?? [])
