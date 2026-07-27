@@ -139,8 +139,13 @@ try {
          * tabbable entry point and aria-selected/tabIndex ownership together.
          * Drive it.
          */
-        const rovingProof = await page.evaluate(() => {
-            const group = document.querySelector('[role="tablist"]');
+        const rovingProof = await page.evaluate((rootSelector) => {
+            // Scope to the surface: an unscoped query found whatever tablist
+            // happened to be in the document (the side pane's single tab on
+            // the settings surface) and failed the surface on someone else's
+            // group.
+            const root = rootSelector ? document.querySelector(rootSelector) : document.body;
+            const group = root?.querySelector('[role="tablist"]');
             if (!group) return { skipped: 'no tablist' };
             const tabs = [...group.querySelectorAll('[role="tab"]')];
             if (tabs.length < 2) return { skipped: 'fewer than two tabs' };
@@ -152,19 +157,20 @@ try {
                 tabbableIndex,
                 coherent: selectedIndex === tabbableIndex,
             };
-        });
+        }, surface.root ?? null);
         let rovingDynamic = { skipped: rovingProof.skipped ?? 'no tablist' };
         if (!rovingProof.skipped && rovingProof.coherent) {
             const entryPoint = rovingProof.tabbableIndex;
-            await page.locator('[role="tablist"] [role="tab"]').nth(entryPoint).focus();
+            await page.locator(`${surface.root ?? 'body'} [role="tablist"] [role="tab"]`).nth(entryPoint).focus();
             await page.keyboard.press('ArrowRight');
-            const after = await page.evaluate(() => {
-                const tabs = [...document.querySelectorAll('[role="tablist"] [role="tab"]')];
+            const after = await page.evaluate((rootSelector) => {
+                const root = rootSelector ? document.querySelector(rootSelector) : document.body;
+                const tabs = [...(root?.querySelector('[role="tablist"]')?.querySelectorAll('[role="tab"]') ?? [])];
                 return {
                     selectedIndex: tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true'),
                     tabbableIndex: tabs.findIndex((tab) => tab.tabIndex >= 0),
                 };
-            });
+            }, surface.root ?? null);
             rovingDynamic = {
                 before: { selected: rovingProof.selectedIndex, tabbable: rovingProof.tabbableIndex },
                 after,
