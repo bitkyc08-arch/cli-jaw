@@ -164,7 +164,12 @@ echo "🏷️  Creating git tag v$VERSION..."
 git add package.json package-lock.json electron/package.json electron/package-lock.json
 git commit -m "[agent] chore: release v$VERSION" --allow-empty
 git tag "v$VERSION"
-git push origin main
+# HEAD:main, not main. `git push origin main` pushes the LOCAL main branch,
+# which is not necessarily the tree just built, committed and tagged: releases
+# are cut from whatever branch is checked out, and a local main left behind at
+# an older release would be published instead. Caught before a real release
+# with local main at v2.2.7 while the release commit sat on dev.
+git push origin HEAD:main
 git push origin "v$VERSION"
 
 # ─── GitHub Release with changelog ─────────────────────

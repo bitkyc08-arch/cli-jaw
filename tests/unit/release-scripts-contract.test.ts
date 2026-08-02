@@ -12,6 +12,33 @@ function read(path: string): string {
 }
 
 for (const scriptPath of ['scripts/release.sh', 'scripts/release-preview.sh']) {
+    test(`${scriptPath} pushes the tree it just built, not a same-named local branch`, () => {
+        // `git push origin main` pushes the LOCAL main branch, which is not
+        // necessarily what was just built, committed and tagged: releases are
+        // cut from whatever branch is checked out. Caught with local main
+        // sitting at v2.2.7 while the release commit was on dev -- the push
+        // would have published a tree three releases old, and the tag would
+        // have pointed somewhere else entirely.
+        const script = read(scriptPath);
+        const branch = scriptPath.includes('preview') ? 'preview' : 'main';
+
+        assert.ok(
+            new RegExp(`git push origin HEAD:${branch}`).test(script),
+            `${scriptPath} must push HEAD to ${branch}, not the local ${branch} ref`,
+        );
+
+        // A bare `git push origin <branch>` is only acceptable when the script
+        // has already established that HEAD is that branch.
+        for (const line of script.split('\n')) {
+            const bare = new RegExp(`^\\s*git push origin ${branch}\\s*$`);
+            if (!bare.test(line)) continue;
+            assert.ok(
+                /CURRENT_BRANCH/.test(script),
+                `${scriptPath} pushes the bare ${branch} ref without checking the current branch`,
+            );
+        }
+    });
+
     test(`${scriptPath} validates Electron shell before publishing`, () => {
         const script = read(scriptPath);
 
