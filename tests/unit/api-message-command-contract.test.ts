@@ -23,7 +23,14 @@ test('/api/message slash command errors fail closed instead of falling through t
     assert.ok(catchStart > 0, 'slash command catch block missing');
     assert.ok(submitStart > catchStart, 'normal message submit path should remain after slash handling');
     const catchBlock = block.slice(catchStart, submitStart);
-    assert.match(catchBlock, /res\.status\(500\)\.json\(\{ ok: false, command: true, error \}\);/);
+    // The error text is masked before it leaves the process: an executor can
+    // throw with a bot token in the message, and this body is returned to an
+    // unauthenticated-by-default local caller. `userErrorText` is what makes
+    // the 500 safe to show, so the contract is the masked form, not the raw
+    // `error` binding this assertion used to require.
+    assert.match(catchBlock, /res\.status\(500\)\.json\(\{ ok: false, command: true, error: userErrorText\(err\) \}\);/);
+    assert.match(catchBlock, /log\.error\('\[api\/message:cmd\]', logErrorText\(err\)\)/,
+        'the log sink must be masked too');
     assert.match(catchBlock, /return;/);
 });
 

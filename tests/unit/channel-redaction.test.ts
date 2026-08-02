@@ -5,7 +5,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { redactChannelSecrets, userErrorText, logErrorText } from '../../src/messaging/redact.js';
+import {
+    redactChannelSecrets, userErrorText, logErrorText,
+    redactionCopyWork, resetRedactionCopyWork,
+} from '../../src/messaging/redact.js';
 
 // A realistic Telegram secret: 35 chars after the numeric bot id.
 const TG_SECRET = 'AAHfoobarbazquxquux12345678901234567';
@@ -13,6 +16,45 @@ const TG_TOKEN = `123456789:${TG_SECRET}`;
 
 /** The whole point: this substring must never survive. */
 const leaks = (output: string, secret: string) => output.includes(secret);
+
+/**
+ * Characters the redactor copied while masking `input`, per input character.
+ *
+ * These tests used to assert a wall-clock budget, and that is what broke CI.
+ * Milliseconds measure the runner, not the algorithm: one fixture took 155 ms
+ * on a developer laptop and 777 ms on a GitHub ubuntu runner, and running the
+ * suite in parallel moved it again — so the tests failed without a single
+ * regression in the code under test. Comparing two sizes on the same machine
+ * is no better under parallel load, because the larger input is the one that
+ * gets descheduled.
+ *
+ * The counter is deterministic: identical on every machine, unaffected by CPU
+ * contention, and it measures the exact thing the invariant is about.
+ */
+function copyWorkPerChar(input: string): number {
+    resetRedactionCopyWork();
+    redactChannelSecrets(input);
+    return redactionCopyWork() / input.length;
+}
+
+/**
+ * Assert that copy work stays proportional to input length as the input grows.
+ *
+ * Linear assembly holds this flat — measured at 0.48 for every size in the
+ * credential fixture. Re-introducing the per-match string splice (which
+ * rebuilds the whole output once per credential) moves it to 1476, 2956 and
+ * 5919 for 2k/4k/8k credentials: it doubles with the input, which is the
+ * signature of the quadratic. A 1.5x bound sits far outside the flat case and
+ * far below the regression.
+ */
+function assertLinearCopyWork(build: (n: number) => string, n: number, label: string): void {
+    const small = copyWorkPerChar(build(n));
+    const large = copyWorkPerChar(build(n * 2));
+    const ratio = large / small;
+    assert.ok(ratio < 1.5, `${label}: copy work per character grew ${ratio.toFixed(2)}x `
+        + `(${small.toFixed(2)} → ${large.toFixed(2)} between ${n} and ${n * 2}); `
+        + 'expected assembly to stay proportional to input length');
+}
 
 // ─── Telegram: the token lives in the URL path ───────
 
@@ -399,18 +441,20 @@ test('secrets of many different lengths do not slow the sweep', () => {
     // a prefix — so the fixture has to actually produce 400 of them. Written
     // with a modulo it produced 50, and the assertion proved much less than
     // its comment claimed.
-    const secrets: string[] = [];
-    let input = '';
-    for (let i = 0; i < 400; i += 1) {
-        const secret = `Ab1${'Cd2'.repeat(11)}${'z'.repeat(i)}`;
-        secrets.push(secret);
-        input += `bot1234567${String(i % 100).padStart(2, '0')}:${secret} `;
-    }
-    assert.equal(new Set(secrets.map((s) => s.length)).size, 400, 'fixture must span 400 lengths');
+    const build = (count: number) => {
+        const secrets: string[] = [];
+        let input = '';
+        for (let i = 0; i < count; i += 1) {
+            const secret = `Ab1${'Cd2'.repeat(11)}${'z'.repeat(i)}`;
+            secrets.push(secret);
+            input += `bot1234567${String(i % 100).padStart(2, '0')}:${secret} `;
+        }
+        assert.equal(new Set(secrets.map((s) => s.length)).size, count,
+            'fixture must span one length per secret');
+        return input;
+    };
 
-    const started = Date.now();
-    redactChannelSecrets(input);
-    assert.ok(Date.now() - started < 500, `took ${Date.now() - started}ms on ${input.length} chars`);
+    assertLinearCopyWork(build, 400, 'distinct lengths');
 });
 
 test('an NFKC expansion does not shift the offset map', () => {
@@ -431,19 +475,20 @@ test('secrets sharing a prefix do not slow the sweep either', () => {
     //
     // The tail must MISS: a matching run advances the cursor past itself, so a
     // tail of real repeats measures nothing.
+    //
+    // Both halves scale with `count`: the bucket size AND the tail it is
+    // tested against. Per-secret scanning is quadratic in that product, so it
+    // shows up as a super-linear ratio no matter how fast the runner is.
     const prefix = 'Ab1Cd2Ef3Gh4Ij5K';
-    let input = '';
-    for (let i = 0; i < 400; i += 1) {
-        input += `bot1234567${String(i % 100).padStart(2, '0')}:${prefix}${'z'.repeat(20 + (i % 30))}${i} `;
-    }
-    input += prefix.repeat(20_000);
+    const build = (count: number) => {
+        let input = '';
+        for (let i = 0; i < count; i += 1) {
+            input += `bot1234567${String(i % 100).padStart(2, '0')}:${prefix}${'z'.repeat(20 + (i % 30))}${i} `;
+        }
+        return input + prefix.repeat(count * 50);
+    };
 
-    const started = Date.now();
-    redactChannelSecrets(input);
-    // Measured: ~155 ms indexed by prefix AND length, ~340 ms when the bucket
-    // is scanned linearly. The threshold sits between them so a regression to
-    // per-secret scanning fails here rather than passing quietly.
-    assert.ok(Date.now() - started < 250, `took ${Date.now() - started}ms on ${input.length} chars`);
+    assertLinearCopyWork(build, 400, 'shared prefix');
 });
 
 test('an exhausted fold spares identifiers that are merely long', () => {
@@ -482,13 +527,19 @@ test('an elicitation ack is masked before it is shown', async () => {
 test('many distinct credentials do not make redaction quadratic', () => {
     // An attacker chooses how many token-shaped runs an error string holds.
     // Scanning the whole text once per distinct secret took nearly a second.
-    let input = '';
-    for (let i = 0; i < 4_000; i += 1) {
-        input += `bot1234567${String(i).padStart(2, '0')}:${'Ab1'.repeat(12)}${i} `;
-    }
-    const started = Date.now();
-    redactChannelSecrets(input);
-    assert.ok(Date.now() - started < 500, `took ${Date.now() - started}ms on ${input.length} chars`);
+    const build = (count: number) => {
+        let input = '';
+        for (let i = 0; i < count; i += 1) {
+            input += `bot1234567${String(i).padStart(2, '0')}:${'Ab1'.repeat(12)}${i} `;
+        }
+        return input;
+    };
+
+    // Counting copy work rather than milliseconds also made the fixture
+    // cheaper: the old timing version needed 4k→8k credentials before the
+    // regression outgrew timer noise, which cost seconds of suite time. The
+    // counter separates them at any size, so 2k→4k is enough.
+    assertLinearCopyWork(build, 2_000, 'distinct credentials');
 });
 
 test('a repeat wrapped in a different encoding is still caught', () => {
