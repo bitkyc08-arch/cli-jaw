@@ -190,6 +190,91 @@ test('extractTextFromBlocks survives pathological nesting depth', () => {
     assert.doesNotThrow(() => extractTextFromBlocks([node]));
 });
 
+test('dedupe holds an id across a burst far larger than any size ceiling', async () => {
+    // Regression: an entry ceiling evicted UNEXPIRED ids, so a busy workspace
+    // could reprocess a delayed retry — the exact duplicate-agent-run failure
+    // the dedupe exists to prevent. Only EXPIRED entries may be swept.
+    const listeners = new Map<string, (event: unknown) => void>();
+    let handled = 0;
+    const fetchImpl = (async () => ({
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ ok: true, url: 'wss://example.invalid/link' }),
+    // justified: minimal Response surface for the socket handshake
+    } as unknown as Response)) as unknown as typeof fetch;
+
+    const client = new SlackSocketClient({
+        appToken: 'xapp-test',
+        fetchImpl,
+        baseReconnectDelayMs: 99_000,
+        socketFactory: () => ({
+            send: () => { /* no-op */ },
+            close: () => { /* no-op */ },
+            addEventListener: (type, listener) => { listeners.set(type, listener); },
+        }),
+        onEnvelope: () => { handled++; },
+    });
+    await client.start();
+    listeners.get('message')!({ data: JSON.stringify({ type: 'hello' }) });
+    await new Promise(resolve => setImmediate(resolve));
+
+    const frame = (id: string) => JSON.stringify({
+        envelope_id: id,
+        type: 'events_api',
+        payload: { event: { type: 'message', channel: 'D1', text: 'x' } },
+    });
+    listeners.get('message')!({ data: frame('OLD') });
+    for (let i = 0; i < 5000; i++) listeners.get('message')!({ data: frame(`F${i}`) });
+    await new Promise(resolve => setImmediate(resolve));
+    listeners.get('message')!({ data: frame('OLD') });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(handled, 5001, 'a delayed retry was reprocessed after a large burst');
+    client.stop();
+});
+
+test('a warning-close during an in-flight reconnect does not stack another', async () => {
+    // Reproduced by the reviewer as 3 connections for one disconnect: the
+    // `disconnect` frame scheduled a reconnect and the following `close` from
+    // the same socket scheduled a second one.
+    const sockets: Array<Map<string, (event: unknown) => void>> = [];
+    let fetchCalls = 0;
+    const fetchImpl = (async () => {
+        fetchCalls++;
+        return {
+            ok: true, status: 200,
+            text: async () => JSON.stringify({ ok: true, url: 'wss://example.invalid/link' }),
+        // justified: minimal Response surface for the socket handshake
+        } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const client = new SlackSocketClient({
+        appToken: 'xapp-test',
+        fetchImpl,
+        baseReconnectDelayMs: 5,
+        socketFactory: () => {
+            const listeners = new Map<string, (event: unknown) => void>();
+            sockets.push(listeners);
+            return {
+                send: () => { /* no-op */ },
+                close: () => { /* no-op */ },
+                addEventListener: (type, listener) => { listeners.set(type, listener); },
+            };
+        },
+        onEnvelope: () => { /* no-op */ },
+    });
+    await client.start();
+    sockets[0]!.get('message')!({ data: JSON.stringify({ type: 'hello' }) });
+    await new Promise(resolve => setImmediate(resolve));
+
+    sockets[0]!.get('message')!({ data: JSON.stringify({ type: 'disconnect', reason: 'warning' }) });
+    sockets[0]!.get('close')!({});
+    await new Promise(resolve => setTimeout(resolve, 60));
+
+    assert.equal(fetchCalls, 2, `one disconnect produced ${fetchCalls} connection attempts`);
+    assert.equal(client.getReconnectAttempts(), 1);
+    client.stop();
+});
+
 // ─── reconnect-window guard ─────────────────────────
 
 test('a frame arriving before hello is NOT acked and NOT dispatched', async () => {

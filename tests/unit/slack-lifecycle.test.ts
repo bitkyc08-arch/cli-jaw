@@ -1,0 +1,92 @@
+import test, { mock } from 'node:test';
+import assert from 'node:assert/strict';
+
+// initSlack/shutdownSlack lifecycle. Isolated in its own file because it mocks
+// the socket client and the send path.
+
+const state: {
+    started: number;
+    stopped: number;
+    authOk: boolean;
+} = { started: 0, stopped: 0, authOk: true };
+
+mock.module('../../src/slack/api.ts', {
+    namedExports: {
+        slackApi: async (_token: string, method: string) => {
+            if (method === 'auth.test') {
+                return state.authOk
+                    ? { ok: true, data: { user_id: 'UBOT', team_id: 'T1' } }
+                    : { ok: false, error: 'invalid_auth' };
+            }
+            return { ok: true, data: {} };
+        },
+        describeSlackError: (e?: string) => e ?? 'unknown',
+        redactSlackTokens: (s: string) => s,
+        isRetryableSlackError: () => false,
+        slackFailure: (error: string, status?: number) =>
+            status === undefined ? { ok: false, error } : { ok: false, error, status },
+    },
+});
+
+mock.module('../../src/slack/socket.ts', {
+    namedExports: {
+        SlackSocketClient: class {
+            async start() { state.started++; }
+            stop() { state.stopped++; }
+            getState() { return 'connected'; }
+            getReconnectAttempts() { return 0; }
+        },
+    },
+});
+
+async function loadBot(slack: Record<string, unknown>) {
+    const { settings } = await import('../../src/core/config.ts');
+    (settings as Record<string, unknown>)['slack'] = slack;
+    return import('../../src/slack/bot.ts');
+}
+
+test('initSlack actually starts the socket for a fully configured workspace', async () => {
+    // Regression: initSlack claimed a lifecycle generation BEFORE calling
+    // shutdownSlack, whose own bump then invalidated it — so every normal
+    // start aborted after auth.test and Slack inbound never came up at all.
+    state.started = 0;
+    state.stopped = 0;
+    state.authOk = true;
+
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t' });
+    await bot.initSlack();
+    assert.equal(state.started, 1, 'the socket never started — init self-superseded');
+    assert.equal(bot.getSlackSelfUserId(), 'UBOT', 'auth identity was not recorded');
+
+    await bot.shutdownSlack();
+    assert.equal(state.stopped >= 1, true, 'shutdown did not stop the socket');
+    assert.equal(bot.getSlackSelfUserId(), null);
+});
+
+test('initSlack stays outbound-only without an app token', async () => {
+    state.started = 0;
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: '' });
+    await bot.initSlack();
+    assert.equal(state.started, 0, 'inbound must not start without the app-level token');
+});
+
+test('initSlack does nothing when slack is disabled', async () => {
+    state.started = 0;
+    const bot = await loadBot({ enabled: false, botToken: 'xoxb-t', appToken: 'xapp-t' });
+    await bot.initSlack();
+    assert.equal(state.started, 0);
+});
+
+test('initSlack aborts cleanly on an auth failure', async () => {
+    state.started = 0;
+    state.authOk = false;
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-bad', appToken: 'xapp-t' });
+    await bot.initSlack();
+    assert.equal(state.started, 0, 'a failed auth.test must not open a socket');
+    state.authOk = true;
+});
+
+test('shutdownSlack is safe to call when nothing is running', async () => {
+    const bot = await loadBot({ enabled: false });
+    await assert.doesNotReject(() => bot.shutdownSlack());
+});

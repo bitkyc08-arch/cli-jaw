@@ -44,8 +44,14 @@ const CONTROL_FRAME_TYPES = new Set(['hello', 'disconnect']);
  * the duplicate-agent-run failure this dedupe exists to prevent.
  */
 const DEDUPE_TTL_MS = 10 * 60 * 1000;
-/** Hard ceiling so a flood cannot grow the map without bound. */
-const DEDUPE_MAX_ENTRIES = 5000;
+/**
+ * Soft ceiling that triggers expiry sweeps. It deliberately does NOT evict
+ * unexpired ids: dropping one before its retry horizon reopens the duplicate-
+ * agent-run hole this map exists to close. Memory stays bounded by the TTL
+ * instead — a workspace would have to exceed 30k distinct deliveries within
+ * the window to grow past this, and each entry is a short id plus a number.
+ */
+const DEDUPE_SWEEP_AT = 5000;
 /** Slack sends `hello` promptly; without it the socket is not usable. */
 const HELLO_DEADLINE_MS = 15000;
 
@@ -147,6 +153,14 @@ export class SlackSocketClient {
 
     private async connectOnce(): Promise<void> {
         this.state = this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting';
+        // The socket being replaced must stop influencing lifecycle decisions
+        // the moment a replacement is under way: its close event would
+        // otherwise schedule a second reconnect on top of this one.
+        const superseded = this.ws;
+        this.ws = null;
+        if (superseded) {
+            try { superseded.close(); } catch { /* already closing */ }
+        }
 
         const opened = await slackApi<{ url?: string }>(
             this.options.appToken,
@@ -168,10 +182,6 @@ export class SlackSocketClient {
         if (this.stopped) {
             try { ws.close(); } catch { /* already closing */ }
             return;
-        }
-        // Close any socket this one supersedes before replacing it.
-        if (this.ws) {
-            try { this.ws.close(); } catch { /* already closing */ }
         }
         this.ws = ws;
 
@@ -312,16 +322,12 @@ export class SlackSocketClient {
         const seenAt = this.seenEnvelopes.get(envelopeId);
         if (seenAt !== undefined && now - seenAt < DEDUPE_TTL_MS) return true;
         this.seenEnvelopes.set(envelopeId, now);
-        // Bounded lazy cleanup: drop expired entries, then oldest-first if the
-        // map is still over its ceiling.
-        if (this.seenEnvelopes.size > DEDUPE_MAX_ENTRIES) {
+        // Lazy sweep of EXPIRED entries only. Evicting an unexpired id to hit
+        // a size target would let a busy workspace reprocess a delayed retry,
+        // which is precisely the failure this dedupe prevents.
+        if (this.seenEnvelopes.size > DEDUPE_SWEEP_AT) {
             for (const [id, at] of this.seenEnvelopes) {
                 if (now - at >= DEDUPE_TTL_MS) this.seenEnvelopes.delete(id);
-            }
-            while (this.seenEnvelopes.size > DEDUPE_MAX_ENTRIES) {
-                const oldest = this.seenEnvelopes.keys().next().value;
-                if (oldest === undefined) break;
-                this.seenEnvelopes.delete(oldest);
             }
         }
         return false;
@@ -332,6 +338,8 @@ export class SlackSocketClient {
         // An already-pending reconnect wins; a second trigger (e.g. a
         // `disconnect` frame immediately followed by `close`) must not stack.
         if (this.reconnectTimer) return;
+        // A connect already in flight satisfies the reconnect demand.
+        if (this.connecting) return;
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             log.error(`[slack:socket] max reconnect attempts (${this.maxReconnectAttempts}) reached — giving up`);
             this.state = 'disconnected';

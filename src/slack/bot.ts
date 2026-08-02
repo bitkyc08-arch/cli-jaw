@@ -180,9 +180,13 @@ export async function initSlack(): Promise<void> {
         return;
     }
     slackInitLock = true;
-    const generation = ++lifecycleGeneration;
     try {
+        // Tear down FIRST, then claim a generation. Claiming it before the
+        // teardown would let shutdownSlack's own bump invalidate this very
+        // init, so every normal start aborted after auth.test and Slack
+        // inbound never came up at all.
         await shutdownSlack();
+        const generation = ++lifecycleGeneration;
         const sc = settings["slack"];
         if (!sc?.enabled || !sc?.botToken) {
             log.info('[slack] ⏭️  Slack pending (disabled or no bot token)');
