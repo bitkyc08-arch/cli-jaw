@@ -6,12 +6,16 @@
 
 const CODE_FENCE = /```[\s\S]*?```/g;
 const INLINE_CODE = /`[^`\n]+`/g;
+// Sentinel for stashed code spans. It must not occur in the input, so any
+// literal occurrence is stripped first — otherwise text like "a\u00000\u0000b"
+// would be mistaken for a stash reference and silently eat content.
 const STASH_MARK = '\u0000';
 
 /** Protect code spans from formatting conversion, convert, then restore. */
 function withCodeProtected(text: string, convert: (s: string) => string): string {
     const stash: string[] = [];
     const stashed = text
+        .replaceAll(STASH_MARK, '')
         .replace(CODE_FENCE, (m) => { stash.push(m); return `${STASH_MARK}${stash.length - 1}${STASH_MARK}`; })
         .replace(INLINE_CODE, (m) => { stash.push(m); return `${STASH_MARK}${stash.length - 1}${STASH_MARK}`; });
     const converted = convert(stashed);
@@ -21,8 +25,11 @@ function withCodeProtected(text: string, convert: (s: string) => string): string
 export function toMrkdwn(text: string): string {
     if (!text) return '';
     return withCodeProtected(text, (s) => s
-        // Links: [label](url) -> <url|label>
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<$2|$1>')
+        // Links: [label](url) -> <url|label>. The label may contain balanced
+        // brackets (common in agent output: "[see [1]](url)").
+        .replace(/\[((?:[^\][]|\[[^\][]*\])+)\]\((https?:\/\/[^)\s]+)\)/g, '<$2|$1>')
+        // Bold+italic first: ***x*** -> *_x_* (Slack has no combined marker).
+        .replace(/\*\*\*([^*\n]+)\*\*\*/g, '*_$1_*')
         // Bold: **x** or __x__ -> *x*   (before italic)
         .replace(/\*\*([^*\n]+)\*\*/g, '*$1*')
         .replace(/__([^_\n]+)__/g, '*$1*')

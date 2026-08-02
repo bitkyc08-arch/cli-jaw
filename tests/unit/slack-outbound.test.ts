@@ -133,6 +133,62 @@ test('toMrkdwn strips fence language tags', () => {
     assert.equal(toMrkdwn('```ts\nconst a = 1;\n```'), '```\nconst a = 1;\n```');
 });
 
+test('toMrkdwn converts bold+italic before plain bold', () => {
+    // Slack has no combined marker, so ***x*** must become *_x_*. Handling
+    // plain bold first would leave a stray '**both**'.
+    assert.equal(toMrkdwn('***both***'), '*_both_*');
+});
+
+test('toMrkdwn converts links whose label contains brackets', () => {
+    // Agent output routinely cites like "[see [1]](url)".
+    assert.equal(toMrkdwn('[a [b] c](https://x.dev)'), '<https://x.dev|a [b] c>');
+});
+
+test('toMrkdwn survives a literal NUL in the source text', () => {
+    // NUL is the code-span stash sentinel. Left in place, 'a\u00000\u0000b'
+    // looks like a stash reference and silently eats the surrounding text.
+    const out = toMrkdwn('lit\u0000000\u0000eral');
+    assert.equal(out, 'lit000eral');
+    assert.ok(!out.includes('\u0000'));
+});
+
+test('toMrkdwn fuzz: never throws and never emits the stash sentinel', () => {
+    const samples = [
+        '', '`', '```', '**', '~~', '[](', '[x](notaurl)', '*'.repeat(50),
+        '\u0000'.repeat(10), '`a`'.repeat(100), '```\nx\n```'.repeat(20),
+        '🎉**bold**🎉', 'a\r\n**b**\r\nc',
+    ];
+    for (const s of samples) {
+        const out = toMrkdwn(s);
+        assert.equal(typeof out, 'string');
+        assert.ok(!out.includes('\u0000'), `sentinel leaked for ${JSON.stringify(s)}`);
+    }
+});
+
+test('chunkSlackMessage fuzz: terminates, respects the limit, loses nothing', () => {
+    const cases: Array<[string, number]> = [
+        ['', 10],
+        ['``````', 5],
+        ['z'.repeat(500), 50],
+        ['q'.repeat(200), 3],
+        ['w'.repeat(100), 1],
+        [('a'.repeat(30) + '\r\n').repeat(20), 50],
+        ['```\n' + 'k'.repeat(300), 40],
+        ['🎉'.repeat(300), 40],
+    ];
+    for (const [text, limit] of cases) {
+        const chunks = chunkSlackMessage(text, limit);
+        assert.ok(Array.isArray(chunks), `no array for limit ${limit}`);
+        // Injected fences are the only permitted growth.
+        const rebuilt = chunks.join('').replace(/```/g, '').replace(/\n/g, '');
+        const source = text.replace(/```/g, '').replace(/[\n\r]/g, '');
+        assert.ok(
+            rebuilt.length >= source.length,
+            `content lost: ${rebuilt.length} < ${source.length} for ${JSON.stringify(text.slice(0, 20))}`,
+        );
+    }
+});
+
 test('chunkSlackMessage returns one chunk under the limit', () => {
     assert.deepEqual(chunkSlackMessage('short'), ['short']);
 });
