@@ -202,6 +202,17 @@ if (channelFlag === 'slack' && !slEnabled) {
     console.error('  ❌ --channel slack requires --slack-bot-token.');
     process.exit(1);
 }
+// Catch swapped tokens BEFORE writing. Otherwise init produces a
+// green-looking settings file and the mistake only surfaces after the server
+// starts and auth.test fails.
+if (slEnabled && slBotToken && !slBotToken.startsWith('xoxb-')) {
+    console.error(`  ❌ Slack bot token should start with "xoxb-" (got "${slBotToken.slice(0, 5)}…"). Did you swap it with the app-level token?`);
+    process.exit(1);
+}
+if (slAppToken && !slAppToken.startsWith('xapp-')) {
+    console.error(`  ❌ Slack app-level token should start with "xapp-" (got "${slAppToken.slice(0, 5)}…"). Did you swap it with the bot token?`);
+    process.exit(1);
+}
 // Outbound-only is a legitimate partial configuration, so this warns rather
 // than exiting — it is the same state channel-health reports as
 // missing_app_token.

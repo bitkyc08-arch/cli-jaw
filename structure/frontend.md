@@ -158,6 +158,7 @@ public/
 | `features/settings-cli-status-render.ts` | 161L | CLI status row rendering helpers |
 | `features/settings-core.ts` | 644L | settings load/update, per-CLI model/effort, locale sync, `postPreviewInvalidate` on active CLI change, projectDirs 변경 시 header git summary refresh |
 | `features/settings-discord.ts` | — | Discord settings save/load/toggles |
+| `features/settings-slack.ts` | — | Slack settings save/load/toggles (bot+app token, mentionOnly/replyInThread default ON) |
 | `features/settings-mcp.ts` | 561L | MCP server list/sync/install + registry browse/install (`/api/mcp/registry`) |
 | `features/settings-stt.ts` | — | STT engine/provider fields |
 | `features/settings-telegram.ts` | — | Telegram settings save/load/toggles |
@@ -181,6 +182,7 @@ settings.ts (barrel)
 ├─ settings-core.ts
 ├─ settings-telegram.ts
 ├─ settings-discord.ts
+├─ settings-slack.ts
 ├─ settings-channel.ts
 ├─ settings-mcp.ts
 ├─ settings-cli-status.ts
@@ -320,7 +322,7 @@ Regression context: `devlog/_plan/260627_process_block_blank_expand/`.
 | `manifest.json` | `standalone`, `theme_color: #22d3ee`, 192/512/maskable icons |
 | `sw.js` | navigation network-first, `/dist/assets/*` cache-first, 그 외 stale-while-revalidate |
 | `icons/` | `icon-192.png`, `icon-512.png`, `icon-512-maskable.png` |
-| `assets/providers/` | `antigravity(-color)`, `claude(-color)`, `copilot(-color)`, `cursor(-color)`, `gemini(-color)`, `grok(-color)`, `kiro(-color)`, `openai`, `opencode`, `discord`, `telegram` |
+| `assets/providers/` | `antigravity(-color)`, `claude(-color)`, `copilot(-color)`, `cursor(-color)`, `gemini(-color)`, `grok(-color)`, `kiro(-color)`, `openai`, `opencode`, `discord`, `telegram`, `slack` |
 | `assets/fonts/` | `GeistVF.woff2`, `JetBrainsMono-Variable.woff2` |
 | `locales/` | `ko.json`, `en.json`, `ja.json`, `zh.json` |
 
