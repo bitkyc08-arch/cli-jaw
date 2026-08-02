@@ -60,14 +60,20 @@ export function describeSlackError(error: string | undefined): string {
  * Redact Slack credentials from any string before it reaches a log sink or an
  * API response. Covers two distinct secret shapes:
  *   - bearer tokens (xoxb-, xoxp-, xapp-, ...)
- *   - presigned upload URLs, whose query string IS the capability — anyone
- *     holding it can upload for the duration of its signature
+ *   - upload URLs, which are capabilities in their own right. Slack's
+ *     documented `upload_url` is an OPAQUE PATH ("…/upload/v1/ABC123"), so
+ *     redacting only the query string leaves the capability exposed.
  */
 export function redactSlackTokens(input: string): string {
     return input
         .replace(/x(?:ox[bpas]|app)-[A-Za-z0-9-]+/g, (m) => `${m.slice(0, 9)}...redacted`)
-        // Any URL carrying a query string may carry a signature; keep the
-        // origin+path for debuggability, drop the credential material.
+        // Slack file upload endpoints: the whole URL after the host is the
+        // capability, path or query. Keep the host so logs stay diagnosable.
+        .replace(
+            /https?:\/\/([A-Za-z0-9.-]*slack\.com)\/[^\s]*/g,
+            (_m, host: string) => `https://${host}/...redacted`,
+        )
+        // Any other URL may still carry a signature in its query string.
         .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/g, '$1?...redacted');
 }
 

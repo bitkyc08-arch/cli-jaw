@@ -45,14 +45,19 @@ const FENCE_RESERVE = 8; // "```\n" prepended + "\n```" appended
 /** Below this, fence-aware wrapping cannot fit; fall back to a plain split. */
 const MIN_FENCE_AWARE_LIMIT = 24;
 
-/** Split at a code-point boundary so a cut never separates a surrogate pair. */
+/**
+ * Split at a code-point boundary so a cut never separates a surrogate pair.
+ * When backing off would produce an empty chunk (a limit so small that a
+ * single astral character does not fit), advance instead: emitting one
+ * slightly oversized chunk is better than shipping half an emoji, and better
+ * than looping forever on a zero-length cut.
+ */
 function safeCut(text: string, index: number): number {
     if (index >= text.length) return text.length;
-    let cut = index;
-    // A low surrogate at the cut means the pair straddles it — back off one.
-    const code = text.charCodeAt(cut);
-    if (code >= 0xDC00 && code <= 0xDFFF && cut > 0) cut -= 1;
-    return cut;
+    const code = text.charCodeAt(index);
+    const splitsPair = code >= 0xDC00 && code <= 0xDFFF;
+    if (!splitsPair) return index;
+    return index > 1 ? index - 1 : index + 1;
 }
 
 /**
@@ -67,7 +72,9 @@ function splitPreservingContent(text: string, limit: number): string[] {
         // Keep the newline in this chunk (+1) rather than dropping it.
         const nl = rest.lastIndexOf('\n', limit - 1);
         let cut = nl > 0 ? nl + 1 : safeCut(rest, limit);
-        if (cut <= 0) cut = Math.min(limit, rest.length);
+        // A zero cut would never consume input. Take one whole code point.
+        if (cut <= 0) cut = safeCut(rest, Math.max(1, Math.min(limit, rest.length)));
+        if (cut <= 0) cut = Math.min(2, rest.length);
         out.push(rest.slice(0, cut));
         rest = rest.slice(cut);
     }
@@ -94,7 +101,41 @@ export function chunkSlackMessage(text: string, limit = 3900): string[] {
 
     // Every piece is produced from the ORIGINAL text and strictly consumes it,
     // so termination does not depend on how many fences we inject afterwards.
-    const pieces = splitPreservingContent(text, cap - FENCE_RESERVE);
+    const rawPieces = splitPreservingContent(text, cap - FENCE_RESERVE);
+
+    // A piece holding only fence markers and whitespace would post as an empty
+    // code block. MERGE it forward into the next piece rather than dropping it
+    // — skipping it silently deleted the source's own blank lines.
+    // Merging must not push a piece past the budget, or the injected fences
+    // would carry it over the caller's limit.
+    const budget = cap - FENCE_RESERVE;
+    const pieces: string[] = [];
+    let carry = '';
+    for (const piece of rawPieces) {
+        const candidate = carry + piece;
+        if (candidate.length > budget) {
+            // Cannot merge without overflowing: emit what we have separately.
+            if (carry) pieces.push(carry);
+            pieces.push(piece);
+            carry = '';
+            continue;
+        }
+        if (candidate.replace(/```/g, '').trim() === '') {
+            carry = candidate;
+            continue;
+        }
+        pieces.push(candidate);
+        carry = '';
+    }
+    if (carry) {
+        const last = pieces[pieces.length - 1];
+        if (last !== undefined && last.length + carry.length <= budget) {
+            pieces[pieces.length - 1] = last + carry;
+        } else {
+            pieces.push(carry);
+        }
+    }
+
     const out: string[] = [];
     let openFence: boolean = false;
     for (const piece of pieces) {
@@ -107,5 +148,5 @@ export function chunkSlackMessage(text: string, limit = 3900): string[] {
         out.push(chunk);
         openFence = closesOpen;
     }
-    return out;
+    return out.length > 0 ? out : [text];
 }

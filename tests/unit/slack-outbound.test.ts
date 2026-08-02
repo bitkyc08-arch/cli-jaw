@@ -104,11 +104,22 @@ test('redactSlackTokens masks both token families', () => {
 });
 
 test('redactSlackTokens masks presigned upload URLs', () => {
-    // The upload URL's query string IS the capability: anyone holding it can
-    // upload until the signature expires.
+    // The upload URL is the capability: anyone holding it can upload.
     const out = redactSlackTokens('upload failed at https://files.slack.com/upload/v1/abc?X-Amz-Signature=SECRET');
     assert.ok(!out.includes('SECRET'), 'presigned signature leaked');
-    assert.match(out, /files\.slack\.com\/upload\/v1\/abc\?\.\.\.redacted/);
+    assert.match(out, /files\.slack\.com\/\.\.\.redacted/);
+});
+
+test('redactSlackTokens masks path-only upload capabilities', () => {
+    // Slack's documented upload_url is an OPAQUE PATH with no query string, so
+    // redacting only query strings would leave the capability exposed.
+    const out = redactSlackTokens('POST https://files.slack.com/upload/v1/OPAQUEPATHCAP');
+    assert.ok(!out.includes('OPAQUEPATHCAP'), 'path-only upload capability leaked');
+    assert.match(out, /files\.slack\.com\/\.\.\.redacted/);
+});
+
+test('redactSlackTokens leaves unrelated URLs readable', () => {
+    assert.equal(redactSlackTokens('see https://example.dev/docs'), 'see https://example.dev/docs');
 });
 
 // ─── format.ts ──────────────────────────────────────
@@ -239,6 +250,60 @@ test('chunkSlackMessage terminates on nested backtick fences at a small limit', 
     const chunks = chunkSlackMessage('````\n```inside\n````', 10);
     assert.ok(chunks.length > 0);
     assert.ok(chunks.join('').includes('inside'));
+});
+
+test('chunkSlackMessage keeps content and the limit across fenced input', () => {
+    const text = '```\n' + 'x'.repeat(200) + '\n```';
+    for (const limit of [24, 32, 40, 60, 100]) {
+        const chunks = chunkSlackMessage(text, limit);
+        const over = chunks.filter(c => c.length > limit);
+        assert.equal(over.length, 0, `chunk exceeded limit ${limit}: ${JSON.stringify(over)}`);
+        const xs = (chunks.join('').match(/x/g) || []).length;
+        assert.equal(xs, 200, `content lost at limit ${limit}`);
+    }
+});
+
+test('chunkSlackMessage preserves blank lines that follow a fence opener', () => {
+    // Regression: an "empty block" suppression pass deleted the source's own
+    // blank lines. Whitespace-only pieces are now merged forward, not dropped.
+    const text = '```\n\n' + 'x'.repeat(5000);
+    const chunks = chunkSlackMessage(text, 3900);
+    // Compare non-fence content exactly, newlines included: dropping the blank
+    // line was precisely a newline-count regression.
+    const stripFences = (s: string) => s.split('```').join('');
+    const rebuiltNewlines = (stripFences(chunks.join('')).match(/\n/g) || []).length;
+    const sourceNewlines = (stripFences(text).match(/\n/g) || []).length;
+    assert.ok(
+        rebuiltNewlines >= sourceNewlines,
+        `blank line lost: ${rebuiltNewlines} newlines vs ${sourceNewlines} in source`,
+    );
+    assert.equal((chunks.join('').match(/x/g) || []).length, 5000, 'content lost');
+    assert.equal(chunks.filter(c => c.length > 3900).length, 0);
+});
+
+test('chunkSlackMessage never emits half of a surrogate pair, even at limit 1', () => {
+    // A limit smaller than one astral character yields one slightly oversized
+    // chunk — shipping half an emoji would be worse.
+    for (const limit of [1, 2, 3]) {
+        for (const chunk of chunkSlackMessage('🙂ab🙂', limit)) {
+            assert.ok(
+                !/[\uD800-\uDBFF]$/.test(chunk) && !/^[\uDC00-\uDFFF]/.test(chunk),
+                `limit ${limit} split a surrogate pair: ${JSON.stringify(chunk)}`,
+            );
+        }
+    }
+});
+
+test('chunkSlackMessage stays within the limit across the fence-aware threshold', () => {
+    // 24 is the cutoff below which fence-aware wrapping cannot fit and the
+    // function falls back to a plain split. Both sides must respect the limit.
+    const text = '```\n' + 'y'.repeat(400) + '\n```';
+    for (const limit of [1, 5, 10, 23, 24, 25]) {
+        const chunks = chunkSlackMessage(text, limit);
+        const over = chunks.filter(c => c.length > limit);
+        assert.equal(over.length, 0, `limit ${limit} exceeded by ${JSON.stringify(over.slice(0, 2))}`);
+        assert.equal((chunks.join('').match(/y/g) || []).length, 400, `content lost at limit ${limit}`);
+    }
 });
 
 test('chunkSlackMessage keeps every chunk inside a closed code block', () => {
