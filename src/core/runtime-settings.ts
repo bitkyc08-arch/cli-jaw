@@ -111,6 +111,11 @@ async function invalidateSendOnlyClientsIfNeeded(
             invalidateDiscordSendClient();
         }));
     }
+    if (transportConfigFingerprint('slack', prev) !== transportConfigFingerprint('slack', next)) {
+        tasks.push(import('../slack/send-only-client.js').then(({ invalidateSlackSendClient }) => {
+            invalidateSlackSendClient();
+        }));
+    }
     await Promise.all(tasks);
 }
 
