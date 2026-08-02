@@ -232,10 +232,10 @@ cli-jaw/
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction) (134L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (62L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (149L)
-│   │   ├── commands.ts       ← slash command → 공유 parseCommand/executeCommand 파이프라인 (101L)
+│   │   ├── commands.ts       ← slash command → 공유 parseCommand/executeCommand 파이프라인 (102L)
 │   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (95L)
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (68L)
-│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (68L)
+│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (44L)
 │   │   └── register.ts       ← lazy transport 등록 (inbound + send) (16L)
 │   ├── browser/              ← Chrome CDP 제어 + web-ai 자동화 + adaptive-fetch

@@ -187,6 +187,132 @@ test('fenceReserve grows with the language tag', () => {
     assert.equal(fenceReserve('typescript'), 18);
 });
 
+// ─── Randomized properties ───────────────────────────
+// The Slack unit is guarded by randomized property tests as well as cases;
+// these are the same shape, run against both older channels. Deterministic
+// cases only prove the inputs someone thought of, and every defect in this
+// unit was found by generating one nobody had.
+
+/** Deterministic PRNG so a failure reproduces from its seed alone. */
+function seeded(seed: number) {
+    let state = seed;
+    return () => ((state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+}
+
+/** Fragments chosen to collide with every boundary this splitter cares about. */
+const FUZZ_ALPHABET = [
+    'a', '\n', '\r\n', ' ', '```', '````', '~~~', '```ts\n', '```typescript\n',
+    '\u{1F44D}', '\u{1F469}\u200D\u{1F4BB}', 'x', '한', '`', '.', '```\n',
+];
+
+function randomMessage(next: () => number): string {
+    let text = '';
+    const pieces = Math.floor(next() * 40);
+    for (let i = 0; i < pieces; i += 1) {
+        text += FUZZ_ALPHABET[Math.floor(next() * FUZZ_ALPHABET.length)]!;
+    }
+    return text;
+}
+
+/**
+ * Everything a chunk sequence must satisfy, whatever the input.
+ *
+ * Content comparison ignores fence markers and their language tags, because
+ * those are the one thing the splitter is allowed to add. It also ignores
+ * whitespace: a reopener carries a newline the source did not have.
+ */
+function assertChunkProperties(
+    chunks: string[],
+    text: string,
+    limit: number,
+    label: string,
+): void {
+    assert.ok(chunks.length > 0, `${label}: produced no chunks`);
+    assert.ok(chunks.length < text.length + 8, `${label}: suspiciously many chunks — possible non-termination`);
+
+    for (const [i, chunk] of chunks.entries()) {
+        assert.ok(chunk.length <= limit, `${label}: chunk ${i} is ${chunk.length} > ${limit}`);
+    }
+    assert.equal(hasLoneSurrogate(chunks), false, `${label}: split a surrogate pair`);
+
+    // Content is checked by CONSUMPTION, not by normalizing both sides. A
+    // normalizer has to guess which markers were injected, and every guess
+    // either erases the source's own delimiters or leaves an injected one
+    // behind — both produce false failures on input made of delimiters.
+    //
+    // Walking instead: each chunk must consume a prefix of what is left, and
+    // the walk must reach the end. Whatever a chunk holds beyond that prefix
+    // is markup the splitter added.
+    let cursor = 0;
+    for (const chunk of chunks) {
+        let matched = 0;
+        for (let take = Math.min(chunk.length, text.length - cursor); take > 0; take -= 1) {
+            if (chunk.includes(text.slice(cursor, cursor + take))) { matched = take; break; }
+        }
+        cursor += matched;
+    }
+    assert.equal(cursor, text.length, `${label}: content lost — consumed ${cursor} of ${text.length}`);
+
+    // Fence balance is checked only where it is promised.
+    //
+    // Two carve-outs, both documented in chunk.ts rather than discovered here:
+    // a source that ends mid-block legitimately yields chunks that end
+    // mid-block — inventing a closer the author omitted is not the splitter's
+    // job — and a delimiter wider than the chunk budget is left unrepaired,
+    // because reopening it would breach the size limit. Delivery beats
+    // formatting, and the size contract is the one that cannot bend.
+    // The widest opener in the SOURCE understates what the splitter may meet:
+    // pieces are cut from a reduced budget, and a run that was not an opener
+    // in the whole text can become one once isolated. Measuring the widest run
+    // of delimiter characters anywhere covers that.
+    const widestRun = Math.max(
+        3,
+        ...[...text.matchAll(/`{3,}|~{3,}/g)].map((m) => m[0].length),
+    );
+    const repairable = widestRun * 2 + 2 <= limit;
+    if (scanOpenFence(text) === null && repairable) {
+        for (const [i, chunk] of chunks.entries()) {
+            assert.equal(scanOpenFence(chunk), null,
+                `${label}: chunk ${i} opened a fence the source did not leave open`);
+        }
+    }
+}
+
+test('chunkDiscordMessage randomized: terminates, fits, and changes nothing', () => {
+    for (const seed of [1, 42, 99, 2026, 31337]) {
+        const next = seeded(seed);
+        for (let i = 0; i < 400; i += 1) {
+            // Draw the limit unconditionally: skipping the draw for an empty
+            // message desynchronizes the generator from the case index, and a
+            // reported failure then points at the wrong input.
+            const text = randomMessage(next);
+            const limit = 25 + Math.floor(next() * 200);
+            if (!text) continue;
+            assertChunkProperties(
+                chunkDiscordMessage(text, limit), text, limit,
+                `discord seed ${seed} case ${i} limit ${limit}`,
+            );
+        }
+    }
+});
+
+test('chunkRichMarkdown randomized: terminates, fits, and changes nothing', () => {
+    // The Telegram default path. Its own splitter, so it needs its own fuzz —
+    // the fence and prefix defects here were separate from Discord's.
+    for (const seed of [7, 555, 2026, 8080]) {
+        const next = seeded(seed);
+        for (let i = 0; i < 400; i += 1) {
+            const text = randomMessage(next);
+            const limit = 25 + Math.floor(next() * 200);
+            if (!text) continue;
+            assertChunkProperties(
+                chunkRichMarkdown(text, limit), text, limit,
+                `rich seed ${seed} case ${i} limit ${limit}`,
+            );
+        }
+    }
+});
+
 // ─── Fence lexing: line constructs, not backtick counting ────
 
 test('a backtick run inside a code block is not a closing fence', () => {

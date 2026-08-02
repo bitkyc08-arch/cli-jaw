@@ -249,7 +249,13 @@ export function closeAndReopen(
         const inherited = open;
         // Scan the ORIGINAL piece: appending the closer below would make the
         // scan report a balanced chunk and drop the carry-over.
-        const after = scanOpenFence(piece, inherited, atLineStart);
+        //
+        // A reopener ends with a newline, so when one is prepended the piece
+        // DOES begin a line in the emitted chunk even if it continued one in
+        // the source. Reading the source state there left a real fence
+        // unrecognised and the chunk went out unclosed.
+        const startsLine = inherited !== null ? true : atLineStart;
+        const after = scanOpenFence(piece, inherited, startsLine);
         let chunk = piece;
         // KNOWN LIMITATION. A delimiter run longer than the budget cannot be
         // reopened without breaking the caller's limit, so its block is not
@@ -288,9 +294,15 @@ export function closeAndReopen(
  */
 function mergeBareOpenerPieces(pieces: string[], budget: number): string[] {
     const out = [...pieces];
+    // Bounded by the piece count. Merging can push a spill forward that is
+    // itself a bare opener, and rewinding to re-examine the same index let
+    // that repeat without end: a 43-character message never returned.
+    let merges = 0;
     for (let i = 0; i < out.length - 1; i += 1) {
         const piece = out[i] ?? '';
         if (!/^ {0,3}(?:`{3,}|~{3,})[A-Za-z0-9_+#.-]*\n$/.test(piece)) continue;
+        if (merges >= pieces.length) break;
+        merges += 1;
         out[i + 1] = piece + (out[i + 1] ?? '');
         out.splice(i, 1);
         i -= 1;

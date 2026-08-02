@@ -95,19 +95,33 @@ export function chunkRichMarkdown(
     // alone let that wider opener push a chunk past the limit.
     const worst = widestFenceOpener(raw, inherited);
     const fenced = inherited !== null || hasFence(raw);
-    const reserve = fenced ? fenceReserve(worst.lang, worst.marker) : 0;
+    const wanted = fenced ? fenceReserve(worst.lang, worst.marker) : 0;
+    // A delimiter can be wider than the whole budget — six backticks with a
+    // long language tag is still a valid opener. Reserving for it left one
+    // character of payload per chunk, so 400 characters became 406 messages.
+    // Fall back to a bare fence, exactly as chunkFenceAware does; the marker
+    // is then not reproduced, which costs formatting rather than delivery.
+    const reserve = wanted < limit ? wanted : (fenced ? fenceReserve('') : 0);
     const budget = Math.max(1, limit - reserve);
 
     const pieces: string[] = [];
     let remaining = raw;
     while (remaining.length > budget) {
-        const cut = findMarkdownSafeSplit(remaining, budget);
+        // Guarantee progress. findMarkdownSafeSplit can return 0 — safeCut
+        // refuses to divide a surrogate pair and backs off to the start when
+        // the budget cannot hold one — and a zero-length cut never consumes
+        // input, so the loop spins forever on a 43-character message.
+        let cut = findMarkdownSafeSplit(remaining, budget);
+        if (cut <= 0) cut = safeCut(remaining, Math.max(1, Math.min(budget, remaining.length)));
+        if (cut <= 0) cut = Math.min(2, remaining.length);
         pieces.push(remaining.slice(0, cut));
         remaining = remaining.slice(cut);
     }
     if (remaining.length > 0) pieces.push(remaining);
 
-    return closeAndReopen(pieces, reserve < limit, inherited);
+    // Pass the reserve as the ceiling: a marker wider than it would be
+    // reproduced verbatim and carry the chunk past the caller's limit.
+    return closeAndReopen(pieces, wanted < limit, inherited, reserve || undefined);
 }
 
 /**
