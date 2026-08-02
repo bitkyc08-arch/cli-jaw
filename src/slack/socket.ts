@@ -133,23 +133,41 @@ export class SlackSocketClient {
 
         const factory = this.options.socketFactory ?? ((u: string) => this.defaultSocketFactory(u));
         const ws = factory(url);
+        // A stopped client must not adopt a socket that opened while the
+        // handshake was in flight.
+        if (this.stopped) {
+            try { ws.close(); } catch { /* already closing */ }
+            return;
+        }
         this.ws = ws;
 
+        // Every listener below checks that IT still owns the live socket.
+        // Slack recycles sockets, and a superseded socket's late `close` would
+        // otherwise schedule an extra reconnect, compounding into a storm of
+        // parallel connections.
+        const isCurrent = () => this.ws === ws;
+
         ws.addEventListener('open', () => {
+            if (!isCurrent()) return;
             // 'open' means the WS handshake finished, not that Slack accepted
             // us. Slack's readiness signal is the `hello` frame.
             log.info('[slack:socket] websocket open, awaiting hello');
         });
         ws.addEventListener('message', (event: unknown) => {
+            if (!isCurrent()) return;
             const data = (event as { data?: unknown })?.data;
             void this.handleFrame(typeof data === 'string' ? data : String(data));
         });
         ws.addEventListener('error', (event: unknown) => {
+            if (!isCurrent()) return;
             const message = (event as { message?: unknown })?.message;
             log.warn('[slack:socket] error', redactSlackTokens(String(message ?? 'socket error')));
         });
         ws.addEventListener('close', () => {
-            if (this.stopped || this.state === 'disabled') return;
+            if (!isCurrent() || this.stopped || this.state === 'disabled') return;
+            // Detach so a repeated close from this same dead socket cannot
+            // schedule a second reconnect.
+            this.ws = null;
             log.info('[slack:socket] closed, scheduling reconnect');
             this.scheduleReconnect();
         });
@@ -230,6 +248,9 @@ export class SlackSocketClient {
 
     private scheduleReconnect(): void {
         if (this.stopped || this.state === 'disabled') return;
+        // An already-pending reconnect wins; a second trigger (e.g. a
+        // `disconnect` frame immediately followed by `close`) must not stack.
+        if (this.reconnectTimer) return;
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             log.error(`[slack:socket] max reconnect attempts (${this.maxReconnectAttempts}) reached — giving up`);
             this.state = 'disconnected';

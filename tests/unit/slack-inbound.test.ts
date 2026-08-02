@@ -166,6 +166,89 @@ test('link_disabled is terminal and does not reconnect', async () => {
     assert.equal(h.client.getReconnectAttempts(), 0);
 });
 
+test('a superseded socket cannot schedule extra reconnects', async () => {
+    // Slack recycles sockets. A dead socket's late (or repeated) close event
+    // must not spawn parallel connections — that is how a reconnect storm
+    // starts.
+    const sockets: Array<Map<string, (event: unknown) => void>> = [];
+    let created = 0;
+    const fetchImpl = (async () => ({
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ ok: true, url: 'wss://example.invalid/link' }),
+    // justified: minimal Response surface for the socket handshake
+    } as unknown as Response)) as unknown as typeof fetch;
+
+    const client = new SlackSocketClient({
+        appToken: 'xapp-test',
+        fetchImpl,
+        baseReconnectDelayMs: 5,
+        socketFactory: () => {
+            const listeners = new Map<string, (event: unknown) => void>();
+            sockets.push(listeners);
+            created++;
+            return {
+                send: () => { /* no-op */ },
+                close: () => { /* no-op */ },
+                addEventListener: (type, listener) => { listeners.set(type, listener); },
+            };
+        },
+        onEnvelope: () => { /* no-op */ },
+    });
+    await client.start();
+
+    sockets[0]!.get('close')!({});                 // genuine close -> one reconnect
+    await new Promise(resolve => setTimeout(resolve, 40));
+    const afterRealClose = created;
+
+    sockets[0]!.get('close')!({});                 // same dead socket, again
+    sockets[0]!.get('close')!({});
+    await new Promise(resolve => setTimeout(resolve, 40));
+
+    assert.equal(created, afterRealClose, 'a stale socket spawned another connection');
+    assert.equal(client.getReconnectAttempts(), 1, 'reconnect attempts compounded');
+    client.stop();
+});
+
+test('a message from a superseded socket is ignored', async () => {
+    const sockets: Array<Map<string, (event: unknown) => void>> = [];
+    const handled: SlackEnvelope[] = [];
+    const fetchImpl = (async () => ({
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ ok: true, url: 'wss://example.invalid/link' }),
+    // justified: minimal Response surface for the socket handshake
+    } as unknown as Response)) as unknown as typeof fetch;
+
+    const client = new SlackSocketClient({
+        appToken: 'xapp-test',
+        fetchImpl,
+        baseReconnectDelayMs: 5,
+        socketFactory: () => {
+            const listeners = new Map<string, (event: unknown) => void>();
+            sockets.push(listeners);
+            return {
+                send: () => { /* no-op */ },
+                close: () => { /* no-op */ },
+                addEventListener: (type, listener) => { listeners.set(type, listener); },
+            };
+        },
+        onEnvelope: (e) => { handled.push(e); },
+    });
+    await client.start();
+    sockets[0]!.get('close')!({});
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.ok(sockets.length >= 2, 'expected a replacement socket');
+
+    // The NEW socket becomes ready; the OLD one then delivers a frame.
+    sockets[1]!.get('message')!({ data: JSON.stringify({ type: 'hello' }) });
+    sockets[0]!.get('message')!({
+        data: JSON.stringify(eventsEnvelope('STALE', { type: 'message', channel: 'D1', text: 'hi' })),
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(handled.length, 0, 'a frame from a dead socket was processed');
+    client.stop();
+});
+
 test('frames after link_disabled are ignored', async () => {
     const h = await makeHarness();
     await h.emit({ type: 'hello' });
