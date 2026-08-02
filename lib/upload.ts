@@ -9,6 +9,7 @@ import https from 'node:https';
 import type { IncomingMessage } from 'node:http';
 import { join, extname, basename } from 'path';
 import { detectMimeFromBuffer, MIME_TO_EXT } from './mime-detect.js';
+import { redactChannelSecrets } from '../src/messaging/redact.js';
 
 export const TELEGRAM_DOWNLOAD_TIMEOUT_MS = 30_000;
 export const TELEGRAM_METADATA_MAX_BYTES = 1024 * 1024;
@@ -161,7 +162,10 @@ function telegramGet(url: string, label: string, timeoutMs: number, maxBytes: nu
         req.on('error', (error) => {
             if (settled) return;
             settled = true;
-            reject(error);
+            // Node puts the request URL on some socket errors, and the
+            // Telegram Bot API keeps the token in the URL path. Re-wrap so a
+            // connection failure cannot carry the bot token to a log sink.
+            reject(new Error(`Telegram ${label} failed: ${redactChannelSecrets(error.message)}`));
         });
     });
 }

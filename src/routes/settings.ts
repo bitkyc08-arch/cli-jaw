@@ -26,6 +26,7 @@ import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
 import { log } from '../core/logger.js';
 import {
+    discoverPiProfileModels,
     listPiModels,
     normalizePiProfile,
     normalizePiSettings,
@@ -322,7 +323,8 @@ export function registerSettingsRoutes(
     app.post('/api/pi/profiles/register', requireAuth, asyncHandler(async (req, res) => {
         const profile = normalizePiProfile(req.body);
         const nextPi = mergePiProfile(settings["pi"], profile, [profile.model]);
-        const models = await listPiModels(nextPi, profile.id);
+        const discovery = await discoverPiProfileModels(nextPi, profile);
+        const models = discovery.models;
         if (!models.includes(profile.model)) {
             res.status(400).json({ ok: false, error: `Pi model discovery did not include ${profile.model}`, models });
             return;
@@ -340,16 +342,31 @@ export function registerSettingsRoutes(
         ok(res, {
             profile: Array.isArray(redactedProfile) ? redactedProfile[0] : null,
             models,
+            modelSource: discovery.source,
             settings: redactRuntimeSettings(updated),
         });
     }));
 
     app.get('/api/pi/models', requireAuth, asyncHandler(async (req, res) => {
-        const profile = typeof req.query['profile'] === 'string' && req.query['profile'].trim()
-            ? req.query['profile'].trim()
-            : normalizePiSettings(settings["pi"]).defaultProfileId;
-        const models = await listPiModels(settings["pi"], profile);
-        ok(res, { profile, models });
+        const piSettings = normalizePiSettings(settings["pi"]);
+        const explicit = typeof req.query['profile'] === 'string' && Boolean(req.query['profile'].trim());
+        const profile = explicit
+            ? (req.query['profile'] as string).trim()
+            : piSettings.defaultProfileId;
+        const target = piSettings.profiles.find((entry) => entry.id === profile);
+        if (explicit && !target) {
+            res.status(400).json({ ok: false, error: `Unknown pi profile: ${profile}` });
+            return;
+        }
+        const selected = target || piSettings.profiles[0];
+        const discovery = selected
+            ? await discoverPiProfileModels(piSettings, selected)
+            : { models: await listPiModels(piSettings, profile), source: 'pi-offline' as const };
+        ok(res, {
+            profile: selected?.id || profile,
+            models: discovery.models,
+            modelSource: discovery.source,
+        });
     }));
 
     app.get('/api/quota', async (_, res) => {

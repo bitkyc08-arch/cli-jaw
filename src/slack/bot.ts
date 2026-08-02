@@ -20,6 +20,7 @@ import { resolveEventText, shouldProcessSlackEvent, type SlackMessageEvent } fro
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
+import { redactOutboundText } from '../messaging/redact.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -126,7 +127,7 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
         }));
         await sendSlackText(token, target, text);
         await relaySlackImages(token, target, text);
-        log.info(`[slack:out] ${target.targetId}: ${text.slice(0, 80)}`);
+        log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
         log.error('[slack:error]', err);
         await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
@@ -162,7 +163,7 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
 
     const text = resolveEventText(event, selfUserId);
     if (!text) return;
-    log.info(`[slack:in] ${event.channel}: ${text.slice(0, 80)}`);
+    log.info(`[slack:in] ${event.channel}: ${redactOutboundText(text).slice(0, 80)}`);
 
     if (isResetIntent(text)) {
         const client = getSlackSendClient();

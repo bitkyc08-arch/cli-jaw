@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { JAW_HOME } from '../core/config.js';
+import { probeOpenCodexEndpointModels } from '../cli/opencodex-models.js';
 
 export type PiProfileMode = 'basic' | 'openai' | 'anthropic' | 'vertex';
 export type PiApiKind = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-vertex';
@@ -32,14 +33,36 @@ export type PiCommand = {
     source: 'env' | 'path' | 'npm-exec';
 };
 
+export interface PiModelDiscovery {
+    models: string[];
+    source: 'opencodex' | 'pi-offline';
+}
+
 export type PiRuntimeEvent =
     | { kind: 'text'; text: string }
     | { kind: 'thinking'; text: string }
     | { kind: 'tool'; label: string; status?: string; detail?: string }
     | { kind: 'session'; sessionId: string };
 
+export interface PiRpcSession {
+    readonly child: ChildProcess;
+    readonly alive: boolean;
+    readonly abortEffective: boolean;
+    sessionId: string | null;
+    sendPrompt(message: string, opts?: {
+        effort?: string;
+        onEvent?: (event: PiRuntimeEvent) => void;
+    }): Promise<{ text: string; stderr: string }>;
+    abort(): Promise<void>;
+    close(): void;
+    kill(): void;
+}
+
 const PI_PACKAGE = '@earendil-works/pi-coding-agent';
 const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[?::1\]?)$/i;
+const PI_RPC_CAPABILITY_SCHEMA = 1;
+const PI_RPC_CAPABILITY_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const PI_RPC_ABORT_TIMEOUT_MS = 15_000;
 
 export const DEFAULT_PI_PROFILE: PiProfile = {
     id: 'progrok',
@@ -233,6 +256,34 @@ export function resolvePiCommand(env: NodeJS.ProcessEnv = process.env): PiComman
     };
 }
 
+function resolvePiCommandIdentity(command: PiCommand, env: NodeJS.ProcessEnv = process.env): string {
+    const result = spawnSync(command.command, [...command.baseArgs, '--version'], {
+        encoding: 'utf8',
+        env,
+        timeout: 15_000,
+    });
+    const version = `${result.stdout || ''}\n${result.stderr || ''}`.trim() || `exit:${String(result.status)}`;
+    return JSON.stringify({ source: command.source, command: command.command, baseArgs: command.baseArgs, version });
+}
+
+function loadPiAbortEffective(profileId: string, command: PiCommand): boolean {
+    try {
+        const raw = JSON.parse(fs.readFileSync(join(JAW_HOME, 'pi', 'rpc-capabilities.json'), 'utf8')) as unknown;
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+        const capability = raw as Record<string, unknown>;
+        if (capability['schemaVersion'] !== PI_RPC_CAPABILITY_SCHEMA
+            || capability['abortEffective'] !== true
+            || capability['profileId'] !== profileId
+            || capability['commandId'] !== resolvePiCommandIdentity(command)) return false;
+        const probedAt = Date.parse(typeof capability['probedAt'] === 'string' ? capability['probedAt'] : '');
+        return Number.isFinite(probedAt)
+            && probedAt <= Date.now()
+            && Date.now() - probedAt <= PI_RPC_CAPABILITY_MAX_AGE_MS;
+    } catch {
+        return false;
+    }
+}
+
 export function parsePiModelList(output: string, profileId: string): string[] {
     const models = new Set<string>();
     for (const rawLine of output.split(/\r?\n/)) {
@@ -248,10 +299,12 @@ export function parsePiModelList(output: string, profileId: string): string[] {
 export function listPiModels(piInput: unknown, profileId: string, options: { effort?: string; root?: string; timeoutMs?: number } = {}): Promise<string[]> {
     const dir = ensurePiRuntimeConfig(piInput, profileId, options.effort || '', options.root);
     const cmd = resolvePiCommand();
+    const isCmdShim = process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe');
     return new Promise((resolve, reject) => {
         const child = spawn(cmd.command, [...cmd.baseArgs, '--offline', '--list-models', profileId], {
             env: { ...process.env, PI_CODING_AGENT_DIR: dir },
             stdio: ['ignore', 'pipe', 'pipe'],
+            ...(isCmdShim ? { shell: true } : {}),
         });
         let stdout = '';
         let stderr = '';
@@ -274,6 +327,18 @@ export function listPiModels(piInput: unknown, profileId: string, options: { eff
             resolve(parsePiModelList(`${stdout}\n${stderr}`, profileId));
         });
     });
+}
+
+export async function discoverPiProfileModels(
+    piInput: unknown,
+    profile: PiProfile,
+    options: { effort?: string; root?: string; timeoutMs?: number } = {},
+): Promise<PiModelDiscovery> {
+    const openCodexModels = await probeOpenCodexEndpointModels(profile.endpoint, options.timeoutMs ?? 1500);
+    if (openCodexModels) return { models: openCodexModels, source: 'opencodex' };
+
+    const models = await listPiModels(piInput, profile.id, options);
+    return { models, source: 'pi-offline' };
 }
 
 function extractTextOnly(value: unknown): string {
@@ -368,6 +433,198 @@ function extractPiSessionId(obj: Record<string, unknown>): string {
     );
 }
 
+type PersistentPrompt = {
+    text: string;
+    stderrStart: number;
+    onEvent: ((event: PiRuntimeEvent) => void) | undefined;
+    resolve: (result: { text: string; stderr: string }) => void;
+    reject: (error: Error) => void;
+};
+
+type AbortWait = {
+    id: number;
+    accepted: boolean;
+    terminal: boolean;
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: NodeJS.Timeout;
+};
+
+export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options: {
+    model: string;
+    effort?: string;
+    cwd: string;
+    sessionId?: string;
+    root?: string;
+}): PiRpcSession {
+    const dir = ensurePiRuntimeConfig(pi, profile.id, options.effort || '', options.root);
+    const cmd = resolvePiCommand();
+    const args = [
+        ...cmd.baseArgs,
+        '--mode', 'rpc',
+        '--no-context-files',
+        '--tools', 'read,bash,edit,write,grep,find,ls',
+        '--provider', profile.id,
+        '--model', options.model || profile.model,
+        '--api-key', profile.apiKey || 'dummy',
+        ...(options.sessionId ? ['--session-id', options.sessionId] : []),
+    ];
+    const isCmdShim = process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe');
+    const child = spawn(cmd.command, args, {
+        cwd: options.cwd,
+        env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        ...(isCmdShim ? { shell: true } : {}),
+    });
+    const decoder = new StringDecoder('utf8');
+    let buffer = '';
+    let stderr = '';
+    let seq = 1;
+    let activePrompt: PersistentPrompt | null = null;
+    let abortWait: AbortWait | null = null;
+    let closed = false;
+
+    const write = (type: string, fields: Record<string, unknown> = {}): number => {
+        if (!session.alive || !child.stdin.writable) throw new Error('pi rpc session is not writable');
+        const id = seq++;
+        child.stdin.write(`${JSON.stringify({ id, type, ...fields })}\n`);
+        return id;
+    };
+    const settleAbort = (): void => {
+        if (!abortWait || !abortWait.accepted || !abortWait.terminal) return;
+        const wait = abortWait;
+        abortWait = null;
+        clearTimeout(wait.timer);
+        wait.resolve();
+    };
+    const dispatchLine = (line: string): void => {
+        let raw: unknown;
+        try { raw = JSON.parse(line); }
+        catch {
+            console.warn(`[jaw:pi] JSON parse failed: ${line.slice(0, 200)}`);
+            return;
+        }
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const record = raw as Record<string, unknown>;
+        if (abortWait && record['id'] === abortWait.id && record['type'] === 'response' && record['command'] === 'abort') {
+            if (record['success'] === true) abortWait.accepted = true;
+            else {
+                const wait = abortWait;
+                abortWait = null;
+                clearTimeout(wait.timer);
+                const error = record['error'] && typeof record['error'] === 'object'
+                    ? trimString((record['error'] as Record<string, unknown>)['message'])
+                    : '';
+                wait.reject(new Error(error || 'pi rpc abort rejected'));
+            }
+        }
+        const event = parsePiRpcRecord(record);
+        const state = record['data'] && typeof record['data'] === 'object'
+            ? record['data'] as Record<string, unknown>
+            : null;
+        const stateName = state && typeof state['state'] === 'string' ? state['state'].toLowerCase() : '';
+        const nonRunning = Boolean(state) && (state?.['running'] === false
+            || state?.['isRunning'] === false
+            || (stateName !== '' && !['running', 'active', 'generating'].includes(stateName)));
+        if (event.sessionId) {
+            session.sessionId = event.sessionId;
+            activePrompt?.onEvent?.({ kind: 'session', sessionId: event.sessionId });
+        }
+        if (event.tool) activePrompt?.onEvent?.({ kind: 'tool', ...event.tool });
+        if (event.thinking) activePrompt?.onEvent?.({ kind: 'thinking', text: event.thinking });
+        if (event.text && activePrompt && !(event.done && activePrompt.text)) {
+            activePrompt.text += event.text;
+            activePrompt.onEvent?.({ kind: 'text', text: event.text });
+        }
+        if (event.done || (abortWait && nonRunning)) {
+            if (activePrompt) {
+                const prompt = activePrompt;
+                activePrompt = null;
+                prompt.resolve({ text: prompt.text, stderr: stderr.slice(prompt.stderrStart) });
+            }
+            if (abortWait) abortWait.terminal = true;
+        }
+        settleAbort();
+    };
+    const rejectOutstanding = (error: Error): void => {
+        if (activePrompt) {
+            const prompt = activePrompt;
+            activePrompt = null;
+            prompt.reject(error);
+        }
+        if (abortWait) {
+            const wait = abortWait;
+            abortWait = null;
+            clearTimeout(wait.timer);
+            wait.reject(error);
+        }
+    };
+
+    const session: PiRpcSession = {
+        child,
+        get alive() { return !closed && child.exitCode == null && !child.killed; },
+        abortEffective: loadPiAbortEffective(profile.id, cmd),
+        sessionId: options.sessionId || null,
+        sendPrompt(message, opts = {}) {
+            if (activePrompt) return Promise.reject(new Error('pi rpc prompt already active'));
+            if (!session.alive) return Promise.reject(new Error('pi rpc session is not alive'));
+            return new Promise((resolve, reject) => {
+                activePrompt = { text: '', stderrStart: stderr.length, onEvent: opts.onEvent, resolve, reject };
+                try {
+                    if (opts.effort) write('set_thinking_level', { level: opts.effort });
+                    write('prompt', { message });
+                } catch (error) {
+                    activePrompt = null;
+                    reject(error as Error);
+                }
+            });
+        },
+        abort() {
+            if (!activePrompt) return Promise.resolve();
+            if (abortWait) return Promise.reject(new Error('pi rpc abort already active'));
+            return new Promise((resolve, reject) => {
+                let id: number;
+                try { id = write('abort'); }
+                catch (error) { reject(error as Error); return; }
+                const timer = setTimeout(() => {
+                    if (!abortWait || abortWait.id !== id) return;
+                    abortWait = null;
+                    reject(new Error('pi rpc abort timed out'));
+                }, PI_RPC_ABORT_TIMEOUT_MS);
+                abortWait = { id, accepted: false, terminal: false, resolve, reject, timer };
+            });
+        },
+        close() {
+            if (closed) return;
+            try { child.stdin.end(); } catch { /* already closed */ }
+            setTimeout(() => {
+                if (child.exitCode == null && !child.killed) child.kill('SIGTERM');
+            }, 750).unref();
+        },
+        kill() {
+            if (child.exitCode == null && !child.killed) child.kill('SIGTERM');
+        },
+    };
+
+    child.stdout?.on('data', (chunk) => {
+        buffer += decoder.write(chunk);
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) if (line.trim()) dispatchLine(line.trim());
+    });
+    child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (error) => rejectOutstanding(error));
+    child.on('close', (code) => {
+        closed = true;
+        buffer += decoder.end();
+        if (buffer.trim()) dispatchLine(buffer.trim());
+        rejectOutstanding(new Error(`pi rpc session exited with code ${String(code)}`));
+    });
+    write('get_state');
+    if (options.effort) write('set_thinking_level', { level: options.effort });
+    return session;
+}
+
 export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     prompt: string;
     model: string;
@@ -390,10 +647,12 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
         '--api-key', profile.apiKey || 'dummy',
         ...(options.sessionId ? ['--session-id', options.sessionId] : []),
     ];
+    const isCmdShim = process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe');
     const child = spawn(cmd.command, args, {
         cwd: options.cwd,
         env: { ...process.env, PI_CODING_AGENT_DIR: dir },
         stdio: ['pipe', 'pipe', 'pipe'],
+        ...(isCmdShim ? { shell: true } : {}),
     });
     const decoder = new StringDecoder('utf8');
     let buffer = '';

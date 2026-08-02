@@ -8,6 +8,7 @@ import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
+import { redactChannelSecrets } from './redact.js';
 
 // ─── Request Model ──────────────────────────────────
 
@@ -232,5 +233,14 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     if (typeof req.text === 'string') {
         req.text = applyOutputPolicy(req.text, { scope: 'main', channel }).text;
     }
-    return sendFn(req);
+    // Single choke point for every outbound send. A transport builds its error
+    // string from a vendor SDK, and the Telegram Bot API puts the token in the
+    // request URL — so the failure result is a credential sink, and it flows
+    // straight into HTTP response bodies via res.json(result). Masking at each
+    // call site was tried and missed several; masking here cannot be bypassed.
+    const result = await sendFn(req);
+    if (result.ok === false && typeof result.error === 'string') {
+        return { ...result, error: redactChannelSecrets(result.error) };
+    }
+    return result;
 }

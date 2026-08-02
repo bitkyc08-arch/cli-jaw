@@ -14,7 +14,10 @@ import { validateFileSize, sendTelegramFile, TELEGRAM_LIMITS, classifyUpstreamEr
 
 function tmpFile(sizeMB: number): string {
     const p = path.join(os.tmpdir(), `jaw-tg-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    fs.writeFileSync(p, Buffer.alloc(sizeMB * 1024 * 1024));
+    // At least one byte: the transport refuses an empty file before it calls
+    // the API, so a zero-length fixture would test that guard instead of the
+    // retry behaviour these cases are about.
+    fs.writeFileSync(p, Buffer.alloc(Math.max(1, sizeMB * 1024 * 1024)));
     return p;
 }
 

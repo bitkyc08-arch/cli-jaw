@@ -13,6 +13,7 @@ import { stripUndefined } from '../../core/strip-undefined.js';
 import { getTelegramMenuCommands } from '../../command-contract/policy.js';
 import { downloadTelegramFile, buildMediaPrompt, TELEGRAM_DOWNLOAD_LIMITS } from '../../../lib/upload.js';
 import { saveUpload } from '../../agent/spawn.js';
+import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../../messaging/redact.js';
 
 let hubBot: Bot | null = null;
 let hubToken: string | null = null;
@@ -172,7 +173,7 @@ export async function ensureTargetHubMember(port: number, chatId: string, fetchI
         if (!putRes.ok) return { ok: false, error: `settings PUT ${putRes.status}` };
         return { ok: true };
     } catch (e) {
-        return { ok: false, error: (e as Error).message };
+        return { ok: false, error: userErrorText(e) };
     }
 }
 
@@ -226,17 +227,20 @@ async function forwardToInstance(port: number, prompt: string, chatId: string, t
         });
         const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (!res.ok || j['ok'] === false) {
-            const reason = String(j['error'] || j['reason'] || `HTTP ${res.status}`);
+            // The upstream instance builds this from its own exception, so it
+            // is untrusted text that ends up in a Telegram room verbatim.
+            const reason = userErrorText(j['error'] || j['reason'] || `HTTP ${res.status}`);
             return { syncText: `⚠️ 인스턴스 ${port} 요청 실패: ${reason}` };
         }
         // Slash commands return text synchronously; prompts reply later via /outbound.
         if (j['command'] && typeof j['text'] === 'string' && (j['text'] as string).trim()) {
-            return { syncText: j['text'] as string };
+            // The instance built this text; it reaches a Telegram room verbatim.
+            return { syncText: redactOutboundText(j['text'] as string) };
         }
         return {};
     } catch (e) {
-        console.error(`[tg:hub] forward to ${port} failed:`, (e as Error).message);
-        return { syncText: `⚠️ 인스턴스 ${port} 응답 실패: ${(e as Error).message}` };
+        console.error(`[tg:hub] forward to ${port} failed:`, logErrorText(e));
+        return { syncText: `⚠️ 인스턴스 ${port} 응답 실패: ${userErrorText(e)}` };
     }
 }
 
@@ -294,12 +298,12 @@ function syncHubCommands(bot: Bot): void {
     Promise.all([
         bot.api.setMyCommands(cmds),
         bot.api.setMyCommands(cmds, { language_code: "ko" }),
-    ]).catch(e => console.warn("[tg:hub:commands] setMyCommands failed:", (e as Error).message));
+    ]).catch(e => console.warn("[tg:hub:commands] setMyCommands failed:", logErrorText(e)));
 }
 
 export function createHubBot(token: string): Bot {
     const bot = new Bot(token);
-    bot.catch((err) => console.error('[tg:hub]', (err as Error).message || err));
+    bot.catch((err) => console.error('[tg:hub]', logErrorText(err)));
 
     bot.on('message:text', async (ctx) => {   // grammY narrows ctx.message.text to string here
         if (!ctx.chat || !ctx.message) return;
@@ -349,9 +353,9 @@ export function createHubBot(token: string): Bot {
                         at: new Date().toISOString(),
                         chatId,
                         threadId,
-                        reason: `command reply failed: ${(e as Error).message}`,
+                        reason: `command reply failed: ${userErrorText(e)}`,
                     });
-                    console.error('[tg:hub] command reply failed:', (e as Error).message);
+                    console.error('[tg:hub] command reply failed:', logErrorText(e));
                 }); // grammY auto-threads
                 return;
             }
@@ -405,7 +409,8 @@ export function createHubBot(token: string): Bot {
                 signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
             });
             const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-            const ack = typeof j['ack'] === 'string' ? j['ack'] : (j['ok'] ? 'OK' : '');
+            // The instance built this ack; it is shown as a Telegram toast.
+            const ack = typeof j['ack'] === 'string' ? redactOutboundText(j['ack']) : (j['ok'] ? 'OK' : '');
             await ctx.answerCallbackQuery(ack ? { text: ack } : undefined).catch(() => {});
         } catch {
             await ctx.answerCallbackQuery({ text: 'Instance error' }).catch(() => {});
@@ -447,7 +452,7 @@ export function createHubBot(token: string): Bot {
             if (syncText) await ctx.reply(syncText).catch(() => {});
         } catch (e) {
             stopTopicTyping(chatId, threadId);
-            await ctx.reply(`Media processing failed: ${(e as Error).message}`).catch(() => {});
+            await ctx.reply(`Media processing failed: ${userErrorText(e)}`).catch(() => {});
         }
     }
 
@@ -478,22 +483,31 @@ export async function sendToTopic(
     stopTopicTyping(chatId, threadId);
     if (!hubBot) return { ok: false, error: 'hub bot not running' };
     const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
-    if (payload.type === 'text') {
-        // Rich-first default (Bot API 10.1); helper falls back HTML → plaintext per chunk.
-        const { sendTelegramMarkdown } = await import('../../telegram/rich-message.js');
-        await sendTelegramMarkdown(hubBot.api, chatId, payload.text || '', stripUndefined({ message_thread_id }));
-        return { ok: true };
+    // These paths call the Bot API directly rather than going through
+    // sendChannelOutput, so a thrown vendor error would escape to the
+    // /outbound HTTP handler with the token still in it. Convert to a result
+    // here, where the masking helper is applied once for every branch.
+    try {
+        if (payload.type === 'text') {
+            // Rich-first default (Bot API 10.1); helper falls back HTML → plaintext per chunk.
+            const { sendTelegramMarkdown } = await import('../../telegram/rich-message.js');
+            await sendTelegramMarkdown(hubBot.api, chatId, payload.text || '', stripUndefined({ message_thread_id }));
+            return { ok: true };
+        }
+        if (payload.type === 'keyboard' && payload.text && payload.reply_markup) {
+            await hubBot.api.sendMessage(chatId, redactOutboundText(payload.text), stripUndefined({
+                message_thread_id,
+                reply_markup: redactOutboundPayload(payload.reply_markup) as import("@grammyjs/types").InlineKeyboardMarkup,
+            }));
+            return { ok: true };
+        }
+        const { sendTelegramFile } = await import('../../telegram/telegram-file.js');
+        const r = await sendTelegramFile(hubBot, chatId, payload.filePath!, payload.type, stripUndefined({ caption: payload.caption, threadId: message_thread_id }));
+        return stripUndefined({ ok: r.ok, error: r.error ? userErrorText(r.error) : undefined });
+    } catch (e: unknown) {
+        console.error('[tg:hub:outbound]', logErrorText(e));
+        return { ok: false, error: userErrorText(e) };
     }
-    if (payload.type === 'keyboard' && payload.text && payload.reply_markup) {
-        await hubBot.api.sendMessage(chatId, payload.text, stripUndefined({
-            message_thread_id,
-            reply_markup: payload.reply_markup as import("@grammyjs/types").InlineKeyboardMarkup,
-        }));
-        return { ok: true };
-    }
-    const { sendTelegramFile } = await import('../../telegram/telegram-file.js');
-    const r = await sendTelegramFile(hubBot, chatId, payload.filePath!, payload.type, stripUndefined({ caption: payload.caption, threadId: message_thread_id }));
-    return stripUndefined({ ok: r.ok, error: r.error });
 }
 
 /**
@@ -521,7 +535,7 @@ export async function startHubBot(): Promise<void> {
         const info = await bot.api.getWebhookInfo();
         if (info.url) await bot.api.deleteWebhook({ drop_pending_updates: true });
     } catch (e) {
-        console.error('[tg:hub] getWebhookInfo failed:', (e as Error).message);
+        console.error('[tg:hub] getWebhookInfo failed:', logErrorText(e));
     }
 
     void bot.start({
@@ -549,8 +563,10 @@ export async function startHubBot(): Promise<void> {
             setTimeout(() => { void startHubBot(); }, Math.min(5000 * 2 ** (retries - 1), 30_000));
         } else {
             hubState = 'error';
-            hubError = e?.message || String(err);
-            console.error('[tg:hub:fatal]', err);
+            // hubError is surfaced by the hub status API, so it is an HTTP
+            // response sink as much as a log line.
+            hubError = userErrorText(err);
+            console.error('[tg:hub:fatal]', logErrorText(err));
         }
     });
 }

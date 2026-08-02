@@ -10,6 +10,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { RemoteTarget } from '../messaging/types.js';
 import { slackApi, describeSlackError, redactSlackTokens, slackFailure, type SlackFetch } from './api.js';
+import { redactOutboundText } from '../messaging/redact.js';
 
 // Slack's per-file ceiling is 1 GB, but a chat transport has no business
 // streaming that. 50 MiB matches the inbound attachment cap the Discord
@@ -83,7 +84,7 @@ export async function sendSlackFile(
             files: [{ id: fileId, title: filename }],
             channel_id: target.targetId,
             ...(target.threadId ? { thread_ts: target.threadId } : {}),
-            ...(options.caption?.trim() ? { initial_comment: options.caption.trim() } : {}),
+            ...(options.caption?.trim() ? { initial_comment: redactOutboundText(options.caption.trim()) } : {}),
         },
         { fetchImpl: doFetch },
     );

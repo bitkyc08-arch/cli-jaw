@@ -19,6 +19,7 @@ import { settings } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { log } from '../core/logger.js';
+import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 
 function resolveTelegramChatId(body: Record<string, unknown>): string | number | null {
     const raw = body?.['chat_id'] ?? body?.['chatId'];
@@ -87,7 +88,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             const filePath = saveUpload(req.body, filename);
             res.json({ path: filePath, filename: basename(filePath) });
         } catch (e: unknown) {
-            res.status(httpStatus(e, 400)).json({ error: (e as Error).message });
+            res.status(httpStatus(e, 400)).json({ error: userErrorText(e) });
         }
     });
 
@@ -144,7 +145,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 return;
             }
 
-            log.info(`[web:voice] STT (${result.engine}, ${result.elapsed.toFixed(1)}s): ${result.text.slice(0, 80)}`);
+            log.info(`[web:voice] STT (${result.engine}, ${result.elapsed.toFixed(1)}s): ${redactOutboundText(result.text).slice(0, 80)}`);
 
             const sttOnly = String(req.headers['x-stt-only'] || '') === 'true';
             if (!sttOnly) {
@@ -152,10 +153,11 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 submitMessage(prompt, { origin: 'web' });
             }
 
-            res.json({ ok: true, text: result.text, engine: result.engine, elapsed: result.elapsed });
+            // A transcript is user-supplied text reflected back over HTTP.
+            res.json({ ok: true, text: redactOutboundText(result.text), engine: result.engine, elapsed: result.elapsed });
         } catch (e: unknown) {
-            log.error('[web:voice] STT failed:', (e as Error).message);
-            res.status(500).json({ error: (e as Error).message });
+            log.error('[web:voice] STT failed:', logErrorText(e));
+            res.status(500).json({ error: userErrorText(e) });
         }
     });
 
@@ -198,7 +200,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                     res.status(400).json({ error: 'text required for type=text' });
                     return;
                 }
-                await sendClient.client.api.sendMessage(chatId, text, stripUndefined({ message_thread_id: messageThreadId }));
+                await sendClient.client.api.sendMessage(chatId, redactOutboundText(text), stripUndefined({ message_thread_id: messageThreadId }));
                 res.json({ ok: true, chat_id: chatId, type });
                 return;
             }
@@ -229,9 +231,9 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             }
             res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
         } catch (e: unknown) {
-            log.error('[telegram:send]', e);
+            log.error('[telegram:send]', logErrorText(e));
             const statusCode = httpStatus(e, 500);
-            res.status(statusCode).json({ error: (e as Error).message, code: httpCode(e) });
+            res.status(statusCode).json({ error: userErrorText(e), code: httpCode(e) });
         }
     });
 
@@ -245,8 +247,8 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             }
             res.json(result);
         } catch (e: unknown) {
-            log.error('[channel:send]', e);
-            res.status(httpStatus(e, 500)).json({ error: (e as Error).message, code: httpCode(e) });
+            log.error('[channel:send]', logErrorText(e));
+            res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
         }
     });
 
@@ -259,8 +261,8 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             }
             res.json(result);
         } catch (e: unknown) {
-            log.error('[discord:send]', e);
-            res.status(httpStatus(e, 500)).json({ error: (e as Error).message, code: httpCode(e) });
+            log.error('[discord:send]', logErrorText(e));
+            res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
         }
     });
 
@@ -273,8 +275,8 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             }
             res.json(result);
         } catch (e: unknown) {
-            log.error('[slack:send]', e);
-            res.status(httpStatus(e, 500)).json({ error: (e as Error).message, code: httpCode(e) });
+            log.error('[slack:send]', logErrorText(e));
+            res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
         }
     });
 }

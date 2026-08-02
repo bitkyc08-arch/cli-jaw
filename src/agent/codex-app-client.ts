@@ -6,6 +6,19 @@ import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { createInterface, type Interface as ReadlineInterface } from 'readline';
 
+// A bogus thread/resume on codex-cli 0.146.0 returns "no rollout found for thread id ...".
+const RECOVERABLE_RESUME_RE = /not found|no rollout found|unknown thread|no such thread|invalid thread|thread.*missing/i;
+
+export function isRecoverableResumeError(message: string): boolean {
+    return RECOVERABLE_RESUME_RE.test(message);
+}
+
+const TERMINAL_INTERRUPT_RACE_RE = /turn not active|already completed|no active turn|unknown turn/i;
+
+function isTerminalInterruptRaceError(err: Error): boolean {
+    return TERMINAL_INTERRUPT_RACE_RE.test(err.message);
+}
+
 export interface CodexAppClientOptions {
     binary?: string;
     workDir?: string;
@@ -15,9 +28,18 @@ export interface CodexAppClientOptions {
     fastMode?: boolean;
 }
 
+export interface CodexAppTurnHandlers {
+    onNotification(method: string, params: Record<string, unknown>): void;
+    onStderr(text: string): void;
+    onExit?(code: number | null, signal: string | null): void;
+    onError?(err: Error): void;
+    onInterruptFailed?(err: Error): void;
+}
+
 export class CodexAppClient extends EventEmitter {
     proc: ChildProcess | null = null;
     threadId: string | null = null;
+    activeTurnId: string | null = null;
 
     private binary: string;
     private workDir: string;
@@ -32,6 +54,7 @@ export class CodexAppClient extends EventEmitter {
     }>();
     private rl: ReadlineInterface | null = null;
     private cleaned = false;
+    private pendingInterrupt = false;
 
     constructor(options: CodexAppClientOptions = {}) {
         super();
@@ -43,11 +66,46 @@ export class CodexAppClient extends EventEmitter {
         this.fastMode = options.fastMode ?? false;
     }
 
+    get alive(): boolean {
+        return this.proc !== null && this.proc.exitCode === null && !this.proc.killed;
+    }
+
+    listenTurn(handlers: CodexAppTurnHandlers): { dispose(): void } {
+        const onNotification = (method: string, params: Record<string, unknown>) => {
+            handlers.onNotification(method, params);
+        };
+        const onStderr = (text: string) => { handlers.onStderr(text); };
+        const onExit = (code: number | null, signal: string | null) => { handlers.onExit?.(code, signal); };
+        const onError = (err: Error) => { handlers.onError?.(err); };
+        const onInterruptFailed = (err: Error) => { handlers.onInterruptFailed?.(err); };
+
+        this.on('notification', onNotification);
+        this.on('stderr', onStderr);
+        this.on('exit', onExit);
+        this.on('error', onError);
+        this.on('interrupt-failed', onInterruptFailed);
+
+        let disposed = false;
+        return {
+            dispose: () => {
+                if (disposed) return;
+                disposed = true;
+                this.off('notification', onNotification);
+                this.off('stderr', onStderr);
+                this.off('exit', onExit);
+                this.off('error', onError);
+                this.off('interrupt-failed', onInterruptFailed);
+            },
+        };
+    }
+
     spawn(): void {
+        const isCmdShim = process.platform === 'win32' && !this.binary.toLowerCase().endsWith('.exe');
         this.proc = spawn(this.binary, ['app-server', '--listen', 'stdio://'], {
             cwd: this.workDir,
             env: this.spawnEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
+            ...(isCmdShim ? { shell: true } : {}),
         });
 
         this.rl = createInterface({ input: this.proc.stdout! });
@@ -94,12 +152,13 @@ export class CodexAppClient extends EventEmitter {
             sandbox: 'danger-full-access',
             cwd: options.cwd || this.workDir,
             config: this.reasoningConfig(),
+            ...(options.instructions ? { developerInstructions: options.instructions } : {}),
         }) as { thread: { id: string } };
         this.threadId = result.thread.id;
         return this.threadId;
     }
 
-    async resumeThread(threadId: string): Promise<string> {
+    async resumeThread(threadId: string, options: { instructions?: string } = {}): Promise<string> {
         const result = await this.request('thread/resume', {
             threadId,
             model: this.model,
@@ -108,6 +167,7 @@ export class CodexAppClient extends EventEmitter {
             cwd: this.workDir,
             config: this.reasoningConfig(),
             excludeTurns: true,
+            ...(options.instructions ? { developerInstructions: options.instructions } : {}),
         }) as { thread: { id: string } };
         this.threadId = result.thread.id;
         return this.threadId;
@@ -115,7 +175,7 @@ export class CodexAppClient extends EventEmitter {
 
     async startTurn(prompt: string): Promise<void> {
         if (!this.threadId) throw new Error('No active thread');
-        await this.request('turn/start', {
+        const result = await this.request('turn/start', {
             threadId: this.threadId,
             input: [{
                 type: 'text' as const,
@@ -124,17 +184,34 @@ export class CodexAppClient extends EventEmitter {
             }],
             effort: this.effort || undefined,
             summary: 'detailed',
-        });
+        }) as { turn?: { id?: string } };
+        this.setActiveTurnId(result.turn?.id ?? null);
     }
 
     async interruptTurn(): Promise<void> {
         if (!this.threadId) return;
-        await this.request('turn/interrupt', { threadId: this.threadId });
+        if (!this.activeTurnId) {
+            this.pendingInterrupt = true;
+            return;
+        }
+        await this.request('turn/interrupt', {
+            threadId: this.threadId,
+            turnId: this.activeTurnId,
+        });
     }
 
-    async listModels(): Promise<unknown[]> {
-        const result = await this.request('model/list', {}) as { data: unknown[] };
-        return result.data || [];
+    async listModels(options: { includeHidden?: boolean } = {}): Promise<unknown[]> {
+        const all: unknown[] = [];
+        let cursor: string | null = null;
+        do {
+            const page = await this.request('model/list', {
+                ...(cursor ? { cursor } : {}),
+                ...(options.includeHidden ? { includeHidden: true } : {}),
+            }) as { data?: unknown[]; nextCursor?: string | null };
+            all.push(...(page.data || []));
+            cursor = page.nextCursor ?? null;
+        } while (cursor);
+        return all;
     }
 
     async closeGracefully(): Promise<void> {
@@ -241,6 +318,11 @@ export class CodexAppClient extends EventEmitter {
             }
 
             if (msg.method) {
+                if (msg.method === 'turn/started') {
+                    this.setActiveTurnId(msg.params?.turn?.id ?? null);
+                } else if (msg.method === 'turn/completed') {
+                    this.setActiveTurnId(null);
+                }
                 this.emit('notification', msg.method, msg.params || {});
                 if (msg.method === 'error') {
                     this.emit('server-error', msg.params || {});
@@ -261,7 +343,7 @@ export class CodexAppClient extends EventEmitter {
         const declineResponses: Record<string, unknown> = {
             'item/commandExecution/requestApproval': { decision: 'decline' },
             'item/fileChange/requestApproval': { decision: 'decline' },
-            'item/permissions/requestApproval': { decision: 'decline' },
+            'item/permissions/requestApproval': { permissions: {}, scope: 'turn' },
             'mcpServer/elicitation/request': { action: 'decline', content: null },
             'item/tool/requestUserInput': { answers: {} },
             'execCommandApproval': { decision: 'denied' },
@@ -270,5 +352,19 @@ export class CodexAppClient extends EventEmitter {
 
         const result = declineResponses[method] || {};
         this.trySend({ jsonrpc: '2.0', id, result });
+    }
+
+    private setActiveTurnId(id: string | null): void {
+        this.activeTurnId = id;
+        if (id && this.pendingInterrupt) {
+            this.pendingInterrupt = false;
+            void this.request('turn/interrupt', { threadId: this.threadId!, turnId: id })
+                .catch((err: Error) => {
+                    if (!isTerminalInterruptRaceError(err)) {
+                        this.emit('interrupt-failed', err);
+                    }
+                });
+        }
+        if (!id) this.pendingInterrupt = false;
     }
 }

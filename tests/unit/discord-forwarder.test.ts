@@ -30,7 +30,11 @@ test('chunkDiscordMessage prefers splitting at newlines', async () => {
     const lineB = 'b'.repeat(600);
     const text = `${lineA}\n${lineB}`;
     const chunks = chunkDiscordMessage(text);
-    assert.equal(chunks[0], lineA, 'first chunk should split at newline');
+    // The newline stays with the chunk it terminates. Dropping it — which the
+    // previous implementation did — silently deleted the user's own blank
+    // lines and code indentation.
+    assert.equal(chunks[0], `${lineA}\n`, 'first chunk should split at newline and keep it');
+    assert.equal(chunks.join(''), text, 'splitting must not lose content');
 });
 
 // ─── Forwarder skip logic ──────────────────────────

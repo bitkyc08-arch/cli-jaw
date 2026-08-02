@@ -303,11 +303,29 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ---
 
-## src/messaging/ — shared messaging runtime (7 files)
+## src/messaging/ — shared messaging runtime (13 files)
 
 Telegram/Discord 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다.
 
 `thread-target.ts` — `threadIdNumber(target)` extracts `message_thread_id` for programmatic Telegram sends (P0 forum topic support).
+
+### 채널 공통 하드닝 모듈 (260802)
+
+Slack 채널 유닛에서 확립한 전송 규율을 Discord/Telegram에 소급 적용하며 추가된
+공유 레이어. 채널별 구현을 두면 한쪽만 고쳐지는 문제가 반복되어, 전 채널이 지나는
+choke point로 모았다.
+
+| 파일 | 역할 |
+| --- | --- |
+| `chunk.ts` | 무손실 분할. 코드펜스 균형과 언어 태그를 유지하고, 서로게이트 페어를 쪼개지 않는다. Discord/Slack/Telegram이 모두 이 코어를 쓴다. |
+| `fold.ts` | 정규화 폴딩. escape 디코드 + invisible 제거 + NFKC를 고정점까지 반복하며, 각 문자가 원문 어디서 왔는지 오프셋 맵으로 추적한다. **좌표계는 전부 UTF-16 code unit.** |
+| `redact.ts` | 크리덴셜 마스킹. `redactOutboundText`(본문), `redactOutboundPayload`(keyboard 등 구조화 payload), `userErrorText`/`logErrorText`(오류)를 제공한다. |
+| `dedupe.ts` | 배달 중복 제거. TTL seen-set이며, sweep은 **만료된 항목만** 지운다 — 미만료 항목을 크기 맞추려 쫓아내면 막으려던 중복이 다시 생긴다. |
+| `retry.ts` | 전송 실패 분류. `format`만 형식 폴백을 얻고, `rate-limit`은 대기 후 같은 형식 재시도, `ambiguous`는 중복 전송 위험이 있어 중단한다. |
+
+마스킹은 **전송 직전(last mile)**에 건다. 호출부마다 걸면 반드시 하나가 누락되고,
+실제로 감사 과정에서 반복해서 발견됐다. 오류 경로만으로는 부족하다 — 크리덴셜은
+평범한 메시지 본문·캡션·버튼 라벨·로그 preview로도 흐른다.
 
 ### runtime.ts (146L)
 
@@ -357,7 +375,14 @@ Telegram/Discord 채널의 활성 타겟 상태와 outbound routing을 공유한
 
 ### bot.ts (707L)
 
-Telegram transport main entry. `registerTransport('telegram', ...)`와 `registerSendTransport('telegram', ...)`를 등록하고, `settings.telegram.forwardAll`, allowlist, mention gating, voice, attachment, slash command 흐름을 모두 처리한다. P0: thread-aware programmatic send via `thread-target.ts`. P2b: hub-member outbound relay to Dashboard `/api/dashboard/telegram-hub/outbound`.
+Telegram transport main entry. `registerTransport('telegram', ...)`와 `registerSendTransport('telegram', ...)`를 등록하고, `settings.telegram.forwardAll`, allowlist, mention gating, voice, attachment, slash command 흐름을 모두 처리한다.
+
+미들웨어 순서가 중요하다: self-echo 가드 → 로깅 → allowlist → mention gating → dedupe.
+dedupe이 마지막인 이유는 앞 게이트에서 버려질 트래픽이 seen-set을 채우지 않게 하기
+위해서다 — 처리 대상인 중복은 어차피 같은 게이트를 통과하므로 보장은 그대로다.
+self-echo 가드는 `getMe()`로 얻은 봇 id를 쓰고, 그 호출이 끝나기 전 구간은 `is_bot`
+플래그로 덮는다. 로깅보다 앞에 두어 자기 에코가 로그를 오염시키지 않게 한다.
+`settings.telegram.allowBots`는 Discord와 대칭이며 기본 false다. P0: thread-aware programmatic send via `thread-target.ts`. P2b: hub-member outbound relay to Dashboard `/api/dashboard/telegram-hub/outbound`.
 
 | Function | 역할 |
 | --- | --- |

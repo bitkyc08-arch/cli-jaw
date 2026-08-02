@@ -35,6 +35,7 @@ import type { CliCommandContext } from './command-context.js';
 import type {
     SlashCommand, SlashChoice, SlashResult, ParsedSlashCommand, CompletionCtx,
 } from './types.js';
+import { userErrorText } from '../messaging/redact.js';
 
 const CATEGORY_ORDER = ['session', 'workflow', 'model', 'tools', 'skills', 'cli'];
 const CATEGORY_LABEL: Record<string, string> = {
@@ -400,7 +401,10 @@ export async function executeCommand(parsed: ParsedSlashCommand, ctx: { interfac
             commandCtx,
         );
     } catch (err: unknown) {
-        const msg = (err as Error)?.message || String(err);
+        // This message is serialized three ways at once: an /api/command
+        // response body, a Telegram reply, and a Discord reply. A handler that
+        // touches a vendor API can put the token in it.
+        const msg = userErrorText(err);
         return {
             ok: false,
             code: 'command_error',

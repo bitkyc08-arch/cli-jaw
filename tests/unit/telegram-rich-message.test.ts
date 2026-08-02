@@ -10,6 +10,18 @@ import {
 interface SentRich { chatId: string | number; rich: { markdown?: string; html?: string }; opts?: Record<string, unknown> }
 interface SentMsg { chatId: string | number; text: string; opts?: Record<string, unknown> }
 
+/**
+ * A rejection the fallback ladder is meant to answer.
+ *
+ * The ladder used to fall back on ANY error, which answered a rate limit by
+ * re-sending twice more and a network failure by risking a duplicate. It now
+ * distinguishes them, so a spy has to throw the shape it means: a formatting
+ * rejection, not a bare Error.
+ */
+function formattingRejection(message: string): Error {
+    return Object.assign(new Error(message), { error_code: 400 });
+}
+
 function createRichApiSpy({ failRichChunks = 0, failHtml = false } = {}) {
     const richSent: SentRich[] = [];
     const msgSent: SentMsg[] = [];
@@ -18,13 +30,15 @@ function createRichApiSpy({ failRichChunks = 0, failHtml = false } = {}) {
         async sendRichMessage(chatId: string | number, rich: { markdown?: string }, opts?: Record<string, unknown>) {
             if (richFailures < failRichChunks) {
                 richFailures += 1;
-                throw new Error('rich rejected');
+                throw formattingRejection("can't parse entities: rich rejected");
             }
             richSent.push({ chatId, rich, opts });
             return { ok: true };
         },
         async sendMessage(chatId: string | number, text: string, opts?: Record<string, unknown>) {
-            if (failHtml && opts?.["parse_mode"] === 'HTML') throw new Error('invalid html');
+            if (failHtml && opts?.["parse_mode"] === 'HTML') {
+                throw formattingRejection('unsupported start tag: invalid html');
+            }
             msgSent.push({ chatId, text, opts });
             return { ok: true };
         },

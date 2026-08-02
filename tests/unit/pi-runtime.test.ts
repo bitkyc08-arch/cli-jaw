@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
     buildPiModelsConfig,
+    discoverPiProfileModels,
     normalizePiEndpoint,
     normalizePiProfile,
     parsePiModelList,
@@ -205,4 +210,75 @@ test('Pi command fallback is command/baseArgs tuple, not a shell string', () => 
     const cmd = resolvePiCommand({ PATH: '' });
     assert.equal(cmd.command, 'npm');
     assert.deepEqual(cmd.baseArgs.slice(0, 4), ['exec', '--yes', '--package', '@earendil-works/pi-coding-agent']);
+});
+
+test('Pi model discovery prefers a verified opencodex endpoint', async () => {
+    const server = createServer((req, res) => {
+        if (req.url === '/healthz') {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', service: 'opencodex' }));
+            return;
+        }
+        if (req.url === '/v1/models') {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ data: [{ id: 'ocx-model-a' }, { id: 'ocx-model-b' }] }));
+            return;
+        }
+        res.writeHead(404);
+        res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const profile = normalizePiProfile({
+        id: 'ocx',
+        endpoint: `http://127.0.0.1:${address.port}/v1`,
+        model: 'ocx-model-a',
+    });
+    try {
+        assert.deepEqual(await discoverPiProfileModels({
+            defaultProfileId: profile.id,
+            profiles: [profile],
+        }, profile), {
+            models: ['ocx-model-a', 'ocx-model-b'],
+            source: 'opencodex',
+        });
+    } finally {
+        await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+    }
+});
+
+test('Pi model discovery falls back to the offline Pi inventory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jaw-pi-discovery-'));
+    const executable = join(root, 'pi-stub');
+    await writeFile(executable, '#!/bin/sh\nprintf "fallback fallback-model 100000\\n"\n', { mode: 0o755 });
+    const previousBin = process.env['PI_CODING_AGENT_BIN'];
+    process.env['PI_CODING_AGENT_BIN'] = executable;
+    const profile = normalizePiProfile({
+        id: 'fallback',
+        endpoint: 'http://127.0.0.1:1/v1',
+        model: 'fallback-model',
+    });
+    try {
+        assert.deepEqual(await discoverPiProfileModels({
+            defaultProfileId: profile.id,
+            profiles: [profile],
+        }, profile, {
+            root: join(root, 'runtime'),
+            timeoutMs: 500,
+        }), {
+            models: ['fallback-model'],
+            source: 'pi-offline',
+        });
+    } finally {
+        if (previousBin === undefined) delete process.env['PI_CODING_AGENT_BIN'];
+        else process.env['PI_CODING_AGENT_BIN'] = previousBin;
+    }
+});
+
+test('Pi list and both RPC spawns enable shell only for Windows command shims', async () => {
+    const source = await readFile(new URL('../../src/agent/pi-runtime.ts', import.meta.url), 'utf8');
+    const shimGuard = "process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe')";
+    assert.equal(source.split(shimGuard).length - 1, 3);
+    assert.equal(source.split("...(isCmdShim ? { shell: true } : {})").length - 1, 3);
 });

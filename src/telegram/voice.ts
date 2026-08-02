@@ -11,6 +11,7 @@ import { saveUpload } from '../agent/spawn.js';
 import { downloadTelegramFile, TELEGRAM_DOWNLOAD_LIMITS } from '../../lib/upload.js';
 import { transcribeVoice } from '../../lib/stt.js';
 import { log } from '../core/logger.js';
+import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 
 export async function handleVoice(
     ctx: Context,
@@ -28,7 +29,7 @@ export async function handleVoice(
         const filePath = saveUpload(dlResult.buffer, `voice${dlResult.ext || '.ogg'}`);
 
         const stt = await transcribeVoice(filePath, 'audio/ogg');
-        log.info(`[tg:voice] STT (${stt.engine}): ${stt.elapsed.toFixed(1)}s → "${stt.text.slice(0, 60)}"`);
+        log.info(`[tg:voice] STT (${stt.engine}): ${stt.elapsed.toFixed(1)}s → "${redactOutboundText(stt.text).slice(0, 60)}"`);
 
         if (!stt.text.trim()) {
             await ctx.reply(t('tg.voiceEmpty', {}, currentLocale()));
@@ -36,7 +37,7 @@ export async function handleVoice(
         }
         await tgOrchestrate(ctx, stt.text, `🎤 ${stt.text.slice(0, 80)}`);
     } catch (err: unknown) {
-        log.error('[tg:voice:error]', err);
-        await ctx.reply(t('tg.voiceFail', { msg: (err as Error).message }, currentLocale()));
+        log.error('[tg:voice:error]', logErrorText(err));
+        await ctx.reply(t('tg.voiceFail', { msg: userErrorText(err) }, currentLocale()));
     }
 }

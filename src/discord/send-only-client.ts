@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 import { settings } from '../core/config.js';
 import { chunkDiscordMessage } from './forwarder.js';
 import { validateDiscordFileSize } from './discord-file.js';
+import { redactOutboundText } from '../messaging/redact.js';
 
 export type DiscordSendClientResult =
     | { token: string; reason?: never; status?: never }
@@ -68,7 +69,7 @@ export async function sendDiscordFileRest(
         const form = new FormData();
         form.append('files[0]', new Blob([buffer]), basename(filePath));
         if (caption?.trim()) {
-            form.append('payload_json', JSON.stringify({ content: caption.trim() }));
+            form.append('payload_json', JSON.stringify({ content: redactOutboundText(caption.trim()) }));
         }
         const response = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
             method: 'POST',

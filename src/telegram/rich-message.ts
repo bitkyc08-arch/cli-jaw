@@ -11,10 +11,50 @@
 // imports only hoisted function declarations, and forwarder.ts has zero runtime imports.
 import type { Api } from 'grammy';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { closeAndReopen, fenceReserve, hasFence, safeCut, scanOpenFence, widestFenceOpener, type OpenFence } from '../messaging/chunk.js';
 import { markdownToTelegramHtml, chunkTelegramMessage } from './forwarder.js';
+import { redactOutboundText } from '../messaging/redact.js';
+import { classifySendFailure, retryAfterMs, MAX_INLINE_RATE_LIMIT_MS } from '../messaging/retry.js';
 
 export const RICH_MESSAGE_LIMIT = 32000;
 const HTML_MESSAGE_LIMIT = 4096;
+
+/**
+ * Send once, honouring what the failure actually was.
+ *
+ * The ladder used to catch everything, so a rate limit was answered by sending
+ * the same content twice more, immediately — and a network failure that may
+ * already have been accepted was answered by sending it again, which the user
+ * sees twice.
+ *
+ * Returns true when the caller should fall back to a simpler format. Throws
+ * when it should not: a long rate limit or an ambiguous failure is the
+ * caller's to report, not to paper over with another send.
+ */
+async function attemptSend(send: () => Promise<unknown>): Promise<boolean> {
+    try {
+        await send();
+        return false;
+    } catch (err: unknown) {
+        const kind = classifySendFailure(err);
+        if (kind === 'format') return true;
+        if (kind !== 'rate-limit') throw err;
+
+        const wait = retryAfterMs(err);
+        if (wait <= 0 || wait > MAX_INLINE_RATE_LIMIT_MS) throw err;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+
+        // Retry the SAME form, once: waiting is what the server asked for, and
+        // switching format would add load rather than remove it.
+        try {
+            await send();
+            return false;
+        } catch (retryErr: unknown) {
+            if (classifySendFailure(retryErr) === 'format') return true;
+            throw retryErr;
+        }
+    }
+}
 
 type MaybeRichApi = Pick<Api, 'sendMessage'> & Partial<Pick<Api, 'sendRichMessage'>>;
 
@@ -31,18 +71,139 @@ export function supportsRichMessage(api: MaybeRichApi): boolean {
     return typeof api.sendRichMessage === 'function';
 }
 
-/** Split markdown on paragraph > line boundaries without breaking code fences. */
-export function chunkRichMarkdown(md: string, limit = RICH_MESSAGE_LIMIT): string[] {
+/**
+ * Split markdown on paragraph > line boundaries without breaking code fences.
+ *
+ * When a fence has no candidate boundary inside it — one long code block, the
+ * common shape for agent output — the split lands mid-fence. Such a chunk is
+ * closed here and the next one reopens with the same language tag, so both
+ * render as code and keep their highlighting.
+ */
+export function chunkRichMarkdown(
+    md: string,
+    limit = RICH_MESSAGE_LIMIT,
+    inherited: OpenFence | null = null,
+): string[] {
     const raw = String(md || '');
-    if (raw.length <= limit) return [raw];
-    const chunks: string[] = [];
+    if (raw.length <= limit && !inherited) return [raw];
+
+    // Reserve room for the reopener/closer only when a fence is actually in
+    // play; otherwise the reserve costs an extra outbound message.
+    //
+    // The scan starts from the inherited fence: the remainder may close it and
+    // then open a WIDER one, and sizing the reserve from the inherited fence
+    // alone let that wider opener push a chunk past the limit.
+    const worst = widestFenceOpener(raw, inherited);
+    const fenced = inherited !== null || hasFence(raw);
+    const reserve = fenced ? fenceReserve(worst.lang, worst.marker) : 0;
+    const budget = Math.max(1, limit - reserve);
+
+    const pieces: string[] = [];
     let remaining = raw;
-    while (remaining.length > limit) {
-        chunks.push(remaining.slice(0, findMarkdownSafeSplit(remaining, limit)));
-        remaining = remaining.slice(chunks[chunks.length - 1]!.length);
+    while (remaining.length > budget) {
+        const cut = findMarkdownSafeSplit(remaining, budget);
+        pieces.push(remaining.slice(0, cut));
+        remaining = remaining.slice(cut);
     }
-    if (remaining.length > 0) chunks.push(remaining);
-    return chunks;
+    if (remaining.length > 0) pieces.push(remaining);
+
+    return closeAndReopen(pieces, reserve < limit, inherited);
+}
+
+/**
+ * Chunk so that the first chunk still fits once the prefix is prepended.
+ * Only the first chunk carries the prefix, so only its budget is reduced.
+ */
+function chunkWithPrefixBudget(markdown: string, prefix: string, limit: number): string[] {
+    if (!prefix) return chunkRichMarkdown(markdown, limit);
+    const firstBudget = limit - prefix.length;
+    if (firstBudget <= 0) return chunkRichMarkdown(markdown, limit);
+    if (markdown.length <= firstBudget) return [markdown];
+
+    // Decide the seam FIRST, then build both sides from it once. Re-chunking an
+    // adjusted head discarded the closing fence the first pass had added, so
+    // the head went out unclosed and the remainder carried a stray marker.
+    const probe = chunkRichMarkdown(markdown, firstBudget);
+    const rawConsumed = consumedLength(probe[0] ?? '', markdown);
+    const consumed = avoidMidLineFenceHandoff(markdown, rawConsumed);
+    if (consumed >= markdown.length) return [markdown];
+
+    const headSource = markdown.slice(0, consumed);
+    const rest = markdown.slice(consumed);
+    const inherited = scanOpenFence(headSource);
+    // One shared view of the fence state gives the head its closer and the
+    // remainder its reopener.
+    const head = closeAndReopen([headSource], true)[0] ?? headSource;
+    return [head, ...chunkRichMarkdown(rest, limit, inherited)];
+}
+
+/**
+ * A prefix at or past the limit leaves no room for content, and prepending it
+ * anyway guarantees the API rejects the message. Drop it so the body still
+ * gets delivered — every send path has to agree on this, or one of them ships
+ * the oversized version.
+ */
+function effectivePrefix(prefix: string, limit: number, body = ''): string {
+    if (!prefix) return '';
+    // A fence must start its line. Prepending the prefix inline pushes an
+    // opening fence off column zero, so Telegram stops seeing it as a fence
+    // and the whole message renders as prose. Give the prefix its own line
+    // whenever the body opens with a delimiter.
+    const normalized = /^ {0,3}(?:`{3,}|~{3,})/.test(body) && !prefix.endsWith('\n')
+        ? `${prefix}\n`
+        : prefix;
+    // Leave room for a whole code point, not just one code unit. With a single
+    // unit of budget, safeCut refuses to split an astral character and emits
+    // both halves, so prefix + payload lands one over the limit.
+    const firstCodePoint = [...body][0] ?? '';
+    const needed = Math.max(1, firstCodePoint.length);
+    return normalized.length + needed <= limit ? normalized : '';
+}
+
+/**
+ * A chunk boundary can turn a delimiter that sat MID-LINE in the source into
+ * the first thing on a line of the next message, where Telegram reads it as a
+ * fence. Back the split up to the last newline so the delimiter keeps the text
+ * that preceded it on its line.
+ *
+ * Returns the adjusted consumed length, or the original when no adjustment is
+ * possible (the whole head is one line — splitting it differently would not
+ * help).
+ */
+function avoidMidLineFenceHandoff(source: string, consumed: number): number {
+    const before = source.slice(0, consumed);
+    // Only a mid-line delimiter is a problem: one that already started a line
+    // in the source is meant to be a fence.
+    if (before === '' || before.endsWith('\n')) return consumed;
+
+    // Find where the delimiter run that touches the boundary begins. The
+    // boundary may fall inside it, so scan back over the delimiter characters.
+    let start = consumed;
+    const delimiterAt = (i: number) => source[i] === '`' || source[i] === '~';
+    while (start > 0 && delimiterAt(start - 1)) start -= 1;
+    let end = start;
+    while (end < source.length && delimiterAt(end)) end += 1;
+    if (end - start < 3) return consumed;
+
+    // Carry the code point before the run into the next message so the
+    // delimiter is no longer the first thing on its line. It must be a whole
+    // code point: moving one UTF-16 unit splits an emoji across the seam.
+    if (start <= 0) return consumed;
+    const prev = source.charCodeAt(start - 1);
+    const isLowSurrogate = prev >= 0xDC00 && prev <= 0xDFFF;
+    const step = isLowSurrogate && start >= 2 ? 2 : 1;
+    return start - step;
+}
+
+/**
+ * How much of `source` the emitted chunk consumed. The chunker may have added
+ * a closing fence that is not part of the source, so a plain `.length` would
+ * skip real content.
+ */
+function consumedLength(chunk: string, source: string): number {
+    if (source.startsWith(chunk)) return chunk.length;
+    const withoutClose = chunk.replace(/\n?(?:`{3,}|~{3,})$/, '');
+    return source.startsWith(withoutClose) ? withoutClose.length : chunk.length;
 }
 
 function findMarkdownSafeSplit(raw: string, limit: number): number {
@@ -54,7 +215,9 @@ function findMarkdownSafeSplit(raw: string, limit: number): number {
             return i;
         }
     }
-    return limit; // hard split as last resort
+    // Hard split as last resort — on a code-point boundary, so the cut never
+    // separates a surrogate pair and never consumes zero input.
+    return safeCut(raw, limit);
 }
 
 function insideCodeFence(raw: string, index: number): boolean {
@@ -85,20 +248,27 @@ function richOpts(opts?: RichSendOpts) {
 export async function sendTelegramMarkdown(
     api: MaybeRichApi,
     chatId: string | number,
-    markdown: string,
+    rawMarkdown: string,
     opts?: RichSendOpts,
 ): Promise<void> {
-    const prefix = opts?.prefix ?? '';
+    // Last mile for every Telegram text send: this helper is the single entry
+    // point, so masking here cannot be bypassed by a caller that forgot.
+    const markdown = redactOutboundText(rawMarkdown);
+    const prefix = effectivePrefix(opts?.prefix ?? '', RICH_MESSAGE_LIMIT, markdown);
     if (!supportsRichMessage(api)) {
         await sendHtmlFallback(api, chatId, markdown, opts, prefix);
         return;
     }
-    const chunks = chunkRichMarkdown(markdown);
+    // The prefix rides on the first chunk, so it has to come out of that
+    // chunk's budget. Chunking at the full limit and prepending afterwards
+    // pushed the first message past the API limit and forced a needless
+    // fallback.
+    const chunks = chunkWithPrefixBudget(markdown, prefix, RICH_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
         const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
-        try {
-            await api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts));
-        } catch {
+        const needsFallback = await attemptSend(() =>
+            api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts)));
+        if (needsFallback) {
             await sendHtmlFallback(api, chatId, chunks[i]!, opts, i === 0 ? prefix : '');
         }
     }
@@ -115,13 +285,17 @@ async function sendHtmlFallback(
     const htmlOpts = { ...base, parse_mode: 'HTML' as const };
     // Plaintext leg: omit the options object entirely when empty (legacy wire shape).
     const plainOpts = Object.keys(base).length > 0 ? base : undefined;
-    const chunks = chunkTelegramMessage(markdownToTelegramHtml(mdChunk), HTML_MESSAGE_LIMIT);
+    const html = markdownToTelegramHtml(mdChunk);
+    const safePrefix = effectivePrefix(prefix, HTML_MESSAGE_LIMIT, html);
+    const chunks = safePrefix
+        ? chunkTelegramMessage(html, HTML_MESSAGE_LIMIT - safePrefix.length)
+        : chunkTelegramMessage(html, HTML_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
-        const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
-        try {
-            await api.sendMessage(chatId, withPrefix, htmlOpts);
-        } catch {
-            await api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts);
+        const withPrefix = i === 0 ? `${safePrefix}${chunks[i]}` : chunks[i]!;
+        const needsPlain = await attemptSend(() => api.sendMessage(chatId, withPrefix, htmlOpts));
+        if (needsPlain) {
+            await attemptSend(() =>
+                api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts));
         }
     }
 }

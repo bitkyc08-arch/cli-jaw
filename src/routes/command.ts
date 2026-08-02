@@ -14,6 +14,7 @@ import { validateTarget } from '../messaging/send.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { log } from '../core/logger.js';
+import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -63,12 +64,12 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             const result = await executeCommand(parsed, makeWebCommandCtx(req, locale as string));
             res.json(result);
         } catch (err: unknown) {
-            log.error('[cmd:error]', err);
+            log.error('[cmd:error]', logErrorText(err));
             const locale = resolveRequestLocale(req, req.body?.locale);
             res.status(500).json({
                 ok: false,
                 code: 'internal_error',
-                text: t('api.serverError', { msg: (err as Error).message }, locale),
+                text: t('api.serverError', { msg: userErrorText(err) }, locale),
             });
         }
     });
@@ -149,9 +150,8 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                     res.json({ ok: true, command: true, ...cmdResult });
                     return;
                 } catch (err: unknown) {
-                    const error = (err as Error).message;
-                    log.error('[api/message:cmd]', error);
-                    res.status(500).json({ ok: false, command: true, error });
+                    log.error('[api/message:cmd]', logErrorText(err));
+                    res.status(500).json({ ok: false, command: true, error: userErrorText(err) });
                     return;
                 }
             }
@@ -184,9 +184,13 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                 chatId,
                 replyViaTarget: Boolean(target),
             }));
-            res.json({ ok: true, kind: 'complete', ack: result.ack, submit });
+            res.json({ ok: true, kind: 'complete', ack: redactOutboundText(result.ack), submit });
             return;
         }
-        res.json({ ok: true, kind: result.kind, ack: result.kind === 'progress' ? result.ack : undefined });
+        res.json({
+            ok: true,
+            kind: result.kind,
+            ack: result.kind === 'progress' ? redactOutboundText(result.ack) : undefined,
+        });
     });
 }

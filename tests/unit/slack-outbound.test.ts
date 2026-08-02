@@ -331,6 +331,12 @@ test('chunkSlackMessage randomized: no overflow and no non-backtick content chan
     //   2. every non-backtick character survives with its exact count
     // Backticks are excluded because injected fences are the intended, and
     // only permitted, growth.
+    //
+    // A continuation chunk reopens with the language tag of the fence it
+    // inherits, so that tag is repeated once per continuation. Only INJECTED
+    // openers may be discounted, and only injected ones: a chunk that merely
+    // starts with the source's own fence must be left alone, or the census
+    // subtracts real characters and reports a phantom loss.
     const rnd = (seed: number) => {
         let x = seed;
         return () => ((x = (x * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
@@ -358,7 +364,24 @@ test('chunkSlackMessage randomized: no overflow and no non-backtick content chan
                 return m;
             };
             const before = census(text);
-            const after = census(chunks.join(''));
+            // Strip the injected reopener and closer by position rather than
+            // by pattern: a chunk is a reopener, then a run of the source, then
+            // a closer. Guessing the reopener by regex cancelled characters the
+            // source itself contained and reported a phantom loss.
+            let cursor = 0;
+            let recovered = '';
+            for (const chunk of chunks) {
+                // Longest prefix of the remaining source that this chunk ends
+                // with is the payload; anything before it is the reopener.
+                let payload = '';
+                for (let take = Math.min(chunk.length, text.length - cursor); take > 0; take -= 1) {
+                    const candidate = text.slice(cursor, cursor + take);
+                    if (chunk.includes(candidate)) { payload = candidate; break; }
+                }
+                recovered += payload;
+                cursor += payload.length;
+            }
+            const after = census(recovered);
             const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
             for (const k of keys) {
                 if ((before[k] || 0) !== (after[k] || 0)) { changed++; break; }

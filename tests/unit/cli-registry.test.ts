@@ -79,6 +79,8 @@ test('live CLI registry preserves JWC runtime metadata', async () => {
     assert.equal(registry.jwc.experimental, true);
     assert.equal(registry.jwc.defaultModel, 'claude-sonnet-4-6');
     assert.equal(registry.jwc.defaultEffort, 'high');
+    assert.ok(['opencodex', 'static'].includes(registry.codex.modelSource as string));
+    assert.equal(registry['codex-app'].modelSource, registry.codex.modelSource);
 });
 
 test('Antigravity registry exposes AGY as a top-level runtime, not an ai-e provider', () => {

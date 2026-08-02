@@ -342,6 +342,9 @@ export const {
 let mainSpawnStarting = false;
 let cancelPendingMainSpawn: ((reason: string) => void) | null = null;
 let steerInProgress = false;
+let cancelActiveCodexAppTurn: ((reason: string) => void) | null = null;
+let cancelActivePiTurn: ((reason: string) => void) | null = null;
+const piProfileFingerprintKey = crypto.randomBytes(32);
 
 export function setSteerInProgress(v: boolean): void {
     const was = steerInProgress;
@@ -367,6 +370,13 @@ const DEFAULT_STEER_WAIT_MS = 3_000;
 const DEFAULT_KILL_ESCALATION_MS = 2_000;
 const CLAUDE_E_STEER_WAIT_MS = 30_000;
 const CLAUDE_E_STEER_KILL_ESCALATION_MS = 8_000;
+const DEFAULT_CODEX_APP_TURN_IDLE_MS = 300_000;
+const DEFAULT_CODEX_APP_TURN_ABS_MS = 2 * 60 * 60_000;
+
+function configuredPositiveMs(value: string | undefined, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function getActiveMainCli(): string | null {
     return typeof currentMainMeta?.cli === 'string' ? currentMainMeta.cli : null;
@@ -449,6 +459,20 @@ export function killActiveAgent(reason = 'user') {
     if (reason === 'api' || reason === 'user') {
         queueCtrl.purgeQueueOnStop(reason);
         clearWorkerSlotsOnStop(reason);
+    }
+    if (cancelActiveCodexAppTurn && getActiveMainCli() === 'codex-app') {
+        if (activeProcess?.pid) killReasons.set(activeProcess.pid, reason);
+        console.log(`[jaw:kill] reason=${reason} cli=codex-app action=lease.cancel`);
+        cancelActiveCodexAppTurn(reason);
+        if (reason === 'api' || reason === 'user' || reason === 'steer') activeProcess = null;
+        return true;
+    }
+    if (cancelActivePiTurn && getActiveMainCli() === 'pi') {
+        if (activeProcess?.pid) killReasons.set(activeProcess.pid, reason);
+        console.log(`[jaw:kill] reason=${reason} cli=pi action=lease.cancel`);
+        cancelActivePiTurn(reason);
+        if (reason === 'api' || reason === 'user' || reason === 'steer') activeProcess = null;
+        return true;
     }
     if (!activeProcess) return hadTimer || cancelledPendingMain || abortedInProcess;  // timer/gated spawn/jwc abort 취소도 "killed" 취급
     const policy = getKillPolicy(reason);
@@ -692,7 +716,9 @@ export { buildMediaPrompt, buildMediaPromptMany };
 // ─── Spawn Agent ─────────────────────────────────────
 
 import { AcpClient } from '../cli/acp-client.js';
-import { CodexAppClient } from './codex-app-client.js';
+import { CodexAppClient, isRecoverableResumeError } from './codex-app-client.js';
+import { acquireCodexAppRuntime, acquirePiRuntime, type CodexAppLease, type PiLease } from './runtime-pool.js';
+import { loadCatalogEfforts, resolveCatalogPath, validateModelEffort } from './codex-app-catalog.js';
 import { extractFromCodexAppEvent } from './codex-app-events.js';
 
 import { canGuardedAgyResume, resolveAgyNativeResume, shouldEmitHeartbeat, shouldResumeBucketSession } from './spawn/resume.js';
@@ -1278,6 +1304,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag }, traceAudience);
 
+        if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
         const traceRunId = startTraceRun({ cli, model, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
         if (mainManaged && !opts.internal) setLiveRunTraceId(liveScope, traceRunId);
         const ctx: CopilotSpawnContext = {
@@ -1582,161 +1609,191 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             'Capitalized variants (Read, Bash, Edit, Write, Grep, Find, Ls) do NOT exist and will fail.',
         ].join('\n');
         const piSysPrompt = sysPrompt ? `${sysPrompt}\n\n${piToolDiscipline}` : piToolDiscipline;
-        const { child, done } = spawnPiRpc(profile, pi, {
-            prompt: piPrompt,
-            model: runtimeModel,
-            ...(piSessionId ? { sessionId: piSessionId } : {}),
-            effort,
-            cwd: spawnCwd,
-            sysPrompt: piSysPrompt,
-            onEvent: (event) => {
-                opts.lifecycle?.onActivity?.('pi-rpc');
-                if (event.kind === 'thinking') {
-                    ctx.thinkingBuf = (ctx.thinkingBuf || '') + event.text;
-                    return;
-                }
-                if (event.kind === 'text') {
-                    flushPiThinking();
-                    const delta = String(event.text || '');
-                    if (!delta) return;
-                    ctx.fullText += delta;
-                    const displayDelta = normalizeAssistantDisplayText(delta);
-                    if (ctx.liveOutputText !== undefined) ctx.liveOutputText += displayDelta;
-                    if (!ctx.outputTextStarted) ctx.outputTextStarted = true;
-                    broadcastAgentOutput(ctx, agentLabel, cli, displayDelta, empTag, traceAudience);
-                    return;
-                }
-                if (event.kind === 'tool') {
-                    flushPiThinking();
-                    const tool = stripUndefined({ icon: '🔧', label: event.label, status: event.status, detail: event.detail, toolType: 'tool' as const }) as ToolEntry;
-                    stampTraceTool(tool, ctx, 'tool');
-                    ctx.toolLog.push(tool);
-                    if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
-                    appendParentLiveRunTool(ctx, tool);
-                    emitAgentTool(ctx, agentLabel, tool, empTag);
-                    return;
-                }
-                if (event.kind === 'session') {
-                    ctx.sessionId = event.sessionId;
-                }
-            },
-        });
-        const piWatchdog = attachWatchdog(child, agentLabel, (reason) => {
-            console.log(`[jaw:watchdog] killing ${agentLabel} (pi) — ${reason}`);
-            ctx.stallReason = reason;
-            if (child.pid) {
-                killProcessTree(child.pid, 'SIGTERM');
-                const pid = child.pid;
-                setTimeout(() => {
-                    try { killProcessTree(pid, 'SIGKILL'); } catch { /* already dead */ }
-                }, 5_000);
+        const onPiEvent = (event: import('./pi-runtime.js').PiRuntimeEvent) => {
+            opts.lifecycle?.onActivity?.('pi-rpc');
+            if (event.kind === 'thinking') {
+                ctx.thinkingBuf = (ctx.thinkingBuf || '') + event.text;
+                return;
             }
-        });
-        ctx.stallWatchdog = piWatchdog;
-
-        if (mainManaged) activeProcess = child;
-        registerActiveProcess(agentLabel, child);
-        if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, provider: profile.id, ...empTag });
-        if (mainManaged && !opts.internal) {
-            beginLiveRun(liveScope, cli);
-            setLiveRunTraceId(liveScope, traceRunId);
-        }
-        if (mainManaged && !opts.internal && !opts._skipInsert) {
-            insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, getActiveChatSession());
-        }
-        if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, provider: profile.id, ...empTag }, traceAudience);
-
-        done.then((result) => {
-            piWatchdog.stop();
-            flushPiThinking();
-            if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += result.stderr || '';
-            if (result.sessionId) ctx.sessionId = result.sessionId;
-            if (!ctx.fullText && result.text) ctx.fullText = result.text;
-            cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
-            opts.lifecycle?.onExit?.(result.code);
-            const killReason = consumeKillReason(child.pid);
-            const wasKilled = !!killReason;
-            const wasSteer = killReason === 'steer';
-            const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, result.code, cli);
-            return handleAgentExit({
-                ctx, code: result.code, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
-                resumeKey,
-                prompt, opts, cfg, ownerGeneration, forceNew, empSid,
-                isResume: false, wasKilled, wasSteer, smokeResult,
-                effortDefault: 'medium', costLine: '',
-                resolve: resolve!,
-                activeProcesses,
-                setActiveProcess: (v) => { activeProcess = v; },
-                retryState: queueCtrl.retryState,
-                fallbackState: queueCtrl.fallbackState,
-                fallbackMaxRetries: FALLBACK_MAX_RETRIES,
-                processQueue,
+            if (event.kind === 'text') {
+                flushPiThinking();
+                const delta = String(event.text || '');
+                if (!delta) return;
+                ctx.fullText += delta;
+                const displayDelta = normalizeAssistantDisplayText(delta);
+                if (ctx.liveOutputText !== undefined) ctx.liveOutputText += displayDelta;
+                if (!ctx.outputTextStarted) ctx.outputTextStarted = true;
+                broadcastAgentOutput(ctx, agentLabel, cli, displayDelta, empTag, traceAudience);
+                return;
+            }
+            if (event.kind === 'tool') {
+                flushPiThinking();
+                const tool = stripUndefined({ icon: '🔧', label: event.label, status: event.status, detail: event.detail, toolType: 'tool' as const }) as ToolEntry;
+                stampTraceTool(tool, ctx, 'tool');
+                ctx.toolLog.push(tool);
+                if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
+                appendParentLiveRunTool(ctx, tool);
+                emitAgentTool(ctx, agentLabel, tool, empTag);
+                return;
+            }
+            if (event.kind === 'session') ctx.sessionId = event.sessionId;
+        };
+        type PiTurnResult = { text: string; stderr: string; code: number; sessionId?: string | null };
+        const runPiTurn = (child: ChildProcess, done: Promise<PiTurnResult>, lease: PiLease | null): void => {
+            let leaseCancel: Promise<void> | null = null;
+            const requestCancel = (): Promise<void> => {
+                if (!lease) {
+                    if (child.pid) {
+                        const pid = child.pid;
+                        killProcessTree(pid, 'SIGTERM');
+                        setTimeout(() => {
+                            try { killProcessTree(pid, 'SIGKILL'); } catch { /* already dead */ }
+                        }, 5_000);
+                    } else child.kill('SIGTERM');
+                    return Promise.resolve();
+                }
+                leaseCancel ??= lease.cancel();
+                return leaseCancel;
+            };
+            const cancelHook = (_reason: string) => { void requestCancel(); };
+            if (lease) cancelActivePiTurn = cancelHook;
+            const piWatchdog = attachWatchdog(child, agentLabel, (reason) => {
+                console.log(`[jaw:watchdog] cancelling ${agentLabel} (pi) — ${reason}`);
+                ctx.stallReason = reason;
+                void requestCancel();
             });
+            ctx.stallWatchdog = piWatchdog;
+
+            if (mainManaged) activeProcess = child;
+            registerActiveProcess(agentLabel, child);
+            if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, provider: profile.id, ...empTag });
+            if (mainManaged && !opts.internal) {
+                beginLiveRun(liveScope, cli);
+                setLiveRunTraceId(liveScope, traceRunId);
+            }
+            if (mainManaged && !opts.internal && !opts._skipInsert) {
+                insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, getActiveChatSession());
+            }
+            if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, provider: profile.id, ...empTag }, traceAudience);
+
+            const releaseLease = async (): Promise<void> => {
+                if (leaseCancel) await leaseCancel;
+                if (cancelActivePiTurn === cancelHook) cancelActivePiTurn = null;
+                if (lease) lease.release();
+                else cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+            };
+            done.then(async (result) => {
+                piWatchdog.stop();
+                await releaseLease();
+                flushPiThinking();
+                if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += result.stderr || '';
+                if (result.sessionId) ctx.sessionId = result.sessionId;
+                if (!ctx.fullText && result.text) ctx.fullText = result.text;
+                opts.lifecycle?.onExit?.(result.code);
+                const killReason = consumeKillReason(child.pid);
+                const wasKilled = !!killReason;
+                const wasSteer = killReason === 'steer';
+                const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, result.code, cli);
+                return handleAgentExit({
+                    ctx, code: result.code, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
+                    resumeKey,
+                    prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+                    isResume: false, wasKilled, wasSteer, smokeResult,
+                    effortDefault: 'medium', costLine: '',
+                    resolve: resolve!,
+                    activeProcesses,
+                    setActiveProcess: (v) => { activeProcess = v; },
+                    retryState: queueCtrl.retryState,
+                    fallbackState: queueCtrl.fallbackState,
+                    fallbackMaxRetries: FALLBACK_MAX_RETRIES,
+                    processQueue,
+                });
+            }).catch(async (err: Error) => {
+                piWatchdog.stop();
+                await releaseLease().catch(() => {});
+                if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += err.message;
+                console.error('[jaw:pi] runtime failed:', err.message);
+                handleAgentExit({
+                    ctx, code: 1, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
+                    resumeKey,
+                    prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+                    isResume: false, wasKilled: false, wasSteer: false, smokeResult: detectSmokeResponse('', [], 1, cli),
+                    effortDefault: 'medium', costLine: '',
+                    resolve: resolve!,
+                    activeProcesses,
+                    setActiveProcess: (v) => { activeProcess = v; },
+                    retryState: queueCtrl.retryState,
+                    fallbackState: queueCtrl.fallbackState,
+                    fallbackMaxRetries: FALLBACK_MAX_RETRIES,
+                    processQueue,
+                }).catch((handleErr: Error) => {
+                    console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
+                });
+            });
+        };
+
+        if (opts.agentId) {
+            const { child, done } = spawnPiRpc(profile, pi, {
+                prompt: piPrompt,
+                model: runtimeModel,
+                ...(piSessionId ? { sessionId: piSessionId } : {}),
+                effort,
+                cwd: spawnCwd,
+                sysPrompt: piSysPrompt,
+                onEvent: onPiEvent,
+            });
+            runPiTurn(child, done, null);
+            return { child, promise: resultPromise };
+        }
+
+        const profileFp = crypto.createHmac('sha256', piProfileFingerprintKey)
+            .update(profile.apiKey || '')
+            .digest('hex')
+            .slice(0, 12);
+        mainSpawnStarting = true;
+        void acquirePiRuntime({
+            key: {
+                scopeKey: `chat:${getActiveChatSession()}`,
+                cwd: spawnCwd,
+                profileId: profile.id,
+                fullEndpoint: profile.endpoint,
+                apiKind: profile.apiKind,
+                model: runtimeModel,
+                effort,
+                profileFp,
+            },
+            piSettings: pi,
+            storedSessionId: piSessionId || null,
+            instructions: piSysPrompt,
+            forceNew,
+        }).then((lease) => {
+            mainSpawnStarting = false;
+            ctx.sessionId = lease.session.sessionId;
+            console.log(`[jaw:pi:pool] reused=${lease.reused} sessionId=${lease.session.sessionId || 'new'}`);
+            const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent })
+                .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
+            runPiTurn(lease.session.child, done, lease);
         }).catch((err: Error) => {
-            piWatchdog.stop();
-            if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += err.message;
-            console.error('[jaw:pi] runtime failed:', err.message);
-            handleAgentExit({
-                ctx, code: 1, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
-                resumeKey,
-                prompt, opts, cfg, ownerGeneration, forceNew, empSid,
-                isResume: false, wasKilled: false, wasSteer: false, smokeResult: detectSmokeResponse('', [], 1, cli),
-                effortDefault: 'medium', costLine: '',
-                resolve: resolve!,
-                activeProcesses,
-                setActiveProcess: (v) => { activeProcess = v; },
-                retryState: queueCtrl.retryState,
-                fallbackState: queueCtrl.fallbackState,
-                fallbackMaxRetries: FALLBACK_MAX_RETRIES,
-                processQueue,
-            }).catch((handleErr: Error) => {
-                console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
-            });
+            mainSpawnStarting = false;
+            console.error(`[jaw:pi:pool] acquire failed: ${err.message}`);
+            clearLiveRun(liveScope);
+            broadcast('agent_status', { running: false, agentId: agentLabel });
+            broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
+            resolve!({ text: '', code: 1 });
+            processQueue();
         });
-
-        return { child, promise: resultPromise };
+        return { child: null, promise: resultPromise };
     }
 
     // ─── Codex AppServer branch ────────────────────
     if (cli === 'codex-app') {
-        const appClient = new CodexAppClient({
-            binary: detected.path || 'codex',
-            workDir: spawnCwd,
-            env: spawnEnv,
-            model,
-            effort,
-            fastMode: cfg.fastMode ?? settings["perCli"]?.["codex"]?.fastMode,
-        });
-        appClient.spawn();
-        const child = appClient.proc;
-        if (!child) {
-            throw new Error('Codex AppServer process was not created');
-        }
-        if (mainManaged) activeProcess = child;
-        registerActiveProcess(agentLabel, child);
-        if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
-        if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
-
-        let codexAppSettled = false;
-        appClient.on('error', (err: Error) => {
-            if (codexAppSettled) return;
-            codexAppSettled = true;
-            appClient.cleanup();
-            cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
-            opts.lifecycle?.onExit?.(null);
-            const msg = `Codex AppServer spawn failed: ${err.message}`;
-            console.error(`[codex-app:error] ${msg}`);
-            activeProcesses.delete(agentLabel);
-            if (mainManaged) {
-                activeProcess = null;
-                clearLiveRun(liveScope);
-                broadcast('agent_status', { running: false, agentId: agentLabel });
+        const catalogPath = resolveCatalogPath();
+        if (catalogPath) {
+            const verdict = validateModelEffort(model, effort, loadCatalogEfforts(catalogPath));
+            if (!verdict.ok) {
+                throw new Error(`[codex-app] ${verdict.error}`);
             }
-            broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
-            resolve!({ text: '', code: 1 });
-            if (mainManaged) processQueue();
-        });
-
+        }
         if (mainManaged && !opts.internal && !opts._skipInsert) {
             insertMessage.run('user', prompt, cli, model, settings["workingDir"] || null, getActiveChatSession());
         }
@@ -1776,13 +1833,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         let lastVisibleBroadcastTs = Date.now();
         let heartbeatSent = false;
 
-        appClient.on('notification', (method: string, params: Record<string, unknown>) => {
+        let turnCompleted = false;
+        let turnReportedFailure = false;
+        let markCodexProgress = () => {};
+        let settleTurn!: () => void;
+        let rejectTurn!: (err: Error) => void;
+        const turnDone = new Promise<void>((resolveTurn, rejectTurnPromise) => {
+            settleTurn = resolveTurn;
+            rejectTurn = rejectTurnPromise;
+        });
+
+        const handleNotification = (method: string, params: Record<string, unknown>) => {
+            markCodexProgress();
             if (method === 'turn/completed' || method === 'turn/started' || method === 'error') {
                 console.log(`[codex-app:notify] ${method}`);
             }
             appendTraceEvent({ runId: ctx.traceRunId, source: 'codex_app_raw', eventType: method, raw: params });
             const parsed = extractFromCodexAppEvent(method, params, ctx);
-            if (!parsed) return;
+            if (!parsed) {
+                if (method === 'turn/completed') settleTurn();
+                return;
+            }
 
             if (parsed.flushThinking) {
                 flushCodexAppThinking();
@@ -1823,12 +1894,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             if (parsed.turnStatus && parsed.turnStatus !== 'completed') {
                 console.warn(`[codex-app:turn] final status: ${parsed.turnStatus}`);
-                turnCompleted = false;
+                turnReportedFailure = true;
             }
             opts.lifecycle?.onActivity?.('codex-app');
-        });
+            if (method === 'turn/completed') settleTurn();
+        };
 
-        appClient.on('stderr', (text: string) => {
+        const handleStderr = (text: string) => {
             appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
             if (ctx.stderrBuf.length < 4000) {
                 ctx.stderrBuf += text + '\n';
@@ -1843,55 +1915,101 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     label: 'working... (no visible progress)',
                 }, empTag);
             }
-        });
+        };
 
-        let turnCompleted = false;
-        (async () => {
+        const effectiveFastMode = cfg.fastMode ?? settings["perCli"]?.["codex"]?.fastMode ?? false;
+
+        const runCodexAppTurn = async (appClient: CodexAppClient, lease: CodexAppLease | null): Promise<void> => {
+            const child = appClient.proc;
+            if (!child) throw new Error('Codex AppServer process was not created');
+            if (mainManaged) activeProcess = child;
+            registerActiveProcess(agentLabel, child);
+            if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
+
+            const processExit: { value: { code: number | null; signal: string | null } | null } = { value: null };
+            const idleMs = configuredPositiveMs(process.env["CODEX_APP_TURN_IDLE_MS"], DEFAULT_CODEX_APP_TURN_IDLE_MS);
+            const absoluteMs = configuredPositiveMs(process.env["CODEX_APP_TURN_ABS_MS"], DEFAULT_CODEX_APP_TURN_ABS_MS);
+            let idleTimer: NodeJS.Timeout;
+            let absoluteTimer: NodeJS.Timeout;
+            let watchdogCancel: Promise<void> | null = null;
+            let leaseCancel: Promise<void> | null = null;
+            const requestLeaseCancel = (): Promise<void> => {
+                if (!lease) {
+                    appClient.kill();
+                    return Promise.resolve();
+                }
+                leaseCancel ??= lease.cancel().catch((err: unknown) => {
+                    console.warn('[codex-app:turn] cancel failed:', (err as Error).message);
+                });
+                return leaseCancel;
+            };
+            const cancelHook = (_reason: string) => { void requestLeaseCancel(); };
+            if (lease) cancelActiveCodexAppTurn = cancelHook;
+            const watchdogTimeout = (kind: 'idle' | 'absolute') => {
+                if (watchdogCancel) return;
+                console.warn(`[codex-app:turn] watchdog stall (${kind}, idleMs=${idleMs}, absoluteMs=${absoluteMs})`);
+                watchdogCancel = requestLeaseCancel();
+                rejectTurn(new Error(`Codex AppServer turn ${kind} watchdog timeout`));
+            };
+            const resetIdleTimer = () => {
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(() => { watchdogTimeout('idle'); }, idleMs);
+            };
+            idleTimer = setTimeout(() => { watchdogTimeout('idle'); }, idleMs);
+            absoluteTimer = setTimeout(() => { watchdogTimeout('absolute'); }, absoluteMs);
+            markCodexProgress = resetIdleTimer;
+            const scope = appClient.listenTurn({
+                onNotification: handleNotification,
+                onStderr: handleStderr,
+                onExit: (code, signal) => {
+                    processExit.value = { code, signal };
+                    rejectTurn(new Error(`Codex AppServer exited (code=${code}, signal=${signal})`));
+                },
+                onError: rejectTurn,
+                onInterruptFailed: (err) => {
+                    console.warn(`[codex-app:interrupt] ${err.message}`);
+                },
+            });
+
             try {
-                const initResult = await appClient.initialize();
-                if (process.env["DEBUG"]) console.log('[codex-app:init]', JSON.stringify(initResult).slice(0, 200));
+                if (lease) {
+                    ctx.sessionId = lease.threadId;
+                    console.log(`[codex-app:pool] thread=${lease.threadId.slice(0, 12)}... reused=${lease.reused} resumed=${lease.resumedThread}`);
+                } else {
+                    const initResult = await appClient.initialize();
+                    if (process.env["DEBUG"]) console.log('[codex-app:init]', JSON.stringify(initResult).slice(0, 200));
 
-                if (isResume && resumeSessionId) {
-                    try {
-                        await appClient.resumeThread(resumeSessionId);
-                        console.log(`[codex-app:session] resumeThread OK: ${resumeSessionId.slice(0, 12)}...`);
-                    } catch (resumeErr: unknown) {
-                        console.warn(`[codex-app:session] resumeThread FAILED: ${(resumeErr as Error).message} — starting new thread`);
-                        if (empSid && opts.agentId) {
-                            clearEmployeeSession.run(opts.agentId);
+                    if (isResume && resumeSessionId) {
+                        try {
+                            await appClient.resumeThread(resumeSessionId, { instructions: sysPrompt });
+                            console.log(`[codex-app:session] resumeThread OK: ${resumeSessionId.slice(0, 12)}...`);
+                        } catch (resumeErr: unknown) {
+                            const message = (resumeErr as Error).message || '';
+                            if (!isRecoverableResumeError(message)) throw resumeErr;
+                            console.warn(`[codex-app:session] resumeThread FAILED (recoverable): ${message} — starting new thread`);
+                            if (empSid && opts.agentId) clearEmployeeSession.run(opts.agentId);
+                            await appClient.startThread({ instructions: sysPrompt, cwd: spawnCwd });
                         }
+                    } else {
                         await appClient.startThread({ instructions: sysPrompt, cwd: spawnCwd });
                     }
-                } else {
-                    await appClient.startThread({ instructions: sysPrompt, cwd: spawnCwd });
+                    ctx.sessionId = appClient.threadId;
                 }
-                ctx.sessionId = appClient.threadId;
 
-                const useNativeResume = isResume && Boolean(resumeSessionId);
-                const codexAppPrompt = (!useNativeResume && historyBlock)
+                const shouldPrependHistory = lease
+                    ? !lease.resumedThread
+                    : !(isResume && Boolean(resumeSessionId));
+                const codexAppPrompt = (shouldPrependHistory && historyBlock)
                     ? `${historyBlock}\n\n[User Message]\n${prompt}`
                     : prompt;
 
-                const turnDone = new Promise<void>((resolveTurn, rejectTurn) => {
-                    appClient.once('turn/completed', () => {
-                        appClient.removeListener('error', rejectTurn);
-                        resolveTurn();
-                    });
-                    appClient.once('error', rejectTurn);
-                });
-
-                await appClient.startTurn(codexAppPrompt);
-
-                try {
-                    await turnDone;
-                    turnCompleted = true;
-                } catch (turnErr: unknown) {
-                    console.warn(`[codex-app:turn] error during turn: ${(turnErr as Error).message}`);
-                }
+                await Promise.race([appClient.startTurn(codexAppPrompt), turnDone]);
+                await turnDone;
+                turnCompleted = !turnReportedFailure;
 
                 flushCodexAppThinking();
 
-                const persistedThreadId = appClient.threadId;
+                const persistedThreadId = lease?.threadId ?? appClient.threadId;
                 if (persistedThreadId && persistMainSession(stripUndefined({
                     ownerGeneration,
                     forceNew,
@@ -1906,55 +2024,37 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedThreadId.slice(0, 12)}... (pre-shutdown)`);
                 }
-
-                if (!codexAppSettled) {
-                    codexAppSettled = true;
-                    const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, 0, cli);
-                    handleAgentExit({
-                        ctx, code: turnCompleted ? 0 : 1, cli, model, agentLabel, mainManaged, origin,
-                        resumeKey,
-                        prompt, opts, cfg, ownerGeneration, forceNew, empSid,
-                        isResume, wasKilled: false, wasSteer: false, smokeResult,
-                        effortDefault: '', costLine: '',
-                        resolve: resolve!,
-                        activeProcesses,
-                        setActiveProcess: (v) => { activeProcess = v; },
-                        retryState: queueCtrl.retryState,
-                        fallbackState: queueCtrl.fallbackState,
-                        fallbackMaxRetries: FALLBACK_MAX_RETRIES,
-                        processQueue,
-                    }).catch((err: Error) => {
-                        console.error(`[codex-app:handleAgentExit] ${err.message}`);
-                    });
-                }
-
-                await appClient.closeGracefully();
             } catch (err: unknown) {
                 console.error(`[codex-app:error] ${(err as Error).message}`);
                 if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += (err as Error).message;
-                appClient.kill();
+                if (!lease) appClient.kill();
+            } finally {
+                clearTimeout(idleTimer);
+                clearTimeout(absoluteTimer);
+                markCodexProgress = () => {};
+                if (watchdogCancel) await watchdogCancel;
+                if (cancelActiveCodexAppTurn === cancelHook) cancelActiveCodexAppTurn = null;
+                scope.dispose();
+                if (lease) lease.release();
+                else {
+                    await appClient.closeGracefully();
+                    appClient.cleanup();
+                    cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                }
             }
-        })();
 
-        appClient.on('exit', (code: number | null, signal: string | null) => {
-            if (codexAppSettled) return;
-            codexAppSettled = true;
-            appClient.cleanup();
-            cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
-            opts.lifecycle?.onExit?.(code ?? null);
-            const killReason = consumeKillReason(appClient.proc?.pid);
-            if (code !== 0 && !killReason) {
-                console.warn(`[codex-app:unexpected-exit] code=${code} signal=${signal} threadId=${ctx.sessionId || 'none'}`);
+            const exitCode = turnCompleted ? 0 : (processExit.value?.code ?? 1);
+            opts.lifecycle?.onExit?.(exitCode);
+            const killReason = consumeKillReason(child.pid);
+            if (processExit.value && processExit.value.code !== 0 && !killReason) {
+                console.warn(`[codex-app:unexpected-exit] code=${processExit.value.code} signal=${processExit.value.signal} threadId=${ctx.sessionId || 'none'}`);
             }
             const wasKilled = !!killReason;
             const wasSteer = killReason === 'steer';
             flushCodexAppThinking();
-
-            const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, code, cli);
-            const codexAppCode = turnCompleted ? 0 : (code ?? 1);
-
-            handleAgentExit({
-                ctx, code: codexAppCode, cli, model, agentLabel, mainManaged, origin,
+            const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, exitCode, cli);
+            await handleAgentExit({
+                ctx, code: exitCode, cli, model, agentLabel, mainManaged, origin,
                 resumeKey,
                 prompt, opts, cfg, ownerGeneration, forceNew, empSid,
                 isResume, wasKilled, wasSteer, smokeResult,
@@ -1969,9 +2069,44 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }).catch((err: Error) => {
                 console.error('[jaw:lifecycle] handleAgentExit failed (codex-app):', err.message);
             });
+        };
+
+        if (opts.agentId) {
+            const appClient = new CodexAppClient({
+                binary: detected.path || 'codex', workDir: spawnCwd, env: spawnEnv,
+                model, effort, fastMode: effectiveFastMode,
+            });
+            appClient.spawn();
+            const child = appClient.proc;
+            if (!child) throw new Error('Codex AppServer process was not created');
+            void runCodexAppTurn(appClient, null);
+            return { child, promise: resultPromise };
+        }
+
+        mainSpawnStarting = true;
+        void acquireCodexAppRuntime({
+            binary: detected.path || 'codex', env: spawnEnv,
+            key: {
+                scopeKey: `chat:${getActiveChatSession()}`,
+                cwd: spawnCwd, model, effort, fastMode: effectiveFastMode,
+            },
+            storedThreadId: resumeSessionId || null,
+            instructions: sysPrompt,
+            forceNew,
+        }).then(async (lease) => {
+            mainSpawnStarting = false;
+            await runCodexAppTurn(lease.client, lease);
+        }).catch((err: Error) => {
+            mainSpawnStarting = false;
+            console.error(`[codex-app:pool] acquire failed: ${err.message}`);
+            clearLiveRun(liveScope);
+            broadcast('agent_status', { running: false, agentId: agentLabel });
+            broadcast('agent_done', { text: `❌ Codex AppServer acquire failed: ${err.message}`, error: true, origin }, 'public');
+            resolve!({ text: '', code: 1 });
+            processQueue();
         });
 
-        return { child, promise: resultPromise };
+        return { child: null, promise: resultPromise };
     }
 
     // ─── Standard CLI branch (claude/codex/opencode) ──────

@@ -10,6 +10,7 @@
 // plain-text flattening pipeline.ts already applied to the message body.
 import type { InlineKeyboardMarkup } from '@grammyjs/types';
 import { parseElicitationSpec, type NormalizedSpec } from '../shared/elicitation-spec.js';
+import { redactOutboundText } from '../messaging/redact.js';
 
 const PENDING_TTL_MS = 10 * 60_000;
 const MAX_BUTTON_OPTIONS = 8;
@@ -78,7 +79,9 @@ export function handleElicitationCallback(chatId: string, callbackData: string):
 
     pending.answers.set(qIdx, oIdx);
     if (pending.answers.size < pending.spec.questions.length) {
-        return { kind: 'progress', ack: `${option.label} ✓` };
+        // The ack is echoed into a chat toast and an HTTP body, so the label
+        // is masked here even though the stored answer keeps its raw value.
+        return { kind: 'progress', ack: `${redactOutboundText(option.label)} ✓` };
     }
 
     pendingByChat.delete(chatId);
@@ -86,7 +89,9 @@ export function handleElicitationCallback(chatId: string, callbackData: string):
         const chosen = q.options[pending.answers.get(i)!]!;
         return `${q.question}: ${chosen.label}`;
     }).join('\n');
-    return { kind: 'complete', combinedAnswer, ack: `${option.label} ✓` };
+    // combinedAnswer is re-injected into the agent, so it keeps the literal
+    // answer; ack is shown to the user and takes the same masking as above.
+    return { kind: 'complete', combinedAnswer, ack: `${redactOutboundText(option.label)} ✓` };
 }
 
 /** Drop the pending session (user typed a reply instead of tapping, or a new turn started). */

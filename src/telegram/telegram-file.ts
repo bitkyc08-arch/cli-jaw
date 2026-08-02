@@ -2,6 +2,7 @@ import { InputFile, type Bot } from 'grammy';
 import fs from 'node:fs';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { log } from '../core/logger.js';
+import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 
 interface TelegramApiErrorLike {
     error_code?: number;
@@ -34,9 +35,18 @@ const MAX_TOTAL_WAIT_MS = 60_000;  // cumulative wait cap
  * Throws with descriptive message if exceeded.
  */
 export function validateFileSize(filePath: string, type: string): void {
+    // stat first: the early return on an unknown type skipped every check,
+    // so a zero-byte file went out whenever the caller passed a type this
+    // table does not list.
+    const stat = fs.statSync(filePath);
+    if (stat.size === 0) {
+        throw Object.assign(
+            new Error('Refusing to send a zero-byte file'),
+            { code: 'FILE_EMPTY', statusCode: 400 },
+        );
+    }
     const limit = TELEGRAM_LIMITS[type];
     if (!limit) return;
-    const stat = fs.statSync(filePath);
     if (stat.size > limit) {
         const limitMB = (limit / 1024 / 1024).toFixed(0);
         const actualMB = (stat.size / 1024 / 1024).toFixed(1);
@@ -75,6 +85,10 @@ export function classifyUpstreamError(err: unknown): number {
 /**
  * Send a file to Telegram with exponential backoff retry.
  * Creates a fresh InputFile per attempt (stream safety).
+ *
+ * Size validation happens HERE rather than at the call sites. Leaving it to
+ * callers meant the Telegram Hub, which calls this directly, uploaded
+ * zero-byte files while every other path refused them.
  */
 export async function sendTelegramFile(
     bot: Bot,
@@ -83,7 +97,23 @@ export async function sendTelegramFile(
     type: string,
     opts?: { caption?: string; threadId?: number },
 ): Promise<{ ok: boolean; attempts: number; error?: string; retryAfter?: number; statusCode?: number }> {
-    const caption = opts?.caption;
+    // Validate here, not at the call sites. The Hub's outbound relay calls this
+    // transport directly and skipped the check, which is how an empty document
+    // still reached the API after the guard was added.
+    try {
+        validateFileSize(filePath, type);
+    } catch (err: unknown) {
+        const e = asTgErr(err);
+        return stripUndefined({
+            ok: false,
+            attempts: 0,
+            error: userErrorText(err),
+            statusCode: e.statusCode ?? 400,
+        });
+    }
+    // Captions reach the room like any other text, so they take the same
+    // last-mile masking the message body does.
+    const caption = opts?.caption === undefined ? undefined : redactOutboundText(opts.caption);
     const message_thread_id = opts?.threadId;   // P0: thread file sends into their topic
     let totalWaited = 0;
 
@@ -109,10 +139,13 @@ export async function sendTelegramFile(
             const transient = isTransient(err);
             if (!transient || attempt === MAX_RETRIES) {
                 const sc = transient ? classifyUpstreamError(err) : (e.error_code || e.statusCode || 500);
-                log.error(`[telegram:file] failed after ${attempt} attempt(s):`, e.message);
+                log.error(`[telegram:file] failed after ${attempt} attempt(s):`, logErrorText(err));
                 return stripUndefined({
                     ok: false, attempts: attempt,
-                    error: e.message || 'unknown error',
+                    // This object becomes an HTTP response body, so it is a
+                    // credential sink in its own right — grammY puts the Bot
+                    // API URL, token and all, in some error messages.
+                    error: userErrorText(err) || 'unknown error',
                     retryAfter: e.error_code === 429 ? e.parameters?.retry_after : undefined,
                     statusCode: sc,
                 });

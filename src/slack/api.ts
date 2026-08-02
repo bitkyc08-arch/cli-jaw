@@ -8,6 +8,7 @@
 // alone silently swallows every auth, scope, and argument failure.
 
 import { log } from '../core/logger.js';
+import { redactChannelSecrets } from '../messaging/redact.js';
 
 const SLACK_API_BASE = 'https://slack.com/api';
 
@@ -57,39 +58,14 @@ export function describeSlackError(error: string | undefined): string {
 }
 
 /**
- * Redact Slack credentials from any string before it reaches a log sink or an
- * API response. Covers two distinct secret shapes:
- *   - bearer tokens (xoxb-, xoxp-, xapp-, ...)
- *   - upload URLs, which are capabilities in their own right. Slack's
- *     documented `upload_url` is an OPAQUE PATH ("…/upload/v1/ABC123"), so
- *     redacting only the query string leaves the capability exposed.
+ * Redact Slack credentials before they reach a log sink or an API response.
+ *
+ * Delegates to the shared masker: error strings cross channel boundaries (the
+ * unified send path collects results from all three transports), so a
+ * Slack-only masker leaks the moment a Telegram error travels through Slack
+ * code. The name is kept because it reads correctly at the call sites here.
  */
-export function redactSlackTokens(input: string): string {
-    return input
-        .replace(/x(?:ox[bpas]|app)-[A-Za-z0-9-]+/g, (m) => `${m.slice(0, 9)}...redacted`)
-        // Slack file upload endpoints: the whole URL after the host is the
-        // capability, path or query. Keep the host so logs stay diagnosable.
-        //
-        // Host matching goes through the URL parser rather than a regex on the
-        // raw text, so canonical-equivalent spellings cannot slip past:
-        // uppercase hosts, an explicit :443, a trailing dot, and userinfo
-        // (user:pass@) all normalize before the suffix check. A lookalike such
-        // as `evilslack.com` or `evil.slack.com.attacker.dev` is deliberately
-        // NOT masked — hiding it would conceal a suspicious URL.
-        .replace(/https?:\/\/[^\s]+/gi, (raw) => {
-            let parsed: URL;
-            try {
-                parsed = new URL(raw);
-            } catch {
-                return raw;
-            }
-            const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
-            if (host !== 'slack.com' && !host.endsWith('.slack.com')) return raw;
-            return `https://${parsed.host}/...redacted`;
-        })
-        // Any other URL may still carry a signature in its query string.
-        .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/g, '$1?...redacted');
-}
+export const redactSlackTokens = redactChannelSecrets;
 
 export type SlackFetch = typeof fetch;
 

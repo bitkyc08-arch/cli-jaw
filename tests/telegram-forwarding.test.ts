@@ -32,7 +32,12 @@ function createBotSpy({ failHtmlOnce = false } = {}) {
                     sent.push({ chatId, text, opts });
                     if (failHtmlOnce && !failed && opts?.parse_mode === 'HTML') {
                         failed = true;
-                        throw new Error('invalid html');
+                        // The ladder only falls back on a FORMATTING rejection
+                        // now: a bare Error could equally be a rate limit or a
+                        // network failure, and re-sending those was the defect.
+                        throw Object.assign(new Error('unsupported start tag: invalid html'), {
+                            error_code: 400,
+                        });
                     }
                     return { ok: true };
                 },

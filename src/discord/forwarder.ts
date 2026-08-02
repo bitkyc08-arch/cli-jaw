@@ -6,9 +6,11 @@ import { settings } from '../core/config.js';
 import { log } from '../core/logger.js';
 import { extractLocalImagePaths } from '../messaging/extract-images.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import { chunkFenceAware } from '../messaging/chunk.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import { asSendable } from './channel-types.js';
 import { sendDiscordFile } from './discord-file.js';
+import { redactOutboundText, logErrorText } from '../messaging/redact.js';
 
 export async function relayDiscordImages(
     client: Client,
@@ -32,24 +34,25 @@ export async function relayDiscordImages(
         } catch (error: unknown) {
             log.warn('[discord:image-relay] skipped', {
                 path: candidate,
-                error: error instanceof Error ? error.message : String(error),
+                error: logErrorText(error),
             });
         }
     }
 }
 
+/**
+ * Split for Discord's 2,000-character message limit.
+ *
+ * Delegates to the shared splitter. The previous local implementation dropped
+ * the newline it split on (`"aaa\nbbb"` came back as `["aaa", "bbb"]`), cut
+ * mid-surrogate on a hard split, and ignored code fences entirely.
+ *
+ * Redaction happens here rather than at the six call sites. Every outbound
+ * Discord text passes through this function, and masking per call site is how
+ * the audit kept finding one that had been missed.
+ */
 export function chunkDiscordMessage(text: string, limit = 2000): string[] {
-    if (text.length <= limit) return [text];
-    const chunks: string[] = [];
-    let remaining = text;
-    while (remaining.length > 0) {
-        if (remaining.length <= limit) { chunks.push(remaining); break; }
-        let cut = remaining.lastIndexOf('\n', limit);
-        if (cut <= 0) cut = limit;
-        chunks.push(remaining.slice(0, cut));
-        remaining = remaining.slice(cut).replace(/^\n/, '');
-    }
-    return chunks;
+    return chunkFenceAware(redactOutboundText(text), limit);
 }
 
 export function createDiscordForwarder(opts: {
@@ -74,9 +77,9 @@ export function createDiscordForwarder(opts: {
                 await sendable.send(chunk);
             }
             await relayDiscordImages(opts.client, target, text);
-            opts.log?.({ channelId: target.targetId, preview: text.slice(0, 60) });
+            opts.log?.({ channelId: target.targetId, preview: redactOutboundText(text).slice(0, 60) });
         } catch (e) {
-            log.error('[discord:forward]', (e as Error).message);
+            log.error('[discord:forward]', logErrorText(e));
         }
     };
 }

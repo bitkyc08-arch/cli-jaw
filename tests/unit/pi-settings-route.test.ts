@@ -6,8 +6,9 @@ test('Pi settings routes use registration validation, applySettings, and redacti
     const source = readFileSync('src/routes/settings.ts', 'utf8');
     assert.match(source, /app\.post\('\/api\/pi\/profiles\/register'/);
     assert.match(source, /normalizePiProfile\(req\.body\)/);
-    assert.match(source, /await listPiModels\(nextPi, profile\.id\)/);
+    assert.match(source, /await discoverPiProfileModels\(nextPi, profile\)/);
     assert.match(source, /models\.includes\(profile\.model\)/);
+    assert.match(source, /modelSource: discovery\.source/);
     assert.match(source, /await applySettings\(\{/);
     assert.match(source, /redactPiSettings/);
 });
@@ -15,6 +16,9 @@ test('Pi settings routes use registration validation, applySettings, and redacti
 test('Pi model route discovers models from the selected profile', () => {
     const source = readFileSync('src/routes/settings.ts', 'utf8');
     assert.match(source, /app\.get\('\/api\/pi\/models'/);
-    assert.match(source, /normalizePiSettings\(settings\["pi"\]\)\.defaultProfileId/);
-    assert.match(source, /await listPiModels\(settings\["pi"\], profile\)/);
+    assert.match(source, /const piSettings = normalizePiSettings\(settings\["pi"\]\)/);
+    assert.match(source, /await discoverPiProfileModels\(piSettings, selected\)/);
+    assert.match(source, /Unknown pi profile:/);
+    assert.match(source, /res\.status\(400\)\.json/);
+    assert.match(source, /modelSource: discovery\.source/);
 });

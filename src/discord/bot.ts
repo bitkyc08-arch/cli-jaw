@@ -20,6 +20,11 @@ import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from '
 import type { Attachment, Message } from 'discord.js';
 import { asSendable, asThreadLike, asTypingChannel } from './channel-types.js';
 import { log } from '../core/logger.js';
+import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
+import { createSeenSet, DELIVERY_DEDUPE_TTL_MS } from '../messaging/dedupe.js';
+
+/** Redelivered message ids, so a gateway resume does not run the agent twice. */
+const discordSeenMessages = createSeenSet(DELIVERY_DEDUPE_TTL_MS);
 
 // ─── State ───────────────────────────────────────────
 
@@ -135,7 +140,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 }
                 for (const chunk of chunks) {
                     await channel.send(chunk).catch((e: Error) => {
-                        log.error('[discord:queue-send]', e.message);
+                        log.error('[discord:queue-send]', logErrorText(e));
                     });
                 }
                 await relayDiscordImages(msg.client, target, String(data["text"]));
@@ -158,11 +163,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     const typingChannel = asTypingChannel(msg.channel);
     typingChannel?.sendTyping?.()
         ?.then(() => log.info('[discord:typing] ✅ sent'))
-        ?.catch((e: Error) => log.info('[discord:typing] ❌', e.message));
+        ?.catch((e: Error) => log.info('[discord:typing] ❌', logErrorText(e)));
     const typingInterval = setInterval(() => {
         typingChannel?.sendTyping?.()
             ?.then(() => log.info('[discord:typing] ✅ refresh'))
-            ?.catch((e: Error) => log.info('[discord:typing] ❌ refresh', e.message));
+            ?.catch((e: Error) => log.info('[discord:typing] ❌ refresh', logErrorText(e)));
     }, 8000);
 
     try {
@@ -176,10 +181,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             await channel.send(chunk);
         }
         await relayDiscordImages(msg.client, target, text);
-        log.info(`[discord:out] ${msg.channelId}: ${text.slice(0, 80)}`);
+        log.info(`[discord:out] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
-        log.error('[discord:error]', err);
-        await msg.reply(`❌ Error: ${(err as Error).message}`).catch(() => { });
+        log.error('[discord:error]', logErrorText(err));
+        await msg.reply(`❌ Error: ${userErrorText(err)}`).catch(() => { });
     } finally {
         clearInterval(typingInterval);
     }
@@ -213,7 +218,7 @@ export async function initDiscord() {
 
     // ── Error handler: disable Discord on network failure ──
     client.on(Events.Error, (err) => {
-        log.error(`[discord] ❌ Client error: ${err.message}`);
+        log.error(`[discord] ❌ Client error: ${logErrorText(err)}`);
         log.error('[discord] Disabling Discord for this session — restart to retry');
         shutdownDiscord().catch(() => { /* ignore */ });
     });
@@ -231,6 +236,18 @@ export async function initDiscord() {
         // @mention gating: skip non-mentioned messages in guild channels
         if (settings["discord"].mentionOnly && msg.guild) {
             if (!client.user || !msg.mentions.has(client.user, { ignoreRepliedUser: true })) return;
+        }
+
+        // discord.js can redeliver on a gateway resume, and each delivery
+        // would start another agent run.
+        //
+        // This sits AFTER the allowlist and mention gates on purpose: a
+        // message that will be dropped anyway should not consume a slot in
+        // the seen-set, or traffic from channels the bot ignores could fill
+        // it on its own.
+        if (discordSeenMessages.seen(msg.id)) {
+            log.info(`[discord:duplicate] id=${msg.id}`);
+            return;
         }
 
         markChannelActive(msg.channelId);
@@ -263,10 +280,10 @@ export async function initDiscord() {
                     await msg.reply(warning).catch(() => { });
                 }
 
-                dcOrchestrate(msg, prompt, fileLabel).catch(e => log.error('[discord:orchestrate]', (e as Error).message));
+                dcOrchestrate(msg, prompt, fileLabel).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
             } catch (e) {
-                log.error('[discord:attachment]', (e as Error).message);
-                await msg.reply(`❌ ${(e as Error).message}`).catch(() => { });
+                log.error('[discord:attachment]', logErrorText(e));
+                await msg.reply(`❌ ${userErrorText(e)}`).catch(() => { });
             }
             return;
         }
@@ -275,7 +292,7 @@ export async function initDiscord() {
         const text = normalizedText;
         if (!text) return;
 
-        log.info(`[discord:in] ${msg.channelId}: ${text.slice(0, 80)}`);
+        log.info(`[discord:in] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
 
         // Reset intent: use submitMessage gateway for consistency
         if (isResetIntent(text)) {
@@ -288,7 +305,7 @@ export async function initDiscord() {
             return;
         }
 
-        dcOrchestrate(msg, text, text).catch(e => log.error('[discord:orchestrate]', (e as Error).message));
+        dcOrchestrate(msg, text, text).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
     });
 
     // ── Slash command handler ──
@@ -315,7 +332,7 @@ export async function initDiscord() {
     try {
         await client.login(settings["discord"].token);
     } catch (err) {
-        log.error(`[discord] ❌ Login failed (network?): ${(err as Error).message}`);
+        log.error(`[discord] ❌ Login failed (network?): ${logErrorText(err)}`);
         log.error('[discord] Disabling Discord for this session — restart to retry');
         if (forwarderHandler) {
             removeBroadcastListener(forwarderHandler);
@@ -344,7 +361,7 @@ export async function shutdownDiscord() {
     try {
         await old.destroy();
     } catch (e) {
-        log.warn('[discord:stop]', (e as Error).message);
+        log.warn('[discord:stop]', logErrorText(e));
         await new Promise(r => setTimeout(r, 2000));
     }
     log.info('[discord] stopped');

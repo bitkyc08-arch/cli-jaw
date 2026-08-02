@@ -218,6 +218,7 @@ function createDefaultSettings() {
             token: '',
             allowedChatIds: [],
             forwardAll: true,
+            allowBots: false,
             mentionOnly: true,
         },
         discord: {
@@ -389,6 +390,12 @@ export function migrateSettings(s: Record<string, any>) {
     // Telegram mentionOnly migration — existing users had hardcoded always-on behavior
     if (s["telegram"] && s["telegram"].mentionOnly === undefined) {
         s["telegram"].mentionOnly = true;
+    }
+    // Telegram allowBots migration — added with the self-echo guard (260802).
+    // Defaults to false to match Discord: another bot in the group is not a
+    // user, and answering one is how loops start.
+    if (s["telegram"] && s["telegram"].allowBots === undefined) {
+        s["telegram"].allowBots = false;
     }
     // Slack channel migration — added 260802, absent from all prior settings files
     if (!s["slack"]) {

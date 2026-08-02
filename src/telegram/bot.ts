@@ -55,6 +55,8 @@ import {
     handleElicitationCallback,
     discardPendingElicitation,
 } from './elicitation-buttons.js';
+import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
+import { createSeenSet, DELIVERY_DEDUPE_TTL_MS } from '../messaging/dedupe.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -65,6 +67,15 @@ let tgInitLock = false;
 let tg409RetryCount = 0;
 const TG_MAX_RETRIES = 3;
 let botUsername: string | null = null;
+/**
+ * The bot's own user id, learned from getMe at startup.
+ *
+ * Needed for the self-echo guard. Until it is known the guard falls back to
+ * the is_bot flag, which is why those are two separate checks.
+ */
+let botUserId: number | null = null;
+/** Redelivered update_ids, so a reconnect replay does not run the agent twice. */
+const telegramSeenUpdates = createSeenSet(DELIVERY_DEDUPE_TTL_MS);
 let targetReplyForwarderInstalled = false;
 const telegramForwarderLifecycle = createForwarderLifecycle({
     addListener: addBroadcastListener,
@@ -142,7 +153,7 @@ function installTelegramTargetReplyForwarder(): void {
                 }
             }
         }).catch((err: unknown) => {
-            log.error('[tg:target-reply]', (err as Error).message);
+            log.error('[tg:target-reply]', logErrorText(err));
         });
     });
 }
@@ -156,7 +167,7 @@ export async function shutdownTelegram() {
     const old = telegramBot;
     telegramBot = null;
     try { await old.stop(); } catch (e: unknown) {
-        log.warn('[telegram:stop]', (e as Error).message);
+        log.warn('[telegram:stop]', logErrorText(e));
     }
 }
 
@@ -272,9 +283,9 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     if (req.type === 'keyboard') {
         const text = req.text?.trim();
         if (!text || !req.reply_markup) return { ok: false, error: 'text and reply_markup required for keyboard type' };
-        await bot.api.sendMessage(chatId, text, stripUndefined({
+        await bot.api.sendMessage(chatId, redactOutboundText(text), stripUndefined({
             message_thread_id: messageThreadId,
-            reply_markup: req.reply_markup as import("@grammyjs/types").InlineKeyboardMarkup,
+            reply_markup: redactOutboundPayload(req.reply_markup) as import("@grammyjs/types").InlineKeyboardMarkup,
         }));
         return { ok: true, chat_id: chatId, type: 'keyboard' };
     }
@@ -362,7 +373,7 @@ async function _initTelegramInner() {
         try {
             await old.stop();
         } catch (e: unknown) {
-            log.warn('[telegram:stop]', (e as Error).message);
+            log.warn('[telegram:stop]', logErrorText(e));
             await new Promise(r => setTimeout(r, 2000));
         }
     }
@@ -426,11 +437,28 @@ async function _initTelegramInner() {
     const bot = new Bot(settings["telegram"].token, {
         client: { fetch: ipv4Fetch as never },
     });
-    bot.catch((err) => log.error('[tg:error]', err.message || err));
+    bot.catch((err) => log.error('[tg:error]', logErrorText(err)));
     bot.use(sequentialize((ctx) => `tg:${ctx.chat?.id || 'unknown'}`));
 
+    // Never process our own output, and skip other bots unless allowed.
+    //
+    // Discord has had this since inception (see Events.MessageCreate below);
+    // Telegram did not, so a bridge that re-injects bot output — or simply
+    // another bot in the same group — could drive a loop. It sits ahead of the
+    // logging middleware so an echo does not pollute the log either.
+    //
+    // Two checks rather than one: botUserId is only known once getMe returns,
+    // and is_bot still covers the window before that.
     bot.use(async (ctx, next) => {
-        log.info(`[tg:update] chat=${ctx.chat?.id} text=${(ctx.message?.text || '').slice(0, 40)}`);
+        const from = ctx.from;
+        if (from?.id !== undefined && botUserId !== null && from.id === botUserId) return;
+        if (from?.is_bot && !settings["telegram"]?.allowBots) return;
+        await next();
+    });
+
+    bot.use(async (ctx, next) => {
+        // Inbound text is logged too, and a user can paste a token into chat.
+        log.info(`[tg:update] chat=${ctx.chat?.id} text=${redactOutboundText(ctx.message?.text || '').slice(0, 40)}`);
         await next();
     });
 
@@ -459,6 +487,24 @@ async function _initTelegramInner() {
         await next();
     });
 
+    // Drop a redelivered update. grammY replays from the last committed offset
+    // after a reconnect, so the same update_id can arrive twice — and each one
+    // would start another agent run.
+    //
+    // Placed AFTER the allowlist and mention gates deliberately: dedupe
+    // upstream of them lets traffic we never process fill the seen-set — memory
+    // an outsider controls, and a budget an unmentioned group message can
+    // exhaust before a real one arrives. A duplicate that WOULD be processed
+    // passes both gates too, so nothing is lost by checking later.
+    bot.use(async (ctx, next) => {
+        const updateId = ctx.update?.update_id;
+        if (updateId !== undefined && telegramSeenUpdates.seen(String(updateId))) {
+            log.info(`[tg:duplicate] update_id=${updateId}`);
+            return;
+        }
+        await next();
+    });
+
     bot.command('start', (ctx) => ctx.reply(t('tg.connected', {}, currentLocale())));
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat?.id ?? ''}</code>`, { parse_mode: 'HTML' }));
 
@@ -471,7 +517,7 @@ async function _initTelegramInner() {
             await ctx.answerCallbackQuery({ text: t('tg.elicitationExpired', {}, currentLocale()) }).catch(() => { });
             return;
         }
-        await ctx.answerCallbackQuery({ text: result.ack }).catch(() => { });
+        await ctx.answerCallbackQuery({ text: redactOutboundText(result.ack) }).catch(() => { });
         // Best-effort: freeze the tapped question's keyboard so the choice reads as taken.
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => { });
         if (result.kind === 'complete') {
@@ -499,7 +545,7 @@ async function _initTelegramInner() {
             if (typeof raw !== 'string' || !raw) return;
             const keyboards = startPendingElicitation(String(targetChatId), raw);
             for (const kb of keyboards ?? []) {
-                await ctx.api.sendMessage(targetChatId, kb.text, { ...replyOptsOf(ctx), reply_markup: kb.reply_markup })
+                await ctx.api.sendMessage(targetChatId, redactOutboundText(kb.text), { ...replyOptsOf(ctx), reply_markup: redactOutboundPayload(kb.reply_markup) })
                     .catch(() => { });
             }
         };
@@ -537,11 +583,11 @@ async function _initTelegramInner() {
 
         await ctx.replyWithChatAction('typing')
             .then(() => log.info('[tg:typing] ✅ sent'))
-            .catch((e: unknown) => log.info('[tg:typing] ❌', (e as Error).message));
+            .catch((e: unknown) => log.info('[tg:typing] ❌', logErrorText(e)));
         const typingInterval = setInterval(() => {
             ctx.replyWithChatAction('typing')
                 .then(() => log.info('[tg:typing] ✅ refresh'))
-                .catch((e: unknown) => log.info('[tg:typing] ❌ refresh', (e as Error).message));
+                .catch((e: unknown) => log.info('[tg:typing] ❌ refresh', logErrorText(e)));
         }, 4000);
 
         const showTools = settings["telegram"]?.showToolUse !== false;
@@ -558,7 +604,7 @@ async function _initTelegramInner() {
 
             if (!statusMsgId) {
                 if (!statusMsgCreatePromise) {
-                    statusMsgCreatePromise = ctx.reply(`🔄 ${display}`)
+                    statusMsgCreatePromise = ctx.reply(`🔄 ${redactOutboundText(display)}`)
                         .then((m: { message_id: number }) => {
                             statusMsgId = m.message_id;
                             return statusMsgId;
@@ -572,7 +618,7 @@ async function _initTelegramInner() {
                 return;
             }
 
-            await ctx.api.editMessageText(chat.id, statusMsgId, `🔄 ${display}`)
+            await ctx.api.editMessageText(chat.id, statusMsgId, `🔄 ${redactOutboundText(display)}`)
                 .catch(() => { });
         };
 
@@ -635,7 +681,7 @@ async function _initTelegramInner() {
             await sendTelegramMarkdown(ctx.api, chat.id, result, replyOptsOf(ctx));
             await relayTelegramImages(bot, chat.id, result, responseTarget);
             await sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]);
-            log.info(`[tg:out] ${chat.id}: ${result.slice(0, 80)}`);
+            log.info(`[tg:out] ${chat.id}: ${redactOutboundText(result).slice(0, 80)}`);
         } catch (err: unknown) {
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
@@ -646,8 +692,8 @@ async function _initTelegramInner() {
             if (statusMsgId) {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
-            log.error('[tg:error]', err);
-            await ctx.reply(`❌ Error: ${(err as Error).message}`);
+            log.error('[tg:error]', logErrorText(err));
+            await ctx.reply(`❌ Error: ${userErrorText(err)}`);
         }
     }
 
@@ -668,18 +714,18 @@ async function _initTelegramInner() {
             // Just start tgOrchestrate for typing indicator + result delivery.
             if (result?.steerPrompt) {
                 const steerPrompt = result.steerPrompt;
-                await ctx.reply(result.text || '🔄');
+                await ctx.reply(redactOutboundText(result.text || '🔄'));
                 try {
                     await tgOrchestrate(ctx, steerPrompt, steerPrompt);
                 } catch (err: unknown) {
-                    log.error('[tg:steer]', (err as Error).message);
-                    await ctx.reply(`❌ Steer failed: ${(err as Error).message}`.slice(0, 500)).catch(() => {});
+                    log.error('[tg:steer]', logErrorText(err));
+                    await ctx.reply(`❌ Steer failed: ${userErrorText(err)}`.slice(0, 500)).catch(() => {});
                 }
                 return;
             }
 
             if (result?.text) {
-                const out = String(result.text);
+                const out = redactOutboundText(String(result.text));
                 try {
                     await ctx.reply(out);
                 } catch {
@@ -688,7 +734,7 @@ async function _initTelegramInner() {
             }
             return;
         }
-        log.info(`[tg:in] ${ctx.chat?.id}: ${text.slice(0, 80)}`);
+        log.info(`[tg:in] ${ctx.chat?.id}: ${redactOutboundText(text).slice(0, 80)}`);
 
         // Typed reply supersedes any pending elicitation buttons (placed after the
         // /command branch so slash commands do not discard the pending session).
@@ -711,7 +757,7 @@ async function _initTelegramInner() {
         const photos = ctx.message.photo;
         const largest = photos[photos.length - 1]!;
         const caption = ctx.message.caption || '';
-        log.info(`[tg:photo] ${ctx.chat?.id}: fileId=${largest.file_id.slice(0, 20)}... caption=${caption.slice(0, 40)}`);
+        log.info(`[tg:photo] ${ctx.chat?.id}: fileId=${largest.file_id.slice(0, 20)}... caption=${redactOutboundText(caption).slice(0, 40)}`);
         try {
             const dlResult = await downloadTelegramFile(largest.file_id, settings["telegram"].token, stripUndefined({
                 kind: 'photo',
@@ -722,8 +768,8 @@ async function _initTelegramInner() {
             const prompt = buildMediaPrompt(filePath, caption);
             tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`);
         } catch (err: unknown) {
-            log.error('[tg:photo:error]', err);
-            await ctx.reply(t('tg.imageFail', { msg: (err as Error).message }, currentLocale()));
+            log.error('[tg:photo:error]', logErrorText(err));
+            await ctx.reply(t('tg.imageFail', { msg: userErrorText(err) }, currentLocale()));
         }
     });
 
@@ -741,12 +787,36 @@ async function _initTelegramInner() {
             const prompt = buildMediaPrompt(filePath, caption);
             tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);
         } catch (err: unknown) {
-            log.error('[tg:doc:error]', err);
-            await ctx.reply(t('tg.fileFail', { msg: (err as Error).message }, currentLocale()));
+            log.error('[tg:doc:error]', logErrorText(err));
+            await ctx.reply(t('tg.fileFail', { msg: userErrorText(err) }, currentLocale()));
         }
     });
 
     bot.on('message:voice', (ctx) => handleVoice(ctx, currentLocale, tgOrchestrate));
+
+    // Identity first: the self-echo guard needs it, and the refusal below has
+    // to happen BEFORE anything is attached. Returning after attaching left the
+    // forwarder wired to a bot that never starts, still trying to send.
+    //
+    // Reset before asking, so a restart cannot inherit the previous bot's
+    // identity and check incoming messages against the wrong id.
+    botUsername = null;
+    botUserId = null;
+    try {
+        const me = await bot.api.getMe();
+        botUsername = me.username || null;
+        botUserId = me.id ?? null;
+    } catch (err: unknown) {
+        log.warn('[tg] getMe failed; bot identity unknown', logErrorText(err));
+    }
+
+    // Without an identity the guard has only the is_bot flag to work with — and
+    // allowBots turns that off. Starting anyway would leave the loop this guard
+    // exists to prevent wide open, so refuse instead.
+    if (botUserId === null && settings["telegram"]?.allowBots) {
+        log.error('[tg] refusing to start: allowBots is on but the bot identity could not be read');
+        return;
+    }
 
     // ─── Global Forwarding: non-Telegram responses → Telegram ───
     if (settings["telegram"]?.forwardAll !== false) {
@@ -754,14 +824,8 @@ async function _initTelegramInner() {
     }
 
     void syncTelegramCommands(bot).catch((e) => {
-        log.warn('[tg:commands] setMyCommands failed:', e.message);
+        log.warn('[tg:commands] setMyCommands failed:', logErrorText(e));
     });
-
-    botUsername = null;
-    try {
-        const me = await bot.api.getMe();
-        botUsername = me.username || null;
-    } catch { /* noop */ }
 
     try {
         await bot.api.raw.deleteWebhook({ drop_pending_updates: true });
@@ -787,7 +851,7 @@ async function _initTelegramInner() {
                 tgRetryTimer = setTimeout(() => { tgRetryTimer = null; void initTelegram(); }, delay);
             }
         } else {
-            log.error('[tg:fatal]', err);
+            log.error('[tg:fatal]', logErrorText(err));
         }
     });
     telegramBot = bot;

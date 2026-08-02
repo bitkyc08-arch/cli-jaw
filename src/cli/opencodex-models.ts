@@ -3,9 +3,15 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CLI_REGISTRY, CODEX_MODEL_CHOICES } from './registry.js';
 
+export interface OpenCodexModelsResult {
+    models: string[];
+    source: 'opencodex' | 'static';
+}
+
 type CachedOpenCodexModels = {
     fetchedAt: number;
     models: string[];
+    source: OpenCodexModelsResult['source'];
 };
 
 const CACHE_TTL_MS = 2_000;
@@ -82,6 +88,31 @@ function parseModelIds(payload: unknown): string[] {
         .filter((id): id is string => typeof id === 'string'));
 }
 
+/**
+ * Probe an arbitrary base URL only when its origin identifies as opencodex.
+ * Pi profile endpoints conventionally include `/v1`, so models are read from
+ * `<base>/models` while identity is checked at `<origin>/healthz`.
+ */
+export async function probeOpenCodexEndpointModels(endpoint: string, timeoutMs = 1500): Promise<string[] | null> {
+    const base = endpoint.trim().replace(/\/+$/, '');
+    if (!base) return null;
+
+    let origin: string;
+    try {
+        origin = new URL(base).origin;
+    } catch {
+        return null;
+    }
+
+    const health = await fetchJson(`${origin}/healthz`, Math.min(timeoutMs, HEALTH_TIMEOUT_MS * 3));
+    if (!health || typeof health !== 'object' || Array.isArray(health)) return null;
+    const fingerprint = health as Record<string, unknown>;
+    if (fingerprint['status'] !== 'ok' || fingerprint['service'] !== 'opencodex') return null;
+
+    const models = parseModelIds(await fetchJson(`${base}/models`, timeoutMs));
+    return models.length > 0 ? models : null;
+}
+
 export function applyCodexModelsToChoices(
     choicesByCli: Record<string, string[]>,
     codexModels: readonly string[],
@@ -97,27 +128,36 @@ export function applyCodexModelsToChoices(
     return choicesByCli;
 }
 
-export async function resolveOpenCodexCodexModels(): Promise<string[]> {
+export async function resolveOpenCodexCodexModelsDetailed(): Promise<OpenCodexModelsResult> {
     const now = Date.now();
     if (cachedOpenCodexModels && now - cachedOpenCodexModels.fetchedAt < CACHE_TTL_MS) {
-        return [...cachedOpenCodexModels.models];
+        return {
+            models: [...cachedOpenCodexModels.models],
+            source: cachedOpenCodexModels.source,
+        };
     }
 
     const port = await readOpenCodexPort();
-    if (!port) return defaultCodexModels();
+    if (!port) return { models: defaultCodexModels(), source: 'static' };
 
     const baseUrl = `http://127.0.0.1:${port}`;
     const health = await fetchJson(`${baseUrl}/healthz`, HEALTH_TIMEOUT_MS);
     if (!health || typeof health !== 'object' || Array.isArray(health)
-        || (health as Record<string, unknown>)['status'] !== 'ok') {
-        return defaultCodexModels();
+        || (health as Record<string, unknown>)['status'] !== 'ok'
+        || (health as Record<string, unknown>)['service'] !== 'opencodex') {
+        return { models: defaultCodexModels(), source: 'static' };
     }
 
     const modelsPayload = await fetchJson(`${baseUrl}/v1/models`, MODELS_TIMEOUT_MS);
     const models = parseModelIds(modelsPayload);
     const resolved = models.length > 0 ? models : defaultCodexModels();
-    cachedOpenCodexModels = { fetchedAt: now, models: resolved };
-    return [...resolved];
+    const source: OpenCodexModelsResult['source'] = models.length > 0 ? 'opencodex' : 'static';
+    cachedOpenCodexModels = { fetchedAt: now, models: resolved, source };
+    return { models: [...resolved], source };
+}
+
+export async function resolveOpenCodexCodexModels(): Promise<string[]> {
+    return (await resolveOpenCodexCodexModelsDetailed()).models;
 }
 
 export async function resolveCliDefaultModel(cli: string): Promise<string> {

@@ -1,5 +1,8 @@
 // ─── Telegram Forwarding Utilities ───────────────────
 
+import { safeCut } from '../messaging/chunk.js';
+import { redactOutboundText, logErrorText } from '../messaging/redact.js';
+
 export function escapeHtmlTg(text: string) {
     return String(text || '')
         .replace(/&/g, '&amp;')
@@ -45,6 +48,7 @@ function isInsideTagToken(text: string, index: number): boolean {
 
 function findHtmlSafeSplit(raw: string, limit: number): number {
     if (isInsideTagToken(raw, limit)) {
+        // Always just past a '>', so never inside a surrogate pair.
         const close = raw.indexOf('>', limit);
         if (close >= 0) return close + 1;
     }
@@ -56,14 +60,17 @@ function findHtmlSafeSplit(raw: string, limit: number): number {
         if (isInsideTagToken(raw, i)) continue;
         candidates.push(i);
     }
-    candidates.push(limit);
+    // Hard-split fallback must land on a code-point boundary: cutting between
+    // a surrogate pair ships half an emoji.
+    const hardSplit = safeCut(raw, limit);
+    candidates.push(hardSplit);
 
     for (const candidate of candidates) {
-        if (candidate < limit * 0.3 && candidate !== limit) continue;
+        if (candidate < limit * 0.3 && candidate !== hardSplit) continue;
         const chunk = raw.slice(0, candidate);
         if (isBalancedTelegramHtml(chunk)) return candidate;
     }
-    return limit;
+    return hardSplit;
 }
 
 export function chunkTelegramHtmlMessage(html: string, limit = 4096): string[] {
@@ -153,7 +160,7 @@ export async function relayTelegramImages(
         } catch (error: unknown) {
             appLog.warn('[tg:image-relay] skipped', {
                 path: candidate,
-                error: error instanceof Error ? error.message : String(error),
+                error: logErrorText(error),
             });
         }
     }
@@ -213,7 +220,9 @@ export function createTelegramForwarder({
                 if (!chatId) return;
 
                 const text = String(data["text"]);
-                const preview = text.slice(0, 200).replace(/\n/g, ' ');
+                // Redact BEFORE slicing: the preview goes to a log file, and
+                // a token in the first 200 characters would be stored raw.
+                const preview = redactOutboundText(text).slice(0, 200).replace(/\n/g, ' ');
                 log({ chatId, preview });
 
                 // Rich-first default; helper falls back to HTML then plaintext per chunk.
@@ -224,12 +233,12 @@ export function createTelegramForwarder({
                 await relayTelegramImages(bot, chatId, text, target);
             } catch (error: unknown) {
                 appLog.warn('[tg:forward] delivery failed', {
-                    error: error instanceof Error ? error.message : String(error),
+                    error: logErrorText(error),
                 });
             }
         })().catch((error: unknown) => {
             appLog.warn('[tg:forward] delivery failed', {
-                error: error instanceof Error ? error.message : String(error),
+                error: logErrorText(error),
             });
         });
     };

@@ -15,6 +15,7 @@ import { getVisibleCommands } from '../command-contract/policy.js';
 import { asSendable } from './channel-types.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { log } from '../core/logger.js';
+import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 
 export async function registerDiscordSlashCommands(client: Client) {
     if (!settings["discord"]?.guildId) {
@@ -45,7 +46,7 @@ export async function registerDiscordSlashCommands(client: Client) {
         );
         log.info(`[discord] registered ${commands.length} guild-scoped slash commands`);
     } catch (e) {
-        log.error('[discord:commands]', (e as Error).message);
+        log.error('[discord:commands]', logErrorText(e));
     }
 }
 
@@ -83,7 +84,7 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
     const result = await executeCommand(parsed, makeDiscordCommandCtx());
 
     if (result?.steerPrompt) {
-        await interaction.editReply(result.text || 'Redirecting...');
+        await interaction.editReply(redactOutboundText(result.text || 'Redirecting...'));
         const channel = asSendable(interaction.channel);
         if (channel) {
             const { orchestrateAndCollect } = await import('../orchestrator/collect.js');
@@ -107,12 +108,12 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
                     await channel.send(chunk);
                 }
             } catch (err: unknown) {
-                await channel.send(`❌ ${(err as Error).message}`).catch(() => { });
+                await channel.send(`❌ ${userErrorText(err)}`).catch(() => { });
             }
         }
         return;
     }
 
     const text = result?.text || '(no output)';
-    await interaction.editReply(text.slice(0, 2000));
+    await interaction.editReply(redactOutboundText(text).slice(0, 2000));
 }
