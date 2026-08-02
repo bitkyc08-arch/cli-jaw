@@ -9,6 +9,7 @@ import { setCachedPi, syncPiProviderDropdown, syncPiModelDropdown, piDiscoveredM
 import { initSttSettings } from './settings-stt.js';
 import { loadTelegramSettings } from './settings-telegram.js';
 import { loadDiscordSettings } from './settings-discord.js';
+import { loadSlackSettings } from './settings-slack.js';
 import { loadActiveChannel, loadFallbackOrder } from './settings-channel.js';
 import { loadMcpServers } from './settings-mcp.js';
 import { providerIcon, providerLabel } from '../provider-icons.js';
@@ -380,6 +381,7 @@ export async function loadSettings(): Promise<void> {
 
     loadTelegramSettings(s);
     loadDiscordSettings(s);
+    loadSlackSettings(s);
     loadActiveChannel(s);
     loadFallbackOrder(s);
     loadMcpServers();

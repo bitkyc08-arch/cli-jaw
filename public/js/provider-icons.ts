@@ -22,6 +22,7 @@ import kiroMonoSvg from '../assets/providers/kiro.svg?raw';
 
 // Service icons (Discord, Telegram)
 import discordSvg from '../assets/providers/discord.svg?raw';
+import slackSvg from '../assets/providers/slack.svg?raw';
 import telegramSvg from '../assets/providers/telegram.svg?raw';
 import opencodeSvg from '../assets/providers/opencode.svg?raw';
 
@@ -50,6 +51,7 @@ const PROVIDER_ICONS: Record<ProviderSlug, ProviderIcon> = {
     opencode: { color: opencodeSvg, mono: opencodeSvg,   label: 'OpenCode' },
     discord:  { color: discordSvg,  mono: discordSvg,    label: 'Discord' },
     telegram: { color: telegramSvg, mono: telegramSvg,   label: 'Telegram' },
+    slack:    { color: slackSvg,    mono: slackSvg,      label: 'Slack' },
 };
 
 const PROVIDER_LABEL_ALIASES: Record<string, string> = {

@@ -9,9 +9,10 @@ export type TransportStatus = {
 };
 
 export type ChannelHealth = {
-    activeInbound: 'telegram' | 'discord';
+    activeInbound: 'telegram' | 'discord' | 'slack';
     telegram: TransportStatus;
     discord: TransportStatus;
+    slack: TransportStatus;
 };
 
 function isTransportStatus(value: unknown): value is TransportStatus {
@@ -27,26 +28,42 @@ export function parseChannelHealth(payload: unknown): ChannelHealth | null {
     const channels = (payload as { channels?: unknown }).channels;
     if (!channels || typeof channels !== 'object') return null;
     const row = channels as Record<string, unknown>;
-    if (row['activeInbound'] !== 'telegram' && row['activeInbound'] !== 'discord') return null;
-    if (!isTransportStatus(row['telegram']) || !isTransportStatus(row['discord'])) return null;
+    const active = row['activeInbound'];
+    if (active !== 'telegram' && active !== 'discord' && active !== 'slack') return null;
+    if (!isTransportStatus(row['telegram'])
+        || !isTransportStatus(row['discord'])
+        || !isTransportStatus(row['slack'])) return null;
     return {
-        activeInbound: row['activeInbound'],
+        activeInbound: active,
         telegram: row['telegram'],
         discord: row['discord'],
+        slack: row['slack'],
     };
 }
+
+/** Human-readable text for the health `reason` codes channel-health emits. */
+const TRANSPORT_REASON_LABELS: Record<string, string> = {
+    missing_chat_id: 'No chat ID',
+    missing_channel_id: 'No channel ID',
+    missing_app_token: 'No app token (outbound only)',
+};
 
 export function transportChipLabels(status: TransportStatus): string[] {
     const chips: string[] = [];
     chips.push(status.configured ? 'Configured' : 'Not configured');
     if (status.sendCapable) chips.push('Send-capable');
     if (status.activeInbound) chips.push('Active inbound');
+    // Surface WHY a configured transport is limited. Without this a Slack
+    // instance stuck on missing_app_token reads as simply "Configured".
+    if (status.reason && status.reason !== 'disabled') {
+        chips.push(TRANSPORT_REASON_LABELS[status.reason] || status.reason);
+    }
     return chips;
 }
 
 type Props = {
     client: SettingsClient;
-    channel: 'telegram' | 'discord';
+    channel: 'telegram' | 'discord' | 'slack';
 };
 
 export function TransportStatusChips({ client, channel }: Props) {

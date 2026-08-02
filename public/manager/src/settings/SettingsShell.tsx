@@ -33,6 +33,7 @@ const PAGE_REGISTRY: Record<
     model: lazy(() => import('./pages/ModelProvider')),
     'channels-telegram': lazy(() => import('./pages/ChannelsTelegram')),
     'channels-discord': lazy(() => import('./pages/ChannelsDiscord')),
+    'channels-slack': lazy(() => import('./pages/ChannelsSlack')),
     speech: lazy(() => import('./pages/SpeechKeys')),
     heartbeat: lazy(() => import('./pages/Heartbeat')),
     memory: lazy(() => import('./pages/Memory')),

@@ -10,9 +10,10 @@ export type TransportStatus = {
 };
 
 export type ChannelHealth = {
-    activeInbound: 'telegram' | 'discord';
+    activeInbound: 'telegram' | 'discord' | 'slack';
     telegram: TransportStatus;
     discord: TransportStatus;
+    slack: TransportStatus;
 };
 
 function isTransportStatus(value: unknown): value is TransportStatus {
@@ -28,12 +29,18 @@ export function parseChannelHealth(payload: unknown): ChannelHealth | null {
     const channels = (payload as { channels?: unknown }).channels;
     if (!channels || typeof channels !== 'object') return null;
     const row = channels as Record<string, unknown>;
-    if (row['activeInbound'] !== 'telegram' && row['activeInbound'] !== 'discord') return null;
-    if (!isTransportStatus(row['telegram']) || !isTransportStatus(row['discord'])) return null;
+    // Extract to a local so TypeScript narrows it for the return below; a
+    // repeated property read is not narrowed.
+    const active = row['activeInbound'];
+    if (active !== 'telegram' && active !== 'discord' && active !== 'slack') return null;
+    if (!isTransportStatus(row['telegram'])
+        || !isTransportStatus(row['discord'])
+        || !isTransportStatus(row['slack'])) return null;
     return {
-        activeInbound: row['activeInbound'],
+        activeInbound: active,
         telegram: row['telegram'],
         discord: row['discord'],
+        slack: row['slack'],
     };
 }
 
@@ -71,6 +78,7 @@ export function renderTransportStatusRow(container: HTMLElement, health: Channel
         </h4>
         ${renderTransportBlock('Telegram', health.telegram, true)}
         ${renderTransportBlock('Discord', health.discord, true)}
+        ${renderTransportBlock('Slack', health.slack, true)}
     `;
 }
 

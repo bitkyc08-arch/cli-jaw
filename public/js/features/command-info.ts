@@ -54,6 +54,7 @@ export const COMMAND_TOPIC_MAP: Record<string, HelpTopicId> = {
     exit: 'session',
     telegram: 'telegram',
     discord: 'discord',
+    slack: 'slack',
     stt: 'stt',
     attachments: 'attachments',
     diagrams: 'diagrams',

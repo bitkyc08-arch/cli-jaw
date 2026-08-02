@@ -457,6 +457,7 @@
                     <div>
                         <button id="chTelegram" class="perm-btn active">TG</button>
                         <button id="chDiscord" class="perm-btn">DC</button>
+                        <button id="chSlack" class="perm-btn">SL</button>
                     </div>
                 </div>
             </div>
@@ -547,6 +548,66 @@
                     <div>
                         <button id="dcAllowBotsOff" class="perm-btn active" data-i18n="btn.off">끔</button>
                         <button id="dcAllowBotsOn" class="perm-btn" data-i18n="btn.on">켬</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Slack Bot -->
+            <div id="channelSlackSettings" class="settings-group" style="display:none">
+                <h4 class="section-title-row">
+                    <span><span data-provider="slack"></span> Slack</span>
+                    <button class="help-trigger" type="button" data-help-topic="slack"
+                        data-i18n-aria="help.slack.aria" aria-label="Slack 도움말">?</button>
+                </h4>
+                <div class="settings-row">
+                    <label data-i18n="label.enabled">활성화</label>
+                    <div>
+                        <button id="slOff" class="perm-btn active" data-i18n="btn.off">끔</button>
+                        <button id="slOn" class="perm-btn" data-i18n="btn.on">켬</button>
+                    </div>
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Bot Token</label>
+                    <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
+                </div>
+                <div class="settings-row sub-row">
+                    <label>App Token</label>
+                    <input type="password" id="slAppToken" placeholder="xapp-... (Socket Mode)" class="input-sm">
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Team ID</label>
+                    <input type="text" id="slTeamId" placeholder="T... (선택)" class="input-sm">
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Channel IDs</label>
+                    <input type="text" id="slChannelIds" placeholder="콤마 구분 (비워두면 전체 허용)" class="input-sm">
+                </div>
+                <div class="settings-row sub-row">
+                    <label data-i18n="label.mentionOnly">Mention Only</label>
+                    <div>
+                        <button id="slMentionOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                        <button id="slMentionOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                    </div>
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Reply in Thread</label>
+                    <div>
+                        <button id="slThreadOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                        <button id="slThreadOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                    </div>
+                </div>
+                <div class="settings-row sub-row">
+                    <label data-i18n="label.forwardAll">자동 전송</label>
+                    <div>
+                        <button id="slForwardOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                        <button id="slForwardOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                    </div>
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Allow Bots</label>
+                    <div>
+                        <button id="slAllowBotsOff" class="perm-btn active" data-i18n="btn.off">끔</button>
+                        <button id="slAllowBotsOn" class="perm-btn" data-i18n="btn.on">켬</button>
                     </div>
                 </div>
             </div>

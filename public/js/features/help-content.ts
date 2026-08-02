@@ -11,6 +11,7 @@ export type HelpTopicId =
     | 'activeChannel'
     | 'telegram'
     | 'discord'
+    | 'slack'
     | 'fallbackOrder'
     | 'mcp'
     | 'memory'
@@ -65,6 +66,13 @@ export const HELP_TOPICS: Record<HelpTopicId, HelpTopic> = {
         docLinks: [
             { url: 'https://discord.com/developers/applications', labelKey: 'help.discord.link.portal' },
             { url: 'https://discord.com/developers/docs/getting-started', labelKey: 'help.discord.link.docs' },
+        ],
+    },
+    slack: {
+        ...topic('slack', 2, 1, 2, 9),
+        docLinks: [
+            { url: 'https://api.slack.com/apps', labelKey: 'help.slack.link.portal' },
+            { url: 'https://docs.slack.dev/apis/events-api/using-socket-mode/', labelKey: 'help.slack.link.docs' },
         ],
     },
     fallbackOrder: topic('fallbackOrder', 2, 1, 1, 2, 1, 3),

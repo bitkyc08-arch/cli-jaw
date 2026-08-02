@@ -263,4 +263,18 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             res.status(httpStatus(e, 500)).json({ error: (e as Error).message, code: httpCode(e) });
         }
     });
+
+    app.post('/api/slack/send', requireAuth, async (req, res) => {
+        try {
+            const result = await sendChannelOutput({ ...normalizeChannelSendRequest(req.body), channel: 'slack' });
+            if (!result.ok) {
+                res.status(sendResultHttpStatus(result)).json(result);
+                return;
+            }
+            res.json(result);
+        } catch (e: unknown) {
+            log.error('[slack:send]', e);
+            res.status(httpStatus(e, 500)).json({ error: (e as Error).message, code: httpCode(e) });
+        }
+    });
 }

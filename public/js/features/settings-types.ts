@@ -3,6 +3,9 @@
 export interface PerCliConfig { provider?: string; model?: string; effort?: string; fastMode?: boolean; contextWindow?: boolean; contextWindowSize?: number; contextCompactLimit?: number; }
 export interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; mentionOnly?: boolean; }
 export interface DiscordConfig { enabled?: boolean; token?: string; guildId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; }
+// Slack needs TWO distinctly-scoped tokens: the bot token drives the Web API,
+// the app-level token opens the Socket Mode connection for inbound events.
+export interface SlackConfig { enabled?: boolean; botToken?: string; appToken?: string; teamId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; replyInThread?: boolean; }
 export interface QuotaWindow {
     label: string;
     percent: number;
@@ -49,7 +52,8 @@ export interface SettingsData {
     activeOverrides?: Record<string, PerCliConfig>;
     telegram?: TelegramConfig;
     discord?: DiscordConfig;
-    channel?: 'telegram' | 'discord';
+    slack?: SlackConfig;
+    channel?: 'telegram' | 'discord' | 'slack';
     fallbackOrder?: string[];
     memory?: { cli?: string };
     projectDirs?: string[] | null;

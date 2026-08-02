@@ -7,6 +7,7 @@ export type SettingsCategoryId =
     | 'model'
     | 'channels-telegram'
     | 'channels-discord'
+    | 'channels-slack'
     | 'speech'
     | 'heartbeat'
     | 'memory'

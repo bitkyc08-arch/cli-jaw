@@ -1088,7 +1088,7 @@ function handleServerEvent(msg: WsMessage): void {
         markRunFinalized(null); // killed run — drop its replayed stream too
         finalizeAgent('');
         setStatus('steering');
-    } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.source === 'bgtask' || msg.source === 'cli' || msg.source === 'goal' || msg.external === true || msg.fromQueue === true)) {
+    } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.source === 'slack' || msg.source === 'bgtask' || msg.source === 'cli' || msg.source === 'goal' || msg.external === true || msg.fromQueue === true)) {
         const newMessageRole = msg.role === 'assistant' ? 'agent' : (msg.role || 'user');
         const newMessageContent = msg.content || '';
         const newMessageCli = msg.cli;

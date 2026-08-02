@@ -56,6 +56,7 @@ import {
     initCliStatusToggle, initCliStatusPreviewHooks, isCliStatusExpanded, expandCliStatus, isEmbeddedPreviewFrame,
     setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings,
     setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings, setActiveChannel,
+    setSlack, setSlackForwardAll, setSlackAllowBots, setSlackMentionOnly, setSlackReplyInThread, saveSlackSettings,
     saveFallbackOrder,
     openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
 } from './features/settings.js';
@@ -282,6 +283,24 @@ document.getElementById('dcMentionOn')?.addEventListener('click', () => setDisco
 document.getElementById('dcToken')?.addEventListener('change', saveDiscordSettings);
 document.getElementById('dcGuildId')?.addEventListener('change', saveDiscordSettings);
 document.getElementById('dcChannelIds')?.addEventListener('change', saveDiscordSettings);
+
+// Slack
+document.getElementById('chSlack')?.addEventListener('click', () => setActiveChannel('slack'));
+document.getElementById('slOff')?.addEventListener('click', () => setSlack(false));
+document.getElementById('slOn')?.addEventListener('click', () => setSlack(true));
+document.getElementById('slForwardOff')?.addEventListener('click', () => setSlackForwardAll(false));
+document.getElementById('slForwardOn')?.addEventListener('click', () => setSlackForwardAll(true));
+document.getElementById('slAllowBotsOff')?.addEventListener('click', () => setSlackAllowBots(false));
+document.getElementById('slAllowBotsOn')?.addEventListener('click', () => setSlackAllowBots(true));
+document.getElementById('slMentionOff')?.addEventListener('click', () => setSlackMentionOnly(false));
+document.getElementById('slMentionOn')?.addEventListener('click', () => setSlackMentionOnly(true));
+document.getElementById('slThreadOff')?.addEventListener('click', () => setSlackReplyInThread(false));
+document.getElementById('slThreadOn')?.addEventListener('click', () => setSlackReplyInThread(true));
+document.getElementById('slBotToken')?.addEventListener('change', saveSlackSettings);
+document.getElementById('slAppToken')?.addEventListener('change', saveSlackSettings);
+document.getElementById('slTeamId')?.addEventListener('change', saveSlackSettings);
+document.getElementById('slChannelIds')?.addEventListener('change', saveSlackSettings);
+
 document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);
 
 // Codex fast mode toggle

@@ -11,11 +11,12 @@
 import { useCallback, useState } from 'react';
 import type { DirtyStore } from '../../types';
 
-export type ActiveChannel = 'telegram' | 'discord';
+export type ActiveChannel = 'telegram' | 'discord' | 'slack';
 
 const CHANNELS: ReadonlyArray<{ value: ActiveChannel; label: string }> = [
     { value: 'telegram', label: 'Telegram' },
     { value: 'discord', label: 'Discord' },
+    { value: 'slack', label: 'Slack' },
 ];
 
 type Props = {
