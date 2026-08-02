@@ -71,7 +71,7 @@ export function initAlertDelivery(): void {
         if (!text) return;
 
         for (const ch of channels) {
-            if (ch !== 'telegram' && ch !== 'discord') continue;
+            if (ch !== 'telegram' && ch !== 'discord' && ch !== 'slack') continue;
             void sendChannelOutput({ type: 'text', text, channel: ch as MessengerChannel })
                 .then((result) => {
                     if (!result.ok) {

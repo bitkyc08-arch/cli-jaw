@@ -25,7 +25,7 @@ export async function searchWorkflowHandler(args: string[], ctx: CliCommandConte
     };
 
     const iface = ctx.interface || 'web';
-    if (iface === 'telegram' || iface === 'discord') return result;
+    if (iface === 'telegram' || iface === 'discord' || iface === 'slack') return result;
 
     const { submitMessage } = await import('../orchestrator/gateway.js');
     submitMessage(result.steerPrompt!, { origin: iface as 'cli' | 'web' });

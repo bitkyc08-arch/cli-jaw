@@ -79,7 +79,7 @@ function selectedAiEProvider(currentSettings: Record<string, unknown>): string {
     return resolveAiEProvider(explicitProvider, selectedModelForCli('ai-e', currentSettings));
 }
 
-function transportConfigFingerprint(channel: 'telegram' | 'discord', snapshot: Record<string, unknown>): string {
+function transportConfigFingerprint(channel: 'telegram' | 'discord' | 'slack', snapshot: Record<string, unknown>): string {
     const block = asRecord(snapshot[channel]);
     if (channel === 'telegram') {
         return JSON.stringify({

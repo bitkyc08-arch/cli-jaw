@@ -57,7 +57,7 @@ export {
 
 type SpawnAgentLike = typeof spawnAgent;
 
-const REMOTE_ELICITATION_BLOCKED_ORIGINS = new Set(['telegram', 'discord', 'cli']);
+const REMOTE_ELICITATION_BLOCKED_ORIGINS = new Set(['telegram', 'discord', 'cli', 'slack']);
 const STRUCTURED_REMOTE_FENCE_RE = /```(elicitation|choice-buttons|search-results)[^\n]*\n([\s\S]*?)```/g;
 const INCOMPLETE_STRUCTURED_REMOTE_FENCE_RE = /^ {0,3}(`{3,}|~{3,})(elicitation|choice-buttons|search-results)[^\n]*(?:\n[\s\S]*)?$/im;
 
@@ -83,7 +83,7 @@ export function buildRemoteChannelElicitationGuard(origin: unknown): string {
     return [
         '## Remote Channel Capability Override',
         `Current origin is ${channel}.`,
-        'Telegram/Discord do not render Web UI structured elicitation widgets in this turn.',
+        'Telegram/Discord/Slack do not render Web UI structured elicitation widgets in this turn.',
         'Do not output standalone ```elicitation, ```choice-buttons, or ```search-results fenced blocks.',
         'Ask clear choice-based clarification as plain text with numbered options instead.',
         'For search results, write a concise numbered plain-text list instead of a Web UI fence.',

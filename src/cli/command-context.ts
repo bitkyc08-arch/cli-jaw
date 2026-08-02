@@ -43,6 +43,7 @@ const REMOTE_ALLOWED_SETTINGS_KEYS = new Set([
     'memory',         // /flush
     'telegram',       // /forward (telegram)
     'discord',        // /forward (discord)
+    'slack',          // /forward (slack)
 ]);
 
 export type CliCommandContext = ReturnType<typeof makeCommandCtx>;
@@ -60,14 +61,16 @@ export function makeCommandCtx(
         getSettings: () => settings,
         updateSettings: async (patch: Record<string, unknown>) => {
             // Remote interfaces: allow curated subset of runtime-setting keys
-            if (iface === 'telegram' || iface === 'discord') {
+            if (iface === 'telegram' || iface === 'discord' || iface === 'slack') {
                 const keys = Object.keys(patch);
                 const allAllowed = keys.length > 0
                     && keys.every(k => REMOTE_ALLOWED_SETTINGS_KEYS.has(k));
                 if (allAllowed) {
                     return deps.applySettings(patch);
                 }
-                const msgKey = iface === 'discord' ? 'dc.settingsUnsupported' : 'tg.settingsUnsupported';
+                const msgKey = iface === 'discord' ? 'dc.settingsUnsupported'
+                    : iface === 'slack' ? 'sl.settingsUnsupported'
+                    : 'tg.settingsUnsupported';
                 return { ok: false, text: t(msgKey, {}, locale) };
             }
             return deps.applySettings(patch);

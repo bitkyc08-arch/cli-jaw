@@ -3,7 +3,7 @@
 
 import type { CliCommandContext } from './command-context.js';
 
-export type SlashIface = 'cli' | 'web' | 'telegram' | 'discord';
+export type SlashIface = 'cli' | 'web' | 'telegram' | 'discord' | 'slack';
 
 export interface SlashResult {
     ok?: boolean;

@@ -26,7 +26,7 @@ export async function executeSkillCommand(
     };
     if (userRequest) result.originalText = userRequest;
     const iface = ctx.interface || 'web';
-    if (iface !== 'telegram' && iface !== 'discord') {
+    if (iface !== 'telegram' && iface !== 'discord' && iface !== 'slack') {
         const { submitMessage } = await import('../orchestrator/gateway.js');
         submitMessage(steerPrompt, { origin: iface as 'cli' | 'web' });
         const { steerPrompt: _stripped, ...rest } = result;

@@ -242,7 +242,7 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
 
     // Remote interfaces: clear stale session before re-orchestrate
     const iface = ctx.interface || 'cli';
-    if (iface === 'telegram' || iface === 'discord') {
+    if (iface === 'telegram' || iface === 'discord' || iface === 'slack') {
         if (typeof ctx.clearSession === 'function') {
             await ctx.clearSession();
         }
@@ -251,7 +251,7 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
 
     // Web/CLI: fire orchestration directly via submitMessage
     const { submitMessage } = await import('../orchestrator/gateway.js');
-    submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' });
+    submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' | 'slack' });
     return { ok: true, type: 'success', text: t('cmd.steer.started', {}, L) };
 }
 
@@ -262,10 +262,18 @@ export async function queueHandler(): Promise<SlashResult> {
     return { ok: true, text: 'Usage: /queue [steer|drop <n>] — interactive in the chat TUI (jaw chat)' };
 }
 
+/** Display labels for /forward's target channel. */
+const FORWARD_CHANNEL_LABELS: Record<string, string> = {
+    discord: 'Discord',
+    telegram: 'Telegram',
+    slack: 'Slack',
+};
+
 export async function forwardHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
     const iface = ctx.interface || 'cli';
     const remote = iface === 'discord' ? 'discord'
         : iface === 'telegram' ? 'telegram'
+        : iface === 'slack' ? 'slack'
         : null;
     // Determine which channel's forwardAll to modify
     const settings = await safeCall(ctx.getSettings, null) as Record<string, unknown> | null;
@@ -276,15 +284,16 @@ export async function forwardHandler(args: string[], ctx: CliCommandContext): Pr
         const patch = { [channelKey]: { forwardAll: val } };
         const r = await ctx.updateSettings(patch) as SlashResult;
         if (!r?.ok) return { ok: false, text: r?.text || 'Failed' };
-        const label = channelKey === 'discord' ? 'Discord' : 'Telegram';
+        const label = FORWARD_CHANNEL_LABELS[channelKey] || 'Telegram';
         return { text: `📡 ${label} forwarding: ${val ? 'ON (all)' : 'OFF (channel only)'}` };
     }
     const dc = settings?.["discord"] as { forwardAll?: boolean } | undefined;
     const tg = settings?.["telegram"] as { forwardAll?: boolean } | undefined;
-    const current = channelKey === 'discord'
-        ? dc?.forwardAll !== false
+    const sl = settings?.["slack"] as { forwardAll?: boolean } | undefined;
+    const current = channelKey === 'discord' ? dc?.forwardAll !== false
+        : channelKey === 'slack' ? sl?.forwardAll !== false
         : tg?.forwardAll !== false;
-    const label = channelKey === 'discord' ? 'Discord' : 'Telegram';
+    const label = FORWARD_CHANNEL_LABELS[channelKey] || 'Telegram';
     return { text: `📡 ${label} forwarding: ${current ? 'ON (all)' : 'OFF (channel only)'}\nUsage: /forward on|off` };
 }
 

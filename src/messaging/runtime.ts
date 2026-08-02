@@ -88,7 +88,7 @@ function isValidTarget(t: unknown): t is RemoteTarget {
 export function hydrateTargetsFromSettings(s: Record<string, any>) {
     const messaging = s?.["messaging"];
     if (!messaging) return;
-    for (const ch of ['telegram', 'discord'] as MessengerChannel[]) {
+    for (const ch of ['telegram', 'discord', 'slack'] as MessengerChannel[]) {
         const la = messaging.lastActive?.[ch];
         if (isValidTarget(la)) {
             lastActiveTargets.set(ch, la);

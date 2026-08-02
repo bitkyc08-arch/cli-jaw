@@ -229,9 +229,22 @@ function createDefaultSettings() {
             allowBots: false,
             mentionOnly: false,
         },
+        slack: {
+            enabled: false,
+            botToken: '',
+            appToken: '',
+            teamId: '',
+            channelIds: [] as string[],
+            forwardAll: true,
+            allowBots: false,
+            // Slack bots typically live in shared team channels, where
+            // answering every message is antisocial. DMs bypass this gate.
+            mentionOnly: true,
+            replyInThread: true,
+        },
         messaging: {
-            latestSeen: { telegram: null, discord: null },
-            lastActive: { telegram: null, discord: null },
+            latestSeen: { telegram: null, discord: null, slack: null },
+            lastActive: { telegram: null, discord: null, slack: null },
         },
         memory: {
             enabled: true,
@@ -377,11 +390,34 @@ export function migrateSettings(s: Record<string, any>) {
     if (s["telegram"] && s["telegram"].mentionOnly === undefined) {
         s["telegram"].mentionOnly = true;
     }
+    // Slack channel migration — added 260802, absent from all prior settings files
+    if (!s["slack"]) {
+        s["slack"] = {
+            enabled: false,
+            botToken: '',
+            appToken: '',
+            teamId: '',
+            channelIds: [],
+            forwardAll: true,
+            allowBots: false,
+            mentionOnly: true,
+            replyInThread: true,
+        };
+    }
     if (!s["messaging"]) {
         s["messaging"] = {
-            latestSeen: { telegram: null, discord: null },
-            lastActive: { telegram: null, discord: null },
+            latestSeen: { telegram: null, discord: null, slack: null },
+            lastActive: { telegram: null, discord: null, slack: null },
         };
+    } else {
+        // Existing installs already have a messaging block; a bare
+        // `if (!s["messaging"])` would never add the slack slot for them.
+        if (s["messaging"].latestSeen && s["messaging"].latestSeen.slack === undefined) {
+            s["messaging"].latestSeen.slack = null;
+        }
+        if (s["messaging"].lastActive && s["messaging"].lastActive.slack === undefined) {
+            s["messaging"].lastActive.slack = null;
+        }
     }
     if (!s["jawCeo"]) {
         s["jawCeo"] = { openaiApiKey: '' };
@@ -420,6 +456,26 @@ function applyEnvOverrides(s: Record<string, any>) {
         s["discord"] = s["discord"] || {};
         s["discord"].channelIds = process.env["DISCORD_CHANNEL_IDS"].split(',').map((x: string) => x.trim()).filter(Boolean);
     }
+    // Slack: unlike Discord, presence of a token does NOT auto-switch the
+    // active channel. Slack needs BOTH tokens to function, so hijacking the
+    // active inbound channel from a half-configured env is a footgun.
+    if (process.env["SLACK_BOT_TOKEN"]) {
+        s["slack"] = s["slack"] || {};
+        s["slack"].botToken = process.env["SLACK_BOT_TOKEN"];
+        s["slack"].enabled = true;
+    }
+    if (process.env["SLACK_APP_TOKEN"]) {
+        s["slack"] = s["slack"] || {};
+        s["slack"].appToken = process.env["SLACK_APP_TOKEN"];
+    }
+    if (process.env["SLACK_TEAM_ID"]) {
+        s["slack"] = s["slack"] || {};
+        s["slack"].teamId = process.env["SLACK_TEAM_ID"];
+    }
+    if (process.env["SLACK_CHANNEL_IDS"]) {
+        s["slack"] = s["slack"] || {};
+        s["slack"].channelIds = process.env["SLACK_CHANNEL_IDS"].split(',').map((x: string) => x.trim()).filter(Boolean);
+    }
 }
 
 /** Mutable settings object — shared across all modules via ESM live binding */
@@ -443,6 +499,7 @@ export function loadSettings() {
             tui: { ...defaults.tui, ...(raw.tui || {}) },
             telegram: { ...defaults.telegram, ...(raw.telegram || {}) },
             discord: { ...defaults.discord, ...(raw.discord || {}) },
+            slack: { ...defaults.slack, ...(raw.slack || {}) },
             memory: { ...defaults.memory, ...(raw.memory || {}) },
             trace: { ...defaults.trace, ...(raw.trace || {}) },
             avatar: {

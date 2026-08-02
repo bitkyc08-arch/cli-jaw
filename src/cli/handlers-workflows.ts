@@ -26,7 +26,7 @@ async function fireSteerForWebCli(
 ): Promise<SlashResult> {
     if (!result.steerPrompt) return result;
     const iface = ctx.interface || 'web';
-    if (iface === 'telegram' || iface === 'discord') return result;
+    if (iface === 'telegram' || iface === 'discord' || iface === 'slack') return result;
     const { submitMessage } = await import('../orchestrator/gateway.js');
     submitMessage(result.steerPrompt, { origin: iface as 'cli' | 'web' });
     const { steerPrompt: _stripped, ...rest } = result;

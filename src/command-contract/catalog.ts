@@ -38,6 +38,9 @@ export function getCommandCatalog() {
             discord: cmd.interfaces.includes('discord')
                 ? (REMOTE_READONLY.has(cmd.name) ? CAPABILITY.readonly : CAPABILITY.full)
                 : CAPABILITY.hidden,
+            slack: cmd.interfaces.includes('slack')
+                ? (REMOTE_READONLY.has(cmd.name) ? CAPABILITY.readonly : CAPABILITY.full)
+                : CAPABILITY.hidden,
             cmdline: CMDLINE_HIDDEN.has(cmd.name) || cmd.category === 'workflow'
                 ? CAPABILITY.hidden
                 : CAPABILITY.full,
@@ -58,6 +61,7 @@ export function getCommandCatalog() {
                 web: CAPABILITY.full,
                 telegram: CAPABILITY.hidden,
                 discord: CAPABILITY.hidden,
+                slack: CAPABILITY.hidden,
                 cmdline: CAPABILITY.hidden,
             },
         }));

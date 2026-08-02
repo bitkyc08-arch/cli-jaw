@@ -13,6 +13,7 @@ export type ChannelHealthSnapshot = {
     activeInbound: MessengerChannel;
     telegram: TransportCapability;
     discord: TransportCapability;
+    slack: TransportCapability;
 };
 
 function telegramHasSendTarget(): boolean {
@@ -33,6 +34,15 @@ function discordHasSendTarget(): boolean {
     return Boolean(discordLast?.targetId);
 }
 
+function slackHasSendTarget(): boolean {
+    const sc = settings["slack"];
+    if (sc?.channelIds?.length) return true;
+    const messaging = settings["messaging"] as Record<string, unknown> | undefined;
+    const last = messaging?.['lastActive'] as Record<string, unknown> | undefined;
+    const slackLast = last?.['slack'] as { targetId?: string } | undefined;
+    return Boolean(slackLast?.targetId);
+}
+
 export function getTransportCapability(channel: MessengerChannel): TransportCapability {
     const activeInbound = getActiveChannel() === channel;
     if (channel === 'telegram') {
@@ -44,6 +54,29 @@ export function getTransportCapability(channel: MessengerChannel): TransportCapa
         }
         if (!telegramHasSendTarget()) {
             return { configured: true, activeInbound, sendCapable: false, reason: 'missing_chat_id' };
+        }
+        return { configured: true, activeInbound, sendCapable: true };
+    }
+
+    if (channel === 'slack') {
+        const sc = settings["slack"];
+        const botToken = typeof sc?.botToken === 'string' ? sc.botToken.trim() : '';
+        const appToken = typeof sc?.appToken === 'string' ? sc.appToken.trim() : '';
+        if (!sc?.enabled || !botToken) {
+            return { configured: false, activeInbound, sendCapable: false, reason: 'disabled' };
+        }
+        if (!appToken) {
+            // Outbound-only: the Web API works with just the bot token, but no
+            // inbound events can arrive without the app-level socket token.
+            return {
+                configured: true,
+                activeInbound,
+                sendCapable: slackHasSendTarget(),
+                reason: 'missing_app_token',
+            };
+        }
+        if (!slackHasSendTarget()) {
+            return { configured: true, activeInbound, sendCapable: false, reason: 'missing_channel_id' };
         }
         return { configured: true, activeInbound, sendCapable: true };
     }
@@ -66,5 +99,6 @@ export function buildChannelHealthSnapshot(): ChannelHealthSnapshot {
         activeInbound: getActiveChannel(),
         telegram: getTransportCapability('telegram'),
         discord: getTransportCapability('discord'),
+        slack: getTransportCapability('slack'),
     };
 }

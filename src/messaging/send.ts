@@ -6,6 +6,7 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
+import { slackTargetFromId } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 
 // ─── Request Model ──────────────────────────────────
@@ -27,7 +28,7 @@ type TransportSendFn = (req: ChannelSendRequest) => Promise<{ ok: boolean; error
 
 const sendFns = new Map<MessengerChannel, TransportSendFn>();
 const OUTBOUND_TYPES = new Set<OutboundType>(['text', 'voice', 'photo', 'document', 'keyboard']);
-const CHANNELS = new Set<MessengerChannel | 'active'>(['telegram', 'discord', 'active']);
+const CHANNELS = new Set<MessengerChannel | 'active'>(['telegram', 'discord', 'slack', 'active']);
 
 export function registerSendTransport(channel: MessengerChannel, fn: TransportSendFn) {
     sendFns.set(channel, fn);
@@ -110,6 +111,11 @@ function getConfiguredFallbackTarget(channel: MessengerChannel): RemoteTarget | 
                 targetId: String(channelIds[0]),
             };
         }
+    } else if (channel === 'slack') {
+        const channelIds = settings["slack"]?.channelIds;
+        if (channelIds?.length) {
+            return slackTargetFromId(String(channelIds[0]));
+        }
     }
     return null;
 }
@@ -139,24 +145,28 @@ export function validateTarget(
         const allowed = settings["telegram"]?.allowedChatIds;
         if (allowed?.length && !allowed.map(String).includes(String(target.targetId))) return false;
         if (!allowed?.length && options.requireConfiguredAllowlist) return false;
+    } else if (channel === 'slack') {
+        // DMs are always permitted: a user messaging the bot directly is
+        // self-authorizing, and D.../U... ids cannot be enumerated up front.
+        if (target.peerKind === 'direct') return true;
+        const allowed = settings["slack"]?.channelIds as string[] | undefined;
+        if (allowed?.length && !allowed.includes(target.targetId)) return false;
+        if (!allowed?.length && options.requireConfiguredAllowlist) return false;
     }
     return true;
 }
 
 function targetFromChatId(channel: MessengerChannel, chatId: string | number): RemoteTarget {
-    return channel === 'telegram'
-        ? {
-            channel: 'telegram',
-            targetKind: 'user',
-            peerKind: 'direct',
-            targetId: String(chatId),
-        }
-        : {
-            channel: 'discord',
-            targetKind: 'channel',
-            peerKind: 'channel',
-            targetId: String(chatId),
-        };
+    const targetId = String(chatId);
+    switch (channel) {
+        case 'telegram':
+            return { channel: 'telegram', targetKind: 'user', peerKind: 'direct', targetId };
+        case 'slack':
+            return slackTargetFromId(targetId);
+        case 'discord':
+        default:
+            return { channel: 'discord', targetKind: 'channel', peerKind: 'channel', targetId };
+    }
 }
 
 export function validateExplicitChatId(channel: MessengerChannel, chatId: string | number): boolean {

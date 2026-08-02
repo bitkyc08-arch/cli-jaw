@@ -356,7 +356,7 @@ export async function clearHandler(args: string[], ctx: CliCommandContext): Prom
         await ctx.clearSession();
     }
 
-    if (iface === 'telegram' || iface === 'discord') {
+    if (iface === 'telegram' || iface === 'discord' || iface === 'slack') {
         return { ok: true, text: t('cmd.clear.remote', {}, L) };
     }
     return {
