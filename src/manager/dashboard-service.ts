@@ -116,8 +116,28 @@ export async function permDashboard(port: number, from: number, count: number): 
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, generateDashboardPlist(port, from, count));
         const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
+        const isRegistered = (): boolean => {
+            try { execFileSync('/bin/launchctl', ['print', `gui/${uid}/${LABEL_LAUNCHD}`], { stdio: 'pipe' }); return true; } catch { return false; }
+        };
         try { execFileSync('/bin/launchctl', ['bootout', `gui/${uid}/${LABEL_LAUNCHD}`], { stdio: 'pipe' }); } catch {} // best-effort: bootout may fail when service not yet registered
-        execFileSync('/bin/launchctl', ['bootstrap', `gui/${uid}`, path], { stdio: 'pipe' });
+        // launchd tears down asynchronously after bootout; bootstrapping while the
+        // old registration is still draining fails with "Bootstrap failed: 5".
+        for (let i = 0; i < 20 && isRegistered(); i++) {
+            try { execFileSync('/bin/sleep', ['0.1'], { stdio: 'pipe' }); } catch {}
+        }
+        let bootstrapped = false;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 3 && !bootstrapped; attempt++) {
+            try {
+                execFileSync('/bin/launchctl', ['bootstrap', `gui/${uid}`, path], { stdio: 'pipe' });
+                bootstrapped = true;
+            } catch (err) {
+                lastError = err;
+                if (isRegistered()) { bootstrapped = true; break; } // already loaded and healthy enough
+                try { execFileSync('/bin/sleep', ['0.3'], { stdio: 'pipe' }); } catch {}
+            }
+        }
+        if (!bootstrapped) throw lastError;
         console.log(`✅ Dashboard registered as ${LABEL_LAUNCHD}`);
         console.log(`   Plist: ${path}`);
     }
