@@ -144,7 +144,9 @@ export function chunkSlackMessage(text: string, limit = 3900): string[] {
         const closesOpen: boolean = opened !== (fences % 2 === 1);
         let chunk = piece;
         if (opened) chunk = `\`\`\`\n${chunk}`;
-        if (closesOpen) chunk = `${chunk.replace(/\n$/, '')}\n\`\`\``;
+        // Append the closing fence WITHOUT consuming the piece's own trailing
+        // newline — stripping it deleted source content.
+        if (closesOpen) chunk = chunk.endsWith('\n') ? `${chunk}\`\`\`` : `${chunk}\n\`\`\``;
         out.push(chunk);
         openFence = closesOpen;
     }

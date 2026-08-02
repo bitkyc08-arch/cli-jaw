@@ -122,6 +122,18 @@ test('redactSlackTokens leaves unrelated URLs readable', () => {
     assert.equal(redactSlackTokens('see https://example.dev/docs'), 'see https://example.dev/docs');
 });
 
+test('redactSlackTokens masks slack hosts case-insensitively', () => {
+    const out = redactSlackTokens('https://FILES.SLACK.COM/upload/v1/CAP');
+    assert.ok(!out.includes('CAP'), 'uppercase host bypassed redaction');
+});
+
+test('redactSlackTokens does not treat a lookalike host as Slack', () => {
+    // 'evil.slack.com.attacker.dev' is NOT slack.com; masking it would hide a
+    // genuinely suspicious URL from the operator.
+    const input = 'https://evil.slack.com.attacker.dev/x';
+    assert.equal(redactSlackTokens(input), input);
+});
+
 // ─── format.ts ──────────────────────────────────────
 
 test('toMrkdwn converts bold to single asterisks', () => {
@@ -292,6 +304,57 @@ test('chunkSlackMessage never emits half of a surrogate pair, even at limit 1', 
             );
         }
     }
+});
+
+test('chunkSlackMessage randomized: no overflow and no non-backtick content change', () => {
+    // 15k pseudo-random messages over realistic limits. The contract is:
+    //   1. no chunk exceeds the limit
+    //   2. every non-backtick character survives with its exact count
+    // Backticks are excluded because injected fences are the intended, and
+    // only permitted, growth.
+    const rnd = (seed: number) => {
+        let x = seed;
+        return () => ((x = (x * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    };
+    const alphabet = ['a', '\n', '\r\n', ' ', '```', '🙂', 'x', '한'];
+    let overflow = 0;
+    let changed = 0;
+    let checked = 0;
+    for (const seed of [42, 7, 99, 2026, 555]) {
+        const r = rnd(seed);
+        for (let i = 0; i < 3000; i++) {
+            let text = '';
+            const len = Math.floor(r() * 80);
+            for (let j = 0; j < len; j++) text += alphabet[Math.floor(r() * alphabet.length)]!;
+            const limit = 25 + Math.floor(r() * 200);
+            const chunks = chunkSlackMessage(text, limit);
+            checked++;
+            if (chunks.some(c => c.length > limit)) overflow++;
+            const census = (s: string) => {
+                const m: Record<string, number> = {};
+                for (const ch of s) {
+                    if (ch === '`' || ch === '\n' || ch === '\r') continue;
+                    m[ch] = (m[ch] || 0) + 1;
+                }
+                return m;
+            };
+            const before = census(text);
+            const after = census(chunks.join(''));
+            const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+            for (const k of keys) {
+                if ((before[k] || 0) !== (after[k] || 0)) { changed++; break; }
+            }
+        }
+    }
+    assert.equal(checked, 15000);
+    assert.equal(overflow, 0, `${overflow} chunks exceeded their limit`);
+    assert.equal(changed, 0, `${changed} messages had non-backtick content altered`);
+});
+
+test('chunkSlackMessage respects the production limit on large fenced output', () => {
+    const chunks = chunkSlackMessage('```\n' + 'x'.repeat(9000) + '\n```', 3900);
+    assert.ok(chunks.every(c => c.length <= 3900), 'production-limit overflow');
+    assert.equal((chunks.join('').match(/x/g) || []).length, 9000);
 });
 
 test('chunkSlackMessage stays within the limit across the fence-aware threshold', () => {

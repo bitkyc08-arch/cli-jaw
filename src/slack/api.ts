@@ -69,9 +69,14 @@ export function redactSlackTokens(input: string): string {
         .replace(/x(?:ox[bpas]|app)-[A-Za-z0-9-]+/g, (m) => `${m.slice(0, 9)}...redacted`)
         // Slack file upload endpoints: the whole URL after the host is the
         // capability, path or query. Keep the host so logs stay diagnosable.
+        // Host matching is case-insensitive and anchored to a real slack.com
+        // boundary, so `evil.slack.com.attacker.dev` is NOT treated as Slack.
         .replace(
-            /https?:\/\/([A-Za-z0-9.-]*slack\.com)\/[^\s]*/g,
-            (_m, host: string) => `https://${host}/...redacted`,
+            /https?:\/\/([A-Za-z0-9-]+\.)*slack\.com(?=[/?\s]|$)[^\s]*/gi,
+            (m) => {
+                const host = m.replace(/^https?:\/\//i, '').split(/[/?]/)[0] ?? 'slack.com';
+                return `https://${host}/...redacted`;
+            },
         )
         // Any other URL may still carry a signature in its query string.
         .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/g, '$1?...redacted');
