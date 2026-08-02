@@ -1,6 +1,10 @@
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type { AgyTranscriptMode } from '../types/agent.js';
+<<<<<<< Updated upstream
 import { AGY_INTERMEDIATE_PLANNER_PREFIXES } from './agy-transcript.js';
+||||||| Stash base
+=======
+>>>>>>> Stashed changes
 
 export const AGY_TIMEOUT_PREFIX = 'Error: timed out waiting for response';
 export const AGY_COMPLETE_KILL_REASON = 'agy-complete';
@@ -53,6 +57,7 @@ function visibleAgyText(ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText'>):
     return String(ctx.liveOutputText || ctx.fullText || '').trim();
 }
 
+<<<<<<< Updated upstream
 export function appendAgyFullText(
     ctx: Pick<SpawnContext, 'fullText' | 'agyFullTextTruncated'>,
     text: string,
@@ -113,6 +118,9 @@ export function describeAgyFinalSource(
     return `[jaw:agy:final] source=${source} chars=${ctx.fullText.length} truncated=${ctx.agyFullTextTruncated ? 1 : 0}`;
 }
 
+||||||| Stash base
+=======
+>>>>>>> Stashed changes
 export type { AgyTranscriptMode };
 
 export function classifyAgyTranscriptMode(ctx: Pick<SpawnContext,

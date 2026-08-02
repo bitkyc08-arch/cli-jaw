@@ -62,9 +62,14 @@ import {
     classifyAgyTranscriptMode,
     describeAgyFinalSource,
     extractAgyConversationId,
+<<<<<<< Updated upstream
     finalizeAgyFallbackText,
     AGY_PLANNER_ONLY_NOTICE,
     isAgyIntermediatePlannerText,
+||||||| Stash base
+=======
+    classifyAgyTranscriptMode,
+>>>>>>> Stashed changes
     formatAgyWatchdogContext,
     resolveAgyEmptyCloseError,
     formatAgyTimeoutMessage,
@@ -2347,7 +2352,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         lastOpencodeIoAt = Date.now();
         const text = chunk.toString().trim();
         if (cli === 'agy') ctx.agyLastActivitySource = 'stderr';
+<<<<<<< Updated upstream
         if ((kiroPlainText || cli === 'agy') && text) ctx.stallWatchdog?.markProgress();
+||||||| Stash base
+=======
+>>>>>>> Stashed changes
         appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
         console.error(`[jaw:stderr:${agentLabel}] ${text}`);
         if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += text + '\n';
@@ -2408,7 +2417,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'agy') {
             ctx.agyTranscriptMode = classifyAgyTranscriptMode(ctx);
         }
+<<<<<<< Updated upstream
         if (cli === 'agy' && isResume && (agyGuardedStaleDetected || isAgyStaleSessionOutput(ctx.fullText))) {
+||||||| Stash base
+        if (cli === 'agy' && isResume && isAgyStaleSessionOutput(ctx.fullText)) {
+=======
+        if (cli === 'agy' && isResume && isAgyStaleSessionOutput(ctx.fullText)) {
+>>>>>>> Stashed changes
             console.log(`[jaw:agy] stale session detected (Warning: conversation not found) — clearing bucket`);
             try {
                 const bucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);
