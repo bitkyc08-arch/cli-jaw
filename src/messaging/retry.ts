@@ -66,3 +66,45 @@ export function retryAfterMs(err: unknown): number {
  * long pause is surfaced as a failure the caller can decide about instead.
  */
 export const MAX_INLINE_RATE_LIMIT_MS = 5_000;
+
+/**
+ * Run a Telegram send under the classification policy.
+ *
+ * Direct `api.sendMessage` calls — keyboards, elicitation prompts, the Hub's
+ * outbound relay — bypassed the rich-message ladder entirely, so a 429 there
+ * was either swallowed by a bare `.catch(() => {})` or thrown at a caller with
+ * no idea what to do about it. This gives them the same treatment the text
+ * path gets: wait out a short rate limit and retry the same call, surface
+ * anything else.
+ *
+ * Returns whether the send succeeded rather than throwing, because every one
+ * of these call sites is a fire-and-forget notification whose failure should
+ * be logged, not propagated into an agent turn.
+ */
+export async function sendWithRetryPolicy(
+    send: () => Promise<unknown>,
+    onFailure?: (err: unknown) => void,
+): Promise<boolean> {
+    try {
+        await send();
+        return true;
+    } catch (err: unknown) {
+        if (classifySendFailure(err) !== 'rate-limit') {
+            onFailure?.(err);
+            return false;
+        }
+        const wait = retryAfterMs(err);
+        if (wait <= 0 || wait > MAX_INLINE_RATE_LIMIT_MS) {
+            onFailure?.(err);
+            return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        try {
+            await send();
+            return true;
+        } catch (retryErr: unknown) {
+            onFailure?.(retryErr);
+            return false;
+        }
+    }
+}

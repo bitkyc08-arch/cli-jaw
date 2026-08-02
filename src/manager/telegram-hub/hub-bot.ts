@@ -14,6 +14,7 @@ import { getTelegramMenuCommands } from '../../command-contract/policy.js';
 import { downloadTelegramFile, buildMediaPrompt, TELEGRAM_DOWNLOAD_LIMITS } from '../../../lib/upload.js';
 import { saveUpload } from '../../agent/spawn.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../../messaging/redact.js';
+import { sendWithRetryPolicy } from '../../messaging/retry.js';
 
 let hubBot: Bot | null = null;
 let hubToken: string | null = null;
@@ -495,11 +496,14 @@ export async function sendToTopic(
             return { ok: true };
         }
         if (payload.type === 'keyboard' && payload.text && payload.reply_markup) {
-            await hubBot.api.sendMessage(chatId, redactOutboundText(payload.text), stripUndefined({
-                message_thread_id,
-                reply_markup: redactOutboundPayload(payload.reply_markup) as import("@grammyjs/types").InlineKeyboardMarkup,
-            }));
-            return { ok: true };
+            const sent = await sendWithRetryPolicy(
+                () => hubBot!.api.sendMessage(chatId, redactOutboundText(payload.text!), stripUndefined({
+                    message_thread_id,
+                    reply_markup: redactOutboundPayload(payload.reply_markup) as import("@grammyjs/types").InlineKeyboardMarkup,
+                })),
+                (err) => console.warn('[tg:hub] keyboard send failed:', logErrorText(err)),
+            );
+            return sent ? { ok: true } : { ok: false, error: 'keyboard send failed' };
         }
         const { sendTelegramFile } = await import('../../telegram/telegram-file.js');
         const r = await sendTelegramFile(hubBot, chatId, payload.filePath!, payload.type, stripUndefined({ caption: payload.caption, threadId: message_thread_id }));

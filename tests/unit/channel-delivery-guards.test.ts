@@ -302,6 +302,88 @@ test('an ambiguous failure is not re-sent in another form', async () => {
 
 // ─── Discord REST deadlines ──────────────────────────
 
+// ─── Self-echo ───────────────────────────────────────
+
+test('our own output is dropped once the bot id is known', async () => {
+    const { isSelfEcho } = await import('../../src/telegram/bot.js');
+    assert.equal(isSelfEcho({ fromId: 42, botUserId: 42 }), true);
+    assert.equal(isSelfEcho({ fromId: 43, botUserId: 42 }), false, 'a real user was dropped');
+});
+
+test('before getMe returns, is_bot still covers the window', async () => {
+    // botUserId is null until getMe resolves, and updates can arrive in that
+    // window. Two checks rather than one is the reason this case works.
+    const { isSelfEcho } = await import('../../src/telegram/bot.js');
+    assert.equal(isSelfEcho({ fromId: 42, isBot: true, botUserId: null }), true);
+    assert.equal(isSelfEcho({ fromId: 42, isBot: false, botUserId: null }), false);
+});
+
+test('allowBots opens the door to other bots but never to ourselves', async () => {
+    const { isSelfEcho } = await import('../../src/telegram/bot.js');
+    assert.equal(isSelfEcho({ fromId: 7, isBot: true, botUserId: 42, allowBots: true }), false,
+        'another bot should be allowed through when configured');
+    assert.equal(isSelfEcho({ fromId: 42, isBot: true, botUserId: 42, allowBots: true }), true,
+        'allowBots must not let our own output loop back');
+});
+
+test('an update with no sender is not mistaken for an echo', async () => {
+    // Channel posts carry no `from`. Dropping those would silence the channel.
+    const { isSelfEcho } = await import('../../src/telegram/bot.js');
+    assert.equal(isSelfEcho({ botUserId: 42 }), false);
+});
+
+// ─── Direct sends follow the retry policy ────────────
+
+test('a rate-limited keyboard send waits and retries the same call', async () => {
+    // Keyboards never went through the rich-message ladder, so a 429 here was
+    // swallowed by a bare .catch(() => {}).
+    const { sendWithRetryPolicy } = await import('../../src/messaging/retry.js');
+    let attempts = 0;
+    const failures: unknown[] = [];
+    const ok = await sendWithRetryPolicy(async () => {
+        attempts += 1;
+        if (attempts === 1) {
+            throw Object.assign(new Error('Too Many Requests'), {
+                error_code: 429,
+                parameters: { retry_after: 0.01 },
+            });
+        }
+    }, (err) => failures.push(err));
+
+    assert.equal(ok, true, 'the retry should have succeeded');
+    assert.equal(attempts, 2, 'the same call must be retried, not a different form');
+    assert.equal(failures.length, 0);
+});
+
+test('a keyboard failure is reported rather than swallowed', async () => {
+    const { sendWithRetryPolicy } = await import('../../src/messaging/retry.js');
+    const failures: unknown[] = [];
+    const ok = await sendWithRetryPolicy(
+        async () => { throw Object.assign(new Error('chat not found'), { error_code: 400 }); },
+        (err) => failures.push(err),
+    );
+
+    assert.equal(ok, false);
+    assert.equal(failures.length, 1, 'the caller learned nothing about the failure');
+});
+
+test('a long rate limit is surfaced instead of blocking the send path', async () => {
+    const { sendWithRetryPolicy } = await import('../../src/messaging/retry.js');
+    let attempts = 0;
+    const started = Date.now();
+    const ok = await sendWithRetryPolicy(async () => {
+        attempts += 1;
+        throw Object.assign(new Error('Too Many Requests'), {
+            error_code: 429,
+            parameters: { retry_after: 120 },
+        });
+    });
+
+    assert.equal(ok, false);
+    assert.equal(attempts, 1, 'a two-minute pause must not be waited out inline');
+    assert.ok(Date.now() - started < 1_000);
+});
+
 test('a stalled Discord REST call is abandoned rather than waited on forever', async () => {
     // Without a deadline a hung socket holds the send path open indefinitely.
     // The signal must also CANCEL the request — racing a timer against the

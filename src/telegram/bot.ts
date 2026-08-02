@@ -57,6 +57,7 @@ import {
 } from './elicitation-buttons.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { createSeenSet, DELIVERY_DEDUPE_TTL_MS } from '../messaging/dedupe.js';
+import { sendWithRetryPolicy } from '../messaging/retry.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -74,6 +75,26 @@ let botUsername: string | null = null;
  * the is_bot flag, which is why those are two separate checks.
  */
 let botUserId: number | null = null;
+
+/**
+ * Whether an update should be dropped as our own output or another bot's.
+ *
+ * Extracted from the middleware so it can be exercised directly: the guard is
+ * two checks, and the reason for two is the window before getMe returns, which
+ * is exactly the case a test needs to reach.
+ */
+export function isSelfEcho(input: {
+    fromId?: number | undefined;
+    isBot?: boolean | undefined;
+    botUserId: number | null;
+    allowBots?: boolean | undefined;
+}): boolean {
+    // Our own id, once we know it.
+    if (input.fromId !== undefined && input.botUserId !== null && input.fromId === input.botUserId) return true;
+    // Until then — and for every other bot — fall back on the is_bot flag.
+    if (input.isBot && !input.allowBots) return true;
+    return false;
+}
 /** Redelivered update_ids, so a reconnect replay does not run the agent twice. */
 const telegramSeenUpdates = createSeenSet(DELIVERY_DEDUPE_TTL_MS);
 let targetReplyForwarderInstalled = false;
@@ -283,10 +304,14 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     if (req.type === 'keyboard') {
         const text = req.text?.trim();
         if (!text || !req.reply_markup) return { ok: false, error: 'text and reply_markup required for keyboard type' };
-        await bot.api.sendMessage(chatId, redactOutboundText(text), stripUndefined({
-            message_thread_id: messageThreadId,
-            reply_markup: redactOutboundPayload(req.reply_markup) as import("@grammyjs/types").InlineKeyboardMarkup,
-        }));
+        const sent = await sendWithRetryPolicy(
+            () => bot.api.sendMessage(chatId, redactOutboundText(text), stripUndefined({
+                message_thread_id: messageThreadId,
+                reply_markup: redactOutboundPayload(req.reply_markup) as import("@grammyjs/types").InlineKeyboardMarkup,
+            })),
+            (err) => log.warn('[tg:keyboard] send failed:', logErrorText(err)),
+        );
+        if (!sent) return { ok: false, error: 'keyboard send failed' };
         return { ok: true, chat_id: chatId, type: 'keyboard' };
     }
 
@@ -451,8 +476,7 @@ async function _initTelegramInner() {
     // and is_bot still covers the window before that.
     bot.use(async (ctx, next) => {
         const from = ctx.from;
-        if (from?.id !== undefined && botUserId !== null && from.id === botUserId) return;
-        if (from?.is_bot && !settings["telegram"]?.allowBots) return;
+        if (isSelfEcho({ fromId: from?.id, isBot: from?.is_bot, botUserId, allowBots: settings["telegram"]?.allowBots })) return;
         await next();
     });
 

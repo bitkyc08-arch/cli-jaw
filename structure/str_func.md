@@ -118,10 +118,10 @@ cli-jaw/
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (153L)
 │   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (246L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
-│   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (68L) ✨
+│   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (110L) ✨
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (243L) ✨
 │   │   ├── redact.ts         ← 채널 크리덴셜 마스킹 (Slack/TG/Discord 토큰 + URL 경로 capability) (543L) ✨
-│   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 서로게이트 안전 + 펜스/언어태그 보존, 단 delimiter가 한도 이내일 때) (383L) ✨
+│   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 서로게이트 안전 + 펜스/언어태그 보존, 단 delimiter가 한도 이내일 때) (389L) ✨
 │   │   ├── channel-health.ts ← 채널 헬스 체크 helper (104L) ✨
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (27L)
@@ -212,7 +212,7 @@ cli-jaw/
 │   │   ├── synonyms.ts       ← keyword synonym expansion helper (60L) ✨
 │   │   └── worklog.ts        ← Worklog CRUD + phase matrix (201L)
 │   ├── telegram/             ← Telegram 인터페이스 (9 files)
-│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (859L)
+│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (883L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (43L)
 │   │   ├── forwarder.ts      ← text 전송 뒤 guarded local-image photo relay + escape/chunk/createForwarder (245L)
 │   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (315L)
