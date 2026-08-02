@@ -154,14 +154,123 @@ export function findUnmaskedSinks() {
     return findings;
 }
 
+/**
+ * Functions every outbound text of a channel must pass through, and which
+ * therefore have to keep calling a masker.
+ *
+ * Most call sites are allowlisted on the grounds that "the chunker masks", and
+ * for a while nothing checked that the chunker still did. Deleting the
+ * `redactOutboundText(...)` inside `chunkDiscordMessage` unmasked every Discord
+ * send in the codebase and the gate stayed green, because each individual call
+ * site still looked exactly as approved.
+ *
+ * These are the funnels. If one stops masking, the allowlist entries that lean
+ * on it become false, so the funnel is checked directly.
+ */
+const REQUIRED_MASKING_FUNNELS = [
+    { file: 'src/discord/forwarder.ts', fn: 'chunkDiscordMessage', why: 'every outbound Discord text is chunked here' },
+    { file: 'src/slack/format.ts', fn: 'chunkSlackMessage', why: 'every outbound Slack text is chunked here' },
+    { file: 'src/telegram/rich-message.ts', fn: 'sendTelegramMarkdown', why: 'the single entry point for Telegram rich sends' },
+    // `sendTelegramFile` masks two independent things: the caption on the way
+    // out, and the vendor error on the way back. Checking only that the body
+    // mentions SOME masker lets the caption mask be deleted while the error
+    // mask keeps the gate green, so this one names the expression.
+    {
+        file: 'src/telegram/telegram-file.ts',
+        fn: 'sendTelegramFile',
+        expect: /caption\s*=\s*opts\?\.caption\s*===\s*undefined\s*\?\s*undefined\s*:\s*redactOutboundText\(/,
+        why: 'a caption reaches the room like a message body',
+    },
+];
+
+/**
+ * Body of a top-level function declaration, by brace balance.
+ *
+ * Finding the body is the fiddly part: the first `{` after the name belongs to
+ * an inline parameter type (`opts?: { caption?: string }`), and the second to a
+ * return type (`Promise<{ ok: boolean }>`). So the parameter list is skipped by
+ * paren depth, and the return annotation by angle depth, leaving the real body
+ * brace. A parser would be more correct and would also make this gate something
+ * people stop reading.
+ */
+function functionBody(source, fn) {
+    const start = source.search(new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${fn}\\s*[(<]`));
+    if (start === -1) return null;
+    // Step 1: walk the parameter list to its closing paren.
+    const paren = source.indexOf('(', start);
+    if (paren === -1) return null;
+    let parenDepth = 0;
+    let afterParams = -1;
+    for (let i = paren; i < source.length; i += 1) {
+        if (source[i] === '(') parenDepth += 1;
+        else if (source[i] === ')') {
+            parenDepth -= 1;
+            if (parenDepth === 0) { afterParams = i + 1; break; }
+        }
+    }
+    if (afterParams === -1) return null;
+    // Step 2: the body brace is the first `{` outside any return-type generic.
+    let angle = 0;
+    let open = -1;
+    for (let i = afterParams; i < source.length; i += 1) {
+        const c = source[i];
+        if (c === '<') angle += 1;
+        else if (c === '>') angle = Math.max(0, angle - 1);
+        else if (c === '{' && angle === 0) { open = i; break; }
+    }
+    if (open === -1) return null;
+    let depth = 0;
+    for (let i = open; i < source.length; i += 1) {
+        if (source[i] === '{') depth += 1;
+        else if (source[i] === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(open, i + 1);
+        }
+    }
+    return null;
+}
+
+export function findUnmaskedFunnels() {
+    const findings = [];
+    for (const funnel of REQUIRED_MASKING_FUNNELS) {
+        const abs = path.join(repoRoot, funnel.file);
+        if (!fs.existsSync(abs)) {
+            findings.push({ ...funnel, detail: 'file is gone — the funnel moved and this gate was not updated' });
+            continue;
+        }
+        const body = functionBody(fs.readFileSync(abs, 'utf8'), funnel.fn);
+        if (body === null) {
+            findings.push({ ...funnel, detail: 'function not found — it was renamed or removed' });
+            continue;
+        }
+        const required = funnel.expect ?? MASKERS;
+        if (!required.test(body)) {
+            findings.push({
+                ...funnel,
+                detail: funnel.expect ? 'the specific masking expression is gone' : 'body no longer calls a masker',
+            });
+        }
+    }
+    return findings;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
     const findings = findUnmaskedSinks();
-    if (findings.length === 0) {
+    const funnels = findUnmaskedFunnels();
+    if (findings.length === 0 && funnels.length === 0) {
         console.log('✅ redaction sinks — every channel reply, send and logger routes through a masker');
         process.exit(0);
     }
-    console.error(`❌ redaction sinks — ${findings.length} unmasked:`);
-    for (const f of findings) console.error(`   ${f.file}:${f.line} (${f.kind})  ${f.text}`);
-    console.error('\nEither route it through a masker, or add an allowlist entry WITH a reason.');
+    if (findings.length > 0) {
+        console.error(`❌ redaction sinks — ${findings.length} unmasked:`);
+        for (const f of findings) console.error(`   ${f.file}:${f.line} (${f.kind})  ${f.text}`);
+        console.error('\nEither route it through a masker, or add an allowlist entry WITH a reason.');
+    }
+    if (funnels.length > 0) {
+        console.error(`❌ masking funnels — ${funnels.length} broken:`);
+        for (const f of funnels) console.error(`   ${f.file} ${f.fn}(): ${f.detail}\n      ${f.why}`);
+        console.error('\nAllowlist entries below assume these funnels mask. Restore the mask, or');
+        console.error('move the funnel and update REQUIRED_MASKING_FUNNELS to match.');
+    }
     process.exit(1);
 }
