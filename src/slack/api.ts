@@ -69,15 +69,24 @@ export function redactSlackTokens(input: string): string {
         .replace(/x(?:ox[bpas]|app)-[A-Za-z0-9-]+/g, (m) => `${m.slice(0, 9)}...redacted`)
         // Slack file upload endpoints: the whole URL after the host is the
         // capability, path or query. Keep the host so logs stay diagnosable.
-        // Host matching is case-insensitive and anchored to a real slack.com
-        // boundary, so `evil.slack.com.attacker.dev` is NOT treated as Slack.
-        .replace(
-            /https?:\/\/([A-Za-z0-9-]+\.)*slack\.com(?=[/?\s]|$)[^\s]*/gi,
-            (m) => {
-                const host = m.replace(/^https?:\/\//i, '').split(/[/?]/)[0] ?? 'slack.com';
-                return `https://${host}/...redacted`;
-            },
-        )
+        //
+        // Host matching goes through the URL parser rather than a regex on the
+        // raw text, so canonical-equivalent spellings cannot slip past:
+        // uppercase hosts, an explicit :443, a trailing dot, and userinfo
+        // (user:pass@) all normalize before the suffix check. A lookalike such
+        // as `evilslack.com` or `evil.slack.com.attacker.dev` is deliberately
+        // NOT masked — hiding it would conceal a suspicious URL.
+        .replace(/https?:\/\/[^\s]+/gi, (raw) => {
+            let parsed: URL;
+            try {
+                parsed = new URL(raw);
+            } catch {
+                return raw;
+            }
+            const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+            if (host !== 'slack.com' && !host.endsWith('.slack.com')) return raw;
+            return `https://${parsed.host}/...redacted`;
+        })
         // Any other URL may still carry a signature in its query string.
         .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/g, '$1?...redacted');
 }

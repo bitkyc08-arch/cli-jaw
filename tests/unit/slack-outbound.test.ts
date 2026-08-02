@@ -122,16 +122,35 @@ test('redactSlackTokens leaves unrelated URLs readable', () => {
     assert.equal(redactSlackTokens('see https://example.dev/docs'), 'see https://example.dev/docs');
 });
 
-test('redactSlackTokens masks slack hosts case-insensitively', () => {
-    const out = redactSlackTokens('https://FILES.SLACK.COM/upload/v1/CAP');
-    assert.ok(!out.includes('CAP'), 'uppercase host bypassed redaction');
+test('redactSlackTokens resists canonical-equivalent URL spellings', () => {
+    // Each of these is a valid spelling of a Slack host. A raw-text regex let
+    // them through; redaction now normalizes via the URL parser.
+    const bypasses: Array<[string, string]> = [
+        ['https://FILES.SLACK.COM/upload/v1/UPPERSECRET', 'UPPERSECRET'],
+        ['https://files.slack.com:443/upload/v1/PORTSECRET', 'PORTSECRET'],
+        ['https://files.slack.com./upload/v1/DOTSECRET', 'DOTSECRET'],
+        ['https://user:PASS@files.slack.com/upload/v1/USERSECRET', 'USERSECRET'],
+    ];
+    for (const [input, secret] of bypasses) {
+        const out = redactSlackTokens(input);
+        assert.ok(!out.includes(secret), `bypass not masked: ${input} -> ${out}`);
+    }
 });
 
-test('redactSlackTokens does not treat a lookalike host as Slack', () => {
-    // 'evil.slack.com.attacker.dev' is NOT slack.com; masking it would hide a
-    // genuinely suspicious URL from the operator.
-    const input = 'https://evil.slack.com.attacker.dev/x';
-    assert.equal(redactSlackTokens(input), input);
+test('redactSlackTokens strips userinfo credentials along with the path', () => {
+    const out = redactSlackTokens('https://user:PASS@files.slack.com/upload/v1/X');
+    assert.ok(!out.includes('PASS'), `userinfo leaked: ${out}`);
+});
+
+test('redactSlackTokens does not mask lookalike hosts', () => {
+    // Neither of these IS slack.com. Masking them would hide a genuinely
+    // suspicious URL from the operator reading the log.
+    for (const input of [
+        'https://evil.slack.com.attacker.dev/x',
+        'https://evilslack.com/upload/v1/UNRELATED',
+    ]) {
+        assert.equal(redactSlackTokens(input), input, `over-redacted ${input}`);
+    }
 });
 
 // ─── format.ts ──────────────────────────────────────
