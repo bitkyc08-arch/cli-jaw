@@ -129,6 +129,12 @@ fi
 VERSION=$(node -p "require('./package.json').version")
 echo "📌 New version: $VERSION"
 
+# Desktop artifacts are named from the version COMMITTED in
+# electron/package.json, and desktop-release.yml builds from a tag checkout --
+# so this has to happen here, before the release commit, not at build time.
+echo "🖥️  Syncing Electron version to $VERSION..."
+node scripts/sync-electron-version.cjs
+
 # ─── Collect changelog ─────────────────────────────────
 if [ -n "$PREV_TAG" ]; then
   CHANGELOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s" --no-merges | head -50)
@@ -155,7 +161,7 @@ fi
 
 # ─── Commit + Tag + Push ──────────────────────────────
 echo "🏷️  Creating git tag v$VERSION..."
-git add package.json package-lock.json
+git add package.json package-lock.json electron/package.json electron/package-lock.json
 git commit -m "[agent] chore: release v$VERSION" --allow-empty
 git tag "v$VERSION"
 git push origin main

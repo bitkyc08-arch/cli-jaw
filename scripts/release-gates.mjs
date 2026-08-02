@@ -404,6 +404,16 @@ const GATES = {
             return { ok: true, detail: 'no unmasked sink in telegram/discord/slack/telegram-hub' };
         },
     },
+    'electron-version': {
+        description: 'electron/package.json version matches the root package.json',
+        check() {
+            const r = run('node', ['scripts/sync-electron-version.cjs', '--check'], { timeout: 60_000 });
+            if (r.status !== 0) {
+                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-500) };
+            }
+            return { ok: true, detail: 'desktop artifacts will carry the release version' };
+        },
+    },
 };
 
 function printResult(name, result) {

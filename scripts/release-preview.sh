@@ -148,6 +148,13 @@ npm version "$PREVIEW_VERSION" --no-git-tag-version
 VERSION=$(node -p "require('./package.json').version")
 echo "📌 package.json version: $VERSION"
 
+# Same reason as release.sh: the committed Electron version names the desktop
+# artifacts. This also has to run BEFORE gate:all below -- the electron-version
+# gate compares the two manifests, and the bump above has just moved the root
+# one, so skipping this would fail the preview release outright.
+echo "🖥️  Syncing Electron version to $VERSION..."
+node scripts/sync-electron-version.cjs
+
 echo "🔎 Type checking..."
 pnpm exec tsc --noEmit
 
@@ -169,7 +176,7 @@ npm pack --dry-run >/dev/null
 
 # ─── Commit + Push ────────────────────────────────────
 echo "📝 Creating local commit..."
-git add package.json package-lock.json
+git add package.json package-lock.json electron/package.json electron/package-lock.json
 git commit -m "[agent] chore: preview v$VERSION" --allow-empty
 
 echo "⬆️  Pushing preview branch..."
