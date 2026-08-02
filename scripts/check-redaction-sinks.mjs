@@ -17,8 +17,23 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Directories whose outbound and logging surfaces must be masked. */
-const SCANNED = ['src/telegram', 'src/discord', 'src/slack', 'src/manager/telegram-hub'];
+/**
+ * Directories and single files whose outbound and logging surfaces must be masked.
+ *
+ * The channel folders are the obvious part. `src/messaging` is the shared layer
+ * every channel routes through, and `src/routes/messaging.ts` holds a Telegram
+ * `api.sendMessage` that lives outside the channel folders — the first version
+ * of this gate did not watch it, so a future edit there could have dropped the
+ * mask with no gate to notice.
+ */
+const SCANNED = [
+    'src/telegram',
+    'src/discord',
+    'src/slack',
+    'src/manager/telegram-hub',
+    'src/messaging',
+    'src/routes/messaging.ts',
+];
 
 /** Calls that put text in front of a user, or into a log file. */
 const SINK_PATTERNS = [
@@ -91,6 +106,7 @@ function maskedLocals(source) {
 function listSources(dir) {
     const abs = path.join(repoRoot, dir);
     if (!fs.existsSync(abs)) return [];
+    if (fs.statSync(abs).isFile()) return [dir];
     return fs.readdirSync(abs)
         .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'))
         .map((f) => path.join(dir, f));

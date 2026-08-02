@@ -115,7 +115,7 @@ cli-jaw/
 │   │   ├── watchdog.ts       ← idle/progress watchdog + 4h absolute hard cap with progress deadline extension (113L)
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
 │   ├── messaging/            ← 통합 메시징 런타임 (13 files)
-│   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (153L)
+│   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (156L)
 │   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (246L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
 │   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (110L) ✨

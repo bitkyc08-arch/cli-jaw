@@ -5,6 +5,7 @@
 import { settings, saveSettings } from '../core/config.js';
 import type { MessengerChannel, RemoteTarget } from './types.js';
 import { log } from '../core/logger.js';
+import { logErrorText } from './redact.js';
 
 // ─── Transport Registry (push-based, no circular imports) ─────
 
@@ -73,7 +74,7 @@ function persistTargetsNow() {
     if (!settings["messaging"]) settings["messaging"] = { lastActive: {}, latestSeen: {} };
     settings["messaging"].lastActive = Object.fromEntries(lastActiveTargets);
     settings["messaging"].latestSeen = Object.fromEntries(latestSeenTargets);
-    try { saveSettings(settings); } catch (e) { log.warn('[messaging:persist]', (e as Error).message); }
+    try { saveSettings(settings); } catch (e) { log.warn('[messaging:persist]', logErrorText(e)); }
 }
 
 /** Check if a target has the minimum required shape */
@@ -121,7 +122,9 @@ export async function shutdownMessagingRuntime() {
         try {
             await transport.shutdown();
         } catch (e) {
-            log.warn(`[messaging] ${name} shutdown error:`, (e as Error).message);
+            // A transport shutdown failure comes from the vendor client, whose
+            // error text has carried a request URL with the bot token in it.
+            log.warn(`[messaging] ${name} shutdown error:`, logErrorText(e));
         }
     }
 }
