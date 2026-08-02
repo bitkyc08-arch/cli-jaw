@@ -110,3 +110,36 @@ test('an external shutdown during init is not lost', async () => {
         'init resurrected the transport after an external shutdown',
     );
 });
+
+test('an init that arrives during another init is not discarded', async () => {
+    // Regression: a rapid disable/re-enable sequence (init -> shutdown ->
+    // init) dropped the final start because the second init returned early on
+    // the lock while the first was aborting. Slack stayed off until something
+    // else happened to call init again.
+    state.started = 0;
+    state.stopped = 0;
+    state.authOk = true;
+
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t' });
+    const first = bot.initSlack();
+    await bot.shutdownSlack();     // supersedes the first init
+    const second = bot.initSlack(); // lands while the first is still unwinding
+    await Promise.all([first, second]);
+
+    assert.equal(
+        bot.getSlackSelfUserId(),
+        'UBOT',
+        'the final init request was dropped and Slack stayed off',
+    );
+    assert.ok(state.started >= 1, 'no socket was ever started');
+    await bot.shutdownSlack();
+});
+
+test('repeated inits settle without runaway recursion', async () => {
+    state.started = 0;
+    state.authOk = true;
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t' });
+    await Promise.all([bot.initSlack(), bot.initSlack(), bot.initSlack()]);
+    assert.ok(state.started <= 3, `init ran away: ${state.started} starts`);
+    await bot.shutdownSlack();
+});

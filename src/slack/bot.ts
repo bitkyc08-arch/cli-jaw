@@ -37,6 +37,12 @@ const pendingQueueWaiters = new Set<() => void>();
  * undone by the stale initialization resuming and resurrecting the transport.
  */
 let lifecycleGeneration = 0;
+/**
+ * Set when an init arrives while another is already running. The in-flight
+ * init drains it on the way out, so a rapid disable/re-enable cannot leave
+ * Slack permanently off just because its start request landed mid-teardown.
+ */
+let initRequestPending = false;
 
 export function getSlackSelfUserId(): string | null { return selfUserId; }
 export function getSlackConnectionState(): string {
@@ -176,7 +182,10 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
 
 export async function initSlack(): Promise<void> {
     if (slackInitLock) {
-        log.warn('[slack] initSlack already in progress, skipping');
+        // Do not discard the request: the running init may be about to abort
+        // because THIS caller's shutdown superseded it.
+        log.info('[slack] initSlack already in progress — queuing a follow-up');
+        initRequestPending = true;
         return;
     }
     slackInitLock = true;
@@ -235,6 +244,10 @@ export async function initSlack(): Promise<void> {
         log.info(`[slack] ✅ connected as ${selfUserId || 'unknown'}`);
     } finally {
         slackInitLock = false;
+        if (initRequestPending) {
+            initRequestPending = false;
+            await initSlack();
+        }
     }
 }
 
