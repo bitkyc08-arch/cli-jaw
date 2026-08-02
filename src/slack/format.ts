@@ -41,42 +41,71 @@ export function toMrkdwn(text: string): string {
 }
 
 /** Reserved for the ``` we may append/prepend when a split lands inside a fence. */
-const FENCE_RESERVE = 4;
+const FENCE_RESERVE = 8; // "```\n" prepended + "\n```" appended
+/** Below this, fence-aware wrapping cannot fit; fall back to a plain split. */
+const MIN_FENCE_AWARE_LIMIT = 24;
+
+/** Split at a code-point boundary so a cut never separates a surrogate pair. */
+function safeCut(text: string, index: number): number {
+    if (index >= text.length) return text.length;
+    let cut = index;
+    // A low surrogate at the cut means the pair straddles it — back off one.
+    const code = text.charCodeAt(cut);
+    if (code >= 0xDC00 && code <= 0xDFFF && cut > 0) cut -= 1;
+    return cut;
+}
+
+/**
+ * Split text into chunks of at most `limit` characters WITHOUT losing content.
+ * Prefers newline boundaries; the newline stays with the preceding chunk so
+ * chunks concatenate back to the input exactly.
+ */
+function splitPreservingContent(text: string, limit: number): string[] {
+    const out: string[] = [];
+    let rest = text;
+    while (rest.length > limit) {
+        // Keep the newline in this chunk (+1) rather than dropping it.
+        const nl = rest.lastIndexOf('\n', limit - 1);
+        let cut = nl > 0 ? nl + 1 : safeCut(rest, limit);
+        if (cut <= 0) cut = Math.min(limit, rest.length);
+        out.push(rest.slice(0, cut));
+        rest = rest.slice(cut);
+    }
+    if (rest.length > 0) out.push(rest);
+    return out;
+}
 
 /**
  * Split for chat.postMessage.
  * Slack recommends staying under 4,000 chars and truncates above 40,000.
  * 3,900 leaves headroom for any prefix the caller adds.
- * Splits on newlines like chunkDiscordMessage, and never leaves a code fence
- * unterminated across a split — agent output is code-heavy.
+ *
+ * Content is never lost: chunks concatenate back to the input apart from the
+ * ``` markers injected to keep each chunk's code block closed. Agent output is
+ * code-heavy, so a split inside a fence would render the remainder as prose.
  */
 export function chunkSlackMessage(text: string, limit = 3900): string[] {
-    if (text.length <= limit) return [text];
-    // Reopening a fence prepends 4 chars to the remainder, so the cut window
-    // must stay below the limit or the remainder never shrinks and the loop
-    // spins forever. Guard the floor for very small limits too.
-    const budget = Math.max(1, limit - FENCE_RESERVE);
-    const chunks: string[] = [];
-    let remaining = text;
-    while (remaining.length > 0) {
-        if (remaining.length <= limit) { chunks.push(remaining); break; }
-        // Prefer the last newline in the window, but only if it leaves a
-        // substantial chunk. A newline near the start (e.g. right after a ```
-        // fence opener) would emit a near-empty chunk and repeat forever.
-        const MIN_FILL = Math.max(1, Math.floor(budget / 2));
-        let cut = remaining.lastIndexOf('\n', budget);
-        if (cut < MIN_FILL) cut = budget;
-        const head = remaining.slice(0, cut);
-        const fencesInHead = (head.match(/```/g) || []).length;
-        // Each ``` toggles block state, and a reopened chunk already carries
-        // its leading fence inside `head`, so the toggle count alone decides
-        // whether this chunk ends mid-block.
-        const endsInsideFence = fencesInHead % 2 === 1;
-        chunks.push(endsInsideFence ? `${head}\n\`\`\`` : head);
-        remaining = remaining.slice(cut).replace(/^\n/, '');
-        if (endsInsideFence && remaining.length > 0) {
-            remaining = `\`\`\`\n${remaining}`;
-        }
+    if (!text) return [text];
+    const cap = Math.max(1, Math.floor(limit));
+    if (text.length <= cap) return [text];
+
+    // Too small to wrap anything in fences — split plainly rather than spin.
+    if (cap < MIN_FENCE_AWARE_LIMIT) return splitPreservingContent(text, cap);
+
+    // Every piece is produced from the ORIGINAL text and strictly consumes it,
+    // so termination does not depend on how many fences we inject afterwards.
+    const pieces = splitPreservingContent(text, cap - FENCE_RESERVE);
+    const out: string[] = [];
+    let openFence: boolean = false;
+    for (const piece of pieces) {
+        const opened: boolean = openFence;
+        const fences = (piece.match(/```/g) || []).length;
+        const closesOpen: boolean = opened !== (fences % 2 === 1);
+        let chunk = piece;
+        if (opened) chunk = `\`\`\`\n${chunk}`;
+        if (closesOpen) chunk = `${chunk.replace(/\n$/, '')}\n\`\`\``;
+        out.push(chunk);
+        openFence = closesOpen;
     }
-    return chunks;
+    return out;
 }

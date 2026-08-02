@@ -9,7 +9,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { RemoteTarget } from '../messaging/types.js';
-import { slackApi, describeSlackError, slackFailure, type SlackFetch } from './api.js';
+import { slackApi, describeSlackError, redactSlackTokens, slackFailure, type SlackFetch } from './api.js';
 
 // Slack's per-file ceiling is 1 GB, but a chat transport has no business
 // streaming that. 50 MiB matches the inbound attachment cap the Discord
@@ -39,6 +39,11 @@ export async function sendSlackFile(
         return { ok: false, error: `File not found: ${filePath}`, status: 400 };
     }
     validateSlackFileSize(fileStat.size);
+    if (fileStat.size === 0) {
+        // Slack rejects a zero-length reservation with `missing_argument`,
+        // which reads as a client bug. Fail locally with something actionable.
+        return slackFailure('Cannot upload an empty file to Slack', 400);
+    }
     const filename = basename(filePath);
 
     // Step 1 — reserve an upload URL (POST, form-encoded per Slack docs).
@@ -64,7 +69,10 @@ export async function sendSlackFile(
             return { ok: false, error: `Slack upload failed (${upload.status})`, status: upload.status };
         }
     } catch (error) {
-        return { ok: false, error: (error as Error).message, status: 502 };
+        // The presigned upload URL is a temporary capability: a thrown fetch
+        // error routinely embeds it, and this string reaches both API responses
+        // and the image-relay log.
+        return slackFailure(redactSlackTokens((error as Error).message), 502);
     }
 
     // Step 3 — attach it to the conversation (thread-aware).

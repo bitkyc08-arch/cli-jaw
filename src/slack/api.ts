@@ -56,9 +56,19 @@ export function describeSlackError(error: string | undefined): string {
     }
 }
 
-/** Redact Slack tokens from any string before it reaches a log sink. */
+/**
+ * Redact Slack credentials from any string before it reaches a log sink or an
+ * API response. Covers two distinct secret shapes:
+ *   - bearer tokens (xoxb-, xoxp-, xapp-, ...)
+ *   - presigned upload URLs, whose query string IS the capability — anyone
+ *     holding it can upload for the duration of its signature
+ */
 export function redactSlackTokens(input: string): string {
-    return input.replace(/x(?:ox[bpas]|app)-[A-Za-z0-9-]+/g, (m) => `${m.slice(0, 9)}...redacted`);
+    return input
+        .replace(/x(?:ox[bpas]|app)-[A-Za-z0-9-]+/g, (m) => `${m.slice(0, 9)}...redacted`)
+        // Any URL carrying a query string may carry a signature; keep the
+        // origin+path for debuggability, drop the credential material.
+        .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/g, '$1?...redacted');
 }
 
 export type SlackFetch = typeof fetch;

@@ -103,6 +103,14 @@ test('redactSlackTokens masks both token families', () => {
     assert.match(out, /redacted/);
 });
 
+test('redactSlackTokens masks presigned upload URLs', () => {
+    // The upload URL's query string IS the capability: anyone holding it can
+    // upload until the signature expires.
+    const out = redactSlackTokens('upload failed at https://files.slack.com/upload/v1/abc?X-Amz-Signature=SECRET');
+    assert.ok(!out.includes('SECRET'), 'presigned signature leaked');
+    assert.match(out, /files\.slack\.com\/upload\/v1\/abc\?\.\.\.redacted/);
+});
+
 // ─── format.ts ──────────────────────────────────────
 
 test('toMrkdwn converts bold to single asterisks', () => {
@@ -193,12 +201,44 @@ test('chunkSlackMessage returns one chunk under the limit', () => {
     assert.deepEqual(chunkSlackMessage('short'), ['short']);
 });
 
-test('chunkSlackMessage splits at the last newline before the limit', () => {
+test('chunkSlackMessage splits at a newline and KEEPS it', () => {
+    // The newline stays with the preceding chunk so chunks concatenate back to
+    // the input exactly. Dropping it silently reformatted multi-line output.
     const text = `${'a'.repeat(50)}\n${'b'.repeat(50)}`;
     const chunks = chunkSlackMessage(text, 60);
     assert.equal(chunks.length, 2);
-    assert.equal(chunks[0], 'a'.repeat(50));
+    assert.equal(chunks[0], `${'a'.repeat(50)}\n`);
     assert.equal(chunks[1], 'b'.repeat(50));
+    assert.equal(chunks.join(''), text, 'chunks must reconstruct the input');
+});
+
+test('chunkSlackMessage reconstructs plain, CRLF, and emoji input exactly', () => {
+    for (const text of [
+        'aaaaa\nbbbbb',
+        'aaaaa\r\nbbbbb',
+        'aaaaa🙂tail',
+        'one\ntwo\nthree\nfour\nfive',
+    ]) {
+        const chunks = chunkSlackMessage(text, 10);
+        assert.equal(chunks.join(''), text, `content changed for ${JSON.stringify(text)}`);
+    }
+});
+
+test('chunkSlackMessage never splits a surrogate pair', () => {
+    const chunks = chunkSlackMessage('aaaaa🙂tail', 10);
+    for (const chunk of chunks) {
+        assert.ok(
+            !/[\uD800-\uDBFF]$/.test(chunk) && !/^[\uDC00-\uDFFF]/.test(chunk),
+            `chunk boundary split an emoji: ${JSON.stringify(chunk)}`,
+        );
+    }
+});
+
+test('chunkSlackMessage terminates on nested backtick fences at a small limit', () => {
+    // Regression: '````\n```inside\n````' previously hung until the heap died.
+    const chunks = chunkSlackMessage('````\n```inside\n````', 10);
+    assert.ok(chunks.length > 0);
+    assert.ok(chunks.join('').includes('inside'));
 });
 
 test('chunkSlackMessage keeps every chunk inside a closed code block', () => {
@@ -354,6 +394,33 @@ test('validateSlackFileSize rejects oversize uploads with a 413', () => {
     assert.doesNotThrow(() => validateSlackFileSize(1024));
 });
 
+test('sendSlackFile rejects an empty file locally', async () => {
+    // Slack answers a zero-length reservation with `missing_argument`, which
+    // reads as a client bug; fail with something the operator can act on.
+    const { impl, calls } = makeFetch([{ ok: true }]);
+    const result = await sendSlackFile('xoxb-t', slackTargetFromId('C1'), tempFile(''), { fetchImpl: impl });
+    assert.equal(result.ok, false);
+    assert.match(String(result.error), /empty file/i);
+    assert.equal(calls.length, 0, 'must not spend an API call on an empty file');
+});
+
+test('sendSlackFile does not leak the presigned URL on a transport error', async () => {
+    const impl = (async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.includes('getUploadURLExternal')) {
+            return {
+                ok: true, status: 200,
+                text: async () => JSON.stringify({ ok: true, upload_url: 'https://files.slack.com/up/a?X-Amz-Signature=SECRETSIG', file_id: 'F1' }),
+            } as unknown as Response;
+        }
+        throw new Error(`socket hang up while posting to ${u}`);
+    // justified: the harness only implements the Response surface this module reads
+    }) as unknown as typeof fetch;
+    const result = await sendSlackFile('xoxb-t', slackTargetFromId('C1'), tempFile(), { fetchImpl: impl });
+    assert.equal(result.ok, false);
+    assert.ok(!String(result.error).includes('SECRETSIG'), `presigned signature leaked: ${result.error}`);
+});
+
 // ─── send handler (ChannelSendRequest adapter) ──────
 
 import { settings } from '../../src/core/config.ts';
@@ -404,4 +471,54 @@ test('slackSendHandler requires a target', async () => {
     const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
         slackSendHandler({ type: 'text', text: 'hi' }));
     assert.equal(result['error'], 'slack_target_missing');
+});
+
+test('slackSendHandler opens a DM for a U-id then posts to the D-id', async () => {
+    // The plan's end-to-end acceptance case: U123 -> conversations.open -> D... -> chat.postMessage.
+    // Unit-testing resolveSlackDmChannel alone would not catch a broken handler route.
+    const seen: string[] = [];
+    const impl = (async (url: string | URL | Request, init?: RequestInit) => {
+        const u = String(url);
+        seen.push(u);
+        if (u.includes('conversations.open')) {
+            return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, channel: { id: 'D777' } }) } as unknown as Response;
+        }
+        seen.push(`body:${String(init?.body)}`);
+        return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) } as unknown as Response;
+    // justified: the harness only implements the Response surface these modules read
+    }) as unknown as typeof fetch;
+    // The handler builds its own client from settings, so patch the fetch used
+    // by the modules under test via the injected global.
+    const priorFetch = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+        const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
+            slackSendHandler({ type: 'text', text: 'hello', target: slackTargetFromId('U123') }));
+        assert.equal(result.ok, true, `handler failed: ${JSON.stringify(result)}`);
+        assert.ok(seen.some(s => s.includes('conversations.open')), 'never opened the DM');
+        assert.ok(seen.some(s => s.includes('chat.postMessage')), 'never posted');
+        assert.ok(seen.some(s => s.includes('"channel":"D777"')), 'posted to the U-id instead of the opened D-id');
+    } finally {
+        globalThis.fetch = priorFetch;
+    }
+});
+
+test('slackSendHandler posts the text of a keyboard request', async () => {
+    // The degrade branch must actually send, not just avoid crashing.
+    const seen: string[] = [];
+    const impl = (async (url: string | URL | Request, init?: RequestInit) => {
+        seen.push(`${String(url)}|${String(init?.body)}`);
+        return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) } as unknown as Response;
+    // justified: same minimal Response harness
+    }) as unknown as typeof fetch;
+    const priorFetch = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+        const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
+            slackSendHandler({ type: 'keyboard', text: 'pick one', target: slackTargetFromId('C1') }));
+        assert.equal(result.ok, true);
+        assert.ok(seen.some(s => s.includes('chat.postMessage') && s.includes('pick one')), 'keyboard text was not posted');
+    } finally {
+        globalThis.fetch = priorFetch;
+    }
 });

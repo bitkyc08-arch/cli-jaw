@@ -88,6 +88,18 @@ function transportConfigFingerprint(channel: 'telegram' | 'discord' | 'slack', s
             allowedChatIds: block["allowedChatIds"],
         });
     }
+    if (channel === 'slack') {
+        // Slack's credentials are botToken/appToken, not `token`. Falling
+        // through to the Discord shape below would read undefined for both,
+        // so a token change would never register as a config change.
+        return JSON.stringify({
+            enabled: block["enabled"],
+            botToken: stringField(block, 'botToken'),
+            appToken: stringField(block, 'appToken'),
+            teamId: stringField(block, 'teamId'),
+            channelIds: block["channelIds"],
+        });
+    }
     return JSON.stringify({
         enabled: block["enabled"],
         token: stringField(block, 'token'),
