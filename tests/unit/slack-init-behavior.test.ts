@@ -40,6 +40,7 @@ function runInit(args: string[]): RunResult {
                     // On a developer machine the deps are already installed, so
                     // the same suite finished in eight seconds and the hazard
                     // was invisible.
+                    CLI_JAW_SKIP_CLI_TOOLS: '1',
                     CLI_JAW_SKIP_SKILL_DEPS: '1',
                     CLI_JAW_SKIP_MCP_SERVERS: '1',
                     CLI_JAW_SKIP_CLAUDE: '1',

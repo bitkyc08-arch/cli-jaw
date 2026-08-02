@@ -728,6 +728,7 @@ test('SAF-006d: `jaw init` honours the skill-dep and MCP skip switches', () => {
                 env: {
                     ...process.env,
                     CLI_JAW_HOME: home,
+                    CLI_JAW_SKIP_CLI_TOOLS: '1',
                     CLI_JAW_SKIP_SKILL_DEPS: '1',
                     CLI_JAW_SKIP_MCP_SERVERS: '1',
                     CLI_JAW_SKIP_CLAUDE: '1',
@@ -739,6 +740,8 @@ test('SAF-006d: `jaw init` honours the skill-dep and MCP skip switches', () => {
         );
         const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
         assert.equal(result.status, 0, `init failed: ${output.slice(-400)}`);
+        assert.match(output, /CLI tool install skipped \(CLI_JAW_SKIP_CLI_TOOLS\)/,
+            'provider CLIs were installed despite the skip switch');
         assert.match(output, /skill dependency install skipped \(CLI_JAW_SKIP_SKILL_DEPS\)/,
             'skill deps ran despite the skip switch');
         assert.match(output, /MCP server install skipped \(CLI_JAW_SKIP_MCP_SERVERS\)/,
@@ -747,6 +750,8 @@ test('SAF-006d: `jaw init` honours the skill-dep and MCP skip switches', () => {
         // print on the way through must be absent.
         assert.doesNotMatch(output, /checking skill dependencies/,
             'the skill-dep check still ran');
+        assert.doesNotMatch(output, /installing CLI tools/,
+            'the CLI tool installer still ran');
     } finally {
         fs.rmSync(home, { recursive: true, force: true });
     }

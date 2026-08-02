@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
+
+// `devlog` is a private submodule. CI checks it out only when SUBMODULE_PAT is
+// configured, and skips it otherwise -- so a test that reads a devlog file
+// fails with ENOENT on every fork and on any run without the secret. That is a
+// missing input, not a defect in the thing under test.
+const runbookPath = 'devlog/_plan/260802_slack_channel/051_operator_runbook.md';
+const hasRunbook = existsSync(join(repoRoot, runbookPath));
 
 // ─── cli-jaw init ───────────────────────────────────
 
@@ -115,8 +122,10 @@ test('root docs list slack as a supported channel', () => {
     assert.match(read('README.md'), /Telegram, Discord, or Slack/);
 });
 
-test('the operator runbook exists and covers the setup essentials', () => {
-    const runbook = read('devlog/_plan/260802_slack_channel/051_operator_runbook.md');
+test('the operator runbook exists and covers the setup essentials', {
+    skip: !hasRunbook && 'devlog submodule not checked out (needs SUBMODULE_PAT)',
+}, () => {
+    const runbook = read(runbookPath);
     assert.match(runbook, /_metadata:/, 'no app manifest');
     assert.match(runbook, /connections:write/, 'the app-level token scope is undocumented');
     assert.match(runbook, /xoxb-/);

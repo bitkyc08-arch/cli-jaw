@@ -321,17 +321,22 @@ const installOpts: InstallOpts = {
 
 if (values['dry-run']) console.log('\n  \ud83d\udd0d Dry run mode — no changes will be made\n');
 
-await installCliTools(installOpts);
-
-// The two skip switches were honoured by the npm postinstall path only, so
-// `jaw init` reached for the network regardless. That is what made the init
-// behavior suite hang on CI: a runner has neither `uv` nor `playwright-core`,
-// so every one of its six subprocesses tried to fetch and install them, and
-// the step hit its three-minute limit before the first assertion printed.
+// These switches were honoured by the npm postinstall path only, so `jaw init`
+// reached for the network regardless of what the caller asked for. That is what
+// made the init behavior suite unrunnable on CI: a clean runner has none of
+// these tools, so each of its six subprocesses npm-installed the provider CLI
+// set plus uv and playwright-core, and the step hit its limit before the first
+// assertion printed.
 //
 // Same variables, same spelling, now honoured wherever the installers are
 // driven from.
 const skipEnv = (name: string) => process.env[name] === '1' || process.env[name] === 'true';
+
+if (skipEnv('CLI_JAW_SKIP_CLI_TOOLS')) {
+    console.log('[jaw:init] CLI tool install skipped (CLI_JAW_SKIP_CLI_TOOLS)');
+} else {
+    await installCliTools(installOpts);
+}
 
 if (skipEnv('CLI_JAW_SKIP_MCP_SERVERS')) {
     console.log('[jaw:init] MCP server install skipped (CLI_JAW_SKIP_MCP_SERVERS)');
