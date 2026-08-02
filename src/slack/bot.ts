@@ -25,6 +25,18 @@ let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
 let selfUserId: string | null = null;
 let slackInitLock = false;
+/**
+ * Listeners waiting on a queued agent result. Tracked so shutdown can drop
+ * them immediately instead of leaving them armed for their 5-minute timeout,
+ * which would let a post-shutdown result fire against a dead transport.
+ */
+const pendingQueueWaiters = new Set<() => void>();
+/**
+ * Bumped by every init and shutdown. An `initSlack` suspended on an await
+ * checks it afterwards, so a shutdown that races the auth round-trip cannot be
+ * undone by the stale initialization resuming and resurrecting the transport.
+ */
+let lifecycleGeneration = 0;
 
 export function getSlackSelfUserId(): string | null { return selfUserId; }
 export function getSlackConnectionState(): string {
@@ -66,21 +78,34 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
 
     if (result.action === 'queued') {
         log.info(`[slack:queue] agent busy, queued (${result.pending} pending)`);
-        await sendSlackText(token, target, t('tg.queued', { count: result.pending }, currentLocale()));
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
+        let disposed = false;
+        const dispose = () => {
+            if (disposed) return;
+            disposed = true;
+            clearTimeout(queueTimeout);
+            removeBroadcastListener(queueHandler);
+            pendingQueueWaiters.delete(dispose);
+        };
         const queueHandler = async (type: string, data: Record<string, unknown>) => {
             if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'slack'
                 && data["requestId"] === requestId) {
-                clearTimeout(queueTimeout);
-                removeBroadcastListener(queueHandler);
+                // Dispose FIRST so a duplicate broadcast cannot double-post.
+                if (disposed) return;
+                dispose();
                 const text = String(data["text"]);
                 await sendSlackText(token, target, text);
                 await relaySlackImages(token, target, text);
             }
         };
+        // Register BEFORE any await: a fast queued job can finish while the
+        // "queued" notice is still in flight, and the completion broadcast
+        // would be missed entirely.
         addBroadcastListener(queueHandler);
-        queueTimeout = setTimeout(() => removeBroadcastListener(queueHandler), 300000);
+        pendingQueueWaiters.add(dispose);
+        queueTimeout = setTimeout(dispose, 300000);
+        await sendSlackText(token, target, t('tg.queued', { count: result.pending }, currentLocale()));
         return;
     }
 
@@ -155,6 +180,7 @@ export async function initSlack(): Promise<void> {
         return;
     }
     slackInitLock = true;
+    const generation = ++lifecycleGeneration;
     try {
         await shutdownSlack();
         const sc = settings["slack"];
@@ -170,6 +196,12 @@ export async function initSlack(): Promise<void> {
         }
 
         const auth = await slackApi<{ user_id?: string; team_id?: string }>(sc.botToken, 'auth.test');
+        // A shutdown may have landed while auth.test was in flight; resuming
+        // here would resurrect a transport the caller asked us to stop.
+        if (generation !== lifecycleGeneration) {
+            log.info('[slack] init superseded during auth — aborting');
+            return;
+        }
         if (!auth.ok) {
             log.error('[slack] auth.test failed:', auth.error);
             return;
@@ -177,11 +209,18 @@ export async function initSlack(): Promise<void> {
         selfUserId = auth.data?.user_id || null;
         if (auth.data?.team_id && !sc.teamId) sc.teamId = auth.data.team_id;
 
-        socketClient = new SlackSocketClient({
+        const client = new SlackSocketClient({
             appToken: sc.appToken,
             onEnvelope: handleSlackEnvelope,
         });
-        await socketClient.start();
+        socketClient = client;
+        await client.start();
+        if (generation !== lifecycleGeneration) {
+            log.info('[slack] init superseded during connect — disposing socket');
+            client.stop();
+            if (socketClient === client) socketClient = null;
+            return;
+        }
 
         forwarderHandler = createSlackForwarder({
             getToken: () => getSlackSendClient().token,
@@ -196,10 +235,15 @@ export async function initSlack(): Promise<void> {
 }
 
 export async function shutdownSlack(): Promise<void> {
+    lifecycleGeneration++;
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;
     }
+    // Drop any queued-result waiters rather than leaving them armed for their
+    // 5-minute timeout against a transport that no longer exists.
+    for (const dispose of [...pendingQueueWaiters]) dispose();
+    pendingQueueWaiters.clear();
     socketClient?.stop();
     socketClient = null;
     selfUserId = null;

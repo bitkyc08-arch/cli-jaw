@@ -76,6 +76,7 @@ test('hello moves the client to connected without acking', async () => {
     assert.equal(h.client.getState(), 'connected');
     assert.equal(h.sent.length, 0, 'control frames must not be acked');
     assert.equal(h.handled.length, 0);
+    h.client.stop();
 });
 
 test('an events envelope is acked with exactly its envelope_id', async () => {
@@ -83,6 +84,7 @@ test('an events envelope is acked with exactly its envelope_id', async () => {
     await h.emit({ type: 'hello' });
     await h.emit(eventsEnvelope('E1', { type: 'message', channel: 'D1', text: 'hi' }));
     assert.deepEqual(JSON.parse(h.sent[0]!), { envelope_id: 'E1' });
+    h.client.stop();
 });
 
 test('the ack is sent BEFORE the handler finishes', async () => {
@@ -101,6 +103,7 @@ test('the ack is sent BEFORE the handler finishes', async () => {
     assert.equal(h.sent.length, 1, 'ack was not sent before handler completion');
     await pending;
     assert.equal(ackedWhenHandlerRan, 0, 'handler never ran');
+    h.client.stop();
 });
 
 test('a duplicate envelope_id is acked again but handled once', async () => {
@@ -111,18 +114,80 @@ test('a duplicate envelope_id is acked again but handled once', async () => {
     await h.emit({ ...env, retry_attempt: 1 });
     assert.equal(h.sent.length, 2, 'a retry must still be acked or Slack keeps retrying');
     assert.equal(h.handled.length, 1, 'duplicate was processed twice');
+    h.client.stop();
 });
 
-test('the dedupe window is bounded and evicts old ids', async () => {
+test('dedupe survives a burst larger than any count-based window', async () => {
+    // Regression: a count-only window (256) let a busy channel evict an id
+    // before Slack's retry arrived, recreating the duplicate-agent-run bug.
+    // Dedupe now expires by TIME, so volume alone must not reopen the hole.
     const h = await makeHarness();
     await h.emit({ type: 'hello' });
     const first = eventsEnvelope('OLD', { type: 'message', channel: 'D1', text: 'x' });
     await h.emit(first);
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 400; i++) {
         await h.emit(eventsEnvelope(`F${i}`, { type: 'message', channel: 'D1', text: 'x' }));
     }
-    await h.emit(first);
-    assert.equal(h.handled.length, 302, 'evicted id should be treated as new, not leak memory forever');
+    await h.emit({ ...first, retry_attempt: 1 });
+    assert.equal(h.handled.length, 401, 'a delayed retry was processed a second time');
+    h.client.stop();
+});
+
+test('a valid but unhandled envelope type is still acked', async () => {
+    // Un-acked envelopes are retried forever. Acking a type we will never act
+    // on stops the retry loop without dispatching it.
+    const h = await makeHarness();
+    await h.emit({ type: 'hello' });
+    await h.emit({ envelope_id: 'FUTURE', type: 'some_future_type', payload: {} });
+    assert.deepEqual(JSON.parse(h.sent[0]!), { envelope_id: 'FUTURE' });
+    assert.equal(h.handled.length, 0, 'unhandled type must not dispatch');
+    h.client.stop();
+});
+
+test('a failed ack skips dispatch so Slack can retry', async () => {
+    // Acking is what tells Slack the delivery landed. If the ack itself fails
+    // the delivery WILL be retried, so running the agent now would duplicate
+    // that work.
+    const handled: SlackEnvelope[] = [];
+    const listeners = new Map<string, (event: unknown) => void>();
+    let sendShouldFail = false;
+    const fetchImpl = (async () => ({
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ ok: true, url: 'wss://example.invalid/link' }),
+    // justified: minimal Response surface for the socket handshake
+    } as unknown as Response)) as unknown as typeof fetch;
+
+    const client = new SlackSocketClient({
+        appToken: 'xapp-test',
+        fetchImpl,
+        baseReconnectDelayMs: 50_000, // keep the retry out of this test's way
+        socketFactory: () => ({
+            send: () => { if (sendShouldFail) throw new Error('socket closing'); },
+            close: () => { /* no-op */ },
+            addEventListener: (type, listener) => { listeners.set(type, listener); },
+        }),
+        onEnvelope: (e) => { handled.push(e); },
+    });
+    await client.start();
+    listeners.get('message')!({ data: JSON.stringify({ type: 'hello' }) });
+    await new Promise(resolve => setImmediate(resolve));
+
+    sendShouldFail = true;
+    listeners.get('message')!({
+        data: JSON.stringify(eventsEnvelope('ACKFAIL', { type: 'message', channel: 'D1', text: 'hi' })),
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(handled.length, 0, 'agent work started despite a failed ack');
+    client.stop();
+});
+
+test('extractTextFromBlocks survives pathological nesting depth', () => {
+    // Inbound block structures are attacker-influenced; a recursive walk blew
+    // the call stack at ~20k levels.
+    let node: Record<string, unknown> = { type: 'section', text: { type: 'mrkdwn', text: 'deep' } };
+    for (let i = 0; i < 20000; i++) node = { type: 'context', elements: [node] };
+    assert.doesNotThrow(() => extractTextFromBlocks([node]));
 });
 
 // ─── reconnect-window guard ─────────────────────────
@@ -134,6 +199,7 @@ test('a frame arriving before hello is NOT acked and NOT dispatched', async () =
     await h.emit(eventsEnvelope('E4', { type: 'message', channel: 'D1', text: 'hi' }));
     assert.equal(h.sent.length, 0, 'frame was acked while not connected');
     assert.equal(h.handled.length, 0);
+    h.client.stop();
 });
 
 test('a frame redelivered after hello IS acked and dispatched exactly once', async () => {
@@ -144,6 +210,7 @@ test('a frame redelivered after hello IS acked and dispatched exactly once', asy
     await h.emit(env);          // Slack redelivers
     assert.equal(h.sent.length, 1);
     assert.equal(h.handled.length, 1);
+    h.client.stop();
 });
 
 // ─── disconnect semantics ───────────────────────────
@@ -268,6 +335,7 @@ test('an unparseable frame is dropped without throwing', async () => {
     await assert.doesNotReject(async () => {
         await h.emit({ type: 'hello' }); // valid control frame keeps the path alive
     });
+    h.client.stop();
 });
 
 test('an unknown envelope type is not dispatched', async () => {
@@ -275,6 +343,7 @@ test('an unknown envelope type is not dispatched', async () => {
     await h.emit({ type: 'hello' });
     await h.emit({ envelope_id: 'E7', type: 'some_future_type', payload: {} });
     assert.equal(h.handled.length, 0);
+    h.client.stop();
 });
 
 // ─── gating rules ───────────────────────────────────

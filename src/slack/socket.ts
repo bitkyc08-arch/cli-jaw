@@ -37,8 +37,17 @@ export type SlackEnvelope = {
 const HANDLED_ENVELOPE_TYPES = new Set(['events_api', 'slash_commands', 'interactive']);
 const CONTROL_FRAME_TYPES = new Set(['hello', 'disconnect']);
 
-/** How many recent envelope ids to remember for retry dedupe. */
-const DEDUPE_WINDOW = 256;
+/**
+ * Retry dedupe memory. Slack retries an un-acked delivery for a bounded
+ * period, so entries expire by TIME rather than by count: a count-only window
+ * lets a busy channel evict an id before its retry arrives, which recreates
+ * the duplicate-agent-run failure this dedupe exists to prevent.
+ */
+const DEDUPE_TTL_MS = 10 * 60 * 1000;
+/** Hard ceiling so a flood cannot grow the map without bound. */
+const DEDUPE_MAX_ENTRIES = 5000;
+/** Slack sends `hello` promptly; without it the socket is not usable. */
+const HELLO_DEADLINE_MS = 15000;
 
 /** Minimal socket surface used here — keeps the module testable without a real WebSocket. */
 export type SlackSocketLike = {
@@ -62,9 +71,10 @@ export class SlackSocketClient {
     private state: SlackConnectionState = 'disconnected';
     private reconnectAttempts = 0;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    private seenEnvelopeIds: string[] = [];
-    private seenEnvelopeSet = new Set<string>();
+    private helloTimer: ReturnType<typeof setTimeout> | null = null;
+    private seenEnvelopes = new Map<string, number>();
     private stopped = false;
+    private connecting = false;
     private readonly maxReconnectAttempts: number;
     private readonly baseReconnectDelayMs: number;
 
@@ -89,6 +99,7 @@ export class SlackSocketClient {
     stop(terminalState: SlackConnectionState = 'disconnected'): void {
         this.stopped = true;
         this.clearReconnectTimer();
+        this.clearHelloTimer();
         this.state = terminalState;
         try { this.ws?.close(); } catch { /* already closing */ }
         this.ws = null;
@@ -99,6 +110,13 @@ export class SlackSocketClient {
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
+        }
+    }
+
+    private clearHelloTimer(): void {
+        if (this.helloTimer) {
+            clearTimeout(this.helloTimer);
+            this.helloTimer = null;
         }
     }
 
@@ -116,6 +134,18 @@ export class SlackSocketClient {
 
     private async connect(): Promise<void> {
         if (this.stopped) return;
+        // Single-flight: a second concurrent connect would overwrite this.ws
+        // and orphan a live socket against Slack's connection cap.
+        if (this.connecting) return;
+        this.connecting = true;
+        try {
+            await this.connectOnce();
+        } finally {
+            this.connecting = false;
+        }
+    }
+
+    private async connectOnce(): Promise<void> {
         this.state = this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting';
 
         const opened = await slackApi<{ url?: string }>(
@@ -139,7 +169,24 @@ export class SlackSocketClient {
             try { ws.close(); } catch { /* already closing */ }
             return;
         }
+        // Close any socket this one supersedes before replacing it.
+        if (this.ws) {
+            try { this.ws.close(); } catch { /* already closing */ }
+        }
         this.ws = ws;
+
+        // Slack signals readiness with `hello`. If it never arrives the socket
+        // is useless and inbound would stall forever, because frames are
+        // deliberately left un-acked while not connected.
+        this.clearHelloTimer();
+        this.helloTimer = setTimeout(() => {
+            this.helloTimer = null;
+            if (this.stopped || this.ws !== ws || this.state === 'connected') return;
+            log.warn(`[slack:socket] no hello within ${HELLO_DEADLINE_MS}ms — recycling socket`);
+            try { ws.close(); } catch { /* already closing */ }
+            this.ws = null;
+            this.scheduleReconnect();
+        }, HELLO_DEADLINE_MS);
 
         // Every listener below checks that IT still owns the live socket.
         // Slack recycles sockets, and a superseded socket's late `close` would
@@ -168,6 +215,7 @@ export class SlackSocketClient {
             // Detach so a repeated close from this same dead socket cannot
             // schedule a second reconnect.
             this.ws = null;
+            this.clearHelloTimer();
             log.info('[slack:socket] closed, scheduling reconnect');
             this.scheduleReconnect();
         });
@@ -187,6 +235,7 @@ export class SlackSocketClient {
             if (envelope.type === 'hello') {
                 this.state = 'connected';
                 this.reconnectAttempts = 0;
+                this.clearHelloTimer();
                 log.info('[slack:socket] hello received, connected');
                 return;
             }
@@ -202,8 +251,6 @@ export class SlackSocketClient {
             return;
         }
 
-        if (!HANDLED_ENVELOPE_TYPES.has(envelope.type)) return;
-
         // Reconnect-window guard — BEFORE the ack. Leaving the envelope
         // un-acked is what makes Slack redeliver it on the new connection.
         if (this.state !== 'connected') {
@@ -211,14 +258,24 @@ export class SlackSocketClient {
             return;
         }
 
-        // ACK FIRST — before any work, always within the 3s deadline.
+        // ACK FIRST — before any work, always within the 3s deadline. Any
+        // valid envelope is acked, including types we do not handle, so Slack
+        // stops retrying payloads we will never act on.
         if (envelope.envelope_id) {
-            this.ack(envelope.envelope_id);
+            if (!this.ack(envelope.envelope_id)) {
+                // The ack did not reach Slack, so this delivery WILL be
+                // retried. Running the agent now would duplicate that work.
+                log.warn('[slack:socket] ack failed — skipping dispatch, awaiting Slack retry');
+                this.recycleSocket();
+                return;
+            }
             if (this.isDuplicate(envelope.envelope_id)) {
                 log.info(`[slack:socket] duplicate envelope ignored (retry_attempt=${envelope.retry_attempt ?? 0})`);
                 return;
             }
         }
+
+        if (!HANDLED_ENVELOPE_TYPES.has(envelope.type)) return;
 
         try {
             await this.options.onEnvelope(envelope);
@@ -227,21 +284,45 @@ export class SlackSocketClient {
         }
     }
 
-    private ack(envelopeId: string): void {
+    /** @returns true when the ack was handed to the socket successfully. */
+    private ack(envelopeId: string): boolean {
+        const socket = this.ws;
+        if (!socket) return false;
         try {
-            this.ws?.send(JSON.stringify({ envelope_id: envelopeId }));
+            socket.send(JSON.stringify({ envelope_id: envelopeId }));
+            return true;
         } catch (error) {
             log.warn('[slack:socket] ack failed', (error as Error).message);
+            return false;
         }
     }
 
+    /** Drop the current socket and reconnect — used when an ack cannot be sent. */
+    private recycleSocket(): void {
+        if (this.stopped || this.state === 'disabled') return;
+        const socket = this.ws;
+        this.ws = null;
+        this.clearHelloTimer();
+        try { socket?.close(); } catch { /* already closing */ }
+        this.scheduleReconnect();
+    }
+
     private isDuplicate(envelopeId: string): boolean {
-        if (this.seenEnvelopeSet.has(envelopeId)) return true;
-        this.seenEnvelopeSet.add(envelopeId);
-        this.seenEnvelopeIds.push(envelopeId);
-        if (this.seenEnvelopeIds.length > DEDUPE_WINDOW) {
-            const evicted = this.seenEnvelopeIds.shift();
-            if (evicted) this.seenEnvelopeSet.delete(evicted);
+        const now = Date.now();
+        const seenAt = this.seenEnvelopes.get(envelopeId);
+        if (seenAt !== undefined && now - seenAt < DEDUPE_TTL_MS) return true;
+        this.seenEnvelopes.set(envelopeId, now);
+        // Bounded lazy cleanup: drop expired entries, then oldest-first if the
+        // map is still over its ceiling.
+        if (this.seenEnvelopes.size > DEDUPE_MAX_ENTRIES) {
+            for (const [id, at] of this.seenEnvelopes) {
+                if (now - at >= DEDUPE_TTL_MS) this.seenEnvelopes.delete(id);
+            }
+            while (this.seenEnvelopes.size > DEDUPE_MAX_ENTRIES) {
+                const oldest = this.seenEnvelopes.keys().next().value;
+                if (oldest === undefined) break;
+                this.seenEnvelopes.delete(oldest);
+            }
         }
         return false;
     }

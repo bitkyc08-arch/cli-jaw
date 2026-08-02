@@ -107,23 +107,36 @@ export function shouldProcessSlackEvent(
  * Extract readable text from Block Kit blocks.
  * Slack messages forwarded from apps often have an empty `text` with all the
  * content in `blocks`; without this the agent receives an empty prompt.
+ *
+ * Traversal is ITERATIVE: a deeply nested payload would blow the call stack
+ * in a recursive walk, and inbound block structures are attacker-influenced.
  */
 export function extractTextFromBlocks(blocks: unknown[], maxChars = 6000): string {
     const out: string[] = [];
     const seen = new Set<unknown>();
-    const walk = (node: unknown): void => {
-        if (!node || typeof node !== 'object') return;
-        if (seen.has(node)) return; // guard against cyclic payloads
+    const stack: unknown[] = [...blocks];
+    let budget = maxChars;
+    while (stack.length > 0 && budget > 0) {
+        const node = stack.pop();
+        if (!node || typeof node !== 'object') continue;
+        if (seen.has(node)) continue; // guard against cyclic payloads
         seen.add(node);
         const obj = node as Record<string, unknown>;
-        if (typeof obj['text'] === 'string') out.push(obj['text']);
-        else if (obj['text']) walk(obj['text']);
+        const text = obj['text'];
+        if (typeof text === 'string') {
+            out.push(text);
+            budget -= text.length;
+        } else if (text) {
+            stack.push(text);
+        }
         for (const key of ['elements', 'fields', 'blocks']) {
             const value = obj[key];
-            if (Array.isArray(value)) value.forEach(walk);
+            // Push in reverse so popping preserves document order.
+            if (Array.isArray(value)) {
+                for (let i = value.length - 1; i >= 0; i--) stack.push(value[i]);
+            }
         }
-    };
-    blocks.forEach(walk);
+    }
     return out.join('\n').slice(0, maxChars).trim();
 }
 
