@@ -43,7 +43,10 @@ test('TUI slash surface exposes generic cli-jaw controls but not a claimed JWC p
     const commands = read('src/cli/commands.ts');
     const runner = read('bin/commands/tui/slash-command-runner.ts');
 
-    assert.match(commands, /name: 'model'[\s\S]*interfaces: \['cli', 'web', 'telegram', 'discord'\]/, 'generic /model is available to TUI through the CLI command registry');
+    // The remote-channel list grows as channels are added (slack, 260802). What
+    // this assertion protects is that /model reaches the TUI via 'cli', not the
+    // exact remote roster, so the tail is matched loosely.
+    assert.match(commands, /name: 'model'[\s\S]*interfaces: \['cli', 'web', 'telegram', 'discord'[^\]]*\]/, 'generic /model is available to TUI through the CLI command registry');
     assert.match(commands, /name: 'settings'[\s\S]*interfaces: \['cli'\]/, 'TUI settings is a CLI-only command');
     assert.match(commands, /name: 'effort'[\s\S]*interfaces: \['cli', 'web'\]/, 'generic /effort exists for cli-jaw chat');
     assert.doesNotMatch(commands, /name: 'provider'/, 'TUI must not claim /provider parity until a real provider route exists');

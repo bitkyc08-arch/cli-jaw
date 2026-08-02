@@ -183,7 +183,9 @@ test('remote channel output normalization strips incomplete search-results fence
     assert.doesNotMatch(output, /```search-results/);
     assert.doesNotMatch(output, /"schemaVersion"/);
     assert.doesNotMatch(output, /"results"/);
-    assert.match(output, /검색 결과 카드는 Telegram\/Discord에서 Web UI로 표시되지 않습니다/);
+    // Wording became channel-neutral in 260802 when slack joined the blocked
+    // origins; naming two channels was wrong for the third.
+    assert.match(output, /검색 결과 카드는 이 채널에서 Web UI로 표시되지 않습니다/);
 });
 
 test('remote channel output normalization strips incomplete elicitation fences', () => {
@@ -197,5 +199,5 @@ test('remote channel output normalization strips incomplete elicitation fences',
 
     assert.doesNotMatch(output, /```elicitation/);
     assert.doesNotMatch(output, /"questions"/);
-    assert.match(output, /구조화 질문은 Telegram\/Discord에서 버튼 UI로 표시되지 않습니다/);
+    assert.match(output, /구조화 질문은 이 채널에서 버튼 UI로 표시되지 않습니다/);
 });

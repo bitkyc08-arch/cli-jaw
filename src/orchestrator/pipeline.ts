@@ -95,7 +95,7 @@ function renderRemoteElicitationFallback(rawJson: string): string {
     const spec = parseElicitationSpec(rawJson);
     if (!spec) {
         return [
-            '구조화 질문은 Telegram/Discord에서 버튼 UI로 표시되지 않습니다.',
+            '구조화 질문은 이 채널에서 버튼 UI로 표시되지 않습니다.',
             '선택지는 일반 텍스트 질문으로 다시 요청해주세요.',
         ].join('\n');
     }
@@ -132,7 +132,7 @@ function renderRemoteSearchResultsFallback(rawJson: string): string {
     } catch {
         // Fall through to generic fallback.
     }
-    return '검색 결과 카드는 Telegram/Discord에서 Web UI로 표시되지 않습니다. 검색 결과를 일반 텍스트 목록으로 다시 작성해주세요.';
+    return '검색 결과 카드는 이 채널에서 Web UI로 표시되지 않습니다. 검색 결과를 일반 텍스트 목록으로 다시 작성해주세요.';
 }
 
 export function normalizeRemoteChannelElicitationOutput(text: string, origin: unknown): string {

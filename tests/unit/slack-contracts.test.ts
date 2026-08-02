@@ -100,7 +100,10 @@ test('resolveSlackThreadTs replies to the PARENT ts, never the reply ts', () => 
 
 test('resolveSlackThreadTs with replyInThread off stays top-level', () => {
     assert.equal(resolveSlackThreadTs({ ts: '1.1' }, false), undefined);
-    assert.equal(resolveSlackThreadTs({ ts: '2.2', thread_ts: '1.1' }, false), '1.1');
+    // Even when the INBOUND message arrived inside a thread, replyInThread:false
+    // must post at conversation top level — otherwise the setting is a no-op for
+    // the exact case it exists to control.
+    assert.equal(resolveSlackThreadTs({ ts: '2.2', thread_ts: '1.1' }, false), undefined);
 });
 
 // ─── Allowlist ──────────────────────────────────────
@@ -133,6 +136,20 @@ test('validateTarget enforces the channel allowlist', () => {
     withSlackSettings({ enabled: true, channelIds: ['C123'] }, () => {
         assert.equal(validateTarget(slackTargetFromId('C123'), 'slack'), true);
         assert.equal(validateTarget(slackTargetFromId('C999'), 'slack'), false);
+    });
+});
+
+test('validateTarget ignores a forged peerKind on a channel id', () => {
+    // peerKind is caller-supplied metadata. If the DM bypass trusted it, a
+    // disallowed channel could evade the allowlist by claiming to be a DM.
+    withSlackSettings({ enabled: true, channelIds: ['C123'] }, () => {
+        const forged = {
+            channel: 'slack' as const,
+            targetKind: 'user' as const,
+            peerKind: 'direct' as const,
+            targetId: 'C999',
+        };
+        assert.equal(validateTarget(forged, 'slack', { requireConfiguredAllowlist: true }), false);
     });
 });
 
@@ -176,4 +193,100 @@ test('slack health reports ready when fully configured', () => {
 test('channel health snapshot includes slack', () => {
     const snap = buildChannelHealthSnapshot();
     assert.ok('slack' in snap, 'health snapshot is missing the slack key');
+});
+
+// ─── Behavior: hydration, /forward, command catalog ─
+
+test('hydrateTargetsFromSettings restores a persisted slack target', async () => {
+    const { hydrateTargetsFromSettings, getLastActiveTarget, clearTargetState } =
+        await import('../../src/messaging/runtime.ts');
+    clearTargetState('slack');
+    hydrateTargetsFromSettings({
+        messaging: {
+            lastActive: {
+                slack: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C777' },
+            },
+            latestSeen: {},
+        },
+    });
+    const restored = getLastActiveTarget('slack');
+    assert.ok(restored, 'slack target was not hydrated');
+    assert.equal(restored.targetId, 'C777');
+    clearTargetState('slack');
+});
+
+test('makeCommandCtx slack permits the /forward settings patch', async () => {
+    // The remote-settings gate and /forward's own patch key must agree, or the
+    // command is dead on arrival: accepted interface, rejected payload.
+    const { makeCommandCtx } = await import('../../src/cli/command-context.ts');
+    let applied: Record<string, unknown> | null = null;
+    const deps = {
+        applySettings: async (patch: Record<string, unknown>) => {
+            applied = patch;
+            return { ok: true };
+        },
+    // justified: CommandContextDeps has many optional callbacks; this stub supplies only the one under test
+    } as Parameters<typeof makeCommandCtx>[2];
+    const ctx = makeCommandCtx('slack', 'ko', deps);
+    const result = await ctx.updateSettings({ slack: { forwardAll: true } }) as { ok?: boolean };
+    assert.equal(result?.ok, true, 'slack settings patch was rejected by the remote gate');
+    assert.deepEqual(applied, { slack: { forwardAll: true } });
+});
+
+test('makeCommandCtx slack still rejects out-of-allowlist keys', async () => {
+    const { makeCommandCtx } = await import('../../src/cli/command-context.ts');
+    let called = false;
+    const deps = {
+        applySettings: async () => { called = true; return { ok: true }; },
+    // justified: same partial-stub rationale as the test above
+    } as Parameters<typeof makeCommandCtx>[2];
+    const ctx = makeCommandCtx('slack', 'ko', deps);
+    const result = await ctx.updateSettings({ workingDir: '/tmp' }) as { ok?: boolean };
+    assert.equal(result?.ok, false);
+    assert.equal(called, false, 'applySettings must not run for a disallowed key');
+});
+
+type ForwardCtxStub = Parameters<typeof import('../../src/cli/handlers-runtime.ts').forwardHandler>[1];
+
+test('forwardHandler from slack writes settings.slack, not telegram', async () => {
+    // Regression guard: before the slack arm existed, /forward from any
+    // non-discord remote silently mutated Telegram's forwardAll.
+    const { forwardHandler } = await import('../../src/cli/handlers-runtime.ts');
+    let patch: Record<string, unknown> | null = null;
+    const ctx = {
+        interface: 'slack',
+        locale: 'ko',
+        getSettings: () => ({ channel: 'telegram', slack: { forwardAll: false } }),
+        updateSettings: async (p: Record<string, unknown>) => { patch = p; return { ok: true }; },
+    // justified: CliCommandContext is a wide runtime surface; this stub covers the fields forwardHandler reads
+    } as unknown as ForwardCtxStub;
+    const result = await forwardHandler(['on'], ctx);
+    assert.deepEqual(patch, { slack: { forwardAll: true } });
+    assert.match(String(result.text), /Slack/, 'reply must name Slack, not Telegram');
+});
+
+test('forwardHandler from slack reads slack state when querying', async () => {
+    const { forwardHandler } = await import('../../src/cli/handlers-runtime.ts');
+    const ctx = {
+        interface: 'slack',
+        locale: 'ko',
+        getSettings: () => ({ channel: 'telegram', slack: { forwardAll: false }, telegram: { forwardAll: true } }),
+        updateSettings: async () => ({ ok: true }),
+    // justified: same partial-stub rationale as the test above
+    } as unknown as ForwardCtxStub;
+    const result = await forwardHandler([], ctx);
+    assert.match(String(result.text), /Slack/);
+    assert.match(String(result.text), /OFF/, 'must report slack.forwardAll, not telegram.forwardAll');
+});
+
+test('getVisibleCommands slack is non-empty and includes steer', async () => {
+    // The catalog filters on capability[iface]; without a derived slack key
+    // this returns an empty array while claiming Slack support.
+    const { getVisibleCommands } = await import('../../src/command-contract/policy.ts');
+    const names = getVisibleCommands('slack').map((c: { name: string }) => c.name);
+    assert.ok(names.length > 0, 'slack command catalog is empty');
+    assert.ok(names.includes('status'), 'slack catalog is missing status');
+    // /steer carries an EXPLICIT capability map, which the derived-map fix alone
+    // would not have reached.
+    assert.ok(names.includes('steer'), 'slack catalog is missing steer');
 });

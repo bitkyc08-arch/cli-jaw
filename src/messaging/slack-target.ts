@@ -41,11 +41,16 @@ export function slackTargetFromId(
  * Resolve the thread_ts to reply into.
  * Slack requires the PARENT message ts — never a reply's own ts. A top-level
  * message has no thread_ts, so its own ts becomes the parent of a new thread.
+ *
+ * `replyInThread: false` means "post at conversation top level", so it returns
+ * undefined even for an inbound message that itself arrived inside a thread.
+ * Returning the inbound thread_ts there would keep every reply threaded and
+ * make the setting a no-op for exactly the case it exists to control.
  */
 export function resolveSlackThreadTs(
     event: { ts?: string; thread_ts?: string },
     replyInThread: boolean,
 ): string | undefined {
-    if (!replyInThread) return event.thread_ts;
+    if (!replyInThread) return undefined;
     return event.thread_ts || event.ts;
 }

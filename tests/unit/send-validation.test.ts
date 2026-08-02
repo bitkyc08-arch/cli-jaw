@@ -107,7 +107,9 @@ test('normalizeChannelSendRequest rejects invalid outbound type and channel', as
         /invalid_outbound_type/,
     );
     assert.throws(
-        () => normalizeChannelSendRequest({ channel: 'slack', type: 'text' }),
+        // 'slack' became a real channel in 260802_slack_channel wp1, so it is no
+        // longer a valid stand-in for "unknown channel". Use one that is not.
+        () => normalizeChannelSendRequest({ channel: 'signal', type: 'text' }),
         /invalid_channel/,
     );
     assert.throws(

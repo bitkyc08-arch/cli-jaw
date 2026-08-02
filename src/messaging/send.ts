@@ -6,7 +6,7 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
-import { slackTargetFromId } from './slack-target.js';
+import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 
 // ─── Request Model ──────────────────────────────────
@@ -148,7 +148,12 @@ export function validateTarget(
     } else if (channel === 'slack') {
         // DMs are always permitted: a user messaging the bot directly is
         // self-authorizing, and D.../U... ids cannot be enumerated up front.
-        if (target.peerKind === 'direct') return true;
+        //
+        // The bypass is derived from the ID PREFIX, not from target.peerKind:
+        // peerKind is caller-supplied metadata, so trusting it would let a
+        // forged `{peerKind:'direct', targetId:'C999'}` evade the channel
+        // allowlist entirely.
+        if (slackPeerKind(target.targetId) === 'direct') return true;
         const allowed = settings["slack"]?.channelIds as string[] | undefined;
         if (allowed?.length && !allowed.includes(target.targetId)) return false;
         if (!allowed?.length && options.requireConfiguredAllowlist) return false;
