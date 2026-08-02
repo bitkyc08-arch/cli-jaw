@@ -1,6 +1,6 @@
 # CLI-JAW Claude Guide
 
-This repository is a Node.js ESM orchestration runtime for boss/employee dispatch, Web UI, browser/CDP automation, Telegram/Discord channels, memory, heartbeat, and PABCD orchestration.
+This repository is a Node.js ESM orchestration runtime for boss/employee dispatch, Web UI, browser/CDP automation, Telegram/Discord/Slack channels, memory, heartbeat, and PABCD orchestration.
 
 ## Documentation Map
 
@@ -35,7 +35,7 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 - Kiro (`kiro-code`) is a top-level runtime, not an `ai-e` provider. It runs through `kiro-cli chat --no-interactive`, resumes with `--resume-id <sessionId>`, passes `--model` and optional `--trust-all-tools`, parses plain-text stdout (ANSI stripped), emits `agent_tool` steps from Kiro tool progress lines, shows AGY-style working indicators while busy, and captures session ids from the kiro-cli v2 session store (`conversations_v2` in the kiro-cli data sqlite, keyed by the canonical cwd) — the legacy `~/.kiro/sessions/cli/*.json` files are not used by `chat --no-interactive`. Fresh Kiro turns include cli-jaw operational context + bounded history; resumed Kiro turns send only the current prompt because the native session already owns prior context. Live models come from `kiro-cli chat --list-models --format json`; quota uses reverse-engineered `AmazonCodeWhispererService.GetUsageLimits` with the Kiro CLI auth store token.
 - Claude E is the registry key `claude-e`; runtime telemetry uses `agent:claude-e:*`. Some persisted helper/session internals still use the historical `claude-i` bucket for compatibility.
 - Gemini full-access runs use `--skip-trust --approval-mode yolo` on both fresh and resume sessions.
-- `/api/channel/send` is the canonical outbound Telegram/Discord delivery endpoint.
+- `/api/channel/send` is the canonical outbound Telegram/Discord/Slack delivery endpoint.
 - Heartbeat schedules support `{ kind: "every", minutes }` and `{ kind: "cron", cron, timeZone? }`.
 - Tool logs are capped by `src/shared/tool-log-sanitize.ts` before SSE/WebSocket, `agent_done`, and orchestration snapshot delivery. Web UI delivery is SSE-first through `GET /api/events`, with WebSocket as the legacy fallback dispatcher.
 - Employee worker progress is query-first via `jaw worker status [agent]`, watchable via `jaw worker watch [agent]` or `jaw dispatch --watch`, memory-only for current plus previous completed run, and safe-summary only with thinking detail hidden.

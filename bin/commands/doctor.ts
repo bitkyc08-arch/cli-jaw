@@ -45,6 +45,16 @@ interface DiscordSettings extends MessagingSettings {
     channelIds?: unknown[];
 }
 
+// Slack does NOT extend MessagingSettings: that interface's single credential
+// is `token`, while Slack needs two distinctly-scoped tokens.
+interface SlackSettings {
+    enabled?: boolean;
+    botToken?: string;
+    appToken?: string;
+    teamId?: string;
+    channelIds?: unknown[];
+}
+
 interface NetworkSettings {
     bindHost?: string;
     lanBypass?: boolean;
@@ -62,6 +72,7 @@ interface DoctorSettings {
     skillsDir?: string;
     telegram?: MessagingSettings;
     discord?: DiscordSettings;
+    slack?: SlackSettings;
     network?: NetworkSettings;
 }
 
@@ -347,7 +358,23 @@ check('Discord', () => {
     return `guild=${guildId}, channels=${channelIds.length} (MESSAGE_CONTENT intent required for plain messages)`;
 });
 
-// 6d. Channel consistency
+// 6d. Slack
+check('Slack', () => {
+    if (!settings?.slack?.enabled) throw new Error('WARN: disabled');
+    const botToken = settings.slack.botToken;
+    if (!botToken) throw new Error('bot token missing — set slack.botToken');
+    if (!botToken.startsWith('xoxb-')) throw new Error('bot token should start with xoxb-');
+    const appToken = settings.slack.appToken;
+    // Outbound-only is a legitimate partial configuration, so this is a WARN:
+    // the Web API works, but no inbound events can arrive.
+    if (!appToken) throw new Error('WARN: app-level token missing — outbound only, no inbound events');
+    if (!appToken.startsWith('xapp-')) throw new Error('app token should start with xapp-');
+    const channelIds = settings.slack.channelIds;
+    if (!channelIds?.length) throw new Error('WARN: no channel IDs configured — all conversations allowed');
+    return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, channels=${channelIds.length}`;
+});
+
+// 6e. Channel consistency
 check('Channel consistency', () => {
     const ch = settings?.channel || 'telegram';
     if (ch === 'discord' && !settings?.discord?.enabled) {
@@ -355,6 +382,9 @@ check('Channel consistency', () => {
     }
     if (ch === 'telegram' && !settings?.telegram?.enabled) {
         throw new Error('WARN: active channel is telegram but Telegram is not enabled');
+    }
+    if (ch === 'slack' && !settings?.slack?.enabled) {
+        throw new Error('WARN: active channel is slack but Slack is not enabled');
     }
     return 'consistent';
 });
@@ -660,6 +690,38 @@ function buildDiscordStatus() {
     };
 }
 
+function buildSlackStatus() {
+    const s = settings;
+    const sc = s?.slack || {};
+    const botTokenPresent = !!sc.botToken;
+    const appTokenPresent = !!sc.appToken;
+    const channelIdsConfigured = !!(sc.channelIds?.length);
+    let status = 'ok';
+    const degradedReasons: string[] = [];
+    if (!sc.enabled) { status = 'disabled'; }
+    else if (!botTokenPresent) { status = 'missing_bot_token'; degradedReasons.push('bot token missing'); }
+    else if (!appTokenPresent) { status = 'missing_app_token'; degradedReasons.push('app-level token missing — outbound only, no inbound events'); }
+    else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
+
+    const activeChannel = s?.channel || 'telegram';
+    const channelConsistent = activeChannel !== 'slack' || !!sc.enabled;
+    if (!channelConsistent) {
+        degradedReasons.push('active channel is slack but Slack is not enabled');
+    }
+
+    return {
+        status,
+        enabled: !!sc.enabled,
+        botTokenPresent,
+        appTokenPresent,
+        channelIdsConfigured,
+        channelConsistent,
+        runtimeReady: status === 'ok' && channelConsistent,
+        socketModeNote: 'app-level token (xapp-) is required for inbound events; a bot token alone is outbound-only',
+        degradedReasons,
+    };
+}
+
 // macOS TCC diagnostics (--tcc, --fix, --prime)
 if (process.platform === 'darwin' && (values.tcc || values.fix || values.prime)) {
     await runTccDiagnostics({ fix: !!values.fix, prime: !!values.prime });
@@ -718,6 +780,7 @@ if (values.json) {
         network: { bindHost: bh, lanBypass: lb, authTokenPersisted: !!process.env["JAW_AUTH_TOKEN"], issues: networkIssues },
         activeChannel: loadedSettings().channel || 'telegram',
         discord: buildDiscordStatus(),
+        slack: buildSlackStatus(),
         wsl: isWSL() ? {
             sudoNonInteractive: canSudoNonInteractive(),
             npmPrefix: getNpmPrefix(),

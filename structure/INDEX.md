@@ -41,7 +41,7 @@ graph LR
     AGT --> NATIVE["native/claude-e"]
 ```
 
-5개 인터페이스(CLI, TUI, Web, Telegram, Discord) + Electron 데스크톱은 core `server.ts`를 경유하고, `server.ts`(635L)는 인증/보안/SSE/bootstrap을 맡은 뒤 `src/routes/`의 추출 route modules와 mounted sub-router로 API를 위임합니다(총 234 handlers including `/`; API endpoints 233). Web UI event delivery는 `GET /api/events` SSE channel을 우선 사용하고 legacy 서버에서만 WebSocket fallback을 탄다. `src/goal/`은 goal-mode autonomy(completion evidence gate)를 관리하고, `src/team/`은 multi-agent dispatch planning, `src/jaw-ceo/`는 OpenAI Realtime CEO channel을 제공합니다. 별도 `jaw dashboard serve` manager 서버는 notes/search/schedule/reminders/board/git/memory surface를 `src/manager/`에서 제공하고, manager server가 worker instance SSE를 bridge/cache한다. Process/tool logs는 `src/shared/tool-log-sanitize.ts`에서 SSE와 snapshot 저장 전에 cap/truncate되어 Manager 대시보드 메모리 폭주를 막습니다.
+6개 인터페이스(CLI, TUI, Web, Telegram, Discord, Slack) + Electron 데스크톱은 core `server.ts`를 경유하고, `server.ts`(635L)는 인증/보안/SSE/bootstrap을 맡은 뒤 `src/routes/`의 추출 route modules와 mounted sub-router로 API를 위임합니다(총 234 handlers including `/`; API endpoints 233). Web UI event delivery는 `GET /api/events` SSE channel을 우선 사용하고 legacy 서버에서만 WebSocket fallback을 탄다. `src/goal/`은 goal-mode autonomy(completion evidence gate)를 관리하고, `src/team/`은 multi-agent dispatch planning, `src/jaw-ceo/`는 OpenAI Realtime CEO channel을 제공합니다. 별도 `jaw dashboard serve` manager 서버는 notes/search/schedule/reminders/board/git/memory surface를 `src/manager/`에서 제공하고, manager server가 worker instance SSE를 bridge/cache한다. Process/tool logs는 `src/shared/tool-log-sanitize.ts`에서 SSE와 snapshot 저장 전에 cap/truncate되어 Manager 대시보드 메모리 폭주를 막습니다.
 
 ---
 
@@ -51,7 +51,7 @@ graph LR
 |:----:|------|-----------|
 | **1 — Foundation** | [str_func.md](str_func.md), [AGENTS.md](AGENTS.md) | 파일 트리 + 함수 레퍼런스, 동기화 체크리스트 |
 | **2 — Core Flow** | [prompt_flow.md](prompt_flow.md), [agent_spawn.md](agent_spawn.md), [memory_architecture.md](memory_architecture.md) | 9-step 프롬프트 파이프라인, 에이전트 실행, 3-tier 메모리 |
-| **3 — Interfaces** | [commands.md](commands.md), [server_api.md](server_api.md), [frontend.md](frontend.md), [telegram.md](telegram.md), [stream-events.md](stream-events.md) | 슬래시 커맨드, Express 라우트, Web UI, Telegram 봇, Discord 봇, SSE/WS 이벤트 트레이스 |
+| **3 — Interfaces** | [commands.md](commands.md), [server_api.md](server_api.md), [frontend.md](frontend.md), [telegram.md](telegram.md), [stream-events.md](stream-events.md) | 슬래시 커맨드, Express 라우트, Web UI, Telegram 봇, Discord 봇, Slack 봇, SSE/WS 이벤트 트레이스 |
 | **4 — Reference** | [infra.md](infra.md), [prompt_basic_A1.md](prompt_basic_A1.md), [prompt_basic_A2.md](prompt_basic_A2.md), [prompt_basic_B.md](prompt_basic_B.md), [CAPABILITY_TRUTH_TABLE.md](CAPABILITY_TRUTH_TABLE.md), [frontend_modernization_analysis.md](frontend_modernization_analysis.md), [gitstructure.md](gitstructure.md) | 코어 모듈, 프롬프트 템플릿, capability parity truth table, 현대화 분석, Git 토폴로지 |
 
 > Tier 1 → 2 → 3 순서로 읽으면 전체 구조가 잡힙니다. Tier 4는 필요할 때 참조.

@@ -9,7 +9,7 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 # src/cli/ — Slash Command Registry & Dispatcher
 
 > `commands.ts`(621L) + `handlers.ts`(448L) + `handlers-runtime.ts`(507L) + `handlers-completions.ts`(103L) + `handlers-workflows.ts`(505L) + `handlers-search.ts`(34L) + `handlers-skill-invoke.ts`(36L) + `api-auth.ts`(45L) + `command-context.ts`(144L) + `registry.ts`(254L) + `acp-client.ts`(382L) + `claude-models.ts`(84L) + `compact.ts`(143L)
-> slash registry는 52개 커맨드이며 non-hidden은 51개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 37 / Discord 37이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, JWC external runtime helper는 `jwc.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
+> slash registry는 52개 커맨드이며 non-hidden은 51개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 37 / Discord 37 / Slack 37이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, JWC external runtime helper는 `jwc.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
 > 모델/CLI 선택은 `registry.ts` 단일 소스를 따른다. 현재 registry 런타임은 `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `grok`, `jwc`, `kiro-code`, `opencode`, `copilot` 13개다.
 
 ---
@@ -184,13 +184,13 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
 
 ### `/steer <prompt>`
 
-- Web/Telegram/Discord에서 실행 가능. CLI slash registry에는 노출되지 않는다.
+- Web/Telegram/Discord/Slack에서 실행 가능. CLI slash registry에는 노출되지 않는다.
 - 실행 중 agent가 없으면 에러. 실행 중이면 kill 후 재지시.
 
 ### `/fork`
 
 - 현재 채팅 세션의 메시지를 새 세션으로 복사하고 그 세션으로 전환한다.
-- `/new`, `/switch`, `/sessions`와 같은 session category 표면이며 CLI/Web/Telegram/Discord에서 사용 가능하다.
+- `/new`, `/switch`, `/sessions`와 같은 session category 표면이며 CLI/Web/Telegram/Discord/Slack에서 사용 가능하다.
 
 ### `/orchestrate` (alias: `/pabcd`)
 
@@ -257,7 +257,7 @@ Codex 기본 registry는 ocx inactive fallback용 4개 모델만 보유하며, l
 
 ### remote settings patch 제한
 
-Telegram/Discord는 아래 키만 patch 가능하다:
+Telegram/Discord/Slack은 아래 키만 patch 가능하다:
 
 ```text
 fallbackOrder, cli, perCli, showReasoning, memory, telegram, discord

@@ -129,7 +129,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Memory Runtime / KV / Files | `GET /api/memory/status` `POST /api/memory/reindex` `POST /api/memory/bootstrap` `GET /api/memory/files` `GET /api/memory` `POST /api/memory` `DELETE /api/memory/:key` `GET /api/memory-files` `GET /api/memory-file` `GET /api/memory-files/:filename` `DELETE /api/memory-file` `DELETE /api/memory-files/:filename` `PUT /api/memory-files/settings` |
 | Jaw Memory | `GET /api/jaw-memory/search` `GET /api/jaw-memory/read` `POST /api/jaw-memory/save` `GET /api/jaw-memory/context` `GET /api/jaw-memory/list` `POST /api/jaw-memory/init` `POST /api/jaw-memory/reflect` `POST /api/jaw-memory/flush` `GET /api/jaw-memory/soul` `POST /api/jaw-memory/soul/activate` `POST /api/jaw-memory/soul` `POST /api/soul/bootstrap` |
 | Jaw CEO | `GET /api/jaw-ceo/state` `POST /api/jaw-ceo/message` `POST /api/jaw-ceo/query` `POST /api/jaw-ceo/docs/edit` `GET /api/jaw-ceo/settings` `PUT /api/jaw-ceo/settings` `POST /api/jaw-ceo/events/ingest` `POST /api/jaw-ceo/events/refresh` `GET /api/jaw-ceo/pending` `POST /api/jaw-ceo/pending/:completionKey/continue` `POST /api/jaw-ceo/pending/:completionKey/summarize` `POST /api/jaw-ceo/pending/:completionKey/ack` `POST /api/jaw-ceo/pending/:completionKey/dismiss` `POST /api/jaw-ceo/watch` `GET /api/jaw-ceo/audit` `POST /api/jaw-ceo/voice/connect` `POST /api/jaw-ceo/voice/:sessionId/close` `POST /api/jaw-ceo/confirmations` `POST /api/jaw-ceo/confirmations/:confirmationId/confirm` `POST /api/jaw-ceo/confirmations/:confirmationId/cancel` |
-| Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channel/send` `POST /api/discord/send` |
+| Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channel/send` `POST /api/discord/send` `POST /api/slack/send` |
 | Avatar | `GET /api/avatar` `POST /api/avatar/:target/upload` `DELETE /api/avatar/:target/image` `GET /api/avatar/:target/image` |
 | Traces | `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
 | Debug | `GET /api/debug/mem` |
@@ -275,7 +275,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `agent_smoke` | smoke auto-continue 안내 |
 | `queue_update` | 대기열 길이 갱신 |
 | `clear` / `session_reset` | UI clear / session reset broadcast |
-| `new_message` | Telegram/Discord inbound message |
+| `new_message` | Telegram/Discord/Slack inbound message |
 | `orc_state` | PABCD 상태 변경 + `taskAnchor`/`resolvedSelection`/`interview` 컨텍스트 |
 | `orchestrate_done` / `orchestrate_warning` | orchestration 완료/실패 + 비차단 경고 |
 | `steer_started` | `/steer` 또는 pending queue steer가 새 프롬프트를 accepted 상태로 전환 |

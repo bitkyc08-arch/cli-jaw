@@ -390,7 +390,7 @@ The quota/status panel keeps the same runtime keyset as the registry. Wrapper ru
 
 **OpenCode wildcard**: connect any model endpoint — OpenRouter, local LLMs (Large Language Models), any OpenAI-compatible API.
 
-> Switch engines live: `/cli codex`. Switch models: `/model gpt-5.5`. Works from Web, Terminal, Telegram, or Discord.
+> Switch engines live: `/cli codex`. Switch models: `/model gpt-5.5`. Works from Web, Terminal, Telegram, Discord, or Slack.
 
 ---
 
@@ -614,7 +614,7 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt cont
 | **Cost model** | Monthly subscriptions you already pay for | Per-token API billing | Anthropic subscription |
 | **Primary UI** | Manager dashboard + Web app + Electron desktop + terminal UI | Terminal only | CLI + IDE plugins |
 | **Dashboard** | Multi-instance manager, Kanban, Notes workspace | None | None |
-| **Messaging** | Telegram (voice) + Discord | Telegram/Discord/Slack/WhatsApp/Signal | None |
+| **Messaging** | Telegram (voice) + Discord + Slack | Telegram/Discord/Slack/WhatsApp/Signal | None |
 | **Memory** | 3-layer (History/Flush/Soul) + full-text search | Self-improving loop + Honcho | File-based auto-memory |
 | **Multi-agent** | Employee system (dispatch other CLIs) + PABCD | Subagent spawn | Task tool |
 | **Browser automation** | Chrome DevTools + vision-click + Computer Use | Limited | Via MCP |
@@ -634,7 +634,7 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt cont
 | `Error: node version` | Upgrade to Node.js 22.4+: `nvm install 22` |
 | `NODE_MODULE_VERSION` mismatch | `npm run ensure:native` (auto-rebuilds native modules) |
 | `EADDRINUSE: port 3457` | Another instance running. Use `--port 3458` or stop it first |
-| Telegram / Discord auth fails | Run `jaw doctor`, check tokens, restart `jaw serve` |
+| Telegram / Discord / Slack auth fails | Run `jaw doctor`, check tokens, restart `jaw serve` |
 | Browser commands fail | Install Chrome/Chromium. Run `jaw browser start` first |
 | Employee dispatch hangs | Run `jaw employee list`, ensure the employee CLI is authenticated (`jaw doctor`), then retry with `jaw dispatch --watch` |
 | Employee dispatch returns non-JSON or HTML | The server may be stale or missing the route. Run `npm run build` or restart the manager/dashboard process. |

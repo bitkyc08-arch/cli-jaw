@@ -28,6 +28,10 @@ const { values } = parseArgs({
         'discord-token': { type: 'string' },
         'discord-guild-id': { type: 'string' },
         'discord-channel-ids': { type: 'string' },
+        'slack-bot-token': { type: 'string' },
+        'slack-app-token': { type: 'string' },
+        'slack-team-id': { type: 'string' },
+        'slack-channel-ids': { type: 'string' },
         'skills-dir': { type: 'string' },
     },
     strict: true,
@@ -44,12 +48,16 @@ Options:
   --force               Overwrite existing settings
   --working-dir <path>  Set working directory
   --cli <name>          Default CLI (${CLI_CHOICES})
-  --channel <ch>        Active channel (telegram or discord)
+  --channel <ch>        Active channel (telegram, discord, or slack)
   --telegram-token <t>  Telegram bot token
   --allowed-chat-ids <ids>  Comma-separated Telegram chat IDs
   --discord-token <t>   Discord bot token
   --discord-guild-id <id>   Discord guild (server) ID
   --discord-channel-ids <ids>  Comma-separated Discord channel IDs
+  --slack-bot-token <t>     Slack bot token (xoxb-...)
+  --slack-app-token <t>     Slack app-level token (xapp-..., required for inbound)
+  --slack-team-id <id>      Slack team ID (optional)
+  --slack-channel-ids <ids> Comma-separated Slack conversation IDs
   --skills-dir <path>   Skills directory`);
     process.exit(0);
 }
@@ -68,6 +76,17 @@ interface InitSettings {
         channelIds?: unknown[];
         forwardAll?: boolean;
         allowBots?: boolean;
+    };
+    slack?: {
+        enabled?: boolean;
+        botToken?: string;
+        appToken?: string;
+        teamId?: string;
+        channelIds?: unknown[];
+        forwardAll?: boolean;
+        allowBots?: boolean;
+        mentionOnly?: boolean;
+        replyInThread?: boolean;
     };
     skillsDir?: string;
     channel?: string;
@@ -101,8 +120,8 @@ const cli = String(values.cli ||
 
 // Channel selection
 const channelFlag = values.channel as string | undefined;
-if (channelFlag && channelFlag !== 'telegram' && channelFlag !== 'discord') {
-    console.error(`  ❌ Invalid --channel "${channelFlag}". Must be "telegram" or "discord".`);
+if (channelFlag && channelFlag !== 'telegram' && channelFlag !== 'discord' && channelFlag !== 'slack') {
+    console.error(`  ❌ Invalid --channel "${channelFlag}". Must be "telegram", "discord", or "slack".`);
     process.exit(1);
 }
 
@@ -146,10 +165,45 @@ if (values['non-interactive']) {
     }
 }
 
+// Slack
+let slEnabled = false, slBotToken = '', slAppToken = '', slTeamId = '', slChannelIds: string[] = [];
+if (values['non-interactive']) {
+    if (values['slack-bot-token']) {
+        slBotToken = values['slack-bot-token'] as string;
+        slAppToken = String(values['slack-app-token'] || '');
+        slTeamId = String(values['slack-team-id'] || '');
+        slChannelIds = ((values['slack-channel-ids'] || '') as string).split(',').map(s => s.trim()).filter(Boolean);
+        slEnabled = true;
+    }
+} else if (channelFlag === 'slack') {
+    const slAnswer = await ask('Slack 연결? (y/n)', settings.slack?.enabled ? 'y' : 'n');
+    slEnabled = slAnswer.toLowerCase() === 'y';
+    if (slEnabled) {
+        slBotToken = await ask('Bot token (xoxb-...)', settings.slack?.botToken || '');
+        slAppToken = await ask('App-level token (xapp-...)', settings.slack?.appToken || '');
+        slTeamId = await ask('Team ID (optional)', settings.slack?.teamId || '');
+        const idsStr = await ask('Channel IDs (comma)',
+            (settings.slack?.channelIds || []).join(',') || '');
+        slChannelIds = idsStr.split(',').map(s => s.trim()).filter(Boolean);
+    }
+}
+
 // Validate: --channel discord requires Discord config
 if (channelFlag === 'discord' && !dcEnabled) {
     console.error('  ❌ --channel discord requires --discord-token.');
     process.exit(1);
+}
+
+// Validate: --channel slack requires at least the bot token
+if (channelFlag === 'slack' && !slEnabled) {
+    console.error('  ❌ --channel slack requires --slack-bot-token.');
+    process.exit(1);
+}
+// Outbound-only is a legitimate partial configuration, so this warns rather
+// than exiting — it is the same state channel-health reports as
+// missing_app_token.
+if (slEnabled && !slAppToken) {
+    console.warn('  ⚠️  Slack app-level token missing — outbound only, no inbound events.');
 }
 
 // Validate Discord flags
@@ -177,8 +231,11 @@ rl.close();
 // Determine active channel
 let activeChannel: string = channelFlag || settings.channel || 'telegram';
 if (!channelFlag) {
-    if (dcEnabled && !tgEnabled) activeChannel = 'discord';
-    else if (tgEnabled && !dcEnabled) activeChannel = 'telegram';
+    // Only infer when exactly one channel is configured; two or more leaves
+    // the existing value alone rather than silently picking one.
+    if (dcEnabled && !tgEnabled && !slEnabled) activeChannel = 'discord';
+    else if (tgEnabled && !dcEnabled && !slEnabled) activeChannel = 'telegram';
+    else if (slEnabled && !tgEnabled && !dcEnabled) activeChannel = 'slack';
 }
 
 // Merge (preserve existing values unless --force)
@@ -199,6 +256,20 @@ if (dcEnabled || values.force) {
         channelIds: dcChannelIds,
         forwardAll: true,
         allowBots: false,
+    };
+}
+if (slEnabled || values.force) {
+    merged.slack = {
+        enabled: slEnabled,
+        botToken: slBotToken,
+        appToken: slAppToken,
+        teamId: slTeamId,
+        channelIds: slChannelIds,
+        forwardAll: true,
+        allowBots: false,
+        // Slack bots usually live in shared channels, so both default ON.
+        mentionOnly: true,
+        replyInThread: true,
     };
 }
 
