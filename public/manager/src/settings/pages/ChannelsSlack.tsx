@@ -154,6 +154,12 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     const appTokenError = appToken && !appToken.startsWith('xapp-')
         ? 'App-level tokens start with xapp-.'
         : null;
+    // Surface the outbound-only state on THIS page rather than changing the
+    // shared status chips, which are frozen for cross-channel changes.
+    const outboundOnly = Boolean(original.enabled) && Boolean(original.botToken) && !original.appToken;
+    const slackHint = outboundOnly
+        ? 'Currently OUTBOUND-ONLY: the app-level token (xapp-) is missing, so no inbound Slack events can arrive.'
+        : 'Slack needs TWO tokens: a bot token (xoxb-) for the Web API and an app-level token (xapp-) for Socket Mode.';
 
     return (
         <form
@@ -177,7 +183,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
 
             <SettingsSection
                 title="Slack"
-                hint="Slack needs TWO tokens: a bot token (xoxb-) for the Web API and an app-level token (xapp-) for Socket Mode. Without the app-level token Slack is outbound-only."
+                hint={slackHint}
             >
                 <ToggleField
                     id="sl-enabled"

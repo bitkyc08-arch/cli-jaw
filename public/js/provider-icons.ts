@@ -26,7 +26,7 @@ import slackSvg from '../assets/providers/slack.svg?raw';
 import telegramSvg from '../assets/providers/telegram.svg?raw';
 import opencodeSvg from '../assets/providers/opencode.svg?raw';
 
-export type ProviderSlug = 'ai-e' | 'claude' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'copilot' | 'cursor' | 'kiro-code' | 'codex' | 'codex-app' | 'opencode' | 'discord' | 'telegram';
+export type ProviderSlug = 'ai-e' | 'claude' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'copilot' | 'cursor' | 'kiro-code' | 'codex' | 'codex-app' | 'opencode' | 'discord' | 'telegram' | 'slack';
 
 interface ProviderIcon {
     color: string;
@@ -81,6 +81,7 @@ function resolveProviderSlug(slug: string): ProviderSlug | null {
     if (normalized === 'openai' || normalized.startsWith('gpt') || normalized.startsWith('o1') || normalized.startsWith('o3') || normalized.startsWith('o4')) return 'openai';
     if (normalized === 'discord') return 'discord';
     if (normalized === 'telegram') return 'telegram';
+    if (normalized === 'slack') return 'slack';
     return null;
 }
 

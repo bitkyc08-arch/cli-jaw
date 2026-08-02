@@ -100,7 +100,8 @@ test('manager shared components accept slack', () => {
     assert.match(toggle, /value: 'slack', label: 'Slack'/);
     const chips = read('public/manager/src/settings/pages/components/TransportStatusChips.tsx');
     assert.match(chips, /slack: TransportStatus/);
-    assert.match(chips, /slack: row\['slack'\]/, 'the parser must return the slack member');
+    assert.match(chips, /channel: 'telegram' \| 'discord' \| 'slack'/, 'the channel prop must accept slack');
+    assert.match(chips, /\n\s+slack,\n/, 'the parser must return a slack member');
 });
 
 test('manager slack page masks both tokens', () => {
@@ -109,12 +110,83 @@ test('manager slack page masks both tokens', () => {
     assert.match(page, /SecretField[\s\S]{0,200}sl-appToken/);
 });
 
-test('transport status chips surface the reason code', () => {
-    // Without this a Slack instance stuck on missing_app_token reads as simply
-    // "Configured" with no explanation.
+test('the outbound-only state is surfaced on the slack page, not the shared chips', () => {
+    // The shared status chips are frozen for cross-channel behavior changes, so
+    // missing_app_token is explained on the Slack page itself.
     const chips = read('public/manager/src/settings/pages/components/TransportStatusChips.tsx');
-    assert.match(chips, /missing_app_token/);
-    assert.match(chips, /status\.reason/);
+    assert.ok(!chips.includes('missing_app_token'), 'shared chips must stay channel-agnostic');
+    const page = read('public/manager/src/settings/pages/ChannelsSlack.tsx');
+    assert.match(page, /OUTBOUND-ONLY/);
+    assert.match(page, /outboundOnly/);
+});
+
+// ─── behavior (not source text) ─────────────────────
+
+test('the slack slug is resolvable, not just present in the icon map', () => {
+    // The asset and the map entry are NOT enough: resolveProviderSlug returns
+    // null for an unregistered slug and providerIcon then returns '', so the
+    // header icon renders empty. The module cannot be imported here because it
+    // uses Vite `?raw` imports, so all three required pieces are asserted.
+    const source = read('public/js/provider-icons.ts');
+    assert.match(source, /\| 'slack'/, 'ProviderSlug union is missing slack');
+    assert.match(source, /if \(normalized === 'slack'\) return 'slack';/, 'resolveProviderSlug has no slack branch');
+    assert.match(source, /slack:\s*\{\s*color: slackSvg/, 'PROVIDER_ICONS has no slack entry');
+    assert.match(source, /import slackSvg from '\.\.\/assets\/providers\/slack\.svg\?raw'/);
+});
+
+test('the slack provider asset is well-formed and matches the house convention', () => {
+    const svg = read('public/assets/providers/slack.svg').trim();
+    assert.match(svg, /^<svg /);
+    assert.match(svg, /viewBox="0 0 24 24"/);
+    assert.match(svg, /fill="currentColor"/);
+    assert.match(svg, /<title>Slack<\/title>/);
+    assert.match(svg, /<\/svg>$/);
+});
+
+test('the classic health parser tolerates a pre-slack payload', async () => {
+    // A newer bundle can be served against an older running server during a
+    // rolling update; rejecting the payload would hide Telegram and Discord too.
+    const { parseChannelHealth } = await import('../../public/js/features/transport-status-row.ts');
+    const legacy = {
+        channels: {
+            activeInbound: 'telegram',
+            telegram: { configured: true, activeInbound: true, sendCapable: true },
+            discord: { configured: false, activeInbound: false, sendCapable: false },
+        },
+    };
+    const health = parseChannelHealth(legacy);
+    assert.ok(health, 'legacy two-channel payload was rejected outright');
+    assert.equal(health.telegram.configured, true);
+    assert.equal(health.slack.configured, false, 'slack should degrade, not vanish');
+});
+
+test('the classic health parser accepts a slack-bearing payload', async () => {
+    const { parseChannelHealth } = await import('../../public/js/features/transport-status-row.ts');
+    const health = parseChannelHealth({
+        channels: {
+            activeInbound: 'slack',
+            telegram: { configured: false, activeInbound: false, sendCapable: false },
+            discord: { configured: false, activeInbound: false, sendCapable: false },
+            slack: { configured: true, activeInbound: true, sendCapable: true },
+        },
+    });
+    assert.ok(health);
+    assert.equal(health.activeInbound, 'slack');
+    assert.equal(health.slack.sendCapable, true);
+});
+
+test('loadSlackSettings honours the true-by-default toggles', async () => {
+    // A `!!` read would show mentionOnly/replyInThread off on a fresh install
+    // while the backend behaved as on.
+    const source = read('public/js/features/settings-slack.ts');
+    assert.match(source, /const mentionOnly = sc\.mentionOnly !== false/);
+    assert.match(source, /const replyInThread = sc\.replyInThread !== false/);
+    // And the markup must agree: the ON button carries `active`.
+    const html = read('public/index.html');
+    const block = html.slice(html.indexOf('id="channelSlackSettings"'));
+    const idx = block.indexOf('id="slMentionOn"');
+    const tag = block.slice(block.lastIndexOf('<button', idx), block.indexOf('>', idx));
+    assert.match(tag, /perm-btn active/, `slMentionOn should default active: ${tag}`);
 });
 
 // ─── parity sweep ───────────────────────────────────

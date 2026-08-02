@@ -30,34 +30,26 @@ export function parseChannelHealth(payload: unknown): ChannelHealth | null {
     const row = channels as Record<string, unknown>;
     const active = row['activeInbound'];
     if (active !== 'telegram' && active !== 'discord' && active !== 'slack') return null;
-    if (!isTransportStatus(row['telegram'])
-        || !isTransportStatus(row['discord'])
-        || !isTransportStatus(row['slack'])) return null;
+    if (!isTransportStatus(row['telegram']) || !isTransportStatus(row['discord'])) return null;
+    // Slack is tolerated as absent: a newer Manager can be pointed at an older
+    // running cli-jaw, and rejecting the whole payload would hide Telegram and
+    // Discord health too.
+    const slack = isTransportStatus(row['slack'])
+        ? row['slack']
+        : { configured: false, activeInbound: false, sendCapable: false, reason: 'unavailable' };
     return {
         activeInbound: active,
         telegram: row['telegram'],
         discord: row['discord'],
-        slack: row['slack'],
+        slack,
     };
 }
-
-/** Human-readable text for the health `reason` codes channel-health emits. */
-const TRANSPORT_REASON_LABELS: Record<string, string> = {
-    missing_chat_id: 'No chat ID',
-    missing_channel_id: 'No channel ID',
-    missing_app_token: 'No app token (outbound only)',
-};
 
 export function transportChipLabels(status: TransportStatus): string[] {
     const chips: string[] = [];
     chips.push(status.configured ? 'Configured' : 'Not configured');
     if (status.sendCapable) chips.push('Send-capable');
     if (status.activeInbound) chips.push('Active inbound');
-    // Surface WHY a configured transport is limited. Without this a Slack
-    // instance stuck on missing_app_token reads as simply "Configured".
-    if (status.reason && status.reason !== 'disabled') {
-        chips.push(TRANSPORT_REASON_LABELS[status.reason] || status.reason);
-    }
     return chips;
 }
 
