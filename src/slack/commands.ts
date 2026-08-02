@@ -23,6 +23,7 @@ import { slackTargetFromId } from '../messaging/slack-target.js';
 import { setLastActiveTarget } from '../messaging/runtime.js';
 import { getSlackSendClient, sendSlackText } from './send-only-client.js';
 import { isConversationAllowed } from './events.js';
+import { logErrorText } from '../messaging/redact.js';
 
 function makeSlackCommandCtx() {
     const locale = normalizeLocale(settings["locale"], 'ko');
@@ -95,7 +96,7 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
 
         await sendSlackText(token, target, result?.text || '(no output)');
     } catch (error) {
-        log.error('[slack:slash]', (error as Error).message);
+        log.error('[slack:slash]', logErrorText(error));
         await sendSlackText(token, target, `❌ ${(error as Error).message}`).catch(() => { });
     }
 }

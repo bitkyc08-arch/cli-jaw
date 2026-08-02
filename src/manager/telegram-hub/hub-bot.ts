@@ -349,7 +349,7 @@ export function createHubBot(token: string): Bot {
                     threadId,
                     resultPrefix: tracePrefix(result),
                 });
-                await ctx.reply(result).catch((e) => {
+                await ctx.reply(redactOutboundText(result)).catch((e) => {
                     hubLastIgnored = stripUndefined({
                         at: new Date().toISOString(),
                         chatId,

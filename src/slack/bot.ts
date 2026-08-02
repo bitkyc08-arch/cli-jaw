@@ -20,7 +20,7 @@ import { resolveEventText, shouldProcessSlackEvent, type SlackMessageEvent } fro
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
-import { redactOutboundText } from '../messaging/redact.js';
+import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -129,7 +129,7 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
         await relaySlackImages(token, target, text);
         log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
-        log.error('[slack:error]', err);
+        log.error('[slack:error]', logErrorText(err));
         await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
     }
 }
@@ -176,7 +176,7 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
         return;
     }
 
-    slackOrchestrate(target, text, text).catch(e => log.error('[slack:orchestrate]', (e as Error).message));
+    slackOrchestrate(target, text, text).catch(e => log.error('[slack:orchestrate]', logErrorText(e)));
 }
 
 // ─── Init / Shutdown ────────────────────────────────

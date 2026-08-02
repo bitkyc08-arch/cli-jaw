@@ -160,7 +160,7 @@ function installTelegramTargetReplyForwarder(): void {
             text: String(data["text"]),
             target,
         }).then((result) => {
-            if (!result.ok) log.error('[tg:target-reply]', result.error || 'send failed');
+            if (!result.ok) log.error('[tg:target-reply]', logErrorText(result.error || 'send failed'));
             // Forward elicitation keyboards through hub if present.
             const specs = data["elicitationSpecs"];
             const raw = Array.isArray(specs) ? specs[0] : undefined;
@@ -205,7 +205,7 @@ export function getTelegramTargetIds(): Array<string | number> {
 export async function sendTelegramText(chatId: string, text: string) {
     const bot = resolveTelegramSendBot();
     if (!bot) throw new Error('Telegram not configured');
-    return bot.api.sendMessage(chatId, text);
+    return bot.api.sendMessage(chatId, redactOutboundText(text));
 }
 
 export type TelegramSendClientResult =

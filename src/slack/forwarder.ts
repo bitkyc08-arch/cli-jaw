@@ -10,6 +10,7 @@ import type { RemoteTarget } from '../messaging/types.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import { sendSlackFile } from './slack-file.js';
 import { sendSlackText } from './send-only-client.js';
+import { logErrorText } from '../messaging/redact.js';
 
 export async function relaySlackImages(
     token: string,
@@ -56,13 +57,13 @@ export function createSlackForwarder(opts: {
         try {
             const result = await sendSlackText(token, target, `${opts.prefix || ''}${text}`);
             if (!result.ok) {
-                log.error('[slack:forward]', result.error || 'send failed');
+                log.error('[slack:forward]', logErrorText(result.error || 'send failed'));
                 return;
             }
             await relaySlackImages(token, target, text);
             opts.log?.({ channelId: target.targetId, preview: text.slice(0, 60) });
         } catch (e) {
-            log.error('[slack:forward]', (e as Error).message);
+            log.error('[slack:forward]', logErrorText(e));
         }
     };
 }

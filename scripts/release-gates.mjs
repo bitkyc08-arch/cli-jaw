@@ -394,6 +394,16 @@ const GATES = {
             return { ok: true, detail: 'live any/debt/allow counts within frozen baseline' };
         },
     },
+    'redaction-sinks': {
+        description: 'channel replies, sends and loggers route through a credential masker',
+        check() {
+            const r = run('node', ['scripts/check-redaction-sinks.mjs'], { timeout: 60_000 });
+            if (r.status !== 0) {
+                return { ok: false, detail: `unmasked channel sink:\n${(r.stdout || r.stderr || '').slice(-1500)}` };
+            }
+            return { ok: true, detail: 'no unmasked sink in telegram/discord/slack/telegram-hub' };
+        },
+    },
 };
 
 function printResult(name, result) {
