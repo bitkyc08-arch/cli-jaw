@@ -233,6 +233,8 @@ test('dedupe holds an id across a burst far larger than any size ceiling', async
 });
 
 test('a warning-close during an in-flight reconnect does not stack another', async () => {
+    // See also: 'a failed handshake keeps retrying' below — the guard that
+    // prevents stacking must not swallow the reconnect demand entirely.
     // Reproduced by the reviewer as 3 connections for one disconnect: the
     // `disconnect` frame scheduled a reconnect and the following `close` from
     // the same socket scheduled a second one.
@@ -272,6 +274,43 @@ test('a warning-close during an in-flight reconnect does not stack another', asy
 
     assert.equal(fetchCalls, 2, `one disconnect produced ${fetchCalls} connection attempts`);
     assert.equal(client.getReconnectAttempts(), 1);
+    client.stop();
+});
+
+test('a failed handshake keeps retrying instead of stalling forever', async () => {
+    // Regression: the guard added to stop reconnect stacking also DROPPED the
+    // demand when apps.connections.open failed inside connect(), leaving the
+    // transport stuck in 'connecting' with no timer and no socket — silently
+    // dead until the process restarted.
+    let fetchCalls = 0;
+    const fetchImpl = (async () => {
+        fetchCalls++;
+        return {
+            ok: true, status: 200,
+            text: async () => JSON.stringify({ ok: false, error: 'internal_error' }),
+        // justified: minimal Response surface for the socket handshake
+        } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const client = new SlackSocketClient({
+        appToken: 'xapp-test',
+        fetchImpl,
+        baseReconnectDelayMs: 10,
+        maxReconnectAttempts: 3,
+        socketFactory: () => ({
+            send: () => { /* no-op */ },
+            close: () => { /* no-op */ },
+            addEventListener: () => { /* no-op */ },
+        }),
+        onEnvelope: () => { /* no-op */ },
+    });
+    await client.start();
+    assert.equal(client.getReconnectAttempts(), 1, 'the first failure did not schedule a retry');
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.ok(fetchCalls > 1, `handshake never retried (fetchCalls=${fetchCalls})`);
+    assert.equal(client.getReconnectAttempts(), 3, 'retries did not reach the ceiling');
+    assert.equal(client.getState(), 'disconnected', 'client should give up cleanly at the ceiling');
     client.stop();
 });
 

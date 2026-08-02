@@ -90,3 +90,23 @@ test('shutdownSlack is safe to call when nothing is running', async () => {
     const bot = await loadBot({ enabled: false });
     await assert.doesNotReject(() => bot.shutdownSlack());
 });
+
+test('an external shutdown during init is not lost', async () => {
+    // Regression: initSlack awaited its own teardown BEFORE claiming a
+    // generation, so a shutdown landing in that window was overwritten and the
+    // init resumed to start a transport the caller had already stopped.
+    state.started = 0;
+    state.stopped = 0;
+    state.authOk = true;
+
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t' });
+    const pending = bot.initSlack();
+    await bot.shutdownSlack();
+    await pending;
+
+    assert.equal(
+        bot.getSlackSelfUserId(),
+        null,
+        'init resurrected the transport after an external shutdown',
+    );
+});

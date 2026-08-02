@@ -181,12 +181,12 @@ export async function initSlack(): Promise<void> {
     }
     slackInitLock = true;
     try {
-        // Tear down FIRST, then claim a generation. Claiming it before the
-        // teardown would let shutdownSlack's own bump invalidate this very
-        // init, so every normal start aborted after auth.test and Slack
-        // inbound never came up at all.
-        await shutdownSlack();
+        // Claim the generation FIRST so an external shutdown that lands while
+        // we are tearing down or authenticating is not lost, then tear down
+        // WITHOUT bumping it — an internal teardown must not invalidate the
+        // init it belongs to.
         const generation = ++lifecycleGeneration;
+        await disposeSlackRuntime();
         const sc = settings["slack"];
         if (!sc?.enabled || !sc?.botToken) {
             log.info('[slack] ⏭️  Slack pending (disabled or no bot token)');
@@ -240,6 +240,15 @@ export async function initSlack(): Promise<void> {
 
 export async function shutdownSlack(): Promise<void> {
     lifecycleGeneration++;
+    await disposeSlackRuntime();
+}
+
+/**
+ * Release every runtime resource WITHOUT touching the lifecycle generation.
+ * `initSlack` reuses this for its own teardown; only an external
+ * `shutdownSlack` invalidates in-flight initializations.
+ */
+async function disposeSlackRuntime(): Promise<void> {
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;

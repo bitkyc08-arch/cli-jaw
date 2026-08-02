@@ -78,6 +78,8 @@ export class SlackSocketClient {
     private reconnectAttempts = 0;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private helloTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Set when a reconnect is requested while a connect is already running. */
+    private reconnectPending = false;
     private seenEnvelopes = new Map<string, number>();
     private stopped = false;
     private connecting = false;
@@ -148,6 +150,13 @@ export class SlackSocketClient {
             await this.connectOnce();
         } finally {
             this.connecting = false;
+            // A reconnect requested DURING this attempt was deferred so it
+            // could not stack; drain it now, or a failed
+            // apps.connections.open would stall the transport forever.
+            if (this.reconnectPending) {
+                this.reconnectPending = false;
+                this.scheduleReconnect();
+            }
         }
     }
 
@@ -338,8 +347,13 @@ export class SlackSocketClient {
         // An already-pending reconnect wins; a second trigger (e.g. a
         // `disconnect` frame immediately followed by `close`) must not stack.
         if (this.reconnectTimer) return;
-        // A connect already in flight satisfies the reconnect demand.
-        if (this.connecting) return;
+        // A connect already in flight cannot be stacked on, but the demand
+        // must not be dropped either: record it and let connect()'s finally
+        // drain it once the attempt settles.
+        if (this.connecting) {
+            this.reconnectPending = true;
+            return;
+        }
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             log.error(`[slack:socket] max reconnect attempts (${this.maxReconnectAttempts}) reached — giving up`);
             this.state = 'disconnected';
