@@ -25,6 +25,9 @@ export function getDiscordSendClient(): DiscordSendClientResult {
     return { token };
 }
 
+/** A Discord REST call that has not answered in ten seconds is not going to. */
+const REST_TIMEOUT_MS = 10_000;
+
 async function discordRestJson(token: string, path: string, init: RequestInit): Promise<{ ok: boolean; error?: string; status?: number }> {
     try {
         const response = await fetch(`https://discord.com/api/v10${path}`, {
@@ -33,6 +36,10 @@ async function discordRestJson(token: string, path: string, init: RequestInit): 
                 Authorization: `Bot ${token}`,
                 ...(init.headers || {}),
             },
+            // Without a deadline a stalled socket holds the send path open
+            // indefinitely. AbortSignal cancels the request rather than just
+            // abandoning the promise, which Promise.race would not do.
+            signal: AbortSignal.timeout(REST_TIMEOUT_MS),
         });
         if (!response.ok) {
             const body = await response.text().catch(() => '');
@@ -75,6 +82,7 @@ export async function sendDiscordFileRest(
             method: 'POST',
             headers: { Authorization: `Bot ${token}` },
             body: form,
+            signal: AbortSignal.timeout(REST_TIMEOUT_MS),
         });
         if (!response.ok) {
             const body = await response.text().catch(() => '');

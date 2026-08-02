@@ -317,7 +317,7 @@ choke point로 모았다.
 
 | 파일 | 역할 |
 | --- | --- |
-| `chunk.ts` | 무손실 분할. 코드펜스 균형과 언어 태그를 유지하고, 서로게이트 페어를 쪼개지 않는다. Discord/Slack/Telegram이 모두 이 코어를 쓴다. |
+| `chunk.ts` | 무손실 분할. 서로게이트 페어를 쪼개지 않고, 코드펜스 균형과 언어 태그를 유지한다. Discord/Slack/Telegram이 모두 이 코어를 쓴다. **단서**: delimiter 자체가 채널 한도보다 길면(백틱 2,001개짜리 유효 fence 등) 재개가 한도를 넘기므로 펜스 복구를 포기한다 — 무손실·서로게이트 안전·한도 준수는 그대로 유지되고, continuation이 prose로 렌더링될 뿐이다. |
 | `fold.ts` | 정규화 폴딩. escape 디코드 + invisible 제거 + NFKC를 고정점까지 반복하며, 각 문자가 원문 어디서 왔는지 오프셋 맵으로 추적한다. **좌표계는 전부 UTF-16 code unit.** |
 | `redact.ts` | 크리덴셜 마스킹. `redactOutboundText`(본문), `redactOutboundPayload`(keyboard 등 구조화 payload), `userErrorText`/`logErrorText`(오류)를 제공한다. |
 | `dedupe.ts` | 배달 중복 제거. TTL seen-set이며, sweep은 **만료된 항목만** 지운다 — 미만료 항목을 크기 맞추려 쫓아내면 막으려던 중복이 다시 생긴다. |
@@ -366,14 +366,20 @@ choke point로 모았다.
 
 ---
 
-## src/telegram/ — Telegram transport (5 files)
+## src/telegram/ — Telegram transport (9 files)
 
-`bot.ts`, `forwarder.ts`, `telegram-file.ts`, `voice.ts`, `hub-callback.ts`.
+`bot.ts`, `forwarder.ts`, `rich-message.ts`, `telegram-file.ts`,
+`elicitation-buttons.ts`, `voice.ts`, `hub-callback.ts`,
+`status-update-buffer.ts`, `fetch-body.ts`.
 
 - `bot.ts` — thread-aware programmatic send (P0) + hub-member outbound relay (P2b)
+- `rich-message.ts` — Bot API 10.1 rich Markdown, the default outbound text path
+- `elicitation-buttons.ts` — single_select fences rendered as inline keyboards
 - `hub-callback.ts` — loopback-only SSRF guard for hub callback URL
+- `status-update-buffer.ts` — coalesces tool-status edits
+- `fetch-body.ts` — IPv4-pinned fetch body helper
 
-### bot.ts (707L)
+### bot.ts (859L)
 
 Telegram transport main entry. `registerTransport('telegram', ...)`와 `registerSendTransport('telegram', ...)`를 등록하고, `settings.telegram.forwardAll`, allowlist, mention gating, voice, attachment, slash command 흐름을 모두 처리한다.
 
@@ -422,25 +428,34 @@ Forum supergroup topic → managed instance port routing. Config in `DashboardRe
 
 ---
 
-## src/discord/ — Discord transport (4 files, 605L)
+## src/discord/ — Discord transport (7 files, 858L)
 
-`bot.ts`, `forwarder.ts`, `commands.ts`, `discord-file.ts`.
+`bot.ts`, `forwarder.ts`, `commands.ts`, `discord-file.ts`,
+`send-only-client.ts`, `channel-types.ts`, `register.ts`.
 
-### bot.ts (386L)
+### bot.ts (432L)
 
 Discord transport main entry. guild/DM message ingestion, `allowBots`, `mentionOnly`, channel allowlist, attachment handling, `registerTransport('discord', ...)`, `registerSendTransport('discord', ...)`를 담당한다.
 
-### commands.ts (118L)
+### commands.ts (119L)
 
 Guild-scoped slash command registration + execution. `getVisibleCommands('discord')`와 `makeCommandCtx('discord', ...)`를 사용한다. `/orchestrate` 스티어 경로는 Discord 채널로 collect 결과를 다시 전송한다.
 
-### forwarder.ts (45L)
+### forwarder.ts (85L)
 
 `agent_done` 결과를 Discord 채널로 chunked forwarding 한다.
 
-### discord-file.ts (56L)
+### discord-file.ts (67L)
 
 Discord attachment/file send helper.
+
+### send-only-client.ts (88L)
+
+REST-only client for sends that must not require a gateway session.
+
+### channel-types.ts (50L) · register.ts (17L)
+
+Channel narrowing helpers and slash-command registration.
 
 ---
 

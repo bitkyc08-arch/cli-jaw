@@ -121,7 +121,7 @@ cli-jaw/
 │   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (68L) ✨
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (243L) ✨
 │   │   ├── redact.ts         ← 채널 크리덴셜 마스킹 (Slack/TG/Discord 토큰 + URL 경로 capability) (543L) ✨
-│   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 펜스/언어태그 보존 + 서로게이트 안전, 전 채널 공용) (377L) ✨
+│   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 서로게이트 안전 + 펜스/언어태그 보존, 단 delimiter가 한도 이내일 때) (383L) ✨
 │   │   ├── channel-health.ts ← 채널 헬스 체크 helper (104L) ✨
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (27L)
@@ -211,18 +211,18 @@ cli-jaw/
 │   │   ├── shared.ts         ← file/meta/frontmatter 공용 헬퍼 (266L)
 │   │   ├── synonyms.ts       ← keyword synonym expansion helper (60L) ✨
 │   │   └── worklog.ts        ← Worklog CRUD + phase matrix (201L)
-│   ├── telegram/             ← Telegram 인터페이스 (7 files)
+│   ├── telegram/             ← Telegram 인터페이스 (9 files)
 │   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (859L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (43L)
 │   │   ├── forwarder.ts      ← text 전송 뒤 guarded local-image photo relay + escape/chunk/createForwarder (245L)
-│   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (301L)
+│   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (315L)
 │   │   ├── elicitation-buttons.ts ← single_select elicitation → inline keyboard + pending store + callback codec (110L)
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
-│   ├── discord/              ← Discord 인터페이스 (6 files)
+│   ├── discord/              ← Discord 인터페이스 (7 files)
 │   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (432L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (119L)
-│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (88L) ✨
+│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (96L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (85L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)

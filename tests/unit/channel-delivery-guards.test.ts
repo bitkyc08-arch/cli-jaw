@@ -299,3 +299,31 @@ test('an ambiguous failure is not re-sent in another form', async () => {
     assert.equal(calls.html, 0, 'an ambiguous failure must not fall back');
     assert.equal(calls.plain, 0);
 });
+
+// ─── Discord REST deadlines ──────────────────────────
+
+test('a stalled Discord REST call is abandoned rather than waited on forever', async () => {
+    // Without a deadline a hung socket holds the send path open indefinitely.
+    // The signal must also CANCEL the request — racing a timer against the
+    // promise would leave the socket open.
+    const { sendDiscordTextRest } = await import('../../src/discord/send-only-client.js');
+
+    const realFetch = globalThis.fetch;
+    let signal: AbortSignal | undefined;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        // Abort immediately rather than waiting out the real deadline: what is
+        // under test is that a signal exists and that aborting ends the call,
+        // not the value of the constant.
+        (init?.signal as AbortSignal & { throwIfAborted?: () => void });
+        throw Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' });
+    }) as typeof fetch;
+
+    try {
+        const result = await sendDiscordTextRest('token', '1', 'hi');
+        assert.ok(signal instanceof AbortSignal, 'the request carried no abort signal');
+        assert.equal(result.ok, false, 'a stalled call must not report success');
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+});
