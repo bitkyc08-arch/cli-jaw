@@ -175,7 +175,10 @@ if (values['non-interactive']) {
         slChannelIds = ((values['slack-channel-ids'] || '') as string).split(',').map(s => s.trim()).filter(Boolean);
         slEnabled = true;
     }
-} else if (channelFlag === 'slack') {
+} else if (!channelFlag || channelFlag === 'slack') {
+    // Matches the Telegram and Discord blocks: a bare `cli-jaw init` offers
+    // every channel. Gating this on the flag alone would hide Slack from the
+    // default interactive setup entirely.
     const slAnswer = await ask('Slack 연결? (y/n)', settings.slack?.enabled ? 'y' : 'n');
     slEnabled = slAnswer.toLowerCase() === 'y';
     if (slEnabled) {
@@ -320,6 +323,7 @@ console.log(`
   Permissions : auto
   Telegram    : ${tgEnabled ? '✅ ' + tgToken.slice(0, 10) + '...' : '❌ off'}
   Discord     : ${dcEnabled ? '✅ ' + dcToken.slice(0, 10) + '...' : '❌ off'}
+  Slack       : ${slEnabled ? '✅ ' + slBotToken.slice(0, 10) + '...' + (slAppToken ? '' : ' (outbound only)') : '❌ off'}
   Skills      : ${skillsDir}
   Settings    : ${SETTINGS_PATH}
 
