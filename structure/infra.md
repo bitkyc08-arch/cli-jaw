@@ -42,6 +42,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `gate:redaction-sinks` | `node scripts/release-gates.mjs redaction-sinks` — channel replies/sends/loggers must route through a credential masker |
 | `gate:electron-version` | `node scripts/release-gates.mjs electron-version` — `electron/package.json` version must equal the root `package.json` so desktop artifacts carry the release version |
 | `sync:electron-version` | `node scripts/sync-electron-version.cjs` — writes the root version into `electron/package.json` and its lockfile; called by both release scripts before `gate:all` |
+| `gate:gate-docs` | `node scripts/release-gates.mjs gate-docs` — `structure/INDEX.md` must list exactly the live gates, with the right count, and each must have its `gate:<name>` npm script |
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |
 | `prebuild`, `pretest`, `pretest:all`, `pretest:integration`, `pretest:smoke` | `npm run ensure:native` |

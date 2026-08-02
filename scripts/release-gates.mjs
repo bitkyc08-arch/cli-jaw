@@ -414,6 +414,69 @@ const GATES = {
             return { ok: true, detail: 'desktop artifacts will carry the release version' };
         },
     },
+    'gate-docs': {
+        description: 'structure/INDEX.md documents exactly the gates that exist, and each is npm-addressable',
+        check() {
+            // structure/INDEX.md hardcodes the gate count and enumerates every
+            // name. Adding the 16th gate made that row wrong, and nothing
+            // noticed: check-docs.mts counts only routes and endpoints, and
+            // check-doc-drift.sh never looks at gates. Fixing the row by hand
+            // cleared one instance; this closes the class.
+            //
+            // This gate lives inside release-gates.mjs rather than in its own
+            // script because the module calls main() unconditionally at the
+            // bottom, so importing GATES from outside would run every gate.
+            const names = Object.keys(GATES);
+            const doc = readFile('structure/INDEX.md');
+            const row = doc.split('\n').find((line) =>
+                line.includes('named gates') && line.includes('runs all'));
+            if (!row) {
+                return { ok: false, detail: 'the release-gates row is gone from structure/INDEX.md' };
+            }
+
+            const problems = [];
+
+            const claimed = row.match(/runs all (\d+) named gates/);
+            if (!claimed) {
+                problems.push('the row no longer states a gate count');
+            } else if (Number(claimed[1]) !== names.length) {
+                problems.push(`count says ${claimed[1]}, GATES has ${names.length}`);
+            }
+
+            // Read ONLY the parenthesised list, not the whole row. The row also
+            // carries `scripts/release-gates.mjs`, `package.json`, `gate:all`
+            // and `gate:<name>` in prose; scanning the row and filtering those
+            // out by shape both accuses innocent prose and lets a phantom like
+            // `gate:retired-name` through, because a filter keyed on the token
+            // shape cannot tell a stale gate from an ordinary mention.
+            const list = row.match(/named gates \(([^)]*)\)/);
+            if (!list) {
+                problems.push('the parenthesised gate list is gone from the row');
+            } else {
+                const documented = [...list[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+                const missing = names.filter((name) => !documented.includes(name));
+                const stale = documented.filter((name) => !names.includes(name));
+                if (missing.length > 0) problems.push(`undocumented: ${missing.join(', ')}`);
+                if (stale.length > 0) problems.push(`documented but gone: ${stale.join(', ')}`);
+            }
+
+            // The same row promises `gate:<name>` addressability. A gate added
+            // without its npm script makes that sentence false while gate:all
+            // stays green -- the hand-maintained invariant this gate exists to
+            // stop being hand-maintained.
+            const pkg = JSON.parse(readFile('package.json'));
+            const unaddressable = names.filter((name) =>
+                pkg.scripts?.[`gate:${name}`] !== `node scripts/release-gates.mjs ${name}`);
+            if (unaddressable.length > 0) {
+                problems.push(`no npm script: ${unaddressable.map((n) => `gate:${n}`).join(', ')}`);
+            }
+
+            if (problems.length > 0) {
+                return { ok: false, detail: `${problems.join('\n')}\nFix structure/INDEX.md / package.json` };
+            }
+            return { ok: true, detail: `${names.length} gates documented and addressable` };
+        },
+    },
 };
 
 function printResult(name, result) {

@@ -110,6 +110,7 @@
     "gate:strict-baseline": "node scripts/release-gates.mjs strict-baseline",
     "gate:redaction-sinks": "node scripts/release-gates.mjs redaction-sinks",
     "gate:electron-version": "node scripts/release-gates.mjs electron-version",
+    "gate:gate-docs": "node scripts/release-gates.mjs gate-docs",
     "sync:electron-version": "node scripts/sync-electron-version.cjs",
     "gate:all": "node scripts/release-gates.mjs",
     "prepublishOnly": "npm run build && npm run build:frontend && npm run check:frontend-build-output",
