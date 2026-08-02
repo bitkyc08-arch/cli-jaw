@@ -27,13 +27,34 @@ const electronDir = join(repoRoot, 'electron');
 
 /** Version field of the package.json in `dir`. */
 function readVersion(dir) {
-    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version;
+    const file = join(dir, 'package.json');
+    let raw;
+    try {
+        raw = readFileSync(file, 'utf8');
+    } catch (error) {
+        throw new Error(`cannot read ${file}: ${error.message}`);
+    }
+    try {
+        return JSON.parse(raw).version;
+    } catch (error) {
+        throw new Error(`${file} is not valid JSON: ${error.message}`);
+    }
 }
 
 function main() {
+    let rootVersion;
+    let electronVersion;
+    try {
+        rootVersion = readVersion(repoRoot);
+        electronVersion = readVersion(electronDir);
+    } catch (error) {
+        // Fails closed either way -- an unreadable manifest already exited
+        // non-zero via the uncaught throw. What this adds is a first line the
+        // reader can act on instead of a Node stack trace.
+        console.error(`ERROR: ${error.message}`);
+        return 1;
+    }
     const check = process.argv.includes('--check');
-    const rootVersion = readVersion(repoRoot);
-    const electronVersion = readVersion(electronDir);
 
     if (electronVersion === rootVersion) {
         console.log(`[electron-version] OK ${rootVersion}`);
