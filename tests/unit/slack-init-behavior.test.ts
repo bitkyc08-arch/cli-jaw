@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -16,41 +16,39 @@ import { join } from 'node:path';
 const repoRoot = join(import.meta.dirname, '..', '..');
 const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
 
-type RunResult = { status: number; stdout: string; settings: Record<string, unknown> | null };
+type RunResult = { status: number; output: string; settings: Record<string, unknown> | null };
 
 function runInit(args: string[]): RunResult {
     const home = mkdtempSync(join(homedir(), '.cljaw-test-'));
     try {
-        let status = 0;
-        let stdout = '';
-        try {
-            stdout = execFileSync(
-                process.execPath,
-                ['--import', 'tsx', cliEntry, 'init', '--non-interactive', '--working-dir', '/tmp', '--cli', 'claude', ...args],
-                { env: { ...process.env, CLI_JAW_HOME: home }, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] },
-            );
-        } catch (error) {
-            const e = error as { status?: number; stdout?: string; stderr?: string };
-            status = e.status ?? 1;
-            stdout = `${e.stdout ?? ''}${e.stderr ?? ''}`;
-        }
+        // spawnSync, not execFileSync: the latter returns ONLY stdout on a
+        // successful run, which silently drops every console.warn — including
+        // the outbound-only warning this suite has to assert.
+        const result = spawnSync(
+            process.execPath,
+            ['--import', 'tsx', cliEntry, 'init', '--non-interactive', '--working-dir', '/tmp', '--cli', 'claude', ...args],
+            { env: { ...process.env, CLI_JAW_HOME: home }, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        const status = result.status ?? 1;
+        const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
         const settingsPath = join(home, 'settings.json');
         const settings = existsSync(settingsPath)
             ? JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>
             : null;
-        return { status, stdout, settings };
+        return { status, output, settings };
     } finally {
         rmSync(home, { recursive: true, force: true });
     }
 }
 
 test('non-interactive slack setup writes a usable settings file', () => {
-    const { settings } = runInit([
+    const { status, settings } = runInit([
         '--channel', 'slack',
         '--slack-bot-token', 'xoxb-behaviour',
         '--slack-app-token', 'xapp-behaviour',
         '--slack-channel-ids', 'C0123456789,C9876543210',
     ]);
+    assert.equal(status, 0, 'a valid setup should exit cleanly');
     assert.ok(settings, 'no settings file was written');
     assert.equal(settings['channel'], 'slack', 'active channel was not set');
     const slack = settings['slack'] as Record<string, unknown>;
@@ -65,53 +63,86 @@ test('non-interactive slack setup writes a usable settings file', () => {
 });
 
 test('a bot token alone is accepted and reported as outbound-only', () => {
-    const { settings, stdout } = runInit([
+    const { status, settings, output } = runInit([
         '--channel', 'slack',
         '--slack-bot-token', 'xoxb-outbound',
     ]);
+    assert.equal(status, 0, 'outbound-only is a legitimate configuration');
     assert.ok(settings, 'outbound-only setup should still write settings');
     const slack = settings['slack'] as Record<string, unknown>;
     assert.equal(slack['enabled'], true);
     assert.equal(slack['appToken'], '');
-    assert.match(stdout, /outbound only/i, 'the operator was not warned');
+    assert.match(output, /outbound only/i, 'the operator was not warned');
 });
 
 test('--channel slack without a bot token fails and writes nothing', () => {
-    const { status, settings, stdout } = runInit(['--channel', 'slack']);
+    const { status, settings, output } = runInit(['--channel', 'slack']);
     assert.notEqual(status, 0, 'a channel with no credential should not succeed');
     assert.equal(settings, null, 'a failed init must not leave a settings file');
-    assert.match(stdout, /requires --slack-bot-token/);
+    assert.match(output, /requires --slack-bot-token/);
 });
 
 test('swapped tokens are rejected before anything is written', () => {
     // The runbook tells operators cli-jaw validates the prefixes; without this
     // check a swap produces a green-looking file that only fails at startup.
-    const { status, settings, stdout } = runInit([
+    const { status, settings, output } = runInit([
         '--channel', 'slack',
         '--slack-bot-token', 'xapp-wrong-way-round',
         '--slack-app-token', 'xoxb-wrong-way-round',
     ]);
     assert.notEqual(status, 0);
     assert.equal(settings, null);
-    assert.match(stdout, /should start with "xoxb-"/);
+    assert.match(output, /should start with "xoxb-"/);
 });
 
 test('an invalid --channel value is rejected with all three names listed', () => {
-    const { status, stdout } = runInit(['--channel', 'signal']);
+    const { status, output } = runInit(['--channel', 'signal']);
     assert.notEqual(status, 0);
-    assert.match(stdout, /telegram/);
-    assert.match(stdout, /discord/);
-    assert.match(stdout, /slack/);
+    assert.match(output, /telegram/);
+    assert.match(output, /discord/);
+    assert.match(output, /slack/);
 });
 
 test('slack setup does not disturb the other channels', () => {
-    const { settings } = runInit([
+    const { status, settings } = runInit([
         '--channel', 'slack',
         '--slack-bot-token', 'xoxb-isolated',
         '--telegram-token', '123:abc',
     ]);
+    assert.equal(status, 0);
     assert.ok(settings);
     const telegram = settings['telegram'] as Record<string, unknown>;
     assert.equal(telegram['token'], '123:abc', 'telegram settings were clobbered');
     assert.equal((settings['slack'] as Record<string, unknown>)['enabled'], true);
+});
+
+test('the interactive channel prompts are gated identically for all three channels', () => {
+    // THE regression this suite exists for: the interactive Slack block was
+    // once gated on `channelFlag === 'slack'` while Telegram and Discord used
+    // `!channelFlag || …`, so a plain `cli-jaw init` never offered Slack.
+    //
+    // This cannot be driven as a subprocess — init's readline interface reads
+    // from a TTY and a piped stdin closes before the channel prompts are
+    // reached. So the invariant is asserted structurally, but as a COMPARISON
+    // between the three blocks rather than a Slack-only string match: the
+    // failure mode was precisely that Slack's gate differed from its peers.
+    const source = readFileSync(join(repoRoot, 'bin', 'commands', 'init.ts'), 'utf8');
+    const gates = ['telegram', 'discord', 'slack'].map((channel) => {
+        const pattern = new RegExp(`\\} else if \\(([^)]*'${channel}'[^)]*)\\) \\{`);
+        const found = source.match(pattern);
+        assert.ok(found, `no interactive gate found for ${channel}`);
+        return { channel, gate: found[1]! };
+    });
+    const telegramGate = gates[0]!.gate;
+    for (const { channel, gate } of gates) {
+        assert.ok(
+            gate.includes('!channelFlag'),
+            `${channel}'s interactive prompt is skipped by a bare \`cli-jaw init\`: ${gate}`,
+        );
+        assert.equal(
+            gate.replace(/'[a-z]+'/g, "'CH'"),
+            telegramGate.replace(/'[a-z]+'/g, "'CH'"),
+            `${channel}'s gate differs in shape from telegram's`,
+        );
+    }
 });
