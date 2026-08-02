@@ -18,6 +18,32 @@ import { canonicalize } from './fold.js';
 const REDACTED = '...redacted';
 
 /**
+ * Characters copied while assembling redacted output, since the last reset.
+ *
+ * Exists for the complexity regression tests. Those used to assert a wall-clock
+ * budget, which measures the runner rather than the algorithm: the same fixture
+ * took 155 ms on a developer laptop and 777 ms on a CI runner, and running the
+ * suite in parallel moved it again. A counter of the work actually performed is
+ * the same number on every machine, so the test can state the real invariant —
+ * copy work stays proportional to input length — instead of a machine-specific
+ * millisecond bound.
+ *
+ * Incrementing one integer per emitted piece costs nothing measurable and is
+ * never read in production.
+ */
+let charsCopied = 0;
+
+/** Read the copy-work counter; test-only introspection. */
+export function redactionCopyWork(): number {
+    return charsCopied;
+}
+
+/** Reset the copy-work counter; test-only introspection. */
+export function resetRedactionCopyWork(): void {
+    charsCopied = 0;
+}
+
+/**
  * Mask a Telegram bot token embedded in a URL path, whatever the host.
  *
  * Host and credential are separate concerns. A lookalike host such as
@@ -271,16 +297,46 @@ function stripSecretsFoundInCanonicalForm(input: string): string {
         }
     }
 
-    // Apply back to front so earlier offsets stay valid.
-    ranges.sort((a, b) => b.from - a.from);
-    let output = input;
-    let lastFrom = Number.POSITIVE_INFINITY;
+    // Build the output once, front to back.
+    //
+    // Splicing the string per range re-copied the whole text for every match,
+    // which is quadratic in the number of credentials — and an attacker picks
+    // that number. Measured on this fixture family: 4k credentials took 167 ms
+    // and 8k took 555 ms (3.3x for 2x input) while the scan itself stayed
+    // linear (43 ms → 79 ms). Collecting the pieces and joining once keeps the
+    // total copy work proportional to the text length.
+    //
+    // Overlapping ranges are MERGED rather than one being dropped. The old
+    // back-to-front loop kept the rightmost of two overlapping matches and
+    // discarded the other, which left the non-shared head of the discarded
+    // range in the clear — for a redactor, masking the union is the only
+    // direction that cannot leak. The union is bounded by the matches
+    // themselves, so ordinary text around them is untouched.
+    ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+    const pieces: string[] = [];
+    let cursor = 0;
+    let openFrom = -1;
+    let openTo = -1;
+    const flush = () => {
+        if (openFrom < 0) return;
+        pieces.push(input.slice(cursor, openFrom), REDACTED);
+        charsCopied += (openFrom - cursor) + REDACTED.length;
+        cursor = openTo;
+        openFrom = -1;
+    };
     for (const { from, to } of ranges) {
-        if (to > lastFrom) continue; // overlapping match already covered
-        output = output.slice(0, from) + REDACTED + output.slice(to);
-        lastFrom = from;
+        if (openFrom >= 0 && from <= openTo) {
+            if (to > openTo) openTo = to; // extend the merged run
+            continue;
+        }
+        flush();
+        openFrom = from;
+        openTo = to;
     }
-    return output;
+    flush();
+    pieces.push(input.slice(cursor));
+    charsCopied += input.length - cursor;
+    return pieces.join('');
 }
 
 /** `/bot<id>:<secret>` inside a path, after folding. */
