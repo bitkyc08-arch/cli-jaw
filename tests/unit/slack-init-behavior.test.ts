@@ -27,7 +27,30 @@ function runInit(args: string[]): RunResult {
         const result = spawnSync(
             process.execPath,
             ['--import', 'tsx', cliEntry, 'init', '--non-interactive', '--working-dir', '/tmp', '--cli', 'claude', ...args],
-            { env: { ...process.env, CLI_JAW_HOME: home }, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] },
+            {
+                env: {
+                    ...process.env,
+                    CLI_JAW_HOME: home,
+                    // What this suite asserts is the settings file init writes.
+                    // Installing tools is a different concern, and on a clean
+                    // runner it is a slow one: with neither `uv` nor
+                    // `playwright-core` present, each of these six subprocesses
+                    // went to the network, and the CI step hit its three-minute
+                    // limit before a single assertion in this file printed.
+                    // On a developer machine the deps are already installed, so
+                    // the same suite finished in eight seconds and the hazard
+                    // was invisible.
+                    CLI_JAW_SKIP_SKILL_DEPS: '1',
+                    CLI_JAW_SKIP_MCP_SERVERS: '1',
+                    CLI_JAW_SKIP_CLAUDE: '1',
+                },
+                encoding: 'utf8',
+                // Bounded well under the CI step limit: a run that needs longer
+                // than this is stuck, and failing it here reports which case
+                // hung instead of killing the whole step with no output.
+                timeout: 30_000,
+                stdio: ['ignore', 'pipe', 'pipe'],
+            },
         );
         const status = result.status ?? 1;
         const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;

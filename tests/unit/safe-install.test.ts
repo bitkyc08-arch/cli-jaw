@@ -701,6 +701,57 @@ test('SAF-006c3: doctor checks the Windows LOCALAPPDATA OfficeCli install locati
 
 // ── SAF-007: InstallOpts type exported ──
 
+test('SAF-006d: `jaw init` honours the skill-dep and MCP skip switches', () => {
+    // These two variables were read at the top of postinstall.ts and checked
+    // only inside runPostinstall(), the npm entry point. `jaw init` called the
+    // installers directly, so setting them changed nothing there — every init
+    // reached for the network no matter what the caller asked for.
+    //
+    // That is what timed out CI: the Slack init behavior suite runs six real
+    // `jaw init` subprocesses, and a runner has neither `uv` nor
+    // `playwright-core`, so each one tried to fetch and install them. It never
+    // showed up locally, where both are already present and the check exits
+    // immediately.
+    //
+    // Asserted by RUNNING it, because the previous version of this belief was
+    // a source-text assertion that stayed green through the whole outage.
+    const home = fs.mkdtempSync(join(os.homedir(), '.cljaw-skip-'));
+    try {
+        const result = spawnSync(
+            process.execPath,
+            [
+                '--import', 'tsx',
+                join(__dirname, '../../bin/cli-jaw.ts'),
+                'init', '--non-interactive', '--working-dir', '/tmp', '--cli', 'claude',
+            ],
+            {
+                env: {
+                    ...process.env,
+                    CLI_JAW_HOME: home,
+                    CLI_JAW_SKIP_SKILL_DEPS: '1',
+                    CLI_JAW_SKIP_MCP_SERVERS: '1',
+                    CLI_JAW_SKIP_CLAUDE: '1',
+                },
+                encoding: 'utf8',
+                timeout: 30_000,
+                stdio: ['ignore', 'pipe', 'pipe'],
+            },
+        );
+        const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+        assert.equal(result.status, 0, `init failed: ${output.slice(-400)}`);
+        assert.match(output, /skill dependency install skipped \(CLI_JAW_SKIP_SKILL_DEPS\)/,
+            'skill deps ran despite the skip switch');
+        assert.match(output, /MCP server install skipped \(CLI_JAW_SKIP_MCP_SERVERS\)/,
+            'MCP servers ran despite the skip switch');
+        // The proof that the skip did something: the checks these installers
+        // print on the way through must be absent.
+        assert.doesNotMatch(output, /checking skill dependencies/,
+            'the skill-dep check still ran');
+    } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
 test('SAF-007: InstallOpts type is exported', () => {
     assert.ok(postinstallSrc.includes('export type InstallOpts'), 'InstallOpts type exported');
 });

@@ -322,8 +322,28 @@ const installOpts: InstallOpts = {
 if (values['dry-run']) console.log('\n  \ud83d\udd0d Dry run mode — no changes will be made\n');
 
 await installCliTools(installOpts);
-await installMcpServers(installOpts);
-await installSkillDeps(installOpts);
+
+// The two skip switches were honoured by the npm postinstall path only, so
+// `jaw init` reached for the network regardless. That is what made the init
+// behavior suite hang on CI: a runner has neither `uv` nor `playwright-core`,
+// so every one of its six subprocesses tried to fetch and install them, and
+// the step hit its three-minute limit before the first assertion printed.
+//
+// Same variables, same spelling, now honoured wherever the installers are
+// driven from.
+const skipEnv = (name: string) => process.env[name] === '1' || process.env[name] === 'true';
+
+if (skipEnv('CLI_JAW_SKIP_MCP_SERVERS')) {
+    console.log('[jaw:init] MCP server install skipped (CLI_JAW_SKIP_MCP_SERVERS)');
+} else {
+    await installMcpServers(installOpts);
+}
+
+if (skipEnv('CLI_JAW_SKIP_SKILL_DEPS')) {
+    console.log('[jaw:init] skill dependency install skipped (CLI_JAW_SKIP_SKILL_DEPS)');
+} else {
+    await installSkillDeps(installOpts);
+}
 
 console.log(`
   ✅ 설정 완료!
