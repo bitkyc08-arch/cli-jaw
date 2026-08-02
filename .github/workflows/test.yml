@@ -61,8 +61,35 @@ jobs:
         run: npx tsc
 
       - name: Run tests
-        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test-force-exit --test tests/*.test.ts tests/unit/*.test.ts
-        timeout-minutes: 3
+        # `-e` is off for this step so the elapsed time is reported even when
+        # the suite fails; the original exit status is re-raised at the end.
+        shell: bash {0}
+        run: |
+          started=$(date +%s)
+          npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test-force-exit --test tests/*.test.ts tests/unit/*.test.ts
+          status=$?
+          elapsed=$(( $(date +%s) - started ))
+          echo "suite wall time: ${elapsed}s (step limit: 480s)"
+          # Warn while there is still room to act. The old limit was reached
+          # with no warning at all, because nothing reported how close the
+          # suite was running to it: the last green run had 9 seconds of
+          # headroom and looked exactly like a healthy one.
+          if [ "$elapsed" -gt 360 ]; then
+            echo "::warning::test suite took ${elapsed}s, within 2 minutes of the 480s step limit — split it or trim the slow suites before it starts timing out"
+          fi
+          exit $status
+        # The 3-minute limit was already being met by 9 seconds: the last green
+        # run (30162036088, 2026-07-25) spent 2m51s here. 5581 lines of tests
+        # landed after it, and the step started dying with ~1270 tests still
+        # unreported — no single slow test, just a suite that outgrew its box.
+        #
+        # 8 minutes is roughly 2.5x the current runtime rather than a number
+        # picked to make today pass, so ordinary growth does not put this back
+        # in the same position. The limit still exists to catch a genuine hang;
+        # subprocess-spawning suites carry their own per-process timeouts well
+        # under it, so a stuck case fails with a name instead of killing the
+        # step silently.
+        timeout-minutes: 8
 
       - name: Release gates (gate:all)
         run: npm run gate:all
