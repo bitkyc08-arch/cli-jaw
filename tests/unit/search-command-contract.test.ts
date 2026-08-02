@@ -16,7 +16,10 @@ test('/search slash command is registered as a requirements workflow', () => {
     assert.match(commandsSrc, /tgDescKey: 'cmd\.workflow\.search\.tg_desc'/);
     assert.match(commandsSrc, /phase: 'requirements'/);
     assert.match(commandsSrc, /handler: searchWorkflowHandler/);
-    assert.match(commandsSrc, /interfaces: \['cli', 'web', 'telegram', 'discord'\]/);
+    // The remote-channel roster grows as channels are added (slack, 260802).
+    // What this pins is that /search reaches cli+web+the remote channels, not
+    // the exact roster, so the tail is matched loosely.
+    assert.match(commandsSrc, /interfaces: \['cli', 'web', 'telegram', 'discord'[^\]]*\]/);
 });
 
 test('/search handler stays thin and delegates prompt policy', () => {
