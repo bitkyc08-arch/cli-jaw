@@ -1,5 +1,6 @@
 // ── Slack Settings ──
 import { apiJson } from '../api.js';
+import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import type { SettingsData } from './settings-types.js';
 
 export async function saveSlackSettings(): Promise<void> {
@@ -17,6 +18,7 @@ export async function setSlack(enabled: boolean): Promise<void> {
     document.getElementById('slOn')?.classList.toggle('active', enabled);
     document.getElementById('slOff')?.classList.toggle('active', !enabled);
     await apiJson('/api/settings', 'PUT', { slack: { enabled } });
+    if (enabled) openSetupGuideIfUnconfigured('slack');
 }
 
 export async function setSlackForwardAll(enabled: boolean): Promise<void> {

@@ -1,5 +1,6 @@
 // ── Telegram Settings ──
 import { apiJson } from '../api.js';
+import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import type { SettingsData } from './settings-types.js';
 
 export async function saveTelegramSettings(): Promise<void> {
@@ -15,6 +16,7 @@ export async function setTelegram(enabled: boolean): Promise<void> {
     document.getElementById('tgOn')?.classList.toggle('active', enabled);
     document.getElementById('tgOff')?.classList.toggle('active', !enabled);
     await apiJson('/api/settings', 'PUT', { telegram: { enabled } });
+    if (enabled) openSetupGuideIfUnconfigured('telegram');
 }
 
 export async function setForwardAll(enabled: boolean): Promise<void> {

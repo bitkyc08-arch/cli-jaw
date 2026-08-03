@@ -1,5 +1,6 @@
 // ── Discord Settings ──
 import { apiJson } from '../api.js';
+import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import type { SettingsData } from './settings-types.js';
 
 export async function saveDiscordSettings(): Promise<void> {
@@ -16,6 +17,7 @@ export async function setDiscord(enabled: boolean): Promise<void> {
     document.getElementById('dcOn')?.classList.toggle('active', enabled);
     document.getElementById('dcOff')?.classList.toggle('active', !enabled);
     await apiJson('/api/settings', 'PUT', { discord: { enabled } });
+    if (enabled) openSetupGuideIfUnconfigured('discord');
 }
 
 export async function setDiscordForwardAll(enabled: boolean): Promise<void> {

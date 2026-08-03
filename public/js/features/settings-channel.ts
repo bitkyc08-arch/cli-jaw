@@ -5,6 +5,7 @@ import { getCliMeta } from '../constants.js';
 import { providerLabel } from '../provider-icons.js';
 import { t } from './i18n.js';
 import { refreshTransportStatusRow } from './transport-status-row.js';
+import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import type { SettingsData } from './settings-types.js';
 
 export async function setActiveChannel(ch: 'telegram' | 'discord' | 'slack'): Promise<void> {
@@ -16,6 +17,9 @@ export async function setActiveChannel(ch: 'telegram' | 'discord' | 'slack'): Pr
     document.getElementById('channelSlackSettings')?.style.setProperty('display', ch === 'slack' ? '' : 'none');
     await apiJson('/api/settings', 'PUT', { channel: ch });
     await refreshTransportStatusRow();
+    // Switching to a channel with no credentials leaves a silently dead
+    // channel — open its setup guide right away.
+    openSetupGuideIfUnconfigured(ch);
 }
 
 export function loadActiveChannel(s: SettingsData): void {
