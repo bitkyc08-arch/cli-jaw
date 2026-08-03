@@ -623,6 +623,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             ctx.stderrBuf,
             ctx.stallReason,
             diagnosticText,
+            ctx.fullText.length > 0,
         );
         const suppressClaudeRateLimitFallback = isClaudeRateLimit;
         const effectiveIs429 = is429 || isClaudeRateLimit || isTransientStartup;
@@ -692,7 +693,11 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
 
         // ─── 429 delay retry (exponential backoff, up to MAIN_MAX_RETRIES) ───
         const mainAttempt = opts._retryAttempt ?? 0;
-        if (!opts.internal && !opts._isFallback && effectiveIs429 && mainAttempt < MAIN_MAX_RETRIES) {
+        // `!isStall` is redundant with the stall branch above, which returns
+        // before reaching here — state it anyway so reordering these branches
+        // cannot silently start retrying stalled runs, which may already have
+        // produced side effects.
+        if (!opts.internal && !opts._isFallback && effectiveIs429 && !isStall && mainAttempt < MAIN_MAX_RETRIES) {
             const delayMs = computeBackoff(mainAttempt);
             const delaySec = Math.round(delayMs / 1000);
             console.log(`[jaw:retry] ${cli} 429 detected — waiting ${delaySec}s before retry (attempt ${mainAttempt + 1}/${MAIN_MAX_RETRIES})`);
@@ -757,7 +762,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     } else if (isEmployee && code !== 0 && !wasKilled && !opts._isFallback) {
         // ─── Employee transient retry (exponential backoff, up to EMP_MAX_RETRIES) ───
         const diagnosticText = `${ctx.fullText}\n${ctx.traceLog.join('\n')}`;
-        const cls = classifyExitError(runtimeCli, code, ctx.stderrBuf, ctx.stallReason, diagnosticText);
+        const cls = classifyExitError(
+            runtimeCli, code, ctx.stderrBuf, ctx.stallReason, diagnosticText, ctx.fullText.length > 0,
+        );
         const empAttempt = opts._retryAttempt ?? 0;
         if (
             cls.isTransientStartup

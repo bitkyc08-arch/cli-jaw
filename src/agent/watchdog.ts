@@ -27,6 +27,9 @@ export interface WatchdogHandle {
     stop(): void;
 }
 
+/** What last refreshed the deadline, so a stall report can say why we waited. */
+type ProgressKind = 'output' | 'rate-limit' | 'structured';
+
 export function attachWatchdog(
     child: ChildProcess,
     _label: string,
@@ -39,11 +42,19 @@ export function attachWatchdog(
     let lastProgressAt = 0;
     let retryHits = 0;
     let stopped = false;
+    let lastProgressKind: ProgressKind | null = null;
+    let outputOnlyProgress = 0;
 
-    function markProgress(): void {
+    function markProgress(kind: ProgressKind = 'structured'): void {
         const now = Date.now();
         lastProgressAt = now;
         retryHits = 0;
+        lastProgressKind = kind;
+        // Raw output alone is a weak liveness signal: a progress bar or a log
+        // loop keeps refreshing it while the turn itself is dead. Counting it
+        // separately makes that visible in the stall report instead of hiding it.
+        if (kind === 'output') outputOnlyProgress++;
+        else outputOnlyProgress = 0;
         const progressDeadline = now + cfg.absoluteMs;
         const hardCapDeadline = startedAt + cfg.absoluteHardCapMs;
         const nextDeadline = Math.min(progressDeadline, hardCapDeadline);
@@ -55,11 +66,11 @@ export function attachWatchdog(
     function observe(chunk: Buffer): void {
         const text = chunk.toString('utf8');
         if (RATE_LIMIT_EVENT_PATTERN.test(text)) {
-            markProgress();
+            markProgress('rate-limit');
         } else if (RETRY_LOOP_PATTERN.test(text)) {
             retryHits++;
         } else if (text.trim().length > 10) {
-            markProgress();
+            markProgress('output');
         }
     }
 
@@ -88,12 +99,18 @@ export function attachWatchdog(
                     ? `no first progress after ${Math.round(elapsed / 1000)}s`
                     : `idle ${Math.round((now - lastProgressAt) / 1000)}s with ${retryHits} retry hits`;
 
-            onStall(reason);
+            // Naming what last counted as progress turns "it timed out" into a
+            // diagnosable event: output-only liveness means nothing proved the
+            // turn itself was still advancing.
+            const progressNote = lastProgressKind
+                ? `; lastProgress=${lastProgressKind}${outputOnlyProgress > 1 ? ` x${outputOnlyProgress}` : ''}`
+                : '; lastProgress=none';
+            onStall(`${reason}${progressNote}`);
         }
     }, cfg.checkIntervalMs);
 
     return {
-        markProgress,
+        markProgress: (kind?: ProgressKind) => markProgress(kind),
         extendDeadline(extraMs: number) {
             if (!Number.isFinite(extraMs) || extraMs <= 0) return;
             const hardCapDeadline = startedAt + Math.max(cfg.absoluteMs, cfg.absoluteHardCapMs);

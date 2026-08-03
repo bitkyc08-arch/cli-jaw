@@ -16,7 +16,7 @@ const handler = readFileSync(join(projectRoot, 'src', 'agent', 'lifecycle-handle
  */
 test('the stall branch returns before the main 429 retry can fire', () => {
     const stallBranch = handler.indexOf('if (isStall) {');
-    const retryBranch = handler.indexOf('effectiveIs429 && mainAttempt < MAIN_MAX_RETRIES');
+    const retryBranch = handler.search(/effectiveIs429 &&[^)]*mainAttempt < MAIN_MAX_RETRIES/);
 
     assert.ok(stallBranch > 0, 'stall branch must exist');
     assert.ok(retryBranch > 0, 'main 429 retry must exist');
