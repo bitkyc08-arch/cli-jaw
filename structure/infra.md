@@ -215,6 +215,71 @@ bin/jaw (개발 클론 / 직접 호출 런처)
 
 ---
 
+## 런타임 수명주기 계약 (openclaw/hermes 파리티)
+
+유닛: `devlog/_plan/260804_runtime_parity_openclaw_hermes/`.
+
+### 턴 종료 — `close`이지 `exit`이 아니다
+
+턴은 `child.on('close')`에서 resolve된다. `close`는 자식 종료가 아니라 **stdio 스트림이
+전부 닫혀야** 발생하므로, stdio를 상속한 자손이 살아있으면 오지 않는다.
+`src/agent/spawn/exit-drain.ts`의 `releaseChildOutputAfterExit()`가 이 대기를 경계 짓는다:
+
+| 상수 | 값 | 역할 |
+|------|-----|------|
+| `EXIT_DRAIN_IDLE_MS` | 100ms | 마지막 데이터 이후 유휴 유예. 새 데이터가 오면 **재무장** |
+| `EXIT_DRAIN_MAX_MS` | 1000ms | 절대 상한 |
+
+idle 만료 시 `setImmediate`로 이벤트 루프 poll 턴을 **한 번 양보**한 뒤 destroy한다 —
+부하 걸린 루프는 이미 버퍼에 있는 데이터보다 타이머를 먼저 관측할 수 있기 때문이다.
+모든 타이머는 `unref()`되고, `close`/`error` 양쪽 경로에서 정리 함수를 호출한다.
+
+**주의:** 워치독은 이 상황을 구제하지 못한다. 자식은 이미 죽었고, PID 재사용 가드가
+(올바르게) kill을 건너뛴다. 파이프 destroy만이 유일한 해소 수단이다.
+
+### 출력 누적 상한 — 원시 stdout에만 필요하다
+
+| 대상 | 상한 | 이유 |
+|------|------|------|
+| 미완 NDJSON 라인 (`spawn/line-buffer.ts`) | 8 MiB, head 보존 | 개행 없는 스트림이 라인 버퍼를 무한히 키운다. 실측 200 MiB 입력 → 힙 1.5 GiB |
+| agy/kiro `fullText` | 8 MiB / `maxBytes` | **원시 plain-text stdout**을 직접 축적 |
+| 파싱된 assistant 이벤트 경로 | 없음 (의도적) | 상류가 유한. 과거 상한이 실제 최종 답변을 잘라먹은 사고(`8b4ce983b`) |
+| `stderr` | 4000자 (스트리밍 append 전부) | 진단 전용 |
+
+절단은 항상 **보고**한다. 조용한 절단은 금지다.
+
+### 진행(progress) 판정
+
+워치독은 진행 신호에 종류를 부여한다: `output`(원시 출력, 약한 신호) / `rate-limit` / `structured`.
+stall 사유에 `lastProgress=<kind>`를 남기므로, `lastProgress=output x47`은
+**턴이 전진했다는 증거 없이 출력만 흘렀다**는 뜻이다. deadline 계산 자체는 바꾸지 않았다
+(주요 엔진이 각자 raw chunk 경로로 갱신하므로 휴리스틱만 좁혀도 효과가 없다).
+
+### 재시도 — 부작용 게이트
+
+프롬프트를 재실행하는 **세 경로**(main 429 / employee transient / **fallback**)는
+모두 `performedSideEffects(ctx)`를 확인한다.
+
+```ts
+const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
+// search = grep/web-search/read-url, thinking = 추론 스트림
+// command/file/subagent + 미지의 타입 = 부작용 (fail closed)
+```
+
+재시도는 같은 프롬프트를 다시 돌리므로 이전 시도가 실행한 도구가 **다시 실행**된다.
+`_skipInsert`는 로컬 DB 행만 막고 외부 전송·커밋·파일 쓰기는 막지 못한다.
+거부된 재시도는 이유를 로그로 남긴다.
+
+`isTransientStartup`은 **출력이 없을 때만** 인정된다 — 이름이 약속하는 "작업 시작 전"을
+구현이 보장하게 했다.
+
+### 회귀 가드 테스트
+
+`exit-drain.test.ts`, `line-buffer-bound.test.ts`, `raw-stdout-capture-bound.test.ts`,
+`progress-semantics.test.ts`, `retry-side-effect-gate.test.ts`, `retry-stall-ordering.test.ts`.
+
+---
+
 ## src/core/ — runtime support cluster (30 files, 3803L)
 
 `boss-auth.ts`, `config.ts`, `codex-config.ts`, `instance.ts`, `runtime-path.ts`, `main-session.ts`, `message-summary.ts`, `path-expand.ts`, `runtime-settings.ts`, `runtime-settings-gate.ts`, `settings-merge.ts`, `db.ts`, `bus.ts`, `employees.ts`, `i18n.ts`, `compact.ts`, `logger.ts`, `claude-install.ts`, `launchd-cleanup.ts`, `launchd-plist.ts`, `tcc.ts`.
