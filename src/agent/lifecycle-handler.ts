@@ -120,14 +120,23 @@ const EMP_MAX_RETRIES = 2;
  * `_skipInsert` only suppresses the local chat row; it does nothing about
  * external effects.
  *
- * Tool metadata does not distinguish reads from writes, so this treats any tool
- * call as potentially effectful. That is deliberately conservative: repeating a
- * read wastes a little work, while repeating a send is visible to other people.
+ * Only observably-effectful tools count. Blocking on ANY tool would turn the
+ * common "long agentic turn, rate-limited on the final model call" case into a
+ * hard failure even when the run merely read and searched, which trades a rare
+ * duplicate for a frequent lost turn.
+ *
+ * `search` covers grep/web-search/read-url and `thinking` is internal, so both
+ * are safe to repeat. `command`, `file` and `subagent` can write, send, or spawn
+ * further work, so they are treated as effectful. Unknown types are treated as
+ * effectful: a new tool kind should fail closed.
+ *
  * The same "a real turn ran tools" reasoning already guards stale-resume
  * invalidation elsewhere in this file.
  */
+const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
+
 function performedSideEffects(ctx: ExitContext): boolean {
-    return ctx.toolLog.length > 0;
+    return ctx.toolLog.some(tool => !REPEATABLE_TOOL_TYPES.has(tool.toolType));
 }
 
 type LifecycleSpawnOptions = {
@@ -749,13 +758,16 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             // Say why the retry was declined, so this reads as a decision rather
             // than a missing feature.
             console.log(
-                `[jaw:retry] ${cli} 429 detected but ${ctx.toolLog.length} tool call(s) already ran — `
+                `[jaw:retry] ${cli} 429 detected but this run already executed effectful tools — `
                 + 'not retrying, because re-running would repeat them',
             );
         }
 
         // ─── Fallback with retry tracking ───
-        if (!opts.internal && !opts._isFallback && !suppressClaudeRateLimitFallback) {
+        // Falling back re-runs the same prompt on a different CLI, so it repeats
+        // effectful tools exactly as a retry would; the same gate has to apply or
+        // the protection is trivially bypassed.
+        if (!opts.internal && !opts._isFallback && !suppressClaudeRateLimitFallback && !performedSideEffects(ctx)) {
             const fallbackCli = (settings["fallbackOrder"] || [])
                 .find((fc: string) => fc !== cli && detectCli(fc).available);
             if (fallbackCli) {
