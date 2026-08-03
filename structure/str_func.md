@@ -226,7 +226,7 @@ cli-jaw/
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (85L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)
-│   ├── slack/                ← Slack 인터페이스 (11 files, Socket Mode + Web API, SDK 없음)
+│   ├── slack/                ← Slack 인터페이스 (12 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (372L)
 │   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (277L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction) (134L)
@@ -237,6 +237,7 @@ cli-jaw/
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (68L)
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (44L)
+│   │   ├── manifest.ts       ← Slack 앱 매니페스트 single source (`jaw slack manifest`/`setup`이 사용, runbook YAML의 생성 원본) (86L)
 │   │   └── register.ts       ← lazy transport 등록 (inbound + send) (16L)
 │   ├── browser/              ← Chrome CDP 제어 + web-ai 자동화 + adaptive-fetch
 │   │   ├── connection.ts     ← Chrome 탐지/launch/CDP 연결 + readiness polling + retry + headless + runtime diagnostics/orphan cleanup + activePort/active-tab 상태 관리 (824L)
@@ -390,14 +391,14 @@ cli-jaw/
 │       ├── Cargo.toml        ← Rust package/dependency/test profile
 │       └── src/              ← main.rs(467L) + args/child/hook/protocol/transcript/config/terminal/cleanup/normalize/sanitize
 ├── bin/
-│   ├── cli-jaw.ts            ← 27개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (300L)
+│   ├── cli-jaw.ts            ← 28개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (304L)
 │   ├── _http-client.ts       ← shared HTTP client helper (35L) ✨
 │   ├── star-prompt.ts        ← `gh` 기반 GitHub star 1회 프롬프트 (169L)
 │   ├── interactive-confirm.ts ← 방향키/`y`/`n`/Enter 인라인 Yes-No 선택기, raw mode 없으면 타이핑 폴백 (128L)
 │   ├── agent-driven.ts       ← 에이전트·CI 실행 감지, 동의 프롬프트를 유저에게 넘기는 판단 (34L)
 │   ├── postinstall.ts        ← npm install 후 CLI 런타임/MCP/스킬 safe 가드; OfficeCLI는 postinstall 자동설치가 아니라 `scripts/install-officecli.sh` 온디맨드 설치 (1036L)
 │   ├── helpers/help.ts       ← CLI help text helper (9L)
-│   └── commands/             ← 33 top-level ts files + `tui/` 10 helper 모듈
+│   └── commands/             ← 34 top-level ts files + `tui/` 10 helper 모듈
 │       ├── serve.ts          ← 서버 시작 (--port/--host/--open) + SIGINT child.kill('SIGINT') orphan fix (123L)
 │       ├── dispatch.ts       ← 직원 호출 (pipe mode 호환) + default safe live progress follow + `--quiet`/`--json` quiet paths + virtual employee dispatch + batch dispatch safe summary + stale/non-JSON route diagnostics + worker result polling + ECONNREFUSED retry (601L)
 │       ├── chat.ts           ← 터미널 채팅 TUI (3모드, locale bootstrap, refreshInfo, active model 표시, no-arg `/model`·`/cli` selector intercept, transcript 축적, overlay wiring, batched key tokenization, settings snapshot, 329L)
@@ -407,6 +408,7 @@ cli-jaw/
 │       ├── lock.ts           ← instance lock/unlock for process protection (96L)
 │       ├── history.ts        ← 채팅 히스토리 검색 CLI (65L)
 │       ├── init.ts           ← 초기화 마법사 + --safe/--dry-run + --help (369L)
+│       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (211L)
 │       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (798L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
 │       ├── status.ts         ← 서버 상태 (--json) (86L)

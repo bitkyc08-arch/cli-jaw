@@ -370,6 +370,20 @@ Computer Use で Finder、Safari、システム設定、Xcode など、あらゆ
 
 Telegram と同等の機能 — テキスト、ファイル、コマンド。チャンネル/スレッドルーティング、正規 `/api/channel/send`、エージェント結果ブロードキャストフォワーダー。Web UI 設定で構成。
 
+### Slack
+
+同じコマンドカタログを使う Socket Mode ボット — メンション、DM、スラッシュコマンド、ファイル/画像リレー、スレッド返信。
+
+<details>
+<summary>セットアップ（ガイド付きウィザード）</summary>
+
+1. `jaw slack setup` — アプリマニフェストを表示（`jaw slack manifest | pbcopy`）して Slack アプリ作成ページを開き、2 つのトークンをライブ検証（`auth.test` + `apps.connections.open`）してから設定に保存
+2. ボットを読ませる各チャンネルで `/invite @cli-jaw` を実行し、`jaw serve` を再起動
+
+OAuth ワンクリックでない理由: Socket Mode に必要なアプリレベルトークン（`xapp-`）はアプリ設定 UI でのみ発行され、PKCE localhost フローは bot scope を拒否します。ブラウザのワンクリックではセルフホスト型 Socket Mode ボットを構成できないため、このウィザードが最短経路です。
+
+</details>
+
 ### 音声 & STT
 
 音声入力は Web（マイクボタン）、Telegram（音声メッセージ）、Discord で動作します。プロバイダ：OpenAI 互換、Google Vertex AI、任意のカスタムエンドポイント。
@@ -401,6 +415,7 @@ jaw dashboard                     # マネージャーダッシュボードを�
 jaw serve                         # サーバー起動（http://localhost:3457）
 jaw chat                          # ターミナルチャット UI
 jaw doctor                        # 12 項目の診断
+jaw slack setup                   # ガイド付き Slack アプリ設定（マニフェスト + トークン検証）
 
 # インスタンス
 jaw clone ~/project               # 新しいディレクトリにインスタンスを複製

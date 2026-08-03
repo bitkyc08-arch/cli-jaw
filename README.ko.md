@@ -438,6 +438,20 @@ Computer Use로 Finder, Safari, 시스템 설정, Xcode 등 모든 macOS 앱을 
 
 Telegram과 동일한 기능 — 텍스트, 파일, 명령어. 채널/스레드 라우팅, `/api/channel/send` 정규 엔드포인트, 에이전트 결과 브로드캐스트 포워더 지원. Web UI 설정에서 세팅.
 
+### Slack
+
+같은 명령어 카탈로그를 쓰는 Socket Mode 봇 — 멘션, DM, 슬래시 명령어, 파일/이미지 릴리, 스레드 답장.
+
+<details>
+<summary>설정 (가이드 마법사)</summary>
+
+1. `jaw slack setup` — 앱 매니페스트 출력(`jaw slack manifest | pbcopy`) 후 Slack 앱 생성 페이지를 열고, 두 토큰을 라이브 검증(`auth.test` + `apps.connections.open`)한 뒤 설정에 저장
+2. 봇이 읽을 각 채널에서 `/invite @cli-jaw`, 이후 `jaw serve` 재시작
+
+OAuth 원클릭이 안 되는 이유: Socket Mode에 필요한 앱 레벨 토큰(`xapp-`)은 앱 설정 UI에서만 발급되고, PKCE localhost 흐름은 bot scope를 허용하지 않습니다. 브라우저 클릭 한 번으로 셀프호스팅 Socket Mode 봇을 설정할 수는 없고, 이 마법사가 가장 짧은 경로입니다.
+
+</details>
+
 ### 음성 & STT
 
 Web(마이크 버튼), Telegram(음성 메시지), Discord에서 음성 입력 가능. 프로바이더: OpenAI 호환, Google Vertex AI, 커스텀 엔드포인트.
@@ -470,6 +484,7 @@ jaw serve                         # 서버 시작 (http://localhost:3457)
 jaw chat                          # 터미널 채팅 UI
 jaw chat search "query"           # 채팅 히스토리 검색
 jaw doctor                        # 설치/런타임 진단
+jaw slack setup                   # 가이드 Slack 앱 설정 (매니페스트 + 토큰 검증)
 
 # 인스턴스
 jaw clone ~/project               # 인스턴스 복제

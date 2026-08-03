@@ -362,12 +362,12 @@ check('Discord', () => {
 check('Slack', () => {
     if (!settings?.slack?.enabled) throw new Error('WARN: disabled');
     const botToken = settings.slack.botToken;
-    if (!botToken) throw new Error('bot token missing — set slack.botToken');
+    if (!botToken) throw new Error('bot token missing — set slack.botToken or run: jaw slack setup');
     if (!botToken.startsWith('xoxb-')) throw new Error('bot token should start with xoxb-');
     const appToken = settings.slack.appToken;
     // Outbound-only is a legitimate partial configuration, so this is a WARN:
     // the Web API works, but no inbound events can arrive.
-    if (!appToken) throw new Error('WARN: app-level token missing — outbound only, no inbound events');
+    if (!appToken) throw new Error('WARN: app-level token missing — outbound only, no inbound events (jaw slack setup)');
     if (!appToken.startsWith('xapp-')) throw new Error('app token should start with xapp-');
     const channelIds = settings.slack.channelIds;
     if (!channelIds?.length) throw new Error('WARN: no channel IDs configured — all conversations allowed');

@@ -88,7 +88,8 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | Command | 파일 | 실제 옵션 / 하위 명령 |
 | --- | --- | --- |
 | `serve` | `bin/commands/serve.ts` | `--port <port>`, `--host <host>`, `--no-open`, `--lan`, `--remote`, `--trust-proxy`, `--trust-forwarded` |
-| `init` | `bin/commands/init.ts` | `--help`, `--non-interactive`, `--safe`, `--dry-run`, `--force`, `--working-dir <path>`, `--cli <name>`, `--channel <telegram\|discord>`, `--telegram-token <t>`, `--allowed-chat-ids <ids>`, `--discord-token <t>`, `--discord-guild-id <id>`, `--discord-channel-ids <ids>`, `--skills-dir <path>` |
+| `init` | `bin/commands/init.ts` | `--help`, `--non-interactive`, `--safe`, `--dry-run`, `--force`, `--working-dir <path>`, `--cli <name>`, `--channel <telegram\|discord\|slack>`, `--telegram-token <t>`, `--allowed-chat-ids <ids>`, `--discord-token <t>`, `--discord-guild-id <id>`, `--discord-channel-ids <ids>`, `--slack-bot-token <t>`, `--slack-app-token <t>`, `--slack-team-id <id>`, `--slack-channel-ids <ids>`, `--skills-dir <path>` |
+| `slack` | `bin/commands/slack.ts` | `manifest` (app manifest YAML 출력), `setup [--bot-token <t>] [--app-token <t>] [--team-id <id>] [--channel-ids <ids>] [--non-interactive] [--skip-validate]`; guided Slack 앱 설정 — 매니페스트 생성 + auth.test/apps.connections.open 라이브 검증 + settings 병합(`channel` 미변경). Slack은 xapp- 토큰이 UI 전용이고 PKCE localhost 흐름이 bot scope를 거부하므로 OAuth 원클릭은 구조적으로 불가 (devlog 260803_slack_oauth_setup/000) |
 | `doctor` | `bin/commands/doctor.ts` | `--json`, `--repair-shared-paths`, `--tcc`, `--fix`, `--prime` |
 | `jwc` | `bin/commands/jwc.ts` | `install [--prefix <dir>] [--package <pkg>] [--dry-run] [--json]`, `clean [--prefix <dir>] [--dry-run] [--json]`, `doctor [--prefix <dir>] [--json]`; optional external-only JWC runtime helper |
 | `provider` | `bin/commands/provider.ts` | provider registry/config helper root command |

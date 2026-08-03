@@ -493,6 +493,20 @@ Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/ph
 
 Same capabilities as Telegram — text, files, commands. Channel/thread routing, canonical `/api/channel/send`, and forwarder support for agent result broadcast. Setup via Web UI settings.
 
+### Slack
+
+Socket Mode bot with the same shared command catalog — mentions, DMs, slash commands, file/image relay, thread replies.
+
+<details>
+<summary>Setup (guided wizard)</summary>
+
+1. `jaw slack setup` — prints the app manifest (or `jaw slack manifest | pbcopy`), opens the Slack app creation page, then validates your two tokens live (`auth.test` + `apps.connections.open`) and writes the settings
+2. `/invite @cli-jaw` in each channel the bot should read, then restart `jaw serve`
+
+Why not OAuth one-click? Slack issues the app-level token (`xapp-`, required for Socket Mode) only from the app settings UI, and the PKCE localhost flow bans bot scopes — a browser click cannot configure a self-hosted Socket Mode bot. The wizard is the shortest honest path.
+
+</details>
+
 ### Voice & STT
 
 Voice input works on Web (mic button), Telegram (voice messages), and Discord. Providers: OpenAI-compatible, Google Vertex AI, or any custom endpoint.
@@ -525,6 +539,7 @@ jaw serve                         # start server (http://localhost:3457)
 jaw chat                          # terminal chat UI
 jaw chat search "query"           # search chat history
 jaw doctor                        # installation and runtime diagnostics
+jaw slack setup                   # guided Slack app setup (manifest + token validation)
 
 # Instances
 jaw clone ~/project               # clone instance to new directory

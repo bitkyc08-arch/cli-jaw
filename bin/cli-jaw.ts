@@ -40,7 +40,7 @@ const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
 if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
     const _homeVal = process.argv[_homeIdx + 1]!;
     // Guard: if the "value" looks like a known subcommand, user forgot the path
-    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'design', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc', 'provider'];
+    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'design', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc', 'provider', 'slack'];
     if (_knownCmds.includes(_homeVal)) {
         console.error(`  ❌ --home requires a path argument (got subcommand '${_homeVal}')`);
         console.error(`  Usage: jaw --home <path> ${_homeVal}`);
@@ -139,6 +139,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
 
   ${c.bold}Setup & diagnostics:${c.reset}
     init                                Interactive setup wizard
+    slack setup|manifest                Slack app manifest + guided setup
     doctor [--json]                     Installation diagnostics
     map <dir> [--budget N]              Ranked source structure map
     jwc install|clean|doctor            Optional external JWC runtime helper
@@ -189,6 +190,9 @@ switch (command) {
         break;
     case 'init':
         await import('./commands/init.js');
+        break;
+    case 'slack':
+        await import('./commands/slack.js');
         break;
     case 'doctor':
         await import('./commands/doctor.js');
