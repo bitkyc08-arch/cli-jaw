@@ -200,7 +200,7 @@ interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
 }
 
-import { killProcessTree } from './spawn/process-kill.js';
+import { killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
 
 /** Single choke point for streamed assistant text: appends to the live-run
  *  accumulator and broadcasts agent_output tagged with the owning trace run
@@ -295,8 +295,8 @@ export function killAgentById(agentId: string): boolean {
         setTimeout(() => {
             try {
                 if (proc.pid) {
-                    killProcessTree(proc.pid, 'SIGKILL');
-                } else {
+                    killProcessTreeIfAlive(proc);
+                } else if (proc.exitCode === null && proc.signalCode === null) {
                     proc.kill('SIGKILL');
                 }
             } catch { /* already dead */ }
@@ -1647,7 +1647,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                         const pid = child.pid;
                         killProcessTree(pid, 'SIGTERM');
                         setTimeout(() => {
-                            try { killProcessTree(pid, 'SIGKILL'); } catch { /* already dead */ }
+                            killProcessTreeIfAlive(child, pid);
                         }, 5_000);
                     } else child.kill('SIGTERM');
                     return Promise.resolve();
@@ -2253,9 +2253,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             try {
                 killProcessTree(child.pid, 'SIGTERM');
                 setTimeout(() => {
-                    try {
-                        if (child.pid) killProcessTree(child.pid, 'SIGKILL');
-                    } catch { /* already dead */ }
+                    killProcessTreeIfAlive(child);
                 }, DEFAULT_KILL_ESCALATION_MS);
             } catch (e) {
                 console.warn('[jaw:agy] quiet completion kill failed:', (e as Error).message);
@@ -2287,7 +2285,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (child.pid) {
             killProcessTree(child.pid, 'SIGTERM');
             setTimeout(() => {
-                try { killProcessTree(child.pid!, 'SIGKILL'); } catch { /* already dead */ }
+                killProcessTreeIfAlive(child);
             }, 5_000);
         }
     }, watchdogConfig);
