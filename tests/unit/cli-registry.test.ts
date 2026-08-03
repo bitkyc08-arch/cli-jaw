@@ -133,6 +133,33 @@ test('live CLI registry carries per-model Codex efforts including max and ultra'
     }
 });
 
+// ai-e splits models by provider, so a FLAT per-model effort map collides on ids
+// shared across providers: `gpt-5.6-sol` exists under both codex and kiro, but
+// Kiro only accepts low/medium/high/xhigh (args.ts KIRO_EFFORTS) while ocx
+// advertises max/ultra for the codex route. A flat map offered Kiro `ultra`.
+test('ai-e per-model efforts are provider-scoped, never a flat colliding map', async () => {
+    // opencodex + kiro-models are already stubbed by the preceding tests in
+    // this file; node:test forbids re-mocking the same module.
+    const moduleUrl = new URL('../../src/cli/registry-live.ts', import.meta.url);
+    moduleUrl.searchParams.set('case', `scoped-${Date.now()}`);
+    const { buildLiveCliRegistry } = await import(moduleUrl.href) as typeof import('../../src/cli/registry-live.ts');
+    const registry = await buildLiveCliRegistry() as Record<string, Record<string, unknown>>;
+    const aiE = registry['ai-e'] ?? {};
+
+    // The flat keys must NOT exist on ai-e — they are what caused the collision.
+    assert.equal(aiE['effortsByModel'], undefined, 'ai-e must not carry a flat effortsByModel');
+    assert.equal(aiE['defaultEffortByModel'], undefined, 'ai-e must not carry a flat defaultEffortByModel');
+
+    const scoped = aiE['effortsByModelByProvider'] as Record<string, Record<string, string[]>>;
+    assert.ok(scoped?.['codex'], 'ai-e must scope per-model efforts under codex');
+    assert.ok(scoped['codex']?.['gpt-5.6-sol']?.includes('ultra'));
+    // kiro must get no per-model entry, so the picker falls back to its own list.
+    assert.equal(scoped['kiro'], undefined);
+
+    // codex/codex-app have no provider split, so they keep the flat map.
+    assert.ok((registry['codex']?.['effortsByModel'] as Record<string, string[]>)?.['gpt-5.6-sol']);
+});
+
 test('Antigravity registry exposes AGY as a top-level runtime, not an ai-e provider', () => {
     assert.equal(CLI_REGISTRY.agy.label, 'Antigravity');
     assert.equal(CLI_REGISTRY.agy.binary, 'agy');

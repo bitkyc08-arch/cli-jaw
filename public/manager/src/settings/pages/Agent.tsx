@@ -195,7 +195,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         ? optionList(activeMeta.modelsByProvider?.[activeProvider] || activeMeta.models, draft.model)
         : optionList(activeMeta.models, draft.model);
     const activeEffortOptions = hasProviders
-        ? effortChoicesForModel(activeMeta, draft.model, activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts)
+        ? effortChoicesForModel(activeMeta, draft.model, activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts, activeProvider)
         : effortChoicesForModel(activeMeta, draft.model);
     const workingDirError = draft.workingDir.trim() ? null : 'Required';
 
@@ -250,7 +250,9 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     const models = activeMeta.modelsByProvider?.[next] || [];
                     const efforts = activeMeta.effortsByProvider?.[next] || [];
                     const nextModel = models.includes(draft.model) ? draft.model : (models[0] || '');
-                    const nextEffort = efforts.includes(draft.effort) ? draft.effort : '';
+                    // Resolve against the NEW provider+model pair: the same model
+                    // id can allow different efforts per provider.
+                    const nextEffort = coerceEffortForModel(activeMeta, nextModel, draft.effort, efforts, next);
                     setRuntimeDraft({ ...draft, provider: next, model: nextModel, effort: nextEffort });
                     setEntry(`perCli.${draft.cli}.provider`, {
                         value: next,
@@ -277,6 +279,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                         next,
                         draft.effort,
                         hasProviders ? (activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts) : undefined,
+                        hasProviders ? activeProvider : undefined,
                     );
                     setRuntimeDraft({ ...draft, model: next, effort: nextEffort });
                     setEntry(`activeOverrides.${draft.cli}.model`, {

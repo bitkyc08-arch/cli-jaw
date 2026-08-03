@@ -1,7 +1,7 @@
 /**
  * Fullscreen/line-mode slash command execution.
  */
-import { executeCommand, getArgumentCompletionItems } from '../../../src/cli/commands.js';
+import { executeCommand, getArgumentCompletionItems, resolveEffortLevelsForCli } from '../../../src/cli/commands.js';
 import type { ArgumentCompletionItem } from '../../../src/cli/commands.js';
 import type { ParsedSlashCommand } from '../../../src/cli/types.js';
 import { setBracketedPaste } from '../../../src/cli/tui/composer.js';
@@ -165,7 +165,16 @@ export async function runSlashCommand(ctx: TuiContext, parsed: ParsedSlashComman
     }
 
     if (parsed.type === 'known' && parsed.name === 'effort' && !parsed.args.length) {
-        const levels = ['off', 'low', 'medium', 'high', 'max'];
+        // Accepted efforts are per CLI and, for Codex, per MODEL — a live
+        // opencodex advertises `ultra` for gpt-5.6-sol but stops at `max` for
+        // gpt-5.6-luna. A hardcoded list hid `xhigh`/`ultra` entirely.
+        const levels = ['off', ...await resolveEffortLevelsForCli(ctx.info.cli, ctx.info.model || '')];
+        if (levels.length === 1) {
+            appendFullscreenFeedback(ctx, `${ctx.info.cli} does not accept a reasoning effort.`, { commandName: 'effort' });
+            ctx.commandRunning = false;
+            ctx.inputActive = true;
+            return;
+        }
         openChoiceSelector(ctx, () => {
             const sel = ctx.store.overlay.selector;
             sel.open = true;

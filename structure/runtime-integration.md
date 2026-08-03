@@ -34,6 +34,19 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 - effort 값은 표시용이 아니라 wire 값이다(`src/agent/args.ts` codex 분기 →
   `-c model_reasoning_effort="<effort>"`). 그래서 UI 선택기는 합집합이 아니라
   **선택된 모델의 집합**을 써야 하고, 빈 배열은 "이 모델은 effort 없음"을 뜻하므로 fallback 금지다.
+- **`ai-e`는 provider 스코프를 쓴다.** `ai-e`는 provider별로 모델 목록이 갈리므로
+  평평한 `effortsByModel`은 id 충돌을 일으킨다: `gpt-5.6-sol`이 codex와 kiro 양쪽에
+  존재하는데 Kiro는 `low/medium/high/xhigh`만 받는다(`args.ts` `KIRO_EFFORTS`).
+  따라서 `ai-e`에는 `effortsByModelByProvider`/`defaultEffortByModelByProvider`를
+  싣고 평평한 키는 싣지 않는다. codex/codex-app은 provider 개념이 없어 평평한 맵을 유지한다.
+  해석 우선순위: provider 스코프 모델 → 평평한 모델 → provider 목록 → registry 목록.
+  스코프 맵이 있어도 **모델 키가 없으면 provider 목록으로 폴백**한다(근거 없는 축소 금지).
+- `/effort` 슬래시 명령과 TUI 셀렉터도 같은 소스를 쓴다. 과거에는
+  `['off','low','medium','high','max']`를 하드코딩해 `xhigh`가 아예 없고 `ultra`를
+  거부했다. 지금은 `resolveEffortLevelsForCli(cli, model)`이 codex 계열이면 ocx
+  entries에서, 그 외에는 registry에서 목록을 만든다. 저장은 런타임이 실제로 읽는
+  `perCli.<cli>.effort` + `activeOverrides.<cli>.effort`로 간다
+  (top-level `settings.effort`는 저장돼도 아무도 읽지 않는 죽은 키다).
 - `defaultModel`/`defaultEffort`는 라이브 값으로 교체하지 않는다. `buildDefaultPerCli()`가
   사용자 기본값을 여기서 seed하므로 ocx 라우팅 순서 변화가 사용자 설정을 조용히 바꾸면 안 된다.
 - pi 프로필 discovery: `probeOpenCodexEndpointModels(endpoint)`가 **healthz 핑거프린트 `{status:'ok', service:'opencodex'}`**를 요구한 뒤에만 `<endpoint>/models` 카탈로그를 사용. 불일치/미실행이면 기존 `pi --offline --list-models` 경로 (modelSource='pi-offline').

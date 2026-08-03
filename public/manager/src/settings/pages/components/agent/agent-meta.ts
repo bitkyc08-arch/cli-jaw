@@ -13,6 +13,14 @@ export type CliMeta = {
      */
     effortsByModel?: Record<string, ReadonlyArray<string>>;
     defaultEffortByModel?: Record<string, string>;
+    /**
+     * Provider-scoped per-model efforts, used by runtimes whose model list is
+     * split by provider (`ai-e`). A flat map would collide on ids shared across
+     * providers — `gpt-5.6-sol` exists under both codex and kiro with different
+     * allowed efforts.
+     */
+    effortsByModelByProvider?: Record<string, Record<string, ReadonlyArray<string>>>;
+    defaultEffortByModelByProvider?: Record<string, Record<string, string>>;
     modelSource?: string;
     effortNote?: string;
     modelNote?: string;
@@ -247,6 +255,26 @@ function stringRecord(value: unknown): Record<string, string> | undefined {
     return out;
 }
 
+function nestedStringArrayRecord(value: unknown): Record<string, Record<string, string[]>> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const out: Record<string, Record<string, string[]>> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+        const inner = stringArrayRecord(raw);
+        if (inner) out[key] = inner;
+    }
+    return out;
+}
+
+function nestedStringRecord(value: unknown): Record<string, Record<string, string>> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const out: Record<string, Record<string, string>> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+        const inner = stringRecord(raw);
+        if (inner) out[key] = inner;
+    }
+    return out;
+}
+
 export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out: Record<string, CliMeta> = {};
@@ -257,6 +285,8 @@ export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> 
         const effortsByProvider = stringArrayRecord(record['effortsByProvider']);
         const effortsByModel = stringArrayRecord(record['effortsByModel']);
         const defaultEffortByModel = stringRecord(record['defaultEffortByModel']);
+        const effortsByModelByProvider = nestedStringArrayRecord(record['effortsByModelByProvider']);
+        const defaultEffortByModelByProvider = nestedStringRecord(record['defaultEffortByModelByProvider']);
         out[key] = {
             label: typeof record['label'] === 'string' ? record['label'] : key,
             models: stringArray(record['models']),
@@ -267,6 +297,8 @@ export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> 
             ...(effortsByProvider ? { effortsByProvider } : {}),
             ...(effortsByModel ? { effortsByModel } : {}),
             ...(defaultEffortByModel ? { defaultEffortByModel } : {}),
+            ...(effortsByModelByProvider ? { effortsByModelByProvider } : {}),
+            ...(defaultEffortByModelByProvider ? { defaultEffortByModelByProvider } : {}),
             ...(typeof record['modelSource'] === 'string' ? { modelSource: record['modelSource'] } : {}),
             ...(typeof record['effortNote'] === 'string' ? { effortNote: record['effortNote'] } : {}),
             ...(typeof record['modelNote'] === 'string' ? { modelNote: record['modelNote'] } : {}),
@@ -287,8 +319,17 @@ export function effortChoicesForModel(
     meta: CliMeta,
     model: string,
     providerEfforts?: ReadonlyArray<string>,
+    provider?: string,
 ): ReadonlyArray<string> {
-    const byModel = meta.effortsByModel?.[(model || '').trim()];
+    const key = (model || '').trim();
+    // Provider-scoped map wins for provider-split runtimes. When the map exists
+    // but the model is absent (e.g. a Claude model under ai-e/claude), fall back
+    // to the provider list rather than inventing an empty "no effort" set.
+    if (provider) {
+        const scoped = meta.effortsByModelByProvider?.[provider]?.[key];
+        if (scoped) return scoped;
+    }
+    const byModel = meta.effortsByModel?.[key];
     if (byModel) return byModel;
     return providerEfforts ?? meta.efforts;
 }
@@ -299,10 +340,14 @@ export function coerceEffortForModel(
     model: string,
     effort: string,
     providerEfforts?: ReadonlyArray<string>,
+    provider?: string,
 ): string {
-    const choices = effortChoicesForModel(meta, model, providerEfforts);
+    const choices = effortChoicesForModel(meta, model, providerEfforts, provider);
     if (effort && choices.includes(effort)) return effort;
-    const fallback = meta.defaultEffortByModel?.[(model || '').trim()] ?? '';
+    const key = (model || '').trim();
+    const fallback = (provider ? meta.defaultEffortByModelByProvider?.[provider]?.[key] : undefined)
+        ?? meta.defaultEffortByModel?.[key]
+        ?? '';
     return choices.includes(fallback) ? fallback : '';
 }
 

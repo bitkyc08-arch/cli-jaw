@@ -16,6 +16,12 @@ export interface CliEntry {
      */
     effortsByModel?: Record<string, string[]>;
     defaultEffortByModel?: Record<string, string>;
+    /**
+     * Provider-scoped per-model efforts for provider-split runtimes (`ai-e`).
+     * A flat map would collide on ids shared across providers.
+     */
+    effortsByModelByProvider?: Record<string, Record<string, string[]>>;
+    defaultEffortByModelByProvider?: Record<string, Record<string, string>>;
     modelSource?: string;
     effortNote?: string;
     modelNote?: string;
@@ -279,6 +285,28 @@ function normalizeRegistry(input: Record<string, unknown>): CliRegistry {
             );
         }
         if (typeof v['modelSource'] === 'string') normalized.modelSource = v['modelSource'];
+        if (v['effortsByModelByProvider'] && typeof v['effortsByModelByProvider'] === 'object') {
+            normalized.effortsByModelByProvider = Object.fromEntries(
+                Object.entries(v['effortsByModelByProvider'] as Record<string, unknown>)
+                    .filter((entry): entry is [string, Record<string, unknown>] =>
+                        Boolean(entry[1]) && typeof entry[1] === 'object' && !Array.isArray(entry[1]))
+                    .map(([provider, byModel]) => [provider, Object.fromEntries(
+                        Object.entries(byModel)
+                            .filter((e): e is [string, string[]] => Array.isArray(e[1]))
+                            .map(([model, efforts]) => [model, efforts.filter((x): x is string => typeof x === 'string')])
+                    )])
+            );
+        }
+        if (v['defaultEffortByModelByProvider'] && typeof v['defaultEffortByModelByProvider'] === 'object') {
+            normalized.defaultEffortByModelByProvider = Object.fromEntries(
+                Object.entries(v['defaultEffortByModelByProvider'] as Record<string, unknown>)
+                    .filter((entry): entry is [string, Record<string, unknown>] =>
+                        Boolean(entry[1]) && typeof entry[1] === 'object' && !Array.isArray(entry[1]))
+                    .map(([provider, byModel]) => [provider, Object.fromEntries(
+                        Object.entries(byModel).filter((e): e is [string, string] => typeof e[1] === 'string')
+                    )])
+            );
+        }
         out[key] = normalized;
     }
     return out;

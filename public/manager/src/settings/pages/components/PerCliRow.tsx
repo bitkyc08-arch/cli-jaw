@@ -40,7 +40,7 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
     const providerEfforts = hasProviders ? (meta.effortsByProvider?.[provider] ?? meta.efforts) : undefined;
     // Per-model effort sets from a live opencodex catalog win over the
     // provider/registry lists; the chosen value is forwarded to the wire.
-    const effortOptions = effortChoicesForModel(meta, value.model || '', providerEfforts);
+    const effortOptions = effortChoicesForModel(meta, value.model || '', providerEfforts, hasProviders ? provider : undefined);
 
     return (
         <div className="settings-percli-row" data-cli={cli}>
@@ -70,7 +70,9 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                             const nextModels = meta.modelsByProvider?.[next] ?? [];
                             const nextEfforts = meta.effortsByProvider?.[next] ?? [];
                             const nextModel = nextModels.includes(value.model || '') ? (value.model || '') : (nextModels[0] || '');
-                            const nextEffort = nextEfforts.includes(value.effort || '') ? (value.effort || '') : '';
+                            // Resolve against the NEW provider+model pair: the same
+                            // model id can allow different efforts per provider.
+                            const nextEffort = coerceEffortForModel(meta, nextModel, value.effort ?? '', nextEfforts, next);
                             setValue({ ...value, provider: next, model: nextModel, effort: nextEffort });
                             setEntry(`perCli.${cli}.provider`, entryFor(next, original.provider ?? meta.defaultProvider ?? 'claude'));
                             setEntry(`perCli.${cli}.model`, entryFor(nextModel, original.model ?? ''));
@@ -86,7 +88,7 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                             value={value.model ?? modelOptions[0] ?? ''}
                             options={modelOptions.map((m) => ({ value: m, label: m }))}
                             onChange={(next) => {
-                                const nextEffort = coerceEffortForModel(meta, next, value.effort ?? '', providerEfforts);
+                                const nextEffort = coerceEffortForModel(meta, next, value.effort ?? '', providerEfforts, hasProviders ? provider : undefined);
                                 setValue({ ...value, model: next, effort: nextEffort });
                                 setEntry(`perCli.${cli}.model`, entryFor(next, original.model ?? ''));
                                 if (nextEffort !== (value.effort ?? '')) {

@@ -297,7 +297,7 @@ export const COMMANDS: SlashCommand[] = [
     { name: 'sessions', aliases: ['ss'], descKey: '', desc: 'List sessions', category: 'session', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: sessionsListHandler },
     { name: 'fork', descKey: '', desc: 'Fork current session', category: 'session', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: forkSessionHandler },
     // ── Phase 9-10: jawcode parity commands ──
-    { name: 'effort', desc: 'Set reasoning effort level', args: '[off|low|medium|high|max]', category: 'model', interfaces: ['cli', 'web'], handler: effortHandler },
+    { name: 'effort', desc: 'Set reasoning effort level (accepted values depend on the active CLI and model)', args: '[level]', category: 'model', interfaces: ['cli', 'web'], handler: effortHandler },
     { name: 'fast', desc: 'Toggle fast/priority mode', category: 'model', interfaces: ['cli', 'web'], handler: fastHandler },
     { name: 'context', desc: 'Show token usage and context stats', category: 'session', interfaces: ['cli', 'web'], handler: contextHandler },
     { name: 'tools', desc: 'List active tools', category: 'tools', interfaces: ['cli', 'web'], handler: toolsHandler },
@@ -551,20 +551,77 @@ export async function getArgumentCompletionItems(
 
 // ── Phase 9-10 handlers ──────────────────────────────
 
-async function effortHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
-    const levels = ['off', 'low', 'medium', 'high', 'max'];
-    if (!args.length) return { text: `Reasoning effort options: ${levels.join(', ')}. Usage: /effort <level>` };
-    const level = args[0]!.toLowerCase();
-    if (!levels.includes(level)) return { text: `Unknown level "${args[0]}". Options: ${levels.join(', ')}` };
+async function safeCall<T>(fn: (() => Promise<T> | T) | undefined | null, fallback: T | null = null): Promise<T | null> {
+    if (typeof fn !== 'function') return fallback;
     try {
-        const apiUrl = (ctx as Record<string, unknown>)['apiUrl'] as string || 'http://localhost:3457';
-        await fetch(`${apiUrl}/api/settings`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ effort: level }),
-            signal: AbortSignal.timeout(3000),
-        });
-    } catch { /* best effort */ }
-    return { ok: true, text: `Reasoning effort set to ${level}.` };
+        return await fn();
+    } catch {
+        return fallback;
+    }
+}
+
+/**
+ * Reasoning-effort levels accepted by one CLI, narrowed to the model when the
+ * runtime advertises a per-model set.
+ *
+ * Codex/codex-app take their set from a live opencodex catalog, where each model
+ * differs (`gpt-5.6-sol` reaches `ultra`, `gpt-5.6-luna` stops at `max`, routed
+ * models take none). Everything else uses its static registry list, because no
+ * other runtime exposes a per-model effort source.
+ */
+export async function resolveEffortLevelsForCli(cli: string, model: string): Promise<string[]> {
+    if (cli === 'codex' || cli === 'codex-app') {
+        try {
+            const { resolveOpenCodexCodexModelsDetailed } = await import('./opencodex-models.js');
+            const { entries } = await resolveOpenCodexCodexModelsDetailed();
+            const entry = entries.find((e) => e.id === model);
+            if (entry) return [...entry.efforts];
+        } catch { /* fall through to the static registry list */ }
+    }
+    const { CLI_REGISTRY } = await import('./registry.js');
+    return [...(CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY]?.efforts || [])];
+}
+
+async function effortHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
+    const settings = await safeCall(ctx.getSettings, null) as Record<string, unknown> | null;
+    if (!settings) return { ok: false, text: 'Could not load settings.' };
+
+    const cli = (settings['cli'] as string | undefined) || 'claude';
+    const perCli = (settings['perCli'] as Record<string, Record<string, unknown>> | undefined) || {};
+    const activeOverrides = (settings['activeOverrides'] as Record<string, Record<string, unknown>> | undefined) || {};
+    const model = String(activeOverrides[cli]?.['model'] ?? perCli[cli]?.['model'] ?? '').trim();
+
+    // The accepted set is per CLI and, for Codex, per MODEL: a live opencodex
+    // advertises `ultra` for gpt-5.6-sol but stops at `max` for gpt-5.6-luna,
+    // and routed models take no effort at all. A hardcoded list both hid
+    // `xhigh`/`ultra` and rejected them outright.
+    const levels = await resolveEffortLevelsForCli(cli, model);
+    const current = String(activeOverrides[cli]?.['effort'] ?? perCli[cli]?.['effort'] ?? '') || '(none)';
+
+    if (!levels.length) {
+        return { ok: true, text: `${cli}${model ? ` / ${model}` : ''} does not accept a reasoning effort.` };
+    }
+    if (!args.length) {
+        return { text: `Reasoning effort for ${cli}${model ? ` / ${model}` : ''}: ${current}. Options: ${['off', ...levels].join(', ')}. Usage: /effort <level>` };
+    }
+
+    const level = args[0]!.toLowerCase();
+    // `off` clears the override rather than reaching the wire as a literal.
+    const nextEffort = level === 'off' ? '' : level;
+    if (nextEffort && !levels.includes(nextEffort)) {
+        return { text: `Unknown level "${args[0]}" for ${cli}${model ? ` / ${model}` : ''}. Options: ${['off', ...levels].join(', ')}` };
+    }
+
+    // Write where the runtime actually reads it (src/agent/spawn.ts reads
+    // activeOverrides[cli].effort -> perCli[cli].effort). A top-level `effort`
+    // key is persisted but never consumed.
+    const patch = {
+        perCli: { ...perCli, [cli]: { ...(perCli[cli] || {}), effort: nextEffort } },
+        activeOverrides: { ...activeOverrides, [cli]: { ...(activeOverrides[cli] || {}), effort: nextEffort } },
+    };
+    const updateResult = await ctx.updateSettings(patch) as SlashResult;
+    if (updateResult?.ok === false) return updateResult;
+    return { ok: true, text: `Reasoning effort set to ${nextEffort || 'off'} for ${cli}${model ? ` / ${model}` : ''}.` };
 }
 
 async function fastHandler(_args: string[], ctx: CliCommandContext): Promise<SlashResult> {

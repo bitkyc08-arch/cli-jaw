@@ -204,10 +204,26 @@ function resolveEffortChoices(
     meta: CliEntry | null,
     model: string,
     providerEfforts: string[] | null,
+    provider?: string,
 ): string[] {
-    const byModel = meta?.effortsByModel?.[(model || '').trim()];
+    const key = (model || '').trim();
+    // Provider-scoped map wins for provider-split runtimes (ai-e): the same model
+    // id can allow different efforts per provider. A missing model key falls back
+    // to the provider list rather than inventing an empty "no effort" set.
+    if (provider) {
+        const scoped = meta?.effortsByModelByProvider?.[provider]?.[key];
+        if (scoped) return scoped;
+    }
+    const byModel = meta?.effortsByModel?.[key];
     if (byModel) return byModel;
     return providerEfforts || meta?.efforts || [];
+}
+
+function resolveDefaultEffort(meta: CliEntry | null, model: string, provider?: string): string {
+    const key = (model || '').trim();
+    return (provider ? meta?.defaultEffortByModelByProvider?.[provider]?.[key] : undefined)
+        ?? meta?.defaultEffortByModel?.[key]
+        ?? '';
 }
 
 function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {
@@ -245,14 +261,14 @@ function syncPerCliModelAndEffortControls(settings: SettingsData | null = null):
                 ? (meta?.effortsByProvider?.[cliProvider] || [])
                 : null;
             const selectedModel = normalizeModelForDisplay(cli, settings?.perCli?.[cli]?.model || getModelSelect(cli)?.value || '');
-            const effortsList = resolveEffortChoices(meta, selectedModel, providerEfforts);
+            const effortsList = resolveEffortChoices(meta, selectedModel, providerEfforts, cliProvider || undefined);
             const options = [''].concat(effortsList);
             const saved = settings?.perCli?.[cli]?.effort ?? effortSel.value ?? '';
             // Drop a saved effort the current model does not support — it would
             // otherwise reach the wire as `-c model_reasoning_effort=<bad>`.
             const selected = !saved || effortsList.includes(saved)
                 ? saved
-                : (meta?.defaultEffortByModel?.[selectedModel] ?? '');
+                : resolveDefaultEffort(meta, selectedModel, cliProvider || undefined);
             const unique = [...new Set(options)];
             const noneLabel = (unique.length === 1 && !unique[0] && meta?.effortNote) ? meta.effortNote : '— none';
             effortSel.innerHTML = unique.map(v => {
@@ -283,7 +299,7 @@ function syncActiveEffortOptions(cli: string, selected = '', model?: string): vo
         cli,
         model ?? (document.getElementById('selModel') as HTMLSelectElement | null)?.value ?? '',
     );
-    const effortsList = resolveEffortChoices(meta, activeModel, providerEfforts);
+    const effortsList = resolveEffortChoices(meta, activeModel, providerEfforts, cliProvider || undefined);
     if (effortsList.length === 0) {
         const note = meta?.effortNote || '— none';
         selEffort.innerHTML = `<option value="">${escapeHtml(note)}</option>`;
@@ -303,7 +319,7 @@ function syncActiveEffortOptions(cli: string, selected = '', model?: string): vo
     // reaches `-c model_reasoning_effort=` is always one the model advertises.
     const resolved = !selected || effortsList.includes(selected)
         ? selected
-        : (meta?.defaultEffortByModel?.[activeModel] ?? '');
+        : resolveDefaultEffort(meta, activeModel, cliProvider || undefined);
     if (Array.from(selEffort.options).some(o => o.value === resolved)) selEffort.value = resolved;
 }
 

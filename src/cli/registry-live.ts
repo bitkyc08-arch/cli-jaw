@@ -74,12 +74,21 @@ export async function buildLiveCliRegistry() {
                 ? { ...existingEffortsByProvider, codex: merged }
                 : existingEffortsByProvider;
             const providers = Array.isArray(aiE['providers']) ? aiE['providers'] as string[] : Object.keys(modelsByProvider);
+            // ai-e splits models by provider, so per-model efforts MUST be
+            // provider-scoped. A flat map collides on shared ids: `gpt-5.6-sol`
+            // exists under both codex and kiro, but Kiro only accepts
+            // low/medium/high/xhigh (args.ts KIRO_EFFORTS) while ocx advertises
+            // max/ultra for the codex route. A flat map offered `ultra` to Kiro.
+            const existingEffortsByModelByProvider =
+                (aiE['effortsByModelByProvider'] as Record<string, Record<string, string[]>> | undefined) || {};
+            const existingDefaultEffortByModelByProvider =
+                (aiE['defaultEffortByModelByProvider'] as Record<string, Record<string, string>> | undefined) || {};
             registry['ai-e'] = {
                 ...aiE,
                 modelsByProvider,
                 effortsByProvider,
-                effortsByModel,
-                defaultEffortByModel,
+                effortsByModelByProvider: { ...existingEffortsByModelByProvider, codex: effortsByModel },
+                defaultEffortByModelByProvider: { ...existingDefaultEffortByModelByProvider, codex: defaultEffortByModel },
                 models: providers.flatMap(provider => modelsByProvider[provider] || []),
             };
         }
