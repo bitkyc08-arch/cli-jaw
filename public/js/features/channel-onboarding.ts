@@ -31,6 +31,13 @@ export type { OnboardChannel };
 let overlay: HTMLDivElement | null = null;
 let flow: FlowState | null = null;
 let validating = false;
+let saving = false;
+/**
+ * Bumped whenever the wizard is (re)opened. An in-flight validation compares
+ * it on return: switching to another channel — or reopening the same one —
+ * must not let a stale response mark the new flow as verified.
+ */
+let flowGeneration = 0;
 
 export function initChannelOnboarding(): void {
     document.addEventListener('click', (ev) => {
@@ -47,6 +54,26 @@ export function initChannelOnboarding(): void {
         ev.stopImmediatePropagation();
         close();
     }, true);
+    // Focus trap: a modal that lets Tab wander into the page behind it is a
+    // keyboard dead end — the user cannot see what is focused and cannot get
+    // back without a mouse.
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Tab' || !flow || !overlay) return;
+        const focusable = [...overlay.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+        )];
+        if (!focusable.length) return;
+        const first = focusable[0]!;
+        const last = focusable[focusable.length - 1]!;
+        const active = document.activeElement as HTMLElement | null;
+        if (ev.shiftKey && (active === first || !overlay.contains(active))) {
+            ev.preventDefault();
+            last.focus();
+        } else if (!ev.shiftKey && active === last) {
+            ev.preventDefault();
+            first.focus();
+        }
+    }, true);
 }
 
 export function openChannelOnboarding(channel: OnboardChannel): void {
@@ -59,6 +86,8 @@ export function openChannelOnboarding(channel: OnboardChannel): void {
     }
     flow = createFlow(channel, draft);
     validating = false;
+    saving = false;
+    flowGeneration += 1;
     ensureOverlay();
     render();
     overlay?.classList.add('open');
@@ -146,10 +175,12 @@ function render(): void {
     if (!overlay || !flow) return;
     const state = flow;
     overlay.innerHTML = `
-        <div class="modal-box onboarding-box" role="dialog" aria-modal="true">
+        <div class="modal-box onboarding-box" role="dialog" aria-modal="true"
+            aria-labelledby="onboarding-title" aria-describedby="onboarding-step-title">
             <div class="onboarding-head">
-                <span class="onboarding-title">${escapeHtml(t(`onboarding.title.${state.channel}`))}</span>
-                <span class="onboarding-progress">${state.step}/${TOTAL_STEPS}</span>
+                <span class="onboarding-title" id="onboarding-title">${escapeHtml(t(`onboarding.title.${state.channel}`))}</span>
+                <span class="onboarding-progress" role="status" aria-live="polite"
+                    aria-label="${escapeHtml(t('onboarding.progressLabel', { step: state.step, total: TOTAL_STEPS }))}">${state.step}/${TOTAL_STEPS}</span>
                 <button type="button" class="help-trigger onboarding-close" data-onboard-close="1"
                     aria-label="${escapeHtml(t('onboarding.close'))}">✕</button>
             </div>
@@ -157,9 +188,9 @@ function render(): void {
                 ${Array.from({ length: TOTAL_STEPS }, (_, i) =>
                     `<span class="onboarding-dot${i + 1 === state.step ? ' is-active' : ''}${i + 1 < state.step ? ' is-done' : ''}"></span>`).join('')}
             </div>
-            <div class="onboarding-step-title">${escapeHtml(t(`onboarding.step.${state.step}`))}</div>
+            <div class="onboarding-step-title" id="onboarding-step-title">${escapeHtml(t(`onboarding.step.${state.step}`))}</div>
             ${stepBody(state)}
-            <div class="onboarding-error" style="display:${state.error ? '' : 'none'}">
+            <div class="onboarding-error" role="alert" style="display:${state.error ? '' : 'none'}">
                 ${state.error ? escapeHtml(t(`onboarding.error.${state.error}`)) : ''}
                 ${state.missingScopes.length ? `<span class="onboarding-scopes">${escapeHtml(state.missingScopes.join(', '))}</span>` : ''}
             </div>
@@ -239,9 +270,10 @@ function captureInputs(): void {
 
 async function runValidation(): Promise<void> {
     if (!flow || validating) return;
+    const generation = flowGeneration;
     validating = true;
     render();
-    const res = await api<{ ok?: boolean; identity?: string; teamId?: string; error?: string }>(
+    const res = await api<{ ok?: boolean; identity?: string; teamId?: string; error?: string; missing?: string[] }>(
         '/api/channels/validate',
         {
             method: 'POST',
@@ -249,6 +281,10 @@ async function runValidation(): Promise<void> {
             body: JSON.stringify(validationPayload(flow)),
         },
     );
+    // The wizard may have been closed or pointed at another channel while the
+    // request was in flight; applying this result then would verify the wrong
+    // credentials.
+    if (generation !== flowGeneration) return;
     validating = false;
     if (!flow) return;
     flow = applyValidation(flow, res || { ok: false, error: 'network' });
@@ -256,7 +292,7 @@ async function runValidation(): Promise<void> {
 }
 
 async function runSave(): Promise<void> {
-    if (!flow) return;
+    if (!flow || saving) return;
     const blocker = blockerForStep({ ...flow, step: 3 });
     if (blocker) {
         flow = { ...flow, step: 3, error: blocker };
@@ -268,7 +304,14 @@ async function runSave(): Promise<void> {
     for (const field of fieldsFor(flow.channel)) {
         writeSettingsInput(field.settingsId, (flow.draft[field.key] || '').trim());
     }
-    await apiJson('/api/settings', 'PUT', settingsPatch(flow));
+    const generation = flowGeneration;
+    saving = true;
+    try {
+        await apiJson('/api/settings', 'PUT', settingsPatch(flow));
+    } finally {
+        saving = false;
+    }
+    if (generation !== flowGeneration || !flow) return;
     flow = markSaved(flow);
     render();
     void refreshTransportStatusRow();

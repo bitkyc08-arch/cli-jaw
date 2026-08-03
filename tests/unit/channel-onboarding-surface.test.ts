@@ -108,6 +108,42 @@ test('notification permission is requested from the save gesture, once', () => {
     assert.match(notif, /localStorage\.setItem/, 'the ask must be remembered');
 });
 
+// ─── Robustness sweep regressions (260803) ──────────
+
+test('an in-flight request cannot be applied to a different flow', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    // Switching channels mid-validation must not mark the new flow verified
+    // with the old channel's result.
+    assert.match(mod, /flowGeneration \+= 1/, 'the generation must bump on open');
+    const guards = mod.match(/generation !== flowGeneration/g) ?? [];
+    assert.ok(guards.length >= 2, `validate and save must both guard, found ${guards.length}`);
+});
+
+test('validate and save are single-flight', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    assert.match(mod, /if \(!flow \|\| validating\) return/, 'double-click Validate must be ignored');
+    assert.match(mod, /if \(!flow \|\| saving\) return/, 'double-click Save must be ignored');
+    // A throwing save must not wedge the button forever.
+    assert.match(mod, /finally \{\s*saving = false;\s*\}/);
+});
+
+test('the validate response type carries the missing-scope list', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    // Without this the server's missing_scopes detail is silently dropped.
+    assert.match(mod, /missing\?: string\[\]/);
+    assert.match(mod, /state\.missingScopes\.length/, 'the list must render');
+});
+
+test('the modal is announced and keyboard-contained', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    assert.match(mod, /aria-labelledby="onboarding-title"/, 'dialog needs an accessible name');
+    assert.match(mod, /id="onboarding-title"/);
+    assert.match(mod, /role="alert"/, 'errors must be announced');
+    assert.match(mod, /role="status" aria-live="polite"/, 'step changes must be announced');
+    assert.match(mod, /ev\.key !== 'Tab'/, 'no focus trap: Tab escapes the modal');
+    assert.match(mod, /onboarding\.progressLabel/, 'the step counter needs a translated label');
+});
+
 test('every onboarding i18n key the module uses exists in ko and en', () => {
     const mod = read('public/js/features/channel-onboarding.ts');
     const ko = JSON.parse(read('public/locales/ko.json')) as Record<string, string>;

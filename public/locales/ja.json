@@ -873,5 +873,17 @@
     "onboarding.hint.discord.botToken": "Bot タブの Reset Token で生成した値です。",
     "onboarding.hint.discord.guildId": "開発者モードを有効にし、サーバーを右クリックして ID をコピー。",
     "onboarding.hint.slack.botToken": "OAuth & Permissions の Bot User OAuth Token（xoxb- で始まる）。",
-    "onboarding.hint.slack.appToken": "Basic Information → App-Level Tokens（xapp-, connections:write）。"
+    "onboarding.hint.slack.appToken": "Basic Information → App-Level Tokens（xapp-, connections:write）。",
+    "cmd.memory.embed.estimate": "埋め込み推定",
+    "cmd.memory.embed.status": "埋め込み状態",
+    "settings.channel.activeInbound": "受信チャンネル",
+    "settings.channel.configured": "設定済み",
+    "settings.channel.notConfigured": "未設定",
+    "settings.channel.sendCapable": "送信可能",
+    "settings.channel.sendOnlyHint": "受信チャンネルではありませんが、設定済みなら送信は可能です。",
+    "settings.channel.statusTitle": "送信状態",
+    "settings.channel.testSend": "テスト送信",
+    "settings.channel.testSendFail": "送信失敗: {error}",
+    "settings.channel.testSendOk": "送信成功",
+    "onboarding.progressLabel": "{total} ステップ中 {step} ステップ目"
 }

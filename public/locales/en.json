@@ -884,5 +884,6 @@
     "onboarding.hint.discord.botToken": "Generated with Reset Token on the Bot tab.",
     "onboarding.hint.discord.guildId": "Enable Developer Mode, right-click the server, copy ID.",
     "onboarding.hint.slack.botToken": "Bot User OAuth Token from OAuth & Permissions (starts with xoxb-).",
-    "onboarding.hint.slack.appToken": "Basic Information, App-Level Tokens (xapp-, connections:write)."
+    "onboarding.hint.slack.appToken": "Basic Information, App-Level Tokens (xapp-, connections:write).",
+    "onboarding.progressLabel": "Step {step} of {total}"
 }

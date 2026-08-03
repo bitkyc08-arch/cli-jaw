@@ -873,5 +873,17 @@
     "onboarding.hint.discord.botToken": "在 Bot 标签页用 Reset Token 生成的值。",
     "onboarding.hint.discord.guildId": "启用开发者模式后右键服务器并复制 ID。",
     "onboarding.hint.slack.botToken": "OAuth & Permissions 中的 Bot User OAuth Token（以 xoxb- 开头）。",
-    "onboarding.hint.slack.appToken": "Basic Information → App-Level Tokens（xapp-, connections:write）。"
+    "onboarding.hint.slack.appToken": "Basic Information → App-Level Tokens（xapp-, connections:write）。",
+    "cmd.memory.embed.estimate": "嵌入估算",
+    "cmd.memory.embed.status": "嵌入状态",
+    "settings.channel.activeInbound": "接收渠道",
+    "settings.channel.configured": "已配置",
+    "settings.channel.notConfigured": "未配置",
+    "settings.channel.sendCapable": "可发送",
+    "settings.channel.sendOnlyHint": "虽不是接收渠道，但已配置时仍可发送。",
+    "settings.channel.statusTitle": "传输状态",
+    "settings.channel.testSend": "测试发送",
+    "settings.channel.testSendFail": "发送失败：{error}",
+    "settings.channel.testSendOk": "发送成功",
+    "onboarding.progressLabel": "第 {step} 步，共 {total} 步"
 }
