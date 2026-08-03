@@ -123,7 +123,7 @@ cli-jaw/
 │   │   ├── redact.ts         ← 채널 크리덴셜 마스킹 (Slack/TG/Discord 토큰 + URL 경로 capability) (599L) ✨
 │   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 서로게이트 안전 + 펜스/언어태그 보존, 단 delimiter가 한도 이내일 때) (389L) ✨
 │   │   ├── channel-health.ts ← 채널 헬스 체크 helper (110L) ✨
-│   │   ├── channel-validate.ts ← 온보딩 마법사 라이브 크리덴셜 검증 (telegram getMe / discord users@me / slack auth.test+connections.open, 토큰 비로깅) (69L) ✨
+│   │   ├── channel-validate.ts ← 온보딩 마법사 라이브 크리덴셜 검증 (telegram getMe / discord users@me / slack auth.test+connections.open, 토큰 비로깅) (101L) ✨
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (27L)
 │   │   ├── thread-target.ts  ← Telegram forum topic `message_thread_id` 정규화 helper (21L)
@@ -230,12 +230,12 @@ cli-jaw/
 │   ├── slack/                ← Slack 인터페이스 (14 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (372L)
 │   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (309L)
-│   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction) (134L)
+│   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction) (161L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (62L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (172L)
 │   │   ├── commands.ts       ← slash command → 공유 parseCommand/executeCommand 파이프라인 (102L)
-│   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (95L)
-│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (68L)
+│   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (97L)
+│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (69L)
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (44L)
 │   │   ├── manifest.ts       ← Slack 앱 매니페스트 single source (`jaw slack manifest`/`setup`이 사용, runbook YAML의 생성 원본) (87L)
@@ -277,7 +277,7 @@ cli-jaw/
 │   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1085L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (445L)
-│   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (290L)
+│   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (292L)
 │   │   ├── avatar.ts         ← Agent/User 아바타 이미지 업로드/서빙/삭제 + settings.json 메타 저장 + safeResolveUnder 경로 보호 (147L)
 │   │   ├── quota.ts          ← Copilot/Claude/Codex/Grok/OpenCode quota helper readers + Grok weekly credits + Claude 429 cache (545L)
 │   │   ├── quota-kiro-reverse.ts ← Kiro/CodeWhisperer quota reader (239L)
@@ -372,7 +372,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 548 files source/assets, ~96229L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 549 files source/assets, ~96229L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1241L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시

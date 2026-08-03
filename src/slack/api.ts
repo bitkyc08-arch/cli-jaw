@@ -33,15 +33,42 @@ export function isRetryableSlackError(error: string | undefined): boolean {
 }
 
 /** Map a Slack error code to an actionable operator message. */
-export function describeSlackError(error: string | undefined): string {
+/**
+ * Slack reports the scope it wanted in `response_metadata` (or a bare
+ * `needed` field). Surfacing it turns "add the required scope" into
+ * "add files:write", which is the difference between a fixable message and a
+ * support round-trip (observed live: a DOCX upload failed on missing_scope and
+ * the operator had to be told which scope by hand).
+ */
+export function neededScopeFrom(data: unknown): string {
+    if (!data || typeof data !== 'object') return '';
+    const record = data as Record<string, unknown>;
+    const direct = record['needed'];
+    if (typeof direct === 'string' && direct.trim()) return direct.trim();
+    const meta = record['response_metadata'];
+    if (meta && typeof meta === 'object') {
+        const messages = (meta as Record<string, unknown>)['messages'];
+        if (Array.isArray(messages)) {
+            const hit = messages.find(m => typeof m === 'string' && m.includes('scope'));
+            if (typeof hit === 'string') return hit.trim();
+        }
+    }
+    return '';
+}
+
+export function describeSlackError(error: string | undefined, data?: unknown): string {
     switch (error) {
         case 'invalid_auth':
         case 'not_authed':
             return 'Slack token is invalid or missing (check the bot token, xoxb-...)';
         case 'account_inactive':
             return 'Slack bot token belongs to a deactivated app or workspace';
-        case 'missing_scope':
-            return 'Slack app is missing a required OAuth scope — reinstall the app after adding it';
+        case 'missing_scope': {
+            const needed = neededScopeFrom(data);
+            return needed
+                ? `Slack app is missing the "${needed}" OAuth scope — add it under OAuth & Permissions, then reinstall the app`
+                : 'Slack app is missing a required OAuth scope — add it under OAuth & Permissions, then reinstall the app';
+        }
         case 'channel_not_found':
             return 'Slack conversation not found, or the bot is not a member of it';
         case 'not_in_channel':

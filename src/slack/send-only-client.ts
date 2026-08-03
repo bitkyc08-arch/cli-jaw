@@ -36,7 +36,8 @@ export async function resolveSlackDmChannel(
     );
     const channelId = result.data?.channel?.id;
     if (!result.ok || !channelId) {
-        return { ok: false, error: describeSlackError(result.error || 'conversations_open_failed') };
+        // Pass the payload so a missing im:write names itself.
+        return { ok: false, error: describeSlackError(result.error || 'conversations_open_failed', result.data) };
     }
     return { ok: true, channelId };
 }
@@ -61,7 +62,7 @@ export async function sendSlackText(
             options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
         );
         if (!result.ok) {
-            return slackFailure(describeSlackError(result.error), result.status);
+            return slackFailure(describeSlackError(result.error, result.data), result.status);
         }
     }
     return { ok: true };

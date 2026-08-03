@@ -877,5 +877,12 @@
     "onboarding.validating": "확인하는 중...",
     "onboarding.validateHint": "검증을 눌러 실제 연결을 확인하세요. 통과해야 저장으로 넘어갑니다.",
     "onboarding.saveHint": "검증을 통과했습니다. 저장을 누르면 설정에 반영되고 채널이 바로 연결됩니다.",
-    "onboarding.error.validation_required": "먼저 검증을 통과해야 합니다."
+    "onboarding.error.validation_required": "먼저 검증을 통과해야 합니다.",
+    "onboarding.openIssuer": "발급 페이지 열기",
+    "onboarding.error.missing_scopes": "토큰은 유효하지만 앱에 권한(스코프)이 부족합니다. OAuth & Permissions에서 아래 항목을 추가하고 앱을 재설치하세요.",
+    "onboarding.hint.telegram.botToken": "@BotFather가 /newbot 후 알려준 값입니다.",
+    "onboarding.hint.discord.botToken": "Bot 탭의 Reset Token으로 새로 만든 값입니다.",
+    "onboarding.hint.discord.guildId": "개발자 모드를 켠 뒤 서버를 우클릭해 ID 복사.",
+    "onboarding.hint.slack.botToken": "OAuth & Permissions의 Bot User OAuth Token (xoxb-로 시작).",
+    "onboarding.hint.slack.appToken": "Basic Information → App-Level Tokens (xapp-, connections:write)."
 }

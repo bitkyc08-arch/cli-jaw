@@ -399,6 +399,20 @@
     color: var(--error, #e5534b);
 }
 
+.onboarding-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+}
+
+.onboarding-scopes {
+    display: block;
+    margin-top: 4px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: var(--text);
+    word-break: break-all;
+}
+
 .onboarding-identity {
     font-size: 11px;
     color: var(--accent);

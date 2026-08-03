@@ -4,17 +4,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateChannelCredentials } from '../../src/messaging/channel-validate.ts';
+import { REQUIRED_SLACK_BOT_SCOPES } from '../../src/messaging/channel-validate.ts';
 
 type Route = { ok?: boolean; json?: unknown };
 
 function fakeFetch(routes: Record<string, Route>) {
     const calls: string[] = [];
+    // Slack's real responses carry the granted scopes; without this header the
+    // preflight silently skips and these cases would not exercise the token
+    // path they claim to.
+    const headers = { get: (k: string) => (k === 'x-oauth-scopes' ? REQUIRED_SLACK_BOT_SCOPES.join(',') : null) };
     const fn = async (url: string | URL | Request) => {
         const u = String(url);
         calls.push(u);
         for (const [needle, r] of Object.entries(routes)) {
             if (u.includes(needle)) {
-                return { ok: r.ok !== false, json: async () => r.json ?? {} } as Response;
+                return { ok: r.ok !== false, headers, json: async () => r.json ?? {} } as unknown as Response;
             }
         }
         throw new Error('unreachable');

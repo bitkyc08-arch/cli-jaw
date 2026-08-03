@@ -53,12 +53,71 @@ test('the step machine is a DOM-free module so its gates are testable', () => {
     assert.ok(!/^import /m.test(flowMod), 'the flow module must stay import-free');
 });
 
+test('the popup behaves like a form: autofocus, Enter, Escape', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    assert.match(mod, /focusFirstEmptyField\(\)/, 'no autofocus after render');
+    assert.match(mod, /key !== 'Enter'/, 'Enter is not handled in the fields');
+    assert.match(mod, /primaryAction\(\)/, 'Enter must trigger the step primary action');
+    assert.match(mod, /ev\.key !== 'Escape'/, 'Escape does not close the popup');
+    // Escape must be capture-phase like help-dialog, so the two overlays never
+    // both react to one key press.
+    assert.match(mod, /addEventListener\('keydown',[\s\S]{0,400}?\}, true\)/);
+});
+
+test('every credential field shows an example and where it comes from', () => {
+    const flowMod = read('public/js/features/channel-onboarding-flow.ts');
+    const mod = read('public/js/features/channel-onboarding.ts');
+    const ko = JSON.parse(read('public/locales/ko.json')) as Record<string, string>;
+
+    // Placeholders are illustrative shapes, wired from the field definitions.
+    assert.match(mod, /placeholder="\$\{escapeHtml\(field\.example\)\}"/);
+    for (const example of [...flowMod.matchAll(/example: '([^']+)'/g)].map(m => m[1]!)) {
+        assert.ok(example.length > 0);
+        assert.ok(!/^[0-9a-f]{32,}$/i.test(example), 'examples must not look like real credentials');
+    }
+    // Every field has a source hint in ko.
+    const channelFields: Record<string, string[]> = {
+        telegram: ['botToken'],
+        discord: ['botToken', 'guildId'],
+        slack: ['botToken', 'appToken'],
+    };
+    for (const [channel, keys] of Object.entries(channelFields)) {
+        for (const key of keys) {
+            assert.ok(ko[`onboarding.hint.${channel}.${key}`], `ko.json missing hint for ${channel}.${key}`);
+        }
+    }
+});
+
+test('step 1 offers a real link to the issuing page for every channel', () => {
+    const flowMod = read('public/js/features/channel-onboarding-flow.ts');
+    const mod = read('public/js/features/channel-onboarding.ts');
+    assert.match(flowMod, /ISSUER_URLS/);
+    for (const url of ['t.me/BotFather', 'discord.com/developers/applications', 'api.slack.com/apps']) {
+        assert.ok(flowMod.includes(url), `missing issuer URL ${url}`);
+    }
+    assert.match(mod, /data-onboard-issuer/, 'no issuer button in step 1');
+});
+
+test('notification permission is requested from the save gesture, once', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    const notif = read('public/js/features/notifications.ts');
+    assert.match(mod, /maybeRequestNotificationPermission\(\)/);
+    // Never on load: the only call site sits in the save path.
+    const saveIdx = mod.indexOf('async function runSave');
+    assert.ok(mod.indexOf('maybeRequestNotificationPermission()', saveIdx) > saveIdx);
+    assert.match(notif, /localStorage\.setItem/, 'the ask must be remembered');
+});
+
 test('every onboarding i18n key the module uses exists in ko and en', () => {
     const mod = read('public/js/features/channel-onboarding.ts');
     const ko = JSON.parse(read('public/locales/ko.json')) as Record<string, string>;
     const en = JSON.parse(read('public/locales/en.json')) as Record<string, string>;
     const literal = [...mod.matchAll(/t\('(onboarding\.[a-zA-Z.]+)'/g)].map(m => m[1]!);
-    const templated = [...mod.matchAll(/t\(`(onboarding\.[a-zA-Z.]+)\.\$\{/g)].map(m => m[1]!);
+    // Only single-variable templates like `onboarding.guide.${channel}` join a
+    // prefix to a channel. Two-variable keys (hint.${channel}.${field}) are
+    // covered by the per-field hint test instead — matching them here would
+    // capture a truncated prefix and assert keys that never existed.
+    const templated = [...mod.matchAll(/t\(`(onboarding\.[a-zA-Z.]+)\.\$\{[a-zA-Z.]+\}`/g)].map(m => m[1]!);
     for (const key of new Set(literal)) {
         assert.ok(ko[key], `ko.json missing ${key}`);
         assert.ok(en[key], `en.json missing ${key}`);

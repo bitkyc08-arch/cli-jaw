@@ -18,20 +18,29 @@ export type FieldDef = {
     optional?: boolean;
     /** Required prefix, when the provider namespaces its tokens. */
     prefix?: string;
+    /** Illustrative shape shown as the input placeholder — never a real value. */
+    example: string;
 };
 
 export const CHANNEL_FIELDS: Record<OnboardChannel, readonly FieldDef[]> = {
     telegram: [
-        { key: 'botToken', settingsId: 'tgToken', secret: true },
+        { key: 'botToken', settingsId: 'tgToken', secret: true, example: '8123456789:AAH...' },
     ],
     discord: [
-        { key: 'botToken', settingsId: 'dcToken', secret: true },
-        { key: 'guildId', settingsId: 'dcGuildId', secret: false },
+        { key: 'botToken', settingsId: 'dcToken', secret: true, example: 'MTIzNDU2Nzg5...' },
+        { key: 'guildId', settingsId: 'dcGuildId', secret: false, example: '123456789012345678' },
     ],
     slack: [
-        { key: 'botToken', settingsId: 'slBotToken', secret: true, prefix: 'xoxb-' },
-        { key: 'appToken', settingsId: 'slAppToken', secret: true, optional: true, prefix: 'xapp-' },
+        { key: 'botToken', settingsId: 'slBotToken', secret: true, prefix: 'xoxb-', example: 'xoxb-1234-5678-abcd...' },
+        { key: 'appToken', settingsId: 'slAppToken', secret: true, optional: true, prefix: 'xapp-', example: 'xapp-1-A01...' },
     ],
+};
+
+/** Where each channel issues its credentials — the step-1 primary action. */
+export const ISSUER_URLS: Record<OnboardChannel, string> = {
+    telegram: 'https://t.me/BotFather',
+    discord: 'https://discord.com/developers/applications',
+    slack: 'https://api.slack.com/apps',
 };
 
 export const TOTAL_STEPS = 4;
@@ -49,6 +58,8 @@ export type FlowState = {
     validatedTeamId: string;
     /** i18n key suffix for the blocking reason, or null when the step is clear. */
     error: string | null;
+    /** Scopes the provider reported as missing, shown with the error. */
+    missingScopes: string[];
     saved: boolean;
 };
 
@@ -60,6 +71,7 @@ export function createFlow(channel: OnboardChannel, draft: Draft = {}): FlowStat
         validatedIdentity: null,
         validatedTeamId: '',
         error: null,
+        missingScopes: [],
         saved: false,
     };
 }
@@ -126,12 +138,13 @@ export function setField(state: FlowState, key: string, value: string): FlowStat
         validatedIdentity: null,
         validatedTeamId: '',
         error: null,
+        missingScopes: [],
     };
 }
 
 export function applyValidation(
     state: FlowState,
-    result: { ok?: boolean; identity?: string; teamId?: string; error?: string },
+    result: { ok?: boolean; identity?: string; teamId?: string; error?: string; missing?: string[] },
 ): FlowState {
     if (result?.ok) {
         return {
@@ -139,9 +152,16 @@ export function applyValidation(
             validatedIdentity: result.identity || 'ok',
             validatedTeamId: result.teamId || '',
             error: null,
+            missingScopes: [],
         };
     }
-    return { ...state, validatedIdentity: null, validatedTeamId: '', error: result?.error || 'network' };
+    return {
+        ...state,
+        validatedIdentity: null,
+        validatedTeamId: '',
+        error: result?.error || 'network',
+        missingScopes: Array.isArray(result?.missing) ? result.missing : [],
+    };
 }
 
 export function markSaved(state: FlowState): FlowState {

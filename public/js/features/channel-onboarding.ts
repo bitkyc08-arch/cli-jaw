@@ -9,6 +9,7 @@ import { escapeHtml } from '../render.js';
 import { refreshTransportStatusRow } from './transport-status-row.js';
 import {
     TOTAL_STEPS,
+    ISSUER_URLS,
     advance,
     applyValidation,
     blockerForStep,
@@ -23,6 +24,7 @@ import {
     type FlowState,
     type OnboardChannel,
 } from './channel-onboarding-flow.js';
+import { maybeRequestNotificationPermission } from './notifications.js';
 
 export type { OnboardChannel };
 
@@ -37,6 +39,14 @@ export function initChannelOnboarding(): void {
         ev.preventDefault();
         openChannelOnboarding(btn.getAttribute('data-onboard-channel') as OnboardChannel);
     });
+    // Capture phase, matching help-dialog: whichever overlay is open handles
+    // Escape and stops it there, so the two never both react.
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Escape' || !flow) return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        close();
+    }, true);
 }
 
 export function openChannelOnboarding(channel: OnboardChannel): void {
@@ -78,7 +88,13 @@ function ensureOverlay(): void {
 
 function stepBody(state: FlowState): string {
     if (state.step === 1) {
-        return `<p class="onboarding-guide">${escapeHtml(t(`onboarding.guide.${state.channel}`))}</p>`;
+        return `
+            <p class="onboarding-guide">${escapeHtml(t(`onboarding.guide.${state.channel}`))}</p>
+            <div class="onboarding-actions">
+                <button type="button" class="perm-btn" data-onboard-issuer="1">
+                    ${escapeHtml(t('onboarding.openIssuer'))}
+                </button>
+            </div>`;
     }
     if (state.step === 2) {
         return fieldsFor(state.channel).map((field) => {
@@ -88,7 +104,10 @@ function stepBody(state: FlowState): string {
                 <label for="onboard-${field.key}">${escapeHtml(label)}</label>
                 <input id="onboard-${field.key}" data-onboard-field="${field.key}" class="input-sm"
                     type="${field.secret ? 'password' : 'text'}"
+                    placeholder="${escapeHtml(field.example)}"
+                    autocomplete="off" spellcheck="false"
                     value="${escapeHtml(state.draft[field.key] || '')}">
+                <span class="onboarding-hint">${escapeHtml(t(`onboarding.hint.${state.channel}.${field.key}`))}</span>
             </div>`;
         }).join('');
     }
@@ -142,11 +161,15 @@ function render(): void {
             ${stepBody(state)}
             <div class="onboarding-error" style="display:${state.error ? '' : 'none'}">
                 ${state.error ? escapeHtml(t(`onboarding.error.${state.error}`)) : ''}
+                ${state.missingScopes.length ? `<span class="onboarding-scopes">${escapeHtml(state.missingScopes.join(', '))}</span>` : ''}
             </div>
             <div class="onboarding-actions onboarding-footer">${footer(state)}</div>
         </div>`;
 
     overlay.querySelectorAll('[data-onboard-close]').forEach(el => el.addEventListener('click', close));
+    overlay.querySelector('[data-onboard-issuer]')?.addEventListener('click', () => {
+        if (flow) window.open(ISSUER_URLS[flow.channel], '_blank', 'noopener');
+    });
     overlay.querySelector('[data-onboard-back]')?.addEventListener('click', () => {
         if (!flow) return;
         flow = goBack(flow);
@@ -168,7 +191,42 @@ function render(): void {
             const key = (el as HTMLElement).getAttribute('data-onboard-field') || '';
             flow = setField(flow, key, (el as HTMLInputElement).value);
         });
+        // Enter submits the step instead of doing nothing — the wizard is a
+        // form, and a form that ignores Enter reads as broken.
+        el.addEventListener('keydown', (ev) => {
+            const key = (ev as KeyboardEvent).key;
+            if (key !== 'Enter' || (ev as KeyboardEvent).shiftKey || (ev as KeyboardEvent).isComposing) return;
+            ev.preventDefault();
+            primaryAction();
+        });
     });
+
+    focusFirstEmptyField();
+}
+
+/** Whatever the current step's primary button does — Enter mirrors it. */
+function primaryAction(): void {
+    if (!flow) return;
+    if (flow.step === 3) { void runValidation(); return; }
+    if (flow.step === TOTAL_STEPS) { if (!flow.saved) void runSave(); return; }
+    captureInputs();
+    flow = advance(flow);
+    render();
+}
+
+/**
+ * render() replaces innerHTML, so focus is lost on every state change. Restore
+ * it to the first field still needing input (or the first field at all), which
+ * is also what a freshly opened step-2 should focus.
+ */
+function focusFirstEmptyField(): void {
+    const inputs = [...(overlay?.querySelectorAll('[data-onboard-field]') ?? [])] as HTMLInputElement[];
+    if (!inputs.length) return;
+    const target = inputs.find(input => !input.value.trim()) ?? inputs[0];
+    target?.focus();
+    // Caret at the end so an existing value can be corrected, not overwritten.
+    const end = target?.value.length ?? 0;
+    target?.setSelectionRange?.(end, end);
 }
 
 function captureInputs(): void {
@@ -214,4 +272,8 @@ async function runSave(): Promise<void> {
     flow = markSaved(flow);
     render();
     void refreshTransportStatusRow();
+    // The save click is a user gesture, which is the only moment a browser
+    // will honour a notification request — and the only moment it is relevant,
+    // since a channel just started delivering messages.
+    void maybeRequestNotificationPermission();
 }

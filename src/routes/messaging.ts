@@ -242,7 +242,9 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
     // the wizard saves through PUT /api/settings after this passes.
     app.post('/api/channels/validate', requireAuth, async (req, res) => {
         const result = await validateChannelCredentials(req.body || {});
-        res.json(result.ok ? { ok: true, identity: result.identity, teamId: result.teamId } : { ok: false, error: result.error });
+        res.json(result.ok
+            ? { ok: true, identity: result.identity, teamId: result.teamId }
+            : { ok: false, error: result.error, ...(result.missing?.length ? { missing: result.missing } : {}) });
     });
 
     // Canonical channel send

@@ -57,7 +57,7 @@ export async function sendSlackFile(
     const uploadUrl = reserve.data?.upload_url;
     const fileId = reserve.data?.file_id;
     if (!reserve.ok || !uploadUrl || !fileId) {
-        return slackFailure(describeSlackError(reserve.error || 'upload_url_missing'), reserve.status);
+        return slackFailure(describeSlackError(reserve.error || 'upload_url_missing', reserve.data), reserve.status);
     }
 
     // Step 2 — POST the bytes to the returned URL.
@@ -89,7 +89,9 @@ export async function sendSlackFile(
         { fetchImpl: doFetch },
     );
     if (!complete.ok) {
-        return slackFailure(describeSlackError(complete.error), complete.status);
+        // File uploads are where a missing files:write scope actually bites,
+        // so pass the payload through for the needed-scope detail.
+        return slackFailure(describeSlackError(complete.error, complete.data), complete.status);
     }
     return { ok: true };
 }

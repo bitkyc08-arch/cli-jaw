@@ -113,7 +113,7 @@ export async function startSlackProgress(
             const result = await slackApi(
                 token, 'chat.delete', { channel: target.targetId, ts }, fetchOpts,
             );
-            if (!result.ok) describeSlackError(result.error || 'chat_delete_failed');
+            if (!result.ok) describeSlackError(result.error || 'chat_delete_failed', result.data);
         },
         ts() { return messageTs; },
     };

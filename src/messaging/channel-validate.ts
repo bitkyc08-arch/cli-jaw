@@ -15,7 +15,36 @@ export type ChannelValidateResult = {
     identity?: string;
     teamId?: string;
     error?: string;
+    /** Bot scopes the app still needs, when the token is otherwise valid. */
+    missing?: string[];
 };
+
+/**
+ * Bot scopes the transport actually calls. A token missing any of these looks
+ * fine at auth.test and then fails at the first real use — exactly how a DOCX
+ * upload died on `missing_scope` after setup "succeeded". Slack returns the
+ * granted set in the `x-oauth-scopes` response header, so the gap is knowable
+ * at setup time.
+ */
+export const REQUIRED_SLACK_BOT_SCOPES = [
+    'app_mentions:read',
+    'channels:history',
+    'groups:history',
+    'im:history',
+    'im:write',
+    'chat:write',
+    'files:write',
+    'commands',
+] as const;
+
+/** Scopes required but not granted, in required-list order. */
+export function missingSlackScopes(grantedHeader: string | null | undefined): string[] {
+    // An absent header means Slack did not tell us; treat it as "cannot check"
+    // rather than "everything is missing".
+    if (!grantedHeader) return [];
+    const granted = new Set(grantedHeader.split(',').map(s => s.trim()).filter(Boolean));
+    return REQUIRED_SLACK_BOT_SCOPES.filter(scope => !granted.has(scope));
+}
 
 export async function validateChannelCredentials(
     req: ChannelValidateRequest,
@@ -53,6 +82,9 @@ export async function validateChannelCredentials(
             const authRes = await post('auth.test', botToken);
             const auth = await authRes.json() as { ok?: boolean; team_id?: string; user?: string };
             if (!auth.ok) return { ok: false, error: 'invalid_token' };
+            // Catch a scope gap HERE rather than at the first upload/post.
+            const missing = missingSlackScopes(authRes.headers?.get?.('x-oauth-scopes'));
+            if (missing.length) return { ok: false, error: 'missing_scopes', missing };
             const appToken = String(req.appToken || '').trim();
             if (appToken) {
                 if (!appToken.startsWith('xapp-')) return { ok: false, error: 'app_prefix' };

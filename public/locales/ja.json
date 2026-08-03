@@ -866,5 +866,12 @@
     "onboarding.validating": "確認中...",
     "onboarding.validateHint": "「検証」を押して実際の接続を確認してください。通過しないと保存に進めません。",
     "onboarding.saveHint": "検証に成功しました。保存すると設定に反映され、チャンネルがすぐ接続されます。",
-    "onboarding.error.validation_required": "先に検証を通す必要があります。"
+    "onboarding.error.validation_required": "先に検証を通す必要があります。",
+    "onboarding.openIssuer": "発行ページを開く",
+    "onboarding.error.missing_scopes": "トークンは有効ですが、アプリの権限（スコープ）が不足しています。OAuth & Permissions で以下を追加し、アプリを再インストールしてください。",
+    "onboarding.hint.telegram.botToken": "@BotFather が /newbot の後に返した値です。",
+    "onboarding.hint.discord.botToken": "Bot タブの Reset Token で生成した値です。",
+    "onboarding.hint.discord.guildId": "開発者モードを有効にし、サーバーを右クリックして ID をコピー。",
+    "onboarding.hint.slack.botToken": "OAuth & Permissions の Bot User OAuth Token（xoxb- で始まる）。",
+    "onboarding.hint.slack.appToken": "Basic Information → App-Level Tokens（xapp-, connections:write）。"
 }

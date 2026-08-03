@@ -877,5 +877,12 @@
     "onboarding.validating": "Checking...",
     "onboarding.validateHint": "Press Validate to check the real connection. It must pass before saving.",
     "onboarding.saveHint": "Validation passed. Saving applies the settings and connects the channel right away.",
-    "onboarding.error.validation_required": "Validation has to pass first."
+    "onboarding.error.validation_required": "Validation has to pass first.",
+    "onboarding.openIssuer": "Open the issuing page",
+    "onboarding.error.missing_scopes": "The token works, but the app is missing OAuth scopes. Add the ones below under OAuth & Permissions, then reinstall the app.",
+    "onboarding.hint.telegram.botToken": "The value @BotFather returned after /newbot.",
+    "onboarding.hint.discord.botToken": "Generated with Reset Token on the Bot tab.",
+    "onboarding.hint.discord.guildId": "Enable Developer Mode, right-click the server, copy ID.",
+    "onboarding.hint.slack.botToken": "Bot User OAuth Token from OAuth & Permissions (starts with xoxb-).",
+    "onboarding.hint.slack.appToken": "Basic Information, App-Level Tokens (xapp-, connections:write)."
 }
