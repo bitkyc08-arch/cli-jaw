@@ -37,17 +37,44 @@ if (shouldShowHelp(process.argv)) printAndExit(`
   Usage: jaw slack <subcommand> [flags]
 
   Subcommands:
-    manifest              Print the Slack app manifest (paste into api.slack.com/apps → From an app manifest)
-    setup                 Guided setup: manifest, live token validation, settings write
+    manifest              Print the Slack app manifest YAML to stdout.
+                          Pipe it: jaw slack manifest | pbcopy
+    setup                 Guided setup: prints the manifest, validates the two
+                          tokens live, writes settings, hot-reloads the server.
 
   Setup flags:
-    --bot-token <t>       Bot token (xoxb-...)
-    --app-token <t>       App-level token (xapp-..., enables inbound via Socket Mode)
+    --bot-token <t>       Bot token (xoxb-...). REQUIRED.
+                          Source: api.slack.com/apps → your app →
+                          OAuth & Permissions → Install to Workspace →
+                          Bot User OAuth Token
+    --app-token <t>       App-level token (xapp-...). Optional; enables inbound
+                          via Socket Mode. Omit for outbound-only.
+                          Source: api.slack.com/apps → your app →
+                          Basic Information → App-Level Tokens →
+                          Generate Token (scope: connections:write)
     --team-id <id>        Slack team ID (auto-filled from auth.test when omitted)
     --channel-ids <ids>   Comma-separated conversation IDs (empty = all allowed)
     --non-interactive     Never prompt; requires --bot-token
     --skip-validate       Write settings WITHOUT live validation (offline; prints a warning)
     --no-notify           Do not hot-notify a running server (tests, offline)
+
+  Non-interactive example (agent-safe — no prompts, no token echo):
+    jaw slack setup --non-interactive \\
+      --bot-token xoxb-... --app-token xapp-... --channel-ids C0123456789
+
+  What setup writes/does:
+    - settings.json: slack.enabled=true, botToken, appToken, teamId,
+      channelIds, attachPort (the configuring instance's port — one bot,
+      one instance; other instances sharing the tokens will not connect).
+      File permissions are tightened to 0600.
+    - Validates tokens first (auth.test, apps.connections.open) unless
+      --skip-validate; nothing is written on validation failure.
+    - Hot-notifies a running server via loopback PUT /api/settings, so the
+      Slack socket opens WITHOUT a server restart (skipped by --no-notify,
+      or when the server runs an older build — then it tells you to restart).
+
+  Exit codes: 0 = success (or outbound-only with a warning),
+              1 = missing/invalid/swapped token, or validation failure.
 
   Why not OAuth one-click? Slack app-level tokens (xapp-) are UI-only, and the
   PKCE localhost flow bans bot scopes — a browser click cannot configure a

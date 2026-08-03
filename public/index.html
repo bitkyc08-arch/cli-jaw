@@ -582,6 +582,7 @@
                         <span class="slack-step-num">2</span>
                         <div class="slack-step-body">
                             <div class="slack-step-title" data-i18n="settings.slack.guide.step2Title">봇 토큰 붙여넣기</div>
+                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step2Desc">앱 설정 → OAuth &amp; Permissions → Install to Workspace → Bot User OAuth Token 복사</div>
                             <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
                             <div class="slack-field-error" id="slack-bot-token-error" style="display:none" data-i18n="settings.slack.guide.botTokenError">xoxb-로 시작하는 봇 토큰이어야 합니다</div>
                         </div>
@@ -590,6 +591,7 @@
                         <span class="slack-step-num">3</span>
                         <div class="slack-step-body">
                             <div class="slack-step-title" data-i18n="settings.slack.guide.step3Title">수신용 앱 토큰 (선택)</div>
+                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step3Location">앱 설정 → Basic Information → App-Level Tokens → Generate Token (connections:write)</div>
                             <input type="password" id="slAppToken" placeholder="xapp-... (Socket Mode)" class="input-sm">
                             <div class="slack-field-error" id="slack-app-token-error" style="display:none" data-i18n="settings.slack.guide.appTokenError">xapp-로 시작하는 앱 레벨 토큰이어야 합니다</div>
                             <div class="slack-step-desc" data-i18n="settings.slack.guide.step3Desc">비워두면 전송 전용(outbound-only)으로 동작합니다</div>

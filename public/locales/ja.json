@@ -826,5 +826,7 @@
     "settings.slack.guide.appTokenError": "xapp- で始まるアプリレベルトークンが必要です — ボットトークンと入れ替わっていませんか？",
     "settings.slack.advanced": "詳細設定",
     "settings.slack.attachPort": "接続インスタンスのポート",
-    "settings.channel.notAttachInstanceHint": "別のインスタンスがこの Slack 接続を所有しています（接続インスタンスのポートを確認）"
+    "settings.channel.notAttachInstanceHint": "別のインスタンスがこの Slack 接続を所有しています（接続インスタンスのポートを確認）",
+    "settings.slack.guide.step2Desc": "アプリ設定 → OAuth & Permissions → Install to Workspace → Bot User OAuth Token をコピー",
+    "settings.slack.guide.step3Location": "アプリ設定 → Basic Information → App-Level Tokens → Generate Token (connections:write)"
 }

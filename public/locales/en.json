@@ -837,5 +837,7 @@
     "settings.slack.guide.appTokenError": "Must be an app-level token starting with xapp- — swapped with the bot token?",
     "settings.slack.advanced": "Advanced settings",
     "settings.slack.attachPort": "Attach instance port",
-    "settings.channel.notAttachInstanceHint": "Another instance owns this Slack connection (check the attach instance port)"
+    "settings.channel.notAttachInstanceHint": "Another instance owns this Slack connection (check the attach instance port)",
+    "settings.slack.guide.step2Desc": "App settings → OAuth & Permissions → Install to Workspace → copy Bot User OAuth Token",
+    "settings.slack.guide.step3Location": "App settings → Basic Information → App-Level Tokens → Generate Token (connections:write)"
 }

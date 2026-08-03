@@ -72,6 +72,10 @@ test('the slack section has a 3-step setup guide card with the exact Slack click
     // The screenshot-confirmed confusion: Your Apps shows only "Create an
     // App" — the guide must name the exact path from there.
     assert.ok(html.includes('From an app manifest'), 'exact Slack click path missing');
+    // Each token step must name WHERE the token is issued — a bare "paste
+    // the token" sends users hunting through the Slack app settings.
+    assert.ok(html.includes('OAuth &amp; Permissions'), 'bot token source page missing');
+    assert.ok(html.includes('App-Level Tokens'), 'app token source page missing');
 });
 
 test('non-credential fields are demoted to a collapsed advanced section', () => {
