@@ -112,6 +112,24 @@ function computeBackoff(attempt: number, base = 5000, max = 120_000): number {
 const MAIN_MAX_RETRIES = 3;
 const EMP_MAX_RETRIES = 2;
 
+/**
+ * Did this run already do something a retry would repeat?
+ *
+ * Retrying re-runs the same prompt, so any tool the previous attempt executed
+ * runs again — a second Slack message, a second commit, a second file write.
+ * `_skipInsert` only suppresses the local chat row; it does nothing about
+ * external effects.
+ *
+ * Tool metadata does not distinguish reads from writes, so this treats any tool
+ * call as potentially effectful. That is deliberately conservative: repeating a
+ * read wastes a little work, while repeating a send is visible to other people.
+ * The same "a real turn ran tools" reasoning already guards stale-resume
+ * invalidation elsewhere in this file.
+ */
+function performedSideEffects(ctx: ExitContext): boolean {
+    return ctx.toolLog.length > 0;
+}
+
 type LifecycleSpawnOptions = {
     internal?: boolean;
     _isFallback?: boolean;
@@ -697,7 +715,11 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         // before reaching here — state it anyway so reordering these branches
         // cannot silently start retrying stalled runs, which may already have
         // produced side effects.
-        if (!opts.internal && !opts._isFallback && effectiveIs429 && !isStall && mainAttempt < MAIN_MAX_RETRIES) {
+        if (
+            !opts.internal && !opts._isFallback && effectiveIs429 && !isStall
+            && !performedSideEffects(ctx)
+            && mainAttempt < MAIN_MAX_RETRIES
+        ) {
             const delayMs = computeBackoff(mainAttempt);
             const delaySec = Math.round(delayMs / 1000);
             console.log(`[jaw:retry] ${cli} 429 detected — waiting ${delaySec}s before retry (attempt ${mainAttempt + 1}/${MAIN_MAX_RETRIES})`);
@@ -720,6 +742,16 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 });
             }, delayMs));
             return;
+        }
+
+        if (!opts.internal && !opts._isFallback && effectiveIs429 && !isStall
+            && performedSideEffects(ctx) && mainAttempt < MAIN_MAX_RETRIES) {
+            // Say why the retry was declined, so this reads as a decision rather
+            // than a missing feature.
+            console.log(
+                `[jaw:retry] ${cli} 429 detected but ${ctx.toolLog.length} tool call(s) already ran — `
+                + 'not retrying, because re-running would repeat them',
+            );
         }
 
         // ─── Fallback with retry tracking ───
@@ -801,7 +833,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             });
             return;
         }
-        if ((cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup) && !cls.isStall && !cls.isAuth && !opts._employeeFreshSessionRetry && empAttempt < EMP_MAX_RETRIES) {
+        if (
+            (cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup)
+            && !cls.isStall && !cls.isAuth
+            && !performedSideEffects(ctx)
+            && !opts._employeeFreshSessionRetry
+            && empAttempt < EMP_MAX_RETRIES
+        ) {
             recordError(cli, '429');
             const empDelayMs = computeBackoff(empAttempt, 3000, 60_000);
             const empDelaySec = Math.round(empDelayMs / 1000);

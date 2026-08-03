@@ -16,7 +16,7 @@ const handler = readFileSync(join(projectRoot, 'src', 'agent', 'lifecycle-handle
  */
 test('the stall branch returns before the main 429 retry can fire', () => {
     const stallBranch = handler.indexOf('if (isStall) {');
-    const retryBranch = handler.search(/effectiveIs429 &&[^)]*mainAttempt < MAIN_MAX_RETRIES/);
+    const retryBranch = handler.search(/effectiveIs429 &&[\s\S]{0,200}?mainAttempt < MAIN_MAX_RETRIES/);
 
     assert.ok(stallBranch > 0, 'stall branch must exist');
     assert.ok(retryBranch > 0, 'main 429 retry must exist');
@@ -35,7 +35,7 @@ test('the stall branch returns before the main 429 retry can fire', () => {
 
 test('the employee transient retry excludes stalls and auth failures explicitly', () => {
     const guard = handler.match(
-        /if \(\(cls\.is429 \|\| cls\.isClaudeRateLimit \|\| cls\.isTransientStartup\)[^{]*\{/,
+        /\(cls\.is429 \|\| cls\.isClaudeRateLimit \|\| cls\.isTransientStartup\)[\s\S]{0,300}?empAttempt < EMP_MAX_RETRIES/,
     );
 
     assert.ok(guard, 'employee transient retry guard must exist');
