@@ -1,23 +1,55 @@
 #!/bin/sh
-# jaw CLI launcher — auto-rebuilds native modules when Node version changes.
-REAL="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$0")"
-DIR="$(cd "$(dirname "$REAL")/.." && pwd)"
+# jaw CLI launcher — auto-repairs native modules when the Node runtime changes.
+#
+# Portability rules for this file:
+#   * never interpolate a path into JavaScript source (pass it via argv)
+#   * never require `readlink -f` (the -f flag is a GNU extension, absent on
+#     stock macOS/BSD)
+#   * never let the recovery branch change the cwd that the CLI finally sees
+
+# Resolve this script through symlinks without relying on `readlink -f`.
+# `cd -P … && pwd -P` is not sufficient here: it canonicalizes the parent
+# directory but not a final symlink, and the installed launcher IS a symlink.
+resolve_self() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1" 2>/dev/null && return 0
+    fi
+    # Node is a hard dependency of this CLI, so it is the most reliable fallback.
+    "$NODE" -e 'process.stdout.write(require("node:fs").realpathSync(process.argv[1]))' "$1" 2>/dev/null
+}
+
 if [ -n "$NVM_BIN" ] && [ -x "$NVM_BIN/node" ]; then
     NODE="$NVM_BIN/node"
 else
     NODE="$(command -v node)"
 fi
 if [ -z "$NODE" ]; then echo "node not found in PATH" >&2; exit 1; fi
+
+REAL="$(resolve_self "$0")"
+[ -n "$REAL" ] || REAL="$0"
+DIR="$(CDPATH= cd -P "$(dirname "$REAL")/.." && pwd -P)"
+
 NPM="$(dirname "$NODE")/npm"
 if [ ! -x "$NPM" ]; then NPM="$(command -v npm)"; fi
 if [ -z "$NPM" ]; then echo "npm not found in PATH" >&2; exit 1; fi
 NODE_BIN="$(dirname "$NODE")"
 export PATH="$NODE_BIN:$PATH"
 
-"$NODE" -e "require('$DIR/node_modules/better-sqlite3')" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "[jaw] Rebuilding native modules for Node $($NODE --version)..." >&2
-    cd "$DIR" && "$NPM" rebuild --silent 2>/dev/null
+# Probe in a child process, passing the install root as argv so paths containing
+# spaces, apostrophes or non-ASCII characters can never be parsed as JavaScript.
+if ! "$NODE" -e 'const{createRequire}=require("node:module");const{join}=require("node:path");const D=createRequire(join(process.argv[1],"package.json"))("better-sqlite3");const db=new D(":memory:");db.close();' "$DIR" 2>/dev/null; then
+    echo "[jaw] Repairing native modules for Node $("$NODE" --version)..." >&2
+    # Delegate classification/repair to the guard so the launcher and the CLI
+    # share one policy; keep `cd` inside a subshell so the exec below still runs
+    # in the caller's working directory.
+    if [ -f "$DIR/scripts/ensure-native-modules.cjs" ]; then
+        ( cd "$DIR" && "$NODE" "$DIR/scripts/ensure-native-modules.cjs" ) || exit 1
+    else
+        ( cd "$DIR" && "$NPM" rebuild better-sqlite3 ) || {
+            echo "[jaw] native module repair failed — see the output above." >&2
+            exit 1
+        }
+    fi
 fi
 
 exec "$NODE" "$DIR/dist/bin/cli-jaw.js" "$@"
