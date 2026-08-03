@@ -136,13 +136,25 @@ test('the repair lock re-probes under the lock instead of rebuilding blindly', (
     assert.ok(reprobe < rebuild, 'a waiter must not rebuild what another process already fixed');
 });
 
-test('a stale repair lock is reclaimed but a live one is never deleted', () => {
+test('a repair lock is reclaimed by owner liveness, not by elapsed time alone', () => {
     const src = read('scripts/ensure-native-modules.cjs');
 
-    assert.match(src, /LOCK_STALE_MS/);
-    assert.match(src, /reclaiming stale repair lock/);
-    // Reclaim must be conditional on age, never unconditional.
-    assert.match(src, /age > LOCK_STALE_MS/);
+    // A slow but healthy rebuild must never have its lock stolen, so elapsed
+    // time is only a backstop for a PID that cannot be probed at all.
+    assert.match(src, /isLockOwnerAlive/);
+    assert.match(src, /process\.kill\(pid, 0\)/);
+    assert.match(src, /ownerAlive === false/);
+    assert.match(src, /ownerAlive === null && age !== null && age > LOCK_STALE_MS/);
+});
+
+test('the repair lock lives outside node_modules', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+
+    // The script's own failure mode is a missing/pruned dependency tree, and a
+    // concurrent npm install can delete node_modules while the lock is held.
+    assert.doesNotMatch(src, /LOCK_DIR = join\(\s*root,\s*'node_modules'/);
+    assert.match(src, /tmpdir\(\)/);
+    assert.match(src, /createHash\('sha256'\)\.update\(realRoot\)/);
 });
 
 test('the repair lock is released even though process.exit skips finally', () => {

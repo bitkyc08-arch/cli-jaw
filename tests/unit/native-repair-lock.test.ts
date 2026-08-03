@@ -30,6 +30,40 @@ test('the lock is exclusive: a second acquire fails while it is held', { skip: !
     assert.equal(existsSync(api.lockDir), false, 'release must remove the lock');
 });
 
+test('a lock held by a live owner is never stolen', { skip: !lockApi.__testing }, () => {
+    const api = lockApi.__testing!;
+    api.release();
+    try {
+        assert.equal(api.acquire(0), true);
+        // This process is unquestionably alive, so the lock must be respected
+        // no matter how long the rebuild it guards has been running.
+        writeFileSync(join(api.lockDir, 'owner'), String(process.pid));
+        assert.equal(api.acquire(0), false, 'a live owner must not have its lock reclaimed');
+    } finally {
+        api.release();
+    }
+});
+
+test('a lock abandoned by a dead process is reclaimed', { skip: !lockApi.__testing }, () => {
+    const api = lockApi.__testing!;
+    api.release();
+    try {
+        assert.equal(api.acquire(0), true);
+        // A PID that cannot exist stands in for a crashed owner.
+        writeFileSync(join(api.lockDir, 'owner'), '2147483646');
+        assert.equal(api.acquire(0), true, 'a dead owner must not deadlock later runs');
+    } finally {
+        api.release();
+    }
+});
+
+test('the repair lock is not stored inside node_modules', { skip: !lockApi.__testing }, () => {
+    assert.ok(
+        !lockApi.__testing!.lockDir.includes('node_modules'),
+        'a concurrent npm install could delete the lock mid-hold',
+    );
+});
+
 test('a missing install is reported without acquiring a repair lock', () => {
     // A pruned install must not leave a lock behind for the next process to wait on.
     const root = mkdtempSync(join(tmpdir(), 'jaw-lock-'));

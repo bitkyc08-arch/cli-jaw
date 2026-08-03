@@ -7,11 +7,16 @@
  * rebuild it in-place before build/test steps continue.
  */
 const { execFileSync } = require('child_process');
-const { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } = require('fs');
+const { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } = require('fs');
 const { delimiter, dirname, join } = require('path');
 const { createRequire } = require('module');
+const { createHash } = require('crypto');
+const { tmpdir } = require('os');
 
 const root = join(__dirname, '..');
+// Resolve symlinks so launching through a symlinked bin shares one lock identity.
+let realRoot = root;
+try { realRoot = realpathSync(root); } catch { /* fall back to the literal path */ }
 const nodeBinDir = dirname(process.execPath);
 
 function npmCliCandidates() {
@@ -148,8 +153,19 @@ function runtimeFacts() {
 // mkdir is atomic on POSIX and Windows, so it is used as the acquire primitive.
 // No external dependency is taken: this script must run before install
 // completes, so it can only rely on Node built-ins.
-const LOCK_DIR = join(root, 'node_modules', '.jaw-native-rebuild.lock');
-const LOCK_STALE_MS = 10 * 60 * 1000;
+// The lock deliberately lives OUTSIDE node_modules: this script's own failure
+// mode is a missing/pruned dependency tree, and a concurrent npm install can
+// remove that directory while the lock is held. It is keyed by the resolved
+// install root so every entry point into the same installation shares one lock.
+const LOCK_DIR = join(
+    tmpdir(),
+    `jaw-native-rebuild-${createHash('sha256').update(realRoot).digest('hex').slice(0, 16)}.lock`,
+);
+// Liveness is decided by the owner PID, not by elapsed time: the rebuild runs
+// synchronously (execFileSync blocks the event loop), so a timer-based heartbeat
+// could never fire while the lock is actually held. The age check below is only a
+// backstop for a PID that cannot be probed.
+const LOCK_STALE_MS = 60 * 60 * 1000;
 
 /** Block this process without spinning the CPU (this script is synchronous). */
 function sleepSync(ms) {
@@ -164,23 +180,52 @@ function readLockAgeMs() {
     }
 }
 
+/**
+ * Is the process that recorded ownership still alive?
+ *
+ * @returns {boolean|null} null when liveness cannot be determined
+ */
+function isLockOwnerAlive() {
+    let pid;
+    try {
+        pid = Number.parseInt(readFileSync(join(LOCK_DIR, 'owner'), 'utf8').trim(), 10);
+    } catch {
+        return null;
+    }
+    if (!Number.isInteger(pid) || pid <= 0) return null;
+    if (pid === process.pid) return true;
+    try {
+        // Signal 0 performs the permission/existence check without delivering.
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        if (error && error.code === 'EPERM') return true;  // alive, owned by another user
+        if (error && error.code === 'ESRCH') return false;
+        return null;
+    }
+}
+
 function acquireRepairLock(waitMs) {
     const deadline = Date.now() + waitMs;
     for (;;) {
         try {
             mkdirSync(LOCK_DIR, { recursive: false });
             try {
-                writeFileSync(join(LOCK_DIR, 'owner'), String(process.pid));
+            writeFileSync(join(LOCK_DIR, 'owner'), String(process.pid));
             } catch { /* ownership record is advisory only */ }
             return true;
         } catch (error) {
             if (!error || error.code !== 'EEXIST') return false;
 
-            // Reclaim a lock abandoned by a crashed process, but never delete a
-            // lock merely because it exists.
+            // Reclaim only a lock whose owner is provably gone. A slow but healthy
+            // rebuild must never have its lock stolen, so elapsed time alone is
+            // not sufficient grounds for reclaiming.
+            const ownerAlive = isLockOwnerAlive();
             const age = readLockAgeMs();
-            if (age !== null && age > LOCK_STALE_MS) {
-                console.warn(`[jaw:native] reclaiming stale repair lock (${Math.round(age / 1000)}s old)`);
+            const abandoned = ownerAlive === false
+                || (ownerAlive === null && age !== null && age > LOCK_STALE_MS);
+            if (abandoned) {
+                console.warn('[jaw:native] reclaiming repair lock abandoned by a dead process');
                 try { rmSync(LOCK_DIR, { recursive: true, force: true }); } catch { /* retry below */ }
                 continue;
             }
