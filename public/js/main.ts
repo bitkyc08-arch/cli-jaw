@@ -60,6 +60,7 @@ import {
     saveFallbackOrder,
     openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
 } from './features/settings.js';
+import { initChannelOnboarding } from './features/channel-onboarding.js';
 const {
     loadEmployees, addEmployee, deleteEmployee, updateEmployee,
     onEmpCliChange, onEmpRoleChange
@@ -301,6 +302,7 @@ document.getElementById('slAppToken')?.addEventListener('change', saveSlackSetti
 document.getElementById('slTeamId')?.addEventListener('change', saveSlackSettings);
 document.getElementById('slChannelIds')?.addEventListener('change', saveSlackSettings);
 document.getElementById('slAttachPort')?.addEventListener('change', saveSlackSettings);
+initChannelOnboarding();
 initSlackSetupGuide();
 
 document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);

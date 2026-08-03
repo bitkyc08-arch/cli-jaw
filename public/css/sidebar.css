@@ -303,6 +303,81 @@
     margin-bottom: 6px;
 }
 
+/* Channel onboarding wizard: guide -> paste -> validate -> save. */
+.section-title-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.onboard-trigger {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    font-size: 10px;
+}
+
+.onboarding-box {
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+}
+
+.onboarding-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.onboarding-title {
+    font-size: 14px;
+    color: var(--text);
+    font-family: var(--font-display);
+}
+
+.onboarding-guide {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin: 0;
+}
+
+.onboarding-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.onboarding-field label {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.onboarding-error {
+    font-size: 11px;
+    color: var(--error, #e5534b);
+}
+
+.onboarding-identity {
+    font-size: 11px;
+    color: var(--accent);
+}
+
+.onboarding-next {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text);
+    margin: 0;
+}
+
+.onboarding-actions {
+    display: flex;
+    gap: 8px;
+}
+
 .transport-status-label {
     font-size: 11px;
     color: var(--text-dim);

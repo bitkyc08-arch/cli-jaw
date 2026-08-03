@@ -4,7 +4,7 @@
 // channel. Fires only on explicit user intent: switching the active channel
 // or enabling a channel toggle — never on page load, so a settings visit
 // does not pop a dialog the user did not ask for.
-import { openHelpDialog } from './help-dialog.js';
+import { openChannelOnboarding } from './channel-onboarding.js';
 import { isTelegramConfigured, isDiscordConfigured, isSlackConfigured } from './channel-setup-rules.js';
 
 type SetupChannel = 'telegram' | 'discord' | 'slack';
@@ -19,5 +19,8 @@ export function openSetupGuideIfUnconfigured(ch: SetupChannel): void {
         ch === 'telegram' ? isTelegramConfigured(inputValue('tgToken')) :
         ch === 'discord' ? isDiscordConfigured(inputValue('dcToken'), inputValue('dcGuildId')) :
         isSlackConfigured(inputValue('slBotToken'));
-    if (!configured) openHelpDialog(ch);
+    // The wizard supersedes the read-only help dialog here: it carries the
+    // same guidance AND lets the user finish setup (validate + save) inside
+    // the popup. The "?" help trigger remains for deep reference.
+    if (!configured) openChannelOnboarding(ch);
 }

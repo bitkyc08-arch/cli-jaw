@@ -50,7 +50,8 @@ export const SLACK_APP_MANIFEST = {
                 //   groups:history      -> message.groups envelopes
                 //   im:history          -> message.im envelopes (DMs; NOT covered by app_mention)
                 //   im:write            -> conversations.open (DM a user id)
-                //   chat:write          -> chat.postMessage
+                //   chat:write          -> chat.postMessage + chat.update/chat.delete
+                //                          (live progress status edits its own message)
                 //   files:write         -> files.getUploadURLExternal / completeUploadExternal
                 //   commands            -> slash_commands envelopes
                 'app_mentions:read',

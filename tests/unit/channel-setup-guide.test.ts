@@ -40,12 +40,12 @@ test('slack needs only the bot token — missing appToken is outbound-only, not 
 // Popup behavior: stub the DOM inputs and capture openHelpDialog calls.
 
 const opened: string[] = [];
-mock.module('../../public/js/features/help-dialog.ts', {
+// The guard now opens the onboarding WIZARD (guide + validate + save), not
+// the read-only help dialog.
+mock.module('../../public/js/features/channel-onboarding.ts', {
     namedExports: {
-        openHelpDialog: (topic: string) => { opened.push(topic); },
-        closeHelpDialog: () => { },
-        isHelpDialogOpen: () => false,
-        initHelpDialog: () => { },
+        openChannelOnboarding: (channel: string) => { opened.push(channel); },
+        initChannelOnboarding: () => { },
     },
 });
 

@@ -14,6 +14,7 @@ import { validateFileSize, sendTelegramFile } from '../telegram/telegram-file.js
 import { assertSendFilePath } from '../security/path-guards.js';
 import { decodeFilenameSafe } from '../security/decode.js';
 import { sendChannelOutput, normalizeChannelSendRequest, validateExplicitChatId } from '../messaging/send.js';
+import { validateChannelCredentials } from '../messaging/channel-validate.js';
 import { sendResultHttpStatus } from '../messaging/send-result.js';
 import { settings } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
@@ -235,6 +236,13 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             const statusCode = httpStatus(e, 500);
             res.status(statusCode).json({ error: userErrorText(e), code: httpCode(e) });
         }
+    });
+
+    // Onboarding wizard live credential check. Validates WITHOUT persisting —
+    // the wizard saves through PUT /api/settings after this passes.
+    app.post('/api/channels/validate', requireAuth, async (req, res) => {
+        const result = await validateChannelCredentials(req.body || {});
+        res.json(result.ok ? { ok: true, identity: result.identity, teamId: result.teamId } : { ok: false, error: result.error });
     });
 
     // Canonical channel send

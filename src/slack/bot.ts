@@ -18,6 +18,7 @@ import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope } from './socket.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
+import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
@@ -129,8 +130,26 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
     }
 
     try {
+        // Live progress: post "정보 수집 중…" immediately, then edit it as the
+        // agent's tool events arrive. Slack gives bots no typing indicator, so
+        // without this the channel looks dead for the whole run.
+        const progress = await startSlackProgress(
+            token, target, t('slack.progress.start', {}, currentLocale()),
+        ).catch(() => null);
+        const progressHandler = (type: string, data: Record<string, unknown>) => {
+            if (!progress) return;
+            if (type !== 'agent_tool') return;
+            if (data['origin'] && data['origin'] !== 'slack') return;
+            const line = statusFromToolEvent(data, t('slack.progress.working', {}, currentLocale()));
+            if (line) progress.update(line);
+        };
+        if (progress) addBroadcastListener(progressHandler);
         const text = String(await orchestrateAndCollect(prompt, {
             origin: 'slack', target, chatId, requestId: result.requestId, _skipInsert: true,
+        }).finally(async () => {
+            if (!progress) return;
+            removeBroadcastListener(progressHandler);
+            await progress.finish().catch(() => { });
         }));
         await sendSlackText(token, target, text);
         await relaySlackImages(token, target, text);
