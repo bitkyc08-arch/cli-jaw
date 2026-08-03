@@ -113,3 +113,40 @@ test('ensure-native separates resolution from loading and reports an actionable 
     // Presence of a node_modules directory is not a valid readiness signal.
     assert.doesNotMatch(src, /existsSync\(join\(root, 'node_modules'\)\)/);
 });
+
+// ─── 030: cross-process repair lock (defect D4) ───
+
+test('native repair is serialized by an atomically acquired lock', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+
+    // mkdir is the atomic primitive; a bare existsSync check would race.
+    assert.match(src, /mkdirSync\(LOCK_DIR, \{ recursive: false \}\)/);
+    assert.match(src, /acquireRepairLock/);
+    assert.match(src, /releaseRepairLock/);
+});
+
+test('the repair lock re-probes under the lock instead of rebuilding blindly', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+    const acquire = src.indexOf('const locked = acquireRepairLock');
+    const reprobe = src.indexOf('was repaired by another process');
+    const rebuild = src.indexOf('rebuildBetterSqlite3();');
+
+    assert.ok(acquire >= 0 && reprobe >= 0 && rebuild >= 0);
+    assert.ok(acquire < reprobe, 'the re-check must happen after acquiring the lock');
+    assert.ok(reprobe < rebuild, 'a waiter must not rebuild what another process already fixed');
+});
+
+test('a stale repair lock is reclaimed but a live one is never deleted', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+
+    assert.match(src, /LOCK_STALE_MS/);
+    assert.match(src, /reclaiming stale repair lock/);
+    // Reclaim must be conditional on age, never unconditional.
+    assert.match(src, /age > LOCK_STALE_MS/);
+});
+
+test('the repair lock is released even though process.exit skips finally', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+
+    assert.match(src, /process\.on\('exit', releaseRepairLock\)/);
+});
