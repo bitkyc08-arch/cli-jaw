@@ -111,6 +111,8 @@
     "gate:redaction-sinks": "node scripts/release-gates.mjs redaction-sinks",
     "gate:electron-version": "node scripts/release-gates.mjs electron-version",
     "gate:gate-docs": "node scripts/release-gates.mjs gate-docs",
+    "gate:sidecar-prune-safety": "node scripts/release-gates.mjs sidecar-prune-safety",
+    "check:sidecar-prune-safety": "node scripts/check-sidecar-prune-safety.mjs",
     "sync:electron-version": "node scripts/sync-electron-version.cjs",
     "gate:all": "node scripts/release-gates.mjs",
     "prepublishOnly": "npm run build && npm run build:frontend && npm run check:frontend-build-output",

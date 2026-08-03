@@ -418,6 +418,16 @@ const GATES = {
             return { ok: true, detail: 'desktop artifacts will carry the release version' };
         },
     },
+    'sidecar-prune-safety': {
+        description: 'the sidecar prune list never deletes a package the server imports',
+        check() {
+            const r = run('node', ['scripts/check-sidecar-prune-safety.mjs'], { timeout: 60_000 });
+            if (r.status !== 0) {
+                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-800) };
+            }
+            return { ok: true, detail: 'packaged sidecar keeps every runtime dependency' };
+        },
+    },
     'gate-docs': {
         description: 'structure/INDEX.md documents exactly the gates that exist, and each is npm-addressable',
         check() {

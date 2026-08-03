@@ -18,6 +18,11 @@ install_locked_production_dependencies() {
 
 echo "=== Bundling sidecar: $PLATFORM-$ARCH ==="
 
+# Refuse to build a sidecar whose prune list would strip a runtime dependency.
+# Failing here costs a few seconds; failing later costs a shipped app that dies
+# on first use, which is exactly what happened with node-fetch.
+node "$PROJECT_ROOT/scripts/check-sidecar-prune-safety.mjs"
+
 rm -rf "$SIDECAR_DIR"
 mkdir -p "$SIDECAR_DIR/bin"
 
@@ -57,14 +62,20 @@ cd "$SIDECAR_DIR"
 install_locked_production_dependencies
 
 echo "Pruning frontend-only dependencies..."
+# Every entry here is deleted from the bundled sidecar, so a package the server
+# imports must never appear. It did: node-fetch sat in this list from the commit
+# that created this script while src/telegram/bot.ts imports it, and every
+# packaged desktop app died with ERR_MODULE_NOT_FOUND the moment that module
+# loaded. check-sidecar-prune-safety.mjs now fails the build when this list and
+# the server's real imports disagree.
 PRUNE_PKGS=(
   "@codemirror/autocomplete" "@codemirror/lang-markdown" "@codemirror/language"
   "@codemirror/language-data" "@codemirror/state" "@codemirror/view"
   "@lezer/highlight" "@lucide/icons" "@milkdown/kit" "@replit/codemirror-vim"
   "@tanstack/virtual-core" "@uiw/react-codemirror" "@xterm/addon-fit" "@xterm/xterm"
-  "d3" "dompurify" "highlight.js" "katex" "marked-highlight" "mermaid"
+  "d3" "dompurify" "katex" "marked-highlight" "mermaid"
   "react" "react-dom" "react-markdown" "rehype-katex" "rehype-sanitize"
-  "remark-breaks" "remark-gfm" "remark-math" "node-fetch"
+  "remark-breaks" "remark-gfm" "remark-math"
 )
 for pkg in "${PRUNE_PKGS[@]}"; do
   rm -rf "$SIDECAR_DIR/node_modules/$pkg" 2>/dev/null || true
@@ -77,8 +88,6 @@ rm -rf "$SIDECAR_DIR/node_modules/@vue" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/cytoscape" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/cytoscape-fcose" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/es-toolkit" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/lodash" 2>/dev/null || true
-rm -rf "$SIDECAR_DIR/node_modules/web-streams-polyfill" 2>/dev/null || true
 
 echo "Removing stale .bin symlinks after dependency pruning..."
 find "$SIDECAR_DIR/node_modules/.bin" -type l ! -exec test -e {} \; -print -delete 2>/dev/null || true
