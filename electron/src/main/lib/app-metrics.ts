@@ -76,6 +76,13 @@ export function startAppMetricsCollector(): MetricsCollectorHandle {
   const latest = (): MetricsSnapshot | null =>
     buffer.length > 0 ? buffer[buffer.length - 1] ?? null : null;
 
+  // handle() throws if the channel is still registered, and the caller only
+  // logs, so a stale handler would silently kill metrics. Clear it first.
+  try {
+    ipcMain.removeHandler(METRICS_IPC_CHANNEL);
+  } catch {
+    // nothing registered
+  }
   ipcMain.handle(METRICS_IPC_CHANNEL, () => latest());
 
   return {

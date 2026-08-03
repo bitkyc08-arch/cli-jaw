@@ -18,6 +18,30 @@ export function createReminderPopover(opts: {
 }): ReminderPopover {
   let window: BrowserWindow | null = null;
   const popoverUrl = new URL('?sidebar=reminders&tray=1', opts.managerUrl).toString();
+  // Hiding on blur leaves a full Chromium renderer (~60-150MB) resident for the
+  // rest of the app's life after a single glance. ensureWindow() already
+  // recreates lazily, so drop the window once it has stayed hidden this long.
+  const IDLE_DESTROY_MS = 5 * 60 * 1000;
+  let idleDestroyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function cancelIdleDestroy(): void {
+    if (idleDestroyTimer !== null) {
+      clearTimeout(idleDestroyTimer);
+      idleDestroyTimer = null;
+    }
+  }
+
+  function scheduleIdleDestroy(): void {
+    cancelIdleDestroy();
+    idleDestroyTimer = setTimeout(() => {
+      idleDestroyTimer = null;
+      if (window && !window.isDestroyed() && !window.isVisible()) {
+        window.destroy();
+        window = null;
+      }
+    }, IDLE_DESTROY_MS);
+    idleDestroyTimer.unref?.();
+  }
 
   function isAllowedNavigation(raw: string): boolean {
     try {
@@ -57,9 +81,13 @@ export function createReminderPopover(opts: {
       isAllowedNavigation(url) ? { action: 'allow' } : { action: 'deny' }
     ));
     window.on('blur', () => {
-      if (window && !window.isDestroyed()) window.hide();
+      if (window && !window.isDestroyed()) {
+        window.hide();
+        scheduleIdleDestroy();
+      }
     });
     window.on('closed', () => {
+      cancelIdleDestroy();
       window = null;
     });
     void window.loadURL(popoverUrl);
@@ -96,16 +124,22 @@ export function createReminderPopover(opts: {
       const target = ensureWindow();
       if (target.isVisible()) {
         target.hide();
+        scheduleIdleDestroy();
         return;
       }
+      cancelIdleDestroy();
       positionWindow(target, anchor);
       target.show();
       target.focus();
     },
     hide() {
-      if (window && !window.isDestroyed()) window.hide();
+      if (window && !window.isDestroyed()) {
+        window.hide();
+        scheduleIdleDestroy();
+      }
     },
     destroy() {
+      cancelIdleDestroy();
       if (!window || window.isDestroyed()) return;
       window.destroy();
       window = null;
