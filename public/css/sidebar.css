@@ -332,6 +332,44 @@
     gap: 8px;
 }
 
+.onboarding-progress {
+    margin-left: auto;
+    margin-right: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+}
+
+.onboarding-steps {
+    display: flex;
+    gap: 6px;
+}
+
+.onboarding-dot {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+}
+
+.onboarding-dot.is-done {
+    background: color-mix(in oklch, var(--accent) 55%, var(--border));
+}
+
+.onboarding-dot.is-active {
+    background: var(--accent);
+}
+
+.onboarding-step-title {
+    font-size: 12px;
+    color: var(--text);
+}
+
+.onboarding-footer {
+    justify-content: flex-end;
+    margin-top: 2px;
+}
+
 .onboarding-title {
     font-size: 14px;
     color: var(--text);

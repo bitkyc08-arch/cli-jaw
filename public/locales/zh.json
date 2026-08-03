@@ -856,5 +856,15 @@
     "onboarding.error.bot_prefix": "The bot token must start with xoxb-.",
     "onboarding.error.app_prefix": "The app-level token must start with xapp-.",
     "onboarding.error.unknown_channel": "Unsupported channel.",
-    "onboarding.error.network": "Validation failed because of a network error."
+    "onboarding.error.network": "Validation failed because of a network error.",
+    "onboarding.next": "下一步",
+    "onboarding.back": "上一步",
+    "onboarding.step.1": "1. 确认获取位置",
+    "onboarding.step.2": "2. 粘贴获取的值",
+    "onboarding.step.3": "3. 验证连接",
+    "onboarding.step.4": "4. 保存",
+    "onboarding.validating": "正在检查...",
+    "onboarding.validateHint": "点击验证以检查实际连接。通过后才能保存。",
+    "onboarding.saveHint": "验证通过。保存后将写入设置并立即连接该渠道。",
+    "onboarding.error.validation_required": "需要先通过验证。"
 }

@@ -856,5 +856,15 @@
     "onboarding.error.bot_prefix": "The bot token must start with xoxb-.",
     "onboarding.error.app_prefix": "The app-level token must start with xapp-.",
     "onboarding.error.unknown_channel": "Unsupported channel.",
-    "onboarding.error.network": "Validation failed because of a network error."
+    "onboarding.error.network": "Validation failed because of a network error.",
+    "onboarding.next": "次へ",
+    "onboarding.back": "戻る",
+    "onboarding.step.1": "1. 取得場所の確認",
+    "onboarding.step.2": "2. 取得した値を貼り付け",
+    "onboarding.step.3": "3. 接続の検証",
+    "onboarding.step.4": "4. 保存",
+    "onboarding.validating": "確認中...",
+    "onboarding.validateHint": "「検証」を押して実際の接続を確認してください。通過しないと保存に進めません。",
+    "onboarding.saveHint": "検証に成功しました。保存すると設定に反映され、チャンネルがすぐ接続されます。",
+    "onboarding.error.validation_required": "先に検証を通す必要があります。"
 }

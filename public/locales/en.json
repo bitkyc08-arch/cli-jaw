@@ -867,5 +867,15 @@
     "onboarding.error.bot_prefix": "The bot token must start with xoxb-.",
     "onboarding.error.app_prefix": "The app-level token must start with xapp-.",
     "onboarding.error.unknown_channel": "Unsupported channel.",
-    "onboarding.error.network": "Validation failed because of a network error."
+    "onboarding.error.network": "Validation failed because of a network error.",
+    "onboarding.next": "Next",
+    "onboarding.back": "Back",
+    "onboarding.step.1": "1. Where to get it",
+    "onboarding.step.2": "2. Paste what you received",
+    "onboarding.step.3": "3. Verify the connection",
+    "onboarding.step.4": "4. Save",
+    "onboarding.validating": "Checking...",
+    "onboarding.validateHint": "Press Validate to check the real connection. It must pass before saving.",
+    "onboarding.saveHint": "Validation passed. Saving applies the settings and connects the channel right away.",
+    "onboarding.error.validation_required": "Validation has to pass first."
 }

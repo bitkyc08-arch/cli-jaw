@@ -867,5 +867,15 @@
     "onboarding.error.bot_prefix": "봇 토큰은 xoxb- 로 시작해야 합니다.",
     "onboarding.error.app_prefix": "앱 레벨 토큰은 xapp- 로 시작해야 합니다.",
     "onboarding.error.unknown_channel": "지원하지 않는 채널입니다.",
-    "onboarding.error.network": "네트워크 오류로 검증하지 못했습니다."
+    "onboarding.error.network": "네트워크 오류로 검증하지 못했습니다.",
+    "onboarding.next": "다음",
+    "onboarding.back": "이전",
+    "onboarding.step.1": "1. 어디서 받는지 확인",
+    "onboarding.step.2": "2. 발급받은 값 붙여넣기",
+    "onboarding.step.3": "3. 연결 검증",
+    "onboarding.step.4": "4. 저장",
+    "onboarding.validating": "확인하는 중...",
+    "onboarding.validateHint": "검증을 눌러 실제 연결을 확인하세요. 통과해야 저장으로 넘어갑니다.",
+    "onboarding.saveHint": "검증을 통과했습니다. 저장을 누르면 설정에 반영되고 채널이 바로 연결됩니다.",
+    "onboarding.error.validation_required": "먼저 검증을 통과해야 합니다."
 }

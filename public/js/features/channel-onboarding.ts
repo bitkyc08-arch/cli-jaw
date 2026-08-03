@@ -1,33 +1,34 @@
-// ── Channel Onboarding Wizard ──
-// One modal, all three channels: guide (where each token is issued) →
-// paste token(s) → live-validate via POST /api/channels/validate → save
-// through PUT /api/settings (hot transport restart included). Opened by the
-// "연결" button in each channel section and by the unconfigured-activation
-// guard in channel-setup-guide.ts. No emoji as UI elements (STRICT).
+// ── Channel Onboarding Wizard (UI shell) ──
+// Four numbered steps for every channel: 안내 → 자격 증명 입력 → 연결 검증 →
+// 저장. Each step is gated by channel-onboarding-flow.ts, so "다음" refuses to
+// move while that step's own contract is unmet, and draft values survive
+// moving back and forth. This module owns rendering and IO only.
 import { api, apiJson } from '../api.js';
 import { t } from './i18n.js';
+import { escapeHtml } from '../render.js';
 import { refreshTransportStatusRow } from './transport-status-row.js';
+import {
+    TOTAL_STEPS,
+    advance,
+    applyValidation,
+    blockerForStep,
+    canAdvance,
+    createFlow,
+    fieldsFor,
+    goBack,
+    markSaved,
+    setField,
+    settingsPatch,
+    validationPayload,
+    type FlowState,
+    type OnboardChannel,
+} from './channel-onboarding-flow.js';
 
-export type OnboardChannel = 'telegram' | 'discord' | 'slack';
-
-type FieldDef = { key: string; id: string; secret: boolean; optional?: boolean };
-
-const FIELDS: Record<OnboardChannel, FieldDef[]> = {
-    telegram: [{ key: 'botToken', id: 'tgToken', secret: true }],
-    discord: [
-        { key: 'botToken', id: 'dcToken', secret: true },
-        { key: 'guildId', id: 'dcGuildId', secret: false },
-    ],
-    slack: [
-        { key: 'botToken', id: 'slBotToken', secret: true },
-        { key: 'appToken', id: 'slAppToken', secret: true, optional: true },
-    ],
-};
+export type { OnboardChannel };
 
 let overlay: HTMLDivElement | null = null;
-let activeChannel: OnboardChannel = 'telegram';
-let validatedIdentity: string | null = null;
-let validatedTeamId = '';
+let flow: FlowState | null = null;
+let validating = false;
 
 export function initChannelOnboarding(): void {
     document.addEventListener('click', (ev) => {
@@ -39,17 +40,32 @@ export function initChannelOnboarding(): void {
 }
 
 export function openChannelOnboarding(channel: OnboardChannel): void {
-    if (!FIELDS[channel]) return;
-    activeChannel = channel;
-    validatedIdentity = null;
-    validatedTeamId = '';
+    if (channel !== 'telegram' && channel !== 'discord' && channel !== 'slack') return;
+    // Seed the draft from whatever the settings section already holds, so an
+    // existing token does not have to be retyped.
+    const draft: Record<string, string> = {};
+    for (const field of fieldsFor(channel)) {
+        draft[field.key] = readSettingsInput(field.settingsId);
+    }
+    flow = createFlow(channel, draft);
+    validating = false;
     ensureOverlay();
-    render('form');
+    render();
     overlay?.classList.add('open');
 }
 
 function close(): void {
     overlay?.classList.remove('open');
+    flow = null;
+}
+
+function readSettingsInput(id: string): string {
+    return (document.getElementById(id) as HTMLInputElement | null)?.value.trim() || '';
+}
+
+function writeSettingsInput(id: string, value: string): void {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) el.value = value;
 }
 
 function ensureOverlay(): void {
@@ -60,97 +76,142 @@ function ensureOverlay(): void {
     document.body.appendChild(overlay);
 }
 
-function fieldValue(id: string): string {
-    return (document.getElementById(id) as HTMLInputElement | null)?.value.trim() || '';
+function stepBody(state: FlowState): string {
+    if (state.step === 1) {
+        return `<p class="onboarding-guide">${escapeHtml(t(`onboarding.guide.${state.channel}`))}</p>`;
+    }
+    if (state.step === 2) {
+        return fieldsFor(state.channel).map((field) => {
+            const label = t(`onboarding.token.${field.key}`) + (field.optional ? ` (${t('onboarding.optional')})` : '');
+            return `
+            <div class="onboarding-field">
+                <label for="onboard-${field.key}">${escapeHtml(label)}</label>
+                <input id="onboard-${field.key}" data-onboard-field="${field.key}" class="input-sm"
+                    type="${field.secret ? 'password' : 'text'}"
+                    value="${escapeHtml(state.draft[field.key] || '')}">
+            </div>`;
+        }).join('');
+    }
+    if (state.step === 3) {
+        const status = validating
+            ? `<p class="onboarding-guide">${escapeHtml(t('onboarding.validating'))}</p>`
+            : state.validatedIdentity
+                ? `<p class="onboarding-identity">${escapeHtml(t('onboarding.valid', { identity: state.validatedIdentity }))}</p>`
+                : `<p class="onboarding-guide">${escapeHtml(t('onboarding.validateHint'))}</p>`;
+        return `${status}
+            <div class="onboarding-actions">
+                <button type="button" class="perm-btn" data-onboard-validate="1" ${validating ? 'disabled' : ''}>
+                    ${escapeHtml(t('onboarding.validate'))}
+                </button>
+            </div>`;
+    }
+    return `<p class="onboarding-next">${escapeHtml(t(
+        state.saved ? `onboarding.next.${state.channel}` : 'onboarding.saveHint',
+    ))}</p>`;
 }
 
-function setFieldValue(id: string, value: string): void {
-    const el = document.getElementById(id) as HTMLInputElement | null;
-    if (el) el.value = value;
+function footer(state: FlowState): string {
+    if (state.step === TOTAL_STEPS && state.saved) {
+        return `<button type="button" class="perm-btn active" data-onboard-close="1">${escapeHtml(t('onboarding.close'))}</button>`;
+    }
+    const back = state.step > 1
+        ? `<button type="button" class="perm-btn" data-onboard-back="1">${escapeHtml(t('onboarding.back'))}</button>`
+        : '';
+    const primary = state.step === TOTAL_STEPS
+        ? `<button type="button" class="perm-btn active" data-onboard-save="1">${escapeHtml(t('onboarding.save'))}</button>`
+        : `<button type="button" class="perm-btn ${canAdvance(state) ? 'active' : ''}" data-onboard-next="1">${escapeHtml(t('onboarding.next'))}</button>`;
+    return `${back}${primary}`;
 }
 
-function render(mode: 'form' | 'done', errorKey = ''): void {
-    if (!overlay) return;
-    const fields = FIELDS[activeChannel];
-    // Re-renders (validation round-trips) must not wipe what the user typed:
-    // prefer live modal inputs, fall back to the settings section inputs.
-    const valueOf = (f: FieldDef, i: number): string =>
-        (document.getElementById(`onboard-input-${i}`) as HTMLInputElement | null)?.value ?? fieldValue(f.id);
-    const inputs = fields.map((f, i) => `
-        <div class="onboarding-field">
-            <label for="onboard-input-${i}">${t(`onboarding.token.${f.key}`)}${f.optional ? ` (${t('onboarding.optional')})` : ''}</label>
-            <input id="onboard-input-${i}" class="input-sm" type="${f.secret ? 'password' : 'text'}"
-                value="${valueOf(f, i).replace(/"/g, '&quot;')}">
-        </div>`).join('');
-
+function render(): void {
+    if (!overlay || !flow) return;
+    const state = flow;
     overlay.innerHTML = `
         <div class="modal-box onboarding-box" role="dialog" aria-modal="true">
             <div class="onboarding-head">
-                <span class="onboarding-title">${t(`onboarding.title.${activeChannel}`)}</span>
-                <button type="button" class="help-trigger onboarding-close" data-onboard-close="1">✕</button>
+                <span class="onboarding-title">${escapeHtml(t(`onboarding.title.${state.channel}`))}</span>
+                <span class="onboarding-progress">${state.step}/${TOTAL_STEPS}</span>
+                <button type="button" class="help-trigger onboarding-close" data-onboard-close="1"
+                    aria-label="${escapeHtml(t('onboarding.close'))}">✕</button>
             </div>
-            <p class="onboarding-guide">${t(`onboarding.guide.${activeChannel}`)}</p>
-            ${mode === 'form' ? `
-                ${inputs}
-                <div class="onboarding-error" style="display:${errorKey ? '' : 'none'}">${errorKey ? t(`onboarding.error.${errorKey}`) : ''}</div>
-                <div class="onboarding-identity" style="display:${validatedIdentity ? '' : 'none'}">
-                    ${validatedIdentity ? t('onboarding.valid', { identity: validatedIdentity }) : ''}
-                </div>
-                <div class="onboarding-actions">
-                    <button type="button" class="perm-btn" data-onboard-validate="1">${t('onboarding.validate')}</button>
-                    <button type="button" class="perm-btn ${validatedIdentity ? 'active' : ''}" data-onboard-save="1">${t('onboarding.save')}</button>
-                </div>` : `
-                <p class="onboarding-next">${t(`onboarding.next.${activeChannel}`)}</p>
-                <div class="onboarding-actions">
-                    <button type="button" class="perm-btn active" data-onboard-close="1">${t('onboarding.close')}</button>
-                </div>`}
+            <div class="onboarding-steps" aria-hidden="true">
+                ${Array.from({ length: TOTAL_STEPS }, (_, i) =>
+                    `<span class="onboarding-dot${i + 1 === state.step ? ' is-active' : ''}${i + 1 < state.step ? ' is-done' : ''}"></span>`).join('')}
+            </div>
+            <div class="onboarding-step-title">${escapeHtml(t(`onboarding.step.${state.step}`))}</div>
+            ${stepBody(state)}
+            <div class="onboarding-error" style="display:${state.error ? '' : 'none'}">
+                ${state.error ? escapeHtml(t(`onboarding.error.${state.error}`)) : ''}
+            </div>
+            <div class="onboarding-actions onboarding-footer">${footer(state)}</div>
         </div>`;
 
-    overlay.querySelectorAll('[data-onboard-close]').forEach(b => b.addEventListener('click', close));
+    overlay.querySelectorAll('[data-onboard-close]').forEach(el => el.addEventListener('click', close));
+    overlay.querySelector('[data-onboard-back]')?.addEventListener('click', () => {
+        if (!flow) return;
+        flow = goBack(flow);
+        render();
+    });
+    overlay.querySelector('[data-onboard-next]')?.addEventListener('click', () => {
+        if (!flow) return;
+        captureInputs();
+        flow = advance(flow);
+        render();
+    });
     overlay.querySelector('[data-onboard-validate]')?.addEventListener('click', () => { void runValidation(); });
     overlay.querySelector('[data-onboard-save]')?.addEventListener('click', () => { void runSave(); });
+    // Live capture keeps the draft authoritative even if the user closes the
+    // step without pressing 다음.
+    overlay.querySelectorAll('[data-onboard-field]').forEach(el => {
+        el.addEventListener('input', () => {
+            if (!flow) return;
+            const key = (el as HTMLElement).getAttribute('data-onboard-field') || '';
+            flow = setField(flow, key, (el as HTMLInputElement).value);
+        });
+    });
 }
 
-function readInputs(): Record<string, string> {
-    const out: Record<string, string> = {};
-    FIELDS[activeChannel].forEach((f, i) => {
-        out[f.key] = (document.getElementById(`onboard-input-${i}`) as HTMLInputElement | null)?.value.trim() || '';
-    });
-    return out;
+function captureInputs(): void {
+    if (!flow) return;
+    for (const el of overlay?.querySelectorAll('[data-onboard-field]') ?? []) {
+        const key = el.getAttribute('data-onboard-field') || '';
+        flow = setField(flow, key, (el as HTMLInputElement).value);
+    }
 }
 
 async function runValidation(): Promise<void> {
-    const creds = readInputs();
-    validatedIdentity = null;
-    render('form', creds['botToken'] ? '' : 'token_required');
-    if (!creds['botToken']) return;
+    if (!flow || validating) return;
+    validating = true;
+    render();
     const res = await api<{ ok?: boolean; identity?: string; teamId?: string; error?: string }>(
         '/api/channels/validate',
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: activeChannel, ...creds }) },
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(validationPayload(flow)),
+        },
     );
-    if (res?.ok) {
-        validatedIdentity = res.identity || 'ok';
-        validatedTeamId = res.teamId || '';
-        render('form');
-    } else {
-        render('form', res?.error || 'network');
-    }
+    validating = false;
+    if (!flow) return;
+    flow = applyValidation(flow, res || { ok: false, error: 'network' });
+    render();
 }
 
 async function runSave(): Promise<void> {
-    const creds = readInputs();
-    // Mirror the values into the settings section inputs so the existing
-    // load/save surfaces stay consistent.
-    FIELDS[activeChannel].forEach((f) => setFieldValue(f.id, creds[f.key] || ''));
-    let patch: Record<string, unknown>;
-    if (activeChannel === 'telegram') {
-        patch = { telegram: { enabled: true, token: creds['botToken'] } };
-    } else if (activeChannel === 'discord') {
-        patch = { discord: { enabled: true, token: creds['botToken'], guildId: creds['guildId'] } };
-    } else {
-        patch = { slack: { enabled: true, botToken: creds['botToken'], appToken: creds['appToken'] || '', ...(validatedTeamId ? { teamId: validatedTeamId } : {}) } };
+    if (!flow) return;
+    const blocker = blockerForStep({ ...flow, step: 3 });
+    if (blocker) {
+        flow = { ...flow, step: 3, error: blocker };
+        render();
+        return;
     }
-    await apiJson('/api/settings', 'PUT', patch);
-    render('done');
+    // Mirror into the settings section so the existing load/save surfaces and
+    // the transport status row stay consistent with the wizard.
+    for (const field of fieldsFor(flow.channel)) {
+        writeSettingsInput(field.settingsId, (flow.draft[field.key] || '').trim());
+    }
+    await apiJson('/api/settings', 'PUT', settingsPatch(flow));
+    flow = markSaved(flow);
+    render();
     void refreshTransportStatusRow();
 }
