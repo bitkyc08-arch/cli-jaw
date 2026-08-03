@@ -1,4 +1,4 @@
-import { Children, createElement, isValidElement, useMemo } from 'react';
+import { Children, createElement, isValidElement, memo, useMemo } from 'react';
 import type { MouseEvent } from 'react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -188,7 +188,7 @@ function splitChildrenWithLocalFileLinks(
     return out;
 }
 
-export function MarkdownRenderer(props: MarkdownRendererProps) {
+function MarkdownRendererImpl(props: MarkdownRendererProps) {
     const renderedMarkdown = useMemo(
         () => splitPreviewFrontmatter(props.markdown).body,
         [props.markdown],
@@ -201,6 +201,11 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         onNavigate: props.onWikiLinkNavigate ?? NOOP_NAVIGATE,
     }), [props.outgoing, props.notes, props.onWikiLinkNavigate]);
 
+    // D1: this whole block used to run in the render body, minting ~20 fresh
+    // component identities per render. React keys reconciliation off element
+    // type identity, so new types mean unmount + remount of the entire rendered
+    // subtree — on every streaming token, for the full accumulated text.
+    const components = useMemo<Components>(() => {
     const inlineTransform = (children: ReactNode, keyPrefix: string): ReactNode => {
         const withWikiLinks = splitChildrenWithWikiLinks(children, wikiCtx, keyPrefix);
         return splitChildrenWithLocalFileLinks(withWikiLinks, props.onLocalFileOpen, keyPrefix);
@@ -226,7 +231,7 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         );
     };
 
-    const components: Components = {
+    const built: Components = {
         a: ({ href, children, node: _node, ...anchorProps }: MarkdownAnchorProps) => {
             const safeHref = typeof href === 'string' && isSafeExternalHref(href) ? href : undefined;
             const external = Boolean(safeHref && /^https?:\/\//i.test(safeHref));
@@ -275,7 +280,7 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
     };
 
     if (props.tableMode === 'linear') {
-        components.table = ({ children, node: _node, className, style }: LinearTableContainerProps) => {
+        built.table = ({ children, node: _node, className, style }: LinearTableContainerProps) => {
             const tableStyle = {
                 ...style,
                 '--markdown-linear-table-grid': linearTableGridTemplate(countLinearTableColumns(children)),
@@ -286,24 +291,26 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
                 </div>
             );
         };
-        components.thead = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+        built.thead = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
             <div className={mergeClassName('markdown-linear-table-head', className)} style={style}>
                 {children}
             </div>
         );
-        components.tbody = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+        built.tbody = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
             <div className={mergeClassName('markdown-linear-table-body', className)} style={style}>
                 {children}
             </div>
         );
-        components.tr = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+        built.tr = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
             <div className={mergeClassName('markdown-linear-table-row', className)} style={style} role="listitem">
                 {children}
             </div>
         );
-        components.th = linearCellTransform('th');
-        components.td = linearCellTransform('td');
+        built.th = linearCellTransform('th');
+        built.td = linearCellTransform('td');
     }
+        return built;
+    }, [wikiCtx, props.onLocalFileOpen, props.tableMode]);
 
     return (
         <ReactMarkdown
@@ -320,3 +327,8 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         </ReactMarkdown>
     );
 }
+
+// D1: memo so an unchanged past message is not re-rendered when a sibling
+// updates. Default shallow compare is correct here — every prop is either a
+// primitive or a reference the caller already keeps stable.
+export const MarkdownRenderer = memo(MarkdownRendererImpl);

@@ -1,15 +1,22 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { copyText } from '../../clipboard/copy-text';
-import { highlightCode } from './highlight-languages';
+import { highlightCodeCached } from './highlight-cache';
 
 type CodeBlockProps = {
     code: string;
     language?: string;
 };
 
-export function CodeBlock(props: CodeBlockProps) {
+function CodeBlockImpl(props: CodeBlockProps) {
     const [copied, setCopied] = useState(false);
-    const result = highlightCode(props.code, props.language);
+    // D2: highlighting used to run synchronously in the render body on every
+    // parent render — i.e. on every streaming token — and again on each
+    // virtualized remount. useMemo covers re-renders, the module cache covers
+    // remounts, and the cache applies the oversize cutoff.
+    const result = useMemo(
+        () => highlightCodeCached(props.code, props.language),
+        [props.code, props.language],
+    );
     const label = result.language || 'text';
 
     async function copyCode(): Promise<void> {
@@ -39,3 +46,5 @@ export function CodeBlock(props: CodeBlockProps) {
         </div>
     );
 }
+
+export const CodeBlock = memo(CodeBlockImpl);

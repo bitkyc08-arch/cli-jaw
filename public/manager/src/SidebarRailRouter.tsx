@@ -347,11 +347,17 @@ export function SidebarRailRouter(props: Props) {
         && !props.notesSelectedNote.tags?.includes(props.notesModel.tagFilter),
     );
     // External file open: focus/create a Files tab and assign the file to it.
-    function handleRightPreviewFile(path: string): void {
+    // Stable identity matters: this is passed as `onLocalFileOpen` into
+    // MarkdownRenderer (via CodeCanvas/DocPanel), and a fresh function each
+    // render defeats its React.memo and the memoized components object.
+    // Depend on `dispatch`, not `panelLayout`: the context value is rebuilt on
+    // every panel state change, which would churn this identity right back.
+    const panelDispatch = panelLayout.dispatch;
+    const handleRightPreviewFile = useCallback((path: string): void => {
         const previewPath = expandDesktopHomePath(path.trim());
         if (!previewPath) return;
-        panelLayout.dispatch({ type: 'OPEN_FILE_IN_FILES_TAB', path: previewPath });
-    }
+        panelDispatch({ type: 'OPEN_FILE_IN_FILES_TAB', path: previewPath });
+    }, [panelDispatch]);
 
     // Per-tab callbacks bound to a specific Files module tab.
     const handleTabPreviewFile = useCallback((tabId: string, path: string): void => {

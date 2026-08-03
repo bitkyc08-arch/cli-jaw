@@ -1,8 +1,24 @@
-import { lazy, Suspense, useCallback, type KeyboardEvent, type RefObject } from 'react';
+import { lazy, Suspense, useCallback, useRef, type KeyboardEvent, type RefObject } from 'react';
 import type { ToolContent, TranscriptEntry } from './code-types';
 import { useCodeTranscriptVirtualRows } from './useCodeTranscriptVirtualRows';
+import { useThrottledMarkdown } from './use-throttled-markdown';
 
 const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
+
+/**
+ * D1: assistant markdown is re-parsed in full on every update, so a per-token
+ * render is O(L²) in message length. Throttle the text adaptively (80ms under
+ * 2k chars up to 400ms past ~50k) before it reaches the markdown pipeline.
+ * Trailing-edge, so the final text always lands without a turn-done signal.
+ */
+function AssistantMarkdown({ text, onOpenLocalFile }: { text: string; onOpenLocalFile?: ((path: string) => void) | undefined }) {
+    const throttled = useThrottledMarkdown(text);
+    return (
+        <Suspense fallback={<span>{throttled}</span>}>
+            <MarkdownRenderer markdown={throttled} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />
+        </Suspense>
+    );
+}
 
 type CodeTranscriptProps = {
     messages: TranscriptEntry[];
@@ -165,9 +181,7 @@ function renderCodeMessage(msg: TranscriptEntry, i: number, onOpenLocalFile?: ((
                     <span className="code-message-role">{msg.role === 'user' ? 'You' : 'JWC'}</span>
                     <div className="code-message-text">
                         {msg.role === 'assistant' ? (
-                            <Suspense fallback={<span>{msg.text}</span>}>
-                                <MarkdownRenderer markdown={msg.text} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />
-                            </Suspense>
+                            <AssistantMarkdown text={msg.text} onOpenLocalFile={onOpenLocalFile} />
                         ) : msg.text}
                     </div>
                 </>
@@ -188,13 +202,20 @@ function renderSendingMessage() {
 export function CodeTranscript({ messages, sending, workingDir, transcriptRef, onOpenLocalFile }: CodeTranscriptProps) {
     const showSending = sending && messages[messages.length - 1]?.role !== 'assistant';
     const rowCount = messages.length + (showSending ? 1 : 0);
+    // D3: these two callbacks used to depend on `messages`. Every streaming
+    // token makes a new array identity, so both were re-created, which
+    // invalidated the virtualizer's layout effect and forced a full
+    // setOptions + _willUpdate + setSnapshot — a second render pass per token.
+    // Read through a ref instead so only `count` actually changes.
+    const messagesRef = useRef(messages);
+    messagesRef.current = messages;
     const getItemKey = useCallback((index: number): string | number => {
-        const msg = messages[index];
+        const msg = messagesRef.current[index];
         return msg ? transcriptMessageKey(msg, index) : `sending-${index}`;
-    }, [messages]);
+    }, []);
     const estimateSize = useCallback((index: number): number => (
-        estimateTranscriptRowSize(messages[index])
-    ), [messages]);
+        estimateTranscriptRowSize(messagesRef.current[index])
+    ), []);
     const virtual = useCodeTranscriptVirtualRows({
         count: rowCount,
         scrollElementRef: transcriptRef,
