@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { JAW_HOME } from '../core/config.js';
+import { clampPendingLine } from './spawn/line-buffer.js';
 import { probeOpenCodexEndpointModels } from '../cli/opencodex-models.js';
 
 export type PiProfileMode = 'basic' | 'openai' | 'anthropic' | 'vertex';
@@ -610,9 +611,15 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         buffer += decoder.write(chunk);
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
+        const clamped = clampPendingLine(buffer);
+        if (clamped.overflowed) {
+            console.warn('[jaw:pi] stdout line exceeded the pending-line cap without a newline — truncating');
+            buffer = clamped.buffer;
+        }
         for (const line of lines) if (line.trim()) dispatchLine(line.trim());
     });
-    child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
+    // Match the bound used by the other pi reader; stderr is diagnostic only.
+    child.stderr?.on('data', (chunk) => { if (stderr.length < 4000) stderr += chunk.toString(); });
     child.on('error', (error) => rejectOutstanding(error));
     child.on('close', (code) => {
         closed = true;
@@ -698,6 +705,11 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
             buffer += decoder.write(chunk);
             const lines = buffer.split('\n');
             buffer = lines.pop() ?? '';
+            const clamped = clampPendingLine(buffer);
+            if (clamped.overflowed) {
+                console.warn('[jaw:pi] stdout line exceeded the pending-line cap without a newline — truncating');
+                buffer = clamped.buffer;
+            }
             for (const line of lines) if (line.trim()) dispatchLine(line.trim());
         });
         child.stderr.on('data', (chunk) => { if (stderr.length < 4000) stderr += chunk.toString(); });

@@ -202,6 +202,7 @@ interface CopilotSpawnContext extends SpawnContext {
 
 import { killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
 import { releaseChildOutputAfterExit } from './spawn/exit-drain.js';
+import { clampPendingLine } from './spawn/line-buffer.js';
 
 /** Single choke point for streamed assistant text: appends to the live-run
  *  accumulator and broadcasts agent_output tagged with the owning trace run
@@ -2480,6 +2481,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         buffer += chunk.toString();
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
+        const clampedPending = clampPendingLine(buffer);
+        if (clampedPending.overflowed) {
+            console.warn(`[jaw:${agentLabel}] stdout line exceeded the pending-line cap without a newline — truncating`);
+            buffer = clampedPending.buffer;
+        }
         for (const line of lines) {
             if (!line.trim()) continue;
             dispatchNdjsonLine(line);
