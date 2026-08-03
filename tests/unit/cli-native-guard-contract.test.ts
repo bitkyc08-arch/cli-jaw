@@ -55,3 +55,61 @@ test('ensure-native opens an in-memory database to prove ABI compatibility', () 
     assert.match(src, /new Database\(':memory:'\)/);
     assert.match(src, /db\.close\(\)/);
 });
+
+// ─── 010: native failure classification (defect D1) ───
+
+type Classify = (error: unknown, resolved: boolean) => 'missing' | 'abi' | 'other';
+
+async function loadClassifier(): Promise<Classify> {
+    const mod = await import(join(projectRoot, 'scripts', 'ensure-native-modules.cjs'));
+    const fn = (mod.default ?? mod).classifyNativeError as Classify;
+    assert.equal(typeof fn, 'function', 'classifyNativeError must be exported');
+    return fn;
+}
+
+function errorWith(message: string, code?: string): Error {
+    const error = new Error(message);
+    if (code) (error as NodeJS.ErrnoException).code = code;
+    return error;
+}
+
+test('a missing install is never classified as a recoverable ABI mismatch', async () => {
+    const classify = await loadClassifier();
+    // Regression guard for D1: this message contains the substring 'better-sqlite3',
+    // which the previous substring matcher treated as a recoverable ABI mismatch and
+    // "repaired" with a pointless rebuild before printing a raw stack trace.
+    const notFound = errorWith("Cannot find module 'better-sqlite3'", 'MODULE_NOT_FOUND');
+
+    assert.equal(classify(notFound, false), 'missing');
+    assert.equal(classify(notFound, true), 'missing');
+});
+
+test('real ABI mismatches stay recoverable so auto-rebuild does not regress', async () => {
+    const classify = await loadClassifier();
+
+    assert.equal(
+        classify(errorWith('NODE_MODULE_VERSION 127. This version of Node.js requires 137', 'ERR_DLOPEN_FAILED'), true),
+        'abi',
+    );
+    assert.equal(classify(errorWith('was compiled against a different Node.js version'), true), 'abi');
+    assert.equal(classify(errorWith('dlopen failed for better_sqlite3.node'), true), 'abi');
+});
+
+test('unrelated native failures are not rebuilt blindly', async () => {
+    const classify = await loadClassifier();
+
+    assert.equal(classify(errorWith('mach-o file, but is an incompatible architecture'), true), 'other');
+    assert.equal(classify(errorWith('libc.so.6: version GLIBC_2.38 not found'), true), 'other');
+});
+
+test('ensure-native separates resolution from loading and reports an actionable install hint', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+
+    assert.match(src, /createRequire/);
+    assert.match(src, /\.resolve\('better-sqlite3'\)/);
+    assert.match(src, /run: npm install/);
+    // Diagnosis must carry the facts needed to debug a failed repair.
+    assert.match(src, /process\.versions\.modules/);
+    // Presence of a node_modules directory is not a valid readiness signal.
+    assert.doesNotMatch(src, /existsSync\(join\(root, 'node_modules'\)\)/);
+});
