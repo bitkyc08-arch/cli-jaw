@@ -178,7 +178,7 @@ bin/jaw (개발 클론 / 직접 호출 런처)
 
 | 항목 | 계약 |
 | --- | --- |
-| 실패 분류 | `missing` (해석 불가) / `abi` (dlopen·NODE_MODULE_VERSION) / `other` — `classifyNativeError()`로 export |
+| 실패 분류 | `missing` (해석 불가 **또는** 로드 시 `MODULE_NOT_FOUND`) / `abi` (dlopen·NODE_MODULE_VERSION) / `other` — `classifyNativeError()`로 export |
 | 해석 검사 | `createRequire(root/package.json).resolve()`. `node_modules` 디렉터리 존재 여부로 판정하지 않음 (PnP 등) |
 | `missing` 행동 | rebuild 금지. `npm install` 안내 + exit 1 |
 | `abi` 행동 | 잠금 획득 → 재probe → 1회 rebuild → 재probe |
@@ -188,8 +188,9 @@ bin/jaw (개발 클론 / 직접 호출 런처)
 | 잠금 회수 | 소유자 PID를 `process.kill(pid, 0)`로 probe. `ESRCH`=회수, `EPERM`=살아있음. 시간(`LOCK_STALE_MS`)은 PID를 못 읽을 때만 쓰는 backstop |
 | ABI 판정 범위 | 의도적으로 **넓게** 유지 (기존 자동복구 퇴행 방지). 좁힌 것은 `missing`뿐 |
 
-better-sqlite3 12.x는 `install` 훅(`prebuild-install || node-gyp rebuild`)이 있어 `npm rebuild`가 복구 경로다.
-13.x는 `gypfile:false` + 번들 prebuilds로 훅이 없으므로 **업그레이드 시 이 가정을 재확인할 것.**
+현재 설치본 better-sqlite3 **12.8.0**은 `install` 훅(`prebuild-install || node-gyp rebuild --release`)이 있어
+`npm rebuild`가 복구 경로다 (로컬 `node_modules`에서 확인). 상위 메이저에서 번들 prebuilds로 전환되며
+훅이 사라진다는 보고가 있으므로 — 로컬에서 검증 불가 — **업그레이드 시 이 가정을 반드시 재확인할 것.**
 
 ### `bin/jaw` 런처 규칙
 
