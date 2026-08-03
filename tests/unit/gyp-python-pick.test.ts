@@ -96,8 +96,15 @@ test('warns instead of failing silently when nothing has distutils', () => {
     try {
         const broken = fakePython(dir, 'python3', false);
         const copy = join(dir, 'pick-copy.sh');
-        writeFileSync(copy, readFileSync(picker, 'utf8')
-            .replace('  /usr/bin/python3 \\', `  ${broken} \\`));
+        const source = readFileSync(picker, 'utf8');
+        const rewritten = source.replace('  /usr/bin/python3 \\', `  ${broken} \\`);
+        // Without this the test rots silently: reformat the candidate list and
+        // the replacement stops matching, the copy keeps probing the real
+        // /usr/bin/python3, and the assertions below pass for the wrong reason
+        // on any machine where that interpreter works.
+        assert.notEqual(rewritten, source,
+            'the system-candidate line moved; this test is no longer redirecting it');
+        writeFileSync(copy, rewritten);
 
         const result = spawnSync('bash', [copy], {
             cwd: projectRoot,
@@ -116,15 +123,23 @@ test('warns instead of failing silently when nothing has distutils', () => {
     }
 });
 
-test('the desktop build routes node-gyp through the picker', () => {
-    // A packaging run that calls electron-builder directly gets whatever python3
-    // is on PATH, which is the defect this unit exists to close.
-    const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as
+test('every electron-builder entrypoint routes node-gyp through the picker', () => {
+    // The first version of this fix wrapped only the mac path in the root
+    // package.json, which left `npm --prefix electron run dist:win` and friends
+    // reaching electron-builder with whatever python3 was on PATH. The wrapper
+    // belongs on the scripts that actually invoke electron-builder.
+    const pkg = JSON.parse(readFileSync(join(projectRoot, 'electron', 'package.json'), 'utf8')) as
         { scripts: Record<string, string> };
-    const script = pkg.scripts["electron:dist:mac"];
-    assert.ok(script, 'electron:dist:mac is missing');
-    assert.match(script, /pick-gyp-python\.sh/,
-        'electron:dist:mac must resolve a node-gyp-capable python');
-    assert.match(script, /npm_config_python=/,
-        'node-gyp reads npm_config_python; PYTHON alone does not cover it');
+
+    const builderScripts = Object.entries(pkg.scripts)
+        .filter(([, body]) => body.includes('electron-builder'));
+    assert.ok(builderScripts.length >= 4,
+        `expected several electron-builder scripts, found ${builderScripts.length}`);
+
+    for (const [name, body] of builderScripts) {
+        assert.match(body, /pick-gyp-python\.sh/,
+            `${name} calls electron-builder without resolving a node-gyp-capable python`);
+        assert.match(body, /npm_config_python=/,
+            `${name} must set npm_config_python; node-gyp does not read PYTHON alone`);
+    }
 });

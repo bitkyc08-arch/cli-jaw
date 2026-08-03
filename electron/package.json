@@ -11,11 +11,11 @@
     "preview": "electron-vite preview",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
-    "dist:mac": "electron-builder --mac",
-    "dist:mac:zip": "electron-builder --mac zip",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
-    "dist:all": "electron-builder -mwl"
+    "dist:mac": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder --mac",
+    "dist:mac:zip": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder --mac zip",
+    "dist:win": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder --win",
+    "dist:linux": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder --linux",
+    "dist:all": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder -mwl"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

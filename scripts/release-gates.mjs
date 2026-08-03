@@ -67,6 +67,10 @@ const GATES = {
                 'tests/unit/browser-web-ai-source-audit.test.ts',
                 'tests/unit/browser-web-ai-cli-contract.test.ts',
                 'tests/unit/release-gates.test.ts',
+                // Guards the release/build scripts themselves, so it belongs in
+                // the suite gate:all actually runs rather than npm test only.
+                'tests/unit/electron-version-sync.test.ts',
+                'tests/unit/gyp-python-pick.test.ts',
             ].filter((p) => fs.existsSync(path.join(repoRoot, p)));
             if (targets.length === 0) {
                 return { ok: false, detail: 'no Phase 22 mirror tests found' };
