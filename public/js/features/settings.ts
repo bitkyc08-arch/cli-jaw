@@ -2,7 +2,7 @@
 export { loadSettings, updateSettings, setPerm, getModelValue, handleModelSelect, applyCustomModel, onPerCliProviderChange, onCliChange, saveActiveCliSettings, savePerCli, onFlushCliChange, loadFlushAgentSidebar } from './settings-core.js';
 export { setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings } from './settings-telegram.js';
 export { setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings } from './settings-discord.js';
-export { setSlack, setSlackForwardAll, setSlackAllowBots, setSlackMentionOnly, setSlackReplyInThread, saveSlackSettings } from './settings-slack.js';
+export { setSlack, setSlackForwardAll, setSlackAllowBots, setSlackMentionOnly, setSlackReplyInThread, saveSlackSettings, initSlackSetupGuide } from './settings-slack.js';
 export { setActiveChannel, loadFallbackOrder, saveFallbackOrder } from './settings-channel.js';
 export { loadMcpServers, syncMcpServers, installMcpGlobal, openMcpModal, initMcpModal } from './settings-mcp.js';
 export { loadCliStatus, scheduleCliStatusRefresh, setCliStatusInterval } from './settings-cli-status.js';

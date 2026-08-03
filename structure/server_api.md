@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 236개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 235개다.
+> 현재 라이브 surface는 총 237개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 236개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -21,7 +21,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | --- | ---: | ---: | --- |
 | `server.ts` | 640L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
 | `src/routes/static.ts` | 137L | 4 | root HTML + `/media/:filename` upload media serve + guarded `/api/image` local media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
-| `src/routes/system.ts` | 57L | 4 | health/session/runtime/auth-token |
+| `src/routes/system.ts` | 82L | 5 | health/session/runtime/auth-token/slack-manifest |
 | `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
 | `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
 | `src/routes/instance.ts` | 53L | 3 | instance lock GET/POST/DELETE |
@@ -79,6 +79,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | --- | --- | --- |
 | `GET` | `/` | `public/dist/index.html`이 있으면 Vite build를 서빙, 없으면 static fallback |
 | `GET` | `/api/health` | `{ ok, version, uptime }` |
+| `GET` | `/api/slack/manifest` | 설정 페이지 "매니페스트 복사"용 canonical Slack 앱 매니페스트 `{ ok, data: { yaml } }` (비밀값 없음, unauthenticated) |
 | `GET` | `/api/session` | 현재 main session row 반환 |
 | `GET` | `/api/messages` | `includeTrace=1|true|yes`면 trace 포함 메시지 조회. `?limit=N`(1–5000)이면 최근 N개만 ascending 반환; 생략 시 전체 history |
 | `GET` | `/api/messages/search` | 메시지 본문 검색 결과 반환. `?q=`, `?days=N`(1-365), `?recent=N`(1-5000), `?context=N`(0-5), `?limit=N`(1-50) |
@@ -107,7 +108,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 | Category | Endpoints |
 | --- | --- |
-| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/image` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
+| Core/Auth | `GET /api/health` `GET /api/slack/manifest` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/image` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
 | Commands | `POST /api/command` `GET /api/commands?interface=` `POST /api/elicitation/callback` |
 | Events | `GET /api/events` |
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` |
@@ -138,7 +139,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 236개 route handler 기준이다. 이 중 API 엔드포인트는 235개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 237개 route handler 기준이다. 이 중 API 엔드포인트는 236개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 

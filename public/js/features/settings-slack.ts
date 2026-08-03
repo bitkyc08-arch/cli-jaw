@@ -1,7 +1,60 @@
 // ── Slack Settings ──
-import { apiJson } from '../api.js';
+import { api, apiJson } from '../api.js';
 import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
+import { hasSlackBotTokenPrefix, hasSlackAppTokenPrefix } from './channel-setup-rules.js';
+import { t } from './i18n.js';
 import type { SettingsData } from './settings-types.js';
+
+// ── Guided setup card ──
+// One-time bindings for the Slack setup card in settings: manifest copy,
+// app-page shortcut, and inline token-prefix validation (error below the
+// field, cleared once the value looks right — form-patterns on-blur timing).
+let setupGuideBound = false;
+
+export function initSlackSetupGuide(): void {
+    if (setupGuideBound) return;
+    setupGuideBound = true;
+
+    document.getElementById('slack-copy-manifest')?.addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget as HTMLButtonElement;
+        try {
+            const json = await api<{ yaml?: string }>('/api/slack/manifest');
+            const yaml = json?.yaml || '';
+            if (!yaml) throw new Error('empty manifest');
+            await navigator.clipboard.writeText(yaml);
+            const original = btn.textContent || '';
+            btn.textContent = t('settings.slack.guide.copyManifestDone');
+            setTimeout(() => { btn.textContent = original; }, 2000);
+        } catch {
+            btn.textContent = t('settings.slack.guide.copyManifestFail');
+            setTimeout(() => { btn.textContent = t('settings.slack.guide.copyManifest'); }, 2500);
+        }
+    });
+
+    document.getElementById('slack-open-apps')?.addEventListener('click', () => {
+        window.open('https://api.slack.com/apps?new_app=1', '_blank', 'noopener');
+    });
+
+    bindPrefixValidation('slBotToken', 'slack-bot-token-error', hasSlackBotTokenPrefix);
+    bindPrefixValidation('slAppToken', 'slack-app-token-error', hasSlackAppTokenPrefix);
+}
+
+function bindPrefixValidation(inputId: string, errorId: string, valid: (v: string) => boolean): void {
+    const input = document.getElementById(inputId) as HTMLInputElement | null;
+    const error = document.getElementById(errorId);
+    if (!input || !error) return;
+    const check = (): void => {
+        const bad = input.value.trim().length > 0 && !valid(input.value);
+        error.style.display = bad ? '' : 'none';
+        input.classList.toggle('input-error', bad);
+    };
+    // On blur only until the first error appears; then live, so correcting
+    // the paste clears the error immediately.
+    input.addEventListener('blur', check);
+    input.addEventListener('input', () => {
+        if (error.style.display !== 'none') check();
+    });
+}
 
 export async function saveSlackSettings(): Promise<void> {
     const botToken = (document.getElementById('slBotToken') as HTMLInputElement)?.value.trim() || '';

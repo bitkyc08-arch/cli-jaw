@@ -56,7 +56,7 @@ import {
     initCliStatusToggle, initCliStatusPreviewHooks, isCliStatusExpanded, expandCliStatus, isEmbeddedPreviewFrame,
     setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings,
     setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings, setActiveChannel,
-    setSlack, setSlackForwardAll, setSlackAllowBots, setSlackMentionOnly, setSlackReplyInThread, saveSlackSettings,
+    setSlack, setSlackForwardAll, setSlackAllowBots, setSlackMentionOnly, setSlackReplyInThread, saveSlackSettings, initSlackSetupGuide,
     saveFallbackOrder,
     openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
 } from './features/settings.js';
@@ -300,6 +300,7 @@ document.getElementById('slBotToken')?.addEventListener('change', saveSlackSetti
 document.getElementById('slAppToken')?.addEventListener('change', saveSlackSettings);
 document.getElementById('slTeamId')?.addEventListener('change', saveSlackSettings);
 document.getElementById('slChannelIds')?.addEventListener('change', saveSlackSettings);
+initSlackSetupGuide();
 
 document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);
 

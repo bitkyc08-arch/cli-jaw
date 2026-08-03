@@ -7,6 +7,17 @@ import assert from 'node:assert/strict';
 
 const { isTelegramConfigured, isDiscordConfigured, isSlackConfigured } =
     await import('../../public/js/features/channel-setup-rules.ts');
+const { hasSlackBotTokenPrefix, hasSlackAppTokenPrefix } =
+    await import('../../public/js/features/channel-setup-rules.ts');
+
+test('slack token prefix helpers catch swapped pastes', () => {
+    assert.equal(hasSlackBotTokenPrefix('xoxb-1-abc'), true);
+    assert.equal(hasSlackBotTokenPrefix('xapp-1-abc'), false);
+    assert.equal(hasSlackBotTokenPrefix(''), false);
+    assert.equal(hasSlackAppTokenPrefix('xapp-1-abc'), true);
+    assert.equal(hasSlackAppTokenPrefix('xoxb-1-abc'), false);
+    assert.equal(hasSlackAppTokenPrefix('  xapp-1-abc  '), true);
+});
 
 test('telegram is configured iff a token exists', () => {
     assert.equal(isTelegramConfigured(''), false);

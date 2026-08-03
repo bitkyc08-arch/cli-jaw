@@ -505,7 +505,7 @@
     "help.slack.link.portal": "Open the Slack app dashboard",
     "help.slack.link.docs": "Socket Mode documentation",
     "help.slack.example.1": "@cli-jaw run the tests for this repo",
-    "help.slack.howTo.1": "Create an app at api.slack.com/apps (a manifest is easiest).",
+    "help.slack.howTo.1": "下のガイドカードの「マニフェストをコピー」を押し、api.slack.com/apps → Create an App → From an app manifest に貼り付けてアプリを作成します。",
     "help.slack.howTo.2": "Enable Socket Mode and generate an app-level token (xapp-) with connections:write.",
     "help.slack.howTo.3": "Install to the workspace to obtain the bot token (xoxb-).",
     "help.slack.howTo.4": "Paste each token into its own field below — do not swap them.",
@@ -812,5 +812,17 @@
     "help.keyboardShortcuts.subcmd.2": "/help <command> — 特定コマンドの詳細ヘルプを表示します",
     "help.keyboardShortcuts.subcmd.3": "/commands — コマンドパレットを開きます（エイリアス: /cmd）",
     "bgtask.title": "バックグラウンド",
-    "tg.elicitationExpired": "選択セッションの有効期限が切れました。テキストで返信してください。"
+    "tg.elicitationExpired": "選択セッションの有効期限が切れました。テキストで返信してください。",
+    "settings.slack.guide.step1Title": "Slack アプリを作成",
+    "settings.slack.guide.step1Desc": "Create an App → From an app manifest → ワークスペース選択 → 貼り付け",
+    "settings.slack.guide.copyManifest": "マニフェストをコピー",
+    "settings.slack.guide.copyManifestDone": "コピーしました — Slack に貼り付けてください",
+    "settings.slack.guide.copyManifestFail": "コピー失敗 — jaw slack manifest を使用",
+    "settings.slack.guide.openApps": "アプリページを開く",
+    "settings.slack.guide.step2Title": "ボットトークンを貼り付け",
+    "settings.slack.guide.step3Title": "受信用アプリトークン（任意）",
+    "settings.slack.guide.step3Desc": "空のままなら送信専用（outbound-only）で動作します",
+    "settings.slack.guide.botTokenError": "xoxb- で始まるボットトークンが必要です — アプリトークンと入れ替わっていませんか？",
+    "settings.slack.guide.appTokenError": "xapp- で始まるアプリレベルトークンが必要です — ボットトークンと入れ替わっていませんか？",
+    "settings.slack.advanced": "詳細設定"
 }

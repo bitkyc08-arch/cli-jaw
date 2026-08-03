@@ -11,6 +11,7 @@ import { getSession } from '../core/db.js';
 import { buildChannelHealthSnapshot } from '../messaging/channel-health.js';
 import { getCliModelAndEffort } from '../core/main-session.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
+import { slackManifestYaml } from '../slack/manifest.js';
 
 function getRuntimeSnapshot() {
     const cli = settings["cli"] || null;
@@ -32,6 +33,11 @@ export function registerSystemRoutes(app: Router, deps: { jawAuthToken: string }
         uptime: process.uptime(),
         channels: buildChannelHealthSnapshot(),
     }));
+
+    // Canonical Slack app manifest for the settings-page copy button. No
+    // secrets — scopes and event names only, same exposure class as
+    // /api/health, so it stays unauthenticated like its neighbors.
+    app.get('/api/slack/manifest', (_req, res) => ok(res, { yaml: slackManifestYaml() }));
 
     app.get('/api/session', (_, res) => ok(res, getSession(), getSession() as Record<string, unknown> | undefined));
 

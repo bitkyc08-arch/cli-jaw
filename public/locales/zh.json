@@ -505,7 +505,7 @@
     "help.slack.link.portal": "Open the Slack app dashboard",
     "help.slack.link.docs": "Socket Mode documentation",
     "help.slack.example.1": "@cli-jaw run the tests for this repo",
-    "help.slack.howTo.1": "Create an app at api.slack.com/apps (a manifest is easiest).",
+    "help.slack.howTo.1": "点击下方指南卡中的“复制清单”，然后在 api.slack.com/apps → Create an App → From an app manifest 粘贴以创建应用。",
     "help.slack.howTo.2": "Enable Socket Mode and generate an app-level token (xapp-) with connections:write.",
     "help.slack.howTo.3": "Install to the workspace to obtain the bot token (xoxb-).",
     "help.slack.howTo.4": "Paste each token into its own field below — do not swap them.",
@@ -812,5 +812,17 @@
     "help.keyboardShortcuts.subcmd.2": "/help <command> — 显示特定命令的详细帮助",
     "help.keyboardShortcuts.subcmd.3": "/commands — 打开命令面板（别名: /cmd）",
     "bgtask.title": "后台任务",
-    "tg.elicitationExpired": "选择会话已过期，请用文字回复。"
+    "tg.elicitationExpired": "选择会话已过期，请用文字回复。",
+    "settings.slack.guide.step1Title": "创建 Slack 应用",
+    "settings.slack.guide.step1Desc": "Create an App → From an app manifest → 选择工作区 → 粘贴",
+    "settings.slack.guide.copyManifest": "复制清单",
+    "settings.slack.guide.copyManifestDone": "已复制 — 请粘贴到 Slack",
+    "settings.slack.guide.copyManifestFail": "复制失败 — 请使用 jaw slack manifest",
+    "settings.slack.guide.openApps": "打开应用页面",
+    "settings.slack.guide.step2Title": "粘贴机器人令牌",
+    "settings.slack.guide.step3Title": "接收用应用令牌（可选）",
+    "settings.slack.guide.step3Desc": "留空则仅可发送（outbound-only）",
+    "settings.slack.guide.botTokenError": "需要以 xoxb- 开头的机器人令牌 — 是否与应用令牌填反了？",
+    "settings.slack.guide.appTokenError": "需要以 xapp- 开头的应用级令牌 — 是否与机器人令牌填反了？",
+    "settings.slack.advanced": "高级设置"
 }

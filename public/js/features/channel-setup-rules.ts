@@ -20,3 +20,13 @@ export function isDiscordConfigured(token: string, guildId: string): boolean {
 export function isSlackConfigured(botToken: string): boolean {
     return botToken.trim().length > 0;
 }
+
+// Token-shape hints for inline field validation. Prefixes are how Slack
+// namespaces its tokens; a wrong prefix is almost always a swapped paste.
+export function hasSlackBotTokenPrefix(token: string): boolean {
+    return token.trim().startsWith('xoxb-');
+}
+
+export function hasSlackAppTokenPrefix(token: string): boolean {
+    return token.trim().startsWith('xapp-');
+}

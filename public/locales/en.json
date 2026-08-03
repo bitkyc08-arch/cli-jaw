@@ -516,7 +516,7 @@
     "help.slack.link.portal": "Open the Slack app dashboard",
     "help.slack.link.docs": "Socket Mode documentation",
     "help.slack.example.1": "@cli-jaw run the tests for this repo",
-    "help.slack.howTo.1": "Create an app at api.slack.com/apps (a manifest is easiest).",
+    "help.slack.howTo.1": "Click \"Copy manifest\" in the guide card below, then create the app at api.slack.com/apps → Create an App → From an app manifest.",
     "help.slack.howTo.2": "Enable Socket Mode and generate an app-level token (xapp-) with connections:write.",
     "help.slack.howTo.3": "Install to the workspace to obtain the bot token (xoxb-).",
     "help.slack.howTo.4": "Paste each token into its own field below — do not swap them.",
@@ -823,5 +823,17 @@
     "help.keyboardShortcuts.subcmd.2": "/help <command> — Show detailed help for a specific command",
     "help.keyboardShortcuts.subcmd.3": "/commands — Open command palette (alias: /cmd)",
     "bgtask.title": "Background",
-    "tg.elicitationExpired": "Selection expired. Please reply with text."
+    "tg.elicitationExpired": "Selection expired. Please reply with text.",
+    "settings.slack.guide.step1Title": "Create the Slack app",
+    "settings.slack.guide.step1Desc": "Create an App → From an app manifest → pick workspace → paste",
+    "settings.slack.guide.copyManifest": "Copy manifest",
+    "settings.slack.guide.copyManifestDone": "Copied — paste it into Slack",
+    "settings.slack.guide.copyManifestFail": "Copy failed — use jaw slack manifest",
+    "settings.slack.guide.openApps": "Open apps page",
+    "settings.slack.guide.step2Title": "Paste the bot token",
+    "settings.slack.guide.step3Title": "App-level token for inbound (optional)",
+    "settings.slack.guide.step3Desc": "Leave empty for outbound-only operation",
+    "settings.slack.guide.botTokenError": "Must be a bot token starting with xoxb- — swapped with the app token?",
+    "settings.slack.guide.appTokenError": "Must be an app-level token starting with xapp- — swapped with the bot token?",
+    "settings.slack.advanced": "Advanced settings"
 }

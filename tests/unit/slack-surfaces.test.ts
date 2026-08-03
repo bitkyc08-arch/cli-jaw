@@ -61,6 +61,42 @@ test('both slack token inputs are password fields', () => {
     }
 });
 
+// ─── Guided setup card (260803 UX redesign) ─────────
+
+test('the slack section has a 3-step setup guide card with the exact Slack click path', () => {
+    const html = read('public/index.html');
+    assert.ok(html.includes('class="slack-setup-card"'), 'guide card missing');
+    assert.ok((html.match(/class="slack-setup-step"/g) || []).length === 3, 'expected 3 steps');
+    assert.ok(html.includes('id="slack-copy-manifest"'), 'manifest copy button missing');
+    assert.ok(html.includes('id="slack-open-apps"'), 'open-apps button missing');
+    // The screenshot-confirmed confusion: Your Apps shows only "Create an
+    // App" — the guide must name the exact path from there.
+    assert.ok(html.includes('From an app manifest'), 'exact Slack click path missing');
+});
+
+test('non-credential fields are demoted to a collapsed advanced section', () => {
+    const html = read('public/index.html');
+    const detailsIdx = html.indexOf('<details class="slack-advanced">');
+    assert.ok(detailsIdx > 0, 'advanced <details> missing');
+    for (const id of ['slTeamId', 'slChannelIds', 'slMentionOn', 'slThreadOn', 'slForwardOn', 'slAllowBotsOn']) {
+        assert.ok(html.indexOf(`id="${id}"`) > detailsIdx, `#${id} should live inside the advanced section`);
+    }
+    // Only the two credential inputs stay top-level.
+    const cardIdx = html.indexOf('class="slack-setup-card"');
+    assert.ok(html.indexOf('id="slBotToken"') > cardIdx && html.indexOf('id="slBotToken"') < detailsIdx);
+    assert.ok(html.indexOf('id="slAppToken"') > cardIdx && html.indexOf('id="slAppToken"') < detailsIdx);
+});
+
+test('guide bindings and prefix validation are wired from settings-slack.ts', () => {
+    const module = read('public/js/features/settings-slack.ts');
+    assert.match(module, /initSlackSetupGuide/);
+    assert.ok(module.includes("getElementById('slack-copy-manifest')"));
+    assert.ok(module.includes("bindPrefixValidation('slBotToken'"));
+    assert.ok(module.includes("bindPrefixValidation('slAppToken'"));
+    const main = read('public/js/main.ts');
+    assert.match(main, /initSlackSetupGuide\(\)/);
+});
+
 test('slack toggle defaults in the markup match the backend defaults', () => {
     // mentionOnly and replyInThread default TRUE for Slack, unlike Discord's
     // mentionOnly. A mismatched `active` class would show the toggle off while

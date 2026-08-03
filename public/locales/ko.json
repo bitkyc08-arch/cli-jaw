@@ -516,7 +516,7 @@
     "help.slack.link.portal": "Slack 앱 관리 페이지 열기",
     "help.slack.link.docs": "Socket Mode 문서",
     "help.slack.example.1": "@cli-jaw 이 저장소 테스트 돌려줘",
-    "help.slack.howTo.1": "api.slack.com/apps 에서 앱을 만듭니다 (매니페스트 사용 권장).",
+    "help.slack.howTo.1": "아래 가이드 카드의 \"매니페스트 복사\"를 눌러 api.slack.com/apps → Create an App → From an app manifest에 붙여넣어 앱을 만듭니다.",
     "help.slack.howTo.2": "Socket Mode를 켜고 connections:write 범위의 app-level 토큰(xapp-)을 발급합니다.",
     "help.slack.howTo.3": "워크스페이스에 설치해 봇 토큰(xoxb-)을 받습니다.",
     "help.slack.howTo.4": "두 토큰을 아래 입력란에 각각 붙여넣습니다 — 서로 바꿔 넣지 않도록 주의하세요.",
@@ -823,5 +823,17 @@
     "help.keyboardShortcuts.subcmd.2": "/help <command> — 특정 명령어의 상세 도움말을 표시합니다",
     "help.keyboardShortcuts.subcmd.3": "/commands — 명령 팔레트를 엽니다 (별칭: /cmd)",
     "bgtask.title": "백그라운드",
-    "tg.elicitationExpired": "선택 세션이 만료되었습니다. 텍스트로 답해주세요."
+    "tg.elicitationExpired": "선택 세션이 만료되었습니다. 텍스트로 답해주세요.",
+    "settings.slack.guide.step1Title": "Slack 앱 만들기",
+    "settings.slack.guide.step1Desc": "Create an App → From an app manifest → 워크스페이스 선택 → 붙여넣기",
+    "settings.slack.guide.copyManifest": "매니페스트 복사",
+    "settings.slack.guide.copyManifestDone": "복사됨 — Slack에 붙여넣으세요",
+    "settings.slack.guide.copyManifestFail": "복사 실패 — jaw slack manifest 사용",
+    "settings.slack.guide.openApps": "앱 페이지 열기",
+    "settings.slack.guide.step2Title": "봇 토큰 붙여넣기",
+    "settings.slack.guide.step3Title": "수신용 앱 토큰 (선택)",
+    "settings.slack.guide.step3Desc": "비워두면 전송 전용(outbound-only)으로 동작합니다",
+    "settings.slack.guide.botTokenError": "xoxb-로 시작하는 봇 토큰이어야 합니다 — 앱 토큰과 바꿔 넣지 않았나요?",
+    "settings.slack.guide.appTokenError": "xapp-로 시작하는 앱 레벨 토큰이어야 합니다 — 봇 토큰과 바꿔 넣지 않았나요?",
+    "settings.slack.advanced": "고급 설정"
 }

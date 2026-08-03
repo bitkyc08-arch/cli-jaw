@@ -566,50 +566,75 @@
                         <button id="slOn" class="perm-btn" data-i18n="btn.on">켬</button>
                     </div>
                 </div>
-                <div class="settings-row sub-row">
-                    <label>Bot Token</label>
-                    <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
-                </div>
-                <div class="settings-row sub-row">
-                    <label>App Token</label>
-                    <input type="password" id="slAppToken" placeholder="xapp-... (Socket Mode)" class="input-sm">
-                </div>
-                <div class="settings-row sub-row">
-                    <label>Team ID</label>
-                    <input type="text" id="slTeamId" placeholder="T... (선택)" class="input-sm">
-                </div>
-                <div class="settings-row sub-row">
-                    <label>Channel IDs</label>
-                    <input type="text" id="slChannelIds" placeholder="콤마 구분 (비워두면 전체 허용)" class="input-sm">
-                </div>
-                <div class="settings-row sub-row">
-                    <label data-i18n="label.mentionOnly">Mention Only</label>
-                    <div>
-                        <button id="slMentionOff" class="perm-btn" data-i18n="btn.off">끔</button>
-                        <button id="slMentionOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                <div class="slack-setup-card">
+                    <div class="slack-setup-step">
+                        <span class="slack-step-num">1</span>
+                        <div class="slack-step-body">
+                            <div class="slack-step-title" data-i18n="settings.slack.guide.step1Title">Slack 앱 만들기</div>
+                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step1Desc">Create an App → From an app manifest → 워크스페이스 선택 → 붙여넣기</div>
+                            <div class="slack-step-actions">
+                                <button id="slack-copy-manifest" class="perm-btn" type="button" data-i18n="settings.slack.guide.copyManifest">매니페스트 복사</button>
+                                <button id="slack-open-apps" class="perm-btn" type="button" data-i18n="settings.slack.guide.openApps">앱 페이지 열기</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="slack-setup-step">
+                        <span class="slack-step-num">2</span>
+                        <div class="slack-step-body">
+                            <div class="slack-step-title" data-i18n="settings.slack.guide.step2Title">봇 토큰 붙여넣기</div>
+                            <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
+                            <div class="slack-field-error" id="slack-bot-token-error" style="display:none" data-i18n="settings.slack.guide.botTokenError">xoxb-로 시작하는 봇 토큰이어야 합니다</div>
+                        </div>
+                    </div>
+                    <div class="slack-setup-step">
+                        <span class="slack-step-num">3</span>
+                        <div class="slack-step-body">
+                            <div class="slack-step-title" data-i18n="settings.slack.guide.step3Title">수신용 앱 토큰 (선택)</div>
+                            <input type="password" id="slAppToken" placeholder="xapp-... (Socket Mode)" class="input-sm">
+                            <div class="slack-field-error" id="slack-app-token-error" style="display:none" data-i18n="settings.slack.guide.appTokenError">xapp-로 시작하는 앱 레벨 토큰이어야 합니다</div>
+                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step3Desc">비워두면 전송 전용(outbound-only)으로 동작합니다</div>
+                        </div>
                     </div>
                 </div>
-                <div class="settings-row sub-row">
-                    <label>Reply in Thread</label>
-                    <div>
-                        <button id="slThreadOff" class="perm-btn" data-i18n="btn.off">끔</button>
-                        <button id="slThreadOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                <details class="slack-advanced">
+                    <summary data-i18n="settings.slack.advanced">고급 설정</summary>
+                    <div class="settings-row sub-row">
+                        <label>Team ID</label>
+                        <input type="text" id="slTeamId" placeholder="T... (검증 시 자동 입력)" class="input-sm">
                     </div>
-                </div>
-                <div class="settings-row sub-row">
-                    <label data-i18n="label.forwardAll">자동 전송</label>
-                    <div>
-                        <button id="slForwardOff" class="perm-btn" data-i18n="btn.off">끔</button>
-                        <button id="slForwardOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                    <div class="settings-row sub-row">
+                        <label>Channel IDs</label>
+                        <input type="text" id="slChannelIds" placeholder="콤마 구분 (비워두면 전체 허용)" class="input-sm">
                     </div>
-                </div>
-                <div class="settings-row sub-row">
-                    <label>Allow Bots</label>
-                    <div>
-                        <button id="slAllowBotsOff" class="perm-btn active" data-i18n="btn.off">끔</button>
-                        <button id="slAllowBotsOn" class="perm-btn" data-i18n="btn.on">켬</button>
+                    <div class="settings-row sub-row">
+                        <label data-i18n="label.mentionOnly">Mention Only</label>
+                        <div>
+                            <button id="slMentionOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                            <button id="slMentionOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                        </div>
                     </div>
-                </div>
+                    <div class="settings-row sub-row">
+                        <label>Reply in Thread</label>
+                        <div>
+                            <button id="slThreadOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                            <button id="slThreadOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                        </div>
+                    </div>
+                    <div class="settings-row sub-row">
+                        <label data-i18n="label.forwardAll">자동 전송</label>
+                        <div>
+                            <button id="slForwardOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                            <button id="slForwardOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                        </div>
+                    </div>
+                    <div class="settings-row sub-row">
+                        <label>Allow Bots</label>
+                        <div>
+                            <button id="slAllowBotsOff" class="perm-btn active" data-i18n="btn.off">끔</button>
+                            <button id="slAllowBotsOn" class="perm-btn" data-i18n="btn.on">켬</button>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <!-- MCP Servers -->
