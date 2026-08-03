@@ -252,8 +252,15 @@ idle 만료 시 `setImmediate`로 이벤트 루프 poll 턴을 **한 번 양보*
 
 워치독은 진행 신호에 종류를 부여한다: `output`(원시 출력, 약한 신호) / `rate-limit` / `structured`.
 stall 사유에 `lastProgress=<kind>`를 남기므로, `lastProgress=output x47`은
-**턴이 전진했다는 증거 없이 출력만 흘렀다**는 뜻이다. deadline 계산 자체는 바꾸지 않았다
-(주요 엔진이 각자 raw chunk 경로로 갱신하므로 휴리스틱만 좁혀도 효과가 없다).
+**턴이 전진했다는 증거 없이 출력만 흘렀다**는 뜻이다.
+
+deadline 계산은 종류와 무관하다 — `markProgress()`는 어떤 kind로 호출되든 동일하게
+`absoluteDeadline`을 갱신하며, `absoluteHardCapMs`(4시간)가 상한이다. 즉 종류 태깅은
+**진단 전용**이고 타임아웃 동작을 바꾸지 않는다.
+
+휴리스틱(`text.trim().length > 10`)을 좁히지 않은 이유는 주요 엔진(agy·kiro·grok)이
+각자 raw chunk 또는 파싱 이벤트 경로에서 `markProgress`를 직접 호출하기 때문이다.
+`watchdog.ts`만 좁혀도 그 엔진들의 liveness는 그대로다.
 
 ### 재시도 — 부작용 게이트
 
