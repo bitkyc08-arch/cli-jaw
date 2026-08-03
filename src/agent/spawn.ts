@@ -201,6 +201,7 @@ interface CopilotSpawnContext extends SpawnContext {
 }
 
 import { killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
+import { releaseChildOutputAfterExit } from './spawn/exit-drain.js';
 
 /** Single choke point for streamed assistant text: appends to the live-run
  *  accumulator and broadcasts agent_output tagged with the owning trace run
@@ -2133,6 +2134,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...runtimeStatusMeta, ...empTag });
     if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 
+    // The turn settles on 'close', which waits for every stdio stream to close.
+    // A descendant that inherited these pipes can outlive the child and hold
+    // them open forever, so bound that wait while still draining short tails.
+    const releaseExitDrain = releaseChildOutputAfterExit(child, {
+        onRelease: (reason) => {
+            console.warn(`[jaw:drain] ${agentLabel} exited but output stayed open — released after ${reason}`);
+        },
+    });
+
     // ─── DIFF-A: error guard — prevent uncaught ENOENT crash ───
     let stdSettled = false;  // guard: error→close can fire sequentially
     let lastOpencodeIoAt = Date.now();
@@ -2151,6 +2161,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     child.on('error', (err: NodeJS.ErrnoException) => {
         clearOpencodeIdleTimer();
         clearAgyQuietCompletionTimer();
+        releaseExitDrain();
         if (stdSettled) return;
         stdSettled = true;
         cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
@@ -2492,6 +2503,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         clearOpencodeIdleTimer();
         clearAgyQuietCompletionTimer();
         stallWatchdog.stop();
+        releaseExitDrain();
         if (stdSettled) return;  // error handler already resolved
         // [I1] Flush residual NDJSON buffer — last event may lack trailing newline
         if (buffer.trim()) {
