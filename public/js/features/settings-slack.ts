@@ -61,10 +61,11 @@ export async function saveSlackSettings(): Promise<void> {
     const appToken = (document.getElementById('slAppToken') as HTMLInputElement)?.value.trim() || '';
     const teamId = (document.getElementById('slTeamId') as HTMLInputElement)?.value.trim() || '';
     const channelIdsRaw = (document.getElementById('slChannelIds') as HTMLInputElement)?.value.trim() || '';
+    const attachPort = (document.getElementById('slAttachPort') as HTMLInputElement)?.value.trim() || '';
     const channelIds = channelIdsRaw
         ? channelIdsRaw.split(',').map(s => s.trim()).filter(Boolean)
         : [];
-    await apiJson('/api/settings', 'PUT', { slack: { botToken, appToken, teamId, channelIds } });
+    await apiJson('/api/settings', 'PUT', { slack: { botToken, appToken, teamId, channelIds, attachPort } });
 }
 
 export async function setSlack(enabled: boolean): Promise<void> {
@@ -111,6 +112,8 @@ export function loadSlackSettings(s: SettingsData): void {
     if (sc.teamId && teamId) teamId.value = sc.teamId;
     const channelIds = document.getElementById('slChannelIds') as HTMLInputElement | null;
     if (sc.channelIds?.length && channelIds) channelIds.value = sc.channelIds.join(', ');
+    const attachPort = document.getElementById('slAttachPort') as HTMLInputElement | null;
+    if (attachPort) attachPort.value = sc.attachPort || '';
     const fwdOn = sc.forwardAll !== false;
     document.getElementById('slForwardOn')?.classList.toggle('active', fwdOn);
     document.getElementById('slForwardOff')?.classList.toggle('active', !fwdOn);

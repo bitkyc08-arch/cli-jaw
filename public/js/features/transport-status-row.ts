@@ -64,9 +64,13 @@ function renderTransportBlock(
     const chips = transportChipLabels(status)
         .map(text => `<span class="transport-status-chip">${escapeHtml(text)}</span>`)
         .join('');
-    const hint = showHint && status.configured && status.sendCapable && !status.activeInbound
-        ? `<p class="transport-status-hint">${escapeHtml(t('settings.channel.sendOnlyHint'))}</p>`
-        : '';
+    // not_attach_instance: tokens exist but another instance owns the socket —
+    // say so, or the guarded instance just reads as silently broken.
+    const hint = status.reason === 'not_attach_instance'
+        ? `<p class="transport-status-hint">${escapeHtml(t('settings.channel.notAttachInstanceHint'))}</p>`
+        : showHint && status.configured && status.sendCapable && !status.activeInbound
+            ? `<p class="transport-status-hint">${escapeHtml(t('settings.channel.sendOnlyHint'))}</p>`
+            : '';
     return `
         <div class="transport-status-block">
             <div class="transport-status-label">${escapeHtml(label)}</div>

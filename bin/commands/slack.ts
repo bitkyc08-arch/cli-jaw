@@ -27,6 +27,7 @@ interface SlackSettings {
     appToken?: string;
     teamId?: string;
     channelIds?: string[];
+    attachPort?: string;
     [key: string]: unknown;
 }
 
@@ -192,6 +193,9 @@ async function runSetup(): Promise<void> {
             appToken,
             teamId: teamId || existing.teamId || '',
             channelIds,
+            // One bot, one instance: the instance configured here owns the
+            // connection. Clones sharing these tokens will not open a socket.
+            attachPort: String((s["port"] as string) || existing.attachPort || '3457'),
         } satisfies SlackSettings;
         saveSettings(s);
 

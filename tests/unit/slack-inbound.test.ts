@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SlackSocketClient, type SlackEnvelope, type SlackSocketLike } from '../../src/slack/socket.ts';
 import {
     shouldProcessSlackEvent,
+    shouldAttachSlack,
     isConversationAllowed,
     extractTextFromBlocks,
     resolveEventText,
@@ -556,6 +557,15 @@ test('plain channel messages still pass when mentionOnly is off', () => {
         shouldProcessSlackEvent({ type: 'message', channel: 'C1', text: 'plain chat' }, baseConfig({ mentionOnly: false }), 'events_api').process,
         true,
     );
+});
+
+test('attach guard: unset attaches (back-compat), match attaches, mismatch refuses', () => {
+    assert.equal(shouldAttachSlack(undefined, '24575'), true, 'unset = single-instance behavior');
+    assert.equal(shouldAttachSlack('', '24575'), true);
+    assert.equal(shouldAttachSlack('3457', '3457'), true);
+    assert.equal(shouldAttachSlack('3457', '24575'), false, 'a second instance must not open the socket');
+    assert.equal(shouldAttachSlack(3457, '3457'), true, 'number ports coerce');
+    assert.equal(shouldAttachSlack(' 3457 ', '3457'), true);
 });
 
 test('app_mention envelopes satisfy mentionOnly by definition', () => {

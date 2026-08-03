@@ -300,6 +300,7 @@ document.getElementById('slBotToken')?.addEventListener('change', saveSlackSetti
 document.getElementById('slAppToken')?.addEventListener('change', saveSlackSettings);
 document.getElementById('slTeamId')?.addEventListener('change', saveSlackSettings);
 document.getElementById('slChannelIds')?.addEventListener('change', saveSlackSettings);
+document.getElementById('slAttachPort')?.addEventListener('change', saveSlackSettings);
 initSlackSetupGuide();
 
 document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);

@@ -47,6 +47,19 @@ export function mentionsUser(text: string, userId: string): boolean {
     return new RegExp(`<@${userId}(?:\\|[^>]*)?>`).test(text);
 }
 
+/**
+ * One bot, one instance. Socket Mode happily opens several connections per
+ * app token and Slack round-robins events across them, so two instances
+ * sharing tokens each swallow a random slice of the traffic. `attachPort`
+ * names the instance that owns the connection; every other instance must
+ * not open the socket. Unset = single-instance behavior (attach).
+ */
+export function shouldAttachSlack(attachPort: unknown, currentPort: unknown): boolean {
+    const attach = String(attachPort ?? '').trim();
+    if (!attach) return true;
+    return attach === String(currentPort ?? '').trim();
+}
+
 export function stripMention(text: string, userId: string): string {
     return text.replace(new RegExp(`<@${userId}(?:\\|[^>]*)?>`, 'g'), '').trim();
 }

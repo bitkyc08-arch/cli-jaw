@@ -1,4 +1,5 @@
 import { settings } from '../core/config.js';
+import { shouldAttachSlack } from '../slack/events.js';
 import { getActiveChannel } from './runtime.js';
 import type { MessengerChannel } from './types.js';
 
@@ -64,6 +65,11 @@ export function getTransportCapability(channel: MessengerChannel): TransportCapa
         const appToken = typeof sc?.appToken === 'string' ? sc.appToken.trim() : '';
         if (!sc?.enabled || !botToken) {
             return { configured: false, activeInbound, sendCapable: false, reason: 'disabled' };
+        }
+        if (!shouldAttachSlack(sc.attachPort, settings["port"])) {
+            // Tokens are present but this instance must not open the socket —
+            // surface WHY instead of looking broken.
+            return { configured: true, activeInbound: false, sendCapable: false, reason: 'not_attach_instance' };
         }
         if (!appToken) {
             // Outbound-only: the Web API works with just the bot token, but no

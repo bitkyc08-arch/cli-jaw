@@ -16,7 +16,7 @@ import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-targ
 import type { RemoteTarget } from '../messaging/types.js';
 import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope } from './socket.js';
-import { resolveEventText, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
+import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
@@ -213,6 +213,12 @@ export async function initSlack(): Promise<void> {
             // Outbound still works via the send transport; only inbound needs
             // the app-level token. Say so precisely instead of "failed".
             log.warn('[slack] app-level token missing — outbound only, no inbound events');
+            return;
+        }
+        // One bot, one instance: a second instance sharing these tokens would
+        // silently swallow half the events (Socket Mode round-robin).
+        if (!shouldAttachSlack(sc.attachPort, settings["port"])) {
+            log.info(`[slack] not the attach instance (attach port ${sc.attachPort}, this :${settings["port"]}) — socket not opened`);
             return;
         }
 

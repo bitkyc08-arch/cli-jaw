@@ -824,5 +824,7 @@
     "settings.slack.guide.step3Desc": "空のままなら送信専用（outbound-only）で動作します",
     "settings.slack.guide.botTokenError": "xoxb- で始まるボットトークンが必要です — アプリトークンと入れ替わっていませんか？",
     "settings.slack.guide.appTokenError": "xapp- で始まるアプリレベルトークンが必要です — ボットトークンと入れ替わっていませんか？",
-    "settings.slack.advanced": "詳細設定"
+    "settings.slack.advanced": "詳細設定",
+    "settings.slack.attachPort": "接続インスタンスのポート",
+    "settings.channel.notAttachInstanceHint": "別のインスタンスがこの Slack 接続を所有しています（接続インスタンスのポートを確認）"
 }

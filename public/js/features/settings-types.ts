@@ -5,7 +5,7 @@ export interface TelegramConfig { enabled?: boolean; token?: string; allowedChat
 export interface DiscordConfig { enabled?: boolean; token?: string; guildId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; }
 // Slack needs TWO distinctly-scoped tokens: the bot token drives the Web API,
 // the app-level token opens the Socket Mode connection for inbound events.
-export interface SlackConfig { enabled?: boolean; botToken?: string; appToken?: string; teamId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; replyInThread?: boolean; }
+export interface SlackConfig { enabled?: boolean; botToken?: string; appToken?: string; teamId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; replyInThread?: boolean; attachPort?: string; }
 export interface QuotaWindow {
     label: string;
     percent: number;

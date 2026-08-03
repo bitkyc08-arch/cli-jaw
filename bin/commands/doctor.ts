@@ -53,6 +53,7 @@ interface SlackSettings {
     appToken?: string;
     teamId?: string;
     channelIds?: unknown[];
+    attachPort?: string;
 }
 
 interface NetworkSettings {
@@ -380,6 +381,13 @@ check('Slack', () => {
     // the Web API works, but no inbound events can arrive.
     if (!appToken) throw new Error('WARN: app-level token missing — outbound only, no inbound events (jaw slack setup)');
     if (!appToken.startsWith('xapp-')) throw new Error('app token should start with xapp-');
+    // One bot, one instance: tokens present here but the socket belongs to
+    // another instance — WARN so it reads as intended, not broken.
+    const attachPort = String(settings.slack.attachPort || '').trim();
+    const thisPort = String(loadedSettings()["port" as keyof DoctorSettings] || '').trim();
+    if (attachPort && thisPort && attachPort !== thisPort) {
+        throw new Error(`WARN: slack attach instance is :${attachPort} — this instance (:${thisPort}) must not connect`);
+    }
     const channelIds = settings.slack.channelIds;
     if (!channelIds?.length) throw new Error('WARN: no channel IDs configured — all conversations allowed');
     return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, channels=${channelIds.length}`;

@@ -101,6 +101,9 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
     assert.equal(s.slack.appToken, 'xapp-1-testapp');
     assert.equal(s.slack.teamId, 'T123');
     assert.deepEqual(s.slack.channelIds, ['C1', 'C2']);
+    // One bot, one instance: the wizard claims the connection for the
+    // configuring instance's port (default 3457 in a fresh home).
+    assert.equal(s.slack.attachPort, '3457');
     // Fields the wizard does not own survive the merge.
     assert.equal(s.slack.mentionOnly, false);
     assert.equal(s.slack.replyInThread, false);

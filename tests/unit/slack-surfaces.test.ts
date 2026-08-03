@@ -78,7 +78,7 @@ test('non-credential fields are demoted to a collapsed advanced section', () => 
     const html = read('public/index.html');
     const detailsIdx = html.indexOf('<details class="slack-advanced">');
     assert.ok(detailsIdx > 0, 'advanced <details> missing');
-    for (const id of ['slTeamId', 'slChannelIds', 'slMentionOn', 'slThreadOn', 'slForwardOn', 'slAllowBotsOn']) {
+    for (const id of ['slTeamId', 'slChannelIds', 'slAttachPort', 'slMentionOn', 'slThreadOn', 'slForwardOn', 'slAllowBotsOn']) {
         assert.ok(html.indexOf(`id="${id}"`) > detailsIdx, `#${id} should live inside the advanced section`);
     }
     // Only the two credential inputs stay top-level.
@@ -95,6 +95,14 @@ test('guide bindings and prefix validation are wired from settings-slack.ts', ()
     assert.ok(module.includes("bindPrefixValidation('slAppToken'"));
     const main = read('public/js/main.ts');
     assert.match(main, /initSlackSetupGuide\(\)/);
+});
+
+test('slAttachPort is saved, loaded, and change-wired like its neighbors', () => {
+    const module = read('public/js/features/settings-slack.ts');
+    assert.match(module, /slack: \{ botToken, appToken, teamId, channelIds, attachPort \}/, 'save PUT must carry attachPort');
+    assert.ok(module.includes("getElementById('slAttachPort')"));
+    const main = read('public/js/main.ts');
+    assert.ok(main.includes("getElementById('slAttachPort')?.addEventListener('change', saveSlackSettings)"));
 });
 
 test('slack toggle defaults in the markup match the backend defaults', () => {

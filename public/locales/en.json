@@ -835,5 +835,7 @@
     "settings.slack.guide.step3Desc": "Leave empty for outbound-only operation",
     "settings.slack.guide.botTokenError": "Must be a bot token starting with xoxb- — swapped with the app token?",
     "settings.slack.guide.appTokenError": "Must be an app-level token starting with xapp- — swapped with the bot token?",
-    "settings.slack.advanced": "Advanced settings"
+    "settings.slack.advanced": "Advanced settings",
+    "settings.slack.attachPort": "Attach instance port",
+    "settings.channel.notAttachInstanceHint": "Another instance owns this Slack connection (check the attach instance port)"
 }
