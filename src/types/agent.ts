@@ -46,6 +46,8 @@ export type AgyLastActivitySource = 'stdout' | 'stderr' | 'transcript' | 'none';
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
   fullText: string;
+  /** Set when fullText hit FULLTEXT_MAX_CHARS and later output was dropped. */
+  fullTextTruncated?: boolean;
   traceLog: string[];
   toolLog: ToolEntry[];
   seenToolKeys: Set<string>;

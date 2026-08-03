@@ -1,5 +1,6 @@
 // Claude CLI event adapter (claude, claude-e, ai-e)
 
+import { appendBoundedFullText } from './fulltext-bound.js';
 import { fieldString } from '../../types/cli-events.js';
 import { updateTraceToolRow, getTraceEvent } from '../../trace/store.js';
 import type { CliEventRecord } from './types.js';
@@ -148,7 +149,11 @@ function appendClaudeISnapshotText(ctx: SpawnContext, event: CliEventRecord): st
         if (text === previous || previous.startsWith(text)) return '';
         if (text.startsWith(previous)) {
             const delta = text.slice(previous.length);
-            ctx.fullText += delta;
+            {
+                const bounded = appendBoundedFullText(ctx.fullText, delta);
+                ctx.fullText = bounded.text;
+                if (bounded.truncated) ctx.fullTextTruncated = true;
+            }
             return delta;
         }
         if (ctx.fullText.endsWith(previous)) {

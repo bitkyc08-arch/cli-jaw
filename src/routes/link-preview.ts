@@ -54,6 +54,20 @@ type LinkPreviewRouteOptions = {
 const previewCache = new Map<string, CacheEntry<PreviewData>>();
 const rateLimitMap = new Map<string, RateWindow>();
 
+// Windows are reset in place but were never deleted, so the map grew by one
+// entry per unique client IP forever. The dashboard binds loopback, so real
+// cardinality is 1-2 — this only bites behind a proxy that forwards client
+// IPs. Same sweep the main server already runs (server.ts:299-304).
+const RATE_LIMIT_SWEEP_INTERVAL_MS = 600_000;
+const RATE_LIMIT_STALE_MS = 120_000;
+const rateLimitSweepInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, window] of rateLimitMap) {
+        if (now - window.start > RATE_LIMIT_STALE_MS) rateLimitMap.delete(ip);
+    }
+}, RATE_LIMIT_SWEEP_INTERVAL_MS);
+rateLimitSweepInterval.unref();
+
 function trimCache<T>(cache: Map<string, CacheEntry<T>>): void {
     while (cache.size > CACHE_MAX_ENTRIES) {
         const firstKey = cache.keys().next().value as string | undefined;

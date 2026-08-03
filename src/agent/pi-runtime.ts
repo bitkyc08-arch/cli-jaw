@@ -450,6 +450,13 @@ type AbortWait = {
     timer: NodeJS.Timeout;
 };
 
+/**
+ * Cap for the persistent RPC session's stderr accumulator, matching the 4000
+ * used by every sibling handler in this file. The persistent session is the
+ * one that needed it most: it outlives a single run.
+ */
+const PI_PERSISTENT_STDERR_MAX_CHARS = 4000;
+
 export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options: {
     model: string;
     effort?: string;
@@ -569,6 +576,12 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
             if (activePrompt) return Promise.reject(new Error('pi rpc prompt already active'));
             if (!session.alive) return Promise.reject(new Error('pi rpc session is not alive'));
             return new Promise((resolve, reject) => {
+                // Reset per prompt. The accumulator is only ever read as
+                // stderr.slice(stderrStart), so dropping already-consumed bytes
+                // keeps that slice exact while bounding retention to one prompt.
+                // A head-only cap without this reset would freeze stderr.length
+                // and make every later slice() return ''.
+                stderr = '';
                 activePrompt = { text: '', stderrStart: stderr.length, onEvent: opts.onEvent, resolve, reject };
                 try {
                     if (opts.effort) write('set_thinking_level', { level: opts.effort });
@@ -612,7 +625,12 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         buffer = lines.pop() ?? '';
         for (const line of lines) if (line.trim()) dispatchLine(line.trim());
     });
-    child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.stderr?.on('data', (chunk) => {
+        // Persistent RPC sessions live for the pool's idle window (15 min) and
+        // longer under load, so an uncapped accumulator grows for the whole
+        // session lifetime. Every sibling handler in this file caps at 4000.
+        if (stderr.length < PI_PERSISTENT_STDERR_MAX_CHARS) stderr += chunk.toString();
+    });
     child.on('error', (error) => rejectOutstanding(error));
     child.on('close', (code) => {
         closed = true;

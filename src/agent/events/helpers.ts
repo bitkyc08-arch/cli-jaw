@@ -1,6 +1,7 @@
 // Cross-adapter shared utilities used by 2+ event adapter modules.
 
 import { broadcast } from '../../core/bus.js';
+import { appendBoundedFullText } from './fulltext-bound.js';
 import {
     asCliEventArray,
     asCliEventRecord,
@@ -120,8 +121,20 @@ function assistantStreamText(ctx: SpawnContext): string {
 }
 
 function appendAssistantStreamText(ctx: SpawnContext, segment: string): void {
-    if (ctx.liveOutputText !== undefined) ctx.liveOutputText += segment;
-    else ctx.fullText += segment;
+    if (ctx.liveOutputText !== undefined) {
+        // liveOutputText is promoted into fullText at close (spawn.ts picks the
+        // longest of the candidates), so leaving it unbounded would just move
+        // the same 50MB spike under a different field name.
+        const live = appendBoundedFullText(ctx.liveOutputText, segment);
+        ctx.liveOutputText = live.text;
+        if (live.truncated) ctx.fullTextTruncated = true;
+        return;
+    }
+    // D3: bound the accumulator. This is the choke point most CLIs flow
+    // through, so capping here covers them in one place.
+    const next = appendBoundedFullText(ctx.fullText, segment);
+    ctx.fullText = next.text;
+    if (next.truncated) ctx.fullTextTruncated = true;
 }
 
 export function formatAssistantTextSegment(ctx: SpawnContext, text: unknown): string {

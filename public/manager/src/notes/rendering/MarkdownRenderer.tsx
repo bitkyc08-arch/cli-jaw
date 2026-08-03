@@ -231,7 +231,7 @@ function MarkdownRendererImpl(props: MarkdownRendererProps) {
         );
     };
 
-    const built: Components = {
+    const components: Components = {
         a: ({ href, children, node: _node, ...anchorProps }: MarkdownAnchorProps) => {
             const safeHref = typeof href === 'string' && isSafeExternalHref(href) ? href : undefined;
             const external = Boolean(safeHref && /^https?:\/\//i.test(safeHref));
@@ -280,7 +280,7 @@ function MarkdownRendererImpl(props: MarkdownRendererProps) {
     };
 
     if (props.tableMode === 'linear') {
-        built.table = ({ children, node: _node, className, style }: LinearTableContainerProps) => {
+        components.table = ({ children, node: _node, className, style }: LinearTableContainerProps) => {
             const tableStyle = {
                 ...style,
                 '--markdown-linear-table-grid': linearTableGridTemplate(countLinearTableColumns(children)),
@@ -291,25 +291,25 @@ function MarkdownRendererImpl(props: MarkdownRendererProps) {
                 </div>
             );
         };
-        built.thead = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+        components.thead = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
             <div className={mergeClassName('markdown-linear-table-head', className)} style={style}>
                 {children}
             </div>
         );
-        built.tbody = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+        components.tbody = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
             <div className={mergeClassName('markdown-linear-table-body', className)} style={style}>
                 {children}
             </div>
         );
-        built.tr = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+        components.tr = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
             <div className={mergeClassName('markdown-linear-table-row', className)} style={style} role="listitem">
                 {children}
             </div>
         );
-        built.th = linearCellTransform('th');
-        built.td = linearCellTransform('td');
+        components.th = linearCellTransform('th');
+        components.td = linearCellTransform('td');
     }
-        return built;
+        return components;
     }, [wikiCtx, props.onLocalFileOpen, props.tableMode]);
 
     return (
