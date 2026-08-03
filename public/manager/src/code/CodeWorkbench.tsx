@@ -95,7 +95,7 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                     {props.transportState === 'reconnecting' ? 'Live updates reconnecting…' : 'Live updates disconnected — retrying.'}
                 </section>
             )}
-            <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} onOpenLocalFile={props.onOpenLocalFile} />
+            <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} onOpenLocalFile={props.onOpenLocalFile} sessionId={props.activeSessionId} />
             <CodePermissionQueue permissions={props.permissions} onAnswer={props.onPermissionAnswer} />
             <div className="code-composer-dock">
                 <div className="code-composer-surface" aria-label="Code composer controls">

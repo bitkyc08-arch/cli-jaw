@@ -26,6 +26,8 @@ type CodeTranscriptProps = {
     workingDir: string;
     transcriptRef: RefObject<HTMLDivElement | null>;
     onOpenLocalFile?: ((path: string) => void) | undefined;
+    /** Switching sessions must discard index-keyed row measurements (050 D2). */
+    sessionId?: string | null | undefined;
 };
 
 function renderToolContent(content: ToolContent, index: number) {
@@ -199,7 +201,7 @@ function renderSendingMessage() {
     );
 }
 
-export function CodeTranscript({ messages, sending, workingDir, transcriptRef, onOpenLocalFile }: CodeTranscriptProps) {
+export function CodeTranscript({ messages, sending, workingDir, transcriptRef, onOpenLocalFile, sessionId }: CodeTranscriptProps) {
     const showSending = sending && messages[messages.length - 1]?.role !== 'assistant';
     const rowCount = messages.length + (showSending ? 1 : 0);
     // D3: these two callbacks used to depend on `messages`. Every streaming
@@ -218,6 +220,7 @@ export function CodeTranscript({ messages, sending, workingDir, transcriptRef, o
     ), []);
     const virtual = useCodeTranscriptVirtualRows({
         count: rowCount,
+        resetKey: sessionId ?? null,
         scrollElementRef: transcriptRef,
         getItemKey,
         estimateSize,

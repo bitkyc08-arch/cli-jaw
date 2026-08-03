@@ -31,7 +31,12 @@ export function useNotesExternalSync(active: boolean): void {
         }
 
         void poll();
-        const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
+        // D4: a hidden window cannot show an external change, so polling for
+        // one is pure idle cost. Matches useRemindersFeed's guard.
+        const timer = setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            void poll();
+        }, POLL_INTERVAL_MS);
         return () => { cancelled = true; clearInterval(timer); };
     }, [active]);
 }

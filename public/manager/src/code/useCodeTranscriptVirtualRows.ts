@@ -24,6 +24,12 @@ export type CodeTranscriptVirtualRows = {
 
 export function useCodeTranscriptVirtualRows(args: {
     count: number;
+    /**
+     * Changing this discards measurements. Normally the session id: row heights
+     * are keyed by index, so carrying them into a different transcript retains
+     * memory AND mis-measures the new rows.
+     */
+    resetKey?: string | null;
     scrollElementRef: RefObject<HTMLDivElement | null>;
     getItemKey: (index: number) => string | number;
     estimateSize?: (index: number) => number;
@@ -56,6 +62,19 @@ export function useCodeTranscriptVirtualRows(args: {
     const virtualizer = virtualizerRef.current;
 
     useEffect(() => virtualizer._didMount(), [virtualizer]);
+
+    // D2 (260803 unit, 050 phase): the instance lives in a ref that was never
+    // cleared, so measured row sizes survived session switches.
+    //
+    // Use the public `measure()` rather than emptying `measurementsCache`.
+    // The durable store is `itemSizeCache` (private, cleared only by
+    // `measure()`); `measurementsCache` is reassigned to a fresh lazy view on
+    // every recompute, so clearing it releases nothing.
+    useEffect(() => {
+        virtualizer.measure();
+    }, [virtualizer, args.resetKey]);
+
+    useEffect(() => () => { virtualizerRef.current = null; }, []);
 
     useLayoutEffect(() => {
         virtualizer.setOptions({

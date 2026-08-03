@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fnv1a32 } from '../../public/manager/src/lib/fnv1a.js';
 import {
     assistantChunkMergeAction,
     codeChunkEventKey,
@@ -56,7 +57,11 @@ test('code event dedupe can key exact SSE replays without a message id', () => {
         update: { content: { type: 'text', text: 'final answer' } },
     };
     const text = textFromCodeChunk(event.update);
-    assert.equal(codeChunkEventKey(event, text), 's1:code_agent_message_chunk:sse:42:final answer');
+    // The key carries `length:hash` instead of the raw text (260803 unit, 050
+    // phase D3): embedding the text meant the dedupe set retained a second copy
+    // of the whole transcript.
+    assert.equal(codeChunkEventKey(event, text), `s1:code_agent_message_chunk:sse:42:${text.length}:${fnv1a32(text)}`);
+    assert.ok(!codeChunkEventKey(event, text)?.includes('final answer'), 'raw text must not appear in the key');
 });
 
 test('code event dedupe treats an adjacent long identical assistant final as duplicate', () => {
