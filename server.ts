@@ -64,7 +64,7 @@ import { loadLocales } from './src/core/i18n.js';
 import {
     PROMPTS_DIR, DB_PATH,
     settings, loadSettings, saveSettings,
-    ensureDirs, runMigration,
+    ensureDirs, runMigration, TOKEN_PATH,
 } from './src/core/config.js';
 import { startSettingsWatch } from './src/core/settings-watch.js';
 import { startWidgetWatcher } from './src/core/widget-watcher.js';
@@ -262,6 +262,19 @@ app.use((req, res, next) => {
 
 // ─── Bearer Token Auth (CRITICAL endpoints) ─────────
 const JAW_AUTH_TOKEN = process.env["JAW_AUTH_TOKEN"] || crypto.randomBytes(32).toString('hex');
+
+// Persist the token for LAN/remote API clients (loopback bypasses auth, so
+// local users never need it). The boot log's curl hint references this file;
+// before it existed the hint sent operators hunting for a nonexistent path.
+// Browser clients use GET /api/auth/token instead (Sec-Fetch-Site-guarded).
+try {
+    fs.writeFileSync(TOKEN_PATH, `${JAW_AUTH_TOKEN}\n`, { mode: 0o600 });
+    if (process.platform !== 'win32') {
+        try { fs.chmodSync(TOKEN_PATH, 0o600); } catch { /* best-effort */ }
+    }
+} catch (e: unknown) {
+    console.warn('[jaw:auth] could not write token file:', (e as Error).message);
+}
 
 // Boss-only dispatch token (phase 8). Server generates and stores in process.env;
 // main-agent spawns inherit it, employee spawns strip it in makeCleanEnv.
@@ -564,7 +577,7 @@ server.listen(PORT, bindHost, async () => {
         ? 'token required for non-LAN requests'
         : 'token required for remote requests (localhost bypassed)';
     log.info(`  Auth:   ${JAW_AUTH_TOKEN.slice(0, 8)}... (${authDesc})`);
-    log.info(`  curl:   curl -H "Authorization: Bearer $(cat ~/.cli-jaw/token)" http://localhost:${PORT}/api/status\n`);
+    log.info(`  curl:   localhost needs no token; remote: curl -H "Authorization: Bearer $(cat ${TOKEN_PATH})" http://<host>:${PORT}/api/status\n`);
 
     // Auto-open browser (opt-in via JAW_OPEN_BROWSER=1, set by `jaw serve --open`)
     // Skip in test environments to prevent browser tabs during npm test

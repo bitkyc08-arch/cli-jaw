@@ -90,6 +90,16 @@ export function shouldProcessSlackEvent(
     if (!isConversationAllowed(event.channel, config.channelIds, dm)) {
         return { process: false, reason: 'channel_not_allowed' };
     }
+    // Slack delivers BOTH an app_mention envelope and a message envelope for
+    // the same mention when the app subscribes to both (the shipped manifest
+    // does). Without this drop, one mention becomes two agent runs within
+    // milliseconds and the gateway dedup slams the second with a public
+    // "❌ duplicate". The app_mention copy is the canonical path; DMs never
+    // produce app_mention envelopes, so they are unaffected.
+    if (!dm && event.type !== 'app_mention' && config.selfUserId
+        && mentionsUser(event.text || '', config.selfUserId)) {
+        return { process: false, reason: 'mention_via_app_mention' };
+    }
     // app_mention envelopes are mentions by definition; message events in a
     // channel need the gate. DMs always bypass it.
     if (config.mentionOnly && !dm && event.type !== 'app_mention') {

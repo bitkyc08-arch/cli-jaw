@@ -519,8 +519,41 @@ test('mentionOnly requires a mention in channels but not DMs', () => {
         shouldProcessSlackEvent({ type: 'message', channel: 'C1', text: 'plain' }, config, 'events_api').process,
         false,
     );
+});
+
+test('a channel message that mentions the bot is dropped — the app_mention envelope owns it', () => {
+    // Slack delivers BOTH app_mention and message envelopes for one mention
+    // when the app subscribes to both (shipped manifest). Processing both is
+    // how one user message became two agent runs and a public "❌ duplicate".
+    const d = shouldProcessSlackEvent(
+        { type: 'message', channel: 'C1', text: 'hey <@UBOT> do it' },
+        baseConfig(),
+        'events_api',
+    );
+    assert.deepEqual(d, { process: false, reason: 'mention_via_app_mention' });
+});
+
+test('the mention drop also applies with mentionOnly off', () => {
+    const d = shouldProcessSlackEvent(
+        { type: 'message', channel: 'C1', text: 'hey <@UBOT> do it' },
+        baseConfig({ mentionOnly: false }),
+        'events_api',
+    );
+    assert.deepEqual(d, { process: false, reason: 'mention_via_app_mention' });
+});
+
+test('a DM mentioning the bot is still processed — DMs never get app_mention envelopes', () => {
+    const d = shouldProcessSlackEvent(
+        { type: 'message', channel: 'D999', channel_type: 'im', text: 'hey <@UBOT> do it' },
+        baseConfig(),
+        'events_api',
+    );
+    assert.equal(d.process, true);
+});
+
+test('plain channel messages still pass when mentionOnly is off', () => {
     assert.equal(
-        shouldProcessSlackEvent({ type: 'message', channel: 'C1', text: 'hey <@UBOT> do it' }, config, 'events_api').process,
+        shouldProcessSlackEvent({ type: 'message', channel: 'C1', text: 'plain chat' }, baseConfig({ mentionOnly: false }), 'events_api').process,
         true,
     );
 });

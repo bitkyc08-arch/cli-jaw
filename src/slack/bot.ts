@@ -117,6 +117,13 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
     }
 
     if (result.action === 'rejected') {
+        // The gateway dedup contract is "absorb silently" — the rejection
+        // exists so the SAME message delivered twice costs nothing. Posting
+        // ❌ for it is how one user message becomes a visible error.
+        if (result.reason === 'duplicate') {
+            log.info('[slack:duplicate] absorbed silently');
+            return;
+        }
         await sendSlackText(token, target, `❌ ${result.reason}`);
         return;
     }

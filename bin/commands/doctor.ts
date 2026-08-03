@@ -281,6 +281,17 @@ check('settings.json', () => {
     return `cli=${settings?.cli || 'not set'}`;
 });
 
+// 2b. settings.json permissions — the file carries live channel tokens
+// (xoxb-/xapp-/bot tokens), so group/other-readable is a real leak.
+// loadSettings self-heals on the next load; this check surfaces it until then.
+check('settings.json permissions', () => {
+    if (process.platform === 'win32') return 'skipped (win32)';
+    if (!fs.existsSync(SETTINGS_PATH)) throw new Error('WARN: not found');
+    const mode = fs.statSync(SETTINGS_PATH).mode & 0o777;
+    if (mode & 0o077) throw new Error(`permissions ${mode.toString(8)} — should be 600 (tokens inside); fixed automatically on next settings load`);
+    return '600';
+});
+
 // 3. Database
 check('jaw.db', () => {
     if (!fs.existsSync(DB_PATH)) throw new Error('WARN: not found — will be created on first serve');

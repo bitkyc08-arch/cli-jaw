@@ -35,6 +35,9 @@ export const JAW_HOME = process.env["CLI_JAW_HOME"]
 export const PROMPTS_DIR = join(JAW_HOME, 'prompts');
 export const DB_PATH = join(JAW_HOME, 'jaw.db');
 export const SETTINGS_PATH = join(JAW_HOME, 'settings.json');
+// Remote-auth token file (server.ts writes JAW_AUTH_TOKEN here at boot,
+// 0600). Loopback never needs it; LAN/remote API clients and operators do.
+export const TOKEN_PATH = join(JAW_HOME, 'token');
 export const HEARTBEAT_JOBS_PATH = join(JAW_HOME, 'heartbeat.json');
 export const UPLOADS_DIR = join(JAW_HOME, 'uploads');
 export const WIDGETS_DIR = join(JAW_HOME, 'widgets');
@@ -537,6 +540,19 @@ export function loadSettings() {
         // env overrides
         applyEnvOverrides(merged);
 
+        // Heal loose permissions on existing installs: settings.json holds
+        // live channel tokens and must be owner-only. Once per load, not per
+        // save, so a hand-chmod'd 0644 is caught even before the next write.
+        if (process.platform !== 'win32') {
+            try {
+                const mode = fs.statSync(SETTINGS_PATH).mode;
+                if (mode & 0o077) {
+                    fs.chmodSync(SETTINGS_PATH, 0o600);
+                    console.warn('[jaw:settings] tightened settings.json permissions to 0600 (tokens inside)');
+                }
+            } catch { /* best-effort */ }
+        }
+
         settings = merged;
         return merged;
     } catch (error) {
@@ -573,7 +589,13 @@ export function saveSettings(s: Record<string, any>) {
     settings = s;
     const raw = JSON.stringify(s, null, 2);
     lastSavedSettingsRaw = raw;
-    fs.writeFileSync(SETTINGS_PATH, raw);
+    // settings.json carries live channel tokens (xoxb-/xapp-/bot tokens), so
+    // it must never be group/other-readable. writeFileSync's mode applies
+    // only at creation — chmod covers the existing-file path.
+    fs.writeFileSync(SETTINGS_PATH, raw, { mode: 0o600 });
+    if (process.platform !== 'win32') {
+        try { fs.chmodSync(SETTINGS_PATH, 0o600); } catch { /* best-effort */ }
+    }
 }
 
 export function getLastSavedSettingsRaw(): string | null {

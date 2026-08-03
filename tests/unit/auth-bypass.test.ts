@@ -118,8 +118,13 @@ test('SC-003: config defaults remoteAccess.requireAuth=true', () => {
 });
 
 test('SC-004: server startup log includes curl example (token NOT hardcoded in output)', () => {
-    assert.ok(serverSrc.includes('cat ~/.cli-jaw/token'),
+    assert.ok(serverSrc.includes('cat ${TOKEN_PATH}'),
         'startup log curl example must read token from file, not print raw token');
+    // The file the hint references must actually exist: the server writes
+    // JAW_AUTH_TOKEN to TOKEN_PATH (0600) at boot — before this, the hint
+    // sent operators hunting for a file nothing ever wrote.
+    assert.ok(serverSrc.includes('writeFileSync(TOKEN_PATH'),
+        'server must write the auth token file the curl hint references');
 });
 
 test('SC-005: bindHost upgrade respects non-loopback settings', () => {

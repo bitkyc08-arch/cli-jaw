@@ -290,6 +290,10 @@ if (slEnabled || values.force) {
 // Save (skip in dry-run)
 if (!values['dry-run']) {
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2));
+    // Tokens (telegram/discord/slack) may have just been written — owner-only.
+    if (process.platform !== 'win32') {
+        try { fs.chmodSync(SETTINGS_PATH, 0o600); } catch { /* best-effort */ }
+    }
 
     // Ensure skills dir + heartbeat.json
     fs.mkdirSync(skillsDir as string, { recursive: true });

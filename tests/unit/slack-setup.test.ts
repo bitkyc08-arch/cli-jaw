@@ -9,7 +9,8 @@ import { parse } from 'yaml';
 // BEHAVIOR tests for `jaw slack manifest|setup`, following the
 // slack-init-behavior.test.ts pattern: run the real CLI in an isolated
 // CLI_JAW_HOME under the user home and read back what it wrote.
-// Validation-bearing runs use --skip-validate so the suite never needs Slack.
+// Validation-bearing runs use --skip-validate so the suite never needs Slack,
+// and --no-notify so a REAL server on the default port is never PUT to.
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
@@ -63,7 +64,7 @@ test('setup rejects a bot token without the xoxb- prefix', (t) => {
 
 test('setup catches swapped tokens (xapp- in the bot slot)', (t) => {
     const { status, output, home } = runSlack([
-        'setup', '--non-interactive', '--skip-validate',
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
         '--bot-token', 'xapp-1-abc', '--app-token', 'xoxb-1-abc',
     ]);
     t.after(() => rmSync(home, { recursive: true, force: true }));
@@ -73,7 +74,7 @@ test('setup catches swapped tokens (xapp- in the bot slot)', (t) => {
 
 test('setup rejects an app token without the xapp- prefix', (t) => {
     const { status, output, home } = runSlack([
-        'setup', '--non-interactive', '--skip-validate',
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
         '--bot-token', 'xoxb-1-abc', '--app-token', 'xoxp-1-abc',
     ]);
     t.after(() => rmSync(home, { recursive: true, force: true }));
@@ -87,7 +88,7 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
         slack: { enabled: false, mentionOnly: false, replyInThread: false, forwardAll: true },
     };
     const { status, output, home } = runSlack([
-        'setup', '--non-interactive', '--skip-validate',
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
         '--bot-token', 'xoxb-1-testbot', '--app-token', 'xapp-1-testapp',
         '--team-id', 'T123', '--channel-ids', 'C1, C2',
     ], seed);
@@ -109,7 +110,7 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
 
 test('setup without an app token writes outbound-only with a warning', (t) => {
     const { status, output, home } = runSlack([
-        'setup', '--non-interactive', '--skip-validate', '--bot-token', 'xoxb-1-testbot',
+        'setup', '--non-interactive', '--skip-validate', '--no-notify', '--bot-token', 'xoxb-1-testbot',
     ]);
     t.after(() => rmSync(home, { recursive: true, force: true }));
     assert.equal(status, 0, output);
@@ -124,7 +125,7 @@ test('failed validation aborts before writing settings', (t) => {
     // which fails for a token Slack has never seen — and nothing is written.
     // This one case DOES hit the network; skip gracefully when offline.
     const { status, output, home } = runSlack([
-        'setup', '--non-interactive', '--bot-token', 'xoxb-1-0000000000000-deadbeefdeadbeefdeadbeef',
+        'setup', '--non-interactive', '--no-notify', '--bot-token', 'xoxb-1-0000000000000-deadbeefdeadbeefdeadbeef',
     ]);
     t.after(() => rmSync(home, { recursive: true, force: true }));
     if (/fetch failed|ENOTFOUND|ETIMEDOUT|ECONNREFUSED|network/i.test(output)) {

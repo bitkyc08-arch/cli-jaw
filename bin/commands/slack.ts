@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import { settings, saveSettings, loadSettings } from '../../src/core/config.js';
 import { slackApi } from '../../src/slack/api.js';
 import { slackManifestYaml } from '../../src/slack/manifest.js';
+import { notifyRunningServer, type HotReload } from '../../src/slack/hot-notify.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 
 // Mirror of the Slack settings shape (see doctor.ts): unlike the other
@@ -45,6 +46,7 @@ if (shouldShowHelp(process.argv)) printAndExit(`
     --channel-ids <ids>   Comma-separated conversation IDs (empty = all allowed)
     --non-interactive     Never prompt; requires --bot-token
     --skip-validate       Write settings WITHOUT live validation (offline; prints a warning)
+    --no-notify           Do not hot-notify a running server (tests, offline)
 
   Why not OAuth one-click? Slack app-level tokens (xapp-) are UI-only, and the
   PKCE localhost flow bans bot scopes — a browser click cannot configure a
@@ -62,6 +64,7 @@ const { values } = parseArgs({
         'channel-ids': { type: 'string' },
         'non-interactive': { type: 'boolean', default: false },
         'skip-validate': { type: 'boolean', default: false },
+        'no-notify': { type: 'boolean', default: false },
     },
 });
 
@@ -192,6 +195,17 @@ async function runSetup(): Promise<void> {
         } satisfies SlackSettings;
         saveSettings(s);
 
+        // A file write alone never starts the transport — hot-notify the
+        // running server so the Slack socket opens now, not after a restart.
+        const hotReload: HotReload = values['no-notify']
+            ? 'server-off'
+            : await notifyRunningServer(s["slack"] as Record<string, unknown>);
+        const serverLine =
+            hotReload === 'reloaded' ? '    2. (done) the running server picked up the settings — no restart needed' :
+            hotReload === 'old-server' ? `    2. Restart the server — it is running an OLDER build without the new Slack code (jaw serve)` :
+            hotReload === 'server-off' ? '    2. Start the server (jaw serve) — settings apply on boot' :
+            '    2. Restart the server if it is running (jaw serve)';
+
         console.log(`
   ✅ Slack settings saved.
 
@@ -202,7 +216,7 @@ async function runSetup(): Promise<void> {
 
   Next steps:
     1. /invite @cli-jaw in each channel the bot should read
-    2. Restart the server if it is running (jaw serve)
+${serverLine}
     3. jaw doctor — confirm the Slack check is green
 `);
     } finally {
