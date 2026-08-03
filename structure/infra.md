@@ -158,6 +158,62 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ---
 
+## 시작 경로 안정성 계약 (start-path reliability)
+
+`jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면. 유닛: `devlog/_plan/260803_runtime_stability_hardening/`.
+
+### 실행 경로
+
+```
+jaw (전역 bin 심링크) → dist/bin/cli-jaw.js
+                          └─ ensureNativeModulesReady(cmd)   [bin/cli-jaw.ts]
+                               └─ 자식 프로세스: scripts/ensure-native-modules.cjs
+bin/jaw (개발 클론 / 직접 호출 런처)
+     └─ argv 기반 probe → 실패 시 위 스크립트에 위임
+```
+
+전역 설치 사용자는 `bin/jaw`를 거치지 않는다. `--help`/`--version` 등은 가드를 건너뛴다.
+
+### `scripts/ensure-native-modules.cjs` 계약
+
+| 항목 | 계약 |
+| --- | --- |
+| 실패 분류 | `missing` (해석 불가) / `abi` (dlopen·NODE_MODULE_VERSION) / `other` — `classifyNativeError()`로 export |
+| 해석 검사 | `createRequire(root/package.json).resolve()`. `node_modules` 디렉터리 존재 여부로 판정하지 않음 (PnP 등) |
+| `missing` 행동 | rebuild 금지. `npm install` 안내 + exit 1 |
+| `abi` 행동 | 잠금 획득 → 재probe → 1회 rebuild → 재probe |
+| `other` 행동 | rebuild 금지. Node 버전/ABI/platform/arch 출력 후 exit 1 |
+| 잠금 위치 | `tmpdir()/jaw-native-rebuild-<sha256(realpath(root)).16>.lock` — **`node_modules` 밖** (npm install이 지울 수 있으므로) |
+| 잠금 획득 | `mkdirSync({recursive:false})` 원자성. 최대 5분 대기 |
+| 잠금 회수 | 소유자 PID를 `process.kill(pid, 0)`로 probe. `ESRCH`=회수, `EPERM`=살아있음. 시간(`LOCK_STALE_MS`)은 PID를 못 읽을 때만 쓰는 backstop |
+| ABI 판정 범위 | 의도적으로 **넓게** 유지 (기존 자동복구 퇴행 방지). 좁힌 것은 `missing`뿐 |
+
+better-sqlite3 12.x는 `install` 훅(`prebuild-install || node-gyp rebuild`)이 있어 `npm rebuild`가 복구 경로다.
+13.x는 `gypfile:false` + 번들 prebuilds로 훅이 없으므로 **업그레이드 시 이 가정을 재확인할 것.**
+
+### `bin/jaw` 런처 규칙
+
+- 경로를 **JavaScript 소스로 보간하지 않는다** — argv로 전달 (공백·아포스트로피·유니코드 안전)
+- `readlink -f`를 요구하지 않는다 (GNU 확장; stock macOS/BSD에 없음) — `realpath` → Node `fs.realpathSync`
+- 복구 분기의 `cd`는 서브셸에 가둔다 — `exec`되는 CLI가 호출자의 cwd를 유지해야 함
+- 복구 실패 시 `exec`하지 않는다 — 종료코드 검사 후 진단과 함께 exit
+
+### 프로세스 종료 계약 (`src/agent/spawn/process-kill.ts`)
+
+지연 SIGKILL 승격은 반드시 `killProcessTreeIfAlive()`를 거친다. 판정 기준은
+`exitCode !== null || signalCode !== null`이며 **`ChildProcess.killed`가 아니다** —
+`killed`는 "시그널을 보냈다"는 뜻이라 아직 실행 중인 프로세스도 `true`가 된다.
+가드 없이 승격하면 SIGTERM 후 재사용된 PID를 죽일 수 있고, `killProcessTree`가
+`pgrep -P`로 재귀하므로 무관한 프로세스의 하위 트리까지 함께 죽는다.
+
+### 회귀 가드 테스트
+
+`tests/unit/cli-native-guard-contract.test.ts`, `launcher-portability.test.ts`,
+`native-repair-lock.test.ts`, `kill-escalation-liveness.test.ts`.
+마지막 파일에는 가드 없는 지연 SIGKILL이 새로 추가되면 실패하는 스윕 테스트가 있다.
+
+---
+
 ## src/core/ — runtime support cluster (30 files, 3803L)
 
 `boss-auth.ts`, `config.ts`, `codex-config.ts`, `instance.ts`, `runtime-path.ts`, `main-session.ts`, `message-summary.ts`, `path-expand.ts`, `runtime-settings.ts`, `runtime-settings-gate.ts`, `settings-merge.ts`, `db.ts`, `bus.ts`, `employees.ts`, `i18n.ts`, `compact.ts`, `logger.ts`, `claude-install.ts`, `launchd-cleanup.ts`, `launchd-plist.ts`, `tcc.ts`.
