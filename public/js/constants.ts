@@ -9,6 +9,14 @@ export interface CliEntry {
     providers?: string[];
     modelsByProvider?: Record<string, string[]>;
     effortsByProvider?: Record<string, string[]>;
+    /**
+     * Per-model reasoning-effort sets from a live opencodex catalog. An entry
+     * that exists but is EMPTY means the model takes no effort at all, so it
+     * must not fall back to `efforts`.
+     */
+    effortsByModel?: Record<string, string[]>;
+    defaultEffortByModel?: Record<string, string>;
+    modelSource?: string;
     effortNote?: string;
     modelNote?: string;
 }
@@ -257,6 +265,20 @@ function normalizeRegistry(input: Record<string, unknown>): CliRegistry {
                     .map(([provider, efforts]) => [provider, [...efforts]])
             );
         }
+        if (v['effortsByModel'] && typeof v['effortsByModel'] === 'object') {
+            normalized.effortsByModel = Object.fromEntries(
+                Object.entries(v['effortsByModel'] as Record<string, unknown>)
+                    .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]))
+                    .map(([model, efforts]) => [model, efforts.filter((e): e is string => typeof e === 'string')])
+            );
+        }
+        if (v['defaultEffortByModel'] && typeof v['defaultEffortByModel'] === 'object') {
+            normalized.defaultEffortByModel = Object.fromEntries(
+                Object.entries(v['defaultEffortByModel'] as Record<string, unknown>)
+                    .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+            );
+        }
+        if (typeof v['modelSource'] === 'string') normalized.modelSource = v['modelSource'];
         out[key] = normalized;
     }
     return out;

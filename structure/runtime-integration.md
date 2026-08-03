@@ -25,7 +25,17 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 
 ## 모델 발견 (`src/cli/opencodex-models.ts` 소유)
 
-- codex/codex-app 모델 목록은 기존 라이브 배선(runtime-port.json → healthz → /v1/models)이 소유. `resolveOpenCodexCodexModelsDetailed()`가 `{models, source:'opencodex'|'static'}`를 주고 registry가 `modelSource`를 노출.
+- codex/codex-app 모델 목록은 기존 라이브 배선(runtime-port.json → healthz → /v1/models)이 소유. `resolveOpenCodexCodexModelsDetailed()`가 `{models, entries, source:'opencodex'|'static'}`를 주고 registry가 `modelSource`를 노출.
+- **모델별 reasoning effort도 같은 배선으로 동기화된다.** ocx는 모델마다 다른 effort 집합을 광고한다
+  (`gpt-5.6-sol`은 `ultra`까지, `gpt-5.6-luna`는 `max`까지, `anthropic/*` 같은 routed 모델은 없음).
+  `parseModelEntries()`가 `reasoning_efforts[].value` / `supports_reasoning_effort` / `reasoning_effort`를
+  `{id, efforts, defaultEffort}`로 파싱하고, `registry-live.ts`가 codex/codex-app에
+  `effortsByModel`·`defaultEffortByModel`을 싣는다. `efforts`는 legacy 소비자용 합집합이다.
+- effort 값은 표시용이 아니라 wire 값이다(`src/agent/args.ts` codex 분기 →
+  `-c model_reasoning_effort="<effort>"`). 그래서 UI 선택기는 합집합이 아니라
+  **선택된 모델의 집합**을 써야 하고, 빈 배열은 "이 모델은 effort 없음"을 뜻하므로 fallback 금지다.
+- `defaultModel`/`defaultEffort`는 라이브 값으로 교체하지 않는다. `buildDefaultPerCli()`가
+  사용자 기본값을 여기서 seed하므로 ocx 라우팅 순서 변화가 사용자 설정을 조용히 바꾸면 안 된다.
 - pi 프로필 discovery: `probeOpenCodexEndpointModels(endpoint)`가 **healthz 핑거프린트 `{status:'ok', service:'opencodex'}`**를 요구한 뒤에만 `<endpoint>/models` 카탈로그를 사용. 불일치/미실행이면 기존 `pi --offline --list-models` 경로 (modelSource='pi-offline').
 
 ## pi rpc 판정 (`scripts/pi-rpc-probe.mts`, `src/agent/pi-rpc-verdict.ts`)

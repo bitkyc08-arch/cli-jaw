@@ -17,6 +17,8 @@ import {
     optionList,
     runtimeEffortFor,
     runtimeModelFor,
+    coerceEffortForModel,
+    effortChoicesForModel,
     type ActiveOverride,
     type CliMeta,
     type PerCliEntry,
@@ -193,8 +195,8 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         ? optionList(activeMeta.modelsByProvider?.[activeProvider] || activeMeta.models, draft.model)
         : optionList(activeMeta.models, draft.model);
     const activeEffortOptions = hasProviders
-        ? (activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts)
-        : activeMeta.efforts;
+        ? effortChoicesForModel(activeMeta, draft.model, activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts)
+        : effortChoicesForModel(activeMeta, draft.model);
     const workingDirError = draft.workingDir.trim() ? null : 'Required';
 
     if (state.kind === 'loading') return <PageLoading />;
@@ -267,12 +269,28 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     });
                 }}
                 onModelChange={(next) => {
-                    setRuntimeDraft({ ...draft, model: next });
+                    // Efforts are per-model on a live opencodex catalog, so a
+                    // model switch can strand an effort the new model does not
+                    // support — and that value would reach the wire verbatim.
+                    const nextEffort = coerceEffortForModel(
+                        activeMeta,
+                        next,
+                        draft.effort,
+                        hasProviders ? (activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts) : undefined,
+                    );
+                    setRuntimeDraft({ ...draft, model: next, effort: nextEffort });
                     setEntry(`activeOverrides.${draft.cli}.model`, {
                         value: next,
                         original: runtimeModelFor(draft.cli, perCli, activeOverrides),
                         valid: next.trim().length > 0,
                     });
+                    if (nextEffort !== draft.effort) {
+                        setEntry(`activeOverrides.${draft.cli}.effort`, {
+                            value: nextEffort,
+                            original: runtimeEffortFor(draft.cli, perCli, activeOverrides),
+                            valid: true,
+                        });
+                    }
                 }}
                 onEffortChange={(next) => {
                     setRuntimeDraft({ ...draft, effort: next });

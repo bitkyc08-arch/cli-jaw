@@ -6,6 +6,14 @@ export type CliMeta = {
     providers?: ReadonlyArray<string>;
     modelsByProvider?: Record<string, ReadonlyArray<string>>;
     effortsByProvider?: Record<string, ReadonlyArray<string>>;
+    /**
+     * Per-model reasoning-effort sets from a live opencodex catalog. An entry
+     * that exists but is EMPTY means the model takes no effort at all, so it
+     * must not fall back to `efforts`.
+     */
+    effortsByModel?: Record<string, ReadonlyArray<string>>;
+    defaultEffortByModel?: Record<string, string>;
+    modelSource?: string;
     effortNote?: string;
     modelNote?: string;
 };
@@ -230,6 +238,15 @@ function stringArrayRecord(value: unknown): Record<string, string[]> | undefined
     return out;
 }
 
+function stringRecord(value: unknown): Record<string, string> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const out: Record<string, string> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof raw === 'string') out[key] = raw;
+    }
+    return out;
+}
+
 export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out: Record<string, CliMeta> = {};
@@ -238,6 +255,8 @@ export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> 
         const record = value as Record<string, unknown>;
         const modelsByProvider = stringArrayRecord(record['modelsByProvider']);
         const effortsByProvider = stringArrayRecord(record['effortsByProvider']);
+        const effortsByModel = stringArrayRecord(record['effortsByModel']);
+        const defaultEffortByModel = stringRecord(record['defaultEffortByModel']);
         out[key] = {
             label: typeof record['label'] === 'string' ? record['label'] : key,
             models: stringArray(record['models']),
@@ -246,11 +265,45 @@ export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> 
             ...(record['providers'] ? { providers: stringArray(record['providers']) } : {}),
             ...(modelsByProvider ? { modelsByProvider } : {}),
             ...(effortsByProvider ? { effortsByProvider } : {}),
+            ...(effortsByModel ? { effortsByModel } : {}),
+            ...(defaultEffortByModel ? { defaultEffortByModel } : {}),
+            ...(typeof record['modelSource'] === 'string' ? { modelSource: record['modelSource'] } : {}),
             ...(typeof record['effortNote'] === 'string' ? { effortNote: record['effortNote'] } : {}),
             ...(typeof record['modelNote'] === 'string' ? { modelNote: record['modelNote'] } : {}),
         };
     }
     return out;
+}
+
+/**
+ * Effort choices for one model.
+ *
+ * A live opencodex catalog advertises a different effort set per model, and the
+ * chosen value reaches the wire as `-c model_reasoning_effort=`, so the
+ * per-model set wins. An entry that exists but is EMPTY means the model takes
+ * no effort and must not fall back to the provider/registry lists.
+ */
+export function effortChoicesForModel(
+    meta: CliMeta,
+    model: string,
+    providerEfforts?: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+    const byModel = meta.effortsByModel?.[(model || '').trim()];
+    if (byModel) return byModel;
+    return providerEfforts ?? meta.efforts;
+}
+
+/** Keep a saved effort only when the model still advertises it. */
+export function coerceEffortForModel(
+    meta: CliMeta,
+    model: string,
+    effort: string,
+    providerEfforts?: ReadonlyArray<string>,
+): string {
+    const choices = effortChoicesForModel(meta, model, providerEfforts);
+    if (effort && choices.includes(effort)) return effort;
+    const fallback = meta.defaultEffortByModel?.[(model || '').trim()] ?? '';
+    return choices.includes(fallback) ? fallback : '';
 }
 
 export function metaFor(cli: string, registry?: Record<string, CliMeta> | null): CliMeta {

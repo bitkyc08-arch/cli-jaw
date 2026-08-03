@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { TextField, SelectField, ToggleField } from '../../fields';
 import type { SettingsClient } from '../../types';
 import type { DirtyEntry } from '../../types';
+import { coerceEffortForModel, effortChoicesForModel } from './agent/agent-meta';
 import type { CliMeta, PerCliEntry } from './agent/agent-meta';
 import { PiProfileDialog } from './PiProfileDialog';
 import { piModelOptions, piProfileOptions, type PiSettingsView } from './pi-profile';
@@ -36,9 +37,10 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
         : hasProviders
         ? (meta.modelsByProvider?.[provider] ?? meta.models)
         : meta.models;
-    const effortOptions = hasProviders
-        ? (meta.effortsByProvider?.[provider] ?? meta.efforts)
-        : meta.efforts;
+    const providerEfforts = hasProviders ? (meta.effortsByProvider?.[provider] ?? meta.efforts) : undefined;
+    // Per-model effort sets from a live opencodex catalog win over the
+    // provider/registry lists; the chosen value is forwarded to the wire.
+    const effortOptions = effortChoicesForModel(meta, value.model || '', providerEfforts);
 
     return (
         <div className="settings-percli-row" data-cli={cli}>
@@ -84,8 +86,12 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                             value={value.model ?? modelOptions[0] ?? ''}
                             options={modelOptions.map((m) => ({ value: m, label: m }))}
                             onChange={(next) => {
-                                setValue({ ...value, model: next });
+                                const nextEffort = coerceEffortForModel(meta, next, value.effort ?? '', providerEfforts);
+                                setValue({ ...value, model: next, effort: nextEffort });
                                 setEntry(`perCli.${cli}.model`, entryFor(next, original.model ?? ''));
+                                if (nextEffort !== (value.effort ?? '')) {
+                                    setEntry(`perCli.${cli}.effort`, entryFor(nextEffort, original.effort ?? ''));
+                                }
                             }}
                         />
                     ) : (

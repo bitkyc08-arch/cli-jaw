@@ -1,5 +1,6 @@
 // ── Settings Core ──
 import { MODEL_MAP, loadCliRegistry, getCliKeys, getCliMeta, PRIMARY_CLIS } from '../constants.js';
+import type { CliEntry } from '../constants.js';
 import { escapeHtml } from '../render.js';
 import { syncStoredLocale } from '../locale.js';
 import { t } from './i18n.js';
@@ -190,6 +191,25 @@ function normalizeModelForDisplay(_cli: string, model: string): string {
     return (model || '').trim();
 }
 
+/**
+ * Effort choices for one model.
+ *
+ * A live opencodex catalog advertises a different effort set per model
+ * (`gpt-5.6-sol` reaches `ultra`, `gpt-5.6-luna` stops at `max`, routed models
+ * take none), and the chosen value is forwarded to the wire, so the per-model
+ * set wins over the provider/registry lists. An entry that EXISTS but is empty
+ * means "no effort for this model" and must not fall back.
+ */
+function resolveEffortChoices(
+    meta: CliEntry | null,
+    model: string,
+    providerEfforts: string[] | null,
+): string[] {
+    const byModel = meta?.effortsByModel?.[(model || '').trim()];
+    if (byModel) return byModel;
+    return providerEfforts || meta?.efforts || [];
+}
+
 function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {
     for (const cli of getCliKeys()) {
         const meta = getCliMeta(cli);
@@ -224,8 +244,15 @@ function syncPerCliModelAndEffortControls(settings: SettingsData | null = null):
             const providerEfforts = cliProvider
                 ? (meta?.effortsByProvider?.[cliProvider] || [])
                 : null;
-            const options = [''].concat(providerEfforts || meta?.efforts || []);
-            const selected = settings?.perCli?.[cli]?.effort ?? effortSel.value ?? '';
+            const selectedModel = normalizeModelForDisplay(cli, settings?.perCli?.[cli]?.model || getModelSelect(cli)?.value || '');
+            const effortsList = resolveEffortChoices(meta, selectedModel, providerEfforts);
+            const options = [''].concat(effortsList);
+            const saved = settings?.perCli?.[cli]?.effort ?? effortSel.value ?? '';
+            // Drop a saved effort the current model does not support — it would
+            // otherwise reach the wire as `-c model_reasoning_effort=<bad>`.
+            const selected = !saved || effortsList.includes(saved)
+                ? saved
+                : (meta?.defaultEffortByModel?.[selectedModel] ?? '');
             const unique = [...new Set(options)];
             const noneLabel = (unique.length === 1 && !unique[0] && meta?.effortNote) ? meta.effortNote : '— none';
             effortSel.innerHTML = unique.map(v => {
@@ -233,13 +260,18 @@ function syncPerCliModelAndEffortControls(settings: SettingsData | null = null):
                 return `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
             }).join('');
             if (meta?.effortNote) effortSel.title = meta.effortNote;
-            effortSel.disabled = (unique.length === 1 && !unique[0] && !!meta?.effortNote);
+            // A model with an explicitly EMPTY effort set takes no effort at all.
+            effortSel.disabled = (unique.length === 1 && !unique[0]);
             if (Array.from(effortSel.options).some(o => o.value === selected)) effortSel.value = selected;
         }
     }
 }
 
-function syncActiveEffortOptions(cli: string, selected = ''): void {
+function getActiveEffortValue(): string {
+    return (document.getElementById('selEffort') as HTMLSelectElement | null)?.value || '';
+}
+
+function syncActiveEffortOptions(cli: string, selected = '', model?: string): void {
     const selEffort = document.getElementById('selEffort') as HTMLSelectElement | null;
     if (!selEffort) return;
     const meta = getCliMeta(cli);
@@ -247,10 +279,15 @@ function syncActiveEffortOptions(cli: string, selected = ''): void {
     const providerEfforts = cliProvider
         ? (meta?.effortsByProvider?.[cliProvider] || [])
         : null;
-    const effortsList = providerEfforts || meta?.efforts || [];
-    if (meta?.effortNote && effortsList.length === 0) {
-        selEffort.innerHTML = `<option value="">${escapeHtml(meta.effortNote)}</option>`;
-        selEffort.title = meta.effortNote;
+    const activeModel = normalizeModelForDisplay(
+        cli,
+        model ?? (document.getElementById('selModel') as HTMLSelectElement | null)?.value ?? '',
+    );
+    const effortsList = resolveEffortChoices(meta, activeModel, providerEfforts);
+    if (effortsList.length === 0) {
+        const note = meta?.effortNote || '— none';
+        selEffort.innerHTML = `<option value="">${escapeHtml(note)}</option>`;
+        selEffort.title = note;
         selEffort.disabled = true;
         return;
     }
@@ -262,7 +299,12 @@ function syncActiveEffortOptions(cli: string, selected = ''): void {
     }).join('');
     selEffort.disabled = false;
     selEffort.title = meta?.effortNote || '';
-    if (Array.from(selEffort.options).some(o => o.value === selected)) selEffort.value = selected;
+    // Coerce a saved effort the active model does not support, so the value that
+    // reaches `-c model_reasoning_effort=` is always one the model advertises.
+    const resolved = !selected || effortsList.includes(selected)
+        ? selected
+        : (meta?.defaultEffortByModel?.[activeModel] ?? '');
+    if (Array.from(selEffort.options).some(o => o.value === resolved)) selEffort.value = resolved;
 }
 
 function syncAiEProviderOptions(select: HTMLSelectElement | null, current: string, providers: string[]): string {
@@ -543,6 +585,9 @@ export function onCliChange(save = true): void {
         appendCustomOption(modelSel, val);
         modelSel.value = val;
         (this as HTMLInputElement).style.display = 'none';
+        // A custom model has no advertised effort set; re-resolve so the picker
+        // falls back to the registry list instead of keeping the old model's.
+        syncActiveEffortOptions(cli, getActiveEffortValue(), val);
         saveActiveCliSettings();
     };
     if (!modelSel) { if (save) updateSettings(); return; }
@@ -553,6 +598,9 @@ export function onCliChange(save = true): void {
             inp.focus();
         } else {
             inp.style.display = 'none';
+            // Efforts are per-model on a live opencodex catalog, so the picker
+            // must follow the model rather than keep the previous model's set.
+            syncActiveEffortOptions(cli, getActiveEffortValue(), (this as HTMLSelectElement).value);
             saveActiveCliSettings();
         }
     };

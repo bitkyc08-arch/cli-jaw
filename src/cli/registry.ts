@@ -5,6 +5,12 @@ import { CURSOR_EFFORT_CHOICES, CURSOR_REGISTRY_MODELS } from '../agent/cursor-r
 import type { CliEngine } from '../types/cli-engine.js';
 
 export const CODEX_MODEL_CHOICES = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
+/**
+ * Static effort fallback for Codex when opencodex is not running. When ocx IS
+ * running, registry-live.ts replaces this with the live per-model sets, which
+ * can include `max` and `ultra`.
+ */
+export const CODEX_EFFORT_CHOICES = ['low', 'medium', 'high', 'xhigh'];
 
 export const CLI_REGISTRY = {
     agy: {
@@ -120,7 +126,7 @@ export const CLI_REGISTRY = {
         binary: 'codex',
         defaultModel: 'gpt-5.5',
         defaultEffort: 'medium',
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: CODEX_EFFORT_CHOICES,
         models: CODEX_MODEL_CHOICES,
     },
     'codex-app': {
@@ -128,7 +134,7 @@ export const CLI_REGISTRY = {
         binary: 'codex',
         defaultModel: 'gpt-5.5',
         defaultEffort: 'medium',
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: CODEX_EFFORT_CHOICES,
         models: CODEX_MODEL_CHOICES,
     },
     cursor: {

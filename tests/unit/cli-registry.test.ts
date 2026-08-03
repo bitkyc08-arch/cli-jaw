@@ -83,6 +83,56 @@ test('live CLI registry preserves JWC runtime metadata', async () => {
     assert.equal(registry['codex-app'].modelSource, registry.codex.modelSource);
 });
 
+// opencodex advertises a per-model effort set (gpt-5.6-sol reaches `ultra`,
+// gpt-5.6-luna stops at `max`, routed models take none) and the picked value is
+// forwarded to the wire as `-c model_reasoning_effort=` (src/agent/args.ts:214).
+// The live registry must therefore carry the sets per model, not just a union.
+test('live CLI registry carries per-model Codex efforts including max and ultra', async () => {
+    // kiro-models is already mocked by the preceding test in this file.
+    const opencodexPath = resolve(__dirname, '../../src/cli/opencodex-models.js');
+    mock.module(opencodexPath, {
+        namedExports: {
+            resolveOpenCodexCodexModelsDetailed: async () => ({
+                models: ['gpt-5.6-sol', 'gpt-5.6-luna', 'anthropic/claude-fable-5'],
+                entries: [
+                    { id: 'gpt-5.6-sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low' },
+                    { id: 'gpt-5.6-luna', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
+                    { id: 'anthropic/claude-fable-5', efforts: [] },
+                ],
+                source: 'opencodex',
+            }),
+        },
+    });
+
+    const moduleUrl = new URL('../../src/cli/registry-live.ts', import.meta.url);
+    moduleUrl.searchParams.set('case', `efforts-${Date.now()}`);
+    const { buildLiveCliRegistry } = await import(moduleUrl.href) as typeof import('../../src/cli/registry-live.ts');
+    const registry = await buildLiveCliRegistry() as Record<string, Record<string, unknown>>;
+
+    for (const key of ['codex', 'codex-app']) {
+        const effortsByModel = registry[key]?.['effortsByModel'] as Record<string, string[]>;
+        assert.ok(effortsByModel, `${key} must expose effortsByModel`);
+        assert.ok(effortsByModel['gpt-5.6-sol']?.includes('ultra'), `${key}: gpt-5.6-sol must offer ultra`);
+        assert.ok(effortsByModel['gpt-5.6-sol']?.includes('max'), `${key}: gpt-5.6-sol must offer max`);
+        // luna stops at max — offering ultra here would reach the wire and fail.
+        assert.equal(effortsByModel['gpt-5.6-luna']?.includes('ultra'), false);
+        // An effort-less routed model gets an explicit empty set, not a fallback.
+        assert.deepEqual(effortsByModel['anthropic/claude-fable-5'], []);
+
+        const efforts = registry[key]?.['efforts'] as string[];
+        assert.ok(efforts.includes('max') && efforts.includes('ultra'), `${key}: union must reach max/ultra`);
+
+        const defaults = registry[key]?.['defaultEffortByModel'] as Record<string, string>;
+        assert.equal(defaults['gpt-5.6-sol'], 'low');
+        assert.equal(defaults['anthropic/claude-fable-5'], undefined);
+
+        // defaultModel/defaultEffort seed user settings (buildDefaultPerCli), so
+        // live routing order must never rewrite them.
+        assert.equal(registry[key]?.['defaultModel'], 'gpt-5.5');
+        assert.equal(registry[key]?.['defaultEffort'], 'medium');
+    }
+});
+
 test('Antigravity registry exposes AGY as a top-level runtime, not an ai-e provider', () => {
     assert.equal(CLI_REGISTRY.agy.label, 'Antigravity');
     assert.equal(CLI_REGISTRY.agy.binary, 'agy');

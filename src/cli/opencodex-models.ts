@@ -1,16 +1,33 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CLI_REGISTRY, CODEX_MODEL_CHOICES } from './registry.js';
+import { CLI_REGISTRY, CODEX_EFFORT_CHOICES, CODEX_MODEL_CHOICES } from './registry.js';
+
+/**
+ * One model as advertised by opencodex `GET /v1/models`.
+ *
+ * `efforts` is the per-model reasoning-effort set. It is authoritative and may
+ * be EMPTY: opencodex omits `supports_reasoning_effort` for routed models that
+ * take no effort at all (e.g. `anthropic/claude-fable-5`). An empty set means
+ * "do not offer an effort", not "fall back to the static list" — the value is
+ * forwarded to the wire as `-c model_reasoning_effort=` (src/agent/args.ts).
+ */
+export interface OpenCodexModelEntry {
+    id: string;
+    efforts: string[];
+    defaultEffort?: string;
+}
 
 export interface OpenCodexModelsResult {
     models: string[];
+    entries: OpenCodexModelEntry[];
     source: 'opencodex' | 'static';
 }
 
 type CachedOpenCodexModels = {
     fetchedAt: number;
     models: string[];
+    entries: OpenCodexModelEntry[];
     source: OpenCodexModelsResult['source'];
 };
 
@@ -34,6 +51,18 @@ function dedupeModels(models: string[]): string[] {
 
 function defaultCodexModels(): string[] {
     return [...CODEX_MODEL_CHOICES];
+}
+
+/**
+ * Static fallback entries for an inactive opencodex. Every model gets the
+ * registry's static effort list so the picker keeps working offline.
+ */
+function defaultCodexEntries(): OpenCodexModelEntry[] {
+    return CODEX_MODEL_CHOICES.map((id) => ({ id, efforts: [...CODEX_EFFORT_CHOICES] }));
+}
+
+function staticResult(): OpenCodexModelsResult {
+    return { models: defaultCodexModels(), entries: defaultCodexEntries(), source: 'static' };
 }
 
 function isCodexCli(cli: string): boolean {
@@ -77,15 +106,55 @@ async function fetchJson(url: string, timeoutMs: number): Promise<unknown | null
     }
 }
 
-function parseModelIds(payload: unknown): string[] {
+/**
+ * Parse the `/v1/models` payload into id + per-model effort metadata.
+ *
+ * Effort resolution mirrors the opencodex wire shape:
+ *   - `reasoning_efforts[]` is a list of `{ value, label, default? }`.
+ *   - `supports_reasoning_effort === false` hard-disables efforts.
+ *   - the per-model default comes from `reasoning_effort`, falling back to the
+ *     entry flagged `default: true`.
+ */
+export function parseModelEntries(payload: unknown): OpenCodexModelEntry[] {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
     const data = (payload as Record<string, unknown>)['data'];
     if (!Array.isArray(data)) return [];
-    return dedupeModels(data
-        .map((entry) => entry && typeof entry === 'object' && !Array.isArray(entry)
-            ? (entry as Record<string, unknown>)['id']
-            : null)
-        .filter((id): id is string => typeof id === 'string'));
+
+    const seen = new Set<string>();
+    const entries: OpenCodexModelEntry[] = [];
+    for (const raw of data) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+        const record = raw as Record<string, unknown>;
+        const id = typeof record['id'] === 'string' ? record['id'].trim() : '';
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+
+        const levels = Array.isArray(record['reasoning_efforts']) ? record['reasoning_efforts'] : [];
+        const efforts = record['supports_reasoning_effort'] === false
+            ? []
+            : dedupeModels(levels
+                .map((level) => level && typeof level === 'object' && !Array.isArray(level)
+                    ? (level as Record<string, unknown>)['value']
+                    : null)
+                .filter((value): value is string => typeof value === 'string'));
+
+        const declared = typeof record['reasoning_effort'] === 'string' ? record['reasoning_effort'] : '';
+        const flagged = levels
+            .filter((level): level is Record<string, unknown> =>
+                Boolean(level) && typeof level === 'object' && !Array.isArray(level))
+            .find((level) => level['default'] === true);
+        const flaggedValue = typeof flagged?.['value'] === 'string' ? flagged['value'] : '';
+        const defaultEffort = efforts.includes(declared)
+            ? declared
+            : efforts.includes(flaggedValue) ? flaggedValue : '';
+
+        entries.push(defaultEffort ? { id, efforts, defaultEffort } : { id, efforts });
+    }
+    return entries;
+}
+
+function parseModelIds(payload: unknown): string[] {
+    return parseModelEntries(payload).map((entry) => entry.id);
 }
 
 /**
@@ -133,27 +202,34 @@ export async function resolveOpenCodexCodexModelsDetailed(): Promise<OpenCodexMo
     if (cachedOpenCodexModels && now - cachedOpenCodexModels.fetchedAt < CACHE_TTL_MS) {
         return {
             models: [...cachedOpenCodexModels.models],
+            entries: cachedOpenCodexModels.entries.map((entry) => ({ ...entry, efforts: [...entry.efforts] })),
             source: cachedOpenCodexModels.source,
         };
     }
 
     const port = await readOpenCodexPort();
-    if (!port) return { models: defaultCodexModels(), source: 'static' };
+    if (!port) return staticResult();
 
     const baseUrl = `http://127.0.0.1:${port}`;
     const health = await fetchJson(`${baseUrl}/healthz`, HEALTH_TIMEOUT_MS);
     if (!health || typeof health !== 'object' || Array.isArray(health)
         || (health as Record<string, unknown>)['status'] !== 'ok'
         || (health as Record<string, unknown>)['service'] !== 'opencodex') {
-        return { models: defaultCodexModels(), source: 'static' };
+        return staticResult();
     }
 
     const modelsPayload = await fetchJson(`${baseUrl}/v1/models`, MODELS_TIMEOUT_MS);
-    const models = parseModelIds(modelsPayload);
-    const resolved = models.length > 0 ? models : defaultCodexModels();
-    const source: OpenCodexModelsResult['source'] = models.length > 0 ? 'opencodex' : 'static';
-    cachedOpenCodexModels = { fetchedAt: now, models: resolved, source };
-    return { models: [...resolved], source };
+    const parsed = parseModelEntries(modelsPayload);
+    const live = parsed.length > 0;
+    const entries = live ? parsed : defaultCodexEntries();
+    const resolved = entries.map((entry) => entry.id);
+    const source: OpenCodexModelsResult['source'] = live ? 'opencodex' : 'static';
+    cachedOpenCodexModels = { fetchedAt: now, models: resolved, entries, source };
+    return {
+        models: [...resolved],
+        entries: entries.map((entry) => ({ ...entry, efforts: [...entry.efforts] })),
+        source,
+    };
 }
 
 export async function resolveOpenCodexCodexModels(): Promise<string[]> {

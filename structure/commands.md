@@ -223,7 +223,8 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
 `src/cli/registry.ts` (224L)
 
 현재 CLI registry는 13개 top-level runtime을 갖는다.
-Codex 기본 registry는 ocx inactive fallback용 4개 모델만 보유하며, live surface는 `src/cli/registry-live.ts`와 `src/cli/opencodex-models.ts`가 ocx `/v1/models`를 병합한다.
+Codex 기본 registry는 ocx inactive fallback용 모델만 보유하며, live surface는 `src/cli/registry-live.ts`와 `src/cli/opencodex-models.ts`가 ocx `/v1/models`를 병합한다.
+모델 목록뿐 아니라 **모델별 reasoning effort**도 함께 병합되어 `effortsByModel`/`defaultEffortByModel`로 노출되며, `max`/`ultra`는 이를 지원하는 모델에서만 선택할 수 있다.
 
 | CLI | Default Model | Default Effort |
 | --- | --- | --- |

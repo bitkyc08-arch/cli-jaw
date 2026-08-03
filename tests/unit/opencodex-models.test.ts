@@ -6,9 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { buildModelChoicesByCli, CLI_REGISTRY, CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
+import { buildModelChoicesByCli, CLI_REGISTRY, CODEX_EFFORT_CHOICES, CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
 import {
     applyCodexModelsToChoices,
+    parseModelEntries,
     probeOpenCodexEndpointModels,
     resetOpenCodexModelCacheForTest,
     resolveCliDefaultModel,
@@ -72,6 +73,137 @@ test('opencodex runtime port path resolves CLI_JAW_OPENCODEX_DIR lazily', async 
     assert.doesNotMatch(src, /const OPENCODEX_RUNTIME_PORT_PATH/);
 });
 
+// ── Per-model reasoning effort (opencodex /v1/models) ──
+// opencodex advertises a DIFFERENT effort set per model. The chosen value is
+// forwarded to the wire as `-c model_reasoning_effort=` (src/agent/args.ts), so
+// the parser must keep the sets separate instead of collapsing to one list.
+
+test('parseModelEntries keeps the per-model effort set in wire order', () => {
+    const entries = parseModelEntries({
+        data: [
+            {
+                id: 'gpt-5.6-sol',
+                supports_reasoning_effort: true,
+                reasoning_effort: 'low',
+                reasoning_efforts: [
+                    { value: 'low', label: 'Low Effort', default: true },
+                    { value: 'medium', label: 'Medium Effort' },
+                    { value: 'high', label: 'High Effort' },
+                    { value: 'xhigh', label: 'Xhigh Effort' },
+                    { value: 'max', label: 'Max Effort' },
+                    { value: 'ultra', label: 'Ultra Effort' },
+                ],
+            },
+        ],
+    });
+    assert.deepEqual(entries, [{
+        id: 'gpt-5.6-sol',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        defaultEffort: 'low',
+    }]);
+});
+
+test('parseModelEntries exposes max and ultra as distinct per-model ceilings', () => {
+    const entries = parseModelEntries({
+        data: [
+            {
+                id: 'gpt-5.6-sol',
+                supports_reasoning_effort: true,
+                reasoning_efforts: [{ value: 'max' }, { value: 'ultra' }],
+            },
+            {
+                id: 'gpt-5.6-luna',
+                supports_reasoning_effort: true,
+                reasoning_efforts: [{ value: 'max' }],
+            },
+        ],
+    });
+    assert.deepEqual(entries[0]?.efforts, ['max', 'ultra']);
+    // luna stops at max: offering `ultra` here would reach the wire and fail.
+    assert.deepEqual(entries[1]?.efforts, ['max']);
+});
+
+test('parseModelEntries yields an empty effort set for effort-less routed models', () => {
+    const entries = parseModelEntries({
+        data: [
+            { id: 'anthropic/claude-fable-5', reasoning_efforts: [] },
+            { id: 'kimi/k3', supports_reasoning_effort: false, reasoning_efforts: [{ value: 'high' }] },
+        ],
+    });
+    assert.deepEqual(entries, [
+        { id: 'anthropic/claude-fable-5', efforts: [] },
+        { id: 'kimi/k3', efforts: [] },
+    ]);
+});
+
+test('parseModelEntries falls back to the default-flagged level and drops unsupported defaults', () => {
+    const entries = parseModelEntries({
+        data: [
+            {
+                id: 'flagged',
+                reasoning_efforts: [{ value: 'low' }, { value: 'high', default: true }],
+            },
+            {
+                // `medium` is advertised as the default but is not selectable.
+                id: 'stale-default',
+                reasoning_effort: 'medium',
+                reasoning_efforts: [{ value: 'low' }, { value: 'high' }],
+            },
+        ],
+    });
+    assert.equal(entries[0]?.defaultEffort, 'high');
+    assert.equal(entries[1]?.defaultEffort, undefined);
+});
+
+test('resolveOpenCodexCodexModelsDetailed carries per-model efforts from a live ocx', async () => {
+    const tmp = await mkdtemp(join(tmpdir(), 'jaw-ocx-efforts-'));
+    const server = createServer((req, res) => {
+        if (req.url === '/healthz') {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', service: 'opencodex' }));
+            return;
+        }
+        if (req.url === '/v1/models') {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({
+                data: [
+                    {
+                        id: 'gpt-5.6-sol',
+                        supports_reasoning_effort: true,
+                        reasoning_effort: 'low',
+                        reasoning_efforts: [{ value: 'low', default: true }, { value: 'max' }, { value: 'ultra' }],
+                    },
+                    { id: 'anthropic/claude-fable-5', reasoning_efforts: [] },
+                ],
+            }));
+            return;
+        }
+        res.writeHead(404);
+        res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    await writeFile(join(tmp, 'runtime-port.json'), JSON.stringify({ port: address.port }));
+    const previousDir = process.env['CLI_JAW_OPENCODEX_DIR'];
+    process.env['CLI_JAW_OPENCODEX_DIR'] = tmp;
+    try {
+        const moduleUrl = pathToFileURL(join(process.cwd(), 'src/cli/opencodex-models.ts'));
+        moduleUrl.searchParams.set('case', `efforts-${Date.now()}`);
+        const mod = await import(moduleUrl.href) as typeof import('../../src/cli/opencodex-models.ts');
+        const result = await mod.resolveOpenCodexCodexModelsDetailed();
+        assert.equal(result.source, 'opencodex');
+        assert.deepEqual(result.entries, [
+            { id: 'gpt-5.6-sol', efforts: ['low', 'max', 'ultra'], defaultEffort: 'low' },
+            { id: 'anthropic/claude-fable-5', efforts: [] },
+        ]);
+    } finally {
+        if (previousDir === undefined) delete process.env['CLI_JAW_OPENCODEX_DIR'];
+        else process.env['CLI_JAW_OPENCODEX_DIR'] = previousDir;
+        await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+    }
+});
+
 test('applyCodexModelsToChoices keeps inactive ocx Codex defaults at seven models', () => {
     const choices = applyCodexModelsToChoices(buildModelChoicesByCli(), CODEX_MODEL_CHOICES);
     assert.deepEqual(choices.codex, CODEX_MODEL_CHOICES);
@@ -108,6 +240,7 @@ test('resolveCliDefaultModel keeps inactive ocx Codex default at first fallback 
         assert.equal(await resolveCliDefaultModel('claude'), CLI_REGISTRY.claude.defaultModel);
         assert.deepEqual(await resolveOpenCodexCodexModelsDetailed(), {
             models: CODEX_MODEL_CHOICES,
+            entries: CODEX_MODEL_CHOICES.map((id) => ({ id, efforts: [...CODEX_EFFORT_CHOICES] })),
             source: 'static',
         });
     });
@@ -194,10 +327,12 @@ test('resolveCliDefaultModel uses the first active ocx routed model for Codex', 
         const mod = await import(moduleUrl.href) as typeof import('../../src/cli/opencodex-models.ts');
         assert.deepEqual(await mod.resolveOpenCodexCodexModelsDetailed(), {
             models: activeModels,
+            entries: activeModels.map((id) => ({ id, efforts: [] })),
             source: 'opencodex',
         });
         assert.deepEqual(await mod.resolveOpenCodexCodexModelsDetailed(), {
             models: activeModels,
+            entries: activeModels.map((id) => ({ id, efforts: [] })),
             source: 'opencodex',
         });
         assert.equal(await mod.resolveCliDefaultModel('codex'), activeModels[0]);
