@@ -31,6 +31,11 @@ import { resolveHomePath } from '../src/core/path-expand.js';
 import { buildServicePath } from '../src/core/runtime-path.js';
 import { classifyClaudeInstall } from '../src/core/claude-install.js';
 import {
+    isWindowsNodeLaunchedFromWsl,
+    resolveInvocationCwd,
+    resolvePlatformKind,
+} from '../src/core/platform-kind.js';
+import {
     isSpawnableCliFile,
     listCliBinaryCandidates,
     readProcessPath,
@@ -901,22 +906,20 @@ export async function runPostinstall() {
 
     ensureNpmGlobalBinOnUserPath();
 
-    // ── WSL + Windows Node detection ──
-    const looksLikeWsl = Boolean(
-        process.env['WSL_DISTRO_NAME'] || process.env['WSL_INTEROP'] || process.env['WSLENV']
-        || (() => { try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); } catch { return false; } })()
-    );
-    if (looksLikeWsl) {
-        const execPath = process.execPath.replace(/\\/g, '/');
-        const isWindowsNode =
-            process.platform === 'win32'
-            || /^[A-Z]:\//i.test(execPath)
-            || execPath.startsWith('/mnt/');
-        if (isWindowsNode) {
-            console.warn('[jaw:init] ⚠️  Running with Windows Node.js inside WSL');
-            console.warn('[jaw:init]    npm -g packages will install to Windows, not WSL');
-            console.warn('[jaw:init]    Recommended: install Node inside WSL (fnm install 22 or nvm install 22)');
-        }
+    // ── Platform lane ──
+    // windows-native and wsl are disjoint by construction, and WSLENV is not a
+    // WSL signal: Microsoft documents it as shared with the Windows host, so
+    // the previous check fired on ordinary native Windows installs.
+    //
+    // resolveInvocationCwd() is required rather than process.cwd(): npm runs
+    // lifecycle scripts from the installed package root, so only INIT_CWD
+    // carries the directory the user actually ran npm from.
+    if (isWindowsNodeLaunchedFromWsl(process.platform, resolveInvocationCwd())) {
+        console.warn('[jaw:init] ⚠️  Windows Node.js invoked from a WSL directory');
+        console.warn('[jaw:init]    npm -g packages will install to Windows, not WSL');
+        console.warn('[jaw:init]    Recommended: install Node inside WSL (fnm install 22 or nvm install 22)');
+    } else if (resolvePlatformKind() === 'windows-native') {
+        console.log('[jaw:init] Windows (native) detected — global CLI shims install to the npm prefix');
     }
 
     // ── Legacy migration (only in normal mode, NOT safe mode) ──
