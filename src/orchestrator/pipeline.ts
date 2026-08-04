@@ -206,11 +206,11 @@ export function buildApprovedPlanPromptBlock(
 // entry, orchestrate entry). Bookkeeping via claim/mark/releaseWorkerReplay
 // prevents double-injection. Each iteration recurses into orchestrate() with
 // _skipReplayDrain:true so we don't re-enter this loop.
-export function drainPendingReplays(scopeKey?: string, fallbackMeta?: Record<string, any>): Promise<void>;
-export function drainPendingReplays(fallbackMeta?: Record<string, any>): Promise<void>;
+export function drainPendingReplays(scopeKey?: string, fallbackMeta?: Record<string, unknown>): Promise<void>;
+export function drainPendingReplays(fallbackMeta?: Record<string, unknown>): Promise<void>;
 export async function drainPendingReplays(
-    scopeKeyOrMeta: string | Record<string, any> = 'default',
-    fallbackMeta: Record<string, any> = {},
+    scopeKeyOrMeta: string | Record<string, unknown> = 'default',
+    fallbackMeta: Record<string, unknown> = {},
 ): Promise<void> {
     const scopeKey = typeof scopeKeyOrMeta === 'string' ? scopeKeyOrMeta : 'default';
     if (typeof scopeKeyOrMeta !== 'string') fallbackMeta = scopeKeyOrMeta;
@@ -221,7 +221,10 @@ export async function drainPendingReplays(
         // routes back to the original channel (web/telegram/discord + chatId).
         // Fallback meta (caller-supplied) only fills in when slot meta is absent.
         const slotMeta = pr.meta || {};
-        const chatSessionId = slotMeta.chatSessionId || fallbackMeta["chatSessionId"] || 'default';
+        const fallbackChatSessionId = typeof fallbackMeta["chatSessionId"] === 'string'
+            ? fallbackMeta["chatSessionId"]
+            : 'default';
+        const chatSessionId = slotMeta.chatSessionId || fallbackChatSessionId;
         const meta = {
             ...fallbackMeta,
             ...(slotMeta.origin ? { origin: slotMeta.origin } : {}),

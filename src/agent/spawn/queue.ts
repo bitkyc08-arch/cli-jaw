@@ -96,7 +96,7 @@ export interface QueueController {
         resolve: Function | null;
         origin: string | null;
         setTimer: (t: ReturnType<typeof setTimeout> | null) => void;
-        setResolve: (r: any) => void;
+        setResolve: (r: ((v: { text: string; code: number }) => void) | null) => void;
         setOrigin: (o: string | null) => void;
         setIsEmployee: (v: boolean) => void;
     };
@@ -503,7 +503,7 @@ export function createQueueController(
                 get resolve() { return state.resolve as Function | null; },
                 get origin() { return state.origin; },
                 setTimer: (t: ReturnType<typeof setTimeout> | null) => { state.timer = t; },
-                setResolve: (r: any) => { state.resolve = r; },
+                setResolve: (r: ((v: { text: string; code: number }) => void) | null) => { state.resolve = r; },
                 setOrigin: (o: string | null) => { state.origin = o; },
                 setIsEmployee: (v: boolean) => { state.isEmployee = v; },
             };
