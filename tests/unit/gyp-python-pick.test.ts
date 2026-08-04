@@ -136,10 +136,20 @@ test('every electron-builder entrypoint routes node-gyp through the picker', () 
     assert.ok(builderScripts.length >= 4,
         `expected several electron-builder scripts, found ${builderScripts.length}`);
 
+    // The routing now happens inside run-electron-builder.mjs rather than in
+    // shell interpolation. It has to: npm runs package scripts through cmd.exe
+    // on Windows, which does not expand `$(...)`, so the old inline form sent
+    // the literal text to Python as a filename and killed the Windows job of
+    // every desktop release from v2.2.11 on. Node is the one interpreter
+    // guaranteed present wherever npm runs a script.
     for (const [name, body] of builderScripts) {
-        assert.match(body, /pick-gyp-python\.sh/,
+        assert.match(body, /run-electron-builder\.mjs/,
             `${name} calls electron-builder without resolving a node-gyp-capable python`);
-        assert.match(body, /npm_config_python=/,
-            `${name} must set npm_config_python; node-gyp does not read PYTHON alone`);
     }
+
+    const launcher = readFileSync(join(projectRoot, 'scripts', 'run-electron-builder.mjs'), 'utf8');
+    assert.match(launcher, /pick-gyp-python\.sh/,
+        'the launcher must still consult the picker; it owns the distutils logic');
+    assert.match(launcher, /npm_config_python/,
+        'the launcher must set npm_config_python; node-gyp does not read PYTHON alone');
 });

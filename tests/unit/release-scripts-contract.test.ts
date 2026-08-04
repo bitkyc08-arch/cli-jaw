@@ -204,7 +204,7 @@ test('release branch policy is reflected in CI workflows, release script, instal
     assert.ok(!docs.includes('raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install'), 'static docs must not point installers at master');
 });
 
-test('non-macOS electron-builder scripts stay free of POSIX command substitution', () => {
+test('electron-builder scripts stay free of POSIX command substitution', () => {
     // `PYTHON="$(bash ../scripts/pick-gyp-python.sh)"` is a macOS-only guard: it
     // finds a python3 that still has distutils for node-gyp. npm runs scripts
     // through cmd.exe on Windows, which does not expand `$(...)`, so the literal
@@ -221,8 +221,6 @@ test('non-macOS electron-builder scripts stay free of POSIX command substitution
 
     for (const [name, body] of Object.entries(scripts)) {
         if (!name.startsWith('dist:')) continue;
-        // The mac-only entries may keep the guard; they never run under cmd.exe.
-        if (name === 'dist:mac' || name === 'dist:mac:zip') continue;
 
         assert.ok(
             !body.includes('$('),

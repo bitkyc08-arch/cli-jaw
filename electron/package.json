@@ -11,11 +11,11 @@
     "preview": "electron-vite preview",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
-    "dist:mac": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder --mac",
-    "dist:mac:zip": "PYTHON=\"$(bash ../scripts/pick-gyp-python.sh)\" npm_config_python=\"$(bash ../scripts/pick-gyp-python.sh)\" electron-builder --mac zip",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
-    "dist:all": "electron-builder -mwl"
+    "dist:mac": "node ../scripts/run-electron-builder.mjs --mac",
+    "dist:mac:zip": "node ../scripts/run-electron-builder.mjs --mac zip",
+    "dist:win": "node ../scripts/run-electron-builder.mjs --win",
+    "dist:linux": "node ../scripts/run-electron-builder.mjs --linux",
+    "dist:all": "node ../scripts/run-electron-builder.mjs -mwl"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
