@@ -5,6 +5,10 @@ import type { SearchProvider, SearchProviderRegistry } from './provider.js';
 type ProviderCursorState = { offset: number; exhausted: boolean };
 type CursorV1 = { v: 1; hash: string; providers: Record<string, ProviderCursorState> };
 const CORPORA: ConcreteCorpus[] = ['chat', 'memory', 'wiki'];
+const MAX_CURSOR_CHARS = 4096;
+const MAX_CURSOR_PROVIDERS = 32;
+const MAX_PROVIDER_ID_CHARS = 128;
+const MAX_CURSOR_OFFSET = 1_000_000;
 const invalidCursor = (): Error & { statusCode: number; code: string } =>
     Object.assign(new Error('invalid_cursor'), { statusCode: 400, code: 'invalid_cursor' });
 // This SHA-256 binds a cursor to its query. It is not an HMAC or a tamper-resistance boundary.
@@ -15,6 +19,9 @@ function decodeCursor(raw?: string): CursorV1 {
     if (!raw) return { v: 1, hash: '', providers: {} };
     try {
         if (!/^[A-Za-z0-9_-]+$/.test(raw)) throw invalidCursor();
+        // Bound the work before decoding: the cursor is client-supplied, and an
+        // oversized payload otherwise buys unbounded decode/parse/traversal.
+        if (raw.length > MAX_CURSOR_CHARS) throw invalidCursor();
         const decoded = Buffer.from(raw, 'base64url');
         if (decoded.toString('base64url') !== raw) throw invalidCursor();
         const value = JSON.parse(decoded.toString('utf8')) as unknown;
@@ -24,11 +31,22 @@ function decodeCursor(raw?: string): CursorV1 {
             !row['providers'] || typeof row['providers'] !== 'object' || Array.isArray(row['providers'])) {
             throw invalidCursor();
         }
-        for (const state of Object.values(row['providers'] as Record<string, unknown>)) {
+        const providers = row['providers'] as Record<string, unknown>;
+        const providerIds = Object.keys(providers);
+        if (providerIds.length > MAX_CURSOR_PROVIDERS) throw invalidCursor();
+        for (const id of providerIds) {
+            if (id.length > MAX_PROVIDER_ID_CHARS) throw invalidCursor();
+            const state = providers[id];
             if (!state || typeof state !== 'object' || Array.isArray(state)) throw invalidCursor();
             const item = state as Record<string, unknown>;
-            if (!Number.isInteger(item['offset']) || Number(item['offset']) < 0 ||
+            // Number.isInteger(1e100) is true, so an absurd offset would sail
+            // through and reach the provider as a SQL OFFSET.
+            if (!Number.isSafeInteger(item['offset']) || Number(item['offset']) < 0 ||
+                Number(item['offset']) > MAX_CURSOR_OFFSET ||
                 typeof item['exhausted'] !== 'boolean') throw invalidCursor();
+            for (const key of Object.keys(item)) {
+                if (key !== 'offset' && key !== 'exhausted') throw invalidCursor();
+            }
         }
         return row as CursorV1;
     } catch (error) {
@@ -41,11 +59,14 @@ const encodeCursor = (cursor: CursorV1): string =>
     Buffer.from(JSON.stringify(cursor)).toString('base64url');
 const returnedCount = (page: SearchResultEnvelope): number =>
     page.groups.reduce((sum, group) => sum + group.hits.length, 0);
-const failureWarning = (provider: SearchProvider, reason: unknown): SearchWarning => ({
-    code: 'provider_failed',
-    provider: provider.id,
-    message: reason instanceof Error ? reason.message : String(reason),
-});
+/**
+ * Provider errors can carry SQL, filesystem paths, upstream bodies, or
+ * credentials. Log the detail server-side; return a stable message.
+ */
+const failureWarning = (provider: SearchProvider, reason: unknown): SearchWarning => {
+    console.error('[search:provider]', provider.id, reason instanceof Error ? reason.message : String(reason));
+    return { code: 'provider_failed', provider: provider.id, message: 'search provider failed' };
+};
 
 export class SearchCoordinator {
     constructor(private readonly registry: SearchProviderRegistry) {}
@@ -73,8 +94,15 @@ export class SearchCoordinator {
             }));
 
         const states = { ...cursor.providers };
+        // Every non-ready provider must be terminalized BEFORE hasMore is computed.
+        // hasMore asks "is any registered provider unexhausted?", so a provider that
+        // never appears in cursor state reads as unexhausted forever and offers a
+        // next page that can never contain anything.
         const offProviders = registered.filter(provider => provider.status() === 'off');
-        for (const provider of offProviders) states[provider.id] = { offset: 0, exhausted: true };
+        const erroredProviders = registered.filter(provider => provider.status() === 'error');
+        for (const provider of [...offProviders, ...erroredProviders]) {
+            states[provider.id] = { offset: 0, exhausted: true };
+        }
         const ready = registered.filter(provider =>
             provider.status() === 'ready' && !cursor.providers[provider.id]?.exhausted);
         const perProvider = Math.max(1, Math.ceil((query.limit ?? 20) / Math.max(1, ready.length)));
@@ -106,6 +134,10 @@ export class SearchCoordinator {
                     code: 'provider_off' as const, provider: provider.id,
                     message: `${provider.corpus} search provider is disabled`,
                 })),
+                ...erroredProviders.map(provider => ({
+                    code: 'provider_failed' as const, provider: provider.id,
+                    message: 'search provider failed',
+                })),
                 ...pages.flatMap(({ page }) => page.warnings),
             ],
             page: { hasMore, nextCursor: hasMore ? encodeCursor({ v: 1, hash, providers: states }) : null },
@@ -113,6 +145,7 @@ export class SearchCoordinator {
                 ...pages.flatMap(({ page }) => page.providers),
                 ...rejected.map(({ provider }) => ({ id: provider.id, corpus: provider.corpus, status: 'error' as const })),
                 ...offProviders.map(provider => ({ id: provider.id, corpus: provider.corpus, status: 'off' as const })),
+                ...erroredProviders.map(provider => ({ id: provider.id, corpus: provider.corpus, status: 'error' as const })),
             ],
         };
     }

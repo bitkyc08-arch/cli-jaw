@@ -241,3 +241,82 @@ test('when the only ready provider is exhausted, off placeholders do not keep ha
     assert.equal(result.page.hasMore, false);
     assert.equal(result.page.nextCursor, null);
 });
+
+// A provider that reports status 'error' is neither off nor ready. Before this
+// case was handled it never entered cursor state at all, so hasMore ("is any
+// registered provider unexhausted?") stayed true forever and the response
+// offered a next page that could never contain anything.
+test('a provider already in error state is terminalized instead of holding pagination open', async () => {
+    const chat = new FakeProvider('chat', 'chat', (query, _opts, provider) =>
+        providerEnvelope(provider, query, [hit(provider.id, '1')], [], false));
+    const broken = new FakeProvider('memory-broken', 'memory', (query, _opts, provider) =>
+        providerEnvelope(provider, query, [], [], false), 'error');
+    const coordinator = new SearchCoordinator(registryOf(chat, broken));
+
+    const result = await coordinator.search({ query: 'needle', corpus: 'all', limit: 20 });
+
+    assert.equal(broken.calls.length, 0, 'an error provider must not be searched');
+    assert.equal(result.page.hasMore, false, 'an error provider must not keep pagination alive');
+    assert.equal(result.page.nextCursor, null);
+    assert.deepEqual(
+        result.providers.filter(provider => provider.status === 'error').map(provider => provider.id),
+        ['memory-broken'],
+        'the error provider must still be visible in the inventory',
+    );
+    // corpus=all also warns that wiki is unregistered, so assert on the provider.
+    assert.deepEqual(
+        result.warnings.filter(warning => warning.provider === 'memory-broken').map(warning => warning.code),
+        ['provider_failed'],
+    );
+});
+
+// The cursor is client-held. Number.isInteger(1e100) is true, so an absurd
+// offset would otherwise reach the provider as a SQL OFFSET.
+test('cursor validation rejects unsafe offsets, unknown fields, and oversized payloads', async () => {
+    const chat = new FakeProvider('chat', 'chat', (query, _opts, provider) =>
+        providerEnvelope(provider, query, [hit(provider.id, '1')], [], true));
+    const coordinator = new SearchCoordinator(registryOf(chat));
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+
+    const rejected = [
+        { v: 1, hash: '', providers: { chat: { offset: 1e100, exhausted: false } } },
+        { v: 1, hash: '', providers: { chat: { offset: 1.5, exhausted: false } } },
+        { v: 1, hash: '', providers: { chat: { offset: 0, exhausted: 'no' } } },
+        { v: 1, hash: '', providers: { chat: { offset: 0, exhausted: false, extra: 1 } } },
+        { v: 1, hash: '', providers: { chat: { offset: 10_000_000, exhausted: false } } },
+    ];
+    for (const cursor of rejected) {
+        await assert.rejects(
+            () => coordinator.search({ query: 'needle', corpus: 'chat', cursor: encode(cursor) }),
+            (error: { code?: string }) => error.code === 'invalid_cursor',
+            `must reject ${JSON.stringify(cursor.providers)}`,
+        );
+    }
+
+    const oversized = { v: 1, hash: '', providers: Object.fromEntries(
+        Array.from({ length: 64 }, (_, i) => [`p${i}`, { offset: 0, exhausted: false }])) };
+    await assert.rejects(
+        () => coordinator.search({ query: 'needle', corpus: 'chat', cursor: encode(oversized) }),
+        (error: { code?: string }) => error.code === 'invalid_cursor',
+        'too many provider entries must be rejected',
+    );
+});
+
+// Provider errors can carry SQL, paths, upstream bodies, or credentials.
+test('provider rejection reasons are not echoed to the client', async () => {
+    const chat = new FakeProvider('chat', 'chat', (query, _opts, provider) =>
+        providerEnvelope(provider, query, [hit(provider.id, '1')], [], false));
+    const leaky = new FakeProvider('memory-leaky', 'memory', () => {
+        throw new Error('SELECT secret FROM /Users/jun/.cli-jaw/creds.db failed: token=abc123');
+    });
+    const coordinator = new SearchCoordinator(registryOf(chat, leaky));
+
+    const result = await coordinator.search({ query: 'needle', corpus: 'all', limit: 20 });
+
+    const failure = result.warnings.find(warning => warning.provider === 'memory-leaky');
+    assert.ok(failure, 'the failure must still be reported');
+    assert.equal(failure.code, 'provider_failed');
+    assert.equal(failure.message, 'search provider failed');
+    assert.doesNotMatch(JSON.stringify(result), /creds\.db|token=abc123|SELECT secret/,
+        'no internal detail may reach the response');
+});

@@ -139,3 +139,73 @@ test('chat FTS migration and provider regressions', async t => {
         assert.ok(result.warnings.some(warning => warning.code === 'engine_fallback'));
     });
 });
+
+// Tables alone are not a usable index. An interrupted upgrade, a restored dump,
+// or a manual DROP can leave the virtual tables in place while a sync trigger
+// is gone — after which new messages never reach the index and search silently
+// returns stale results. The probe must look at the whole schema.
+test('migration repairs an index whose triggers were dropped', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaw-chat-fts-repair-'));
+    const path = join(home, 'messages.db');
+    try {
+        const database = new Database(path);
+        database.exec(`CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, cli TEXT,
+            model TEXT, trace TEXT, tool_log TEXT, working_dir TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP, session_id TEXT DEFAULT 'default')`);
+        database.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', ?, 's1')")
+            .run('alpha needle');
+
+        assert.equal(migrateSearchFts(database), true, 'first migration succeeds');
+
+        // Simulate the damaged state: tables survive, one trigger does not.
+        database.exec('DROP TRIGGER messages_search_ai');
+        const triggersAfterDrop = database.prepare(
+            "SELECT count(*) AS n FROM sqlite_master WHERE type='trigger' AND name LIKE 'messages_search_%'",
+        ).get() as { n: number };
+        assert.equal(triggersAfterDrop.n, 2, 'precondition: one trigger is missing');
+
+        assert.equal(migrateSearchFts(database), true, 'second migration must repair rather than early-return');
+
+        const triggersAfterRepair = database.prepare(
+            "SELECT count(*) AS n FROM sqlite_master WHERE type='trigger' AND name LIKE 'messages_search_%'",
+        ).get() as { n: number };
+        assert.equal(triggersAfterRepair.n, 3, 'all sync triggers must be restored');
+
+        // The real proof: a message inserted after the repair is searchable.
+        database.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', ?, 's1')")
+            .run('beta needle');
+        assert.equal(countMatch(database, 'messages_fts', 'beta'), 1,
+            'post-repair inserts must reach the index');
+        database.close();
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// LIKE is the fallback path for short and whitespace-containing queries, so a
+// broken escape would make literal %, _, and backslash unsearchable.
+test('LIKE fallback escapes wildcard characters literally', () => {
+    const provider = new ChatSearchProvider();
+    // The shared test DB may not have run the migration yet; the LIKE path
+    // still needs the statements prepared against a complete schema.
+    migrateSearchFts(db);
+    const insert = db.prepare(
+        "INSERT INTO messages (role, content, cli, working_dir, session_id) VALUES ('user', ?, 'web', NULL, ?)");
+    insert.run('discount 50% off today', 'esc-1');
+    insert.run('discount 5000 off today', 'esc-2');
+    insert.run('file_name pattern', 'esc-3');
+    insert.run('fileXname pattern', 'esc-4');
+
+    return (async () => {
+        const percent = await provider.search(query('50% off'), { limit: 20, offset: 0 });
+        const percentSessions = percent.groups.flatMap(group => group.hits).map(h => h.session);
+        assert.ok(percentSessions.includes('esc-1'), 'the literal percent row must match');
+        assert.ok(!percentSessions.includes('esc-2'), '% must not act as a wildcard');
+
+        const underscore = await provider.search(query('file_name'), { limit: 20, offset: 0 });
+        const underscoreSessions = underscore.groups.flatMap(group => group.hits).map(h => h.session);
+        assert.ok(underscoreSessions.includes('esc-3'), 'the literal underscore row must match');
+        assert.ok(!underscoreSessions.includes('esc-4'), '_ must not act as a single-char wildcard');
+    })();
+});

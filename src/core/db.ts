@@ -257,9 +257,29 @@ function hasSearchFts(database: Database.Database, name: string): boolean {
     ).get(name));
 }
 
+const SEARCH_FTS_TRIGGERS = ['messages_search_ai', 'messages_search_ad', 'messages_search_au'] as const;
+
+function hasSearchTrigger(database: Database.Database, name: string): boolean {
+    return Boolean(database.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+    ).get(name));
+}
+
+/**
+ * The tables alone are not a usable index. If a trigger is missing — an
+ * interrupted upgrade, a restored dump, a manual DROP — the tables still exist
+ * while new messages never reach them, so search silently returns stale
+ * results. Probe the whole schema, not just the tables.
+ */
+function searchFtsSchemaComplete(database: Database.Database): boolean {
+    return hasSearchFts(database, 'messages_fts')
+        && hasSearchFts(database, 'messages_trigram')
+        && SEARCH_FTS_TRIGGERS.every(name => hasSearchTrigger(database, name));
+}
+
 /** Create and verify the external-content chat indexes without version metadata. */
 export function migrateSearchFts(database: Database.Database): boolean {
-    if (hasSearchFts(database, 'messages_fts') && hasSearchFts(database, 'messages_trigram')) return true;
+    if (searchFtsSchemaComplete(database)) return true;
     try {
         database.transaction(() => {
             database.exec(SEARCH_FTS_SQL);

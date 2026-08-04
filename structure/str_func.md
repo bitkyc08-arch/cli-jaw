@@ -41,7 +41,7 @@ cli-jaw/
 │   │   ├── cli-detection.ts  ← CLI 탐지 + `pi` npm-exec fallback + `kiro-code`(`kiro-cli` binary)/`claude-e`/`ai-e` helper `--idle-timeout-ms` compatibility probe + local package release/debug candidates (288L)
 │   │   ├── compact.ts        ← compact 헬퍼 (COMPACT_MARKER_CONTENT, managed summary builder, cutoff logic, harvestGitGrep + harvestChatGrep 1KB/1KB budget split) (702L)
 │   │   ├── instance.ts       ← 인스턴스 ID, node/jaw 경로, 유닛명 sanitize (61L)
-│   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace + tool_log + working_dir migration + closeDb() WAL checkpoint + checkOrphanedWal + busy_timeout + clearMessagesScoped + queued_messages table + model-aware clearEmployeeSession + getRecentMessagesLite + searchMessages(days+recent scope) + getMessageContext(±N range) (662L)
+│   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace + tool_log + working_dir migration + closeDb() WAL checkpoint + checkOrphanedWal + busy_timeout + clearMessagesScoped + queued_messages table + model-aware clearEmployeeSession + getRecentMessagesLite + searchMessages(days+recent scope) + getMessageContext(±N range) (682L)
 │   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (223L)
 │   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (65L)
 │   │   ├── logger.ts         ← 로거 유틸 (35L)
@@ -201,7 +201,7 @@ cli-jaw/
 │   ├── search/               ← 통합 검색 계층 (4 files, 031) ✨
 │   │   ├── contract.ts       ← SearchQuery/SearchHit/SearchResultEnvelope 정본 계약 (45L) ✨
 │   │   ├── provider.ts       ← provider registry + off provider (중복 id 거부, 등록 순서 보존) (66L) ✨
-│   │   ├── coordinator.ts    ← ready-only 예산 배분 + cursor 상태 기계 + 부분 실패 인벤토리 (119L) ✨
+│   │   ├── coordinator.ts    ← ready-only 예산 배분 + cursor 상태 기계 + 부분 실패 인벤토리 (152L) ✨
 │   │   └── providers/chat.ts ← chat 어댑터 (FTS/trigram/LIKE 폴백, 실제 session_id provenance) (124L) ✨
 │   ├── memory/               ← 데이터 영속화 + advanced memory runtime (14 files)
 │   │   ├── advanced.ts       ← Advanced Memory re-export stub (1L)
