@@ -384,7 +384,12 @@ export function createQueueController(
 
         await lanes.run(itemScope, async () => {
             const liveIndex = messageQueue.findIndex(candidate => candidate.id === item!.id);
-            if (liveIndex === -1) return;
+            if (liveIndex === -1) {
+                scheduledItemIds.delete(item!.id);
+                drainingScopes.delete(itemScope);
+                queueMicrotask(() => { void processQueue(itemScope); });
+                return;
+            }
             messageQueue.splice(liveIndex, 1);
             scheduledItemIds.delete(item!.id);
         const groupKey = groupQueueKey(item.source, item.target);

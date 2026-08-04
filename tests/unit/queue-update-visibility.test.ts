@@ -79,6 +79,38 @@ test('queue_update clears queued details when the pending row is removed', () =>
     assert.deepEqual(update.data.queued, []);
 });
 
+test('removing an item waiting on its lane releases scoped queue busy state', async () => {
+    const lanes = new SessionLanes(() => 1);
+    let release!: () => void;
+    const blocker = lanes.run('default', () => new Promise<void>(resolve => { release = resolve; }));
+    const broadcasts: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const controller = createQueueController({
+        migrateQueuedMessagesV1ToV2() {}, isSpawnBusy: () => false,
+        hasBlockingWorkers: () => false, hasPendingWorkerReplays: () => false,
+        insertMessage: { run() {} }, getActiveChatSession: () => 'default',
+        insertQueuedMessage: { run() {} }, deleteQueuedMessage: { run() {} },
+        listQueuedMessages: { all: () => [] },
+        broadcast(type: string, data: Record<string, unknown>) { broadcasts.push({ type, data }); },
+        importPipeline: async () => ({
+            orchestrate: async () => {}, orchestrateContinue: async () => {}, orchestrateReset: async () => {},
+            isContinueIntent: () => false, isResetIntent: () => false, drainPendingReplays: async () => {},
+        }),
+        getWorkingDir: () => null, isMultiSessionEnabled: () => false,
+    }, lanes);
+
+    const id = controller.enqueueMessage('remove while waiting', 'web');
+    assert.equal(controller.isQueueBusy('default'), true);
+    controller.removeQueuedMessage(id);
+    release();
+    await blocker;
+    for (let i = 0; i < 5 && controller.isQueueBusy('default'); i++) {
+        await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    assert.equal(controller.isQueueBusy('default'), false);
+    assert.equal(controller.messageQueue.length, 0);
+    assert.ok(broadcasts.some(event => event.type === 'queue_update'));
+});
+
 test('snapshot endpoint includes queued details for reload recovery (X-01)', () => {
     // devlog 260609, 50: the WS connect-time queue_update push was removed —
     // reload recovery flows through /api/orchestrate/snapshot, which the
