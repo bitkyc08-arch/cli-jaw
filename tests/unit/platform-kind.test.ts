@@ -89,6 +89,21 @@ const CASES: Array<{
         probes: probes({ files: { '/proc/version': 'Linux version 4.4.0-19041-Microsoft' } }),
         expected: 'wsl',
     },
+    // A truthy but non-Microsoft osrelease must NOT short-circuit the
+    // /proc/version check. Without this row, an early `return` after the
+    // osrelease lookup would still pass the suite.
+    {
+        name: 'linux + generic osrelease + Microsoft /proc/version is still wsl',
+        platform: 'linux',
+        env: {},
+        probes: probes({
+            files: {
+                '/proc/sys/kernel/osrelease': '5.15.0-1',
+                '/proc/version': 'Linux version 5.15.0-1-microsoft-standard-WSL2',
+            },
+        }),
+        expected: 'wsl',
+    },
     // Negatives.
     {
         name: 'plain linux is linux',
@@ -143,6 +158,14 @@ test('isWindowsNodeLaunchedFromWsl keys on the UNC cwd, never on env', () => {
     // A Linux process is never "Windows Node".
     assert.equal(isWindowsNodeLaunchedFromWsl('linux', '/home/j'), false);
     assert.equal(isWindowsNodeLaunchedFromWsl('win32', ''), false);
+});
+
+// Locks the forward-slash normalization branch: some shells and tools report
+// the UNC path with forward slashes.
+test('isWindowsNodeLaunchedFromWsl normalizes forward slashes', () => {
+    assert.equal(isWindowsNodeLaunchedFromWsl('win32', '//wsl$/Ubuntu-24.04/home/j'), true);
+    assert.equal(isWindowsNodeLaunchedFromWsl('win32', '//wsl.localhost/Ubuntu/home/j'), true);
+    assert.equal(isWindowsNodeLaunchedFromWsl('win32', 'C:/Users/j'), false);
 });
 
 // The npm lifecycle boundary: a postinstall script's own cwd is the package
