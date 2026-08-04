@@ -52,8 +52,14 @@ const EXIT_SKIPPED = 3;
 if (!ptyRoot) {
   if (appPath) {
     fail(`node-pty not found in ${appPath}. asarUnpack must keep it outside the asar (electron-builder.yml asarUnpack: node_modules/node-pty/**/*); a packed addon cannot be dlopen'd.`);
-  } else if (process.env.CI) {
-    fail('electron/node_modules/node-pty is absent and CI must not skip the native probe');
+  } else if (process.env.JAW_GATE_REQUIRE_NATIVE === '1') {
+    // Opt-in requirement rather than a blanket CI check. The node-tests
+    // workflow runs `npm ci --ignore-scripts` at the root only, so it never
+    // has electron/node_modules at all: keying on CI made this gate demand an
+    // artifact that context cannot produce, and every PR went red for it.
+    // The flag is set where the artifact really exists (desktop-release, right
+    // after `npm ci --prefix electron`), so a miss there is a genuine failure.
+    fail('electron/node_modules/node-pty is absent but JAW_GATE_REQUIRE_NATIVE=1 demanded a real probe (run npm i in electron/)');
   } else {
     console.log('ℹ node-pty not installed in electron/node_modules — nothing probed (run npm i in electron/)');
     process.exit(EXIT_SKIPPED);
@@ -106,7 +112,14 @@ if (!ptyRoot) {
       // synchronous wait here would guarantee a false negative.
       const probe = `
         const pty = require(${JSON.stringify(ptyRoot)});
-        const term = pty.spawn(process.platform === 'win32' ? 'cmd.exe' : '/bin/sh', ['-c', 'echo jaw-pty-ok'], {
+        // cmd.exe does not understand POSIX -c; it needs /c (with /d /s to skip
+        // AutoRun and keep quote handling predictable). Passing -c made the
+        // shell exit non-zero and print usage, so the probe would have reported
+        // a broken spawn-helper on Windows even when the addon was healthy.
+        const isWin = process.platform === 'win32';
+        const shell = isWin ? 'cmd.exe' : '/bin/sh';
+        const shellArgs = isWin ? ['/d', '/s', '/c', 'echo jaw-pty-ok'] : ['-c', 'echo jaw-pty-ok'];
+        const term = pty.spawn(shell, shellArgs, {
           name: 'xterm-color', cols: 80, rows: 24, cwd: process.cwd(), env: process.env,
         });
         let seen = '';

@@ -27,7 +27,15 @@ import { tmpdir } from 'node:os';
 
 const args = process.argv.slice(2);
 const rootIndex = args.indexOf('--server-root');
-const serverRoot = resolve(rootIndex >= 0 ? args[rootIndex + 1] : 'electron/sidecar/server');
+// An explicit --server-root means the caller built the bundle and knows where
+// it should be (bundle-sidecar.sh passes it immediately after bundling), so a
+// missing tree there is a real failure rather than "nothing to check".
+const explicitServerRoot = rootIndex >= 0;
+if (explicitServerRoot && !args[rootIndex + 1]) {
+    console.error('❌ --server-root requires a directory argument');
+    process.exit(2);
+}
+const serverRoot = resolve(explicitServerRoot ? args[rootIndex + 1] : 'electron/sidecar/server');
 
 /**
  * Entry surfaces whose load failure would be silent in a running app: each is
@@ -48,8 +56,11 @@ const CRITICAL_MODULES = [
 const EXIT_SKIPPED = 3;
 
 if (!existsSync(serverRoot)) {
-    if (process.env['CI']) {
-        console.error(`❌ sidecar not bundled at ${serverRoot}, and CI must not skip this check`);
+    // Keying this on CI made the gate demand a bundle that the node-tests
+    // workflow never builds, so every PR failed here. Require a real check
+    // only where the caller actually produced (or explicitly named) the tree.
+    if (explicitServerRoot || process.env['JAW_GATE_REQUIRE_SIDECAR'] === '1') {
+        console.error(`❌ sidecar not bundled at ${serverRoot} but the caller required a real smoke test`);
         process.exit(1);
     }
     console.log(`ℹ sidecar not bundled at ${serverRoot} — skipping smoke (run scripts/bundle-sidecar.sh first)`);
