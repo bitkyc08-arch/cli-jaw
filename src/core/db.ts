@@ -26,6 +26,7 @@ checkOrphanedWal(DB_PATH);
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
+db.pragma('foreign_keys = ON');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS session (
@@ -96,6 +97,16 @@ db.exec(`
         updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     INSERT OR IGNORE INTO chat_sessions (id, seq) VALUES ('default', 0);
+
+    CREATE TABLE IF NOT EXISTS remote_session_bindings (
+        remote_key      TEXT PRIMARY KEY,
+        chat_session_id TEXT NOT NULL UNIQUE,
+        created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (chat_session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_remote_bindings_chat_session
+        ON remote_session_bindings(chat_session_id);
 
     CREATE TABLE IF NOT EXISTS queued_messages (
         id         TEXT PRIMARY KEY,

@@ -250,6 +250,7 @@ function createDefaultSettings() {
             latestSeen: { telegram: null, discord: null, slack: null },
             lastActive: { telegram: null, discord: null, slack: null },
         },
+        multiSession: { enabled: false },
         memory: {
             enabled: true,
             flushEvery: 10,
@@ -429,6 +430,7 @@ export function migrateSettings(s: Record<string, any>) {
             s["messaging"].lastActive.slack = null;
         }
     }
+    if (!s["multiSession"]) s["multiSession"] = { enabled: false };
     if (!s["jawCeo"]) {
         s["jawCeo"] = { openaiApiKey: '' };
     }
