@@ -209,14 +209,21 @@ test('SSP-016: backend skill routes current API and provider evidence to search'
     assert.doesNotMatch(devBackendSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
 });
 
+// Harmonization moved the per-router copy of the search policy into a single
+// owner: `dev` §External Evidence and Recall Routing. A router may either
+// restate the rules or delegate to that section — but delegation only counts
+// when the target section actually exists, so SSP-016b pins it.
 test('SSP-017: frontend skill routes current UI platform evidence to search', { skip: !hasDevFrontendSkill && 'skills_ref/dev-frontend missing' }, () => {
     const devFrontendSkill = fs.readFileSync(devFrontendSkillPath, 'utf8');
 
     assert.match(devFrontendSkill, /current framework, design-system, browser API/);
-    assert.match(devFrontendSkill, /library behavior, browser-rendered source evidence/);
     assert.match(devFrontendSkill, /package\/source freshness/);
-    assert.match(devFrontendSkill, /read the active `search` skill/);
-    assert.match(devFrontendSkill, /source-fetch and evidence-status\s+rules/);
+    assert.match(devFrontendSkill, /`search` skill/);
+    assert.match(
+        devFrontendSkill,
+        /(read the active `search` skill[\s\S]{0,120}source-fetch and evidence-status\s+rules|follow `dev` §External\s+Evidence and Recall Routing)/,
+        'must either restate the search policy or delegate to the dev owner section',
+    );
     assert.doesNotMatch(devFrontendSkill, /4-tier escalation/);
     assert.doesNotMatch(devFrontendSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
 });
@@ -290,10 +297,32 @@ test('SSP-023: UI/UX design skill routes current design evidence to search', { s
 
     assert.match(devUiuxDesignSkill, /External\/current design evidence/);
     assert.match(devUiuxDesignSkill, /live product-reference claims, current\s+design-system docs/);
-    assert.match(devUiuxDesignSkill, /browser API behavior, accessibility guidance/);
-    assert.match(devUiuxDesignSkill, /read the active `search` skill/);
-    assert.match(devUiuxDesignSkill, /query-rewrite, source-fetch, and\s+evidence-status rules/);
+    assert.match(devUiuxDesignSkill, /`search` skill/);
+    assert.match(
+        devUiuxDesignSkill,
+        /(read the active `search` skill[\s\S]{0,160}evidence-status rules|follow `dev` §External\s+Evidence and Recall Routing)/,
+        'must either restate the search policy or delegate to the dev owner section',
+    );
     assert.match(devUiuxDesignSkill, /candidate URLs exist/);
     assert.doesNotMatch(devUiuxDesignSkill, /4-tier escalation/);
     assert.doesNotMatch(devUiuxDesignSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+// A delegating router is only safe if its target exists. Without this, a
+// harmonization pass can point every surface at a section nobody wrote.
+test('SSP-016b: routers that delegate the search policy point at a real dev section', { skip: !hasDevSkill && 'skills_ref/dev missing' }, () => {
+    const devSkill = fs.readFileSync(devSkillPath, 'utf8');
+    const delegators: Array<[string, boolean, string]> = [
+        ['dev-frontend', hasDevFrontendSkill, devFrontendSkillPath],
+        ['dev-uiux-design', hasDevUiuxDesignSkill, devUiuxDesignSkillPath],
+    ];
+    const delegates = delegators.filter(([, present, path]) =>
+        present && /follow `dev` §External\s+Evidence and Recall Routing/.test(fs.readFileSync(path, 'utf8')));
+    if (!delegates.length) return;
+    assert.match(
+        devSkill,
+        /^##+ External Evidence and Recall Routing$/m,
+        `${delegates.map(([name]) => name).join(', ')} delegate to a dev section that must exist`,
+    );
+    assert.match(devSkill, /`search` skill/);
 });
