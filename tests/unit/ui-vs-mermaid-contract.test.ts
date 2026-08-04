@@ -102,7 +102,10 @@ test('F2: main.ts imports prewarmMermaid and calls it in bootstrap', () => {
     );
     const bootstrapIdx = mainSrc.indexOf('async function bootstrap()');
     assert.ok(bootstrapIdx >= 0, 'bootstrap function must exist');
-    const bootstrapBlock = mainSrc.slice(bootstrapIdx, bootstrapIdx + 2500);
+    // Scan to the end of the file rather than a fixed byte window: the window
+    // measures how much code precedes the call, not whether bootstrap makes it.
+    // Phase 071 added the session-view branch and pushed the call past 2500.
+    const bootstrapBlock = mainSrc.slice(bootstrapIdx);
     assert.ok(bootstrapBlock.includes('prewarmMermaid();'),
         'bootstrap must call prewarmMermaid()');
 });

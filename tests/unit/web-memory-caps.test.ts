@@ -14,7 +14,10 @@ const read = (p: string) => readFileSync(join(__dirname, '../..', p), 'utf8');
 test('WMC-001: chat history boots with a recent-window, not full history', () => {
     const src = read('public/js/features/message-history.ts');
     assert.match(src, /BOOT_MESSAGE_WINDOW = 3000/, 'window must be bounded (server caps at 5000)');
-    assert.ok(src.includes('return `?limit=${BOOT_MESSAGE_WINDOW}`'),
+    // Phase 071 wraps the boot query with the viewed session id, so the literal
+    // return is now withCurrentSessionQuery(`?limit=...`). The invariant under
+    // test is unchanged: the boot request must carry the bounded window.
+    assert.match(src, /return withCurrentSessionQuery\(`\?limit=\$\{BOOT_MESSAGE_WINDOW\}`\)|return `\?limit=\$\{BOOT_MESSAGE_WINDOW\}`/,
         'bootMessageQuery must request the window — items[].html was the largest client allocation');
 });
 

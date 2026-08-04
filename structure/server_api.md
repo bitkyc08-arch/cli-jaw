@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 238개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 237개다.
+> 현재 라이브 surface는 총 240개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 239개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -25,7 +25,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
 | `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
 | `src/routes/instance.ts` | 53L | 3 | instance lock GET/POST/DELETE |
-| `src/routes/chat-sessions.ts` | 30L | 3 | session list/create/switch |
+| `src/routes/chat-sessions.ts` | 62L | 4 | session list/create/switch/delete (전 route requireAuth) |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
 | `src/routes/settings.ts` | 430L | 23 | settings/prompt/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
@@ -102,6 +102,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `GET` | `/api/chat-sessions` | 채팅 세션 목록 |
 | `POST` | `/api/chat-sessions` | 새 채팅 세션 생성 |
 | `POST` | `/api/chat-sessions/:id/switch` | 활성 세션 전환 |
+| `DELETE` | `/api/chat-sessions/:id` | 세션 삭제 — `'default'` 400, 진행 중/원격 바인딩 409, 성공 시 메시지 동시 삭제 (071) |
 
 ---
 
@@ -140,7 +141,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 238개 route handler 기준이다. 이 중 API 엔드포인트는 237개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 240개 route handler 기준이다. 이 중 API 엔드포인트는 239개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
