@@ -40,6 +40,45 @@ function uniqueLines(raw: string): string[] {
 
 const BUN_DEPRIO_CLIS = new Set(['claude', 'codex', 'copilot', 'opencode']);
 
+/**
+ * Extensions the Windows spawn path can actually launch: a bare .exe/.com
+ * directly, and .cmd/.bat through ComSpec.
+ *
+ * Deliberately NOT the full PATHEXT list. src/agent/spawn.ts sets
+ * `shell: true` for any non-.exe path on win32, which is the documented-safe
+ * route for batch files and nothing else — cmd.exe cannot run a .ps1, and a
+ * custom PATHEXT entry only works if a file association happens to exist.
+ */
+const WINDOWS_SPAWNABLE_EXTENSIONS = ['.COM', '.EXE', '.BAT', '.CMD'];
+
+/** Microsoft-documented default, used only when PATHEXT is absent. */
+const WINDOWS_DEFAULT_PATHEXT = [
+    '.COM', '.EXE', '.BAT', '.CMD', '.VBS', '.VBE',
+    '.JS', '.JSE', '.WSF', '.WSH', '.MSC',
+];
+
+export function windowsPathExt(env: NodeJS.ProcessEnv = process.env): string[] {
+    const raw = env['PATHEXT'] || env['PathExt'] || env['pathext'];
+    if (!raw) return [...WINDOWS_DEFAULT_PATHEXT];
+    return raw.split(';').map((ext) => ext.trim().toUpperCase()).filter(Boolean);
+}
+
+function hasExtension(candidate: string, extensions: readonly string[]): boolean {
+    const upper = candidate.toUpperCase();
+    return extensions.some((ext) => upper.endsWith(ext));
+}
+
+function windowsExtensionRank(candidate: string, env: NodeJS.ProcessEnv = process.env): number {
+    const upper = candidate.toUpperCase();
+    // A native .exe beats a shim; a .cmd shim beats the extensionless POSIX
+    // shim, which cmd.exe cannot run at all. npm writes all three on Windows.
+    if (upper.endsWith('.EXE') || upper.endsWith('.COM')) return 0;
+    if (upper.endsWith('.CMD') || upper.endsWith('.BAT')) return 1;
+    if (upper.endsWith('.PS1')) return 2;
+    // Other PATHEXT entries rank below the launchable set but above unknowns.
+    return hasExtension(candidate, windowsPathExt(env)) ? 3 : 4;
+}
+
 function normalizedPath(filePath: string): string {
     return path.normalize(filePath);
 }
@@ -107,7 +146,18 @@ export function prioritizeCliCandidates(
     cliName: string,
     candidates: string[],
     homeDir = os.homedir(),
+    platform: NodeJS.Platform = process.platform,
+    env: NodeJS.ProcessEnv = process.env,
 ): string[] {
+    if (platform === 'win32') {
+        // Extension rules the ordering on Windows: installer provenance
+        // (the bun de-prioritization below) is a POSIX-install concern, and
+        // mixing both orders would make neither predictable.
+        return candidates
+            .map((candidate, index) => ({ candidate, index, rank: windowsExtensionRank(candidate, env) }))
+            .sort((a, b) => (a.rank - b.rank) || (a.index - b.index))
+            .map((entry) => entry.candidate);
+    }
     if (!BUN_DEPRIO_CLIS.has(cliName)) return candidates;
     return candidates
         .map((candidate, index) => ({ candidate, priority: candidatePriority(cliName, candidate, index, homeDir) }))
@@ -142,7 +192,21 @@ function hasKnownExecutableMagic(head: Buffer, platform: NodeJS.Platform = proce
 }
 
 export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform = process.platform): { ok: boolean; reason?: string } {
-    if (platform === 'win32') return { ok: true };
+    if (platform === 'win32') {
+        try {
+            if (!fs.statSync(filePath).isFile()) return { ok: false, reason: 'not a regular file' };
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code;
+            return { ok: false, reason: code || 'not found' };
+        }
+        // Only what spawn.ts can actually launch. The extensionless npm shim
+        // is a POSIX sh script: real on disk, unrunnable by cmd.exe.
+        if (hasExtension(filePath, WINDOWS_SPAWNABLE_EXTENSIONS)) return { ok: true };
+        if (filePath.toUpperCase().endsWith('.PS1')) {
+            return { ok: false, reason: 'powershell shim is not spawnable via ComSpec' };
+        }
+        return { ok: false, reason: 'no windows-executable extension' };
+    }
 
     try {
         const stat = fs.statSync(filePath);
@@ -205,7 +269,9 @@ export function buildCliDetectionEnv(
 export function listCliBinaryCandidates(name: string, seedPath = readProcessPath()): CliCandidateScan {
     if (!/^[a-z0-9_-]+$/i.test(name)) return { candidates: [] };
     try {
-        const cmd = process.platform === 'win32' ? 'where' : 'which';
+        // `where.exe` rather than bare `where`: names the real executable and
+        // does not depend on PATHEXT resolving the launcher's own name.
+        const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
         const args = process.platform === 'win32' ? [name] : ['-a', name];
         const raw = execFileSync(cmd, args, {
             encoding: 'utf8',
