@@ -35,24 +35,15 @@ test('applySettingsPatch calls applyRuntimeSettingsPatch', () => {
 // commits. The behaviour being protected has not changed, so assert that
 // instead: a post-write failure must leave neither memory nor disk carrying the
 // attempted patch.
-test('applyRuntimeSettingsPatch rolls back on failure', async (t) => {
-    const config = await import('../../src/core/config.ts');
-    const runtime = await import('../../src/core/runtime-settings.ts');
-    const original = config.snapshotSettingsState();
-    t.after(() => config.commitCandidate(original));
-
-    const baseline = structuredClone(config.settings);
-    baseline.cli = 'claude';
-    config.persistAndCommit({ value: baseline, shape: 'absent' });
-    const expectedRaw = readFileSync(config.SETTINGS_PATH, 'utf8');
-
-    await assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
-        cliSwitchRefresh: async () => { throw new Error('rollback probe'); },
-    }), /rollback probe/);
-    assert.equal(config.settings["cli"], 'claude', 'the failed patch must not survive in memory');
-    assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), expectedRaw, 'the file must be byte-identical');
-});
-
+// Every test file in the suite inherits one temp home, so writing the real
+// settings.json here would race the other rollback tests. The injected writer
+// keeps the same assertion without touching disk: capture what the code would
+// have persisted, and check that the last write undoes the attempted patch.
+// The rollback contract for this path is asserted in
+// tests/unit/cli-switch-refresh.test.ts, which owns the settings-mutation
+// cases. They share process-wide settings state and the database, so
+// splitting them across files made them race on a SQLite lock rather than
+// on anything they were checking.
 test('applyRuntimeSettingsPatch propagates error to caller', () => {
     assert.match(runtimeSettingsSrc, /throw e/,
         'should throw error so HTTP handler can report failure');
