@@ -3,27 +3,48 @@ import { detectAllCli } from '../core/config.js';
 import { readClaudeCreds, readCodexTokens } from '../routes/quota.js';
 import { hasCopilotAuthSync } from '../../lib/quota-copilot.js';
 import { CLI_KEYS, DEFAULT_CLI } from './registry.js';
+import { probeCodexAppCapability, type CapabilityProbeResult } from './capability-probe.js';
 import type { CliEngine } from '../types/cli-engine.js';
 
 export interface CliReadiness {
     cli: string;
     installed: boolean;
+    binaryInstalled: boolean;
+    capabilityReady: boolean;
     authenticated: boolean;
     source: string;
 }
 
-export function getCliReadiness(): CliReadiness[] {
-    const detected = detectAllCli();
+interface ReadinessDependencies {
+    detectAllCli: typeof detectAllCli;
+    readClaudeCreds: typeof readClaudeCreds;
+    readCodexTokens: typeof readCodexTokens;
+    hasCopilotAuthSync: typeof hasCopilotAuthSync;
+    probeCodexAppCapability: (binary: string) => CapabilityProbeResult;
+}
+
+const DEFAULT_DEPENDENCIES: ReadinessDependencies = {
+    detectAllCli,
+    readClaudeCreds,
+    readCodexTokens,
+    hasCopilotAuthSync,
+    probeCodexAppCapability,
+};
+
+export function getCliReadiness(dependencies: ReadinessDependencies = DEFAULT_DEPENDENCIES): CliReadiness[] {
+    const detected = dependencies.detectAllCli();
     const results: CliReadiness[] = [];
 
     for (const cli of CLI_KEYS) {
         const info = (detected as Record<string, any>)[cli];
-        const installed = !!info?.available;
+        const binaryInstalled = !!info?.available;
+        let capabilityReady = binaryInstalled;
+        let installed = binaryInstalled;
         let authenticated = false;
         let source = 'none';
 
-        if (!installed) {
-            results.push({ cli, installed, authenticated, source });
+        if (!binaryInstalled) {
+            results.push({ cli, installed, binaryInstalled, capabilityReady, authenticated, source });
             continue;
         }
 
@@ -46,14 +67,14 @@ export function getCliReadiness(): CliReadiness[] {
                 break;
             }
             case 'claude': {
-                const creds = readClaudeCreds();
+                const creds = dependencies.readClaudeCreds();
                 authenticated = !!creds?.token;
                 if (creds?.source === 'cloud-provider-env') authenticated = true;
                 source = creds?.source ?? 'none';
                 break;
             }
             case 'codex': {
-                const tokens = readCodexTokens();
+                const tokens = dependencies.readCodexTokens();
                 authenticated = !!tokens?.access_token;
                 source = authenticated ? 'auth.json' : 'none';
                 break;
@@ -109,14 +130,20 @@ export function getCliReadiness(): CliReadiness[] {
                 break;
             }
             case 'copilot': {
-                authenticated = hasCopilotAuthSync();
+                authenticated = dependencies.hasCopilotAuthSync();
                 source = authenticated ? 'local-auth-chain' : 'none';
                 break;
             }
             case 'codex-app': {
-                const tokens = readCodexTokens();
+                const capability = dependencies.probeCodexAppCapability(info.path || 'codex');
+                capabilityReady = capability.ok;
+                installed = binaryInstalled && capabilityReady;
+                const tokens = dependencies.readCodexTokens();
                 authenticated = !!tokens?.access_token;
-                source = authenticated ? 'auth.json' : 'none';
+                const authSource = authenticated ? 'auth.json' : 'none';
+                source = capabilityReady
+                    ? authSource
+                    : `app-server unavailable: ${capability.reason}; auth: ${authSource}`;
                 break;
             }
             case 'claude-e': {
@@ -126,7 +153,7 @@ export function getCliReadiness(): CliReadiness[] {
                     source = 'underlying claude missing';
                     break;
                 }
-                const claudeCreds = readClaudeCreds();
+                const claudeCreds = dependencies.readClaudeCreds();
                 authenticated = !!claudeCreds?.token;
                 if (claudeCreds?.source === 'cloud-provider-env') authenticated = true;
                 source = claudeCreds?.source ?? 'none';
@@ -139,26 +166,30 @@ export function getCliReadiness(): CliReadiness[] {
             }
         }
 
-        results.push({ cli, installed, authenticated, source });
+        results.push({ cli, installed, binaryInstalled, capabilityReady, authenticated, source });
     }
 
     return results;
 }
 
-const DEFAULT_ORDER: readonly CliEngine[] = ['pi', 'claude', 'claude-e', 'agy', 'codex', 'codex-app', 'cursor', 'kiro-code', 'copilot', 'grok', 'opencode', 'ai-e'];
+export const DEFAULT_READINESS_ORDER: readonly CliEngine[] = ['codex-app', 'pi', 'claude', 'claude-e', 'agy', 'codex', 'cursor', 'kiro-code', 'copilot', 'grok', 'opencode', 'ai-e'];
 
-export function pickFirstReadyCli(order: readonly CliEngine[] = DEFAULT_ORDER): CliEngine {
-    const readiness = getCliReadiness();
+export function pickFirstReadyCli(
+    order: readonly CliEngine[] = DEFAULT_READINESS_ORDER,
+    dependencies: ReadinessDependencies = DEFAULT_DEPENDENCIES,
+): CliEngine {
+    const effectiveOrder = [DEFAULT_CLI, ...order.filter(cli => cli !== DEFAULT_CLI)];
+    const readiness = getCliReadiness(dependencies);
     // Tier 1: installed + authenticated
-    for (const cli of order) {
+    for (const cli of effectiveOrder) {
         const r = readiness.find(x => x.cli === cli);
         if (r?.installed && r?.authenticated) return cli;
     }
     // Tier 2: installed only
-    for (const cli of order) {
+    for (const cli of effectiveOrder) {
         const r = readiness.find(x => x.cli === cli);
         if (r?.installed) return cli;
     }
     // Tier 3: fallback
-    return DEFAULT_CLI ?? 'claude';
+    return DEFAULT_CLI;
 }
