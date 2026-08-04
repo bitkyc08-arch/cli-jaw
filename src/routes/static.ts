@@ -21,6 +21,19 @@ const INLINE_MEDIA_CONTENT_TYPES = new Map<string, string>([
     ['.mov', 'video/quicktime'],
     ['.ogg', 'video/ogg'],
 ]);
+const indexRoutes = new WeakMap<Router, { serveIndex: RequestHandler; publicRoot: string }>();
+
+function createIndexHandler(projectRoot: string): RequestHandler {
+    const publicRoot = join(projectRoot, 'public');
+    const distIndex = join(publicRoot, 'dist', 'index.html');
+    return (_req, res, next) => {
+        if (fs.existsSync(distIndex)) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.sendFile('dist/index.html', { root: publicRoot });
+        }
+        next();
+    };
+}
 
 function isSafeWidgetParam(value: string): boolean {
     return SAFE_WIDGET_PARAM_RE.test(value) && !value.includes('..');
@@ -28,14 +41,9 @@ function isSafeWidgetParam(value: string): boolean {
 
 export function registerStaticRoutes(app: Router, requireAuth: RequestHandler, deps: { projectRoot: string }): void {
     // Serve Vite production build (public/dist/index.html) at root when available
-    const distIndex = join(deps.projectRoot, 'public', 'dist', 'index.html');
-    app.get('/', (_req, res, next) => {
-        if (fs.existsSync(distIndex)) {
-            res.setHeader('Cache-Control', 'no-store');
-            return res.sendFile('dist/index.html', { root: join(deps.projectRoot, 'public') });
-        }
-        next();
-    });
+    const serveIndex = createIndexHandler(deps.projectRoot);
+    indexRoutes.set(app, { serveIndex, publicRoot: join(deps.projectRoot, 'public') });
+    app.get('/', serveIndex);
 
     // Serve uploaded media files (images/videos) for inline rendering
     app.get('/media/:filename', requireAuth, (req, res) => {
@@ -132,6 +140,21 @@ export function registerStaticRoutes(app: Router, requireAuth: RequestHandler, d
             res.setHeader('X-Content-Type-Options', 'nosniff');
             res.setHeader('Cache-Control', 'no-store');
             res.status(200).send(data);
+        });
+    });
+}
+
+export function registerSessionPageRoute(app: Router): void {
+    const indexRoute = indexRoutes.get(app);
+    if (!indexRoute) throw new Error('registerStaticRoutes must run before registerSessionPageRoute');
+    app.get(/^\/\d+\/?$/, (req, res, next) => {
+        indexRoute.serveIndex(req, res, () => {
+            const sourceIndex = join(indexRoute.publicRoot, 'index.html');
+            if (fs.existsSync(sourceIndex)) {
+                res.sendFile('index.html', { root: indexRoute.publicRoot });
+                return;
+            }
+            next();
         });
     });
 }

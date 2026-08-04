@@ -34,6 +34,8 @@ export class SessionLanes {
         return this.enqueue(scopeKey, task);
     }
 
+    hasPending(scopeKey: string): boolean { return this.sessionTails.has(scopeKey); }
+
     private enqueue<T>(scopeKey: string, task: () => Promise<T>): Promise<T> {
         const previous = this.sessionTails.get(scopeKey);
         let settleTail!: () => void;

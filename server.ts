@@ -26,7 +26,7 @@ import { stopAllBgTasks } from './src/bgtask/runner.js';
 import { registerEventsRoutes } from './src/routes/events.js';
 import { registerInstanceRoutes } from './src/routes/instance.js';
 import { registerChatSessionRoutes } from './src/routes/chat-sessions.js';
-import { registerStaticRoutes } from './src/routes/static.js';
+import { registerSessionPageRoute, registerStaticRoutes } from './src/routes/static.js';
 import { registerMessageRoutes } from './src/routes/messages.js';
 import { registerSystemRoutes } from './src/routes/system.js';
 import { registerAgentControlRoutes } from './src/routes/agent-control.js';
@@ -344,6 +344,7 @@ app.use(express.json({ limit: '1mb' }));
 registerStaticRoutes(app, requireAuth, { projectRoot });
 
 app.use(express.static(join(projectRoot, 'public')));
+registerSessionPageRoute(app);
 
 // Live updates flow through GET /api/events (SSE) — the legacy WebSocket
 // channel was removed in X-01 (devlog 260609, 50). Inbound equivalents:
@@ -368,7 +369,7 @@ registerTaskRoutes(app, requireAuth);
 registerBgtaskRoutes(app, requireAuth);
 registerEventsRoutes(app, requireAuth);
 registerInstanceRoutes(app);
-registerChatSessionRoutes(app);
+registerChatSessionRoutes(app, requireAuth);
 registerMessageRoutes(app);
 registerSystemRoutes(app, { jawAuthToken: JAW_AUTH_TOKEN });
 registerAgentControlRoutes(app, requireAuth);

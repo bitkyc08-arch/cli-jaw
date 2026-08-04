@@ -18,6 +18,15 @@ export type ChatSessionRow = {
     updated_at: string;
 };
 
+export type ChatSessionSource = 'local' | 'slack' | 'telegram' | 'discord';
+
+export type ChatSessionListRow = ChatSessionRow & {
+    message_count: number;
+    remoteKey?: string | null;
+    source?: ChatSessionSource;
+    lastActivityAt?: string | null;
+};
+
 export type ActiveRunPolicy = 'steer' | 'followup' | 'collect' | 'interrupt';
 
 const ACTIVE_RUN_POLICIES = new Set<ActiveRunPolicy>(['steer', 'followup', 'collect', 'interrupt']);
@@ -26,13 +35,29 @@ export function isActiveRunPolicy(value: unknown): value is ActiveRunPolicy {
     return typeof value === 'string' && ACTIVE_RUN_POLICIES.has(value as ActiveRunPolicy);
 }
 
-const listStmt = db.prepare('SELECT * FROM chat_sessions ORDER BY seq ASC');
+type ChatSessionListQueryRow = ChatSessionRow & {
+    message_count: number;
+    remote_key: string | null;
+    last_activity_at: string | null;
+};
+
+const listStmt = db.prepare(`
+    SELECT cs.id, cs.seq, cs.label, cs.active_run_policy, cs.created_at, cs.updated_at,
+           COUNT(m.id) AS message_count,
+           MAX(m.created_at) AS last_activity_at,
+           rsb.remote_key
+    FROM chat_sessions cs
+    LEFT JOIN messages m ON m.session_id = cs.id
+    LEFT JOIN remote_session_bindings rsb ON rsb.chat_session_id = cs.id
+    GROUP BY cs.id, cs.seq, cs.label, cs.active_run_policy, cs.created_at, cs.updated_at, rsb.remote_key
+    ORDER BY cs.seq ASC
+`);
 const getBySeqStmt = db.prepare('SELECT * FROM chat_sessions WHERE seq = ?');
 const getByIdStmt = db.prepare('SELECT * FROM chat_sessions WHERE id = ?');
 const insertStmt = db.prepare('INSERT INTO chat_sessions (id, seq, label, active_run_policy) VALUES (?, ?, ?, ?)');
 const deleteStmt = db.prepare('DELETE FROM chat_sessions WHERE id = ? AND id != \'default\'');
+const deleteMessagesStmt = db.prepare('DELETE FROM messages WHERE session_id = ?');
 const maxSeqStmt = db.prepare('SELECT MAX(seq) as max_seq FROM chat_sessions');
-const countMsgsStmt = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?');
 const getRunPolicyStmt = db.prepare('SELECT active_run_policy FROM chat_sessions WHERE id = ?');
 const setRunPolicyStmt = db.prepare('UPDATE chat_sessions SET active_run_policy = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 
@@ -115,12 +140,31 @@ export function createChatSession(label?: string): { id: string; seq: number } {
     return { id, seq };
 }
 
-export function listChatSessions(): (ChatSessionRow & { message_count: number })[] {
-    const rows = listStmt.all() as ChatSessionRow[];
-    return rows.map(r => ({
-        ...r,
-        message_count: (countMsgsStmt.get(r.id) as { cnt: number })?.cnt || 0,
+function sourceFromRemoteKey(remoteKey: string | null): ChatSessionSource {
+    if (remoteKey?.startsWith('jaw:slack:')) return 'slack';
+    if (remoteKey?.startsWith('jaw:telegram:')) return 'telegram';
+    if (remoteKey?.startsWith('jaw:discord:')) return 'discord';
+    return 'local';
+}
+
+function queryChatSessionList(): ChatSessionListQueryRow[] {
+    return listStmt.all() as ChatSessionListQueryRow[];
+}
+
+export function listChatSessions(): ChatSessionListRow[] {
+    const includeNavigationFields = settings["multiSession"]?.enabled === true;
+    return queryChatSessionList().map(({ remote_key, last_activity_at, ...row }) => ({
+        ...row,
+        ...(includeNavigationFields ? {
+            remoteKey: remote_key,
+            source: sourceFromRemoteKey(remote_key),
+            lastActivityAt: last_activity_at,
+        } : {}),
     }));
+}
+
+export function getChatSessionRemoteKey(sessionId: string): string | null {
+    return queryChatSessionList().find(row => row.id === sessionId)?.remote_key ?? null;
 }
 
 export function getChatSessionBySeq(seq: number): ChatSessionRow | null {
@@ -133,14 +177,24 @@ export function getChatSessionById(id: string): ChatSessionRow | null {
 
 export function deleteChatSession(sessionId: string): boolean {
     if (sessionId === 'default') return false;
-    const result = deleteStmt.run(sessionId);
-    if (result.changes > 0) {
+    const deleted = db.transaction((): ChatSessionRow | null => {
+        const row = getByIdStmt.get(sessionId) as ChatSessionRow | undefined;
+        if (!row) return null;
+        const result = deleteStmt.run(sessionId);
+        if (result.changes === 0) return null;
+        deleteMessagesStmt.run(sessionId);
+        return row;
+    })();
+    if (deleted) {
         removeWidgetDir(sessionId);
         // If deleting the active session, switch back to default
         if (getActiveChatSession() === sessionId) {
             setActiveChatSession('default');
         }
-        broadcast('session_list', { sessions: listChatSessions() }, 'public');
+        broadcast('session_list', {
+            sessions: listChatSessions(),
+            deleted: { id: deleted.id, seq: deleted.seq },
+        }, 'public');
         return true;
     }
     return false;

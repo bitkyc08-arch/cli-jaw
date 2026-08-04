@@ -420,6 +420,8 @@ export const {
     setQueueHold,
     clearQueueHold,
     getQueueHoldId,
+    isRetryPending,
+    isQueueBusy,
     clearRetryTimer,
     resetFallbackState,
     getFallbackState,

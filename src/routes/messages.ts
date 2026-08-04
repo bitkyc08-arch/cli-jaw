@@ -58,7 +58,7 @@ export function registerMessageRoutes(app: Router): void {
         // Absent/invalid limit preserves the legacy full-history behavior.
         const limitRaw = Number(req.query["limit"]);
         const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 5000) : 0;
-        const sessionId = getActiveChatSession();
+        const sessionId = typeof req.query["session"] === 'string' ? req.query["session"] : getActiveChatSession();
         let rows: unknown[];
         if (limit > 0) {
             rows = (includeTrace ? getRecentMessagesAllWithTrace.all(sessionId, limit) : getRecentMessagesAll.all(sessionId, limit)).reverse();
@@ -72,8 +72,9 @@ export function registerMessageRoutes(app: Router): void {
         ok(res, safeRows);
     });
 
-    app.get('/api/messages/count', (_req, res) => {
-        const row = getMessageCount.get(getActiveChatSession()) as { count: number } | undefined;
+    app.get('/api/messages/count', (req, res) => {
+        const sessionId = typeof req.query["session"] === 'string' ? req.query["session"] : getActiveChatSession();
+        const row = getMessageCount.get(sessionId) as { count: number } | undefined;
         ok(res, { count: row?.count ?? 0 });
     });
 
@@ -86,7 +87,7 @@ export function registerMessageRoutes(app: Router): void {
         const recentRaw = Number(req.query['recent']);
         const recent = (recentRaw > 0 && recentRaw <= 5000) ? recentRaw : null;
         const contextRange = Math.min(Math.max(Number(req.query['context']) || 0, 0), 5);
-        const session_id = getActiveChatSession();
+        const session_id = typeof req.query["session"] === 'string' ? req.query["session"] : getActiveChatSession();
         const rows = searchMessages.all({ q, limit, session_id, days, recent }) as Record<string, unknown>[];
         const results = rows.map(row => {
             const entry: Record<string, unknown> = {

@@ -193,10 +193,12 @@ export async function runSlashCommand(ctx: TuiContext, parsed: ParsedSlashComman
 
     if (parsed.type === 'known' && parsed.name === 'resume' && !parsed.args.length) {
         try {
-            const r = await fetch(`${ctx.apiUrl}/api/chat-sessions`, { signal: AbortSignal.timeout(3000) });
-            if (r.ok) {
-                const data = (await r.json()) as { sessions?: Array<{ id: string; label?: string; createdAt?: string }> };
-                const sessions = data.sessions || [];
+            const response = await apiJson<{
+                data?: { sessions?: Array<{ id: string; label?: string; created_at?: string }> };
+                sessions?: Array<{ id: string; label?: string; created_at?: string }>;
+            }>(ctx, '/api/chat-sessions', {}, 3000);
+            {
+                const sessions = response.data?.sessions || response.sessions || [];
                 openChoiceSelector(ctx, () => {
                     const sel = ctx.store.overlay.selector;
                     sel.open = true;
@@ -207,7 +209,7 @@ export async function runSlashCommand(ctx: TuiContext, parsed: ParsedSlashComman
                     sel.selected = 0;
                     sel.allItems = sessions.map(s => ({
                         value: s.id,
-                        label: s.label || s.createdAt || '',
+                        label: s.label || s.created_at || '',
                         current: false,
                     }));
                     sel.filteredItems = sel.allItems;
