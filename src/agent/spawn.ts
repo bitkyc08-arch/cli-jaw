@@ -663,8 +663,7 @@ export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default'
 
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
-    const runtime = runtimeForScope(scopeKey);
-    return run?.meta.cli === 'jwc' && runtime.busy;
+    return run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true;
 }
 
 export async function steerAgent(
