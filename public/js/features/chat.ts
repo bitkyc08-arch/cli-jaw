@@ -228,7 +228,13 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
     if (!input || !btn) return;
 
     const text = input.value.trim();
-    if (!canSendFromCurrentView(source === 'button' ? '' : text)) {
+    // A stop-mode button click is not a message send, so it carries no command
+    // text and the read-only guard must judge it on its own. Every other path —
+    // including an ordinary button click on `/switch 1` — must pass the text,
+    // or the escape commands that let a user leave a read-only session would be
+    // rejected through the button while still working via Enter.
+    const isStopClick = source === 'button' && btn.classList.contains('stop-mode');
+    if (!canSendFromCurrentView(isStopClick ? '' : text)) {
         showReadOnlySwitchAffordance();
         return;
     }

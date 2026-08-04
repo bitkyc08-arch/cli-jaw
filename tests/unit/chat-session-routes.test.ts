@@ -11,7 +11,9 @@ import { settings } from '../../src/core/config.ts';
 import {
     activeMainProcesses,
     clearQueueHold,
+    isRetryPending,
     messageQueue,
+    retryStateForScope,
     setQueueHold,
 } from '../../src/agent/spawn.ts';
 import { createQueueController } from '../../src/agent/spawn/queue.ts';
@@ -194,12 +196,6 @@ test('retry and queue-drain windows are observable and wired to conservative 409
     assert.equal(controller.messageQueue.length, 0, 'item was spliced before orchestration import resolved');
     assert.equal(controller.isQueueBusy('drain-scope'), true, 'drainingScopes covers the splice-to-orchestration window');
 
-    const source = readFileSync(new URL('../../src/orchestrator/session-work.ts', import.meta.url), 'utf8');
-    assert.match(source, /isRetryPending\(scopeKey\)/, 'retry timer window');
-    assert.match(source, /isQueueBusy\(scopeKey\)/, 'queue splice-to-orchestration drain window');
-    const spawnSource = readFileSync(new URL('../../src/agent/spawn.ts', import.meta.url), 'utf8');
-    assert.match(spawnSource, /isRetryPending,\s+isQueueBusy,/s);
-
     releasePipeline({
         orchestrate: async () => {}, orchestrateContinue: async () => {}, orchestrateReset: async () => {},
         isContinueIntent: () => false, isResetIntent: () => false, drainPendingReplays: async () => {},
@@ -208,6 +204,42 @@ test('retry and queue-drain windows are observable and wired to conservative 409
         await new Promise<void>(resolve => setImmediate(resolve));
     }
     assert.equal(controller.isQueueBusy('drain-scope'), false);
+});
+
+// The isolated-controller test above proves the two windows EXIST. This one
+// proves the route actually consults them: it drives the PRODUCTION queue
+// controller into each state and issues a real DELETE. Without it, a
+// regression that disconnects hasChatSessionWork() from the production
+// controller would leave both suites green.
+test('DELETE consults the production retry window and refuses (409)', async () => {
+    settings.multiSession.enabled = true;
+    insertSession('route-retry', 938);
+    db.prepare("INSERT INTO messages (role, content, cli, model, working_dir, session_id) VALUES ('user','retry','web','m',NULL,'route-retry')").run();
+
+    const retryTimer = setTimeout(() => {}, 60_000);
+    retryTimer.unref();
+    retryStateForScope('default').setTimer(retryTimer);
+    try {
+        assert.equal(isRetryPending('default'), true, 'production controller must report the retry window');
+        await withServer(async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/chat-sessions/route-retry`, { method: 'DELETE' });
+            assert.equal(response.status, 409, 'a pending retry in the session scope must block deletion');
+        });
+        const stillThere = db.prepare('SELECT COUNT(*) as cnt FROM chat_sessions WHERE id = ?').get('route-retry') as { cnt: number };
+        assert.equal(stillThere.cnt, 1, 'refused deletion must leave the session intact');
+        const msgs = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?').get('route-retry') as { cnt: number };
+        assert.equal(msgs.cnt, 1, 'refused deletion must leave its messages intact');
+    } finally {
+        retryStateForScope('default').setTimer(null);
+        clearTimeout(retryTimer);
+    }
+
+    // With the window closed the same request must now succeed, proving the 409
+    // came from the live predicate rather than an unrelated permanent block.
+    await withServer(async baseUrl => {
+        const response = await fetch(`${baseUrl}/api/chat-sessions/route-retry`, { method: 'DELETE' });
+        assert.equal(response.status, 200);
+    });
 });
 
 test('remotely bound sessions always return 409 with a reason', async () => {

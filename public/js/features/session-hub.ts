@@ -82,7 +82,15 @@ export function configureSessionView(response: SessionListResponse, pathname = w
 }
 
 export function canSendFromCurrentView(commandText = ''): boolean {
-    if (!viewState.enabled) return true;
+    // Fail CLOSED on numeric routes before initialization. Write listeners are
+    // installed at module load (main.ts:120) but initializeSessionView() only
+    // runs later in bootstrap, so an early click on /:seq would otherwise pass
+    // the guard and write to the GLOBAL active session — the exact
+    // cross-session write this guard exists to prevent.
+    if (!viewState.enabled) {
+        if (parsedSeq(window.location.pathname) === null) return true;
+        return commandText ? ALLOWED_READONLY_COMMAND.test(commandText) : false;
+    }
     if (commandText && ALLOWED_READONLY_COMMAND.test(commandText)) return true;
     return viewState.mode === 'session'
         && viewState.viewed?.id === viewState.activeId
@@ -146,7 +154,13 @@ function renderSessionCard(session: SessionListItem, activeId: string): string {
                 <div><dt>${escapeHtml(t('sessionHub.lastActivity'))}</dt><dd>${escapeHtml(formatLastActivity(session.lastActivityAt))}</dd></div>
             </dl>
         </a>
-        ${session.id === 'default' ? '' : `<button type="button" class="session-delete" data-delete-session="${escapeHtml(session.id)}" ${canDelete ? '' : 'disabled'} title="${escapeHtml(deleteReason)}">${escapeHtml(t('sessionHub.delete'))}</button>`}
+        ${session.id === 'default' ? '' : (canDelete
+            // A disabled button is not focusable and its title is unreliable on
+            // touch and assistive tech, so the remote-bound reason is rendered as
+            // visible text and wired with aria-describedby instead.
+            ? `<button type="button" class="session-delete" data-delete-session="${escapeHtml(session.id)}">${escapeHtml(t('sessionHub.delete'))}</button>`
+            : `<button type="button" class="session-delete" data-delete-session="${escapeHtml(session.id)}" aria-disabled="true" aria-describedby="delete-reason-${escapeHtml(session.id)}">${escapeHtml(t('sessionHub.delete'))}</button>
+               <p class="session-delete-reason" id="delete-reason-${escapeHtml(session.id)}">${escapeHtml(deleteReason)}</p>`)}
     </article>`;
 }
 
@@ -203,7 +217,9 @@ function renderHub(response: SessionListResponse): void {
 
 async function handleHubClick(event: Event): Promise<void> {
     const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-delete-session]');
-    if (!button || button.disabled) return;
+    // aria-disabled keeps the control focusable so its reason can be announced,
+    // so activation has to be suppressed here rather than by the DOM.
+    if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return;
     event.preventDefault();
     const sessionId = button.dataset['deleteSession'];
     if (!sessionId || !window.confirm(t('sessionHub.deleteConfirm'))) return;

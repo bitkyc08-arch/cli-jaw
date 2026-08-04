@@ -102,10 +102,23 @@ test('F2: main.ts imports prewarmMermaid and calls it in bootstrap', () => {
     );
     const bootstrapIdx = mainSrc.indexOf('async function bootstrap()');
     assert.ok(bootstrapIdx >= 0, 'bootstrap function must exist');
-    // Scan to the end of the file rather than a fixed byte window: the window
-    // measures how much code precedes the call, not whether bootstrap makes it.
-    // Phase 071 added the session-view branch and pushed the call past 2500.
-    const bootstrapBlock = mainSrc.slice(bootstrapIdx);
+    // Extract the bootstrap body by brace matching rather than a byte window:
+    // the old fixed 2500-byte slice measured how much code precedes the call
+    // (phase 071 pushed it to 2618), while slicing to EOF would let an
+    // unrelated later call satisfy this guard.
+    const bodyStart = mainSrc.indexOf('{', bootstrapIdx);
+    assert.ok(bodyStart > 0, 'bootstrap body must exist');
+    let depth = 0;
+    let bodyEnd = bodyStart;
+    for (let i = bodyStart; i < mainSrc.length; i += 1) {
+        if (mainSrc[i] === '{') depth += 1;
+        else if (mainSrc[i] === '}') {
+            depth -= 1;
+            if (depth === 0) { bodyEnd = i; break; }
+        }
+    }
+    assert.ok(bodyEnd > bodyStart, 'bootstrap body must be balanced');
+    const bootstrapBlock = mainSrc.slice(bodyStart, bodyEnd);
     assert.ok(bootstrapBlock.includes('prewarmMermaid();'),
         'bootstrap must call prewarmMermaid()');
 });

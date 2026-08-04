@@ -423,6 +423,9 @@ export const {
     isRetryPending,
     isQueueBusy,
     clearRetryTimer,
+    // Exposed so DELETE's 409 paths can be driven end-to-end against the
+    // production controller instead of an isolated instance.
+    retryStateForScope,
     resetFallbackState,
     getFallbackState,
     getQueuedMessageSnapshotForScope,

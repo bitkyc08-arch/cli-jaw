@@ -27,7 +27,10 @@ test.afterEach(() => {
 test('guard owns all seven write entry points and runs before stop, preview relay, and voice mutation', () => {
     const sendStart = chatSource.indexOf('export async function sendMessage');
     const sendGuard = chatSource.indexOf('canSendFromCurrentView', sendStart);
-    const stopBranch = chatSource.indexOf("btn.classList.contains('stop-mode')", sendStart);
+    // The guard itself now reads stop-mode to decide whether a button click is a
+    // stop attempt (which carries no command text), so anchor on the branch that
+    // actually fires /api/stop rather than the first stop-mode mention.
+    const stopBranch = chatSource.indexOf("apiFire('/api/stop', 'POST')", sendStart);
     const relay = chatSource.indexOf('postChatMessage(text)', sendStart);
     const voiceStart = chatSource.indexOf('export async function sendVoiceToServer');
     const voiceGuard = chatSource.indexOf('canSendFromCurrentView', voiceStart);
@@ -230,4 +233,46 @@ test('render dispatchers call the synchronous shared predicate before mutation o
     const submittingAssignment = elicitationSource.indexOf("block.dataset['elicitationState'] = SUBMITTING_STATE");
     assert.ok(elicitationGuard > 0 && elicitationGuard < submittingAssignment);
     assert.ok(elicitationSource.indexOf('renderSubmittedSummary', submittingAssignment) > submittingAssignment);
+});
+
+// Write listeners are installed at module load (main.ts:120) while
+// initializeSessionView() only runs later in bootstrap. Before phase 071's
+// fail-closed fix, a click on /:seq during that window passed the guard and
+// wrote to the GLOBAL active session — the exact cross-session write this
+// guard exists to prevent.
+test('an uninitialized numeric route fails closed, and non-numeric routes stay open', async () => {
+    const { canSendFromCurrentView, configureSessionView } = await import('../../public/js/features/session-hub.ts');
+    setupWebUiDom();
+    // Earlier tests in this file leave viewState enabled; reset to the
+    // pre-initialization shape this test is about by feeding an OFF-mode list.
+    configureSessionView({ active: 'default', sessions: [{ id: 'default', seq: 0, label: null, message_count: 0 }] } as never, '/');
+    // setupWebUiDom pins the URL, so drive the path directly — the guard reads
+    // window.location.pathname to decide whether a numeric route is in play.
+    const setPath = (pathname: string) => {
+        window.history.replaceState({}, '', pathname);
+    };
+
+    setPath('/2');
+    assert.equal(canSendFromCurrentView('hello'), false,
+        'an ordinary send on /:seq must be refused until the session view is known');
+    assert.equal(canSendFromCurrentView(''), false,
+        'a button send on /:seq must be refused too');
+    assert.equal(canSendFromCurrentView('/switch 1'), true,
+        'escape commands must still work, or the user is trapped on a page that refuses everything');
+
+    setPath('/');
+    assert.equal(canSendFromCurrentView('hello'), true,
+        'the root route has no per-session ambiguity and must not regress OFF-mode behavior');
+});
+
+// A stop-mode click carries no command text, but an ordinary button click on
+// an escape command must still pass it through — otherwise /switch works via
+// Enter and silently fails via the Send button.
+test('the send button preserves the allow-list and only drops text for stop clicks', () => {
+    const sendStart = chatSource.indexOf('export async function sendMessage');
+    const guardCall = chatSource.slice(sendStart, chatSource.indexOf('apiFire', sendStart));
+    assert.match(guardCall, /const isStopClick = source === 'button' && btn\.classList\.contains\('stop-mode'\)/,
+        'stop detection must be explicit rather than assuming every button click is a stop');
+    assert.match(guardCall, /canSendFromCurrentView\(isStopClick \? '' : text\)/,
+        'ordinary button sends must pass the typed text so allow-listed commands survive');
 });
