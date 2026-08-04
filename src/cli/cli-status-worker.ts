@@ -134,7 +134,9 @@ export function runCommand(binary: string, args: string[], timeoutMs: number): P
             if (settled) return;
             settled = true;
             clearTimeout(timer);
-            resolve({ code, output, timedOut, outputLimited });
+            const result = { code, output, timedOut, outputLimited };
+            if (cleanupDone) void cleanupDone.then(() => resolve(result));
+            else resolve(result);
         };
         // Both abort paths face the same process: one that may ignore SIGTERM
         // and may have left a descendant holding the pipe. Terminating only on
@@ -147,7 +149,15 @@ export function runCommand(binary: string, args: string[], timeoutMs: number): P
         // can reach any more. On POSIX the child is detached and therefore
         // leads its own process group, so signalling the negated PID covers
         // every descendant regardless of what the direct child did.
+        //
+        // The escalation must not be unref'd. This runs inside a short-lived
+        // worker that exits as soon as the last probe settles, and an unref'd
+        // timer simply never fires there: the direct child's pipe closes, the
+        // event loop empties, and the process leaves before the grace period is
+        // up. Holding a real ref and resolving only after cleanup keeps the
+        // worker alive exactly long enough to finish killing what it started.
         let aborted = false;
+        let cleanupDone: Promise<void> | null = null;
         const signalGroup = (signal: NodeJS.Signals): void => {
             if (process.platform === 'win32' || !child.pid) return;
             try { process.kill(-child.pid, signal); } catch { /* group already gone */ }
@@ -157,11 +167,13 @@ export function runCommand(binary: string, args: string[], timeoutMs: number): P
             aborted = true;
             killProcessTree(child.pid, 'SIGTERM');
             signalGroup('SIGTERM');
-            const escalation = setTimeout(() => {
-                killProcessTreeIfAlive(child, child.pid);
-                signalGroup('SIGKILL');
-            }, WORKER_KILL_GRACE_MS);
-            escalation.unref();
+            cleanupDone = new Promise<void>((done) => {
+                setTimeout(() => {
+                    killProcessTreeIfAlive(child, child.pid);
+                    signalGroup('SIGKILL');
+                    done();
+                }, WORKER_KILL_GRACE_MS);
+            });
         };
         const onData = (chunk: Buffer): void => {
             if (settled || outputLimited) return;

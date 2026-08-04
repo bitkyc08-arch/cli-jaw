@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
 import { createCliStatusCacheForTest, type CliStatusSnapshot } from '../../src/cli/cli-status.ts';
-import { runCliStatusWorker, runCommand } from '../../src/cli/cli-status-worker.ts';
+import { runCliStatusWorker } from '../../src/cli/cli-status-worker.ts';
 import { CLI_KEYS } from '../../src/cli/registry.ts';
 
 function completedSnapshot(source = 'fixture'): CliStatusSnapshot {
@@ -154,33 +155,62 @@ test('outer timeout kills a non-terminating worker tree and rejects', async () =
 // gives up, while a grandchild that ignores the signal is already an orphan and
 // no longer reachable by walking parent PIDs. Aborting on the output cap rather
 // than the clock is the path that used to skip escalation entirely.
+//
+// Running runCommand inside this test process would not prove much: the test
+// runner's own timers keep the event loop alive, so a cleanup timer would fire
+// even if production could never reach it. The real worker exits the moment its
+// last probe settles. So the call happens in its own short-lived process that
+// is allowed to end naturally, and the orphan check runs here afterwards.
 test('an over-cap command takes its SIGTERM-ignoring descendant down with it', {
     skip: process.platform === 'win32',
 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), 'jaw-cli-status-cap-'));
     const fixture = join(dir, 'noisy.mjs');
+    const driver = join(dir, 'driver.mts');
     const pidFile = join(dir, 'pid');
-    await writeFile(fixture, [
-        "import { writeFileSync } from 'node:fs';",
-        "import { spawn } from 'node:child_process';",
-        // The descendant only has to outlive its parent; it ignores SIGTERM and
-        // never exits on its own.
-        "const descendant = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
-        `writeFileSync(${JSON.stringify(pidFile)}, JSON.stringify([process.pid, descendant.pid]));`,
-        // The direct child exits cleanly on SIGTERM, which is exactly what makes
-        // a liveness-guarded escalation return without touching the orphan.
-        "process.on('SIGTERM', () => process.exit(0));",
-        "setInterval(() => process.stdout.write('y'.repeat(16384)), 5);",
-    ].join('\n'));
+    const resultFile = join(dir, 'result');
+    const worker = resolve(import.meta.dirname, '../../src/cli/cli-status-worker.ts');
 
-    const result = await runCommand(process.execPath, [fixture], 10_000);
-    assert.equal(result.outputLimited, true, 'the fixture must trip the output cap, not the timeout');
-    assert.equal(result.timedOut, false);
+    try {
+        await writeFile(fixture, [
+            "import { writeFileSync } from 'node:fs';",
+            "import { spawn } from 'node:child_process';",
+            // The descendant only has to outlive its parent; it ignores SIGTERM
+            // and never exits on its own.
+            "const descendant = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
+            `writeFileSync(${JSON.stringify(pidFile)}, JSON.stringify([process.pid, descendant.pid]));`,
+            // The direct child exits cleanly on SIGTERM, which is exactly what
+            // makes a liveness-guarded escalation return without touching the
+            // orphan it left behind.
+            "process.on('SIGTERM', () => process.exit(0));",
+            "setInterval(() => process.stdout.write('y'.repeat(16384)), 5);",
+        ].join('\n'));
+        await writeFile(driver, [
+            `import { writeFileSync } from 'node:fs';`,
+            `import { runCommand } from ${JSON.stringify(worker)};`,
+            `const r = await runCommand(process.execPath, [${JSON.stringify(fixture)}], 10_000);`,
+            `writeFileSync(${JSON.stringify(resultFile)}, JSON.stringify({ timedOut: r.timedOut, outputLimited: r.outputLimited }));`,
+        ].join('\n'));
 
-    const pids = JSON.parse(await readFile(pidFile, 'utf8')) as number[];
-    await waitUntil(() => pids.every((pid) => {
-        try { process.kill(pid, 0); return false; }
-        catch { return true; }
-    }), 5_000);
-    await rm(dir, { recursive: true, force: true });
+        const driverExit = await new Promise<number | null>((done) => {
+            const proc = spawn(process.execPath, ['--import', 'tsx', driver], { stdio: 'ignore' });
+            proc.once('exit', (code) => done(code));
+        });
+        assert.equal(driverExit, 0, 'the driver process must exit on its own');
+
+        const result = JSON.parse(await readFile(resultFile, 'utf8')) as {
+            timedOut: boolean; outputLimited: boolean;
+        };
+        assert.equal(result.outputLimited, true, 'the fixture must trip the output cap, not the timeout');
+        assert.equal(result.timedOut, false);
+
+        const pids = JSON.parse(await readFile(pidFile, 'utf8')) as number[];
+        const alive = pids.filter((pid) => {
+            try { process.kill(pid, 0); return true; }
+            catch { return false; }
+        });
+        assert.deepEqual(alive, [], 'the driver must not exit before its process group is gone');
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
