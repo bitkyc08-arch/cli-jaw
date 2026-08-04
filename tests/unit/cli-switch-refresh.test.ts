@@ -83,8 +83,23 @@ test('CSR-008: harvest reads from prev workingDir (sourceWorkDir), marker writes
     // already covered in CSR-002 for targetWorkDir
 });
 
-test('CSR-009: refresh failure rolls back settings + propagates throw', () => {
-    assert.match(runtimeSrc, /catch\s*\(\s*e[\s\S]*?\)\s*\{[\s\S]*?replaceSettings\(prevSnapshot\);\s*saveSettings\(prevSnapshot\);[\s\S]*?throw\s+e/);
+test('CSR-009: refresh failure rolls back the persisted settings pair and propagates throw', async (t) => {
+    const config = await import('../../src/core/config.ts');
+    const runtime = await import('../../src/core/runtime-settings.ts');
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+
+    const baseline = structuredClone(config.settings);
+    baseline.cli = 'claude';
+    config.persistAndCommit({ value: baseline, shape: 'absent' });
+    const expectedRaw = fs.readFileSync(config.SETTINGS_PATH, 'utf8');
+
+    await assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
+        cliSwitchRefresh: async () => { throw new Error('CSR-009 refresh failure'); },
+    }), /CSR-009 refresh failure/);
+    assert.deepEqual(config.settings, baseline);
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
+    assert.equal(fs.readFileSync(config.SETTINGS_PATH, 'utf8'), expectedRaw);
 });
 
 test('CSR-010: setPendingBootstrapPromptStrict exists and does NOT swallow errors', () => {

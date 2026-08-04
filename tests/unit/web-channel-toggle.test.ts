@@ -30,11 +30,27 @@ test('applySettingsPatch calls applyRuntimeSettingsPatch', () => {
 
 // ─── Failed save does not leave optimistic state ─────
 
-test('applyRuntimeSettingsPatch rolls back on failure', () => {
-    assert.match(runtimeSettingsSrc, /replaceSettings\(prevSnapshot\)/,
-        'should rollback to prevSnapshot on restart failure');
-    assert.match(runtimeSettingsSrc, /saveSettings\(prevSnapshot\)/,
-        'should persist rollback to disk');
+// This used to grep for replaceSettings(prevSnapshot) and saveSettings(prevSnapshot),
+// neither of which exists now that persistence writes a candidate before it
+// commits. The behaviour being protected has not changed, so assert that
+// instead: a post-write failure must leave neither memory nor disk carrying the
+// attempted patch.
+test('applyRuntimeSettingsPatch rolls back on failure', async (t) => {
+    const config = await import('../../src/core/config.ts');
+    const runtime = await import('../../src/core/runtime-settings.ts');
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+
+    const baseline = structuredClone(config.settings);
+    baseline.cli = 'claude';
+    config.persistAndCommit({ value: baseline, shape: 'absent' });
+    const expectedRaw = readFileSync(config.SETTINGS_PATH, 'utf8');
+
+    await assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
+        cliSwitchRefresh: async () => { throw new Error('rollback probe'); },
+    }), /rollback probe/);
+    assert.equal(config.settings["cli"], 'claude', 'the failed patch must not survive in memory');
+    assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), expectedRaw, 'the file must be byte-identical');
 });
 
 test('applyRuntimeSettingsPatch propagates error to caller', () => {

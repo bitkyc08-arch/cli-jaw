@@ -84,9 +84,25 @@ test('applyRuntimeSettingsPatch is async and awaits restart', () => {
         'must await restartMessagingRuntime');
 });
 
-test('applyRuntimeSettingsPatch rolls back on restart failure', () => {
-    assert.match(runtimeSettingsSrc, /replaceSettings\(prevSnapshot\)/,
-        'must rollback to prevSnapshot on failure');
-    assert.match(runtimeSettingsSrc, /saveSettings\(prevSnapshot\)/,
-        'must persist rollback');
+// The old form grepped for replaceSettings/saveSettings with prevSnapshot, and
+// both call sites disappeared when persistence moved to write-then-commit. What
+// matters is that a messaging restart failure undoes the patch everywhere, so
+// drive a real failure and check the outcome.
+test('applyRuntimeSettingsPatch rolls back on restart failure', async (t) => {
+    const config = await import('../../src/core/config.ts');
+    const runtime = await import('../../src/core/runtime-settings.ts');
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+
+    const baseline = structuredClone(config.settings);
+    baseline.cli = 'claude';
+    config.persistAndCommit({ value: baseline, shape: 'absent' });
+    const expectedRaw = readFileSync(config.SETTINGS_PATH, 'utf8');
+
+    await assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
+        cliSwitchRefresh: async () => { throw new Error('restart probe'); },
+    }), /restart probe/);
+    assert.equal(config.settings["cli"], 'claude');
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
+    assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), expectedRaw);
 });
