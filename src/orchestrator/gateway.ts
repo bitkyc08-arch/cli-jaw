@@ -132,7 +132,9 @@ export function submitMessage(
         broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
         if (!meta.skipOrchestrate) {
             runDetached(
-                withSessionScope(sessionScope, () => orchestrateContinue(stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true }))),
+                multiSessionEnabled
+                    ? withSessionScope(sessionScope, () => orchestrateContinue(stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true })))
+                    : orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
                 'continue',
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
@@ -146,7 +148,9 @@ export function submitMessage(
         broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
         if (!meta.skipOrchestrate) {
             runDetached(
-                withSessionScope(sessionScope, () => orchestrateReset(stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true }))),
+                multiSessionEnabled
+                    ? withSessionScope(sessionScope, () => orchestrateReset(stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true })))
+                    : orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
                 'reset',
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
@@ -171,7 +175,9 @@ export function submitMessage(
     broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
     if (!meta.skipOrchestrate) {
         runDetached(
-            withSessionScope(sessionScope, () => orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }))),
+            multiSessionEnabled
+                ? withSessionScope(sessionScope, () => orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget })))
+                : orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget })),
             'orchestrate',
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );

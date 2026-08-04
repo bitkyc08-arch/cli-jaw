@@ -22,6 +22,17 @@ type QueueItem = {
     ts: number;
 };
 
+type QueueMessageMeta = {
+    target?: RemoteTarget;
+    chatId?: string | number;
+    requestId?: string;
+    scope?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
+    overrides?: { model?: string; systemPrompt?: string };
+    replyViaTarget?: boolean;
+};
+
 export interface QueueDeps {
     migrateQueuedMessagesV1ToV2(): void;
     isSpawnBusy(): boolean;
@@ -48,12 +59,7 @@ export interface QueueDeps {
 export const FALLBACK_MAX_RETRIES = 3;
 
 export interface QueueController {
-    enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: {
-        target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string;
-        chatSessionId?: string; remoteKey?: string;
-        overrides?: { model?: string; systemPrompt?: string };
-        replyViaTarget?: boolean;
-    }): string;
+    enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: QueueMessageMeta): string;
     removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number };
     processQueue(): Promise<void>;
     setQueueHold(id: string, timeoutMs?: number): void;
@@ -237,7 +243,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         return { removed: removed!, pending: messageQueue.length };
     }
 
-    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string; chatSessionId?: string; remoteKey?: string; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean }): string {
+    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: QueueMessageMeta): string {
         const item: QueueItem = stripUndefined({
             ...(multiSessionEnabled ? { schemaVersion: 2 as const } : {}),
             id: crypto.randomUUID(),
@@ -263,7 +269,9 @@ export function createQueueController(deps: QueueDeps): QueueController {
         return item.id;
     }
 
-    // Queue policy: "fair" — batch head runs, tail goes after remaining
+    // Queue policy: "fair" — batch head runs, tail goes after remaining.
+    // Pending worker replays are intentionally not gated here: orchestrate()
+    // drains them at entry, avoiding the documented processQueue deadlock.
     async function processQueue() {
         if (queueProcessing) return;
 
@@ -290,10 +298,6 @@ export function createQueueController(deps: QueueDeps): QueueController {
             || messageQueue.length === 0
             || queueHoldId
         ) return;
-        // NOTE: hasPendingWorkerReplays() is intentionally NOT gated here —
-        // orchestrate() drains pending replays at entry (pipeline.ts drainPendingReplays),
-        // so the queued user message still arrives AFTER the worker result. Keeping this
-        // gate caused a deadlock (see devlog/_plan/260417_message_duplication/02_*).
         queueProcessing = true;
 
         const first = messageQueue[0]!;
@@ -337,7 +341,11 @@ export function createQueueController(deps: QueueDeps): QueueController {
             deps.insertMessage.run('user', combined, source, '', deps.getWorkingDir(), effectiveSessionId);
             deps.deleteQueuedMessage.run(item.id);
             inserted = true;
-            deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true, ...(eventScope || {}) });
+            if (multiSessionEnabled) {
+                deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true, ...eventScope });
+            } else {
+                deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true });
+            }
             deps.broadcast('queue_update', queueUpdatePayload(item.scope));
 
             await withSessionScope(sessionScope, async () => {
