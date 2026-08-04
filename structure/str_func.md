@@ -235,7 +235,7 @@ cli-jaw/
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (185L)
 │   │   ├── commands.ts       ← slash command → 공유 parseCommand/executeCommand 파이프라인 (119L)
 │   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (97L)
-│   │   ├── ingress.ts        ← 세션별 ingress lane + admitSlackRun 동기 실행 예약(sessionLanes) + 전역 다운로드 세마포어 + shutdown abort/drain (143L) ✨
+│   │   ├── ingress.ts        ← 세션별 ingress lane + admitSlackRun 동기 실행 예약(sessionLanes) + 전역 다운로드 세마포어 + shutdown abort/drain (154L) ✨
 │   │   ├── inbound-file.ts   ← 인바운드 첨부 단일 IO owner (files.info → 인증 스트리밍 다운로드 → saveUpload, 파일/메시지 바이트 예산, 고정 error code) (280L) ✨
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (69L)
@@ -375,7 +375,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 553 files source/assets, ~96731L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 553 files source/assets, ~96935L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1241L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시

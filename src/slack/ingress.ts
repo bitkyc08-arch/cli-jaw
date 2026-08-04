@@ -128,12 +128,23 @@ export async function resetSlackIngress(): Promise<void> {
     const pending = [...tracked];
     if (pending.length) {
         const drain = Promise.allSettled(pending).then(() => undefined);
-        await Promise.race([
-            drain,
-            new Promise<void>(resolve => setTimeout(resolve, 5_000)),
-        ]);
+        // The timer must be cleared on the fast path: an un-cleared 5s timer
+        // keeps the event loop alive and delays process exit on every shutdown.
+        let drainTimer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<void>(resolve => {
+            drainTimer = setTimeout(resolve, 5_000);
+            drainTimer.unref?.();
+        });
+        await Promise.race([drain, timeout]);
+        if (drainTimer) clearTimeout(drainTimer);
         for (const promise of pending) void promise.catch(() => undefined);
     }
+    // Aborting is not the same as forgetting. Anything still registered here
+    // carries an already-aborted signal, so leaving it in place would make the
+    // NEXT lifecycle inherit dead controllers (and leak them if a task never
+    // settled within the drain window).
+    controllers.clear();
+    tracked.clear();
     ingressTails.clear();
     resetting = false;
 }
