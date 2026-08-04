@@ -112,9 +112,15 @@ export function isWsl(
  * lifecycle script `process.cwd()` is the installed package root, not where
  * the user ran npm. Use `resolveInvocationCwd()` to obtain the right value.
  *
- * Known limit: if the user cd's to a Windows path before invoking npm, the cwd
- * is an ordinary drive path and this returns false. It under-reports; it does
- * not misreport.
+ * This is a HEURISTIC, and weaker than resolvePlatformKind's taxonomy. Two
+ * known holes, both inherent to a cwd-based signal:
+ *   - false negative: the user cd's to a Windows path (e.g. /mnt/c/src) inside
+ *     a WSL shell before invoking npm, so the cwd is an ordinary drive path;
+ *   - false positive: a native PowerShell session whose cwd is a \\wsl$ share.
+ *
+ * Do not describe this function as strict. The strictness guarantee belongs to
+ * resolvePlatformKind, which can never confuse windows-native with wsl; this
+ * only decides whether to print an advisory warning.
  */
 export function isWindowsNodeLaunchedFromWsl(
     platform: NodeJS.Platform,

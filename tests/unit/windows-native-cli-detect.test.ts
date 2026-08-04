@@ -9,10 +9,18 @@ import {
     windowsPathExt,
     buildCliDetectionEnv,
     listCliBinaryCandidates,
+    selectSpawnableCliPath,
 } from '../../src/core/cli-detect.js';
 
 function fixtureDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-win-detect-'));
+}
+
+/** A minimal file carrying the PE/MZ header a real Windows executable has. */
+function writeExe(dir: string, name: string): string {
+    const target = path.join(dir, name);
+    fs.writeFileSync(target, Buffer.from([0x4d, 0x5a, 0x90, 0x00]));
+    return target;
 }
 
 test('PATHEXT is read from the environment with the documented default', () => {
@@ -77,9 +85,43 @@ test('mixed-case extensions and paths with spaces are handled', () => {
     fs.writeFileSync(spacedTool, '@ECHO off\r\n');
     assert.equal(isSpawnableCliFile(spacedTool, 'win32').ok, true);
 
-    const com = path.join(dir, 'legacy.COM');
-    fs.writeFileSync(com, '\x00');
+    const com = writeExe(dir, 'legacy.COM');
     assert.equal(isSpawnableCliFile(com, 'win32').ok, true);
+});
+
+// .exe/.com are spawned directly, so an invalid one fails at launch with no
+// fallback. Detection must reject it and let a valid .cmd win instead.
+test('a text file named .exe is not spawnable', () => {
+    const dir = fixtureDir();
+    const fake = path.join(dir, 'codex.exe');
+    fs.writeFileSync(fake, 'this is not a PE binary\n');
+
+    const result = isSpawnableCliFile(fake, 'win32');
+    assert.equal(result.ok, false);
+    assert.match(result.reason ?? '', /MZ header/);
+
+    // ...and a real PE passes.
+    assert.equal(isSpawnableCliFile(writeExe(dir, 'good.exe'), 'win32').ok, true);
+});
+
+test('a broken .exe does not shadow a working .cmd shim', () => {
+    const dir = fixtureDir();
+    const broken = path.join(dir, 'codex.exe');
+    fs.writeFileSync(broken, 'Error: binary not installed\n');
+    const working = path.join(dir, 'codex.cmd');
+    fs.writeFileSync(working, '@ECHO off\r\n');
+
+    // Ranking still puts the .exe first; spawnability must then reject it and
+    // fall through to the shim rather than returning an unlaunchable path.
+    const ordered = prioritizeCliCandidates('codex', [broken, working], os.homedir(), 'win32');
+    assert.deepEqual(ordered, [broken, working]);
+
+    const selected = selectSpawnableCliPath(ordered, 'win32');
+    assert.equal(selected.available, true);
+    assert.equal(selected.path, working);
+    assert.deepEqual(selected.rejected, [
+        { path: broken, reason: 'not a windows executable (missing MZ header)' },
+    ]);
 });
 
 test('windows candidates rank .exe over .cmd over .ps1 over the extensionless shim', () => {

@@ -221,8 +221,25 @@ export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform =
             const code = (error as NodeJS.ErrnoException).code;
             return { ok: false, reason: code || 'not found' };
         }
-        // Only what spawn.ts can actually launch. The extensionless npm shim
-        // is a POSIX sh script: real on disk, unrunnable by cmd.exe.
+        const upper = filePath.toUpperCase();
+        // .exe/.com are spawned DIRECTLY (spawn.ts only takes the ComSpec
+        // route for non-.exe), so a corrupt or text file named .exe fails at
+        // launch with no fallback. Validate the PE/MZ header rather than
+        // trusting the extension, otherwise a broken .exe on PATH shadows a
+        // perfectly good .cmd shim that ranks behind it.
+        if (upper.endsWith('.EXE') || upper.endsWith('.COM')) {
+            let head: Buffer;
+            try {
+                head = readHead(filePath, 2);
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException).code;
+                return { ok: false, reason: code || 'unreadable' };
+            }
+            if (head.length >= 2 && head[0] === 0x4d && head[1] === 0x5a) return { ok: true };
+            return { ok: false, reason: 'not a windows executable (missing MZ header)' };
+        }
+        // .cmd/.bat run through ComSpec, which parses them as text: there is
+        // no header to validate.
         if (hasExtension(filePath, WINDOWS_SPAWNABLE_EXTENSIONS)) return { ok: true };
         if (filePath.toUpperCase().endsWith('.PS1')) {
             return { ok: false, reason: 'powershell shim is not spawnable via ComSpec' };

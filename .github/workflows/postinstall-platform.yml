@@ -224,14 +224,18 @@ jobs:
           cd "$(wslpath '${{ github.workspace }}')"
           npx tsc --noEmit
 
-      # Asserts the LINUX side of the boundary on a genuine WSL process: it
-      # must classify as wsl and must never classify as windows-native.
+      # Asserts the LINUX side of the boundary on a genuine WSL process. The
+      # expectation is pinned rather than inferred: without JAW_EXPECT_PLATFORM_KIND
+      # a scrubbed WSL_DISTRO_NAME would let the test accept plain `linux`, so a
+      # resolver regression could keep this job green.
       - name: Assert real-runtime classification inside WSL
         shell: wsl-bash {0}
+        env:
+          JAW_EXPECT_PLATFORM_KIND: wsl
         run: |
           set -euo pipefail
           cd "$(wslpath '${{ github.workspace }}')"
-          npx tsx --test tests/unit/platform-kind-runtime.test.ts
+          JAW_EXPECT_PLATFORM_KIND=wsl npx tsx --test tests/unit/platform-kind-runtime.test.ts
 
       - name: Run installer risk gate in WSL
         shell: wsl-bash {0}
@@ -290,6 +294,8 @@ jobs:
       # This one calls the resolver with NO arguments, so it is the only step
       # that proves correctness when process.platform genuinely is win32.
       - name: Assert real-runtime classification on native Windows
+        env:
+          JAW_EXPECT_PLATFORM_KIND: windows-native
         run: npx tsx --test tests/unit/platform-kind-runtime.test.ts
 
       # NOTE: tests/unit/cli-detect.test.ts is intentionally NOT run here. Its

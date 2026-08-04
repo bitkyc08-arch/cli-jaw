@@ -10,9 +10,18 @@ import { resolvePlatformKind, isWindowsNative, isWsl } from '../../src/core/plat
  * the resolver with NO arguments, so running it on a Windows runner is what
  * actually upgrades "correct when we say win32" to "correct when the process
  * genuinely is win32".
+ *
+ * Set JAW_EXPECT_PLATFORM_KIND to make the expectation unconditional. The WSL
+ * CI job sets it to `wsl`, so the resolver cannot regress to plain `linux`
+ * while the job stays green — without it, a scrubbed WSL_DISTRO_NAME would let
+ * the permissive branch below accept either answer.
  */
 test('default-argument resolution matches the real host', () => {
     const kind = resolvePlatformKind();
+    const expected = process.env['JAW_EXPECT_PLATFORM_KIND'];
+    if (expected) {
+        assert.equal(kind, expected, `runner expected platform kind ${expected}`);
+    }
 
     if (process.platform === 'win32') {
         assert.equal(kind, 'windows-native');
