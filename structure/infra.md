@@ -219,7 +219,7 @@ bin/jaw (개발 클론 / 직접 호출 런처)
 
 ## 런타임 수명주기 계약 (openclaw/hermes 파리티)
 
-유닛: `devlog/_plan/260804_runtime_parity_openclaw_hermes/`.
+유닛: `devlog/_fin/260804_runtime_parity_openclaw_hermes/`.
 
 ### 턴 종료 — `close`이지 `exit`이 아니다
 
