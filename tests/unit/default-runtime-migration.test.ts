@@ -44,6 +44,7 @@ test('DRM-001: ENOENT alone uses the clean-install picker and persists schema v2
     assert.equal(loaded.cli, 'codex-app');
     assert.equal(loaded.settingsSchemaVersion, 2);
     assert.equal(loaded.runtimeDefaultMigration, null);
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
     assert.equal(JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8')).cli, 'codex-app');
 });
 
@@ -80,7 +81,36 @@ test('DRM-004: valid v2 pending reload is not rewritten', () => {
     const before = readFileSync(config.SETTINGS_PATH, 'utf8');
     const loaded = config.loadSettings();
     assert.equal(loaded.runtimeDefaultMigration.state, 'pending');
+    assert.equal(loaded.runtime.codexApp.multiplex, false);
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
     assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), before);
+});
+
+test('DRM-004b: explicit multiplex false is retained as present shape', () => {
+    writeSettings({
+        settingsSchemaVersion: 2,
+        runtimeDefaultMigration: null,
+        cli: 'codex-app',
+        runtime: { codexApp: { multiplex: false } },
+    });
+    const loaded = config.loadSettings();
+    assert.equal(loaded.runtime.codexApp.multiplex, false);
+    assert.equal(config.getSettingsPersistenceShape(), 'present');
+});
+
+test('DRM-004c: replaceSettings commits value and shape together without persistence', (t) => {
+    writeSettings({ settingsSchemaVersion: 2, runtimeDefaultMigration: null, cli: 'codex-app' });
+    config.loadSettings();
+    const previous = config.snapshotSettingsState();
+    const beforeRaw = readFileSync(config.SETTINGS_PATH, 'utf8');
+    t.after(() => config.commitCandidate(previous));
+
+    const replacement = structuredClone(config.settings);
+    replacement.runtime.codexApp.multiplex = false;
+    config.replaceSettings(replacement, 'present');
+    assert.equal(config.settings, replacement);
+    assert.equal(config.getSettingsPersistenceShape(), 'present');
+    assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), beforeRaw);
 });
 
 test('DRM-005: corrupt JSON backs up the original, never calls picker, and fails safe to claude', () => {
@@ -89,6 +119,7 @@ test('DRM-005: corrupt JSON backs up the original, never calls picker, and fails
     const loaded = config.loadSettings();
     assert.equal(pickerCalls, 0, 'corrupt settings must not invoke the clean-install picker');
     assert.equal(loaded.cli, 'claude');
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
     assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), '{broken-json', 'corrupt original must not be overwritten');
     const backups = readdirSync(home).filter((name) => name.startsWith('settings.json.corrupt-') && name.endsWith('.bak'));
     assert.ok(backups.length > 0);
@@ -101,6 +132,7 @@ test('DRM-006: unsupported future schema fails closed without down-migration', (
     const loaded = config.loadSettings();
     assert.equal(pickerCalls, 0);
     assert.equal(loaded.cli, 'claude');
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
     assert.equal(JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8')).settingsSchemaVersion, 99);
 });
 
@@ -183,6 +215,7 @@ test('DRM-009: accept refresh failure rolls cli and migration state back togethe
     }), /fixture cli refresh failure/);
     assert.equal(config.settings["cli"], 'claude');
     assert.equal(config.settings["runtimeDefaultMigration"].state, 'pending');
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
     const persisted = JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8'));
     assert.equal(persisted.cli, 'claude');
     assert.equal(persisted.runtimeDefaultMigration.state, 'pending');

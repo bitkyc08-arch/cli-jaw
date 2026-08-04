@@ -4,12 +4,13 @@ import {
 } from '../../lib/mcp-sync.js';
 import { syncCodexContextWindow } from './codex-config.js';
 import {
-    settings, replaceSettings, saveSettings, migrateSettings, normalizeProjectDirs,
+    settings, persistAndCommit, snapshotSettingsState, migrateSettings, normalizeProjectDirs,
     RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
+    type SettingsStateCandidate, type SettingsWrite,
 } from './config.js';
 import { broadcast } from './bus.js';
 import { syncMainSessionToSettings } from './main-session.js';
-import { mergeSettingsPatch } from './settings-merge.js';
+import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { regenerateB } from '../prompt/builder.js';
 import { restartMessagingRuntime, initActiveMessagingRuntime } from '../messaging/runtime.js';
 import { beginRuntimeSettingsMutation } from './runtime-settings-gate.js';
@@ -101,6 +102,7 @@ function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
 type ApplyRuntimeSettingsOptions = {
     resetFallbackState?: () => void;
     cliSwitchRefresh?: (input: Record<string, unknown>) => Promise<unknown>;
+    writeSettings?: SettingsWrite;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -181,26 +183,54 @@ async function invalidateSendOnlyClientsIfNeeded(
     await Promise.all(tasks);
 }
 
+function rollbackSettings(
+    previous: SettingsStateCandidate,
+    context: string,
+    write?: SettingsWrite,
+): void {
+    try {
+        persistAndCommit(previous, write);
+    } catch (rollbackError: unknown) {
+        // persistAndCommit writes before commit, so a failed rollback leaves the
+        // last successfully persisted candidate as the in-memory pair as well.
+        console.error(`[runtime-settings] ${context} rollback write failed:`, (rollbackError as Error).message);
+    }
+}
+
 export async function applyRuntimeSettingsPatch(
     rawPatch: Record<string, any> = {},
     opts: ApplyRuntimeSettingsOptions = {},
 ): Promise<Record<string, any>> {
     const finishSettingsMutation = beginRuntimeSettingsMutation();
-    const prevCli = settings["cli"];
-    const prevWorkingDir = settings["workingDir"];
-    const prevSnapshot = { ...settings };
+    const prevCandidate = snapshotSettingsState();
+    const prevSnapshot = prevCandidate.value;
+    const prevCli = prevSnapshot["cli"];
+    const prevWorkingDir = prevSnapshot["workingDir"];
     const prevAiEProvider = selectedAiEProvider(prevSnapshot);
+    let candidateCommitted = false;
+    let rollbackHandled = false;
 
     try {
-        const merged = mergeSettingsPatch(settings, rawPatch);
-        if ('projectDirs' in rawPatch) {
+        const sanitized = sanitizeSettingsInput(rawPatch, 'api');
+        if (sanitized.serverOwnedPaths.length > 0) {
+            throw new Error('server_owned_settings_field');
+        }
+        if (sanitized.invalidPaths.length > 0) {
+            throw new Error('invalid_settings_field');
+        }
+        const patch = sanitized.value;
+        const merged = mergeSettingsPatch(prevSnapshot, patch);
+        if ('projectDirs' in patch) {
             merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
         }
         const migrated = migrateSettings(merged);
-        replaceSettings(migrated);
-        saveSettings(settings);
+        const nextShape = sanitized.persistenceShape === 'present'
+            ? 'present'
+            : prevCandidate.shape;
+        persistAndCommit({ value: migrated, shape: nextShape }, opts.writeSettings);
+        candidateCommitted = true;
 
-        if (rawPatch["perCli"]?.codex && 'contextWindow' in rawPatch["perCli"].codex) {
+        if (patch["perCli"]?.codex && 'contextWindow' in patch["perCli"].codex) {
             const codexCfg = settings["perCli"]?.codex || {};
             syncCodexContextWindow({
                 enabled: !!codexCfg.contextWindow,
@@ -236,8 +266,8 @@ export async function applyRuntimeSettingsPatch(
                 });
             } catch (e: unknown) {
                 console.error('[runtime-settings] cli switch refresh failed, rolling back:', (e as Error).message);
-                replaceSettings(prevSnapshot);
-                saveSettings(prevSnapshot);
+                rollbackSettings(prevCandidate, 'cli switch refresh', opts.writeSettings);
+                rollbackHandled = true;
                 throw e;
             }
         } else {
@@ -262,12 +292,12 @@ export async function applyRuntimeSettingsPatch(
 
         // Unified messaging runtime restart (handles both Telegram and Discord)
         try {
-            await restartMessagingRuntime(prevSnapshot, settings, rawPatch);
+            await restartMessagingRuntime(prevSnapshot, settings, patch);
         } catch (e: unknown) {
             // Rollback: restore previous settings AND attempt to re-init previous runtime
             console.error('[runtime-settings] restart failed, rolling back:', (e as Error).message);
-            replaceSettings(prevSnapshot);
-            saveSettings(prevSnapshot);
+            rollbackSettings(prevCandidate, 'messaging restart', opts.writeSettings);
+            rollbackHandled = true;
             try {
                 await initActiveMessagingRuntime();
             } catch (reInitErr: unknown) {
@@ -277,7 +307,7 @@ export async function applyRuntimeSettingsPatch(
         }
 
         broadcast('settings_change', {
-            changedKeys: Object.keys(rawPatch),
+            changedKeys: Object.keys(patch),
             cli: settings["cli"],
             model: selectedModelForCli(settings["cli"], settings),
             projectDirs: settings["projectDirs"] ?? null,
@@ -285,6 +315,11 @@ export async function applyRuntimeSettingsPatch(
         });
 
         return settings;
+    } catch (error) {
+        if (candidateCommitted && !rollbackHandled) {
+            rollbackSettings(prevCandidate, 'post-write side effect', opts.writeSettings);
+        }
+        throw error;
     } finally {
         finishSettingsMutation();
     }

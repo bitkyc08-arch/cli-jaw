@@ -8,6 +8,10 @@ import { DEFAULT_CLI, CLI_KEYS, buildDefaultPerCli } from '../cli/registry.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { resolveHomePath } from './path-expand.js';
+import {
+    sanitizeSettingsInput,
+    type SettingsPersistenceShape,
+} from './settings-merge.js';
 export { detectAllCli, detectCli, getClaudeExecHelperCandidates, getClaudeIHelperCandidates } from './cli-detection.js';
 
 // ─── Version (single source of truth: package.json) ──
@@ -284,6 +288,11 @@ function createDefaultSettings() {
             retentionDays: 7,
             maxRows: 50000,
         },
+        runtime: {
+            codexApp: {
+                multiplex: false,
+            },
+        },
         code: {
             maxConcurrentSessions: 4,
             idleReapMs: 30_000,
@@ -551,6 +560,12 @@ function applyEnvOverrides(s: Record<string, any>) {
 
 /** Mutable settings object — shared across all modules via ESM live binding */
 export let settings: Record<string, any> = createDefaultSettings();
+let settingsPersistenceShape: SettingsPersistenceShape = 'absent';
+
+export type SettingsStateCandidate = {
+    value: typeof settings;
+    shape: SettingsPersistenceShape;
+};
 
 function readSettingsSchemaVersion(raw: Record<string, any>): 1 | 2 {
     if (!("settingsSchemaVersion" in raw)) return 1;
@@ -581,9 +596,18 @@ function validateRuntimeDefaultMigration(value: unknown): void {
 
 export function loadSettings() {
     try {
-        const raw: any = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+        let raw: any = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
             throw new Error('invalid_settings_document');
+        }
+        const sanitized = sanitizeSettingsInput(raw, 'boot');
+        raw = sanitized.value;
+        const nextShape = sanitized.persistenceShape;
+        if (sanitized.rejectedPaths.length > 0) {
+            console.warn(`[jaw:settings] ignored server-owned settings fields: ${sanitized.rejectedPaths.join(', ')}`);
+        }
+        if (sanitized.invalidPaths.length > 0) {
+            console.warn(`[jaw:settings] ignored invalid settings fields: ${sanitized.invalidPaths.join(', ')}`);
         }
         const sourceVersion = readSettingsSchemaVersion(raw);
         // A v1 document predates the codex-app default, so an absent or unknown
@@ -598,6 +622,7 @@ export function loadSettings() {
         const legacyCli = sourceVersion === 1 && !CLI_KEYS.includes(raw["cli"])
             ? 'claude'
             : raw["cli"];
+        const hadPlanning = !!raw.planning;
         const defaults = createDefaultSettings();
         // Deep merge perCli so new CLI defaults (e.g. copilot) are preserved
         const mergedPerCli: Record<string, any> = buildDefaultPerCli();
@@ -633,6 +658,14 @@ export function loadSettings() {
             jawCeo: { ...defaults.jawCeo, ...(raw.jawCeo || {}) },
             pi: { ...defaults.pi, ...(raw.pi || {}) },
             network: { ...defaults.network, ...(raw.network || {}) },
+            runtime: {
+                ...defaults.runtime,
+                ...(raw.runtime || {}),
+                codexApp: {
+                    ...defaults.runtime.codexApp,
+                    ...(raw.runtime?.codexApp || {}),
+                },
+            },
             code: { ...defaults.code, ...(raw.code || {}) },
             multiSession: {
                 ...defaults.multiSession,
@@ -642,12 +675,16 @@ export function loadSettings() {
         }, sourceVersion);
         // #64 safety: auto-correct stale workingDir (e.g. copied instance)
         // but allow valid paths to persist (dynamic project targeting)
+        let needsSave = sourceVersion === 1 || hadPlanning;
         if (typeof merged["workingDir"] === 'string' && merged["workingDir"] !== JAW_HOME && !fs.existsSync(merged["workingDir"])) {
             console.warn(`[jaw:workingDir] stale path ${merged["workingDir"]}, resetting to JAW_HOME`);
             merged["workingDir"] = JAW_HOME;
-            saveSettings(merged);
+            needsSave = true;
         }
-        if (sourceVersion === 1 || raw.planning) saveSettings(merged);
+
+        const candidate = { value: merged, shape: nextShape } satisfies SettingsStateCandidate;
+        if (needsSave) persistAndCommit(candidate);
+        else commitCandidate(candidate);
 
         // normalize projectDirs on load (reject corrupted/injected values)
         merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
@@ -668,7 +705,6 @@ export function loadSettings() {
             } catch { /* best-effort */ }
         }
 
-        settings = merged;
         return merged;
     } catch (error) {
         const err = error as NodeJS.ErrnoException;
@@ -676,15 +712,14 @@ export function loadSettings() {
             const next = createDefaultSettings();
             next.cli = pickFirstReadyCli();
             applyEnvOverrides(next);
-            settings = next;
-            saveSettings(next);
+            persistAndCommit({ value: next, shape: 'absent' });
             return next;
         }
 
         const next = createDefaultSettings();
         next.cli = 'claude';
         applyEnvOverrides(next);
-        settings = next;
+        commitCandidate({ value: next, shape: 'absent' });
 
         console.warn(`[jaw:settings] failed to load ${SETTINGS_PATH}: ${err?.message || String(error)}`);
         if (fs.existsSync(SETTINGS_PATH)) {
@@ -709,10 +744,20 @@ export function loadSettings() {
 // `cli-jaw project set` process) produce content that won't match this string.
 let lastSavedSettingsRaw: string | null = null;
 
-export function saveSettings(s: Record<string, any>) {
-    settings = s;
-    const raw = JSON.stringify(s, null, 2);
-    lastSavedSettingsRaw = raw;
+export function serializeSettingsForSave(candidate: SettingsStateCandidate): string {
+    const value = structuredClone(candidate.value);
+    const runtime = value["runtime"];
+    if (candidate.shape === 'absent' && runtime?.codexApp?.multiplex === false) {
+        delete runtime.codexApp.multiplex;
+        if (Object.keys(runtime.codexApp).length === 0) delete runtime.codexApp;
+        if (Object.keys(runtime).length === 0) delete value["runtime"];
+    }
+    return JSON.stringify(value, null, 2);
+}
+
+export type SettingsWrite = (raw: string) => void;
+
+function writeSettingsRaw(raw: string): void {
     // settings.json carries live channel tokens (xoxb-/xapp-/bot tokens), so
     // it must never be group/other-readable. writeFileSync's mode applies
     // only at creation — chmod covers the existing-file path.
@@ -722,13 +767,44 @@ export function saveSettings(s: Record<string, any>) {
     }
 }
 
+export function commitCandidate(candidate: SettingsStateCandidate): void {
+    settings = candidate.value;
+    settingsPersistenceShape = candidate.shape;
+}
+
+export function persistAndCommit(
+    candidate: SettingsStateCandidate,
+    write: SettingsWrite = writeSettingsRaw,
+): void {
+    const raw = serializeSettingsForSave(candidate);
+    write(raw);
+    lastSavedSettingsRaw = raw;
+    commitCandidate(candidate);
+}
+
+/** Re-save the current settings pair for legacy callers that mutate settings in place. */
+export function saveSettings(s: Record<string, any>) {
+    persistAndCommit({ value: s, shape: settingsPersistenceShape });
+}
+
+export function snapshotSettingsState(): SettingsStateCandidate {
+    return {
+        value: structuredClone(settings),
+        shape: settingsPersistenceShape,
+    };
+}
+
+export function getSettingsPersistenceShape(): SettingsPersistenceShape {
+    return settingsPersistenceShape;
+}
+
 export function getLastSavedSettingsRaw(): string | null {
     return lastSavedSettingsRaw;
 }
 
 /** Replace settings object (for API PUT /api/settings deep merge) */
-export function replaceSettings(s: Record<string, any>) {
-    settings = s;
+export function replaceSettings(s: Record<string, any>, shape: SettingsPersistenceShape) {
+    commitCandidate({ value: s, shape });
 }
 
 // ─── Heartbeat File I/O ──────────────────────────────

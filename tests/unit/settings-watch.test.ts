@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { settings, replaceSettings } from '../../src/core/config.ts';
+import {
+    getSettingsPersistenceShape,
+    settings,
+    replaceSettings,
+} from '../../src/core/config.ts';
 import { addBroadcastListener, removeBroadcastListener } from '../../src/core/bus.ts';
 import { reloadSettingsFromDisk, startSettingsWatch } from '../../src/core/settings-watch.ts';
 
@@ -13,9 +17,10 @@ function withCapturedBroadcasts(run: (events: Captured[]) => void | Promise<void
     const listener = (type: string, data: Record<string, unknown>) => { events.push({ type, data }); };
     addBroadcastListener(listener);
     const prevSettings = { ...settings };
+    const prevShape = getSettingsPersistenceShape();
     return Promise.resolve(run(events)).finally(() => {
         removeBroadcastListener(listener);
-        replaceSettings(prevSettings);
+        replaceSettings(prevSettings, prevShape);
     });
 }
 
@@ -97,7 +102,7 @@ test('SWA-006: external JSON cannot overwrite schema-owned fields but can update
         settingsSchemaVersion: 2,
         runtimeDefaultMigration: migration,
         cli: 'codex-app',
-    });
+    }, 'absent');
     const reloaded = reloadSettingsFromDisk({
         readImpl: () => JSON.stringify({
             settingsSchemaVersion: 99,
@@ -111,5 +116,53 @@ test('SWA-006: external JSON cannot overwrite schema-owned fields but can update
     assert.deepEqual(settings["runtimeDefaultMigration"], migration);
     assert.equal(settings["cli"], 'pi');
     const change = events.find(e => e.type === 'settings_change');
-    assert.deepEqual(change?.data["changedKeys"], ['cli']);
+    assert.deepEqual(change?.data["changedKeys"], ['cli', 'runtime']);
+}));
+
+test('SWA-007: full reload can transition a present gate back to absent false', () => withCapturedBroadcasts((events) => {
+    replaceSettings({
+        ...settings,
+        runtime: { codexApp: { multiplex: true } },
+    }, 'present');
+    const reloaded = reloadSettingsFromDisk({
+        readImpl: () => JSON.stringify({ cli: 'codex-app' }),
+        lastSavedRaw: null,
+    });
+    assert.equal(reloaded, true);
+    assert.equal(settings["runtime"].codexApp.multiplex, false);
+    assert.equal(getSettingsPersistenceShape(), 'absent');
+    assert.ok((events.find(e => e.type === 'settings_change')?.data["changedKeys"] as string[]).includes('runtime'));
+}));
+
+test('SWA-008: invalid multiplex is dropped and follows the absent transition', () => withCapturedBroadcasts(() => {
+    replaceSettings({
+        ...settings,
+        runtime: { codexApp: { multiplex: true } },
+    }, 'present');
+    const reloaded = reloadSettingsFromDisk({
+        readImpl: () => JSON.stringify({
+            cli: 'codex-app',
+            runtime: { codexApp: { multiplex: 'true' } },
+        }),
+        lastSavedRaw: null,
+    });
+    assert.equal(reloaded, true);
+    assert.equal(settings["runtime"].codexApp.multiplex, false);
+    assert.equal(getSettingsPersistenceShape(), 'absent');
+}));
+
+test('SWA-009: laneMode is stripped while a valid multiplex sibling is applied', () => withCapturedBroadcasts(() => {
+    for (const laneMode of ['native', 'fallback', 'anything']) {
+        const reloaded = reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({
+                cli: 'codex-app',
+                runtime: { codexApp: { laneMode, multiplex: true } },
+            }),
+            lastSavedRaw: null,
+        });
+        assert.equal(reloaded, true);
+        assert.equal(settings["runtime"].codexApp.multiplex, true);
+        assert.equal('laneMode' in settings["runtime"].codexApp, false);
+        assert.equal(getSettingsPersistenceShape(), 'present');
+    }
 }));

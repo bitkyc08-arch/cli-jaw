@@ -81,8 +81,55 @@ test('RDM-001: generic PUT rejects each schema-owned field before apply', async 
     }
 });
 
+test('RDM-001a: generic PUT rejects every laneMode as server-owned before apply', async () => {
+    let applies = 0;
+    const app = await startRouteApp(allowAuth, async () => { applies += 1; return {}; });
+    try {
+        for (const laneMode of ['native', 'fallback', 'user-choice']) {
+            const { response, json } = await request(app.base, 'PUT', '/api/settings', {
+                runtime: { codexApp: { laneMode } },
+            });
+            assert.equal(response.status, 400);
+            assert.equal(json.error, 'server_owned_settings_field');
+        }
+        assert.equal(applies, 0);
+    } finally {
+        await app.close();
+    }
+});
+
+test('RDM-001c: generic PUT accepts only boolean multiplex values', async () => {
+    const patches: Record<string, unknown>[] = [];
+    const app = await startRouteApp(allowAuth, async (patch) => {
+        patches.push(patch);
+        return patch;
+    });
+    try {
+        for (const multiplex of ['true', 1, null]) {
+            const { response, json } = await request(app.base, 'PUT', '/api/settings', {
+                runtime: { codexApp: { multiplex } },
+            });
+            assert.equal(response.status, 400);
+            assert.equal(json.error, 'invalid_settings_field');
+        }
+        for (const multiplex of [false, true]) {
+            const { response } = await request(app.base, 'PUT', '/api/settings', {
+                runtime: { codexApp: { multiplex } },
+            });
+            assert.equal(response.status, 200);
+        }
+        assert.equal(patches.length, 2);
+        assert.deepEqual(
+            patches.map((patch) => (patch["runtime"] as Record<string, any>).codexApp.multiplex),
+            [false, true],
+        );
+    } finally {
+        await app.close();
+    }
+});
+
 test('RDM-001b: GET exposes schema state through the existing redacted settings serializer', async () => {
-    config.replaceSettings(secretSettings());
+    config.replaceSettings(secretSettings(), 'absent');
     const app = await startRouteApp(allowAuth, async () => config.settings);
     try {
         const { response, json } = await request(app.base, 'GET', '/api/settings');
@@ -96,7 +143,7 @@ test('RDM-001b: GET exposes schema state through the existing redacted settings 
 });
 
 test('RDM-002: action body is strict and rejects extra user/server-owned fields', async () => {
-    config.replaceSettings(secretSettings());
+    config.replaceSettings(secretSettings(), 'absent');
     let applies = 0;
     const app = await startRouteApp(allowAuth, async () => { applies += 1; return config.settings; });
     try {
@@ -115,7 +162,7 @@ test('RDM-002: action body is strict and rejects extra user/server-owned fields'
 });
 
 test('RDM-003: auth failure exits before snapshot/apply', async () => {
-    config.replaceSettings(secretSettings());
+    config.replaceSettings(secretSettings(), 'absent');
     let applies = 0;
     const app = await startRouteApp(denyAuth, async () => { applies += 1; return config.settings; });
     try {
@@ -129,11 +176,11 @@ test('RDM-003: auth failure exits before snapshot/apply', async () => {
 });
 
 test('RDM-004: accept uses injected apply exactly once and 200 is fully redacted', async () => {
-    config.replaceSettings(secretSettings());
+    config.replaceSettings(secretSettings(), 'absent');
     const patches: Record<string, unknown>[] = [];
     const app = await startRouteApp(allowAuth, async (patch) => {
         patches.push(patch);
-        config.replaceSettings({ ...config.settings, ...patch });
+        config.replaceSettings({ ...config.settings, ...patch }, 'absent');
         return config.settings;
     });
     try {
@@ -155,11 +202,11 @@ test('RDM-004: accept uses injected apply exactly once and 200 is fully redacted
 });
 
 test('RDM-004b: keep uses injected apply once without a cli key', async () => {
-    config.replaceSettings(secretSettings());
+    config.replaceSettings(secretSettings(), 'absent');
     const patches: Record<string, unknown>[] = [];
     const app = await startRouteApp(allowAuth, async (patch) => {
         patches.push(patch);
-        config.replaceSettings({ ...config.settings, ...patch });
+        config.replaceSettings({ ...config.settings, ...patch }, 'absent');
         return config.settings;
     });
     try {
@@ -175,12 +222,12 @@ test('RDM-004b: keep uses injected apply once without a cli key', async () => {
 });
 
 test('RDM-005: concurrent accept/keep has one winner and redacted 409 loser snapshot', async () => {
-    config.replaceSettings(secretSettings());
+    config.replaceSettings(secretSettings(), 'absent');
     let applies = 0;
     const app = await startRouteApp(allowAuth, async (patch) => {
         applies += 1;
         await new Promise((resolve) => setTimeout(resolve, 20));
-        config.replaceSettings({ ...config.settings, ...patch });
+        config.replaceSettings({ ...config.settings, ...patch }, 'absent');
         return config.settings;
     });
     try {
@@ -204,7 +251,7 @@ test('RDM-005: concurrent accept/keep has one winner and redacted 409 loser snap
 });
 
 test('RDM-006: another client terminal state returns latest redacted 409 without apply', async () => {
-    config.replaceSettings(secretSettings('kept'));
+    config.replaceSettings(secretSettings('kept'), 'absent');
     let applies = 0;
     const app = await startRouteApp(allowAuth, async () => { applies += 1; return config.settings; });
     try {

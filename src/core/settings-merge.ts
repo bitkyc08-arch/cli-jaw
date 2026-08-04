@@ -1,6 +1,78 @@
 // ─── Settings Merge Logic ────────────────────────────
 // Phase 9.4 — server.js의 applySettingsPatch에서 추출한 deep merge 로직
 
+export type SettingsInputSource = 'boot' | 'watch' | 'api';
+export type SettingsPersistenceShape = 'absent' | 'present';
+
+export type SanitizedSettingsInput = {
+    value: Record<string, any>;
+    persistenceShape: SettingsPersistenceShape;
+    serverOwnedPaths: string[];
+    invalidPaths: string[];
+    rejectedPaths: string[];
+};
+
+function isPlainRecord(value: unknown): value is Record<string, any> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Apply the shared nested settings policy at every untrusted ingress.
+ * Boot/watch consume full documents, so an absent or invalid gate becomes the
+ * execution default false while persistence shape remains absent. API input is
+ * a patch, so a missing gate must not overwrite the current runtime value.
+ */
+export function sanitizeSettingsInput(
+    input: Record<string, any>,
+    source: SettingsInputSource,
+): SanitizedSettingsInput {
+    const value = { ...input };
+    const serverOwnedPaths: string[] = [];
+    const invalidPaths: string[] = [];
+    const rejectedPaths: string[] = [];
+    let persistenceShape: SettingsPersistenceShape = 'absent';
+
+    const runtimeInput = isPlainRecord(input["runtime"]) ? input["runtime"] : null;
+    const codexAppInput = runtimeInput && isPlainRecord(runtimeInput["codexApp"])
+        ? runtimeInput["codexApp"]
+        : null;
+    const runtime = runtimeInput ? { ...runtimeInput } : {};
+    const codexApp = codexAppInput ? { ...codexAppInput } : {};
+
+    if (codexAppInput && Object.prototype.hasOwnProperty.call(codexAppInput, 'laneMode')) {
+        const path = 'runtime.codexApp.laneMode';
+        delete codexApp["laneMode"];
+        rejectedPaths.push(path);
+        if (source === 'api') serverOwnedPaths.push(path);
+    }
+
+    if (codexAppInput && Object.prototype.hasOwnProperty.call(codexAppInput, 'multiplex')) {
+        if (typeof codexAppInput["multiplex"] === 'boolean') {
+            persistenceShape = 'present';
+        } else {
+            delete codexApp["multiplex"];
+            invalidPaths.push('runtime.codexApp.multiplex');
+        }
+    }
+
+    if (source !== 'api' && persistenceShape === 'absent') {
+        codexApp["multiplex"] = false;
+    }
+
+    if (runtimeInput || source !== 'api') {
+        runtime["codexApp"] = codexApp;
+        value["runtime"] = runtime;
+    }
+
+    return {
+        value,
+        persistenceShape,
+        serverOwnedPaths,
+        invalidPaths,
+        rejectedPaths,
+    };
+}
+
 /**
  * settings 객체에 patch를 deep merge
  * perCli와 activeOverrides는 CLI별로 개별 merge (기존 effort/model 보존)
@@ -9,7 +81,7 @@
  * @returns {object} 새 settings (current를 직접 변경하지 않음)
  */
 export function mergeSettingsPatch(current: Record<string, any>, patch: Record<string, any>) {
-    const result = { ...current };
+    const result = structuredClone(current);
     const remaining = { ...patch };
 
     // Deep merge perCli at per-CLI level
@@ -43,6 +115,20 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
         result["network"] = result["network"] || {};
         result["network"].remoteAccess = { ...result["network"].remoteAccess, ...remaining["network"].remoteAccess };
         delete remaining["network"].remoteAccess;
+    }
+
+    // runtime.codexApp is a two-level merge boundary: a multiplex-only patch
+    // must preserve both other runtime blocks and codexApp-owned siblings.
+    if (isPlainRecord(remaining["runtime"])) {
+        const runtimePatch = remaining["runtime"];
+        result["runtime"] = { ...(result["runtime"] || {}), ...runtimePatch };
+        if (isPlainRecord(runtimePatch["codexApp"])) {
+            result["runtime"].codexApp = {
+                ...(current["runtime"]?.codexApp || {}),
+                ...runtimePatch["codexApp"],
+            };
+        }
+        delete remaining["runtime"];
     }
 
     // Top-level scalar fields

@@ -12,7 +12,7 @@ import {
     SETTINGS_PATH, settings, replaceSettings, migrateSettings,
     normalizeProjectDirs, getLastSavedSettingsRaw,
 } from './config.js';
-import { mergeSettingsPatch } from './settings-merge.js';
+import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
 
 export const SETTINGS_WATCH_DEBOUNCE_MS = 300;
@@ -65,12 +65,24 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
     if (raw === lastSavedRaw) return false; // self-write echo
     let parsed: Record<string, unknown>;
     try {
-        parsed = JSON.parse(raw) as Record<string, unknown>;
+        const value = JSON.parse(raw) as unknown;
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            console.warn('[settings-watch] settings.json is not an object — keeping in-memory settings');
+            return false;
+        }
+        parsed = value as Record<string, unknown>;
     } catch {
         console.warn('[settings-watch] settings.json is not valid JSON — keeping in-memory settings');
         return false;
     }
-    const externalPatch = { ...parsed };
+    const sanitized = sanitizeSettingsInput(parsed, 'watch');
+    if (sanitized.rejectedPaths.length > 0) {
+        console.warn(`[settings-watch] ignored server-owned settings fields: ${sanitized.rejectedPaths.join(', ')}`);
+    }
+    if (sanitized.invalidPaths.length > 0) {
+        console.warn(`[settings-watch] ignored invalid settings fields: ${sanitized.invalidPaths.join(', ')}`);
+    }
+    const externalPatch = { ...sanitized.value };
     const ignoredKeys = SERVER_OWNED_SETTINGS_KEYS.filter((key) => key in externalPatch);
     for (const key of ignoredKeys) delete externalPatch[key];
     if (ignoredKeys.length > 0) {
@@ -80,7 +92,7 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
     // in-memory settings so runtime-only keys survive a partial file.
     const merged = mergeSettingsPatch(settings, externalPatch);
     merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
-    replaceSettings(migrateSettings(merged));
+    replaceSettings(migrateSettings(merged), sanitized.persistenceShape);
     broadcast('settings_change', {
         changedKeys: Object.keys(externalPatch),
         cli: settings["cli"],

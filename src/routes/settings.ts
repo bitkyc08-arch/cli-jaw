@@ -6,6 +6,7 @@ import { join } from 'path';
 import { ok } from '../http/response.js';
 import { asyncHandler } from '../http/async-handler.js';
 import { settings, JAW_HOME } from '../core/config.js';
+import { sanitizeSettingsInput } from '../core/settings-merge.js';
 import { readCodexContextWindow } from '../core/codex-config.js';
 import { regenerateB, A2_PATH, HEARTBEAT_PATH } from '../prompt/builder.js';
 import { clearTemplateCache, getTemplateDir } from '../prompt/template-loader.js';
@@ -145,11 +146,17 @@ export function registerSettingsRoutes(
         const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
             ? req.body as Record<string, unknown>
             : {};
-        if (SERVER_OWNED_SETTINGS_KEYS.some((key) => key in body)) {
+        const sanitized = sanitizeSettingsInput(body, 'api');
+        if (SERVER_OWNED_SETTINGS_KEYS.some((key) => key in body)
+            || sanitized.serverOwnedPaths.length > 0) {
             res.status(400).json({ ok: false, error: 'server_owned_settings_field' });
             return;
         }
-        const result = await applySettings(req.body) as Record<string, unknown>;
+        if (sanitized.invalidPaths.length > 0) {
+            res.status(400).json({ ok: false, error: 'invalid_settings_field' });
+            return;
+        }
+        const result = await applySettings(sanitized.value) as Record<string, unknown>;
         try {
             const keys = Object.keys(req.body || {}).filter(k => !['stt', 'jawCeo'].includes(k));
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), { keys });
