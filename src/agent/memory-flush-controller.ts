@@ -21,7 +21,22 @@ let _activeFlushGeneration: number | null = null;
 
 const FLUSH_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_FLUSH_OUTPUT_BYTES = 64 * 1024;
-const SESSION_HEADING_RE = /^##\s.*\bsession:[^\s]+/i;
+/**
+ * Matches any line the indexer would treat as a structural heading.
+ *
+ * The indexer parses `/^(#{1,3})\s+(.+)$/` against `line.trim()`
+ * (indexing.ts:97), so leading whitespace does not protect us. Two distinct
+ * attacks exist and both must be closed:
+ *
+ *  - a forged H2 carrying ` · session:<id>` becomes fabricated provenance;
+ *  - a PLAIN H1 (say `# Decisions`) resets the heading stack, so every chunk
+ *    after it loses the canonical H2 session heading entirely — erasing
+ *    provenance without forging anything.
+ *
+ * Extractor output is untrusted prose, so no heading in it is legitimate.
+ * Neutralize them all rather than pattern-matching the session marker.
+ */
+const UNTRUSTED_HEADING_RE = /^\s*#{1,6}\s+/;
 
 export function incrementMemoryFlush(): void {
     memoryFlushCounter++;
@@ -46,6 +61,7 @@ type FlushSpawnOptions = {
     cli: string;
     model: string;
     sysPrompt: string;
+    permissions: string;
 };
 
 type FlushSpawnAgent = (
@@ -74,7 +90,7 @@ Conversation:
 ---
 {{convo}}`;
 
-export function buildFlushPrompt(vars: { memFile: string; time: string; convo: string; sessionId?: string }): string {
+export function buildFlushPrompt(vars: { memFile?: string; time: string; convo: string; sessionId?: string }): string {
     const customPath = join(JAW_HOME, 'prompts', 'flush-prompt.md');
     let template = DEFAULT_FLUSH_PROMPT_TEMPLATE;
     if (fs.existsSync(customPath)) {
@@ -84,7 +100,13 @@ export function buildFlushPrompt(vars: { memFile: string; time: string; convo: s
             console.warn(`[memory] failed to load custom flush prompt: ${(err as Error).message}`);
         }
     }
-    const safeVars: Record<string, string> = { memFile: vars.memFile, time: vars.time, convo: vars.convo };
+    // memFile is intentionally NOT exposed. The extractor returns text; cli-jaw
+    // owns the append. Handing it the destination path would let a custom
+    // template — or hostile conversation text — steer a direct write that
+    // bypasses output validation, generation ownership, and the canonical
+    // heading. Legacy templates referencing {{memFile}} keep the literal token,
+    // which is inert, rather than resolving to a writable path.
+    const safeVars: Record<string, string> = { time: vars.time, convo: vars.convo };
     if (settings["multiSession"]?.enabled === true && vars.sessionId) {
         safeVars["sessionId"] = vars.sessionId;
     }
@@ -159,7 +181,6 @@ export async function triggerMemoryFlush(): Promise<void> {
     const memFile = getMemoryFlushFilePath(date);
 
     const flushPrompt = buildFlushPrompt({
-        memFile,
         time,
         convo,
         ...(multiSessionEnabled ? { sessionId } : {}),
@@ -178,6 +199,12 @@ export async function triggerMemoryFlush(): Promise<void> {
             cli: flushCli,
             model: flushModel,
             sysPrompt: loadFlushSysPrompt(),
+            // The extractor is an output-only summarizer. cli-jaw owns the
+            // append, so denying the permission bypass keeps a hostile
+            // conversation from talking it into writing the memory file
+            // directly and sidestepping validation entirely. The prompt's
+            // "do not write" line is guidance, not a boundary.
+            permissions: 'deny',
         });
         promise.then(
             result => completeFlushAttempt({
@@ -249,7 +276,10 @@ async function completeFlushAttempt(opts: CompleteFlushAttemptOptions): Promise<
 
     const summary = trimmed
         .split(/\r?\n/)
-        .filter(line => !SESSION_HEADING_RE.test(line))
+        // Neutralize rather than drop: removing the line would silently delete
+        // content, while escaping keeps the text and only strips its structural
+        // power over the indexer's heading stack.
+        .map(line => (UNTRUSTED_HEADING_RE.test(line) ? line.replace(/^(\s*)#/, '$1\\#') : line))
         .join('\n')
         .trim();
     if (!summary || !opts.ownsGeneration()) {
@@ -263,6 +293,18 @@ async function completeFlushAttempt(opts: CompleteFlushAttemptOptions): Promise<
     fs.mkdirSync(join(opts.memFile, '..'), { recursive: true });
     if (!opts.ownsGeneration()) return;
     fs.appendFileSync(opts.memFile, `\n${heading}\n\n${summary}\n`);
+
+    // Reindex the file we just wrote, inside generation ownership. This used to
+    // be fire-and-forget from lifecycle-handler's onExit, which ran before the
+    // extractor promise resolved — so it reindexed a file that did not yet
+    // contain this entry, and an expired attempt could still trigger it.
+    if (!opts.ownsGeneration()) return;
+    try {
+        const { reindexIntegratedMemoryFile } = await import('../memory/indexing.js');
+        reindexIntegratedMemoryFile(opts.memFile);
+    } catch (error) {
+        console.warn('[memory:flush] post-flush reindex failed:', (error as Error).message);
+    }
 
     if (!opts.ownsGeneration()) return;
     try {
