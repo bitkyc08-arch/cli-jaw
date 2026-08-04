@@ -203,3 +203,30 @@ test('release branch policy is reflected in CI workflows, release script, instal
     assert.ok(docs.includes('/cli-jaw/main/scripts/install-wsl.sh'), 'Windows docs install URL should use main');
     assert.ok(!docs.includes('raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install'), 'static docs must not point installers at master');
 });
+
+test('non-macOS electron-builder scripts stay free of POSIX command substitution', () => {
+    // `PYTHON="$(bash ../scripts/pick-gyp-python.sh)"` is a macOS-only guard: it
+    // finds a python3 that still has distutils for node-gyp. npm runs scripts
+    // through cmd.exe on Windows, which does not expand `$(...)`, so the literal
+    // string reached Python as a filename:
+    //
+    //   PYTHON: can't open file 'D:\a\cli-jaw\cli-jaw\electron\=$(bash ..\scripts\pick-gyp-python.sh)'
+    //
+    // That failed the Windows job of every desktop release from v2.2.11 onward
+    // while macOS and Linux stayed green, so the release itself still looked
+    // successful. CI does not need the guard anyway: desktop-release.yml pins
+    // actions/setup-python to 3.11 for exactly this reason.
+    const electronPkg = JSON.parse(read('electron/package.json')) as { scripts?: Record<string, string> };
+    const scripts = electronPkg.scripts ?? {};
+
+    for (const [name, body] of Object.entries(scripts)) {
+        if (!name.startsWith('dist:')) continue;
+        // The mac-only entries may keep the guard; they never run under cmd.exe.
+        if (name === 'dist:mac' || name === 'dist:mac:zip') continue;
+
+        assert.ok(
+            !body.includes('$('),
+            `${name} must not use POSIX command substitution: npm runs it through cmd.exe on Windows (got: ${body})`,
+        );
+    }
+});
