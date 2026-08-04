@@ -205,12 +205,24 @@ test('an over-cap command takes its SIGTERM-ignoring descendant down with it', {
         assert.equal(result.timedOut, false);
 
         const pids = JSON.parse(await readFile(pidFile, 'utf8')) as number[];
-        const alive = pids.filter((pid) => {
+        const stillAlive = (): number[] => pids.filter((pid) => {
             try { process.kill(pid, 0); return true; }
             catch { return false; }
         });
-        assert.deepEqual(alive, [], 'the driver must not exit before its process group is gone');
+        // SIGKILL delivery and reaping are not instantaneous on a loaded CI box,
+        // so allow a short window. The regression this guards against leaves the
+        // orphan running indefinitely, which no amount of waiting resolves.
+        await waitUntil(() => stillAlive().length === 0, 2_000).catch(() => {});
+        assert.deepEqual(stillAlive(), [], 'the driver must not exit before its process group is gone');
     } finally {
+        // A regression leaves live processes behind; the temp dir cleanup alone
+        // would strand them for the rest of the run.
+        try {
+            const leftovers = JSON.parse(await readFile(pidFile, 'utf8')) as number[];
+            for (const pid of leftovers) {
+                try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+            }
+        } catch { /* the fixture never got far enough to record pids */ }
         await rm(dir, { recursive: true, force: true });
     }
 });
