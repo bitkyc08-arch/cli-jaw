@@ -66,6 +66,8 @@ test('OFF preserves legacy queue grouping bytes and does not rewrite persisted v
         scope: 'jaw:slack:direct:D1',
         chatSessionId: 'remote-session',
         remoteKey: 'jaw:slack:direct:D1',
+        collect: true,
+        front: true,
     });
     const newPayload = JSON.parse(persisted.get(newId)!) as Record<string, unknown>;
     assert.deepEqual(Object.keys(newPayload), ['id', 'prompt', 'source', 'scope', 'target', 'ts']);
@@ -73,6 +75,8 @@ test('OFF preserves legacy queue grouping bytes and does not rewrite persisted v
     assert.equal(newPayload.schemaVersion, undefined);
     assert.equal(newPayload.chatSessionId, undefined);
     assert.equal(newPayload.remoteKey, undefined);
+    assert.equal(newPayload.collect, undefined);
+    assert.equal(newPayload.priority, undefined);
     assert.equal(activeSessionReads, 0);
     assert.equal(broadcasts.at(-1)?.data.scope, undefined, 'OFF queue_update must not add scope');
 });

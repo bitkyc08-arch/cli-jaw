@@ -93,7 +93,7 @@ test('SM-007: reset intent when busy still starts reset flow', () => {
         gatewaySrc.indexOf('// ── busy'),
     );
     assert.ok(
-        !resetBlock.includes("if (isAgentBusy()) return { action: 'rejected', reason: 'busy' }"),
+        !/if\s*\(isAgentBusy\s*\(\s*\)\)\s*return/.test(resetBlock),
         'reset intent should bypass busy rejection so reset remains available during retries',
     );
     assert.ok(resetBlock.includes('orchestrateReset('), 'reset path still calls orchestrateReset');
@@ -148,7 +148,7 @@ test('SM-012: admission and continue busy checks use the resolved scope', () => 
     assert.ok(continueBlock.includes('isAgentBusy(scope)'));
     assert.ok(busyBlock.includes('isAgentBusy(scope)'));
     assert.ok(busyBlock.includes('hasBlockingWorkers(scope)'));
-    assert.ok(!gatewaySrc.includes('isAgentBusy()'));
+    assert.doesNotMatch(gatewaySrc, /isAgentBusy\s*\(\s*\)/);
 });
 
 test('SM-013: continue, reset, and idle starts all enter the captured session lane', () => {
@@ -162,4 +162,37 @@ test('SM-014: dedup admission happens only after persistent scope resolution', (
     const scopeResolved = gatewaySrc.indexOf('const sessionScope: SessionScope = { scope, chatSessionId }');
     const dedupAdmission = gatewaySrc.indexOf('const key = dedupKey(scope,');
     assert.ok(scopeResolved >= 0 && dedupAdmission > scopeResolved);
+});
+
+test('SM-015: mid-run policy precedence is request, session, then global default', () => {
+    const resolver = gatewaySrc.slice(
+        gatewaySrc.indexOf('function resolveMidRunPolicy'),
+        gatewaySrc.indexOf('function applyMidRunPolicy'),
+    );
+    const requestIdx = resolver.indexOf('meta.midRunPolicy');
+    const sessionIdx = resolver.indexOf('getSessionRunPolicy(chatSessionId)');
+    const globalIdx = resolver.indexOf('settings["multiSession"]?.midRunPolicy');
+    assert.ok(requestIdx >= 0 && sessionIdx > requestIdx && globalIdx > sessionIdx);
+});
+
+test('SM-016: steer capability degrades unsupported runtimes without kill-and-restart', () => {
+    const policy = gatewaySrc.slice(
+        gatewaySrc.indexOf('function applyMidRunPolicy'),
+        gatewaySrc.indexOf('// ── 5s dedup window'),
+    );
+    const steer = policy.slice(policy.indexOf("if (policy === 'steer')"), policy.indexOf("if (policy === 'collect')"));
+    assert.ok(steer.includes('if (!canSteerAgent(ctx.scopeKey)) return queue()'));
+    assert.ok(steer.includes('steerAgent(ctx.scopeKey'));
+    assert.ok(!steer.includes('killActiveAgent'));
+});
+
+test('SM-017: collect and interrupt remain scoped queue operations', () => {
+    const policy = gatewaySrc.slice(
+        gatewaySrc.indexOf('function applyMidRunPolicy'),
+        gatewaySrc.indexOf('// ── 5s dedup window'),
+    );
+    assert.ok(policy.includes("if (policy === 'collect') return queue({ collect: true })"));
+    assert.ok(policy.includes("killActiveAgent(ctx.scopeKey, 'interrupt')"));
+    assert.ok(policy.includes("purgeQueueOnStop(ctx.scopeKey, 'interrupt')"));
+    assert.ok(policy.includes('return queue({ front: true })'));
 });

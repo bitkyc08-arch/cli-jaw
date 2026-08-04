@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 import { activeMainProcesses, killActiveAgent, killAllAgents } from '../../src/agent/spawn.ts';
+import { jawRuntimesByScope, runtimeForScope } from '../../src/agent/jwc-runtime.ts';
 
 function deferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -25,6 +26,7 @@ function fakeChild(onKill: () => void): ChildProcess {
 
 afterEach(() => {
     activeMainProcesses.clear();
+    jawRuntimesByScope.clear();
 });
 
 describe('multi-session concurrency activation', () => {
@@ -64,5 +66,30 @@ describe('multi-session concurrency activation', () => {
         assert.equal(killAllAgents('api'), true);
         assert.deepEqual(killed, ['A', 'B']);
         assert.equal(activeMainProcesses.size, 0);
+    });
+
+    it('interrupt aborts only A and leaves B registered', () => {
+        const killed: string[] = [];
+        activeMainProcesses.set('A', {
+            process: fakeChild(() => killed.push('A')), starting: false,
+            steering: false, ownerGeneration: 1, meta: { origin: 'slack', scopeId: 'A' },
+        });
+        activeMainProcesses.set('B', {
+            process: fakeChild(() => killed.push('B')), starting: false,
+            steering: false, ownerGeneration: 1, meta: { origin: 'slack', scopeId: 'B' },
+        });
+
+        assert.equal(killActiveAgent('A', 'interrupt'), true);
+        assert.deepEqual(killed, ['A']);
+        assert.equal(activeMainProcesses.has('A'), false);
+        assert.equal(activeMainProcesses.has('B'), true);
+    });
+
+    it('allocates one resident JWC runtime per scope', () => {
+        const a = runtimeForScope('A');
+        const b = runtimeForScope('B');
+        assert.equal(runtimeForScope('A'), a);
+        assert.notEqual(a, b);
+        assert.deepEqual([...jawRuntimesByScope.keys()], ['A', 'B']);
     });
 });

@@ -107,7 +107,7 @@ export class JawRuntime {
         }
     }
 
-    /** True while a turn is streaming or settling — feeds isAgentBusy(). */
+    /** True while a turn is streaming or settling — feeds scoped busy admission. */
     get busy(): boolean {
         return !!this.#inFlight || (this.#slot?.session.isStreaming ?? false);
     }
@@ -181,7 +181,7 @@ export class JawRuntime {
         const slot = await this.#ensureSlot(cwd);
         // Track in-flight so busy() is true even on the idle followUp path (the
         // session may auto-continue from assistant-ended state). Without this,
-        // isAgentBusy() under-reports between dispatch and stream start.
+        // scoped busy admission under-reports between dispatch and stream start.
         const run = (async () => {
             await slot.session.prompt(text, { streamingBehavior: 'followUp' });
             return { text: '', code: 0 } as JawRunResult;

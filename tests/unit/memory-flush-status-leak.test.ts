@@ -1,3 +1,4 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -125,7 +126,7 @@ test('memory-flush can be active by id without making isAgentBusy true', () => {
     const fakeChild = { pid: 999999 } as any;
     activeProcesses.set('memory-flush', fakeChild);
     try {
-        assert.equal(isAgentBusy(), false, 'active memory-flush sidecar must not block user messages');
+        assert.equal(isAgentBusy('default'), false, 'active memory-flush sidecar must not block default-scope user messages');
     } finally {
         activeProcesses.delete('memory-flush');
     }

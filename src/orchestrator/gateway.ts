@@ -230,9 +230,9 @@ export function submitMessage(
     }
 
     // ── busy → enqueue only ──
-    // NOTE: insertMessage is NOT called here — processQueue() handles it.
+    // NOTE: insertMessage is NOT called here — the scoped queue drain handles it.
     // This fixes the dual-insert bug where bot.ts called both enqueue + insert.
-    // NOTE: hasPendingWorkerReplays() is intentionally NOT gated — orchestrate()
+    // NOTE: pending worker replay is intentionally not an admission gate — orchestrate()
     // drains pending replays at entry (pipeline.ts drainPendingReplays), so
     // starting immediately is safe and avoids the processQueue deadlock
     // documented in devlog/_fin/260417_message_duplication/02_*.

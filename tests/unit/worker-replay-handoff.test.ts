@@ -21,30 +21,30 @@ test('WRH-001: finished worker result is injected exactly once', () => {
     setupFinishedWorker(id);
 
     // First claim succeeds
-    assert.ok(claimWorkerReplay(id), 'first claim should succeed');
+    assert.ok(claimWorkerReplay(id, 'default'), 'first claim should succeed');
     // Second claim fails (already claimed)
-    assert.ok(!claimWorkerReplay(id), 'second claim should fail — replay already claimed');
+    assert.ok(!claimWorkerReplay(id, 'default'), 'second claim should fail — replay already claimed');
 
     markWorkerReplayed(id);
     // After marking replayed, claim should also fail
-    assert.ok(!claimWorkerReplay(id), 'claim after replayed should fail');
+    assert.ok(!claimWorkerReplay(id, 'default'), 'claim after replayed should fail');
 });
 
 test('WRH-002: failed reinjection releases replay claim and leaves replay pending', () => {
     const id = `wrh2-${Date.now()}`;
     setupFinishedWorker(id);
 
-    assert.ok(claimWorkerReplay(id), 'claim should succeed');
+    assert.ok(claimWorkerReplay(id, 'default'), 'claim should succeed');
     // Simulate failure — release the claim
     releaseWorkerReplay(id);
 
     // Replay should still be pending and claimable
-    const pending = listPendingWorkerResults();
+    const pending = listPendingWorkerResults('default');
     const found = pending.some(p => p.agentId === id);
     assert.ok(found, 'released replay should remain in pending list');
 
     // Re-claim should succeed after release
-    assert.ok(claimWorkerReplay(id), 're-claim after release should succeed');
+    assert.ok(claimWorkerReplay(id, 'default'), 're-claim after release should succeed');
     markWorkerReplayed(id);
 });
 
@@ -54,7 +54,7 @@ test('WRH-003: replay drain picks up pending results from prior workers', () => 
     setupFinishedWorker(id1);
     setupFinishedWorker(id2);
 
-    const pending = listPendingWorkerResults();
+    const pending = listPendingWorkerResults('default');
     const ids = pending.map(p => p.agentId);
     assert.ok(ids.includes(id1), 'worker 1 should be in pending list');
     assert.ok(ids.includes(id2), 'worker 2 should be in pending list');
@@ -62,13 +62,13 @@ test('WRH-003: replay drain picks up pending results from prior workers', () => 
     // Drain: claim and mark each
     for (const pr of pending) {
         if (pr.agentId === id1 || pr.agentId === id2) {
-            assert.ok(claimWorkerReplay(pr.agentId));
+            assert.ok(claimWorkerReplay(pr.agentId, 'default'));
             markWorkerReplayed(pr.agentId);
         }
     }
 
     // Both should be gone from pending
-    const after = listPendingWorkerResults();
+    const after = listPendingWorkerResults('default');
     assert.ok(!after.some(p => p.agentId === id1), 'worker 1 should no longer be pending');
     assert.ok(!after.some(p => p.agentId === id2), 'worker 2 should no longer be pending');
 });
@@ -78,7 +78,7 @@ test('WRH-004: pending replay entries include run identity and safe metadata', (
     claimWorker(fakeEmp(id), 'sensitive full task with safe preview');
     finishWorker(id, `result-${id}`);
 
-    const pending = listPendingWorkerResults().find(p => p.agentId === id);
+    const pending = listPendingWorkerResults('default').find(p => p.agentId === id);
     assert.ok(pending, 'worker should be in pending list');
     assert.ok(pending.runId.startsWith('wr_'), 'pending replay must carry runId recovery identity');
     assert.equal(pending.employeeName, `test-${id}`);

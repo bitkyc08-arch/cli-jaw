@@ -22,8 +22,8 @@ const orchestrateRouteSrc = fs.readFileSync(join(__dirname, '../../src/routes/or
 test('Fix A: purgeQueueOnStop helper exists and clears queue + persisted DB rows', () => {
     const fnIdx = queueSrc.indexOf('function purgeQueueOnStop');
     assert.ok(fnIdx > 0, 'purgeQueueOnStop helper must exist in queue.ts');
-    const body = queueSrc.slice(fnIdx, fnIdx + 600);
-    assert.ok(body.includes('messageQueue.splice(0)'), 'must drain messageQueue in place');
+    const body = queueSrc.slice(fnIdx, fnIdx + 1200);
+    assert.ok(body.includes('messageQueue.splice(index, 1)'), 'must remove matching scoped rows in place');
     assert.ok(body.includes('deps.deleteQueuedMessage.run'), 'must remove persisted DB rows');
     assert.ok(body.includes("deps.broadcast('queue_update'"), 'must broadcast pending=0 to clients');
 });
@@ -69,7 +69,7 @@ test('Fix B: steer route accepts/removes/responds before background kill wait', 
     const removeIdx = block.indexOf('removeQueuedMessage');
     const responseIdx = block.indexOf('res.json({ ok: true');
     const backgroundIdx = block.indexOf('void (async () =>');
-    const killIdx = block.indexOf("killActiveAgent('steer')", backgroundIdx);
+    const killIdx = block.indexOf("killActiveAgent(scope, 'steer')", backgroundIdx);
     const waitIdx = block.indexOf('waitForProcessEnd', backgroundIdx);
     assert.ok(peekIdx > 0 && removeIdx > peekIdx, 'must peek before accepting/removing the queued item');
     assert.ok(responseIdx > removeIdx, 'must return the button response after queue removal');
@@ -96,36 +96,37 @@ test('Fix B: steer route inserts the user message exactly once and orchestrates 
 
 test('Fix B: queued steer preserves routing metadata and rejects concurrent steer', () => {
     const block = getSteerHandlerBlock();
-    assert.ok(block.includes('isSteerInProgress()'), 'must reject a second queued steer while one is already in progress');
+    assert.ok(block.includes('isSteerInProgress(scope)'), 'must reject a second queued steer in the same scope');
     assert.ok(block.includes("return fail(res, 409, 'steer already in progress')"), 'concurrent queued steer should be a 409 without removing the item');
-    assert.ok(block.includes('const wasBusyBeforeSteer = isAgentBusy()'), 'must capture full busy state before setting steer busy');
+    assert.ok(block.includes('const wasBusyBeforeSteer = isAgentBusy(scope)'), 'must capture scoped busy state before setting steer busy');
     assert.ok(block.includes('const target = peek.target'), 'must capture queue target metadata');
     assert.ok(block.includes('const chatId = peek.chatId'), 'must capture queue chatId metadata');
     assert.ok(block.includes('const requestId = peek.requestId'), 'must capture queue requestId metadata');
-    assert.ok(block.includes('const steerMeta = stripUndefined({ origin, target, chatId, requestId })'), 'must build shared steer metadata');
+    assert.ok(block.includes('const steerMeta = stripUndefined({'), 'must build shared steer metadata');
+    assert.ok(block.includes('chatSessionId'), 'shared steer metadata must preserve its chat session');
     assert.ok(block.includes('orchestrateReset({ ...steerMeta, _skipInsert: true })'), 'reset branch must preserve metadata');
     assert.ok(block.includes('orchestrateContinue({ ...steerMeta, _skipInsert: true })'), 'continue branch must preserve metadata');
     assert.ok(block.includes('orchestrate(prompt, { ...steerMeta, _skipInsert: true, _skipReplayDrain: true })'), 'normal branch must preserve metadata');
     assert.ok(block.includes("broadcast('orchestrate_done', stripUndefined({ text: `[error] ${message}`, error: true, ...steerMeta }))"), 'background errors must preserve metadata');
 });
 
-// ─── Fix C1: stop should make isAgentBusy() return false synchronously ──
+// ─── Fix C1: stop should make scoped busy state false synchronously ──
 
-test('Fix C1: killActiveAgent nullifies activeProcess synchronously when stopped by user', () => {
+test('Fix C1: killActiveAgent removes only the stopped scope synchronously', () => {
     const fnIdx = spawnSrc.indexOf('export function killActiveAgent');
     const body = spawnSrc.slice(fnIdx, fnIdx + 2500);
     assert.ok(
-        /reason === 'api'\s*\|\|\s*reason === 'user'[\s\S]*activeProcess\s*=\s*null/.test(body),
-        "killActiveAgent must set activeProcess = null synchronously when reason is 'api' or 'user' so isAgentBusy() flips immediately",
+        /reason === 'api'\s*\|\|\s*reason === 'user'[\s\S]*activeMainProcesses\.delete\(scopeKey\)/.test(body),
+        "killActiveAgent must remove the scope entry synchronously for user stops",
     );
 });
 
-test('Fix C1: killAllAgents clears activeProcess + activeProcesses synchronously when stopped by user', () => {
+test('Fix C1: killAllAgents clears scoped main and child registries synchronously', () => {
     const fnIdx = spawnSrc.indexOf('export function killAllAgents');
     const body = spawnSrc.slice(fnIdx, fnIdx + 2500);
     assert.ok(
-        /reason === 'api'\s*\|\|\s*reason === 'user'[\s\S]*activeProcess\s*=\s*null[\s\S]*activeProcesses\.clear\(\)/.test(body),
-        "killAllAgents must synchronously clear activeProcess and activeProcesses for 'api'/'user' stops",
+        /reason === 'api'\s*\|\|\s*reason === 'user'[\s\S]*activeProcesses\.clear\(\)[\s\S]*activeMainProcesses\.clear\(\)/.test(body),
+        "killAllAgents must synchronously clear activeProcesses and activeMainProcesses for user stops",
     );
 });
 
@@ -133,7 +134,7 @@ test('Fix C2: kill helpers also clear worker registry on user stop (so submitMes
     const helperIdx = spawnSrc.indexOf('function clearWorkerSlotsOnStop');
     assert.ok(helperIdx > 0, 'clearWorkerSlotsOnStop helper must exist');
     const helperBody = spawnSrc.slice(helperIdx, helperIdx + 600);
-    assert.ok(helperBody.includes('clearAllWorkers()'), 'helper must call clearAllWorkers from worker-registry');
+    assert.ok(helperBody.includes('clearWorkersForScope(scopeKey)'), 'helper must clear only workers owned by the stopped scope');
 
     const killActiveIdx = spawnSrc.indexOf('export function killActiveAgent');
     const killActive = spawnSrc.slice(killActiveIdx, killActiveIdx + 2000);
@@ -141,7 +142,7 @@ test('Fix C2: kill helpers also clear worker registry on user stop (so submitMes
 
     const killAllIdx = spawnSrc.indexOf('export function killAllAgents');
     const killAll = spawnSrc.slice(killAllIdx, killAllIdx + 2500);
-    assert.ok(killAll.includes('clearWorkerSlotsOnStop'), 'killAllAgents must call clearWorkerSlotsOnStop on user stop');
+    assert.ok(killAll.includes('clearAllWorkers()'), 'killAllAgents must clear all workers on global user stop');
 });
 
 test('Fix C3: stop and steer clear stale main live-run snapshots synchronously', async () => {
@@ -150,18 +151,19 @@ test('Fix C3: stop and steer clear stale main live-run snapshots synchronously',
 
     liveRun.beginLiveRun('unit-stop-live-run', 'agy');
     liveRun.appendLiveRunText('unit-stop-live-run', 'intermediate output');
-    spawn.setCurrentMainMeta({ origin: 'web', scopeId: 'unit-stop-live-run' });
+    spawn.setCurrentMainMeta('unit-stop-live-run', { origin: 'web', scopeId: 'unit-stop-live-run' });
 
-    spawn.killActiveAgent('steer');
+    spawn.killActiveAgent('unit-stop-live-run', 'steer');
 
     assert.equal(liveRun.getLiveRun('unit-stop-live-run').running, false);
     assert.equal(liveRun.getLiveRun('unit-stop-live-run').text, '');
 
     liveRun.beginLiveRun('unit-stop-live-run', 'agy');
+    spawn.setCurrentMainMeta('unit-stop-live-run', { origin: 'web', scopeId: 'unit-stop-live-run' });
     spawn.killAllAgents('user');
 
     assert.equal(liveRun.getLiveRun('unit-stop-live-run').running, false);
-    spawn.setCurrentMainMeta(null);
+    spawn.setCurrentMainMeta('unit-stop-live-run', null);
 });
 
 test('Fix C3: non-stop kill reasons do not clear main live-run snapshots', async () => {
@@ -170,19 +172,19 @@ test('Fix C3: non-stop kill reasons do not clear main live-run snapshots', async
 
     liveRun.beginLiveRun('unit-nonstop-live-run', 'agy');
     liveRun.appendLiveRunText('unit-nonstop-live-run', 'still running');
-    spawn.setCurrentMainMeta({ origin: 'web', scopeId: 'unit-nonstop-live-run' });
+    spawn.setCurrentMainMeta('unit-nonstop-live-run', { origin: 'web', scopeId: 'unit-nonstop-live-run' });
 
-    spawn.killActiveAgent('test');
+    spawn.killActiveAgent('unit-nonstop-live-run', 'test');
 
     assert.equal(liveRun.getLiveRun('unit-nonstop-live-run').running, true);
     assert.equal(liveRun.getLiveRun('unit-nonstop-live-run').text, 'still running');
     liveRun.clearLiveRun('unit-nonstop-live-run');
-    spawn.setCurrentMainMeta(null);
+    spawn.setCurrentMainMeta('unit-nonstop-live-run', null);
 });
 
 test('Fix B2: enqueueMessage returns the queue id and gateway threads it into SubmitResult.queuedId', () => {
     const enqueueIdx = queueSrc.indexOf('function enqueueMessage');
-    const enqueue = queueSrc.slice(enqueueIdx, enqueueIdx + 1200);
+    const enqueue = queueSrc.slice(enqueueIdx, enqueueIdx + 1800);
     assert.ok(/\): string \{/.test(enqueue), 'enqueueMessage must declare string return type');
     assert.ok(/return item\.id/.test(enqueue), 'enqueueMessage must return the queue item id');
 

@@ -15,18 +15,18 @@ const srcRoot = new URL('../../src/', import.meta.url).pathname;
 
 // ─── Source-level gate removal assertions ─────────────
 
-test('PRD-001: spawn.ts processQueue does NOT gate on hasPendingWorkerReplays()', () => {
+test('PRD-001: processQueue does not globally gate on pending worker replays', () => {
     const src = fs.readFileSync(join(srcRoot, 'agent/spawn/queue.ts'), 'utf8');
     const fn = src.slice(src.indexOf('async function processQueue'));
     const gateBlock = fn.slice(0, fn.indexOf('queueProcessing = true'));
     assert.doesNotMatch(
         gateBlock,
         /\|\|\s*hasPendingWorkerReplays\(\)/,
-        'processQueue must NOT short-circuit on hasPendingWorkerReplays() — deadlock root cause',
+        'processQueue must not short-circuit on an unscoped pending replay check',
     );
 });
 
-test('PRD-002: gateway.ts submitMessage does NOT gate on hasPendingWorkerReplays()', () => {
+test('PRD-002: submitMessage does not globally gate on pending worker replays', () => {
     const src = fs.readFileSync(join(srcRoot, 'orchestrator/gateway.ts'), 'utf8');
     const fn = src.slice(src.indexOf('export function submitMessage'));
     // Inspect up to the first enqueueMessage call — that's where the gate lives.
@@ -34,7 +34,7 @@ test('PRD-002: gateway.ts submitMessage does NOT gate on hasPendingWorkerReplays
     assert.doesNotMatch(
         gateBlock,
         /\|\|\s*hasPendingWorkerReplays\(\)/,
-        'submitMessage must NOT queue solely because of pendingReplay — orchestrate() drains internally',
+        'submitMessage must not queue solely because of an unscoped pending replay check',
     );
 });
 
@@ -50,7 +50,8 @@ test('PRD-004: orchestrate.ts dispatch route triggers drainPendingReplays on cli
     assert.ok(start >= 0, 'dispatch route must have clientDisconnected branch');
     const block = src.slice(start, start + 800);
     assert.match(block, /drainPendingReplays\(/, 'must call drainPendingReplays on disconnect');
-    assert.match(block, /!isAgentBusy\(\)/, 'must guard drain on Boss idle');
+    assert.match(block, /!isAgentBusy\(replayScope\)/, 'must guard drain on the replay owner scope being idle');
+    assert.match(block, /drainPendingReplays\(replayScope,/, 'must drain the replay owner scope only');
 });
 
 test('PRD-008: dispatch route uses res.on(close) + writableFinished for disconnect detection', () => {
@@ -86,8 +87,10 @@ test('PRD-010: drainPendingReplays uses per-slot meta over fallback', () => {
 
 test('PRD-011: dispatch route captures Boss main meta at claimWorker', () => {
     const src = fs.readFileSync(join(srcRoot, 'routes/orchestrate.ts'), 'utf8');
-    const claimBlock = src.slice(src.indexOf('let slot;') - 400, src.indexOf('claimWorker(emp, task'));
-    assert.match(claimBlock, /getCurrentMainMeta\(\)/, 'must query current Boss main meta');
+    const claimBlock = src.slice(src.indexOf('let slot;') - 700, src.indexOf('claimWorker(emp, task'));
+    assert.match(claimBlock, /getCurrentMainMeta\(dispatchScope\)/, 'must query current Boss main meta by dispatch scope');
+    assert.match(claimBlock, /chatSessionId:\s*bossMeta\.chatSessionId/, 'must capture the Boss chat session');
+    assert.match(claimBlock, /bossMeta\.remoteKey/, 'must capture the Boss remote binding key when present');
     const call = src.slice(src.indexOf('claimWorker(emp, task'), src.indexOf('claimWorker(emp, task') + 120);
     assert.match(call, /replayMeta/, 'claimWorker call must pass replayMeta');
 });
@@ -108,8 +111,8 @@ test('PRD-013: replyViaTarget is preserved from spawn main meta into replay drai
 test('PRD-007: processQueue auto-drains pending replays when Boss goes idle', () => {
     // Covers the case where Boss was alive at finishWorker() time (turn still
     // generating after Bash errored) — dispatch route skipped drain because
-    // isAgentBusy()=true. When Boss eventually exits, handleAgentExit calls
-    // processQueue() which must now detect pendingReplay and drain.
+    // the owning scope is busy. When Boss exits, handleAgentExit calls scoped
+    // processQueue, which must detect pendingReplay and drain.
     const src = fs.readFileSync(join(srcRoot, 'agent/spawn/queue.ts'), 'utf8');
     const fn = src.slice(src.indexOf('async function processQueue'));
     const block = fn.slice(0, fn.indexOf('queueProcessing = true'));

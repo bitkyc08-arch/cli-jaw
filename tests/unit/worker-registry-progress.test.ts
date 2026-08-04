@@ -88,7 +88,7 @@ test('pending worker replay includes final employee tool process', () => {
         status: 'done',
     }]);
 
-    const pending = listPendingWorkerResults();
+    const pending = listPendingWorkerResults('default');
     assert.equal(pending.length, 1);
     assert.equal(pending[0]?.text, 'done');
     assert.equal(pending[0]?.tools?.[0]?.label, 'npm run build');

@@ -22,7 +22,7 @@ test('heartbeat guard checks PABCD state before orchestrateAndCollect', () => {
 });
 
 test('heartbeat defers while the main agent is busy', () => {
-    const busyIdx = heartbeatSrc.indexOf('isAgentBusy()');
+    const busyIdx = heartbeatSrc.indexOf('isAgentBusy(HEARTBEAT_SCOPE)');
     const collectIdx = heartbeatSrc.indexOf('orchestrateAndCollect(prompt');
 
     assert.ok(heartbeatSrc.includes("import { isAgentBusy, messageQueue } from '../agent/spawn.js'"));
@@ -44,7 +44,7 @@ test('heartbeat drain respects main-agent and user-queue priority', () => {
     assert.ok(heartbeatSrc.includes("import { hasPendingWorkerReplays } from '../orchestrator/worker-registry.js'"));
     assert.ok(drainIdx > -1, 'drainPending must exist');
     assert.ok(
-        drainBlock.includes('isAgentBusy() || messageQueue.length > 0 || hasPendingWorkerReplays()'),
+        drainBlock.includes('isAgentBusy(HEARTBEAT_SCOPE) || messageQueue.length > 0 || hasPendingWorkerReplays(HEARTBEAT_SCOPE)'),
         'drain must wait for main idle, empty user queue, and replayed worker results',
     );
     assert.ok(drainBlock.includes('pendingJobs.shift()'), 'drain still consumes pending jobs once safe');
@@ -57,8 +57,8 @@ test('user queue drain triggers heartbeat drain only after normal queue priority
     assert.ok(queueSrc.includes('function drainHeartbeatPendingSoon'), 'queue controller must expose heartbeat drain scheduling helper');
     assert.ok(queueSrc.includes("import('../../memory/heartbeat.js')"), 'heartbeat drain must be dynamic to avoid a static cycle');
     assert.ok(processBlock.includes('messageQueue.length === 0'), 'heartbeat drain hook must require an empty user queue');
-    assert.ok(processBlock.includes('!deps.isSpawnBusy()'), 'heartbeat drain hook must require idle main spawn state');
-    assert.ok(processBlock.includes('!deps.hasPendingWorkerReplays()'), 'heartbeat drain hook must not preempt pending worker replays');
+    assert.ok(processBlock.includes('!deps.isSpawnBusy(requestedScope)'), 'heartbeat drain hook must require idle scoped main spawn state');
+    assert.ok(processBlock.includes('!deps.hasPendingWorkerReplays(requestedScope)'), 'heartbeat drain hook must not preempt scoped worker replays');
 });
 
 test('heartbeat exposes runtime state for snapshot recovery', () => {

@@ -503,12 +503,12 @@ function consumeKillReason(pid: number | undefined): string | null {
 
 /**
  * Fix A: 사용자 stop은 메모리 큐 + DB persisted_queue + frontend pending row를
- * 모두 폐기한다. exit handler의 processQueue() 자동 드레인이 stop 직후 잔존
+ * 모두 폐기한다. exit handler의 scoped queue 자동 드레인이 stop 직후 잔존
  * 메시지를 "스스로 steer" 처럼 실행하던 회귀를 차단.
  */
 /**
  * Fix C2: 사용자 stop 시 worker-registry 도 비운다.
- * gateway.submitMessage가 isAgentBusy() 외에 hasBlockingWorkers()/hasPendingWorkerReplays()
+ * gateway.submitMessage가 scoped main/worker/replay 상태를 모두 검사하므로,
  * 도 검사하므로, 이걸 비우지 않으면 stop 직후 새 메시지가 busy 분기 → 큐로 떨어지고
  * 프론트는 (1) 낙관 bubble + (2) applyQueuedOverlay 가 만든 queued bubble = 2개를 보여준다.
  */
@@ -594,7 +594,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
         proc.stdout?.destroy();
         proc.stderr?.destroy();
     }, policy.escalationMs);
-    // Fix C1: 사용자 stop/steer 시 isAgentBusy()가 즉시 false가 되도록 참조를 동기 해제.
+    // Fix C1: 사용자 stop/steer 시 해당 scope busy가 즉시 false가 되도록 참조를 동기 해제.
     // 실제 child 종료는 위 setTimeout SIGKILL이 백그라운드에서 마무리.
     // exit handler의 setActiveProcess(null) / activeProcesses.delete 는 idempotent.
     if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') {
@@ -981,7 +981,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Employee must not pollute boss's liveRun (see devlog 260423_employee_liverun_contamination)
     const effectiveLiveScope = mainManaged ? liveScope : null;
 
-    // INVARIANT: 모든 외부 호출은 gateway.ts isAgentBusy()를 거침.
+    // INVARIANT: 모든 외부 호출은 gateway.ts의 scoped busy admission을 거침.
     // 직접 spawnAgent 호출 시 scope별 retry state도 확인할 것.
     if (mainManaged && mainRun?.starting && gateEligibleMain && !opts._settingsGateWaited) {
         console.log('[jaw] Agent already running, skipping');
@@ -1034,7 +1034,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // ─── jwc in-process branch (110.3 §B) ───────────────────────────────
     // Resident engine, no ChildProcess. Mirrors the main-managed lifecycle
     // (insertMessage → beginLiveRun → run → persist → clearLiveRun → processQueue)
-    // so isAgentBusy()/queue/SSE behave identically. Employees fall through.
+    // so scoped busy/queue/SSE behave identically. Employees fall through.
     if (cli === 'jwc' && mainManaged && !opts.internal) {
         const jawRuntime = runtimeForScope(scopeKey);
         const jwcLabel = 'main';

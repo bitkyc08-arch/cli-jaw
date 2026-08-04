@@ -20,7 +20,10 @@ test('SF-001: steerAgent flow: kill → wait → insert → orchestrate', () => 
 
     // Find matching closing brace (roughly — next export function)
     const fnEnd = src.indexOf('\nexport ', fnStart + 10);
-    const steerBody = src.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 500);
+    const fullSteerBody = src.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 1200);
+    const fallbackStart = fullSteerBody.indexOf('const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey)');
+    assert.ok(fallbackStart > 0, 'generic explicit /steer fallback should remain available');
+    const steerBody = fullSteerBody.slice(fallbackStart);
 
     // Step 1: kill with 'steer' reason
     const killIdx = steerBody.indexOf("killActiveAgent(scopeKey, 'steer')");
@@ -45,6 +48,15 @@ test('SF-001: steerAgent flow: kill → wait → insert → orchestrate', () => 
         steerBody.indexOf('orchestrate(') > 0 ? steerBody.indexOf('orchestrate(') : Infinity,
     );
     assert.ok(orchestrateIdx > broadcastIdx, 'should orchestrate AFTER broadcast');
+});
+
+test('SF-001b: policy steer capability is native JWC only', () => {
+    const src = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const start = src.indexOf('export function canSteerAgent');
+    const end = src.indexOf('export async function steerAgent', start);
+    const capability = src.slice(start, end);
+    assert.ok(capability.includes("run?.meta.cli === 'jwc'"));
+    assert.ok(capability.includes('jawRuntimesByScope.get(scopeKey)?.busy === true'));
 });
 
 // ─── SF-002: steerAgent saves interrupted output via exit handler ───
@@ -210,11 +222,11 @@ test('SF-005: ai-e PTY steer uses graceful interrupt timing', () => {
         'steer wait helper should be exported for all steer surfaces',
     );
     assert.ok(
-        routeSrc.includes('getSteerWaitMsForActiveAgent()'),
+        routeSrc.includes('getSteerWaitMsForActiveAgent(scope)'),
         'queued web steer route should use provider-specific wait timing',
     );
     assert.ok(
-        handlerSrc.includes('getSteerWaitMsForActiveAgent()'),
+        handlerSrc.includes('getSteerWaitMsForActiveAgent(scopeKey)'),
         'slash steer handler should use provider-specific wait timing',
     );
 });
@@ -227,16 +239,16 @@ test('SF-006: queued web steer accepts item before background old-process wait',
     assert.ok(routeIdx > 0, 'queued steer route should exist');
     const routeBlock = routeSrc.slice(routeIdx, routeIdx + 3200);
 
-    const waitConfigIdx = routeBlock.indexOf('const steerWaitMs = getSteerWaitMsForActiveAgent()');
-    const busyCaptureIdx = routeBlock.indexOf('const wasBusyBeforeSteer = isAgentBusy()');
-    const holdIdx = routeBlock.indexOf('setQueueHold(id, Math.max(10_000, steerWaitMs + 5_000))');
-    const setBusyIdx = routeBlock.indexOf('setSteerInProgress(true)');
+    const waitConfigIdx = routeBlock.indexOf('const steerWaitMs = getSteerWaitMsForActiveAgent(scope)');
+    const busyCaptureIdx = routeBlock.indexOf('const wasBusyBeforeSteer = isAgentBusy(scope)');
+    const holdIdx = routeBlock.indexOf('setQueueHold(scope, id, Math.max(10_000, steerWaitMs + 5_000))');
+    const setBusyIdx = routeBlock.indexOf('setSteerInProgress(scope, true)');
     const removeIdx = routeBlock.indexOf('removeQueuedMessage(id)');
     const responseIdx = routeBlock.indexOf('res.json({ ok: true');
     const backgroundIdx = routeBlock.indexOf('void (async () =>');
-    const killIdx = routeBlock.indexOf("killActiveAgent('steer')", backgroundIdx);
-    const waitIdx = routeBlock.indexOf('await waitForProcessEnd(steerWaitMs)', backgroundIdx);
-    const finalClearIdx = routeBlock.indexOf('setSteerInProgress(false)', backgroundIdx);
+    const killIdx = routeBlock.indexOf("killActiveAgent(scope, 'steer')", backgroundIdx);
+    const waitIdx = routeBlock.indexOf('await waitForProcessEnd(scope, steerWaitMs)', backgroundIdx);
+    const finalClearIdx = routeBlock.indexOf('setSteerInProgress(scope, false)', backgroundIdx);
 
     assert.ok(waitConfigIdx > 0, 'route should compute provider-specific wait before holding the queue item');
     assert.ok(busyCaptureIdx > waitConfigIdx, 'route should capture pre-steer busy state before marking steer busy');
@@ -249,10 +261,10 @@ test('SF-006: queued web steer accepts item before background old-process wait',
     assert.ok(waitIdx > killIdx, 'background task should wait for process end after kill');
     assert.ok(finalClearIdx > waitIdx, 'background task should clear steer busy after wait/orchestrate');
     assert.ok(
-        routeBlock.slice(0, responseIdx).indexOf('waitForProcessEnd(steerWaitMs)') === -1,
+        routeBlock.slice(0, responseIdx).indexOf('waitForProcessEnd(scope, steerWaitMs)') === -1,
         'route must not block the button response on waitForProcessEnd',
     );
-    assert.ok(routeBlock.includes('isSteerInProgress()'), 'route should reject concurrent queued steer attempts');
+    assert.ok(routeBlock.includes('isSteerInProgress(scope)'), 'route should reject concurrent queued steer attempts per scope');
     assert.ok(spawnSrc.includes('export function isSteerInProgress(scopeKey'), 'spawn.ts should expose scoped steer-in-progress state for route gating');
     const queueSrc = fs.readFileSync(join(__dirname, '../../src/agent/spawn/queue.ts'), 'utf8');
     assert.ok(

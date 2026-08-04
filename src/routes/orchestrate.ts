@@ -593,7 +593,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 // 260703 (Opus review FINDING 3): single wait:false parity with
                 // async batch — proactively drain so an --async caller's result
                 // does not wait for an organic idle event. A blocking CLI poller
-                // keeps the boss busy, so the isAgentBusy() guard skips this
+                // keeps the boss scope busy, so the scoped busy guard skips this
                 // path for normal polled dispatches (no double delivery).
                 const replayScope = slot.replayMeta?.scopeId ?? 'default';
                 if (!isAgentBusy(replayScope)) {

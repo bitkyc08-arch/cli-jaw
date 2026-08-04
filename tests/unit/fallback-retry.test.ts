@@ -11,14 +11,14 @@ import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 test('resetFallbackState clears all entries', () => {
     // getFallbackState returns {} when empty
-    resetFallbackState();
-    const state = getFallbackState();
+    resetFallbackState(null);
+    const state = getFallbackState('default');
     assert.deepEqual(state, {});
 });
 
 test('getFallbackState returns object snapshot', () => {
-    resetFallbackState();
-    const state = getFallbackState();
+    resetFallbackState('default');
+    const state = getFallbackState('default');
     assert.equal(typeof state, 'object');
     assert.equal(Object.keys(state).length, 0);
 });
@@ -38,17 +38,17 @@ test('FALLBACK_MAX_RETRIES is 3 (verified via module constants)', async () => {
 
 test('fallback state tracks retriesLeft and fallbackCli fields', () => {
     // Verify the data shape via source code (Map entries aren't directly settable from outside)
-    resetFallbackState();
-    const state = getFallbackState();
+    resetFallbackState('default');
+    const state = getFallbackState('default');
     // After reset, no entries
     assert.equal(Object.keys(state).length, 0);
 });
 
 test('resetFallbackState is idempotent', () => {
-    resetFallbackState();
-    resetFallbackState();
-    resetFallbackState();
-    assert.deepEqual(getFallbackState(), {});
+    resetFallbackState('default');
+    resetFallbackState('default');
+    resetFallbackState('default');
+    assert.deepEqual(getFallbackState('default'), {});
 });
 
 test('retry and fallback state are isolated by scope', () => {
@@ -123,7 +123,10 @@ test('server.js calls resetFallbackState on settings save', async () => {
 
     assert.ok(src.includes('resetFallbackState'), 'session-ops should import/use resetFallbackState');
     assert.ok(src.includes('applyRuntimeSettingsPatch'), 'session-ops should delegate settings writes to shared helper');
-    assert.ok(src.includes('resetFallbackState,'), 'session-ops should pass resetFallbackState into shared helper');
+    assert.ok(
+        src.includes('resetFallbackState: () => resetFallbackState(null)'),
+        'session-ops should reset every scoped fallback entry on settings save',
+    );
 });
 
 // ─── 429 Retry: helpers ─────────────────────────────
@@ -244,32 +247,32 @@ test('429: i18n keys exist', () => {
 // ─── 429 Retry: behavioral tests ────────────────────
 
 describe('429 retry: behavioral tests', () => {
-    test('clearRetryTimer(false) is safe on empty state', async () => {
+    test('clearRetryTimer(default, false) is safe on empty state', async () => {
         const spawn = await import('../../src/agent/spawn.ts');
-        spawn.clearRetryTimer(false);
+        spawn.clearRetryTimer('default', false);
         assert.ok(true, 'no-op without crash');
     });
 
-    test('clearRetryTimer(true) is safe on empty state', async () => {
+    test('clearRetryTimer(default, true) is safe on empty state', async () => {
         const spawn = await import('../../src/agent/spawn.ts');
-        spawn.clearRetryTimer(true);
+        spawn.clearRetryTimer('default', true);
         assert.ok(true, 'no-op without crash');
     });
 
     test('killActiveAgent returns false when nothing pending', async () => {
         const spawn = await import('../../src/agent/spawn.ts');
-        const result = spawn.killActiveAgent('test');
+        const result = spawn.killActiveAgent('default', 'test');
         assert.equal(result, false, 'nothing to kill → false');
     });
 
     test('isAgentBusy reflects activeProcess state', async () => {
         const spawn = await import('../../src/agent/spawn.ts');
-        assert.equal(spawn.isAgentBusy(), spawn.activeMainProcesses.has('default'));
+        assert.equal(spawn.isAgentBusy('default'), spawn.activeMainProcesses.has('default'));
     });
 
     test('processQueue guards against retryPendingTimer at runtime', async () => {
         const spawn = await import('../../src/agent/spawn.ts');
-        spawn.processQueue();
+        spawn.processQueue('default');
         assert.ok(true, 'no-op on empty queue');
     });
 });
@@ -284,15 +287,15 @@ describe('429 retry: edge case coverage', () => {
         assert.ok(fn.includes('messageQueue.length === 0'), 'processQueue must guard on empty queue');
     });
 
-    test('steer/stop during retry calls clearRetryTimer(false) — queue stays blocked', () => {
+    test('steer/stop during retry clears only its scoped retry timer', () => {
         // killActiveAgent uses resumeQueue=false to prevent queue drain after steer/stop
         const src = readSrc('../../src/agent/spawn.ts');
         const killFn = extractFn(src, 'killActiveAgent');
-        // Must call clearRetryTimer(false) BEFORE the activeProcess check
+        // Must call scoped clearRetryTimer BEFORE the active process check.
         const clearIdx = killFn.indexOf('clearRetryTimer(scopeKey, false)');
         const processCheck = killFn.indexOf('if (!activeProcess)');
         assert.ok(clearIdx > 0 && processCheck > 0, 'both calls should exist');
-        assert.ok(clearIdx < processCheck, 'clearRetryTimer(false) must precede activeProcess check');
+        assert.ok(clearIdx < processCheck, 'scoped clearRetryTimer must precede activeProcess check');
 
         // killAllAgents delegates each concrete scope through killActiveAgent.
         const killAllFn = extractFn(src, 'killAllAgents');
@@ -319,10 +322,10 @@ describe('429 retry: edge case coverage', () => {
 // to verify state transitions and race condition safety.
 
 describe('429 retry: runtime timer simulation', () => {
-    test('isAgentBusy() is false when no process and no timer', async () => {
+    test('default scope is idle when it has no process and no timer', async () => {
         // Dynamic import to get real module — verifies initial idle state
         const spawn = await import('../../src/agent/spawn.ts');
-        const wasBusy = spawn.isAgentBusy();
+        const wasBusy = spawn.isAgentBusy('default');
         // If no test left a dangling timer or process, should be false
         if (spawn.activeMainProcesses.has('default')) {
             assert.ok(wasBusy, 'should be busy when activeProcess is set');
@@ -331,20 +334,20 @@ describe('429 retry: runtime timer simulation', () => {
         }
     });
 
-    test('clearRetryTimer(false) is safe no-op when no timer — race condition defense', async () => {
+    test('scoped clearRetryTimer is a safe no-op when no timer exists', async () => {
         // This tests the exact race window from spawn.ts:83 audit finding:
         // Timer callback fires → nulls retryPendingTimer → killActiveAgent calls
-        // clearRetryTimer(false) → must not crash or double-fire.
+        // Scoped clear must not crash or double-fire.
         const spawn = await import('../../src/agent/spawn.ts');
 
-        // Call clearRetryTimer(false) multiple times rapidly — simulates
+        // Call scoped clearRetryTimer multiple times rapidly — simulates
         // concurrent stop/steer arriving after timer already self-cleared
-        spawn.clearRetryTimer(false);
-        spawn.clearRetryTimer(false);
-        spawn.clearRetryTimer(true);
+        spawn.clearRetryTimer('default', false);
+        spawn.clearRetryTimer('default', false);
+        spawn.clearRetryTimer('default', true);
 
         // Must not throw, must remain idle
-        assert.equal(spawn.isAgentBusy(), false,
+        assert.equal(spawn.isAgentBusy('default'), false,
             'isAgentBusy must be false after multiple clearRetryTimer calls with no active timer');
     });
 
@@ -355,11 +358,11 @@ describe('429 retry: runtime timer simulation', () => {
         const spawn = await import('../../src/agent/spawn.ts');
 
         // Ensure clean state
-        spawn.clearRetryTimer(false);
+        spawn.clearRetryTimer('default', false);
 
         // killActiveAgent with nothing active → should be safe no-op
-        spawn.killActiveAgent('steer');
-        assert.equal(spawn.isAgentBusy(), false,
+        spawn.killActiveAgent('default', 'steer');
+        assert.equal(spawn.isAgentBusy('default'), false,
             'killActiveAgent on empty state must not leave busy flag set');
         assert.equal(spawn.activeMainProcesses.has('default'), false,
             'default main run entry must remain absent after kill on empty state');

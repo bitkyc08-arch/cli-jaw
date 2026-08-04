@@ -119,7 +119,7 @@ test('snapshot endpoint includes queued details for reload recovery (X-01)', () 
     const snapStart = orcSrc.indexOf("app.get('/api/orchestrate/snapshot'");
     assert.ok(snapStart >= 0, 'snapshot route should exist');
     const snapBlock = orcSrc.slice(snapStart, snapStart + 3000);
-    assert.ok(snapBlock.includes('getRuntimeSnapshot()'),
+    assert.ok(snapBlock.includes('getRuntimeSnapshot(scope)'),
         'snapshot route must serve the runtime block (queuePending source)');
     assert.ok(orcSrc.includes('queuePending: messageQueue.length'),
         'runtime snapshot must include the pending count');
