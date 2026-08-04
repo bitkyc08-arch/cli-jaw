@@ -254,6 +254,7 @@ function createDefaultSettings() {
             enabled: false,
             maxConcurrent: 1,
             midRunPolicy: 'steer' as const,
+            channels: { telegram: false, discord: false, slack: true },
         },
         memory: {
             enabled: true,
@@ -440,6 +441,13 @@ export function migrateSettings(s: Record<string, any>) {
         if (s["multiSession"].enabled === undefined) s["multiSession"].enabled = false;
         if (s["multiSession"].maxConcurrent === undefined) s["multiSession"].maxConcurrent = 1;
         if (s["multiSession"].midRunPolicy === undefined) s["multiSession"].midRunPolicy = 'steer';
+        if (s["multiSession"].channels === undefined) {
+            s["multiSession"].channels = { telegram: false, discord: false, slack: true };
+        } else {
+            if (s["multiSession"].channels.telegram === undefined) s["multiSession"].channels.telegram = false;
+            if (s["multiSession"].channels.discord === undefined) s["multiSession"].channels.discord = false;
+            if (s["multiSession"].channels.slack === undefined) s["multiSession"].channels.slack = true;
+        }
     }
     const maxConcurrent = Number(s["multiSession"].maxConcurrent);
     s["multiSession"].maxConcurrent = Number.isInteger(maxConcurrent) && maxConcurrent > 0
@@ -543,7 +551,11 @@ export function loadSettings() {
             pi: { ...defaults.pi, ...(raw.pi || {}) },
             network: { ...defaults.network, ...(raw.network || {}) },
             code: { ...defaults.code, ...(raw.code || {}) },
-            multiSession: { ...defaults.multiSession, ...(raw.multiSession || {}) },
+            multiSession: {
+                ...defaults.multiSession,
+                ...(raw.multiSession || {}),
+                channels: { ...defaults.multiSession.channels, ...(raw.multiSession?.channels || {}) },
+            },
         });
         // #64 safety: auto-correct stale workingDir (e.g. copied instance)
         // but allow valid paths to persist (dynamic project targeting)

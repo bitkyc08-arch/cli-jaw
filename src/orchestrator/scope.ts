@@ -1,5 +1,6 @@
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey } from '../messaging/session-key.js';
+import { settings } from '../core/config.js';
 
 type OrcScopeInput = {
     origin?: string;
@@ -9,6 +10,14 @@ type OrcScopeInput = {
     workingDir?: string | null;
     persistedScopeId?: string | null;
 };
+
+export function channelGateOn(channel: string | undefined): boolean {
+    if (channel === 'slack') return settings["multiSession"]?.channels?.slack !== false;
+    if (channel === 'telegram' || channel === 'discord') {
+        return settings["multiSession"]?.channels?.[channel] === true;
+    }
+    return true;
+}
 
 export function resolveOrcScope(input: OrcScopeInput = {}): string {
     if (!input.multiSessionEnabled) return 'default';

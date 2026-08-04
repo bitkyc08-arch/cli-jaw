@@ -11,6 +11,7 @@ import { log } from '../core/logger.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
 import { submitMessage } from '../orchestrator/gateway.js';
+import { channelGateOn } from '../orchestrator/scope.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
@@ -83,7 +84,9 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
     if (!client.token) return;
     const token = client.token;
     const chatId = target.targetId;
-    const remoteKey = settings["multiSession"]?.enabled === true ? buildRemoteBindingKey(target) : undefined;
+    const remoteKey = settings["multiSession"]?.enabled === true && channelGateOn('slack')
+        ? buildRemoteBindingKey(target)
+        : undefined;
     const chatSessionId = remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
     const scope = remoteKey || 'default';
     const sessionScope: SessionScope = { scope, chatSessionId };

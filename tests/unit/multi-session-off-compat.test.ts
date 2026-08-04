@@ -10,8 +10,18 @@ import { withSessionScope } from '../../src/core/session-context.ts';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 test('OFF is the default and captured context adds no event fields', () => {
-    assert.deepEqual(DEFAULT_SETTINGS.multiSession, { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer' });
-    settings.multiSession = { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer' };
+    assert.deepEqual(DEFAULT_SETTINGS.multiSession, {
+        enabled: false,
+        maxConcurrent: 1,
+        midRunPolicy: 'steer',
+        channels: { telegram: false, discord: false, slack: true },
+    });
+    settings.multiSession = {
+        enabled: false,
+        maxConcurrent: 1,
+        midRunPolicy: 'steer',
+        channels: { telegram: false, discord: false, slack: true },
+    };
     const received: Array<Record<string, unknown>> = [];
     const listener = (_type: string, data: Record<string, unknown>) => { received.push(data); };
     addBroadcastListener(listener);

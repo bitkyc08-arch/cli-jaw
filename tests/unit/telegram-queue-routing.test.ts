@@ -145,17 +145,24 @@ test('TQ-009: queue drain schedules captured scope/session without recomputation
     assert.ok(!queueBlock.includes("scope: 'default'"));
 });
 
-test('TQ-007: tgOrchestrate passes chatId to submitMessage', () => {
+test('TQ-007: tgOrchestrate and reset pass Telegram targets to submitMessage', () => {
     const fnStart = botSrc.indexOf('async function tgOrchestrate');
-    const fnBlock = botSrc.slice(fnStart, fnStart + 900);
+    const fnBlock = botSrc.slice(fnStart, fnStart + 1200);
     assert.ok(
         fnBlock.includes('const chatId = ctx.chat?.id'),
         'tgOrchestrate should capture current chatId',
     );
+    const submitLine = fnBlock.split('\n').find(line => line.includes('submitMessage(prompt')) ?? '';
+    assert.ok(submitLine.includes('chatId'), 'tgOrchestrate should pass chatId into submitMessage');
+    assert.ok(submitLine.includes('target: responseTarget'), 'tgOrchestrate should pass responseTarget into submitMessage');
+
+    const resetStart = botSrc.indexOf('if (isResetIntent(text))');
+    const resetBlock = botSrc.slice(resetStart, resetStart + 700);
+    assert.ok(resetBlock.includes('const target = buildTelegramTarget(ctx)'), 'reset should build its current Telegram target');
     assert.match(
-        fnBlock,
-        /submitMessage\(prompt,\s*\{\s*origin:\s*'telegram'(?:\s+as\s+const)?,\s*displayText:\s*displayMsg,\s*skipOrchestrate:\s*true,\s*chatId\s*\}\)/,
-        'tgOrchestrate should pass chatId into submitMessage',
+        resetBlock,
+        /submitMessage\(text,\s*\{[\s\S]*?origin:\s*'telegram'[\s\S]*?target(?:\s*,|\s*\})/,
+        'reset should pass its current Telegram target into submitMessage',
     );
 });
 

@@ -9,6 +9,11 @@ import path from 'node:path';
 import { threadIdNumber } from '../../src/messaging/thread-target.ts';
 import { sendTelegramFile } from '../../src/telegram/telegram-file.ts';
 import { dedupKey } from '../../src/orchestrator/gateway.ts';
+import { channelGateOn } from '../../src/orchestrator/scope.ts';
+import { settings } from '../../src/core/config.ts';
+
+const botSrc = fs.readFileSync(new URL('../../src/telegram/bot.ts', import.meta.url), 'utf8');
+const gatewaySrc = fs.readFileSync(new URL('../../src/orchestrator/gateway.ts', import.meta.url), 'utf8');
 
 const tgt = (threadId?: string) =>
     ({ channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: '-100', threadId } as never);
@@ -58,4 +63,40 @@ test('dedupKey distinguishes forum topics, stable within a topic', () => {
     // no-thread (DM/General) key is stable and distinct from a topic key
     assert.notEqual(dedupKey('scope-A', 'telegram', 'hi', '-100'), dedupKey('scope-A', 'telegram', 'hi', '-100', '5'));
     assert.notEqual(dedupKey('scope-A', 'telegram', 'hi', '-100', '5'), dedupKey('scope-B', 'telegram', 'hi', '-100', '5'));
+});
+
+test('buildTelegramTarget uses ctx.msg and only splits real forum topics', () => {
+    const fnStart = botSrc.indexOf('function buildTelegramTarget');
+    const fnEnd = botSrc.indexOf('async function telegramSendHandler', fnStart);
+    assert.ok(fnStart >= 0 && fnEnd > fnStart, 'buildTelegramTarget block should be bounded');
+    const block = botSrc.slice(fnStart, fnEnd);
+    assert.match(block, /ctx\.msg\?\.is_topic_message/);
+    assert.match(block, /messageThreadId\s*>\s*1|ctx\.msg\.message_thread_id\s*>\s*1/);
+    assert.match(block, /String\((?:messageThreadId|ctx\.msg\.message_thread_id)\)/);
+    assert.ok(!block.includes('ctx.message?.message_thread_id'));
+});
+
+test('gateway pins both scope and chatSessionId for gated-off remote channels', () => {
+    const start = gatewaySrc.indexOf('const multiSessionEnabled');
+    const end = gatewaySrc.indexOf('const sessionScope', start);
+    assert.ok(start >= 0 && end > start, 'gateway session-resolution block should be bounded');
+    const block = gatewaySrc.slice(start, end);
+    assert.ok(block.includes('channelGateOn(meta.target.channel)'), 'gateway should apply the shared channel gate');
+    assert.match(block, /const chatSessionId\s*=[\s\S]*?['"]default['"]/);
+    assert.match(block, /const scope\s*=[\s\S]*?['"]default['"]/);
+});
+
+test('channelGateOn preserves Slack opt-out and Telegram opt-in defaults', () => {
+    const previous = settings.multiSession;
+    try {
+        settings.multiSession = { enabled: true, maxConcurrent: 1, midRunPolicy: 'steer' };
+        assert.equal(channelGateOn('telegram'), false, 'Telegram stays gated off unless explicitly true');
+        assert.equal(channelGateOn('slack'), true, 'Slack stays on unless explicitly false');
+
+        settings.multiSession.channels = { telegram: true, slack: false };
+        assert.equal(channelGateOn('telegram'), true);
+        assert.equal(channelGateOn('slack'), false);
+    } finally {
+        settings.multiSession = previous;
+    }
 });

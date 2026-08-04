@@ -11,9 +11,13 @@ export interface SessionScope { scope: string; chatSessionId: string }
  */
 export function buildRemoteSessionKey(target: RemoteTarget): string {
     const base = `${target.channel}:${target.peerKind}:${target.targetKind}:${target.targetId}`;
-    if (target.threadId) {
+    const threadId = target.threadId
+        && !(target.channel === 'telegram' && Number(target.threadId) <= 1)
+        ? target.threadId
+        : undefined;
+    if (threadId) {
         const suffix = target.channel === 'telegram' ? 'topic' : 'thread';
-        return `${base}:${suffix}:${target.threadId}`;
+        return `${base}:${suffix}:${threadId}`;
     }
     return base;
 }
@@ -25,7 +29,11 @@ export function buildRemoteSessionKey(target: RemoteTarget): string {
 export function buildRemoteBindingKey(target: RemoteTarget): string {
     const part = (value: string) => encodeURIComponent(value);
     const base = `jaw:${part(target.channel)}:${part(target.peerKind)}:${part(target.targetId)}`;
-    return target.threadId ? `${base}:thread:${part(target.threadId)}` : base;
+    const threadId = target.threadId
+        && !(target.channel === 'telegram' && Number(target.threadId) <= 1)
+        ? target.threadId
+        : undefined;
+    return threadId ? `${base}:thread:${part(threadId)}` : base;
 }
 
 /**

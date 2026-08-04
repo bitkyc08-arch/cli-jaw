@@ -245,12 +245,15 @@ function resolveTelegramSendBot(): Bot | null {
 function buildTelegramTarget(ctx: Context): RemoteTarget {
     const chatType = ctx.chat?.type;
     const isGroup = chatType === 'group' || chatType === 'supergroup';
+    const messageThreadId = ctx.msg?.is_topic_message ? ctx.msg.message_thread_id : undefined;
     return stripUndefined({
         channel: 'telegram',
         targetKind: 'channel',
         peerKind: isGroup ? 'group' : 'direct',
         targetId: String(ctx.chat?.id ?? ''),
-        threadId: ctx.message?.message_thread_id ? String(ctx.message.message_thread_id) : undefined,
+        threadId: messageThreadId !== undefined && messageThreadId > 1
+            ? String(messageThreadId)
+            : undefined,
     });
 }
 
@@ -554,7 +557,7 @@ async function _initTelegramInner() {
         if (!ctx.chat) return;
         const chat = ctx.chat;
         const responseTarget = buildTelegramTarget(ctx);
-        const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, chatId }));
+        const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, target: responseTarget, chatId }));
         // Reproduce grammy ctx.reply's auto-injected routing (context.js: thread/business/DM-topic)
         // so the rich-first send helper lands replies exactly where ctx.reply would.
         const replyOptsOf = (c: Context): RichSendOpts => stripUndefined({
@@ -766,7 +769,8 @@ async function _initTelegramInner() {
 
         // Reset intent: use submitMessage gateway for consistency
         if (isResetIntent(text)) {
-            const result = submitMessage(text, { origin: 'telegram' });
+            const target = buildTelegramTarget(ctx);
+            const result = submitMessage(text, { origin: 'telegram', target, chatId: ctx.chat?.id });
             if (result.action === 'rejected') {
                 await ctx.reply(t('ws.agentBusy', {}, currentLocale()));
             } else {

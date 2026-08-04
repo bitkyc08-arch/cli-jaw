@@ -40,6 +40,7 @@ const getActiveStmt = db.prepare("SELECT active_chat_session FROM session WHERE 
 const setActiveStmt = db.prepare("UPDATE session SET active_chat_session = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'");
 const getBindingStmt = db.prepare('SELECT chat_session_id FROM remote_session_bindings WHERE remote_key = ?');
 const touchBindingStmt = db.prepare('UPDATE remote_session_bindings SET last_seen_at=CURRENT_TIMESTAMP WHERE remote_key = ?');
+const rebindStmt = db.prepare('UPDATE remote_session_bindings SET remote_key = ?, last_seen_at=CURRENT_TIMESTAMP WHERE remote_key = ?');
 const bindStmt = db.prepare(`
     INSERT INTO remote_session_bindings (remote_key, chat_session_id)
     VALUES (?, ?)
@@ -89,6 +90,14 @@ export function resolveOrCreateRemoteSession(remoteKey: string): string {
         if (found) {
             touchBindingStmt.run(remoteKey);
             return found.chat_session_id;
+        }
+        if (remoteKey.startsWith('jaw:telegram:') && !remoteKey.includes(':thread:')) {
+            const legacyKey = `${remoteKey}:thread:1`;
+            const legacy = getBindingStmt.get(legacyKey) as { chat_session_id: string } | undefined;
+            if (legacy) {
+                rebindStmt.run(remoteKey, legacyKey);
+                return legacy.chat_session_id;
+            }
         }
         const id = randomUUID().slice(0, 8);
         insertStmt.run(id, getNextSeq(), remoteKey, defaultRunPolicy());

@@ -16,7 +16,7 @@ import {
     isContinueIntent, isResetIntent,
 } from './pipeline.js';
 import { getState } from './state-machine.js';
-import { resolveOrcScope } from './scope.js';
+import { channelGateOn, resolveOrcScope } from './scope.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
 import { sessionLanes } from './session-lanes.js';
@@ -162,21 +162,24 @@ export function submitMessage(
     const requestId = randomUUID();
 
     const multiSessionEnabled = settings["multiSession"]?.enabled === true;
-    const remoteKey = multiSessionEnabled && meta.target
+    const gateOn = !multiSessionEnabled || !meta.target || channelGateOn(meta.target.channel);
+    const remoteKey = multiSessionEnabled && meta.target && gateOn
         ? (meta.remoteKey || buildRemoteBindingKey(meta.target))
         : undefined;
-    const chatSessionId = remoteKey
+    const chatSessionId = multiSessionEnabled && meta.target && !gateOn
+        ? 'default'
+        : remoteKey
         ? (meta.chatSessionId || resolveOrCreateRemoteSession(remoteKey))
         : getActiveChatSession();
     const scope = multiSessionEnabled
-        ? (meta.scope || resolveOrcScope(stripUndefined({
+        ? (meta.target && !gateOn ? 'default' : (meta.scope || resolveOrcScope(stripUndefined({
             origin: meta.origin,
             target: meta.target,
             chatId: meta.chatId,
             workingDir: settings["workingDir"] || null,
             persistedScopeId: remoteKey,
             multiSessionEnabled,
-        })))
+        }))))
         : 'default';
     const sessionScope: SessionScope = { scope, chatSessionId };
     const eventScope = multiSessionEnabled ? { scope, sessionId: chatSessionId } : undefined;
