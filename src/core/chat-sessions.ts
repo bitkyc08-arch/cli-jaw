@@ -3,6 +3,8 @@
 // Session 0 = 'default' (existing), 1+ = creation order (permanent numbering).
 
 import { db } from './db.js';
+import { settings } from './config.js';
+import { currentSessionScope } from './session-context.js';
 import { randomUUID } from 'node:crypto';
 import { broadcast } from './bus.js';
 import { removeWidgetDir } from './widget-watcher.js';
@@ -25,15 +27,48 @@ const countMsgsStmt = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE ses
 
 const getActiveStmt = db.prepare("SELECT active_chat_session FROM session WHERE id = 'default'");
 const setActiveStmt = db.prepare("UPDATE session SET active_chat_session = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'");
+const getBindingStmt = db.prepare('SELECT chat_session_id FROM remote_session_bindings WHERE remote_key = ?');
+const touchBindingStmt = db.prepare('UPDATE remote_session_bindings SET last_seen_at=CURRENT_TIMESTAMP WHERE remote_key = ?');
+const bindStmt = db.prepare(`
+    INSERT INTO remote_session_bindings (remote_key, chat_session_id)
+    VALUES (?, ?)
+    ON CONFLICT(remote_key) DO UPDATE SET
+        chat_session_id=excluded.chat_session_id,
+        last_seen_at=CURRENT_TIMESTAMP
+`);
 
 export function getActiveChatSession(): string {
+    if (settings["multiSession"]?.enabled === true) {
+        const captured = currentSessionScope()?.chatSessionId;
+        if (captured) return captured;
+    }
     const row = getActiveStmt.get() as { active_chat_session?: string } | undefined;
     return row?.active_chat_session || 'default';
 }
 
 export function setActiveChatSession(sessionId: string): void {
+    const captured = settings["multiSession"]?.enabled === true ? currentSessionScope() : undefined;
+    if (captured && captured.scope !== 'default') {
+        bindStmt.run(captured.scope, sessionId);
+        broadcast('session_switched', { sessionId, scope: captured.scope }, 'public');
+        return;
+    }
     setActiveStmt.run(sessionId);
     broadcast('session_switched', { sessionId }, 'public');
+}
+
+export function resolveOrCreateRemoteSession(remoteKey: string): string {
+    return db.transaction(() => {
+        const found = getBindingStmt.get(remoteKey) as { chat_session_id: string } | undefined;
+        if (found) {
+            touchBindingStmt.run(remoteKey);
+            return found.chat_session_id;
+        }
+        const id = randomUUID().slice(0, 8);
+        insertStmt.run(id, getNextSeq(), remoteKey);
+        bindStmt.run(remoteKey, id);
+        return id;
+    })();
 }
 
 export function createChatSession(label?: string): { id: string; seq: number } {
