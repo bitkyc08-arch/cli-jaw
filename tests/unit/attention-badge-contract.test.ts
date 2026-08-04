@@ -10,7 +10,7 @@ const badgePath = join(root, 'public/js/features/attention-badge.ts');
 const mainPath = join(root, 'public/js/main.ts');
 const wsPath = join(root, 'public/js/ws.ts');
 const chatPath = join(root, 'public/js/features/chat.ts');
-const planPath = join(root, 'devlog/_plan/260425_browser_unread_badge/plan.md');
+const planPath = join(root, 'devlog/_fin/260425_browser_unread_badge/plan.md');
 const packagePath = join(root, 'package.json');
 const frontendTsconfigPath = join(root, 'tsconfig.frontend.json');
 

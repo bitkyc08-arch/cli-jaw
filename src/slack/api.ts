@@ -1,7 +1,7 @@
 // ─── Slack Web API Client ────────────────────────────
 // Thin fetch wrapper. No SDK: Slack's HTTP surface is small and cli-jaw's
 // Discord transport already establishes the house pattern (REST via fetch,
-// lazily imported). See devlog/_plan/260802_slack_channel/000_plan.md D-1.
+// lazily imported). See devlog/_fin/260802_slack_channel/000_plan.md D-1.
 //
 // The critical Slack-specific rule: Slack returns HTTP 200 with
 // {"ok": false, "error": "..."} for application errors. Checking response.ok

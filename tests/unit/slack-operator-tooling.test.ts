@@ -10,7 +10,7 @@ const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
 // configured, and skips it otherwise -- so a test that reads a devlog file
 // fails with ENOENT on every fork and on any run without the secret. That is a
 // missing input, not a defect in the thing under test.
-const runbookPath = 'devlog/_plan/260802_slack_channel/051_operator_runbook.md';
+const runbookPath = 'devlog/_fin/260802_slack_channel/051_operator_runbook.md';
 const hasRunbook = existsSync(join(repoRoot, runbookPath));
 
 // ─── cli-jaw init ───────────────────────────────────

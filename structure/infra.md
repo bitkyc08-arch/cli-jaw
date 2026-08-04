@@ -162,7 +162,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ## 시작 경로 안정성 계약 (start-path reliability)
 
-`jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면. 유닛: `devlog/_plan/260803_runtime_stability_hardening/`.
+`jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면. 유닛: `devlog/_fin/260803_runtime_stability_hardening/`.
 
 ### 실행 경로
 

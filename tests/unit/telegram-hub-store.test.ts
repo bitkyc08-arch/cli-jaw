@@ -1,7 +1,7 @@
 // P1 — telegramHub registry normalization. Verifies the data layer: safe defaults,
 // route key-preservation (audit blocker #2), port-range validation, defaultPort clamp.
 // normalizeTelegramHub is the single funnel for default / normalize / patch, so testing
-// it covers the file round-trip path. See devlog/_plan/260626_telegram_topic_routing_hub/20.
+// it covers the file round-trip path. See devlog/_fin/260626_telegram_topic_routing_hub/20.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeTelegramHub } from '../../src/manager/registry.ts';

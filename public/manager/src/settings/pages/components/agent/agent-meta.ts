@@ -102,7 +102,7 @@ export const CLI_META: Record<string, CliMeta> = {
         // parsed by Claude Code (stripped before send, enables 1M context
         // on Fable 5 + Sonnet 5 + Opus 5 + Opus 4.8/4.7/4.6 + Sonnet 4.6). Mirrors getDefaultClaudeChoices()
         // in src/cli/claude-models.ts. Verified via Grok web research
-        // 2026-05-01 (devlog/_plan/260501_claude_model_passthrough/).
+        // 2026-05-01 (devlog/_fin/260501_claude_model_passthrough/).
         models: [
             'opus',
             'sonnet',

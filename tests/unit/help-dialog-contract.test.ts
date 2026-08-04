@@ -17,7 +17,7 @@ const indexPath = join(root, 'public/index.html');
 const cssPath = join(root, 'public/css/modals.css');
 const chatCssPath = join(root, 'public/css/chat.css');
 const localePaths = ['ko', 'en', 'ja', 'zh'].map(locale => join(root, `public/locales/${locale}.json`));
-const planPath = join(root, 'devlog/_plan/260425_help_dialog/plan.md');
+const planPath = join(root, 'devlog/_fin/260425_help_dialog/plan.md');
 
 const topicIds = Object.keys(HELP_TOPICS).sort();
 

@@ -311,7 +311,7 @@ tool history의 canonical UI는 `features/process-block.ts`다. `ui.ts`는 live 
 | `reconstructStepsFromBlock(block)` | hydrated/recycled block용 전체 step 복원 — elided middle 포함 |
 | `releaseProcessBlockDetails(root)` | virtual-scroll unmount, agent switch 시 in-memory detail/meta 해제 |
 
-Regression context: `devlog/_plan/260627_process_block_blank_expand/`.
+Regression context: `devlog/_fin/260627_process_block_blank_expand/`.
 
 ---
 

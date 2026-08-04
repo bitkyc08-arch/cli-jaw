@@ -563,7 +563,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 // Proactive drain: if Boss died before receiving the result, user input
                 // would otherwise stall forever. Trigger drainPendingReplays so the result
                 // is fed back via a fresh Boss session without waiting for the next user
-                // message. See devlog/_plan/260417_message_duplication/02_*.
+                // message. See devlog/_fin/260417_message_duplication/02_*.
                 if (!isAgentBusy()) {
                     queueMicrotask(() => {
                         drainPendingReplays({ origin: 'system' })

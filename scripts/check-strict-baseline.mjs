@@ -2,7 +2,7 @@
 // @file scripts/check-strict-baseline.mjs
 // Strict-migration regression gate (AST-aware).
 //
-// Per R2.2 (devlog/_plan/strict-migration/07-pro-review-r2.md), this scanner
+// Per R2.2 (devlog/_fin/strict-migration/07-pro-review-r2.md), this scanner
 // uses the TypeScript Compiler API to walk source files and count AST nodes
 // of kind `AnyKeyword` plus any-typed `TypeReference` (Array<any>, Promise<any>,
 // Record<string, any>, etc.). Comments and string literals are automatically

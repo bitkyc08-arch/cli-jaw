@@ -1,5 +1,5 @@
 // 260417: pendingReplay deadlock fix — verify gate removal + active drain path.
-// See devlog/_plan/260417_message_duplication/02_pendingReplay_deadlock_fix.md
+// See devlog/_fin/260417_message_duplication/02_pendingReplay_deadlock_fix.md
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const skillSrc = readFileSync(join(root, 'skills_ref/web-ai/SKILL.md'), 'utf8');
 const privateReferencePaths = [
-    join(root, 'devlog/_plan/260429_web_ai_oracle_parity_capability_roadmap/README.md'),
-    join(root, 'devlog/_plan/260429_web_ai_oracle_parity_capability_roadmap/06_verification_and_release_gates/README.md'),
+    join(root, 'devlog/_fin/260429_web_ai_oracle_parity_capability_roadmap/README.md'),
+    join(root, 'devlog/_fin/260429_web_ai_oracle_parity_capability_roadmap/06_verification_and_release_gates/README.md'),
 ];
 
 test('WEB-AI-HEADED-001: live web-ai verification requires headed Chrome', () => {

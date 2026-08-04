@@ -1,6 +1,6 @@
 // ─── bgtask: types + constants ───────────────────────
 // Background runtime hook — server-owned long-running tasks that re-invoke
-// the boss agent on completion. Design: devlog/_plan/260611_bgtask_background_runtime/
+// the boss agent on completion. Design: devlog/_fin/260611_bgtask_background_runtime/
 
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 

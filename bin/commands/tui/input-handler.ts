@@ -82,7 +82,7 @@ export function flushPendingEscape(ctx: TuiContext): void {
     }
     // Stop on ESC whenever a turn is streaming, even if the composer is open \u2014
     // typing mid-stream flips inputActive and used to turn ESC into a no-op
-    // (devlog/_plan/260703_tui_steer_esc_rca/20_esc_stop.md). Composer text is
+    // (devlog/_fin/260703_tui_steer_esc_rca/20_esc_stop.md). Composer text is
     // preserved so an interrupted steer draft is not lost.
     if (!ctx.inputActive || ctx.streaming) {
         // A live stream must stay stoppable even while a slash command is in

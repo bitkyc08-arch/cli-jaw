@@ -99,4 +99,4 @@ Logical frontier survives width reflow (unlike physical row counts).
 
 ## Research
 
-Full design history at `devlog/_plan/260615_native_scrollback_commit/` (21 documents including 4x GPT Pro audits).
+Full design history at `devlog/_plan/260618_cli_jaw_jwc_unified_roadmap/04_260615_native_scrollback_commit/` (21 documents including 4x GPT Pro audits).

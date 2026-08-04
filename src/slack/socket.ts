@@ -130,7 +130,7 @@ export class SlackSocketClient {
 
     private defaultSocketFactory(url: string): SlackSocketLike {
         // Node 22+ ships a global WebSocket, which is why this transport needs
-        // no SDK. See devlog/_plan/260802_slack_channel/000_plan.md D-1.
+        // no SDK. See devlog/_fin/260802_slack_channel/000_plan.md D-1.
         const socket = new WebSocket(url);
         return {
             send: (data: string) => socket.send(data),

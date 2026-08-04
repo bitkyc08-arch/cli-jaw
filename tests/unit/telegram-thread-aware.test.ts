@@ -1,6 +1,6 @@
 // P0 — thread-aware Telegram send. Verifies message_thread_id is threaded into
 // programmatic sends, that the General topic (id=1) is omitted, and that dedup
-// distinguishes forum topics. See devlog/_plan/260626_telegram_topic_routing_hub/10.
+// distinguishes forum topics. See devlog/_fin/260626_telegram_topic_routing_hub/10.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -7,7 +7,7 @@
 // not a malicious human, so a forcing function (commit to a specific narrative +
 // paste real output for C→D) is the goal, not cryptographic unfakeability.
 //
-// Design notes (devlog/_plan/260624_pabcd_evidence_gate/):
+// Design notes (devlog/_fin/260624_pabcd_evidence_gate/):
 //  - Booleans are NOT accepted as evidence (a boolean is cheaper to hallucinate than
 //    prose and launders a lie into a green checkmark) → require a narrative `did`.
 //  - No ctx.auditStatus/verificationStatus enforcement (those are only set by the

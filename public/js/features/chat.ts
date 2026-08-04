@@ -216,7 +216,7 @@ document.addEventListener('click', async (event) => {
 
 // In-flight guard: prevents double-send from rapid clicks / Enter-bursts while the
 // POST to /api/message is outstanding. Server-side dedup in gateway.ts is the
-// second line of defense. See devlog/_plan/260417_message_duplication/.
+// second line of defense. See devlog/_fin/260417_message_duplication/.
 let __chatSending = false;
 
 export type SendSource = 'button' | 'enter' | 'cmd-execute';

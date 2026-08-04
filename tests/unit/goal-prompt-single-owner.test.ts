@@ -3,7 +3,7 @@
 //   goal-mode behavior rules → continuation prompt (src/goal/heartbeat.ts)
 //   PABCD gate override      → continuation PABCD OVERRIDE block only
 //   PABCD transition guide   → builder '## PABCD Orchestration Guide' + dev-pabcd skill
-// Plan: devlog/_plan/260610_prompt_injection_redesign/10_goal_pabcd_prompt_slim_plan.md
+// Plan: devlog/_fin/260610_prompt_injection_redesign/10_goal_pabcd_prompt_slim_plan.md
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
