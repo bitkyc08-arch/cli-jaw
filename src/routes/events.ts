@@ -52,6 +52,7 @@ function parseLastEventId(req: Request): number {
 
 export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): void {
     app.get('/api/events', requireAuth, (req: Request, res: Response) => {
+        const scopeFilter = typeof req.query['scope'] === 'string' ? req.query['scope'] : undefined;
         if (activeConnections >= MAX_SSE_LISTENERS) {
             res.status(503).json({ error: 'SSE_CAPACITY' });
             return;
@@ -84,6 +85,7 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
             // could hold a trace entry from a future/mistaken publisher).
             for (const entry of replaySince(lastId)) {
                 if (!isPublicSseTopic(entry.topic)) { droppedInternalTopicEvents++; continue; }
+                if (scopeFilter && entry.data["scope"] !== scopeFilter) continue;
                 res.write(formatSse(entry, true));
             }
         }
@@ -109,6 +111,7 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
         unsub = subscribe((entry) => {
             if (res.writableEnded) return;
             if (!isPublicSseTopic(entry.topic)) { droppedInternalTopicEvents++; return; }
+            if (scopeFilter && entry.data["scope"] !== scopeFilter) return;
             res.write(formatSse(entry));
             if (exceedsBackpressureLimit(res.writableLength)) {
                 slowClientClosed++;

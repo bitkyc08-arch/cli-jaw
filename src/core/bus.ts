@@ -3,6 +3,8 @@
 
 import { sanitizeToolLogEntry, sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 import { publish as ssePublish, type EventTopic } from './event-bus.js';
+import { settings } from './config.js';
+import { currentSessionScope } from './session-context.js';
 
 export type BroadcastListener = (type: string, data: Record<string, any>) => void;
 type BroadcastPayload = Parameters<BroadcastListener>[1];
@@ -48,7 +50,11 @@ export function inferTopic(type: string): EventTopic {
 }
 
 export function broadcast(type: string, data: Record<string, any>, audience: 'public' | 'internal' = 'public') {
-    const safeData = sanitizeBroadcastData(type, data);
+    const captured = currentSessionScope();
+    const scopedData = captured && settings["multiSession"]?.enabled === true
+        ? { ...data, scope: data["scope"] ?? captured.scope, sessionId: data["sessionId"] ?? captured.chatSessionId }
+        : data;
+    const safeData = sanitizeBroadcastData(type, scopedData);
     // Public events reach browsers only via the SSE event-bus (X-01: the legacy
     // WS broadcast path is removed) — public only (P1-09 audience gate),
     // sanitized payload only (P1-08). Internal listeners always receive.

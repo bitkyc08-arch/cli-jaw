@@ -1,8 +1,28 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createQueueController } from '../../src/agent/spawn/queue.ts';
 import { groupQueueKey } from '../../src/messaging/session-key.ts';
 import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
+import { DEFAULT_SETTINGS, settings } from '../../src/core/config.ts';
+import { addBroadcastListener, broadcast, removeBroadcastListener } from '../../src/core/bus.ts';
+import { withSessionScope } from '../../src/core/session-context.ts';
+
+test('OFF is the default and captured context adds no event fields', () => {
+    assert.deepEqual(DEFAULT_SETTINGS.multiSession, { enabled: false });
+    settings.multiSession = { enabled: false };
+    const received: Array<Record<string, unknown>> = [];
+    const listener = (_type: string, data: Record<string, unknown>) => { received.push(data); };
+    addBroadcastListener(listener);
+    try {
+        withSessionScope({ scope: 'scope-A', chatSessionId: 'session-A' }, () => {
+            broadcast('system_notice', { marker: 'off-byte-contract' });
+        });
+    } finally {
+        removeBroadcastListener(listener);
+    }
+    assert.deepEqual(received, [{ marker: 'off-byte-contract' }]);
+});
 
 test('OFF preserves legacy queue grouping bytes and does not rewrite persisted v1 rows', () => {
     const targetA = slackTargetFromId('C1', { threadTs: '171.2' });
