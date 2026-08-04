@@ -964,7 +964,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const effectiveLiveScope = mainManaged ? liveScope : null;
 
     // INVARIANT: 모든 외부 호출은 gateway.ts isAgentBusy()를 거침.
-    // 직접 spawnAgent 호출 시 retryPendingTimer도 확인할 것.
+    // 직접 spawnAgent 호출 시 scope별 retry state도 확인할 것.
     if (mainManaged && mainRun?.starting && gateEligibleMain && !opts._settingsGateWaited) {
         console.log('[jaw] Agent already running, skipping');
         return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
@@ -1039,7 +1039,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             const rawFinalText = result.code === 0 ? live.text : result.text;
             const finalText = applyOutputPolicy(rawFinalText, { scope: 'main' }).text;
             // Persist may throw (better-sqlite3 is sync: DB lock / schema). Cleanup MUST
-            // still run or mainSpawnStarting sticks true and the jwc queue deadlocks.
+            // still run or this scope's starting flag stays true and its queue deadlocks.
             try {
                 insertMessageWithTraceRun.run(
                     'assistant', finalText, 'jwc', jwcModel, null,
