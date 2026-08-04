@@ -35,6 +35,8 @@ import {
     splitAgentSaveBundle,
     type AgentSettingsSnapshot,
 } from './components/agent/agent-save';
+import { SettingsRequestError } from '../settings-client';
+import { describeError } from '../components/error-normalize';
 
 export { splitAgentSaveBundle };
 
@@ -44,7 +46,29 @@ type AgentSnapshot = AgentSettingsSnapshot & {
     permissions?: 'auto' | string[] | unknown;
     perCli?: Record<string, PerCliEntry>;
     activeOverrides?: Record<string, ActiveOverride>;
+    runtimeDefaultMigration?: {
+        id: string;
+        state: 'pending' | 'accepted' | 'kept' | 'already-codex-app';
+        fromCli: string;
+        toCli: 'codex-app';
+    } | null;
 };
+
+type CliStatusInfo = {
+    available: boolean | null;
+    capabilityReady: boolean | null;
+    probeState: 'checking' | 'fresh' | 'stale';
+};
+
+export function conflictSettingsFromError(error: unknown): AgentSnapshot | null {
+    if (!(error instanceof SettingsRequestError) || error.status !== 409) return null;
+    try {
+        const payload = JSON.parse(error.detail) as { settings?: AgentSnapshot };
+        return payload.settings ?? null;
+    } catch {
+        return null;
+    }
+}
 
 type FlushSnapshot = {
     cli?: string;
@@ -80,6 +104,9 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     const [employeeLoading, setEmployeeLoading] = useState(true);
     const [employeeError, setEmployeeError] = useState<string | null>(null);
     const [cliMeta, setCliMeta] = useState<Record<string, CliMeta> | null>(null);
+    const [cliStatus, setCliStatus] = useState<Record<string, CliStatusInfo>>({});
+    const [migrationBusy, setMigrationBusy] = useState(false);
+    const [migrationError, setMigrationError] = useState<string | null>(null);
 
     const loadCliMeta = useCallback(async () => {
         try {
@@ -91,6 +118,11 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         } catch {
             setCliMeta(null);
         }
+    }, [client]);
+
+    const loadCliStatus = useCallback(async () => {
+        try { setCliStatus(await client.get<Record<string, CliStatusInfo>>('/api/cli-status')); }
+        catch { setCliStatus({}); }
     }, [client]);
 
     const loadFlush = useCallback(async () => {
@@ -125,9 +157,10 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
 
     useEffect(() => {
         void loadCliMeta();
+        void loadCliStatus();
         void loadFlush();
         void loadEmployees();
-    }, [loadCliMeta, loadEmployees, loadFlush]);
+    }, [loadCliMeta, loadCliStatus, loadEmployees, loadFlush]);
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
@@ -199,6 +232,31 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         : effortChoicesForModel(activeMeta, draft.model);
     const workingDirError = draft.workingDir.trim() ? null : 'Required';
 
+    const resolveMigration = useCallback(async (action: 'accept' | 'keep') => {
+        setMigrationBusy(true);
+        setMigrationError(null);
+        try {
+            const response = await client.post<AgentSnapshot | { data?: AgentSnapshot; settings?: AgentSnapshot }>(
+                '/api/settings/runtime-default-migration',
+                { action },
+            );
+            let next: AgentSnapshot;
+            if ('settings' in response && response.settings) next = response.settings as AgentSnapshot;
+            else if ('data' in response && response.data) next = response.data as AgentSnapshot;
+            else next = response as AgentSnapshot;
+            setData(next);
+        } catch (error) {
+            const conflictSettings = conflictSettingsFromError(error);
+            if (conflictSettings) {
+                setData(conflictSettings);
+                return;
+            }
+            setMigrationError(describeError(error));
+        } finally {
+            setMigrationBusy(false);
+        }
+    }, [client, setData]);
+
     if (state.kind === 'loading') return <PageLoading />;
     if (state.kind === 'offline') return <PageOffline port={port} />;
     if (state.kind === 'error') return <PageError message={state.message} />;
@@ -221,6 +279,20 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                 void onSave();
             }}
         >
+            {settingsData.runtimeDefaultMigration?.state === 'pending' ? (
+                <div className="settings-inline-notice" role="status">
+                    <strong>기본 런타임 변경 안내</strong>
+                    <p>기존 선택은 유지됩니다. Codex App으로 전환하거나 현재 런타임을 계속 사용할 수 있습니다.</p>
+                    <div className="settings-inline-actions">
+                        <button type="button" className="settings-action settings-action-save" disabled={migrationBusy} onClick={() => void resolveMigration('accept')}>Codex App 사용</button>
+                        <button type="button" className="settings-action settings-action-secondary" disabled={migrationBusy} onClick={() => void resolveMigration('keep')}>현재 런타임 유지</button>
+                    </div>
+                    {migrationError ? <span className="settings-field-error" role="alert">{migrationError}</span> : null}
+                </div>
+            ) : null}
+            {cliStatus[draft.cli]?.probeState === 'checking' ? (
+                <div className="settings-inline-notice" role="status" aria-live="polite">상태 확인 중</div>
+            ) : null}
             <RuntimeHeader
                 cli={draft.cli}
                 cliOptions={cliOptions.length > 0 ? cliOptions : [draft.cli || 'claude']}

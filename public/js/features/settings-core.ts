@@ -4,8 +4,8 @@ import type { CliEntry } from '../constants.js';
 import { escapeHtml } from '../render.js';
 import { syncStoredLocale } from '../locale.js';
 import { t } from './i18n.js';
-import { api, apiJson, apiFire } from '../api.js';
-import type { PerCliConfig, SettingsData } from './settings-types.js';
+import { API_BASE, api, apiJson, apiFire, getAuthToken } from '../api.js';
+import { shouldHydrateRuntimeMigrationResponse, type PerCliConfig, type SettingsData } from './settings-types.js';
 import { setCachedPi, syncPiProviderDropdown, syncPiModelDropdown, piDiscoveredModels } from './pi-settings.js';
 import { initSttSettings } from './settings-stt.js';
 import { loadTelegramSettings } from './settings-telegram.js';
@@ -19,6 +19,41 @@ import { formatProjectLabel } from './project-label.js';
 import { loadHeaderGitStatus, refreshHeaderGitStatusFromSettingsChange } from './project-git-status.js';
 
 let activeSettingsSave: Promise<void> | null = null;
+
+type MigrationResponse = SettingsData | { ok?: boolean; data?: SettingsData; settings?: SettingsData };
+
+function unwrapMigrationSettings(payload: MigrationResponse | null): SettingsData | null {
+    if (!payload || typeof payload !== 'object') return null;
+    if ('settings' in payload && payload.settings) return payload.settings;
+    if ('data' in payload && payload.data) return payload.data;
+    return payload as SettingsData;
+}
+
+async function resolvePendingRuntimeMigration(snapshot: SettingsData): Promise<SettingsData> {
+    if (snapshot.runtimeDefaultMigration?.state !== 'pending') return snapshot;
+    const action = window.confirm('신규 설치의 기본 런타임이 Codex App으로 변경되었습니다. 지금 Codex App을 사용하시겠습니까?')
+        ? 'accept'
+        : 'keep';
+    try {
+        const token = await getAuthToken();
+        const response = await fetch(`${API_BASE}/api/settings/runtime-default-migration`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ action }),
+        });
+        const payload = await response.json().catch(() => null) as MigrationResponse | null;
+        if (shouldHydrateRuntimeMigrationResponse(response.status)) {
+            return unwrapMigrationSettings(payload) ?? snapshot;
+        }
+        window.alert(`런타임 선택을 저장하지 못했습니다 (${response.status}). 다음 설정 진입 때 다시 안내합니다.`);
+    } catch {
+        window.alert('런타임 선택을 저장하지 못했습니다. 다음 설정 진입 때 다시 안내합니다.');
+    }
+    return snapshot;
+}
 
 function setHeaderCli(cli: string): void {
     const hdr = document.getElementById('headerCli');
@@ -362,8 +397,9 @@ function syncCliProviderControl(settings: SettingsData | null, cli: string): str
 
 export async function loadSettings(): Promise<void> {
     await loadCliRegistry();
-    const s = await api<SettingsData>('/api/settings');
+    let s = await api<SettingsData>('/api/settings');
     if (!s) return;
+    s = await resolvePendingRuntimeMigration(s);
     syncStoredLocale(s.locale ?? '');
     syncCliOptionSelects(s);
     setCachedPi(s.pi);

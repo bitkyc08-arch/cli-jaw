@@ -10,6 +10,10 @@ import {
     createSettingsClient,
 } from '../../public/manager/src/settings/settings-client';
 import { createDirtyStore } from '../../public/manager/src/settings/dirty-store';
+import {
+    stripServerOwnedSettingsFields,
+    validateImportPayload,
+} from '../../public/manager/src/settings/pages/AdvancedExport';
 
 // ─── settings-client ─────────────────────────────────────────────────
 
@@ -159,4 +163,27 @@ test('dirtyStore array equality short-circuits identical arrays', () => {
         valid: true,
     });
     assert.equal(store.isDirty(), true);
+});
+
+test('Advanced Export/Import strips only schema-owned fields for round-trip PUT', () => {
+    const serverDocument = {
+        cli: 'claude',
+        workingDir: '/work',
+        settingsSchemaVersion: 2,
+        runtimeDefaultMigration: { id: 'codex-app-default-v2', state: 'pending' },
+        nested: { keep: true },
+    };
+    assert.deepEqual(stripServerOwnedSettingsFields(serverDocument), {
+        cli: 'claude',
+        workingDir: '/work',
+        nested: { keep: true },
+    });
+    assert.deepEqual(validateImportPayload(JSON.stringify(serverDocument)), {
+        ok: true,
+        value: {
+            cli: 'claude',
+            workingDir: '/work',
+            nested: { keep: true },
+        },
+    });
 });

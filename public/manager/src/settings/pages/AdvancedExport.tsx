@@ -34,7 +34,12 @@ export function validateImportPayload(text: string): { ok: true; value: Record<s
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return { ok: false, error: 'Import payload must be a JSON object.' };
     }
-    return { ok: true, value: parsed as Record<string, unknown> };
+    return { ok: true, value: stripServerOwnedSettingsFields(parsed as Record<string, unknown>) };
+}
+
+export function stripServerOwnedSettingsFields(settings: Record<string, unknown>): Record<string, unknown> {
+    const { settingsSchemaVersion: _schema, runtimeDefaultMigration: _migration, ...userOwned } = settings;
+    return userOwned;
 }
 
 export default function AdvancedExport({ port, client, triggerDownload }: ExportImportProps) {
@@ -55,7 +60,7 @@ export default function AdvancedExport({ port, client, triggerDownload }: Export
     const onExport = useCallback(() => {
         if (state.kind !== 'ready') return;
         const filename = `cli-jaw-settings-${port}.json`;
-        download(filename, JSON.stringify(state.data, null, 2));
+        download(filename, JSON.stringify(stripServerOwnedSettingsFields(state.data), null, 2));
     }, [state, port, download]);
 
     const onImport = useCallback(async () => {

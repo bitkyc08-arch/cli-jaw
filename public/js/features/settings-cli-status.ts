@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { state } from '../state.js';
 import { ICONS } from '../icons.js';
 import { providerIcon, providerLabel } from '../provider-icons.js';
-import { resolveQuotaWindowDisplay, type QuotaEntry } from './settings-types.js';
+import { describeCliProbe, resolveQuotaWindowDisplay, type CliStatusInfo, type QuotaEntry } from './settings-types.js';
 import {
     buildAccountParts,
     normalizeQuotaWindowLabel,
@@ -184,7 +184,7 @@ export function setCliStatusInterval(value: string): void {
 
 function scheduleEmbeddedQuotaRetry(
     seq: number,
-    cliStatus: Record<string, { available: boolean }>,
+    cliStatus: Record<string, CliStatusInfo>,
     cachedQuota: Record<string, QuotaEntry> | null | undefined,
 ): void {
     if (!isEmbeddedPreviewFrame()) return;
@@ -201,7 +201,7 @@ function scheduleEmbeddedQuotaRetry(
 
 async function fetchAndRenderQuota(
     seq: number,
-    cliStatus: Record<string, { available: boolean }>,
+    cliStatus: Record<string, CliStatusInfo>,
     cachedQuota: Record<string, QuotaEntry> | null | undefined,
 ): Promise<boolean> {
     const quota = await api<Record<string, QuotaEntry>>('/api/quota');
@@ -219,7 +219,7 @@ async function fetchAndRenderQuota(
 function scheduleQuotaFetch(
     force: boolean,
     seq: number,
-    cliStatus: Record<string, { available: boolean }>,
+    cliStatus: Record<string, CliStatusInfo>,
     cachedQuota: Record<string, QuotaEntry> | null | undefined,
 ): Promise<boolean> | void {
     const run = () => { void fetchAndRenderQuota(seq, cliStatus, cachedQuota).catch(() => {}); };
@@ -243,7 +243,7 @@ export async function loadCliStatus(force = false): Promise<void> {
             const interval = readCliStatusInterval();
             if (!force && state.cliStatusCache && interval > 0 && (Date.now() - state.cliStatusTs) < interval * 1000) {
                 renderCliStatus({
-                    cliStatus: (state.cliStatusCache as Record<string, unknown>)?.['cliStatus'] as Record<string, { available: boolean }> | null,
+                    cliStatus: (state.cliStatusCache as Record<string, unknown>)?.['cliStatus'] as Record<string, CliStatusInfo> | null,
                     quota: (state.cliStatusCache as Record<string, unknown>)?.['quota'] as Record<string, QuotaEntry> | null,
                 });
                 return;
@@ -252,7 +252,7 @@ export async function loadCliStatus(force = false): Promise<void> {
             const cachedQuota = (state.cliStatusCache as Record<string, unknown> | null)?.['quota'] as Record<string, QuotaEntry> | null | undefined;
             if (el && !cachedQuota) el.innerHTML = '<div style="color:var(--text-dim);font-size:11px">Loading...</div>';
 
-            const cliStatus = await api<Record<string, { available: boolean }>>('/api/cli-status');
+            const cliStatus = await api<Record<string, CliStatusInfo>>('/api/cli-status');
             if (seq !== cliStatusLoadSeq) return;
             if (!cliStatus || typeof cliStatus !== 'object') {
                 if (el) el.innerHTML = '<div style="color:var(--text-dim);font-size:11px">Failed to load CLI status</div>';
@@ -278,7 +278,7 @@ export async function loadCliStatus(force = false): Promise<void> {
     await cliStatusLoadInFlight;
 }
 
-function renderCliStatus(data: { cliStatus: Record<string, { available: boolean }> | null; quota: Record<string, QuotaEntry> | null }): void {
+function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null; quota: Record<string, QuotaEntry> | null }): void {
     const { cliStatus, quota } = data;
     const el = document.getElementById('cliStatusList');
 
@@ -306,9 +306,14 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
 
     for (const [name, info] of Object.entries(cliStatus)) {
         if (SIDEBAR_HIDDEN_CLIS.has(name)) continue;
-        const q = quota?.[name];
+        const probeDescription = describeCliProbe(info);
+        const checking = probeDescription === 'checking';
+        const capabilityFailed = probeDescription === 'capability-failed';
+        const q = checking ? undefined : quota?.[name];
         let dotClass: string;
-        if (!info.available) {
+        if (checking) {
+            dotClass = 'checking';
+        } else if (!info.available || capabilityFailed) {
             dotClass = 'missing';
         } else if (!q || q.error) {
             dotClass = 'ok';
@@ -330,7 +335,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
         }
 
         let authHint = '';
-        if (!info.available || dotClass === 'warn') {
+        if (!checking && (!info.available || dotClass === 'warn')) {
             const hint = AUTH_HINTS[name];
             if (hint) {
                 const isNotInstalled = !info.available;
@@ -398,6 +403,14 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             ? `<span style="margin-left:auto;font-size:10px;color:var(--text-dim);white-space:nowrap">$${q.billing.usedUsd.toFixed(1)}/$${q.billing.limitUsd}</span>`
             : '';
 
+        const probeLine = checking
+            ? '<div role="status" aria-live="polite" style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px">상태 확인 중</div>'
+            : capabilityFailed
+                ? `<div role="status" style="font-size:10px;color:var(--error);margin:2px 0 0 16px">설치됨, app-server 사용 불가${info.reason ? ` · ${escapeHtml(info.reason)}` : ''}</div>`
+                : probeDescription === 'stale'
+                    ? '<div role="status" style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px">이전 상태 표시 중 · 새로 확인 중</div>'
+                    : '';
+
         html += `
             <div class="settings-group" style="margin-bottom:6px;padding:8px 10px">
                 <div class="cli-status-row" style="display:flex;align-items:center">
@@ -406,6 +419,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
                     <span class="cli-name" style="font-weight:600">${escapeHtml(providerLabel(name))}${quotaHelpMark}</span>${name === 'copilot' ? `<button id="copilotKeychainBtn" style="font-size:9px;margin-left:6px;padding:1px 5px;background:var(--border);color:var(--text-dim);border:1px solid var(--text-dim);border-radius:3px;cursor:pointer;vertical-align:middle;line-height:1" title="${t('copilot.keychainHint')}">${ICONS.key}</button>` : ''}${billingLabel}
                 </div>
                 ${accountLine}
+                ${probeLine}
                 ${authHint}
                 ${windowsHtml}
             </div>
@@ -416,7 +430,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
 
     const allEntries = Object.entries(cliStatus);
     const hasReadyCli = allEntries.some(([name, info]) => {
-        if (!info.available) return false;
+        if (describeCliProbe(info) !== 'ready') return false;
         const q = quota?.[name];
         return !q || q.authenticated !== false;
     });

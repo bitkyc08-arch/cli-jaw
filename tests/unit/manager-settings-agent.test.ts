@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createDirtyStore } from '../../public/manager/src/settings/dirty-store';
-import { splitAgentSaveBundle } from '../../public/manager/src/settings/pages/Agent';
+import { conflictSettingsFromError, splitAgentSaveBundle } from '../../public/manager/src/settings/pages/Agent';
+import { SettingsRequestError } from '../../public/manager/src/settings/settings-client';
 import { expandPatch } from '../../public/manager/src/settings/pages/path-utils';
 import {
     buildRuntimeEmployeeDiff,
@@ -135,4 +136,19 @@ test('runtimeEmployees dirty key is valid only when rows are valid', () => {
     store.set('runtimeEmployees', { value: invalid, original: [dbEmployee], valid: false });
     assert.equal(store.isDirty(), true);
     assert.equal('runtimeEmployees' in store.saveBundle(), false);
+});
+
+test('Manager rehydrates only a 409 migration conflict snapshot', () => {
+    const pending = { cli: 'claude', runtimeDefaultMigration: { state: 'pending' } };
+    const terminal = { cli: 'claude', runtimeDefaultMigration: { state: 'kept' } };
+    const conflict = new SettingsRequestError(
+        'POST',
+        '/api/settings/runtime-default-migration',
+        409,
+        JSON.stringify({ ok: false, error: 'runtime_default_migration_terminal', settings: terminal }),
+    );
+    assert.deepEqual(conflictSettingsFromError(conflict), terminal);
+    assert.equal(conflictSettingsFromError(new SettingsRequestError('POST', '/api/settings/runtime-default-migration', 500, JSON.stringify({ settings: terminal }))), null);
+    assert.equal(conflictSettingsFromError(new Error(JSON.stringify({ settings: terminal }))), null);
+    assert.equal(pending.runtimeDefaultMigration.state, 'pending', 'ordinary failures leave local pending unchanged');
 });

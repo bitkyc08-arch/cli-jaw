@@ -46,6 +46,31 @@ export interface QuotaEntry {
 }
 export interface PiProfileView { id: string; label: string; mode: string; endpoint: string; apiKind?: string; apiKeySet?: boolean; apiKeyLast4?: string; model: string; }
 export interface PiSettingsView { defaultProfileId: string; profiles: PiProfileView[]; discoveredModels?: Record<string, string[]>; }
+export interface RuntimeDefaultMigration {
+    id: 'codex-app-default-v2';
+    state: 'pending' | 'accepted' | 'kept' | 'already-codex-app';
+    fromCli: string;
+    toCli: 'codex-app';
+}
+export interface CliStatusInfo {
+    available: boolean | null;
+    binaryInstalled: boolean | null;
+    capabilityReady: boolean | null;
+    authenticated: boolean | null;
+    path: string | null;
+    source: string;
+    probeState: 'checking' | 'fresh' | 'stale';
+    reason?: string;
+}
+export function describeCliProbe(info: CliStatusInfo): 'checking' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
+    if (info.probeState === 'checking') return 'checking';
+    if (info.binaryInstalled === true && info.capabilityReady === false) return 'capability-failed';
+    if (info.probeState === 'stale') return 'stale';
+    return info.available === true && info.capabilityReady !== false ? 'ready' : 'unavailable';
+}
+export function shouldHydrateRuntimeMigrationResponse(status: number): boolean {
+    return status >= 200 && status < 300 || status === 409;
+}
 export interface SettingsData {
     cli: string; workingDir: string; permissions: string; locale?: string; showReasoning?: boolean;
     perCli?: Record<string, PerCliConfig>;
@@ -59,4 +84,6 @@ export interface SettingsData {
     projectDirs?: string[] | null;
     stt?: { engine?: string; geminiKeySet?: boolean; geminiKeyLast4?: string; geminiModel?: string; whisperModel?: string; openaiKeySet?: boolean; openaiKeyLast4?: string };
     pi?: PiSettingsView;
+    settingsSchemaVersion?: number;
+    runtimeDefaultMigration?: RuntimeDefaultMigration | null;
 }
