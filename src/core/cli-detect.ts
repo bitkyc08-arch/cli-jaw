@@ -134,6 +134,19 @@ function isManagedNodeCandidate(candidate: string, homeDir = os.homedir()): bool
     return managedRoots.some((root) => isPathInside(normalized, path.normalize(root)));
 }
 
+/**
+ * Installer-provenance bucket, independent of PATH position: 0 preferred,
+ * higher is more suspect. Kept separate from `candidatePriority` so Windows
+ * can combine it with extension rank instead of with the PATH index.
+ */
+function candidateProvenanceBucket(cliName: string, candidate: string, homeDir = os.homedir()): number {
+    if (!BUN_DEPRIO_CLIS.has(cliName)) return 0;
+    if (cliName === 'claude' && isClaudeNativeCandidate(candidate, homeDir)) return 0;
+    if (isManagedNodeCandidate(candidate, homeDir)) return 1;
+    if (isBunBinCandidate(candidate, homeDir)) return 3;
+    return 2;
+}
+
 function candidatePriority(cliName: string, candidate: string, index: number, homeDir = os.homedir()): number {
     if (!BUN_DEPRIO_CLIS.has(cliName)) return index;
     if (cliName === 'claude' && isClaudeNativeCandidate(candidate, homeDir)) return index;
@@ -150,12 +163,21 @@ export function prioritizeCliCandidates(
     env: NodeJS.ProcessEnv = process.env,
 ): string[] {
     if (platform === 'win32') {
-        // Extension rules the ordering on Windows: installer provenance
-        // (the bun de-prioritization below) is a POSIX-install concern, and
-        // mixing both orders would make neither predictable.
+        // Provenance stays the PRIMARY key and extension is only a tiebreak
+        // within a bucket. Bun installs to %USERPROFILE%\.bun\bin on Windows
+        // too, so ranking by extension alone would let a stale bun shim shadow
+        // a working npm/native install — worse than on POSIX, because a bun
+        // .exe would outrank every npm .cmd.
         return candidates
-            .map((candidate, index) => ({ candidate, index, rank: windowsExtensionRank(candidate, env) }))
-            .sort((a, b) => (a.rank - b.rank) || (a.index - b.index))
+            .map((candidate, index) => ({
+                candidate,
+                index,
+                provenance: candidateProvenanceBucket(cliName, candidate, homeDir),
+                extension: windowsExtensionRank(candidate, env),
+            }))
+            .sort((a, b) => (a.provenance - b.provenance)
+                || (a.extension - b.extension)
+                || (a.index - b.index))
             .map((entry) => entry.candidate);
     }
     if (!BUN_DEPRIO_CLIS.has(cliName)) return candidates;

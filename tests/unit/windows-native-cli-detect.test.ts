@@ -56,12 +56,29 @@ test('a directory is not spawnable even with an executable extension', () => {
     assert.equal(isSpawnableCliFile(dirShim, 'win32').ok, false);
 });
 
-test('a custom PATHEXT entry does not make a file spawnable', () => {
+test('an extension outside the launchable allowlist is not spawnable', () => {
     const dir = fixtureDir();
     const pyTool = path.join(dir, 'codex.py');
     fs.writeFileSync(pyTool, 'print(1)\n');
     // Even if .PY is in PATHEXT, ComSpec cannot launch it.
     assert.equal(isSpawnableCliFile(pyTool, 'win32').ok, false);
+});
+
+test('mixed-case extensions and paths with spaces are handled', () => {
+    const dir = fixtureDir();
+    const mixed = path.join(dir, 'Codex.CmD');
+    fs.writeFileSync(mixed, '@ECHO off\r\n');
+    assert.equal(isSpawnableCliFile(mixed, 'win32').ok, true);
+
+    const spaced = path.join(dir, 'Program Files');
+    fs.mkdirSync(spaced);
+    const spacedTool = path.join(spaced, 'codex.BAT');
+    fs.writeFileSync(spacedTool, '@ECHO off\r\n');
+    assert.equal(isSpawnableCliFile(spacedTool, 'win32').ok, true);
+
+    const com = path.join(dir, 'legacy.COM');
+    fs.writeFileSync(com, '\x00');
+    assert.equal(isSpawnableCliFile(com, 'win32').ok, true);
 });
 
 test('windows candidates rank .exe over .cmd over .ps1 over the extensionless shim', () => {
@@ -101,4 +118,44 @@ test('detection env carries exactly one PATH casing', () => {
     const env = buildCliDetectionEnv('/seed', { PATH: '/a', Path: '/b', path: '/c' });
     const pathKeys = Object.keys(env).filter((key) => key.toLowerCase() === 'path');
     assert.equal(pathKeys.length, 1);
+});
+// Bun ships on Windows under %USERPROFILE%\.bun\bin, so provenance must keep
+// outranking extension: a bun .exe must not shadow an npm .cmd.
+//
+// Paths use the HOST separator on purpose. The provenance helpers compare via
+// path.join/path.relative, which are POSIX-flavored when these tests run on
+// macOS/Linux and win32-flavored on a real Windows runner. Using host-native
+// paths exercises the ranking composition on every OS; the Windows CI lane
+// runs the same assertions against genuine backslash paths.
+const HOME = path.join(os.tmpdir(), 'jaw-home-fixture');
+
+test('a bun shim stays behind other installs on Windows', () => {
+    const bun = path.join(HOME, '.bun', 'bin', 'codex.exe');
+    const npm = path.join(HOME, '.npm-global', 'bin', 'codex.cmd');
+
+    assert.deepEqual(
+        prioritizeCliCandidates('codex', [bun, npm], HOME, 'win32'),
+        [npm, bun],
+        'a bun .exe must not outrank a managed-node .cmd',
+    );
+});
+
+test('extension rank still applies within one provenance bucket on Windows', () => {
+    const shim = path.join(HOME, '.npm-global', 'bin', 'codex');
+    const exe = path.join(HOME, '.npm-global', 'bin', 'codex.exe');
+
+    assert.deepEqual(
+        prioritizeCliCandidates('codex', [shim, exe], HOME, 'win32'),
+        [exe, shim],
+    );
+});
+
+test('a CLI outside the bun-deprioritized set ranks purely by extension', () => {
+    const shim = path.join(HOME, '.bun', 'bin', 'gemini');
+    const cmd = path.join(HOME, '.bun', 'bin', 'gemini.cmd');
+
+    assert.deepEqual(
+        prioritizeCliCandidates('gemini', [shim, cmd], HOME, 'win32'),
+        [cmd, shim],
+    );
 });
