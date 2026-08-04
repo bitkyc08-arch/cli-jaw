@@ -21,41 +21,98 @@ function executableSource(source: string): string {
         .replace(/\/\/.*$/gm, '');
 }
 
-test('doctor gates the WSL lane behind a windows-native check', () => {
-    assert.match(doctor, /if \(isWindowsNative\(\)\) \{/);
-    assert.match(doctor, /\} else if \(isWSL\(\)\) \{/);
-    assert.match(doctor, /CLI tools \(Windows-native\)/);
+// Every positive assertion runs against comment-stripped source. Matching raw
+// source lets an assertion be satisfied by its own explanatory comment, which
+// would keep the suite green after a revert of the very fix it guards.
+const doctorCode = executableSource(doctor);
+const postinstallCode = executableSource(postinstall);
+
+/** The `if (isWindowsNative()) { ... } else if (isWSL()) { ... }` block. */
+function platformBlock(): { windowsArm: string; wslArm: string; after: string } {
+    const start = doctorCode.indexOf('if (isWindowsNative())');
+    assert.notEqual(start, -1, 'doctor must gate the platform lanes on isWindowsNative()');
+
+    const elseAt = doctorCode.indexOf('} else if (isWSL()) {', start);
+    assert.notEqual(elseAt, -1, 'the WSL lane must be the else-arm of the windows-native check');
+
+    // Walk braces from the `else if` to find where the whole block closes.
+    const wslArmStart = doctorCode.indexOf('{', elseAt + '} else if (isWSL())'.length);
+    let depth = 0;
+    let end = -1;
+    for (let i = wslArmStart; i < doctorCode.length; i++) {
+        const ch = doctorCode[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) { end = i; break; }
+        }
+    }
+    assert.notEqual(end, -1, 'the WSL arm must be balanced');
+
+    return {
+        windowsArm: doctorCode.slice(start, elseAt),
+        wslArm: doctorCode.slice(elseAt, end + 1),
+        after: doctorCode.slice(end + 1),
+    };
+}
+
+test('the Windows-native lane contains only Windows checks', () => {
+    const { windowsArm } = platformBlock();
+    assert.match(windowsArm, /CLI tools \(Windows-native\)/);
+    assert.match(windowsArm, /Windows \(native\)/);
+    // The /mnt/ scan is meaningless on native Windows and must stay out.
+    assert.doesNotMatch(windowsArm, /\/mnt\//);
+    assert.doesNotMatch(windowsArm, /WSL sudo/);
 });
 
-test('doctor still reports the WSL /mnt lane', () => {
-    assert.match(doctor, /CLI tools \(WSL-native\)/);
-    assert.match(doctor, /startsWith\('\/mnt\/'\)/);
+test('the WSL lane keeps its own checks and the /mnt scan', () => {
+    const { wslArm } = platformBlock();
+    assert.match(wslArm, /CLI tools \(WSL-native\)/);
+    assert.match(wslArm, /startsWith\('\/mnt\/'\)/);
+    assert.match(wslArm, /WSL sudo/);
+    assert.doesNotMatch(wslArm, /Windows-native/);
+});
+
+test('checks after the platform block stay unconditional', () => {
+    const { after } = platformBlock();
+    // Browser/headless diagnostics ran for every platform before the
+    // restructure and must not have been captured into either arm.
+    assert.match(after, /const headless/);
 });
 
 test('the Windows lane reports rejected candidates rather than re-checking accepted ones', () => {
-    assert.match(doctor, /detected\.rejected \?\? \[\]/);
-    assert.match(doctor, /not launchable/);
+    const { windowsArm } = platformBlock();
+    assert.match(windowsArm, /detected\.rejected \?\? \[\]/);
+    assert.match(windowsArm, /not launchable/);
+    // Re-testing an already-accepted path would re-ask a settled question.
+    assert.doesNotMatch(windowsArm, /isSpawnableCliFile/);
 });
 
 test('doctor --json exposes the resolved platform kind', () => {
-    assert.match(doctor, /platform: resolvePlatformKind\(\)/);
+    assert.match(doctorCode, /platform: resolvePlatformKind\(\)/);
 });
 
 test('postinstall no longer treats WSLENV or win32 as WSL evidence', () => {
-    const executable = executableSource(postinstall);
-    assert.doesNotMatch(executable, /WSLENV/);
-    assert.doesNotMatch(executable, /looksLikeWsl/);
-    assert.match(executable, /isWindowsNodeLaunchedFromWsl\(/);
+    assert.doesNotMatch(postinstallCode, /WSLENV/);
+    assert.doesNotMatch(postinstallCode, /looksLikeWsl/);
 });
 
-test('postinstall reads the npm invocation cwd, not the lifecycle cwd', () => {
+test('postinstall passes the npm invocation cwd, not the lifecycle cwd', () => {
     // npm runs lifecycle scripts from the package root, so process.cwd() here
-    // would make the warning unreachable.
-    assert.match(postinstall, /resolveInvocationCwd\(\)/);
+    // makes the warning unreachable. Assert the EXACT call, on stripped source,
+    // so reverting the argument fails this test.
+    assert.match(
+        postinstallCode,
+        /isWindowsNodeLaunchedFromWsl\(\s*process\.platform\s*,\s*resolveInvocationCwd\(\)\s*\)/,
+    );
+    assert.doesNotMatch(
+        postinstallCode,
+        /isWindowsNodeLaunchedFromWsl\([^)]*process\.cwd\(\)/,
+    );
 });
 
 test('both files import the canonical resolver', () => {
-    for (const [name, source] of [['doctor.ts', doctor], ['postinstall.ts', postinstall]] as const) {
+    for (const [name, source] of [['doctor.ts', doctorCode], ['postinstall.ts', postinstallCode]] as const) {
         assert.match(
             source,
             /from\s+'[^']*platform-kind\.js'/,
