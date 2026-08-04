@@ -216,6 +216,84 @@ if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'session
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)');
 
+const SEARCH_FTS_SQL = `
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    content, tool_log, session_id UNINDEXED,
+    content='messages', content_rowid='id', tokenize='unicode61'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_trigram USING fts5(
+    content, tool_log, session_id UNINDEXED,
+    content='messages', content_rowid='id', tokenize='trigram'
+);
+CREATE TRIGGER IF NOT EXISTS messages_search_ai AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(rowid, content, tool_log, session_id)
+    VALUES (new.id, new.content, COALESCE(new.tool_log, ''), new.session_id);
+    INSERT INTO messages_trigram(rowid, content, tool_log, session_id)
+    VALUES (new.id, new.content, COALESCE(new.tool_log, ''), new.session_id);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_search_ad AFTER DELETE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, content, tool_log, session_id)
+    VALUES ('delete', old.id, old.content, COALESCE(old.tool_log, ''), old.session_id);
+    INSERT INTO messages_trigram(messages_trigram, rowid, content, tool_log, session_id)
+    VALUES ('delete', old.id, old.content, COALESCE(old.tool_log, ''), old.session_id);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_search_au AFTER UPDATE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, content, tool_log, session_id)
+    VALUES ('delete', old.id, old.content, COALESCE(old.tool_log, ''), old.session_id);
+    INSERT INTO messages_fts(rowid, content, tool_log, session_id)
+    VALUES (new.id, new.content, COALESCE(new.tool_log, ''), new.session_id);
+    INSERT INTO messages_trigram(messages_trigram, rowid, content, tool_log, session_id)
+    VALUES ('delete', old.id, old.content, COALESCE(old.tool_log, ''), old.session_id);
+    INSERT INTO messages_trigram(rowid, content, tool_log, session_id)
+    VALUES (new.id, new.content, COALESCE(new.tool_log, ''), new.session_id);
+END;
+INSERT INTO messages_fts(messages_fts) VALUES('rebuild');
+INSERT INTO messages_trigram(messages_trigram) VALUES('rebuild');
+`;
+
+function hasSearchFts(database: Database.Database, name: string): boolean {
+    return Boolean(database.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+    ).get(name));
+}
+
+/** Create and verify the external-content chat indexes without version metadata. */
+export function migrateSearchFts(database: Database.Database): boolean {
+    if (hasSearchFts(database, 'messages_fts') && hasSearchFts(database, 'messages_trigram')) return true;
+    try {
+        database.transaction(() => {
+            database.exec(SEARCH_FTS_SQL);
+            const sentinel = `jaw_fts_probe_${Date.now()}_xyz`;
+            const inserted = database.prepare(
+                "INSERT INTO messages(role, content, session_id) VALUES('system', ?, 'fts-migration-probe')",
+            ).run(sentinel);
+            const rowid = Number(inserted.lastInsertRowid);
+            const match = `"${sentinel}"`;
+            const unicodeHit = database.prepare(
+                'SELECT rowid FROM messages_fts WHERE messages_fts MATCH ? AND rowid=?',
+            ).get(match, rowid);
+            const trigramHit = database.prepare(
+                'SELECT rowid FROM messages_trigram WHERE messages_trigram MATCH ? AND rowid=?',
+            ).get(match, rowid);
+            if (!unicodeHit || !trigramHit) throw new Error('search FTS MATCH probe failed');
+            database.prepare(
+                "INSERT INTO messages_fts(messages_fts, rank) VALUES('integrity-check', 1)",
+            ).run();
+            database.prepare(
+                "INSERT INTO messages_trigram(messages_trigram, rank) VALUES('integrity-check', 1)",
+            ).run();
+            database.prepare('DELETE FROM messages WHERE id=?').run(rowid);
+        })();
+        return true;
+    } catch (error) {
+        console.warn('[search] FTS migration unavailable; LIKE remains active:',
+            error instanceof Error ? error.message : String(error));
+        return false;
+    }
+}
+
+const searchFtsReady = migrateSearchFts(db);
+
 // Migration: add active_chat_session to session table
 const sessionCols = db.prepare('PRAGMA table_info(session)').all();
 if (!(sessionCols as Record<string, unknown>[]).some(c => c["name"] === 'active_chat_session')) {
@@ -298,6 +376,110 @@ export const searchMessages = db.prepare(`
     ORDER BY id DESC
     LIMIT $limit
 `);
+
+export type ChatSearchCandidateEngine = 'unicode61' | 'trigram' | 'like';
+
+export interface ChatSearchCandidateParams {
+    match: string;
+    like: string;
+    session_id: string | null;
+    days: number | null;
+    recent: number | null;
+    limit: number;
+    offset: number;
+}
+
+export interface ChatSearchCandidateRow {
+    id: number;
+    role: string;
+    content: string;
+    cli: string | null;
+    tool_log: string | null;
+    session_id: string;
+    created_at: string;
+    match_field: 'content' | 'tool_log';
+    source_score?: number | null;
+}
+
+const CHAT_SEARCH_SCOPE_SQL = `
+    AND ($session_id IS NULL OR m.session_id = $session_id)
+    AND ($days IS NULL OR m.created_at >= datetime('now', '-' || $days || ' days'))
+    AND ($recent IS NULL OR m.id >= COALESCE(
+        (SELECT id FROM messages
+         WHERE ($session_id IS NULL OR session_id = $session_id)
+         ORDER BY id DESC LIMIT 1 OFFSET $recent),
+        0
+    ))
+`;
+
+function prepareChatFtsStatement(sql: string): Database.Statement | null {
+    if (!searchFtsReady) return null;
+    try {
+        return db.prepare(sql);
+    } catch (error) {
+        console.warn('[search] FTS statement unavailable; LIKE remains active:',
+            error instanceof Error ? error.message : String(error));
+        return null;
+    }
+}
+
+const searchChatUnicode = prepareChatFtsStatement(`
+    SELECT m.id, m.role, m.content, m.cli, m.tool_log, m.session_id, m.created_at,
+           CASE WHEN m.content LIKE '%' || $like || '%' ESCAPE '\\'
+                THEN 'content' ELSE 'tool_log' END AS match_field,
+           bm25(messages_fts) AS source_score
+    FROM messages_fts
+    JOIN messages AS m ON m.id = messages_fts.rowid
+    WHERE messages_fts MATCH $match
+    ${CHAT_SEARCH_SCOPE_SQL}
+    ORDER BY source_score ASC, m.id DESC
+    LIMIT $limit OFFSET $offset
+`);
+
+const searchChatTrigram = prepareChatFtsStatement(`
+    SELECT m.id, m.role, m.content, m.cli, m.tool_log, m.session_id, m.created_at,
+           CASE WHEN m.content LIKE '%' || $like || '%' ESCAPE '\\'
+                THEN 'content' ELSE 'tool_log' END AS match_field,
+           bm25(messages_trigram) AS source_score
+    FROM messages_trigram
+    JOIN messages AS m ON m.id = messages_trigram.rowid
+    WHERE messages_trigram MATCH $match
+    ${CHAT_SEARCH_SCOPE_SQL}
+    ORDER BY source_score ASC, m.id DESC
+    LIMIT $limit OFFSET $offset
+`);
+
+const searchChatLike = db.prepare(`
+    SELECT m.id, m.role, m.content, m.cli, m.tool_log, m.session_id, m.created_at,
+           CASE WHEN m.content LIKE '%' || $like || '%' ESCAPE '\\'
+                THEN 'content' ELSE 'tool_log' END AS match_field
+    FROM messages AS m
+    WHERE (m.content LIKE '%' || $like || '%' ESCAPE '\\'
+       OR COALESCE(m.tool_log, '') LIKE '%' || $like || '%' ESCAPE '\\')
+    ${CHAT_SEARCH_SCOPE_SQL}
+    ORDER BY m.id DESC
+    LIMIT $limit OFFSET $offset
+`);
+
+/** Execute one provider-only candidate statement; legacy search statements stay unchanged. */
+export function searchChatCandidates(
+    engine: ChatSearchCandidateEngine,
+    params: ChatSearchCandidateParams,
+): ChatSearchCandidateRow[] {
+    if (engine === 'like') {
+        return searchChatLike.all({
+            like: params.like,
+            session_id: params.session_id,
+            days: params.days,
+            recent: params.recent,
+            limit: params.limit,
+            offset: params.offset,
+        }) as ChatSearchCandidateRow[];
+    }
+    const statement = engine === 'trigram' ? searchChatTrigram : searchChatUnicode;
+    if (!statement) throw new Error('chat FTS index unavailable');
+    return statement.all(params) as ChatSearchCandidateRow[];
+}
 export const getMessageContext = db.prepare(`
     SELECT id, role, content, cli, created_at
     FROM messages
