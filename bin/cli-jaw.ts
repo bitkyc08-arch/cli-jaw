@@ -124,6 +124,11 @@ function resolveJawHomeDir(): string {
  */
 function warnOnceIfPostinstallSkipped(cmd: string | undefined): void {
     if (shouldSkipNativeGuard(cmd)) return;
+    // Dev checkouts (and test spawns inside them) are not installations: the
+    // published tarball never ships server.ts (files allowlist), so its
+    // presence means this tree came from git, where postinstall state is
+    // meaningless and the warning would pollute test output.
+    if (existsSync(join(packageRoot, 'server.ts'))) return;
     try {
         const integrity = inspectInstallIntegrity(packageRoot, resolveJawHomeDir());
         if (integrity.installScriptState === 'completed' || integrity.userSetupDone) return;

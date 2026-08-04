@@ -41,7 +41,11 @@ test('ensure-native rebuilds from package root with current Node npm', () => {
     assert.match(src, /PATH: \[nodeBinDir, process\.env\.PATH \|\| ''\]/);
     assert.match(src, /node_modules', 'better-sqlite3'/);
     assert.match(src, /rmSync\(join\(betterSqliteDir, 'build'\), \{ recursive: true, force: true \}\)/);
-    assert.match(src, /'run', 'install', '--foreground-scripts'/);
+    // 260804: better-sqlite3 13 removed scripts.install (prebuilds ship in the
+    // package) and `npm rebuild` is a no-op success there, so the guard picks
+    // the script from the installed manifest: v12 install, v13 build-release.
+    assert.match(src, /scripts\.install \? 'install' : 'build-release'/);
+    assert.match(src, /\['run', script, '--foreground-scripts'\]/);
     assert.match(src, /npm_config_target: process\.versions\.node/);
     assert.match(src, /cwd: betterSqliteDir/);
     assert.doesNotMatch(src, /cwd: process\.cwd\(\)/);

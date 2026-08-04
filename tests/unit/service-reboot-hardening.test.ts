@@ -218,7 +218,9 @@ test('SRH-014: install.sh handles network failure gracefully', () => {
 
 test('SRH-015: install.sh detects package manager from install path', () => {
     const src = readSource(INSTALL_SH, 'utf8');
-    assert.ok(src.includes('bun add -g cli-jaw'),
+    // 260804: bun skips lifecycle scripts for untrusted packages; --trust is
+    // the only surface that runs them for a global add.
+    assert.ok(src.includes('bun add -g --trust cli-jaw'),
         'install.sh must use bun for bun-managed installs');
     assert.ok(src.includes('Detected bun-managed install'),
         'install.sh must inform about bun detection');

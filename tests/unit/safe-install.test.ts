@@ -625,7 +625,11 @@ test('SAF-004j3: publish scripts enforce fresh-machine evidence before push or p
 test('SAF-004k: postinstall platform workflow runs installer risk gate on macOS and WSL', () => {
     assert.ok(postinstallWorkflowSrc.includes('macos-latest'), 'workflow should cover native macOS installer risks');
     assert.ok(postinstallWorkflowSrc.includes('windows-wsl'), 'workflow should cover the supported Windows path through WSL');
-    assert.equal(postinstallWorkflowSrc.includes('windows-native'), false, 'workflow must not advertise a native PowerShell installer path');
+    // 260804 install hardening: native Windows became a declared BETA surface.
+    // The workflow must exercise install.ps1 itself (not just raw npm) so the
+    // beta claim has activation evidence behind it.
+    assert.ok(postinstallWorkflowSrc.includes('windows-native'), 'workflow should exercise the beta native Windows installer');
+    assert.ok(postinstallWorkflowSrc.includes('scripts/install.ps1 -TarballPath'), 'the beta job must run install.ps1 itself against the packed tarball');
     assert.ok(postinstallWorkflowSrc.includes('npm run test:install-risk'), 'workflow should run the consolidated installer risk gate');
     assert.ok(postinstallWorkflowSrc.includes('Run installer risk gate in WSL'), 'WSL workflow should run the consolidated installer risk gate, not only a narrow policy subset');
     assert.ok(postinstallWorkflowSrc.includes("'.gitattributes'"), 'workflow triggers should include checkout line-ending policy changes');
