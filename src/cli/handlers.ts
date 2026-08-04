@@ -4,6 +4,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { CLI_KEYS } from './registry.js';
+import { formatCliStatusLine } from './cli-status.js';
 import { resolveAiEProvider } from '../agent/args.js';
 import { t } from '../core/i18n.js';
 import { JAW_HOME } from '../core/config.js';
@@ -421,14 +422,23 @@ export async function resetHandler(args: string[], ctx: CliCommandContext): Prom
 }
 
 export async function versionHandler(_args: string[], ctx: CliCommandContext): Promise<SlashResult> {
-    const status = await safeCall(ctx.getCliStatus, null) as Record<string, { available?: boolean; path?: string }> | null;
+    const status = await safeCall(ctx.getCliStatus, null) as Record<string, {
+        available?: boolean | null;
+        capabilityReady?: boolean | null;
+        probeState?: string;
+        path?: string | null;
+    }> | null;
     const lines = [`cli-jaw v${(ctx as { version?: string }).version || 'unknown'}`];
     if (status && typeof status === 'object') {
         for (const key of DEFAULT_CLI_CHOICES) {
             if (!status[key]) continue;
             const entry = status[key]!;
-            const icon = entry.available ? '✅' : '❌';
-            lines.push(`${key}: ${icon}${entry.path ? ` ${entry.path}` : ''}`);
+            lines.push(formatCliStatusLine(key, {
+                available: entry.available ?? null,
+                capabilityReady: entry.capabilityReady ?? null,
+                probeState: entry.probeState === 'checking' || entry.probeState === 'stale' ? entry.probeState : 'fresh',
+                path: entry.path ?? null,
+            }));
         }
     }
     return { ok: true, text: lines.join('\n') };
