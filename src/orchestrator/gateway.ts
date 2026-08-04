@@ -188,7 +188,11 @@ export function submitMessage(
         }))))
         : 'default';
     const sessionScope: SessionScope = { scope, chatSessionId };
-    const sessionContext = { scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}) };
+    // OFF-mode byte-compat: only expose resolved identity when multi-session is on —
+    // /api/message spreads SubmitResult into the HTTP response (routes/command.ts).
+    const sessionContext = multiSessionEnabled
+        ? { scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}) }
+        : undefined;
     const eventScope = multiSessionEnabled ? { scope, sessionId: chatSessionId } : undefined;
 
     // Admission must use the resolved persistent scope, not a pre-resolution transport guess.
@@ -218,7 +222,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
-        return { action: 'started', noPendingContinue: true, requestId, sessionContext };
+        return { action: 'started', noPendingContinue: true, requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
     // ── reset intent ──
@@ -236,7 +240,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
-        return { action: 'started', requestId, sessionContext };
+        return { action: 'started', requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
     // ── busy → enqueue only ──
@@ -258,7 +262,7 @@ export function submitMessage(
             });
         }
         const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }));
-        return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId, sessionContext };
+        return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
     // ── idle → start immediately ──
@@ -275,5 +279,5 @@ export function submitMessage(
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );
     }
-    return { action: 'started', requestId, sessionContext };
+    return { action: 'started', requestId, ...(sessionContext ? { sessionContext } : {}) };
 }
