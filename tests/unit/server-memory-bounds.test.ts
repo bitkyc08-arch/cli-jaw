@@ -108,9 +108,14 @@ test('D2: a duplicate-registration kill records a reason and escalates', async (
         'the exit handler must treat a dup kill like a steer so it does not evict the new child',
     );
     // Every sibling kill path escalates; a CLI that traps SIGTERM would
-    // otherwise survive with no map entry left to find it.
+    // otherwise survive with no map entry left to find it. The escalation goes
+    // through killProcessTreeIfAlive rather than a bare killProcessTree: this
+    // reaper landed from a different branch than the liveness guards, and a
+    // blind delayed SIGKILL walks `pgrep -P` against a PID the OS may have
+    // already recycled. The helper still kills a SIGTERM-trapping child, since
+    // its exitCode and signalCode both stay null.
     assert.ok(
-        source.includes("killProcessTree(prevPid, 'SIGKILL')"),
-        'the dup kill must escalate to SIGKILL after a grace period',
+        source.includes('killProcessTreeIfAlive(prev, prevPid)'),
+        'the dup kill must escalate after a grace period, guarded by a liveness check',
     );
 });

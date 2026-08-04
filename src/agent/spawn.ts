@@ -114,7 +114,12 @@ const DUP_REGISTRATION_KILL_GRACE_MS = 2_000;
 function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
     const prev = activeProcesses.get(agentLabel);
     if (prev && prev !== child) {
-        if (prev.exitCode !== null || prev.killed) {
+        // `killed` only records that a signal was delivered, so it is not a
+        // liveness test: a CLI that traps SIGTERM stays alive with killed set.
+        // Treating it as exited would drop that survivor from the map without
+        // even scheduling the escalation below — the exact invisible process
+        // this branch exists to prevent.
+        if (hasChildExited(prev)) {
             activeProcesses.delete(agentLabel);
         } else {
             // Dropping a live child from the map makes it invisible to
@@ -133,13 +138,12 @@ function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
                 }
                 // Escalate like every sibling kill path does: a CLI that traps
                 // SIGTERM would otherwise survive with no map entry to find it.
+                // Route through killProcessTreeIfAlive so a child that exited
+                // during the grace period cannot have its recycled PID killed:
+                // killProcessTree walks `pgrep -P`, so a blind escalation would
+                // take an unrelated process tree down with it.
                 const escalate = setTimeout(() => {
-                    if (prev.exitCode !== null || prev.killed) return;
-                    try {
-                        killProcessTree(prevPid, 'SIGKILL');
-                    } catch {
-                        // already gone
-                    }
+                    killProcessTreeIfAlive(prev, prevPid);
                 }, DUP_REGISTRATION_KILL_GRACE_MS);
                 escalate.unref?.();
             }
@@ -230,7 +234,9 @@ interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
 }
 
-import { killProcessTree } from './spawn/process-kill.js';
+import { hasChildExited, killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
+import { releaseChildOutputAfterExit } from './spawn/exit-drain.js';
+import { clampPendingLine } from './spawn/line-buffer.js';
 import { appendBoundedFullText } from './events/fulltext-bound.js';
 
 /** Single choke point for streamed assistant text: appends to the live-run
@@ -326,8 +332,8 @@ export function killAgentById(agentId: string): boolean {
         setTimeout(() => {
             try {
                 if (proc.pid) {
-                    killProcessTree(proc.pid, 'SIGKILL');
-                } else {
+                    killProcessTreeIfAlive(proc);
+                } else if (proc.exitCode === null && proc.signalCode === null) {
                     proc.kill('SIGKILL');
                 }
             } catch { /* already dead */ }
@@ -1688,7 +1694,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                         const pid = child.pid;
                         killProcessTree(pid, 'SIGTERM');
                         setTimeout(() => {
-                            try { killProcessTree(pid, 'SIGKILL'); } catch { /* already dead */ }
+                            killProcessTreeIfAlive(child, pid);
                         }, 5_000);
                     } else child.kill('SIGTERM');
                     return Promise.resolve();
@@ -2178,6 +2184,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...runtimeStatusMeta, ...empTag });
     if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 
+    // The turn settles on 'close', which waits for every stdio stream to close.
+    // A descendant that inherited these pipes can outlive the child and hold
+    // them open forever, so bound that wait while still draining short tails.
+    const releaseExitDrain = releaseChildOutputAfterExit(child, {
+        onRelease: (reason) => {
+            console.warn(`[jaw:drain] ${agentLabel} exited but output stayed open — released after ${reason}`);
+        },
+    });
+
     // ─── DIFF-A: error guard — prevent uncaught ENOENT crash ───
     let stdSettled = false;  // guard: error→close can fire sequentially
     let lastOpencodeIoAt = Date.now();
@@ -2196,6 +2211,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     child.on('error', (err: NodeJS.ErrnoException) => {
         clearOpencodeIdleTimer();
         clearAgyQuietCompletionTimer();
+        releaseExitDrain();
         if (stdSettled) return;
         stdSettled = true;
         cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
@@ -2298,9 +2314,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             try {
                 killProcessTree(child.pid, 'SIGTERM');
                 setTimeout(() => {
-                    try {
-                        if (child.pid) killProcessTree(child.pid, 'SIGKILL');
-                    } catch { /* already dead */ }
+                    killProcessTreeIfAlive(child);
                 }, DEFAULT_KILL_ESCALATION_MS);
             } catch (e) {
                 console.warn('[jaw:agy] quiet completion kill failed:', (e as Error).message);
@@ -2332,7 +2346,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (child.pid) {
             killProcessTree(child.pid, 'SIGTERM');
             setTimeout(() => {
-                try { killProcessTree(child.pid!, 'SIGKILL'); } catch { /* already dead */ }
+                killProcessTreeIfAlive(child);
             }, 5_000);
         }
     }, watchdogConfig);
@@ -2516,6 +2530,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         buffer += chunk.toString();
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
+        const clampedPending = clampPendingLine(buffer);
+        if (clampedPending.overflowed) {
+            console.warn(`[jaw:${agentLabel}] stdout line exceeded the pending-line cap without a newline — truncating`);
+            buffer = clampedPending.buffer;
+        }
         for (const line of lines) {
             if (!line.trim()) continue;
             dispatchNdjsonLine(line);
@@ -2539,6 +2558,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         clearOpencodeIdleTimer();
         clearAgyQuietCompletionTimer();
         stallWatchdog.stop();
+        releaseExitDrain();
         if (stdSettled) return;  // error handler already resolved
         // [I1] Flush residual NDJSON buffer — last event may lack trailing newline
         if (buffer.trim()) {

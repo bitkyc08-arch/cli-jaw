@@ -18,6 +18,12 @@ export function classifyExitError(
     stderrBuf: string,
     stallReason?: string,
     diagnosticText = '',
+    /**
+     * Whether this run already emitted assistant output. A "transient startup"
+     * failure is only transient if nothing has happened yet: once output exists,
+     * the run is past startup and re-running it would repeat work.
+     */
+    outputStarted = false,
 ): ErrorClassification {
     const combined = `${stderrBuf}\n${diagnosticText}`;
     const isModelCapacity = false;
@@ -33,7 +39,10 @@ export function classifyExitError(
     // upstream blips (rate-limit / 5xx) and mask the real reason as a generic
     // "exited before SessionStart" — cli-jaw never sees the child 429. Treat that
     // pre-session signature as a retryable transient. (#219)
-    const isTransientStartup = /exited before SessionStart/i.test(combined);
+    // The name promises "before work began", so the signature alone is not
+    // enough: the same string can appear in output from a run that already
+    // produced results.
+    const isTransientStartup = !outputStarted && /exited before SessionStart/i.test(combined);
     const isAuth = combined.includes('auth') || combined.includes('credentials');
     const isStall = !!stallReason;
 

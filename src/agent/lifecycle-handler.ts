@@ -112,6 +112,33 @@ function computeBackoff(attempt: number, base = 5000, max = 120_000): number {
 const MAIN_MAX_RETRIES = 3;
 const EMP_MAX_RETRIES = 2;
 
+/**
+ * Did this run already do something a retry would repeat?
+ *
+ * Retrying re-runs the same prompt, so any tool the previous attempt executed
+ * runs again — a second Slack message, a second commit, a second file write.
+ * `_skipInsert` only suppresses the local chat row; it does nothing about
+ * external effects.
+ *
+ * Only observably-effectful tools count. Blocking on ANY tool would turn the
+ * common "long agentic turn, rate-limited on the final model call" case into a
+ * hard failure even when the run merely read and searched, which trades a rare
+ * duplicate for a frequent lost turn.
+ *
+ * `search` covers grep/web-search/read-url and `thinking` is internal, so both
+ * are safe to repeat. `command`, `file` and `subagent` can write, send, or spawn
+ * further work, so they are treated as effectful. Unknown types are treated as
+ * effectful: a new tool kind should fail closed.
+ *
+ * The same "a real turn ran tools" reasoning already guards stale-resume
+ * invalidation elsewhere in this file.
+ */
+const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
+
+function performedSideEffects(ctx: ExitContext): boolean {
+    return ctx.toolLog.some(tool => !REPEATABLE_TOOL_TYPES.has(tool.toolType));
+}
+
 type LifecycleSpawnOptions = {
     internal?: boolean;
     _isFallback?: boolean;
@@ -625,6 +652,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             ctx.stderrBuf,
             ctx.stallReason,
             diagnosticText,
+            ctx.fullText.length > 0,
         );
         const suppressClaudeRateLimitFallback = isClaudeRateLimit;
         const effectiveIs429 = is429 || isClaudeRateLimit || isTransientStartup;
@@ -694,7 +722,15 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
 
         // ─── 429 delay retry (exponential backoff, up to MAIN_MAX_RETRIES) ───
         const mainAttempt = opts._retryAttempt ?? 0;
-        if (!opts.internal && !opts._isFallback && effectiveIs429 && mainAttempt < MAIN_MAX_RETRIES) {
+        // `!isStall` is redundant with the stall branch above, which returns
+        // before reaching here — state it anyway so reordering these branches
+        // cannot silently start retrying stalled runs, which may already have
+        // produced side effects.
+        if (
+            !opts.internal && !opts._isFallback && effectiveIs429 && !isStall
+            && !performedSideEffects(ctx)
+            && mainAttempt < MAIN_MAX_RETRIES
+        ) {
             const delayMs = computeBackoff(mainAttempt);
             const delaySec = Math.round(delayMs / 1000);
             console.log(`[jaw:retry] ${cli} 429 detected — waiting ${delaySec}s before retry (attempt ${mainAttempt + 1}/${MAIN_MAX_RETRIES})`);
@@ -719,8 +755,21 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             return;
         }
 
+        if (!opts.internal && !opts._isFallback && effectiveIs429 && !isStall
+            && performedSideEffects(ctx) && mainAttempt < MAIN_MAX_RETRIES) {
+            // Say why the retry was declined, so this reads as a decision rather
+            // than a missing feature.
+            console.log(
+                `[jaw:retry] ${cli} 429 detected but this run already executed effectful tools — `
+                + 'not retrying, because re-running would repeat them',
+            );
+        }
+
         // ─── Fallback with retry tracking ───
-        if (!opts.internal && !opts._isFallback && !suppressClaudeRateLimitFallback) {
+        // Falling back re-runs the same prompt on a different CLI, so it repeats
+        // effectful tools exactly as a retry would; the same gate has to apply or
+        // the protection is trivially bypassed.
+        if (!opts.internal && !opts._isFallback && !suppressClaudeRateLimitFallback && !performedSideEffects(ctx)) {
             const fallbackCli = (settings["fallbackOrder"] || [])
                 .find((fc: string) => fc !== cli && detectCli(fc).available);
             if (fallbackCli) {
@@ -759,7 +808,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     } else if (isEmployee && code !== 0 && !wasKilled && !opts._isFallback) {
         // ─── Employee transient retry (exponential backoff, up to EMP_MAX_RETRIES) ───
         const diagnosticText = `${ctx.fullText}\n${ctx.traceLog.join('\n')}`;
-        const cls = classifyExitError(runtimeCli, code, ctx.stderrBuf, ctx.stallReason, diagnosticText);
+        const cls = classifyExitError(
+            runtimeCli, code, ctx.stderrBuf, ctx.stallReason, diagnosticText, ctx.fullText.length > 0,
+        );
         const empAttempt = opts._retryAttempt ?? 0;
         if (
             cls.isTransientStartup
@@ -796,7 +847,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             });
             return;
         }
-        if ((cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup) && !cls.isStall && !cls.isAuth && !opts._employeeFreshSessionRetry && empAttempt < EMP_MAX_RETRIES) {
+        if (
+            (cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup)
+            && !cls.isStall && !cls.isAuth
+            && !performedSideEffects(ctx)
+            && !opts._employeeFreshSessionRetry
+            && empAttempt < EMP_MAX_RETRIES
+        ) {
             recordError(cli, '429');
             const empDelayMs = computeBackoff(empAttempt, 3000, 60_000);
             const empDelaySec = Math.round(empDelayMs / 1000);

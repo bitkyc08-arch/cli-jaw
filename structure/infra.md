@@ -160,6 +160,135 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ---
 
+## 시작 경로 안정성 계약 (start-path reliability)
+
+`jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면. 유닛: `devlog/_plan/260803_runtime_stability_hardening/`.
+
+### 실행 경로
+
+```
+jaw (전역 bin 심링크) → dist/bin/cli-jaw.js
+                          └─ ensureNativeModulesReady(cmd)   [bin/cli-jaw.ts]
+                               └─ 자식 프로세스: scripts/ensure-native-modules.cjs
+bin/jaw (개발 클론 / 직접 호출 런처)
+     └─ argv 기반 probe → 실패 시 위 스크립트에 위임
+```
+
+전역 설치 사용자는 `bin/jaw`를 거치지 않는다. `--help`/`--version` 등은 가드를 건너뛴다.
+
+### `scripts/ensure-native-modules.cjs` 계약
+
+| 항목 | 계약 |
+| --- | --- |
+| 실패 분류 | `missing` (해석 불가 **또는** 로드 시 `MODULE_NOT_FOUND`) / `abi` (dlopen·NODE_MODULE_VERSION) / `other` — `classifyNativeError()`로 export |
+| 해석 검사 | `createRequire(root/package.json).resolve()`. `node_modules` 디렉터리 존재 여부로 판정하지 않음 (PnP 등) |
+| `missing` 행동 | rebuild 금지. `npm install` 안내 + exit 1 |
+| `abi` 행동 | 잠금 획득 → 재probe → 1회 rebuild → 재probe |
+| `other` 행동 | rebuild 금지. Node 버전/ABI/platform/arch 출력 후 exit 1 |
+| 잠금 위치 | `tmpdir()/jaw-native-rebuild-<sha256(realpath(root)).16>.lock` — **`node_modules` 밖** (npm install이 지울 수 있으므로) |
+| 잠금 획득 | `mkdirSync({recursive:false})` 원자성. 최대 5분 대기 |
+| 잠금 회수 | 소유자 PID를 `process.kill(pid, 0)`로 probe. `ESRCH`=회수, `EPERM`=살아있음. 시간(`LOCK_STALE_MS`)은 PID를 못 읽을 때만 쓰는 backstop |
+| ABI 판정 범위 | 의도적으로 **넓게** 유지 (기존 자동복구 퇴행 방지). 좁힌 것은 `missing`뿐 |
+
+현재 설치본 better-sqlite3 **12.8.0**은 `install` 훅(`prebuild-install || node-gyp rebuild --release`)이 있어
+`npm rebuild`가 복구 경로다 (로컬 `node_modules`에서 확인). 상위 메이저에서 번들 prebuilds로 전환되며
+훅이 사라진다는 보고가 있으므로 — 로컬에서 검증 불가 — **업그레이드 시 이 가정을 반드시 재확인할 것.**
+
+### `bin/jaw` 런처 규칙
+
+- 경로를 **JavaScript 소스로 보간하지 않는다** — argv로 전달 (공백·아포스트로피·유니코드 안전)
+- `readlink -f`를 요구하지 않는다 (GNU 확장; stock macOS/BSD에 없음) — `realpath` → Node `fs.realpathSync`
+- 복구 분기의 `cd`는 서브셸에 가둔다 — `exec`되는 CLI가 호출자의 cwd를 유지해야 함
+- 복구 실패 시 `exec`하지 않는다 — 종료코드 검사 후 진단과 함께 exit
+
+### 프로세스 종료 계약 (`src/agent/spawn/process-kill.ts`)
+
+지연 SIGKILL 승격은 반드시 `killProcessTreeIfAlive()`를 거친다. 판정 기준은
+`exitCode !== null || signalCode !== null`이며 **`ChildProcess.killed`가 아니다** —
+`killed`는 "시그널을 보냈다"는 뜻이라 아직 실행 중인 프로세스도 `true`가 된다.
+가드 없이 승격하면 SIGTERM 후 재사용된 PID를 죽일 수 있고, `killProcessTree`가
+`pgrep -P`로 재귀하므로 무관한 프로세스의 하위 트리까지 함께 죽는다.
+
+### 회귀 가드 테스트
+
+`tests/unit/cli-native-guard-contract.test.ts`, `launcher-portability.test.ts`,
+`native-repair-lock.test.ts`, `kill-escalation-liveness.test.ts`.
+마지막 파일에는 가드 없는 지연 SIGKILL이 새로 추가되면 실패하는 스윕 테스트가 있다.
+
+---
+
+## 런타임 수명주기 계약 (openclaw/hermes 파리티)
+
+유닛: `devlog/_plan/260804_runtime_parity_openclaw_hermes/`.
+
+### 턴 종료 — `close`이지 `exit`이 아니다
+
+턴은 `child.on('close')`에서 resolve된다. `close`는 자식 종료가 아니라 **stdio 스트림이
+전부 닫혀야** 발생하므로, stdio를 상속한 자손이 살아있으면 오지 않는다.
+`src/agent/spawn/exit-drain.ts`의 `releaseChildOutputAfterExit()`가 이 대기를 경계 짓는다:
+
+| 상수 | 값 | 역할 |
+|------|-----|------|
+| `EXIT_DRAIN_IDLE_MS` | 100ms | 마지막 데이터 이후 유휴 유예. 새 데이터가 오면 **재무장** |
+| `EXIT_DRAIN_MAX_MS` | 1000ms | 절대 상한 |
+
+idle 만료 시 `setImmediate`로 이벤트 루프 poll 턴을 **한 번 양보**한 뒤 destroy한다 —
+부하 걸린 루프는 이미 버퍼에 있는 데이터보다 타이머를 먼저 관측할 수 있기 때문이다.
+모든 타이머는 `unref()`되고, `close`/`error` 양쪽 경로에서 정리 함수를 호출한다.
+
+**주의:** 워치독은 이 상황을 구제하지 못한다. 자식은 이미 죽었고, PID 재사용 가드가
+(올바르게) kill을 건너뛴다. 파이프 destroy만이 유일한 해소 수단이다.
+
+### 출력 누적 상한 — 원시 stdout에만 필요하다
+
+| 대상 | 상한 | 이유 |
+|------|------|------|
+| 미완 NDJSON 라인 (`spawn/line-buffer.ts`) | 8 MiB, head 보존 | 개행 없는 스트림이 라인 버퍼를 무한히 키운다. 실측 200 MiB 입력 → 힙 1.5 GiB |
+| agy/kiro `fullText` | 8 MiB / `maxBytes` | **원시 plain-text stdout**을 직접 축적 |
+| 파싱된 assistant 이벤트 경로 | 없음 (의도적) | 상류가 유한. 과거 상한이 실제 최종 답변을 잘라먹은 사고(`8b4ce983b`) |
+| `stderr` | 4000자 (스트리밍 append 전부) | 진단 전용 |
+
+절단은 항상 **보고**한다. 조용한 절단은 금지다.
+
+### 진행(progress) 판정
+
+워치독은 진행 신호에 종류를 부여한다: `output`(원시 출력, 약한 신호) / `rate-limit` / `structured`.
+stall 사유에 `lastProgress=<kind>`를 남기므로, `lastProgress=output x47`은
+**턴이 전진했다는 증거 없이 출력만 흘렀다**는 뜻이다.
+
+deadline 계산은 종류와 무관하다 — `markProgress()`는 어떤 kind로 호출되든 동일하게
+`absoluteDeadline`을 갱신하며, `absoluteHardCapMs`(4시간)가 상한이다. 즉 종류 태깅은
+**진단 전용**이고 타임아웃 동작을 바꾸지 않는다.
+
+휴리스틱(`text.trim().length > 10`)을 좁히지 않은 이유는 주요 엔진(agy·kiro·grok)이
+각자 raw chunk 또는 파싱 이벤트 경로에서 `markProgress`를 직접 호출하기 때문이다.
+`watchdog.ts`만 좁혀도 그 엔진들의 liveness는 그대로다.
+
+### 재시도 — 부작용 게이트
+
+프롬프트를 재실행하는 **세 경로**(main 429 / employee transient / **fallback**)는
+모두 `performedSideEffects(ctx)`를 확인한다.
+
+```ts
+const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
+// search = grep/web-search/read-url, thinking = 추론 스트림
+// command/file/subagent + 미지의 타입 = 부작용 (fail closed)
+```
+
+재시도는 같은 프롬프트를 다시 돌리므로 이전 시도가 실행한 도구가 **다시 실행**된다.
+`_skipInsert`는 로컬 DB 행만 막고 외부 전송·커밋·파일 쓰기는 막지 못한다.
+거부된 재시도는 이유를 로그로 남긴다.
+
+`isTransientStartup`은 **출력이 없을 때만** 인정된다 — 이름이 약속하는 "작업 시작 전"을
+구현이 보장하게 했다.
+
+### 회귀 가드 테스트
+
+`exit-drain.test.ts`, `line-buffer-bound.test.ts`, `raw-stdout-capture-bound.test.ts`,
+`progress-semantics.test.ts`, `retry-side-effect-gate.test.ts`, `retry-stall-ordering.test.ts`.
+
+---
+
 ## src/core/ — runtime support cluster (30 files, 3803L)
 
 `boss-auth.ts`, `config.ts`, `codex-config.ts`, `instance.ts`, `runtime-path.ts`, `main-session.ts`, `message-summary.ts`, `path-expand.ts`, `runtime-settings.ts`, `runtime-settings-gate.ts`, `settings-merge.ts`, `db.ts`, `bus.ts`, `employees.ts`, `i18n.ts`, `compact.ts`, `logger.ts`, `claude-install.ts`, `launchd-cleanup.ts`, `launchd-plist.ts`, `tcc.ts`.
