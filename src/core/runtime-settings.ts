@@ -103,6 +103,14 @@ type ApplyRuntimeSettingsOptions = {
     resetFallbackState?: () => void;
     cliSwitchRefresh?: (input: Record<string, unknown>) => Promise<unknown>;
     writeSettings?: SettingsWrite;
+    // The messaging restart is the other post-write side effect that can fail
+    // and force a rollback. Mocking the whole runtime module to reach it means
+    // re-declaring every export, so tests inject just this call instead.
+    restartMessaging?: (
+        prev: Record<string, any>,
+        next: Record<string, any>,
+        patch: Record<string, any>,
+    ) => Promise<unknown>;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -197,7 +205,31 @@ function rollbackSettings(
     }
 }
 
+// Every mutation runs to completion before the next one starts. The rollback
+// path restores a candidate captured before the patch, so two overlapping
+// requests would let a late failure in the first undo a value the second had
+// already persisted successfully — the losing write disappears from both the
+// file and memory. beginRuntimeSettingsMutation only counts in-flight work; it
+// does not serialise, so the tail promise does.
+let runtimeSettingsTail = Promise.resolve();
+
 export async function applyRuntimeSettingsPatch(
+    rawPatch: Record<string, any> = {},
+    opts: ApplyRuntimeSettingsOptions = {},
+): Promise<Record<string, any>> {
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => { release = resolve; });
+    const previous = runtimeSettingsTail;
+    runtimeSettingsTail = previous.then(() => turn);
+    await previous;
+    try {
+        return await applyRuntimeSettingsPatchSerialised(rawPatch, opts);
+    } finally {
+        release();
+    }
+}
+
+async function applyRuntimeSettingsPatchSerialised(
     rawPatch: Record<string, any> = {},
     opts: ApplyRuntimeSettingsOptions = {},
 ): Promise<Record<string, any>> {
@@ -292,7 +324,7 @@ export async function applyRuntimeSettingsPatch(
 
         // Unified messaging runtime restart (handles both Telegram and Discord)
         try {
-            await restartMessagingRuntime(prevSnapshot, settings, patch);
+            await (opts.restartMessaging ?? restartMessagingRuntime)(prevSnapshot, settings, patch);
         } catch (e: unknown) {
             // Rollback: restore previous settings AND attempt to re-init previous runtime
             console.error('[runtime-settings] restart failed, rolling back:', (e as Error).message);
