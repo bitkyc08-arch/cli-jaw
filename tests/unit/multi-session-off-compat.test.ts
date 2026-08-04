@@ -9,8 +9,8 @@ import { addBroadcastListener, broadcast, removeBroadcastListener } from '../../
 import { withSessionScope } from '../../src/core/session-context.ts';
 
 test('OFF is the default and captured context adds no event fields', () => {
-    assert.deepEqual(DEFAULT_SETTINGS.multiSession, { enabled: false });
-    settings.multiSession = { enabled: false };
+    assert.deepEqual(DEFAULT_SETTINGS.multiSession, { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer' });
+    settings.multiSession = { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer' };
     const received: Array<Record<string, unknown>> = [];
     const listener = (_type: string, data: Record<string, unknown>) => { received.push(data); };
     addBroadcastListener(listener);

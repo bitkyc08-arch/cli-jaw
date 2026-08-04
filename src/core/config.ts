@@ -250,7 +250,11 @@ function createDefaultSettings() {
             latestSeen: { telegram: null, discord: null, slack: null },
             lastActive: { telegram: null, discord: null, slack: null },
         },
-        multiSession: { enabled: false },
+        multiSession: {
+            enabled: false,
+            maxConcurrent: 1,
+            midRunPolicy: 'steer' as const,
+        },
         memory: {
             enabled: true,
             flushEvery: 10,
@@ -430,7 +434,20 @@ export function migrateSettings(s: Record<string, any>) {
             s["messaging"].lastActive.slack = null;
         }
     }
-    if (!s["multiSession"]) s["multiSession"] = { enabled: false };
+    if (!s["multiSession"]) {
+        s["multiSession"] = createDefaultSettings().multiSession;
+    } else {
+        if (s["multiSession"].enabled === undefined) s["multiSession"].enabled = false;
+        if (s["multiSession"].maxConcurrent === undefined) s["multiSession"].maxConcurrent = 1;
+        if (s["multiSession"].midRunPolicy === undefined) s["multiSession"].midRunPolicy = 'steer';
+    }
+    const maxConcurrent = Number(s["multiSession"].maxConcurrent);
+    s["multiSession"].maxConcurrent = Number.isInteger(maxConcurrent) && maxConcurrent > 0
+        ? maxConcurrent
+        : 1;
+    if (!['steer', 'followup', 'collect', 'interrupt'].includes(s["multiSession"].midRunPolicy)) {
+        s["multiSession"].midRunPolicy = 'steer';
+    }
     if (!s["jawCeo"]) {
         s["jawCeo"] = { openaiApiKey: '' };
     }
@@ -526,6 +543,7 @@ export function loadSettings() {
             pi: { ...defaults.pi, ...(raw.pi || {}) },
             network: { ...defaults.network, ...(raw.network || {}) },
             code: { ...defaults.code, ...(raw.code || {}) },
+            multiSession: { ...defaults.multiSession, ...(raw.multiSession || {}) },
         });
         // #64 safety: auto-correct stale workingDir (e.g. copied instance)
         // but allow valid paths to persist (dynamic project targeting)
