@@ -19,7 +19,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 
 ```text
 cli-jaw/
-├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (664L)
+├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (665L)
 ├── lib/                      ← 외부 통합/공용 헬퍼 (5 root files + mcp/ 8 files)
 │   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + softResetSkills + runSkillReset + trusted repair gate + clone cooldown (76L)
 │   ├── mcp/                  ← MCP 모듈 분리 (8 files)
@@ -105,7 +105,7 @@ cli-jaw/
 │   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 (57L)
 │   │   ├── grok-trace-backfill.ts ← Grok trace backfill helper (167L) ✨
 │   │   ├── live-run-state.ts ← active run snapshot / hydrate helper (108L)
-│   │   ├── memory-flush-controller.ts ← assistant 완료 후 메모리 flush lock + trigger 제어 (185L)
+│   │   ├── memory-flush-controller.ts ← assistant 완료 후 메모리 flush lock + trigger 제어 (312L)
 │   │   ├── mcp-passthrough.ts ← MCP passthrough boundary helpers for agent runtime integration (63L)
 │   │   ├── opencode-diagnostics.ts ← OpenCode permissions/env audit + raw event 진단 헬퍼 (156L)
 │   │   ├── session-persistence.ts ← main-session persistence policy + ownership generation (78L)
@@ -150,7 +150,7 @@ cli-jaw/
 │   │   ├── sanitize.ts       ← Interview tracker strip helper + stripPhaseAttestation re-export (79L)
 │   │   └── attestation.ts    ← Phase60 PABCD evidence gate: parse/validate <phase_attestation> (tagged block + --attest object) + form-only checkAttestationGate (gates P→A/A→B/B→C/C→D; narrative did required, C→D needs checkOutput) + stripPhaseAttestation + warn-only no-state narration detector (217L)
 │   ├── prompt/               ← 프롬프트 조립 (4 files + templates/ 10 files)
-│   │   ├── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache (4-segment key: emp:role:phase:workingDir) + on-demand dev skill path contract + advanced memory mode branch + task snapshot injection + dashboard-connector anchor preserve + Phase60 inline PABCD guide --attest evidence note (946L)
+│   │   ├── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache (4-segment key: emp:role:phase:workingDir) + on-demand dev skill path contract + advanced memory mode branch + task snapshot injection + dashboard-connector anchor preserve + Phase60 inline PABCD guide --attest evidence note (965L)
 │   │   ├── runtime-context.ts ← 런타임 컨텍스트 주입 (RuntimeContextEntry, loadEntries, getActiveEntries, addEntry, removeEntry, clearAll, buildInjectionBlock) (80L)
 │   │   ├── soul-bootstrap-prompt.ts ← LLM 기반 soul.md 개인화 부트스트랩 프롬프트 빌더 (52L)
 │   │   ├── template-loader.ts ← 프롬프트 템플릿 로더 (50L)
@@ -198,18 +198,19 @@ cli-jaw/
 │   │       ├── markdown.ts   ← TUI markdown renderer (168L) ✨
 │   │       ├── highlight.ts  ← TUI syntax highlight helper (83L) ✨
 │   │       └── render/       ← TUI render sub-modules (5 files: frame 211L, layout 68L, mouse 27L, scheduler 42L, viewport 160L) ✨
-│   ├── search/               ← 통합 검색 계층 (4 files, 031) ✨
+│   ├── search/               ← 통합 검색 계층 (5 files, 031-032) ✨
 │   │   ├── contract.ts       ← SearchQuery/SearchHit/SearchResultEnvelope 정본 계약 (45L) ✨
 │   │   ├── provider.ts       ← provider registry + off provider (중복 id 거부, 등록 순서 보존) (66L) ✨
 │   │   ├── coordinator.ts    ← ready-only 예산 배분 + cursor 상태 기계 + 부분 실패 인벤토리 (152L) ✨
-│   │   └── providers/chat.ts ← chat 어댑터 (FTS/trigram/LIKE 폴백, 실제 session_id provenance) (124L) ✨
+│   │   ├── providers/chat.ts ← chat 어댑터 (FTS/trigram/LIKE 폴백, 실제 session_id provenance) (124L) ✨
+│   │   └── providers/memory.ts ← memory 어댑터 (고정 64-candidate universe, session provenance 표시, sessionFilter 미적용 경고) (55L) ✨
 │   ├── memory/               ← 데이터 영속화 + advanced memory runtime (14 files)
 │   │   ├── advanced.ts       ← Advanced Memory re-export stub (1L)
 │   │   ├── bootstrap.ts      ← legacy memory/bootstrap import + structured root 초기화 (575L)
 │   │   ├── heartbeat.ts      ← Heartbeat 잡 스케줄 + cron/every timer orchestration + minute-slot dedupe + fs.watch (311L)
 │   │   ├── heartbeat-schedule.ts ← Heartbeat schedule normalize + cron validate/match + timezone validate + immediate cron loop helper (410L)
 │   │   ├── identity.ts       ← `shared/soul.md` 관리 + soul runtime helper (87L)
-│   │   ├── indexing.ts       ← FTS5/BM25 reindex + indexed file/chunk 상태 집계 (569L)
+│   │   ├── indexing.ts       ← FTS5/BM25 reindex + indexed file/chunk 상태 집계 (721L)
 │   │   ├── injection.ts      ← memory injection policy + advanced/basic search routing (69L)
 │   │   ├── keyword-expand.ts ← search keyword expansion + provider config normalize (98L)
 │   │   ├── memory.ts         ← Persistent Memory grep 기반 (165L)
