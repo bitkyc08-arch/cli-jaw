@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import express from 'express';
 import { createDashboardMemoryRouter } from '../../src/manager/routes/dashboard-memory.ts';
 import type { ScanItemForFederation } from '../../src/manager/memory/types.ts';
@@ -200,5 +201,45 @@ test('FED-12: legacy search shapes and ignored corpus/cursor parameters remain u
             'hasMore', 'hits', 'instancesQueried', 'instancesSucceeded', 'mode',
             'offset', 'ok', 'total', 'warnings',
         ]);
+    } finally { await srv.close(); }
+});
+
+// FED-12's zero-hit variant proves the top-level keys and the ignored
+// parameters, but a session field leaking into every hit would still pass it.
+// Serve a real chat row and compare the hit's exact key set at the route
+// boundary, which is where the regression would actually surface.
+test('FED-12b: a real default /chat/search hit carries no session field', async () => {
+    const base = freshTmp();
+    const home = join(base, '.cli-jaw-3457');
+    const dbPath = join(home, 'jaw.db');
+    mkdirSync(home, { recursive: true });
+    const db = new Database(dbPath);
+    try {
+        db.exec(`CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            cli TEXT,
+            tool_log TEXT,
+            created_at TEXT NOT NULL,
+            session_id TEXT
+        )`);
+        db.prepare(
+            "INSERT INTO messages (role, content, cli, created_at, session_id) VALUES ('user', ?, 'web', '2026-08-04T00:00:00Z', 'route-session')",
+        ).run('fed12buniquetoken row');
+    } finally { db.close(); }
+
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    try {
+        const res = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=fed12buniquetoken`,
+        );
+        const body = await res.json() as { ok: boolean; hits: Array<Record<string, unknown>> };
+        assert.equal(body.ok, true);
+        assert.equal(body.hits.length, 1, 'the fixture row must be found');
+        assert.deepEqual(Object.keys(body.hits[0]!).sort(), [
+            'cli', 'content', 'created_at', 'id', 'instanceId', 'instanceLabel',
+            'match_field', 'role',
+        ], 'the default hit shape must not gain a session field');
     } finally { await srv.close(); }
 });

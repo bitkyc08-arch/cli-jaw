@@ -233,6 +233,14 @@ test('FED-04/FED-08/FED-11: healthy and open-failed peers remain distinguishable
     });
 
     assert.equal(result.groups[0]!.hits.length, 2);
+    // Inventory alone is not enough: both hits could carry the same provider id
+    // and this would still pass. Pin each hit to the peer it came from.
+    const byProvider = new Map(result.groups[0]!.hits.map(hit => [hit.provider, hit]));
+    assert.deepEqual([...byProvider.keys()].sort(), ['instance:4201:chat', 'instance:4202:chat']);
+    assert.match(byProvider.get('instance:4201:chat')!.snippet, /one/);
+    assert.match(byProvider.get('instance:4202:chat')!.snippet, /two/);
+    assert.equal(byProvider.get('instance:4201:chat')!.session, 'one');
+    assert.equal(byProvider.get('instance:4202:chat')!.session, 'two');
     assert.deepEqual(result.providers, [
         { id: 'instance:4201:chat', corpus: 'chat', status: 'ready' },
         { id: 'instance:4202:chat', corpus: 'chat', status: 'ready' },
