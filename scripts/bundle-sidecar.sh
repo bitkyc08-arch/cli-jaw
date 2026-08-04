@@ -165,5 +165,13 @@ fi
 
 node "$PROJECT_ROOT/scripts/check-electron-sidecar-no-jwc.cjs" --server-root "$SIDECAR_DIR"
 
+# Static prune analysis runs before the build; this runs after, on the artifact
+# that will actually ship. The prune guard reasons about bare specifiers and
+# cannot see a computed `import(spec)`, so it can only ever be as complete as
+# its manual RUNTIME_LOADED list. Importing the critical modules for real
+# closes that gap by construction — a dashboard returning 200 never proved the
+# Telegram bot could load.
+node "$PROJECT_ROOT/scripts/check-sidecar-smoke.mjs" --server-root "$SIDECAR_DIR"
+
 echo "=== Sidecar ready ==="
 du -sh "$SIDECAR_DIR"

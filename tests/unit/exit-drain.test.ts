@@ -58,10 +58,18 @@ test('without the drain the same child never closes', async () => {
 test('output written just before exit is not truncated', async () => {
     // The drain must not cut short tails: a child that prints and exits in the
     // same tick still has to deliver everything it wrote.
+    //
+    // The producer uses writeSync and does NOT call process.exit(). console.log
+    // on a pipe is asynchronous, so `process.exit(0)` right after it can discard
+    // buffered bytes on its own — and then a truncated read cannot be told apart
+    // from the drain cutting the tail, which is the only thing this test is
+    // supposed to measure. This failed once on a loaded CI runner and could not
+    // be reproduced locally, precisely because the oracle was ambiguous.
     const lines = 500;
     const child = spawn(process.execPath, ['-e', `
-        for (let i = 0; i < ${lines}; i++) console.log('line-' + i);
-        process.exit(0);
+        const out = [];
+        for (let i = 0; i < ${lines}; i++) out.push('line-' + i);
+        require('node:fs').writeSync(1, out.join('\\n') + '\\n');
     `]);
 
     const cleanup = releaseChildOutputAfterExit(child);

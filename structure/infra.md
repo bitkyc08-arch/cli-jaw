@@ -44,6 +44,8 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `sync:electron-version` | `node scripts/sync-electron-version.cjs` — writes the root version into `electron/package.json` and its lockfile; called by both release scripts before `gate:all` |
 | `gate:gate-docs` | `node scripts/release-gates.mjs gate-docs` — `structure/INDEX.md` must list exactly the live gates, with the right count, and each must have its `gate:<name>` npm script |
 | `gate:sidecar-prune-safety` | `node scripts/release-gates.mjs sidecar-prune-safety` — the sidecar prune list must never delete a package the server imports (a packaged app died on `node-fetch`) |
+| `gate:native-load` | `node scripts/release-gates.mjs native-load` — `node-pty` must actually `dlopen` and `spawn-helper` must genuinely execute. Needs `electron/node_modules`, so it reports `SKIPPED` (exit 3) when absent and only hard-fails under `JAW_GATE_REQUIRE_NATIVE=1`, which `desktop-release.yml` sets after `npm ci --prefix electron` |
+| `gate:sidecar-smoke` | `node scripts/release-gates.mjs sidecar-smoke` — critical sidecar modules must import from the bundled tree, not merely resolve. Reports `SKIPPED` (exit 3) with no bundle; hard-fails under `JAW_GATE_REQUIRE_SIDECAR=1` or when a caller passes `--server-root` explicitly, as `scripts/bundle-sidecar.sh` does right after bundling |
 | `scripts/pick-gyp-python.sh` | prints a `python3` that can `import distutils`, which node-gyp still requires; wired into `electron:dist:mac` because Homebrew Python 3.12+ breaks the node-pty rebuild |
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |

@@ -534,23 +534,32 @@ async function restartManagerServer(): Promise<void> {
   }
 }
 
+// bootstrapOnce() clears its promise in .finally(), so a deep link arriving
+// after a failed bootstrap re-runs this body. ipcMain.handle() throws on a
+// duplicate channel, which would reject the second bootstrap mid-way and leave
+// the app partially initialized. Register the IPC surface exactly once.
+let ipcSurfaceRegistered = false;
+
 async function bootstrap(): Promise<void> {
   installManagerApplicationMenu();
   installSecurityHeaders(MANAGER_ORIGIN);
   installDefaultSessionPermissionHandlers();
 
-  registerTerminalIpc(() => mainWindow);
-  registerDiffIpc();
-  registerFolderIpc(() => mainWindow);
-  registerBrowserIpc({
-    getManagerWindow: () => mainWindow,
-    normalizeEmbeddedBrowserUrl: normalizeAllowedEmbeddedBrowserUrl,
-    isAllowedEmbeddedBrowserUrl,
-    openExternalNavigation,
-  });
-  registerClipboardIpc();
-  registerPermissionDiagnosticsIpc();
-  registerWindowIpc();
+  if (!ipcSurfaceRegistered) {
+    ipcSurfaceRegistered = true;
+    registerTerminalIpc(() => mainWindow);
+    registerDiffIpc();
+    registerFolderIpc(() => mainWindow);
+    registerBrowserIpc({
+      getManagerWindow: () => mainWindow,
+      normalizeEmbeddedBrowserUrl: normalizeAllowedEmbeddedBrowserUrl,
+      isAllowedEmbeddedBrowserUrl,
+      openExternalNavigation,
+    });
+    registerClipboardIpc();
+    registerPermissionDiagnosticsIpc();
+    registerWindowIpc();
+  }
 
   createTray({
     onOpenDashboard: () => {
@@ -1105,6 +1114,20 @@ async function spawnAndWait(): Promise<void> {
 
 const PLANNED_RESTART_CODE = 75;
 
+/**
+ * Records one restart against the shared 60s budget and reports whether the
+ * crash loop breaker tripped. Both the planned and unplanned exit paths go
+ * through this, so a server that always exits with PLANNED_RESTART_CODE can no
+ * longer respawn forever. A separate per-path counter would effectively double
+ * the budget to 6/60s and break the "3 per 60s" intent.
+ */
+function consumeRestartBudget(): boolean {
+  const now = Date.now();
+  restartTimestamps = restartTimestamps.filter((t) => now - t < 60_000);
+  restartTimestamps.push(now);
+  return restartTimestamps.length > 3;
+}
+
 function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): void {
   ringBuffer.append(`[manager exit] code=${code} signal=${signal}\n`);
   if (shuttingDown || crashLoopStopped) return;
@@ -1113,6 +1136,13 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
 
   if (code === PLANNED_RESTART_CODE) {
     ringBuffer.append(`[manager exit] planned restart (code ${PLANNED_RESTART_CODE})\n`);
+    if (consumeRestartBudget()) {
+      crashLoopStopped = true;
+      updateServerStatus('Server: Crash loop');
+      notifyServerCrash();
+      void showCrashLoopDialog(ringBuffer.read()).then(() => app.quit());
+      return;
+    }
     void (async () => {
       try {
         await ensureManagerRunning();
@@ -1150,10 +1180,7 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
     if (isKeepRunning() && (!mainWindow || mainWindow.isDestroyed())) {
       notifyServerCrash();
     }
-    const now = Date.now();
-    restartTimestamps = restartTimestamps.filter((t) => now - t < 60_000);
-    restartTimestamps.push(now);
-    if (restartTimestamps.length > 3) {
+    if (consumeRestartBudget()) {
       crashLoopStopped = true;
       updateServerStatus('Server: Crash loop');
       notifyServerCrash();

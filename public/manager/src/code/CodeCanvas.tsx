@@ -285,7 +285,13 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange, onOpenLocalFi
                 const pending: PendingPermission = { permissionId, toolCall, options };
                 handleIncomingPermissionRequest(client, permissionMode, pending, {
                     appendMessage: entry => setMessages(prev => [...prev, entry]),
-                    enqueuePermission: permission => setPermissions(prev => [...prev, permission]),
+                    enqueuePermission: permission => {
+                        setPermissions(prev => [...prev, permission]);
+                        // The permission queue renders outside the transcript, so its
+                        // appearance never shows up in the transcript footprint. Scroll
+                        // explicitly or the prompt can land below the fold.
+                        scrollTranscriptToBottom('smooth');
+                    },
                 });
             }
         } else if (kind === 'code_session_info_update') {
@@ -300,6 +306,9 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange, onOpenLocalFi
         } else if (kind === 'code_plan') {
             const entries = (update['entries'] ?? []) as Array<{ title?: string; status?: string }>;
             setPlanEntries(entries.filter(e => e.title).map(e => ({ title: String(e.title), status: String(e.status ?? 'pending') })));
+            // Plan entries render in the header, not in `messages`, so the
+            // footprint effect cannot see this change.
+            scrollTranscriptToBottom('smooth');
         } else if (kind === 'code_available_commands_update') {
             setAvailableCommands(mergeCodeCommands(normalizeCodeCommands(update['availableCommands'])));
         } else if (kind === 'code_child_exit') {
@@ -318,7 +327,10 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange, onOpenLocalFi
             setSending(false);
         }
 
-        setTimeout(() => scrollTranscriptToBottom('smooth'), 50);
+        // D4: no unconditional scroll per event. This fired for every SSE event
+        // including ones that touch no message (code_usage_update, code_plan),
+        // and the footprint effect in useCodeTranscriptScroll already covers
+        // every case where the transcript actually grew.
     }, [client, permissionMode, scrollTranscriptToBottom]);
 
     useCodeEvents({ port, sessionId: activeSessionId, sessionIdRef: activeSessionIdRef, onEvent: handleCodeEvent, onTransport: setTransportState });

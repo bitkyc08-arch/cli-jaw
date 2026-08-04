@@ -1,4 +1,4 @@
-import { Children, createElement, isValidElement, useMemo } from 'react';
+import { Children, createElement, isValidElement, memo, useMemo } from 'react';
 import type { MouseEvent } from 'react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -188,7 +188,7 @@ function splitChildrenWithLocalFileLinks(
     return out;
 }
 
-export function MarkdownRenderer(props: MarkdownRendererProps) {
+function MarkdownRendererImpl(props: MarkdownRendererProps) {
     const renderedMarkdown = useMemo(
         () => splitPreviewFrontmatter(props.markdown).body,
         [props.markdown],
@@ -201,6 +201,11 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         onNavigate: props.onWikiLinkNavigate ?? NOOP_NAVIGATE,
     }), [props.outgoing, props.notes, props.onWikiLinkNavigate]);
 
+    // D1: this whole block used to run in the render body, minting ~20 fresh
+    // component identities per render. React keys reconciliation off element
+    // type identity, so new types mean unmount + remount of the entire rendered
+    // subtree — on every streaming token, for the full accumulated text.
+    const components = useMemo<Components>(() => {
     const inlineTransform = (children: ReactNode, keyPrefix: string): ReactNode => {
         const withWikiLinks = splitChildrenWithWikiLinks(children, wikiCtx, keyPrefix);
         return splitChildrenWithLocalFileLinks(withWikiLinks, props.onLocalFileOpen, keyPrefix);
@@ -304,6 +309,8 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         components.th = linearCellTransform('th');
         components.td = linearCellTransform('td');
     }
+        return components;
+    }, [wikiCtx, props.onLocalFileOpen, props.tableMode]);
 
     return (
         <ReactMarkdown
@@ -320,3 +327,8 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         </ReactMarkdown>
     );
 }
+
+// D1: memo so an unchanged past message is not re-rendered when a sibling
+// updates. Default shallow compare is correct here — every prop is either a
+// primitive or a reference the caller already keeps stable.
+export const MarkdownRenderer = memo(MarkdownRendererImpl);

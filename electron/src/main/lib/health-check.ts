@@ -56,14 +56,22 @@ export async function waitForManagerReady(
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
     await new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, Math.min(delay, remaining));
-      if (opts.signal) {
-        const abortHandler = () => {
-          clearTimeout(t);
-          resolve();
-        };
-        opts.signal.addEventListener('abort', abortHandler, { once: true });
-      }
+      const signal = opts.signal;
+      // `{ once: true }` only detaches the listener when abort actually fires.
+      // When the timeout wins instead, it stays attached to a long-lived
+      // signal — one stranded closure per backoff iteration. Settle once and
+      // clean up both sides on whichever path wins.
+      let settled = false;
+      const abortHandler = () => finish();
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(t);
+        if (signal) signal.removeEventListener('abort', abortHandler);
+        resolve();
+      };
+      const t = setTimeout(finish, Math.min(delay, remaining));
+      if (signal) signal.addEventListener('abort', abortHandler, { once: true });
     });
   }
   return probe(url, opts.signal);

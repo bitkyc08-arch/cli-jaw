@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess, execFileSync } from 'node:child_process';
+import { killProcessTree } from './process-kill.js';
 import { existsSync, statSync, readdirSync, accessSync, constants, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -186,7 +187,11 @@ export function spawnJawDashboard(
   const child = spawn(invocation.command, invocation.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...(opts.env ?? {}) },
-    detached: false,
+    // The dev `jaw` shim runs node without exec(), so the real dashboard server
+    // is a grandchild. Own a process group here and tear the whole tree down in
+    // gracefulShutdown, otherwise the server survives, keeps its port, and the
+    // next launch walks to the next port and spawns a second full server.
+    detached: process.platform !== 'win32',
     ...(invocation.shell ? { shell: true } : {}),
   });
   child.stdout?.on('data', (d) => opts.ringBuffer.append(d));
@@ -194,33 +199,114 @@ export function spawnJawDashboard(
   return child;
 }
 
+/** Collect the full descendant PID list via `pgrep -P`, deepest last. */
+function collectDescendants(pid: number): number[] {
+  if (process.platform === 'win32') return [];
+  const found: number[] = [];
+  const walk = (parent: number): void => {
+    let kids: number[] = [];
+    try {
+      const out = execFileSync('pgrep', ['-P', String(parent)], { encoding: 'utf8', timeout: 3000 });
+      kids = out.trim().split('\n').filter(Boolean).map(Number).filter((n) => n > 0);
+    } catch {
+      // no children, or pgrep unavailable
+    }
+    for (const kid of kids) {
+      found.push(kid);
+      walk(kid);
+    }
+  };
+  walk(pid);
+  return found;
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function gracefulShutdown(
   child: ChildProcess,
   timeoutMs = 5000,
 ): Promise<void> {
-  if (!child.pid || child.exitCode !== null) return;
+  const pid = child.pid;
+  if (!pid || child.exitCode !== null) return;
+
+  // D1: the dev `jaw` shim is /bin/sh and the real dashboard server is its
+  // grandchild. Two things follow.
+  //
+  //   1. Snapshot descendants BEFORE signalling. Once the shim dies, `pgrep -P
+  //      <shimPid>` returns nothing and a tree walk at SIGKILL time is blind —
+  //      the orphan reparents to PID 1 and survives.
+  //   2. The shim usually exits within milliseconds, so `child.once('exit')`
+  //      alone would resolve while the server is still shutting down. Wait for
+  //      the descendants too, and escalate to SIGKILL on the whole group.
+  const descendants = collectDescendants(pid);
+
+  const signalAll = (signal: NodeJS.Signals): void => {
+    killProcessTree(pid, signal);
+    if (process.platform === 'win32') return;
+    // `detached: true` gives the shim its own process group, which catches
+    // descendants that already reparented away from the pgrep tree.
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      // group already gone
+    }
+    for (const dpid of descendants) {
+      try {
+        process.kill(dpid, signal);
+      } catch {
+        // already dead
+      }
+    }
+  };
+
+  const outstanding = (): boolean => isAlive(pid) || descendants.some(isAlive);
+
   return new Promise<void>((resolve) => {
     let done = false;
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
     const finish = () => {
       if (done) return;
       done = true;
+      // D5: the SIGKILL timer outlives a prompt exit otherwise, holding a dead
+      // ChildProcess closure for `timeoutMs` on every restartManagerServer().
+      if (killTimer !== null) {
+        clearTimeout(killTimer);
+        killTimer = null;
+      }
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
       resolve();
     };
-    child.once('exit', finish);
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      finish();
-      return;
-    }
-    setTimeout(() => {
+
+    child.once('exit', () => {
+      // Only done once nothing from this tree is left running.
+      if (!outstanding()) finish();
+    });
+
+    signalAll('SIGTERM');
+
+    pollTimer = setInterval(() => {
+      if (!outstanding()) finish();
+    }, 100);
+    pollTimer.unref?.();
+
+    killTimer = setTimeout(() => {
+      killTimer = null;
       if (done) return;
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // ignore
-      }
+      signalAll('SIGKILL');
       finish();
     }, timeoutMs);
+    killTimer.unref?.();
   });
 }

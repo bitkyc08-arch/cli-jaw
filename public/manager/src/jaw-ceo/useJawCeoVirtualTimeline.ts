@@ -81,6 +81,11 @@ export function useJawCeoVirtualTimeline(args: {
 
     useEffect(() => virtualizer._didMount(), [virtualizer]);
 
+    // D2 sibling (050 phase): release the instance on unmount. The CEO console
+    // has no per-session key to reset against — it renders one continuous
+    // timeline — so only the retention half applies here.
+    useEffect(() => () => { virtualizerRef.current = null; }, []);
+
     useLayoutEffect(() => {
         virtualizer.setOptions({
             ...virtualizer.options,

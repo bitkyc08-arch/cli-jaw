@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { addBounded } from '../lib/bounded-set';
 import type { ManagerEvent } from '../types';
 import {
     continueJawCeoCompletion,
@@ -90,6 +91,9 @@ function toJawCeoEvent(event: ManagerEvent): JawCeoManagerEvent | null {
     };
 }
 
+/** Bound for the CEO console's event dedupe set (050 D3). */
+const MAX_SEEN_EVENT_KEYS = 2000;
+
 export type UseJawCeoArgs = {
     selectedPort: number | null;
     documentVisible: boolean;
@@ -162,7 +166,8 @@ export function useJawCeo(args: UseJawCeoArgs): JawCeoController {
             if (!event) continue;
             const key = eventKey(event);
             if (seenEventKeysRef.current.has(key)) continue;
-            seenEventKeysRef.current.add(key);
+            // Same unbounded-growth pattern as the code transcript (050 D3).
+            addBounded(seenEventKeysRef.current, key, MAX_SEEN_EVENT_KEYS);
             freshEvents.push(event);
         }
         if (freshEvents.length === 0) return;

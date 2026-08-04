@@ -432,7 +432,14 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(router.includes('files.activeFilePath'), 'router must read the per-tab active file path for document preview');
     assert.ok(router.includes('function expandDesktopHomePath(path: string): string'), 'right panel doc opens must normalize tilde paths before Electron file reads');
     assert.ok(router.includes("getDesktop()?.getHomePath?.()?.replace(/\\/+$/, '')"), 'tilde expansion must use the Electron home-path bridge');
-    assert.ok(router.includes("panelLayout.dispatch({ type: 'OPEN_FILE_IN_FILES_TAB', path: previewPath })"), 'selecting a file must open it in the Files tab file pane');
+    assert.ok(
+        /const handleRightPreviewFile = useCallback\(\s*\(path: string\): void => \{[\s\S]*?panelDispatch\(\{ type: 'OPEN_FILE_IN_FILES_TAB', path: previewPath \}\);[\s\S]*?\},\s*\[panelDispatch\]\);/.test(router),
+        'selecting a file must open it in the Files tab file pane through a memoized handler whose identity does not churn on every panel state change',
+    );
+    assert.ok(
+        /const panelDispatch = panelLayout\.dispatch;/.test(router),
+        'the Files-tab open handler must alias the stable reducer dispatch rather than reading it off the per-render context value',
+    );
     assert.ok(router.includes('onOpenLocalFile={handleRightPreviewFile}'), 'Code mode local file links must open the shared right DocPanel');
     assert.ok(doc.includes('function HtmlPreview'), 'document preview must render local HTML files in the right panel');
     assert.ok(doc.includes('sandbox=""'), 'HTML preview must not grant scripts or same-origin privileges');

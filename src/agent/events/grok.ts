@@ -1,5 +1,6 @@
 // Grok CLI event adapter
 
+import { appendBoundedFullText } from './fulltext-bound.js';
 import {
     asCliEventRecord,
     fieldString,
@@ -327,7 +328,11 @@ export function handleGrokEvent(
         if (text) {
             finalizeGrokThinkingProgress(ctx, agentLabel, empTag, ctx.grokThoughtBuf);
             ctx.grokThoughtBuf = '';
-            ctx.fullText += text;
+            {
+                const bounded = appendBoundedFullText(ctx.fullText, text);
+                ctx.fullText = bounded.text;
+                if (bounded.truncated) ctx.fullTextTruncated = true;
+            }
             ctx.outputTextStarted = true;
             ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + text;
         }

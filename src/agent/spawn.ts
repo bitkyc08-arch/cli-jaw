@@ -106,13 +106,47 @@ import { getEmployeeMcpServers } from './mcp-passthrough.js';
 export let activeProcess: ChildProcess | null = null;
 export const activeProcesses = new Map<string, ChildProcess>(); // agentId → child process
 
+/** Kill reason recorded when a duplicate registration reaps the previous child. */
+const DUP_REGISTRATION_KILL_REASON = 'dup-registration';
+/** Grace before escalating that kill to SIGKILL, matching the sibling kill paths. */
+const DUP_REGISTRATION_KILL_GRACE_MS = 2_000;
+
 function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
     const prev = activeProcesses.get(agentLabel);
     if (prev && prev !== child) {
-        if (prev.exitCode !== null || prev.killed) {
+        // `killed` only records that a signal was delivered, so it is not a
+        // liveness test: a CLI that traps SIGTERM stays alive with killed set.
+        // Treating it as exited would drop that survivor from the map without
+        // even scheduling the escalation below — the exact invisible process
+        // this branch exists to prevent.
+        if (hasChildExited(prev)) {
             activeProcesses.delete(agentLabel);
         } else {
-            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
+            // Dropping a live child from the map makes it invisible to
+            // killAllAgents, so it survives stop, shutdown, and restart while
+            // still holding its own memory. Reap it instead of leaking it.
+            console.warn(`[spawn:dup] activeProcesses already has a live child for ${agentLabel} — killing it before overwrite (pid=${prev.pid ?? 'unknown'})`);
+            if (prev.pid) {
+                const prevPid = prev.pid;
+                // Record a kill reason so the stale exit handler classifies this
+                // as an intentional kill rather than a genuine agent error.
+                killReasons.set(prevPid, DUP_REGISTRATION_KILL_REASON);
+                try {
+                    killProcessTree(prevPid, 'SIGTERM');
+                } catch (error) {
+                    console.warn(`[spawn:dup] failed to kill previous child for ${agentLabel}:`, (error as Error)?.message ?? error);
+                }
+                // Escalate like every sibling kill path does: a CLI that traps
+                // SIGTERM would otherwise survive with no map entry to find it.
+                // Route through killProcessTreeIfAlive so a child that exited
+                // during the grace period cannot have its recycled PID killed:
+                // killProcessTree walks `pgrep -P`, so a blind escalation would
+                // take an unrelated process tree down with it.
+                const escalate = setTimeout(() => {
+                    killProcessTreeIfAlive(prev, prevPid);
+                }, DUP_REGISTRATION_KILL_GRACE_MS);
+                escalate.unref?.();
+            }
         }
     }
     activeProcesses.set(agentLabel, child);
@@ -200,9 +234,10 @@ interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
 }
 
-import { killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
+import { hasChildExited, killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
 import { releaseChildOutputAfterExit } from './spawn/exit-drain.js';
 import { clampPendingLine } from './spawn/line-buffer.js';
+import { appendBoundedFullText } from './events/fulltext-bound.js';
 
 /** Single choke point for streamed assistant text: appends to the live-run
  *  accumulator and broadcasts agent_output tagged with the owning trace run
@@ -1621,9 +1656,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 flushPiThinking();
                 const delta = String(event.text || '');
                 if (!delta) return;
-                ctx.fullText += delta;
+                {
+                    // D3: bound fullText — see events/fulltext-bound.ts.
+                    const bounded = appendBoundedFullText(ctx.fullText, delta);
+                    ctx.fullText = bounded.text;
+                    if (bounded.truncated) ctx.fullTextTruncated = true;
+                }
                 const displayDelta = normalizeAssistantDisplayText(delta);
-                if (ctx.liveOutputText !== undefined) ctx.liveOutputText += displayDelta;
+                if (ctx.liveOutputText !== undefined) {
+                    // Bound this too: it is promoted into fullText at close.
+                    const live = appendBoundedFullText(ctx.liveOutputText, displayDelta);
+                    ctx.liveOutputText = live.text;
+                    if (live.truncated) ctx.fullTextTruncated = true;
+                }
                 if (!ctx.outputTextStarted) ctx.outputTextStarted = true;
                 broadcastAgentOutput(ctx, agentLabel, cli, displayDelta, empTag, traceAudience);
                 return;
@@ -1694,7 +1739,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 opts.lifecycle?.onExit?.(result.code);
                 const killReason = consumeKillReason(child.pid);
                 const wasKilled = !!killReason;
-                const wasSteer = killReason === 'steer';
+                // 'dup-registration' behaves like a steer for cleanup purposes: a
+                // replacement child already owns this label, so the stale exit handler
+                // must not delete the new child's map entry.
+                const wasSteer = killReason === 'steer' || killReason === DUP_REGISTRATION_KILL_REASON;
                 const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, result.code, cli);
                 return handleAgentExit({
                     ctx, code: result.code, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
@@ -2052,7 +2100,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 console.warn(`[codex-app:unexpected-exit] code=${processExit.value.code} signal=${processExit.value.signal} threadId=${ctx.sessionId || 'none'}`);
             }
             const wasKilled = !!killReason;
-            const wasSteer = killReason === 'steer';
+            // See above: a dup-registration kill must not clobber the replacement.
+            const wasSteer = killReason === 'steer' || killReason === DUP_REGISTRATION_KILL_REASON;
             flushCodexAppThinking();
             const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, exitCode, cli);
             await handleAgentExit({

@@ -219,6 +219,8 @@ function runTag(ctx: { traceRunId?: string | null }): Record<string, unknown> {
 
 export interface ExitContext {
     fullText: string;
+    /** Set when fullText hit the safety bound and later output was dropped. */
+    fullTextTruncated?: boolean;
     sessionId: string | null;
     toolLog: ToolEntry[];
     traceLog: string[];
@@ -964,6 +966,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     if (mainManaged && !opts.internal && ctx.fullText) {
         const activeGoal = getActiveGoal();
         if (activeGoal && activeGoal.status === 'active') {
+            // A truncated capture means a trailing marker may have been dropped,
+            // so the ABSENCE of one is no longer authoritative. Say so rather
+            // than silently treating the clipped text as complete.
+            if (ctx.fullTextTruncated && !GOAL_DONE_RE.test(ctx.fullText)) {
+                console.warn('[jaw:goal] assistant text was truncated at the safety bound — a trailing /goal marker may have been lost');
+            }
             if (GOAL_DONE_RE.test(ctx.fullText)) {
                 if (goalHasCompletionEvidence(activeGoal)) {
                     completeGoal();

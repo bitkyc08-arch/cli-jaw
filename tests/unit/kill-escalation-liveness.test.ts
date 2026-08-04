@@ -74,3 +74,40 @@ test('every delayed SIGKILL in spawn.ts is guarded by a liveness check', () => {
         `delayed SIGKILL without a liveness guard can kill a recycled PID (lines: ${unguarded.join(', ')})`,
     );
 });
+
+/**
+ * The duplicate-registration reaper arrived from a different branch than the
+ * liveness guards, so the two met for the first time at merge. It carried its
+ * own copy of the `killed`-as-liveness mistake in two places, and a textually
+ * clean merge would have kept both.
+ */
+test('the duplicate-registration reaper decides liveness by exit state, not by killed', () => {
+    const source = readFileSync(join(projectRoot, 'src', 'agent', 'spawn.ts'), 'utf8');
+    const start = source.indexOf('function registerActiveProcess');
+    assert.notEqual(start, -1, 'registerActiveProcess must exist');
+    const region = source.slice(start, start + 2600);
+
+    // Case 1: an already-exited child must be dropped without a blind SIGKILL,
+    // because the OS may have handed its PID to something else by then.
+    assert.match(
+        region,
+        /if \(hasChildExited\(prev\)\) \{/,
+        'the overwrite branch must ask whether prev actually exited',
+    );
+
+    // Case 2: killed === true with both exit fields null means a SIGTERM-trapping
+    // child is still alive, and escalation must still reach it. Keying the branch
+    // on `killed` would delete it from the map and never schedule the escalation,
+    // leaving a process that stop/shutdown/restart can no longer find.
+    assert.doesNotMatch(
+        region,
+        /prev\.exitCode !== null \|\| prev\.killed/,
+        'prev.killed only records signal delivery and must not stand in for liveness',
+    );
+
+    assert.match(
+        region,
+        /setTimeout\(\(\) => \{\s*killProcessTreeIfAlive\(prev, prevPid\);\s*\}, DUP_REGISTRATION_KILL_GRACE_MS\)/,
+        'the grace-period escalation must route through the liveness-checked helper',
+    );
+});

@@ -77,6 +77,13 @@ export function ElectronMetricsPanel(props: ElectronMetricsPanelProps = {}) {
         let timer: ReturnType<typeof setTimeout> | null = null;
 
         const tick = async () => {
+            // D4: skip the work while the window is hidden, but keep the timer
+            // chain alive so it resumes instantly on return. A poller that
+            // exists to REPORT memory pressure should not be creating idle cost.
+            if (typeof document !== 'undefined' && document.hidden) {
+                if (!cancelled) timer = setTimeout(tick, POLL_INTERVAL_MS);
+                return;
+            }
             try {
                 const result = await fetchElectronMetrics();
                 if (cancelled) return;
