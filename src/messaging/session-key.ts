@@ -3,6 +3,8 @@
 
 import type { RemoteTarget, RuntimeOrigin } from './types.js';
 
+export interface SessionScope { scope: string; chatSessionId: string }
+
 /**
  * Build a deterministic session key from a RemoteTarget.
  * Format: `<channel>:<peerKind>:<targetKind>:<targetId>[:topic|thread:<threadId>]`
@@ -14,6 +16,16 @@ export function buildRemoteSessionKey(target: RemoteTarget): string {
         return `${base}:${suffix}:${target.threadId}`;
     }
     return base;
+}
+
+/**
+ * Build the canonical persistent binding key for a remote conversation.
+ * Format: `jaw:<origin>:<kind>:<id>[:thread:<tid>]`
+ */
+export function buildRemoteBindingKey(target: RemoteTarget): string {
+    const part = (value: string) => encodeURIComponent(value);
+    const base = `jaw:${part(target.channel)}:${part(target.peerKind)}:${part(target.targetId)}`;
+    return target.threadId ? `${base}:thread:${part(target.threadId)}` : base;
 }
 
 /**

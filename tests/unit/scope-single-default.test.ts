@@ -3,14 +3,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolveOrcScope, findActiveScope } from '../../src/orchestrator/scope.ts';
 import { getCtx, setState, resetState } from '../../src/orchestrator/state-machine.ts';
+import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
 
 afterEach(() => { resetState('default'); });
 
-test('SSD-001: resolveOrcScope always returns default regardless of input', () => {
-    assert.equal(resolveOrcScope(), 'default');
-    assert.equal(resolveOrcScope({ origin: 'telegram', chatId: 123 }), 'default');
-    assert.equal(resolveOrcScope({ origin: 'discord', workingDir: '/tmp/x' }), 'default');
-    assert.equal(resolveOrcScope({ persistedScopeId: 'legacy:old' }), 'default');
+test('SSD-001: OFF stays default; ON isolates target and honors persisted scope', () => {
+    assert.equal(resolveOrcScope({ multiSessionEnabled: false }), 'default');
+    assert.equal(resolveOrcScope({ multiSessionEnabled: false, persistedScopeId: 'legacy:old' }), 'default');
+    assert.equal(
+        resolveOrcScope({ multiSessionEnabled: true, target: slackTargetFromId('C1') }),
+        'jaw:slack:channel:C1',
+    );
+    assert.equal(
+        resolveOrcScope({ multiSessionEnabled: true, persistedScopeId: 'persisted:scope' }),
+        'persisted:scope',
+    );
 });
 
 test('SSD-002: findActiveScope always returns default', () => {
