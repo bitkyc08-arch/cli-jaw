@@ -46,7 +46,7 @@ export function buildGoalContinuation(): GoalContinuationResult {
     // so blocking here would strand the goal. Only block on pending replays OUTSIDE
     // orchestration, where a lingering replay means a genuinely undelivered result
     // awaiting drain. `workers_busy` (a genuinely running worker) still blocks above.
-    if (!pabcdActive && hasPendingWorkerReplays()) {
+    if (!pabcdActive && hasPendingWorkerReplays('default')) {
         return { shouldContinue: false, reason: 'pending_replay' };
     }
 

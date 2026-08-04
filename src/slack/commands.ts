@@ -33,7 +33,7 @@ function makeSlackCommandCtx() {
     return makeCommandCtx('slack', locale, {
         applySettings: async (patch) => {
             bumpSessionOwnershipGeneration();
-            return applyRuntimeSettingsPatch(patch, { resetFallbackState });
+            return applyRuntimeSettingsPatch(patch, { resetFallbackState: () => resetFallbackState(null) });
         },
         clearSession: () => {
             bumpSessionOwnershipGeneration();

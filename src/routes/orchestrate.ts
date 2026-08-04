@@ -53,10 +53,10 @@ import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbo
 import { recordDispatch } from '../goal-run/controller.js';
 import { log } from '../core/logger.js';
 
-function getRuntimeSnapshot() {
+function getRuntimeSnapshot(scopeKey: string) {
     return {
         uptimeSec: Math.floor(process.uptime()),
-        activeAgent: isAgentBusy(),
+        activeAgent: isAgentBusy(scopeKey),
         queuePending: messageQueue.length,
     };
 }
@@ -186,9 +186,10 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
     });
 
     app.get('/api/orchestrate/snapshot', requireAuth, (_req, res) => {
-        const runtime = getRuntimeSnapshot();
         const scope = resolveOrcScope({ origin: 'web', workingDir: settings["workingDir"] || null });
+        const runtime = getRuntimeSnapshot(scope);
         const ctx = getCtx(scope);
+        const scopedWorkers = getActiveWorkers(scope);
         // Phase 56.1: whitelist-sanitize ctx so legacy fields (e.g. sharedPlanPath)
         // from pre-56.1 DB rows don't leak through the snapshot API.
         const safeCtx = ctx ? {
@@ -226,9 +227,9 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             },
             runtime: {
                 ...runtime,
-                busy: runtime.activeAgent || getActiveWorkers().some(w => w.state === 'running'),
+                busy: runtime.activeAgent || scopedWorkers.some(w => w.state === 'running'),
             },
-            workers: getActiveWorkers(),
+            workers: scopedWorkers,
             heartbeat: getHeartbeatRuntimeState(),
             queued: getQueuedMessageSnapshotForScope(scope),
             activeRun: getSafeLiveRun(scope),
@@ -249,13 +250,13 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         if (!id) return fail(res, 400, 'missing id');
         const exists = messageQueue.find(item => item.id === id);
         if (!exists) return fail(res, 404, 'queued item not found');
-        setQueueHold(id);
+        setQueueHold(exists.scope, id);
         res.json({ ok: true, held: id });
     });
 
     app.delete('/api/orchestrate/queue/:id/hold', requireAuth, (req, res) => {
         const id = String(req.params["id"] || '');
-        clearQueueHold(id || undefined);
+        clearQueueHold(null, id || undefined);
         res.json({ ok: true, released: id });
     });
 
@@ -264,7 +265,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         if (!id) return fail(res, 400, 'missing id');
         const peek = messageQueue.find(item => item.id === id);
         if (!peek) {
-            clearQueueHold(id);
+            clearQueueHold(null, id);
             return fail(res, 404, 'queued item not found');
         }
         const prompt = peek.prompt;
@@ -273,36 +274,49 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const chatId = peek.chatId;
         const requestId = peek.requestId;
         const scope = peek.scope || 'default';
-        const steerMeta = stripUndefined({ origin, target, chatId, requestId });
-        if (isSteerInProgress()) {
-            clearQueueHold(id, { resume: false });
+        const chatSessionId = settings["multiSession"]?.enabled === true
+            ? (peek.chatSessionId || 'default')
+            : getActiveChatSession();
+        const steerMeta = stripUndefined({
+            origin, target, chatId, requestId,
+            ...(settings["multiSession"]?.enabled === true ? {
+                scope,
+                chatSessionId,
+                ...(peek.remoteKey ? { remoteKey: peek.remoteKey } : {}),
+            } : {}),
+        });
+        if (isSteerInProgress(scope)) {
+            clearQueueHold(scope, id, { resume: false });
             return fail(res, 409, 'steer already in progress');
         }
-        const steerWaitMs = getSteerWaitMsForActiveAgent();
-        const wasBusyBeforeSteer = isAgentBusy();
-        setQueueHold(id, Math.max(10_000, steerWaitMs + 5_000));
-        setSteerInProgress(true);
+        const steerWaitMs = getSteerWaitMsForActiveAgent(scope);
+        const wasBusyBeforeSteer = isAgentBusy(scope);
+        setQueueHold(scope, id, Math.max(10_000, steerWaitMs + 5_000));
+        setSteerInProgress(scope, true);
         const result = removeQueuedMessage(id);
-        clearQueueHold(id, { resume: false });
+        clearQueueHold(scope, id, { resume: false });
         if (!result.removed) {
-            setSteerInProgress(false);
+            setSteerInProgress(scope, false);
             return fail(res, 404, 'queued item disappeared during steer');
         }
         try {
-            insertMessage.run('user', prompt, origin, '', settings["workingDir"] || null, getActiveChatSession());
+            insertMessage.run('user', prompt, origin, '', settings["workingDir"] || null, chatSessionId);
         } catch (err) {
             log.warn('[steer:insert]', (err as Error).message);
         }
         broadcast('steer_started', stripUndefined({ prompt, steerWaitMs, ...steerMeta, scope }));
-        broadcast('new_message', stripUndefined({ role: 'user', content: prompt, source: origin, fromQueue: true, target, chatId, requestId }));
+        broadcast('new_message', stripUndefined({
+            role: 'user', content: prompt, source: origin, fromQueue: true, target, chatId, requestId,
+            ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: chatSessionId } : {}),
+        }));
         res.json({ ok: true, pending: result.pending });
         void (async () => {
             try {
                 if (wasBusyBeforeSteer) {
-                    const stopped = killActiveAgent('steer');
-                    if (stopped) await waitForProcessEnd(steerWaitMs);
+                    const stopped = killActiveAgent(scope, 'steer');
+                    if (stopped) await waitForProcessEnd(scope, steerWaitMs);
                 }
-                setSteerInProgress(false);
+                setSteerInProgress(scope, false);
                 const task = isResetIntent(prompt)
                     ? orchestrateReset({ ...steerMeta, _skipInsert: true })
                     : isContinueIntent(prompt)
@@ -314,7 +328,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 log.error('[steer:orchestrate]', message);
                 broadcast('orchestrate_done', stripUndefined({ text: `[error] ${message}`, error: true, ...steerMeta }));
             } finally {
-                setSteerInProgress(false);
+                setSteerInProgress(scope, false);
             }
         })();
     });
@@ -417,7 +431,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         // Capture the current Boss main session's channel so disconnected
         // worker results later drain back to the correct origin/chatId,
         // not a generic 'system' scope.
-        const bossMeta = getCurrentMainMeta();
+        const bossMeta = getCurrentMainMeta(dispatchScope);
         const replayMeta = bossMeta ? stripUndefined({
             origin: bossMeta.origin,
             target: bossMeta.target,
@@ -425,6 +439,8 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             requestId: bossMeta.requestId,
             replyViaTarget: bossMeta.replyViaTarget,
             scopeId: bossMeta.scopeId,
+            chatSessionId: bossMeta.chatSessionId,
+            ...(bossMeta.remoteKey ? { remoteKey: bossMeta.remoteKey } : {}),
         }) : undefined;
         let slot;
         try {
@@ -564,9 +580,10 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 // would otherwise stall forever. Trigger drainPendingReplays so the result
                 // is fed back via a fresh Boss session without waiting for the next user
                 // message. See devlog/_fin/260417_message_duplication/02_*.
-                if (!isAgentBusy()) {
+                const replayScope = slot.replayMeta?.scopeId ?? 'default';
+                if (!isAgentBusy(replayScope)) {
                     queueMicrotask(() => {
-                        drainPendingReplays({ origin: 'system' })
+                        drainPendingReplays(replayScope, { origin: 'system' })
                             .catch(err => log.error('[dispatch:drain]', (err as Error).message));
                     });
                 }
@@ -578,9 +595,10 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 // does not wait for an organic idle event. A blocking CLI poller
                 // keeps the boss busy, so the isAgentBusy() guard skips this
                 // path for normal polled dispatches (no double delivery).
-                if (!isAgentBusy()) {
+                const replayScope = slot.replayMeta?.scopeId ?? 'default';
+                if (!isAgentBusy(replayScope)) {
                     queueMicrotask(() => {
-                        drainPendingReplays({ origin: 'system' })
+                        drainPendingReplays(replayScope, { origin: 'system' })
                             .catch(err => log.error('[dispatch:async-drain]', (err as Error).message));
                     });
                 }
@@ -641,12 +659,14 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const dispatchCtx = getCtx(dispatchScope);
         const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 4, C: 4 };
         const emps = getEmployees.all() as EmployeeRow[];
-        const bossMeta = getCurrentMainMeta();
+        const bossMeta = getCurrentMainMeta(dispatchScope);
         const replayMeta = bossMeta ? stripUndefined({
             origin: bossMeta.origin, target: bossMeta.target,
             chatId: bossMeta.chatId, requestId: bossMeta.requestId,
             replyViaTarget: bossMeta.replyViaTarget,
             scopeId: bossMeta.scopeId,
+            chatSessionId: bossMeta.chatSessionId,
+            ...(bossMeta.remoteKey ? { remoteKey: bossMeta.remoteKey } : {}),
         }) : undefined;
 
         interface BatchEntry {
@@ -849,9 +869,9 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 } catch (err) {
                     log.error('[orchestrate:batch-async]', (err as Error)?.message || String(err));
                 } finally {
-                    if (!isAgentBusy()) {
+                    if (!isAgentBusy(dispatchScope)) {
                         queueMicrotask(() => {
-                            drainPendingReplays({ origin: 'system' })
+                            drainPendingReplays(dispatchScope, { origin: 'system' })
                                 .catch(err => log.error('[orchestrate:batch-drain]', (err as Error).message));
                         });
                     }

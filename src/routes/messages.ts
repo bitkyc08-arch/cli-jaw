@@ -136,7 +136,7 @@ export function registerMessageRoutes(app: Router): void {
                 title,
                 updatedAt: String(activityRow.created_at || ''),
             } : null,
-            processBusy: isAgentBusy(),
+            processBusy: isAgentBusy(null),
         });
     });
 }

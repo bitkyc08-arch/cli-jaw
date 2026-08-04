@@ -64,15 +64,6 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         };
     }
 
-    const { isAgentBusy } = await import('../agent/spawn.js');
-    if (isAgentBusy()) {
-        return {
-            ok: false,
-            code: 'compact_busy',
-            text: 'Compact is available only when the main agent is idle.',
-        };
-    }
-
     const activeCli = settings?.cli || session?.active_cli || session?.activeCli || 'claude';
     const workingDir = normalizeWorkingDir(settings?.workingDir || null);
 

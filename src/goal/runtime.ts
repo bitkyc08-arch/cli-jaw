@@ -39,7 +39,7 @@ export function buildRuntimeSnapshot(overrides?: {
     const goal = getActiveGoal();
     const orcState = getState();
     const workers = getActiveWorkers();
-    const pendingReplays = hasPendingWorkerReplays();
+    const pendingReplays = hasPendingWorkerReplays('default');
 
     return {
         goal,

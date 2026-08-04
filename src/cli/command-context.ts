@@ -8,6 +8,7 @@ import { getSession } from '../core/db.js';
 import { t } from '../core/i18n.js';
 import { getMergedSkills, A2_PATH, regenerateB } from '../prompt/builder.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
+import { currentSessionScope } from '../core/session-context.js';
 import * as browser from '../browser/index.js';
 import * as memory from '../memory/memory.js';
 import { bootstrapMemory, ensureMemoryStructure, getMemoryStatus, reindexMemory } from '../memory/runtime.js';
@@ -77,7 +78,7 @@ export function makeCommandCtx(
         },
         getRuntime: () => ({
             uptimeSec: Math.floor(process.uptime()),
-            activeAgent: isAgentBusy(),
+            activeAgent: isAgentBusy(currentSessionScope()?.scope ?? 'default'),
             queuePending: messageQueue.length,
         }),
         getSkills: () => getMergedSkills(),

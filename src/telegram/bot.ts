@@ -360,7 +360,7 @@ function makeTelegramCommandCtx() {
         applySettings: async (patch) => {
             bumpSessionOwnershipGeneration();
             return applyRuntimeSettingsPatch(patch, {
-                resetFallbackState,
+                resetFallbackState: () => resetFallbackState(null),
             });
         },
         clearSession: () => {

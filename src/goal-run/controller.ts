@@ -56,7 +56,7 @@ export function preflight(mode: GoalRunMode = 'assist'): GoalRunState {
         hasGoal: !!goal,
         orcState: getState(),
         workerBusy: getActiveWorkers().length > 0,
-        pendingReplay: hasPendingWorkerReplays(),
+        pendingReplay: hasPendingWorkerReplays('default'),
     });
     const budgetGate = checkBudget(DEFAULT_BUDGET);
     gates.push(budgetGate);
@@ -99,7 +99,7 @@ export function resumeRun(): GoalRunState | null {
         hasGoal: !!getActiveGoal(),
         orcState: getState(),
         workerBusy: getActiveWorkers().length > 0,
-        pendingReplay: hasPendingWorkerReplays(),
+        pendingReplay: hasPendingWorkerReplays('default'),
     });
     const budgetGate = checkBudget(activeRun.budget);
     gates.push(budgetGate);

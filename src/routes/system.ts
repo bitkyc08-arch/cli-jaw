@@ -19,7 +19,7 @@ function getRuntimeSnapshot() {
 
     return {
         uptimeSec: Math.floor(process.uptime()),
-        activeAgent: isAgentBusy(),
+        activeAgent: isAgentBusy(null),
         queuePending: messageQueue.length,
         cli,
         model,

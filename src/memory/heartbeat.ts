@@ -18,6 +18,8 @@ import { runSingleAgent } from '../orchestrator/distribute.js';
 import { getState } from '../orchestrator/state-machine.js';
 import { getGoalContinuationPrompt } from '../goal/heartbeat.js';
 import { log } from '../core/logger.js';
+
+const HEARTBEAT_SCOPE = 'default';
 import { applyOutputPolicy, loadPolicyHooksConfig } from '../core/policy-hooks.js';
 import { setRecordPending } from '../core/policy-flags.js';
 import { parseHeartbeatReport, type HeartbeatReport } from './heartbeat-report.js';
@@ -136,7 +138,7 @@ async function runEmployee(job: Record<string, any>, prompt: string): Promise<He
     const emp = (getEmployees.all() as EmployeeRow[]).find(row => row.name === job["employee"]);
     if (!emp) return parseHeartbeatReport('status: failed\nsummary: employee not found');
     try {
-        const slot = claimWorker(emp, prompt, { origin: 'heartbeat' });
+        const slot = claimWorker(emp, prompt, { origin: 'heartbeat', scopeId: HEARTBEAT_SCOPE, chatSessionId: 'default' });
         try {
             const ap = { agent: emp.name, role: emp.role || 'general developer', task: prompt, parallel: false, currentPhase: 0, currentPhaseIdx: 0, phaseProfile: [0], mutable: false, scope: null, task_tags: ['heartbeat'] };
             const result = await runSingleAgent(ap, emp, { tag: `heartbeat:${job["id"] || job["name"]}` }, 1, { origin: 'heartbeat' }, []);
@@ -168,7 +170,7 @@ export async function runHeartbeatJob(job: Record<string, any>) {
         }
         return;
     }
-    if (runner === 'main' && isAgentBusy()) {
+    if (runner === 'main' && isAgentBusy(HEARTBEAT_SCOPE)) {
         const queued = queueHeartbeatJob(job, 'agent_busy', 'defer');
         log.info(`[heartbeat:${job["name"]}] ${queued ? 'deferred' : 'already deferred'} during active main agent (${pendingJobs.length} pending)`);
         return;
@@ -192,9 +194,9 @@ export async function runHeartbeatJob(job: Record<string, any>) {
                 ? `${scriptReport.raw}\nstatus: failed\nsummary: ${scriptReport.summary || 'script failed'}`
                 : scriptReport.raw;
         } else {
-            const first = await orchestrateAndCollectData(prompt, { origin: 'heartbeat', requestId: crypto.randomUUID() });
+            const first = await orchestrateAndCollectData(prompt, { origin: 'heartbeat', requestId: crypto.randomUUID(), scope: HEARTBEAT_SCOPE, chatSessionId: 'default' });
             const collected = first.data.agyPlannerOnly === true
-                ? await orchestrateAndCollectData(prompt, { origin: 'heartbeat', requestId: crypto.randomUUID() })
+                ? await orchestrateAndCollectData(prompt, { origin: 'heartbeat', requestId: crypto.randomUUID(), scope: HEARTBEAT_SCOPE, chatSessionId: 'default' })
                 : first;
             rawResult = String(collected.text);
         }
@@ -244,7 +246,7 @@ export async function runHeartbeatJob(job: Record<string, any>) {
 
 export async function drainPending() {
     if (pendingJobs.length === 0) return;
-    if (isAgentBusy() || messageQueue.length > 0 || hasPendingWorkerReplays()) return;
+    if (isAgentBusy(HEARTBEAT_SCOPE) || messageQueue.length > 0 || hasPendingWorkerReplays(HEARTBEAT_SCOPE)) return;
     const next = pendingJobs.shift()?.job;
     if (!next) return;
     broadcast('heartbeat_pending', pendingSnapshot());

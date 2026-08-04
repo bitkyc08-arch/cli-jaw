@@ -185,7 +185,7 @@ export function registerManagerRuntimeMonitorRoutes(app: Express, requireAuth: A
             pabcd: summarizePabcd(),
             runtime: {
                 activeWorkers: getActiveWorkers().length,
-                pendingWorkerReplays: hasPendingWorkerReplays(),
+                pendingWorkerReplays: hasPendingWorkerReplays(null),
                 heartbeatPending: heartbeat.pending,
                 heartbeatDeferredPending: heartbeat.deferredPending,
             },

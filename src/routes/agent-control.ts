@@ -3,14 +3,15 @@
 
 import type { Router, RequestHandler } from 'express';
 import { ok } from '../http/response.js';
-import { killAllAgents } from '../agent/spawn.js';
+import { killActiveAgent, killAllAgents } from '../agent/spawn.js';
 import { broadcast } from '../core/bus.js';
 import { clearSessionState } from '../core/session-ops.js';
 
 export function registerAgentControlRoutes(app: Router, requireAuth: RequestHandler): void {
-    app.post('/api/stop', requireAuth, (_req, res) => {
-        const killed = killAllAgents('api');
-        ok(res, { killed });
+    app.post('/api/stop', requireAuth, (req, res) => {
+        const scope = typeof req.body?.scope === 'string' ? req.body.scope.trim() : '';
+        const killed = scope ? killActiveAgent(scope, 'api') : killAllAgents('api');
+        ok(res, { killed, ...(scope ? { scope } : { scope: null, aggregate: true }) });
     });
 
     // UI-only screen clear — broadcasts to all clients but does NOT delete messages

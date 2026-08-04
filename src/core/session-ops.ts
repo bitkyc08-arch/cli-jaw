@@ -45,6 +45,6 @@ export function resetSessionOnly(): void {
 export async function applySettingsPatch(rawPatch: Record<string, unknown> = {}) {
     bumpSessionOwnershipGeneration();
     return applyRuntimeSettingsPatch(rawPatch, {
-        resetFallbackState,
+        resetFallbackState: () => resetFallbackState(null),
     });
 }
