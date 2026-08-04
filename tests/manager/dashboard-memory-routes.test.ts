@@ -18,7 +18,13 @@ async function startServer(supplier: () => Promise<ScanItemForFederation[]>): Pr
         const server = app.listen(0, '127.0.0.1', () => {
             const addr = server.address();
             const port = typeof addr === 'object' && addr ? addr.port : 0;
-            const router = createDashboardMemoryRouter({ managerPort: port, scanSupplier: supplier });
+            const router = createDashboardMemoryRouter({
+                managerPort: port,
+                scanSupplier: supplier,
+                embeddingConfig: () => null,
+                vecStore: () => null,
+                dashboardHome: freshTmp(),
+            });
             app.use('/api/dashboard/memory', router);
             resolve({
                 port,
@@ -137,5 +143,62 @@ test('routes: /instances returns shape', async () => {
         const body = await res.json() as { ok: boolean; instances: Array<{ instanceId: string }> };
         assert.equal(body.ok, true);
         assert.ok(Array.isArray(body.instances));
+    } finally { await srv.close(); }
+});
+
+test('FED-09: /chat/search envelope is chat-only, one-page, and rejects cursor/corpus drift', async () => {
+    const srv = await startServer(async () => []);
+    try {
+        const res = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=route+needle&format=envelope`,
+        );
+        assert.equal(res.status, 200);
+        const body = await res.json() as {
+            groups: Array<{ corpus: string }>;
+            page: { nextCursor: string | null; hasMore: boolean };
+        };
+        assert.deepEqual(body.groups.map(group => group.corpus), ['chat']);
+        assert.equal(body.page.nextCursor, null);
+
+        const cursor = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=route+needle&format=envelope&cursor=next`,
+        );
+        assert.equal(cursor.status, 400);
+        assert.equal((await cursor.json() as { code: string }).code, 'invalid_query');
+
+        const corpus = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=route+needle&format=envelope&corpus=memory`,
+        );
+        assert.equal(corpus.status, 400);
+        assert.equal((await corpus.json() as { code: string }).code, 'invalid_query');
+    } finally { await srv.close(); }
+});
+
+test('FED-12: legacy search shapes and ignored corpus/cursor parameters remain unchanged', async () => {
+    const srv = await startServer(async () => []);
+    try {
+        const base = `http://127.0.0.1:${srv.port}/api/dashboard/memory`;
+        const chatPlain = await (await fetch(
+            `${base}/chat/search?q=legacy+shape&instance=999999`,
+        )).json() as Record<string, unknown>;
+        const chatIgnored = await (await fetch(
+            `${base}/chat/search?q=legacy+shape&instance=999999&corpus=memory&cursor=ignored`,
+        )).json() as Record<string, unknown>;
+        assert.deepEqual(chatIgnored, chatPlain);
+        assert.deepEqual(Object.keys(chatPlain).sort(), [
+            'hits', 'instancesQueried', 'instancesSucceeded', 'ok', 'warnings',
+        ]);
+
+        const memoryPlain = await (await fetch(
+            `${base}/search?q=legacy+shape&instance=999999&mode=fts5`,
+        )).json() as Record<string, unknown>;
+        const memoryIgnored = await (await fetch(
+            `${base}/search?q=legacy+shape&instance=999999&mode=fts5&corpus=chat&cursor=ignored`,
+        )).json() as Record<string, unknown>;
+        assert.deepEqual(memoryIgnored, memoryPlain);
+        assert.deepEqual(Object.keys(memoryPlain).sort(), [
+            'hasMore', 'hits', 'instancesQueried', 'instancesSucceeded', 'mode',
+            'offset', 'ok', 'total', 'warnings',
+        ]);
     } finally { await srv.close(); }
 });
