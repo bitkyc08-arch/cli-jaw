@@ -15,6 +15,7 @@ import { SLACK_APP_MANIFEST, slackManifestYaml } from '../../src/slack/manifest.
 const METHOD_SCOPE_MAP: Record<string, string | null> = {
     'chat.postMessage': 'chat:write',
     'conversations.open': 'im:write',
+    'files.info': 'files:read',
     'files.getUploadURLExternal': 'files:write',
     'files.completeUploadExternal': 'files:write',
     'auth.test': null,

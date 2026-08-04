@@ -7,16 +7,20 @@ import assert from 'node:assert/strict';
 
 import {
     REQUIRED_SLACK_BOT_SCOPES,
+    SLACK_CAPABILITY_SCOPES,
+    missingSlackCapabilityScopes,
     missingSlackScopes,
     validateChannelCredentials,
 } from '../../src/messaging/channel-validate.ts';
 import { describeSlackError, neededScopeFrom } from '../../src/slack/api.ts';
 import { SLACK_APP_MANIFEST } from '../../src/slack/manifest.ts';
+import { registerMessagingRoutes } from '../../src/routes/messaging.ts';
+import type { Express } from 'express';
 
 test('the required scope list matches the shipped app manifest', () => {
     // Drift here means the wizard would approve a token the transport cannot use.
     assert.deepEqual(
-        [...REQUIRED_SLACK_BOT_SCOPES].sort(),
+        [...REQUIRED_SLACK_BOT_SCOPES, ...SLACK_CAPABILITY_SCOPES].sort(),
         [...SLACK_APP_MANIFEST.oauth_config.scopes.bot].sort(),
     );
 });
@@ -33,6 +37,51 @@ test('a granted superset passes, a gap is reported in order', () => {
 test('an absent header means "cannot check", not "everything missing"', () => {
     assert.deepEqual(missingSlackScopes(null), []);
     assert.deepEqual(missingSlackScopes(''), []);
+});
+
+test('files:read is a non-blocking capability while core gaps still fail', async () => {
+    const coreOnly = REQUIRED_SLACK_BOT_SCOPES.join(',');
+    assert.deepEqual(missingSlackCapabilityScopes(coreOnly), ['files:read']);
+    const fetchImpl = (async () => ({
+        ok: true,
+        headers: { get: () => coreOnly },
+        json: async () => ({ ok: true, user: 'cli-jaw', team_id: 'T1' }),
+    } as unknown as Response)) as typeof fetch;
+    assert.deepEqual(
+        await validateChannelCredentials({ channel: 'slack', botToken: 'xoxb-1' }, fetchImpl),
+        { ok: true, identity: 'cli-jaw', teamId: 'T1', missingCapabilities: ['files:read'] },
+    );
+});
+
+test('/api/channels/validate preserves missingCapabilities in its success JSON', async () => {
+    const routes = new Map<string, (...args: unknown[]) => unknown>();
+    const app = {
+        post(path: string, ...handlers: Array<(...args: unknown[]) => unknown>) {
+            routes.set(path, handlers.at(-1)!);
+        },
+    } as unknown as Express;
+    registerMessagingRoutes(app, ((_req: unknown, _res: unknown, next: () => void) => next()) as never);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+        ok: true,
+        headers: { get: () => REQUIRED_SLACK_BOT_SCOPES.join(',') },
+        json: async () => ({ ok: true, user: 'cli-jaw', team_id: 'T1' }),
+    } as unknown as Response)) as typeof fetch;
+    let payload: unknown;
+    try {
+        await routes.get('/api/channels/validate')!(
+            { body: { channel: 'slack', botToken: 'xoxb-1' } },
+            { json(value: unknown) { payload = value; } },
+        );
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+    assert.deepEqual(payload, {
+        ok: true,
+        identity: 'cli-jaw',
+        teamId: 'T1',
+        missingCapabilities: ['files:read'],
+    });
 });
 
 test('validation reports the missing scopes instead of a bare pass', async () => {
@@ -54,7 +103,7 @@ test('validation reports the missing scopes instead of a bare pass', async () =>
 });
 
 test('a fully scoped token still validates', async () => {
-    const granted = REQUIRED_SLACK_BOT_SCOPES.join(',');
+    const granted = [...REQUIRED_SLACK_BOT_SCOPES, ...SLACK_CAPABILITY_SCOPES].join(',');
     const fetchImpl = (async () => ({
         ok: true,
         headers: { get: () => granted },

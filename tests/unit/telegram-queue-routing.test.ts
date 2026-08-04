@@ -139,7 +139,10 @@ test('TQ-006b: processQueue respects worker busy guards', () => {
 test('TQ-009: queue drain schedules captured scope/session without recomputation', () => {
     const queueStart = queueSrc.indexOf('async function processQueue');
     const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
-    assert.ok(queueBlock.includes('lanes.run(itemScope'));
+    // phase 100: the drain must NOT take the same-scope re-entry shortcut, or a
+    // queued run can start while the previous turn's reply is still sending.
+    assert.ok(queueBlock.includes('lanes.runDetachedTurn(itemScope'));
+    assert.ok(!queueBlock.includes('lanes.run(itemScope'), 'drain must not use the re-entrant run()');
     assert.ok(queueBlock.includes('chatSessionId: effectiveSessionId'));
     assert.ok(queueBlock.includes('...(item.remoteKey ? { remoteKey: item.remoteKey } : {})'));
     assert.ok(!queueBlock.includes("scope: 'default'"));

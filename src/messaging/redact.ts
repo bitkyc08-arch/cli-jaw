@@ -423,7 +423,8 @@ export function redactChannelSecrets(input: string): string {
                 return stripBotTokenFromPath(raw);
             }
             const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
-            const isSlack = host === 'slack.com' || host.endsWith('.slack.com');
+            const isSlack = host === 'slack.com' || host.endsWith('.slack.com')
+                || host === 'slack-edge.com' || host.endsWith('.slack-edge.com');
             const isTelegram = host === 'telegram.org' || host.endsWith('.telegram.org');
             const isDiscord = host === 'discord.com' || host.endsWith('.discord.com')
                 || host === 'discordapp.com' || host.endsWith('.discordapp.com');

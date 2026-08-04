@@ -2,6 +2,19 @@
 // Pure decision + extraction helpers. No IO, so every gating rule below is
 // directly unit-testable without a socket or a workspace.
 
+export type SlackFileEvent = {
+    id?: string;
+    name?: string;
+    title?: string;
+    mimetype?: string;
+    filetype?: string;
+    size?: number;
+    mode?: string;
+    file_access?: string;
+    url_private?: string;
+    url_private_download?: string;
+};
+
 export type SlackMessageEvent = {
     type?: string;
     subtype?: string;
@@ -13,7 +26,7 @@ export type SlackMessageEvent = {
     ts?: string;
     thread_ts?: string;
     blocks?: unknown[];
-    files?: Array<{ id?: string; name?: string; url_private?: string; size?: number }>;
+    files?: SlackFileEvent[];
 };
 
 export type SlackGateConfig = {

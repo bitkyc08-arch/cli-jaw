@@ -132,6 +132,9 @@ test('the validate response type carries the missing-scope list', () => {
     // Without this the server's missing_scopes detail is silently dropped.
     assert.match(mod, /missing\?: string\[\]/);
     assert.match(mod, /state\.missingScopes\.length/, 'the list must render');
+    assert.match(mod, /missingCapabilities\?: string\[\]/);
+    assert.match(mod, /state\.missingCapabilities\.length/);
+    assert.match(mod, /onboarding-capability-warning/);
 });
 
 test('the modal is announced and keyboard-contained', () => {

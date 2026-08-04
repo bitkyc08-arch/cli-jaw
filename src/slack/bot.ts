@@ -5,19 +5,17 @@
 // and a forwarder for non-Slack-origin agent output.
 
 import { settings } from '../core/config.js';
-import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
 import { withSessionScope } from '../core/session-context.js';
 import { log } from '../core/logger.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
 import { submitMessage } from '../orchestrator/gateway.js';
-import { channelGateOn } from '../orchestrator/scope.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
 import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-target.js';
-import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import { buildMediaPromptMany } from '../agent/spawn.js';
 import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope } from './socket.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
@@ -26,6 +24,8 @@ import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
+import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
+import { admitSlackRun, enqueueSlackIngress, resetSlackIngress, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -79,25 +79,53 @@ function buildSlackTarget(event: SlackMessageEvent): RemoteTarget {
 
 // ─── Dispatch (full reply path) ─────────────────────
 
-async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg: string) {
+async function slackOrchestrate(
+    target: RemoteTarget,
+    prompt: string,
+    displayMsg: string,
+    signal: AbortSignal,
+) {
     const client = getSlackSendClient();
     if (!client.token) return;
     const token = client.token;
     const chatId = target.targetId;
-    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
-    const slackGateOn = multiSessionEnabled && channelGateOn('slack');
-    const remoteKey = multiSessionEnabled && slackGateOn
-        ? buildRemoteBindingKey(target)
-        : undefined;
-    const chatSessionId = multiSessionEnabled && !slackGateOn
-        ? 'default'
-        : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
-    const scope = multiSessionEnabled && !slackGateOn ? 'default' : (remoteKey || 'default');
-    const sessionScope: SessionScope = { scope, chatSessionId };
-    const result = submitMessage(prompt, {
-        origin: 'slack', displayText: displayMsg, skipOrchestrate: true, target, chatId,
-        ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope,
+    if (signal.aborted) return;
+    const result = admitSlackRun({
+        target, prompt, displayText: displayMsg, chatId,
+        runReply: async (ctx: SlackRunContext) => {
+            try {
+                const progress = await startSlackProgress(
+                    token, target, t('slack.progress.start', {}, currentLocale()),
+                ).catch(() => null);
+                const progressHandler = (type: string, data: Record<string, unknown>) => {
+                    if (!progress || type !== 'agent_tool') return;
+                    if (data['origin'] && data['origin'] !== 'slack') return;
+                    const line = statusFromToolEvent(data, t('slack.progress.working', {}, currentLocale()));
+                    if (line) progress.update(line);
+                };
+                if (progress) addBroadcastListener(progressHandler);
+                const text = String(await withSessionScope(
+                    { scope: ctx.scope, chatSessionId: ctx.chatSessionId },
+                    () => orchestrateAndCollect(prompt, {
+                        origin: 'slack', target, chatId, requestId: ctx.requestId,
+                        ...(ctx.remoteKey ? { remoteKey: ctx.remoteKey } : {}),
+                        chatSessionId: ctx.chatSessionId, scope: ctx.scope, _skipInsert: true,
+                    }).finally(async () => {
+                        if (!progress) return;
+                        removeBroadcastListener(progressHandler);
+                        await progress.finish().catch(() => { });
+                    }),
+                ));
+                await sendSlackText(token, target, text);
+                await relaySlackImages(token, target, text);
+                log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
+            } catch (err: unknown) {
+                log.error('[slack:error]', logErrorText(err));
+                await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
+            }
+        },
     });
+    result.laneTail?.catch(error => log.error('[slack:lane]', logErrorText(error)));
 
     if (result.action === 'queued') {
         log.info(`[slack:queue] agent busy, queued (${result.pending} pending)`);
@@ -144,37 +172,44 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
         return;
     }
 
-    try {
-        // Live progress: post "정보 수집 중…" immediately, then edit it as the
-        // agent's tool events arrive. Slack gives bots no typing indicator, so
-        // without this the channel looks dead for the whole run.
-        const progress = await startSlackProgress(
-            token, target, t('slack.progress.start', {}, currentLocale()),
-        ).catch(() => null);
-        const progressHandler = (type: string, data: Record<string, unknown>) => {
-            if (!progress) return;
-            if (type !== 'agent_tool') return;
-            if (data['origin'] && data['origin'] !== 'slack') return;
-            const line = statusFromToolEvent(data, t('slack.progress.working', {}, currentLocale()));
-            if (line) progress.update(line);
-        };
-        if (progress) addBroadcastListener(progressHandler);
-        const text = String(await withSessionScope(sessionScope, () =>
-            orchestrateAndCollect(prompt, {
-                origin: 'slack', target, chatId, requestId: result.requestId,
-                ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope, _skipInsert: true,
-            }).finally(async () => {
-            if (!progress) return;
-            removeBroadcastListener(progressHandler);
-            await progress.finish().catch(() => { });
-            })));
-        await sendSlackText(token, target, text);
-        await relaySlackImages(token, target, text);
-        log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
-    } catch (err: unknown) {
-        log.error('[slack:error]', logErrorText(err));
-        await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
+}
+
+function buildSlackFileFailureWarning(failed: readonly FailedSlackFile[], allFailed = false): string | null {
+    if (!failed.length) return null;
+    const locale = currentLocale();
+    const items = failed.map(file => `- ${file.name}: ${t(`slack.files.error.${file.code}`, {}, locale)}`);
+    return `${t(allFailed ? 'slack.files.allFailure' : 'slack.files.partialFailure', {}, locale)}\n${items.join('\n')}`;
+}
+
+export async function processSlackMessageEvent(
+    event: SlackMessageEvent,
+    target: RemoteTarget,
+    text: string,
+    signal: AbortSignal,
+): Promise<void> {
+    const files = event.files || [];
+    let prompt = text;
+    let displayText = text;
+    if (files.length) {
+        const token = getSlackSendClient().token;
+        if (!token) return;
+        const { saved, failed } = await downloadAndSaveSlackFiles(token, files, { signal });
+        if (signal.aborted) return;
+        const visibleFailed = failed.filter(file => file.code !== 'ingress_cancelled');
+        for (const file of failed) {
+            const idSuffix = file.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6);
+            log.info(`[slack:file] id=...${idSuffix} name=${file.name} code=${file.code}`);
+        }
+        const warning = buildSlackFileFailureWarning(visibleFailed, saved.length === 0);
+        if (warning) await sendSlackText(token, target, warning).catch(() => undefined);
+        if (!saved.length) return;
+        prompt = buildMediaPromptMany(saved.map(file => file.filePath), text);
+        displayText = saved.length === 1
+            ? `[📎 ${saved[0]!.name}] ${text}`.trim()
+            : `[📎 ${saved.length} files] ${text}`.trim();
     }
+    if (!prompt || signal.aborted) return;
+    await slackOrchestrate(target, prompt, displayText, signal);
 }
 
 // ─── Envelope routing ───────────────────────────────
@@ -205,10 +240,11 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     setLatestSeenTarget('slack', target);
 
     const text = resolveEventText(event, selfUserId);
-    if (!text) return;
-    log.info(`[slack:in] ${event.channel}: ${redactOutboundText(text).slice(0, 80)}`);
+    const hasFiles = Boolean(event.files?.length);
+    if (!text && !hasFiles) return;
+    if (text) log.info(`[slack:in] ${event.channel}: ${redactOutboundText(text).slice(0, 80)}`);
 
-    if (isResetIntent(text)) {
+    if (!hasFiles && isResetIntent(text)) {
         const client = getSlackSendClient();
         const result = submitMessage(text, { origin: 'slack', target });
         if (client.token) {
@@ -219,7 +255,8 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
         return;
     }
 
-    slackOrchestrate(target, text, text).catch(e => log.error('[slack:orchestrate]', logErrorText(e)));
+    enqueueSlackIngress(slackIngressLaneKey(target), signal =>
+        processSlackMessageEvent(event, target, text, signal));
 }
 
 // ─── Init / Shutdown ────────────────────────────────
@@ -312,6 +349,7 @@ export async function shutdownSlack(): Promise<void> {
  * `shutdownSlack` invalidates in-flight initializations.
  */
 async function disposeSlackRuntime(): Promise<void> {
+    await resetSlackIngress();
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;

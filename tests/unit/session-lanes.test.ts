@@ -57,6 +57,41 @@ describe('SessionLanes', () => {
         assert.equal(lanes.stats().active, 0);
     });
 
+    it('runDetachedTurn does not short-circuit same-scope re-entry and waits behind the tail', async () => {
+        const lanes = new SessionLanes(() => 2);
+        const release = deferred<void>();
+        const trace: string[] = [];
+        let detached!: Promise<void>;
+        const outer = lanes.run('A', async () => {
+            trace.push('outer.start');
+            detached = lanes.runDetachedTurn('A', async () => { trace.push('detached.start'); });
+            await Promise.resolve();
+            trace.push('outer.waiting');
+            await release.promise;
+            trace.push('outer.end');
+        });
+        await Promise.resolve();
+        assert.deepEqual(trace, ['outer.start', 'outer.waiting']);
+        release.resolve();
+        await outer;
+        await detached;
+        assert.deepEqual(trace, ['outer.start', 'outer.waiting', 'outer.end', 'detached.start']);
+    });
+
+    it('runDetachedTurn still respects the global maxConcurrent limit', async () => {
+        const lanes = new SessionLanes(() => 1);
+        const release = deferred<void>();
+        const starts: string[] = [];
+        const a = lanes.run('A', async () => { starts.push('A'); await release.promise; });
+        const b = lanes.runDetachedTurn('B', async () => { starts.push('B'); });
+        await Promise.resolve();
+        assert.deepEqual(starts, ['A']);
+        assert.equal(lanes.stats().waiting, 1);
+        release.resolve();
+        await Promise.all([a, b]);
+        assert.deepEqual(starts, ['A', 'B']);
+    });
+
     it('keeps one-slot fairness A1,B1,A2 without violating A order', async () => {
         const lanes = new SessionLanes(() => 1);
         const gate = deferred<void>();

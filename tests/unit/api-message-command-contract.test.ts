@@ -42,5 +42,16 @@ test('/api/message slash steerPrompt rejects visibly when submitMessage rejects'
     const steerBlock = block.slice(steerStart, normalStart);
     assert.match(steerBlock, /const submit = submitMessage\(cmdResult\.steerPrompt, submitMeta\);/);
     assert.match(steerBlock, /submit\.action === 'rejected'/);
-    assert.match(steerBlock, /res\.status\(status\)\.json\(\{ ok: false, command: true, error: submit\.reason, \.\.\.submit \}\);/);
+    assert.match(steerBlock, /res\.status\(status\)\.json\(\{ ok: false, command: true, error: submit\.reason, \.\.\.publicSubmitResult\(submit\) \}\);/);
+});
+
+test('/api/message projects all five SubmitResult response branches', () => {
+    const messageBlock = routeBlock("app.post('/api/message'");
+    assert.equal((messageBlock.match(/publicSubmitResult\(/g) || []).length, 4,
+        'normal success/rejection and command steer success/rejection must project');
+    assert.doesNotMatch(messageBlock, /\.\.\.(?:result|submit)\b/);
+
+    const elicitationBlock = routeBlock("app.post('/api/elicitation/callback'");
+    assert.equal((elicitationBlock.match(/publicSubmitResult\(submit\)/g) || []).length, 1,
+        'elicitation completion must project');
 });

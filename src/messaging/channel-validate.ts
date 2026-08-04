@@ -17,6 +17,8 @@ export type ChannelValidateResult = {
     error?: string;
     /** Bot scopes the app still needs, when the token is otherwise valid. */
     missing?: string[];
+    /** Optional feature scopes whose absence does not block text messaging. */
+    missingCapabilities?: string[];
 };
 
 /**
@@ -37,6 +39,8 @@ export const REQUIRED_SLACK_BOT_SCOPES = [
     'commands',
 ] as const;
 
+export const SLACK_CAPABILITY_SCOPES = ['files:read'] as const;
+
 /** Scopes required but not granted, in required-list order. */
 export function missingSlackScopes(grantedHeader: string | null | undefined): string[] {
     // An absent header means Slack did not tell us; treat it as "cannot check"
@@ -44,6 +48,12 @@ export function missingSlackScopes(grantedHeader: string | null | undefined): st
     if (!grantedHeader) return [];
     const granted = new Set(grantedHeader.split(',').map(s => s.trim()).filter(Boolean));
     return REQUIRED_SLACK_BOT_SCOPES.filter(scope => !granted.has(scope));
+}
+
+export function missingSlackCapabilityScopes(grantedHeader: string | null | undefined): string[] {
+    if (!grantedHeader) return [];
+    const granted = new Set(grantedHeader.split(',').map(s => s.trim()).filter(Boolean));
+    return SLACK_CAPABILITY_SCOPES.filter(scope => !granted.has(scope));
 }
 
 export async function validateChannelCredentials(
@@ -85,6 +95,7 @@ export async function validateChannelCredentials(
             // Catch a scope gap HERE rather than at the first upload/post.
             const missing = missingSlackScopes(authRes.headers?.get?.('x-oauth-scopes'));
             if (missing.length) return { ok: false, error: 'missing_scopes', missing };
+            const missingCapabilities = missingSlackCapabilityScopes(authRes.headers?.get?.('x-oauth-scopes'));
             const appToken = String(req.appToken || '').trim();
             if (appToken) {
                 if (!appToken.startsWith('xapp-')) return { ok: false, error: 'app_prefix' };
@@ -92,7 +103,12 @@ export async function validateChannelCredentials(
                 const conn = await connRes.json() as { ok?: boolean };
                 if (!conn.ok) return { ok: false, error: 'invalid_app_token' };
             }
-            return { ok: true, identity: auth.user || 'bot', ...(auth.team_id ? { teamId: auth.team_id } : {}) };
+            return {
+                ok: true,
+                identity: auth.user || 'bot',
+                ...(auth.team_id ? { teamId: auth.team_id } : {}),
+                ...(missingCapabilities.length ? { missingCapabilities } : {}),
+            };
         }
         return { ok: false, error: 'unknown_channel' };
     } catch {

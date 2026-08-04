@@ -23,6 +23,9 @@ mock.module('../../src/slack/api.ts', {
         describeSlackError: (e?: string) => e ?? 'unknown',
         redactSlackTokens: (s: string) => s,
         isRetryableSlackError: () => false,
+        // inbound-file.ts imports this from the same module; a partial mock
+        // that omits it makes the whole import graph fail to link.
+        neededScopeFrom: () => '',
         slackFailure: (error: string, status?: number) =>
             status === undefined ? { ok: false, error } : { ok: false, error, status },
     },

@@ -119,6 +119,7 @@ function stepBody(state: FlowState): string {
     if (state.step === 1) {
         return `
             <p class="onboarding-guide">${escapeHtml(t(`onboarding.guide.${state.channel}`))}</p>
+            ${state.channel === 'slack' ? `<p class="onboarding-guide">${escapeHtml(t('onboarding.slackExistingApp'))}</p>` : ''}
             <div class="onboarding-actions">
                 <button type="button" class="perm-btn" data-onboard-issuer="1">
                     ${escapeHtml(t('onboarding.openIssuer'))}
@@ -126,7 +127,7 @@ function stepBody(state: FlowState): string {
             </div>`;
     }
     if (state.step === 2) {
-        return fieldsFor(state.channel).map((field) => {
+        const fields = fieldsFor(state.channel).map((field) => {
             const label = t(`onboarding.token.${field.key}`) + (field.optional ? ` (${t('onboarding.optional')})` : '');
             return `
             <div class="onboarding-field">
@@ -139,6 +140,9 @@ function stepBody(state: FlowState): string {
                 <span class="onboarding-hint">${escapeHtml(t(`onboarding.hint.${state.channel}.${field.key}`))}</span>
             </div>`;
         }).join('');
+        return `${fields}${state.channel === 'slack'
+            ? `<p class="onboarding-guide">${escapeHtml(t('onboarding.slackExistingApp'))}</p>`
+            : ''}`;
     }
     if (state.step === 3) {
         const status = validating
@@ -193,6 +197,13 @@ function render(): void {
             <div class="onboarding-error" role="alert" style="display:${state.error ? '' : 'none'}">
                 ${state.error ? escapeHtml(t(`onboarding.error.${state.error}`)) : ''}
                 ${state.missingScopes.length ? `<span class="onboarding-scopes">${escapeHtml(state.missingScopes.join(', '))}</span>` : ''}
+            </div>
+            <div class="onboarding-capability-warning" role="status" style="display:${state.missingCapabilities.length ? '' : 'none'}">
+                ${state.missingCapabilities.length
+                    ? escapeHtml(t('onboarding.warning.missingCapabilities', {
+                        capabilities: state.missingCapabilities.join(', '),
+                    }))
+                    : ''}
             </div>
             <div class="onboarding-actions onboarding-footer">${footer(state)}</div>
         </div>`;
@@ -273,7 +284,14 @@ async function runValidation(): Promise<void> {
     const generation = flowGeneration;
     validating = true;
     render();
-    const res = await api<{ ok?: boolean; identity?: string; teamId?: string; error?: string; missing?: string[] }>(
+    const res = await api<{
+        ok?: boolean;
+        identity?: string;
+        teamId?: string;
+        error?: string;
+        missing?: string[];
+        missingCapabilities?: string[];
+    }>(
         '/api/channels/validate',
         {
             method: 'POST',

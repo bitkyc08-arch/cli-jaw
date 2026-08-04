@@ -60,6 +60,8 @@ export type FlowState = {
     error: string | null;
     /** Scopes the provider reported as missing, shown with the error. */
     missingScopes: string[];
+    /** Optional feature scopes; warnings only, never a step-3 blocker. */
+    missingCapabilities: string[];
     saved: boolean;
 };
 
@@ -72,6 +74,7 @@ export function createFlow(channel: OnboardChannel, draft: Draft = {}): FlowStat
         validatedTeamId: '',
         error: null,
         missingScopes: [],
+        missingCapabilities: [],
         saved: false,
     };
 }
@@ -139,12 +142,20 @@ export function setField(state: FlowState, key: string, value: string): FlowStat
         validatedTeamId: '',
         error: null,
         missingScopes: [],
+        missingCapabilities: [],
     };
 }
 
 export function applyValidation(
     state: FlowState,
-    result: { ok?: boolean; identity?: string; teamId?: string; error?: string; missing?: string[] },
+    result: {
+        ok?: boolean;
+        identity?: string;
+        teamId?: string;
+        error?: string;
+        missing?: string[];
+        missingCapabilities?: string[];
+    },
 ): FlowState {
     if (result?.ok) {
         return {
@@ -153,6 +164,9 @@ export function applyValidation(
             validatedTeamId: result.teamId || '',
             error: null,
             missingScopes: [],
+            missingCapabilities: Array.isArray(result.missingCapabilities)
+                ? result.missingCapabilities
+                : [],
         };
     }
     return {
@@ -161,6 +175,7 @@ export function applyValidation(
         validatedTeamId: '',
         error: result?.error || 'network',
         missingScopes: Array.isArray(result?.missing) ? result.missing : [],
+        missingCapabilities: [],
     };
 }
 

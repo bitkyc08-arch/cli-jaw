@@ -23,6 +23,7 @@ import { sessionLanes } from './session-lanes.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
+    disposition?: 'new_run' | 'steered';
     reason?: string;
     pending?: number;
     requestId?: string;
@@ -36,6 +37,11 @@ export type SubmitResult = {
     continued?: true;
     noPendingContinue?: true;
 };
+
+export function publicSubmitResult(result: SubmitResult): SubmitResult {
+    const { disposition: _disposition, ...publicResult } = result;
+    return publicResult;
+}
 
 type SubmitMeta = {
     origin: RuntimeOrigin;
@@ -98,7 +104,7 @@ function applyMidRunPolicy(
             'steer',
             { ...ctx.meta, requestId: ctx.requestId, eventScope: { scope: ctx.scopeKey, sessionId: ctx.chatSessionId } },
         );
-        return { action: 'started', requestId: ctx.requestId, sessionContext };
+        return { action: 'started', disposition: 'steered', requestId: ctx.requestId, sessionContext };
     }
     if (policy === 'collect') return queue({ collect: true });
     if (policy === 'interrupt') {
@@ -222,7 +228,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
-        return { action: 'started', noPendingContinue: true, requestId, ...(sessionContext ? { sessionContext } : {}) };
+        return { action: 'started', disposition: 'new_run', noPendingContinue: true, requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
     // ── reset intent ──
@@ -240,7 +246,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
-        return { action: 'started', requestId, ...(sessionContext ? { sessionContext } : {}) };
+        return { action: 'started', disposition: 'new_run', requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
     // ── busy → enqueue only ──
@@ -279,5 +285,5 @@ export function submitMessage(
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );
     }
-    return { action: 'started', requestId, ...(sessionContext ? { sessionContext } : {}) };
+    return { action: 'started', disposition: 'new_run', requestId, ...(sessionContext ? { sessionContext } : {}) };
 }

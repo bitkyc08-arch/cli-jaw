@@ -1,10 +1,7 @@
 import type { Express, NextFunction, Request, RequestHandler, Response as ExpressResponse } from 'express';
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
-
 import { fetchTextCandidate } from '../browser/adaptive-fetch/fetcher.js';
 import { extractMetadataFromHtml } from '../browser/adaptive-fetch/metadata.js';
-import { AdaptiveFetchInputError, isPrivateHostname, validateThirdPartyReaderTarget } from '../browser/adaptive-fetch/safety.js';
+import { AdaptiveFetchInputError, assertPublicResolvedHost, validateThirdPartyReaderTarget, type ResolvedAddress } from '../browser/adaptive-fetch/safety.js';
 import { fail, ok } from '../http/response.js';
 
 const PREVIEW_TIMEOUT_MS = 3000;
@@ -40,11 +37,6 @@ type PreviewData = {
 type RateWindow = {
     count: number;
     start: number;
-};
-
-type ResolvedAddress = {
-    address: string;
-    family: number;
 };
 
 type LinkPreviewRouteOptions = {
@@ -151,31 +143,6 @@ function resolveSafeUrl(raw: unknown, baseUrl: string): string {
         return validateThirdPartyReaderTarget(resolved).href;
     } catch {
         return '';
-    }
-}
-
-async function defaultResolveHost(hostname: string): Promise<ResolvedAddress[]> {
-    const literal = isIP(hostname);
-    if (literal) return [{ address: hostname, family: literal }];
-    return await lookup(hostname, { all: true, verbatim: true });
-}
-
-async function assertPublicResolvedHost(url: string | URL, resolveHost: LinkPreviewRouteOptions['resolveHost'] = defaultResolveHost): Promise<void> {
-    const parsed = validateThirdPartyReaderTarget(url);
-    const addresses = await resolveHost(parsed.hostname);
-    if (addresses.length === 0) {
-        throw new AdaptiveFetchInputError('target host could not be resolved', {
-            code: 'unresolved-host',
-            url: parsed.href,
-        });
-    }
-    for (const entry of addresses) {
-        if (isPrivateHostname(entry.address)) {
-            throw new AdaptiveFetchInputError('resolved target address is private or local', {
-                code: 'private-network',
-                url: parsed.href,
-            });
-        }
     }
 }
 

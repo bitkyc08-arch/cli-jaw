@@ -75,6 +75,23 @@ test('step 3 blocks until validation actually passes', () => {
     assert.equal(advance(flow).step, 4);
 });
 
+test('missing files:read remains visible but does not block step 3', () => {
+    let flow: FlowState = {
+        ...atCredentials('slack', { botToken: 'xoxb-1' }),
+        step: 3,
+    };
+    flow = applyValidation(flow, {
+        ok: true,
+        identity: 'cli-jaw',
+        missingCapabilities: ['files:read'],
+    });
+    assert.deepEqual(flow.missingCapabilities, ['files:read']);
+    assert.equal(blockerForStep(flow), null);
+    assert.equal(advance(flow).step, 4);
+    flow = setField(flow, 'botToken', 'xoxb-2');
+    assert.deepEqual(flow.missingCapabilities, []);
+});
+
 test('drafts survive moving back and forward', () => {
     let flow = setField(atCredentials('slack', {}), 'botToken', 'xoxb-typed');
     flow = advance(flow);

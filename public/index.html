@@ -583,7 +583,7 @@
                         <span class="slack-step-num">1</span>
                         <div class="slack-step-body">
                             <div class="slack-step-title" data-i18n="settings.slack.guide.step1Title">Slack 앱 만들기</div>
-                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step1Desc">Create an App → From an app manifest → 워크스페이스 선택 → 붙여넣기</div>
+                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step1Desc">Create an App → From an app manifest → 워크스페이스 선택 → 붙여넣기 (기존 앱은 files:read 추가)</div>
                             <div class="slack-step-actions">
                                 <button id="slack-copy-manifest" class="perm-btn" type="button" data-i18n="settings.slack.guide.copyManifest">매니페스트 복사</button>
                                 <button id="slack-open-apps" class="perm-btn" type="button" data-i18n="settings.slack.guide.openApps">앱 페이지 열기</button>
@@ -594,7 +594,7 @@
                         <span class="slack-step-num">2</span>
                         <div class="slack-step-body">
                             <div class="slack-step-title" data-i18n="settings.slack.guide.step2Title">봇 토큰 붙여넣기</div>
-                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step2Desc">앱 설정 → OAuth &amp; Permissions → Install to Workspace → Bot User OAuth Token 복사</div>
+                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step2Desc">앱 설정 → OAuth &amp; Permissions → files:read 확인 → Reinstall to Workspace → Bot User OAuth Token 복사</div>
                             <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
                             <div class="slack-field-error" id="slack-bot-token-error" style="display:none" data-i18n="settings.slack.guide.botTokenError">xoxb-로 시작하는 봇 토큰이어야 합니다</div>
                         </div>

@@ -26,13 +26,24 @@ export class SessionLanes {
     run<T>(scopeKey: string, task: () => Promise<T>): Promise<T> {
         if (this.runningScope.getStore() === scopeKey) return Promise.resolve().then(task);
 
+        return this.enqueue(scopeKey, task);
+    }
+
+    /** Reserve a real lane turn even when called from the same scope's async context. */
+    runDetachedTurn<T>(scopeKey: string, task: () => Promise<T>): Promise<T> {
+        return this.enqueue(scopeKey, task);
+    }
+
+    private enqueue<T>(scopeKey: string, task: () => Promise<T>): Promise<T> {
         const previous = this.sessionTails.get(scopeKey);
+        let settleTail!: () => void;
+        const tail = new Promise<void>(resolve => { settleTail = resolve; });
+        this.sessionTails.set(scopeKey, tail);
         const start = () => this.runMain(() => this.runningScope.run(scopeKey, task));
         const result = previous
             ? previous.catch(() => undefined).then(start)
             : start();
-        const tail = result.then(() => undefined, () => undefined);
-        this.sessionTails.set(scopeKey, tail);
+        void result.then(settleTail, settleTail);
         void tail.then(() => {
             if (this.sessionTails.get(scopeKey) === tail) this.sessionTails.delete(scopeKey);
         });

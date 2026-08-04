@@ -4,16 +4,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateChannelCredentials } from '../../src/messaging/channel-validate.ts';
-import { REQUIRED_SLACK_BOT_SCOPES } from '../../src/messaging/channel-validate.ts';
+import { REQUIRED_SLACK_BOT_SCOPES, SLACK_CAPABILITY_SCOPES } from '../../src/messaging/channel-validate.ts';
 
 type Route = { ok?: boolean; json?: unknown };
 
-function fakeFetch(routes: Record<string, Route>) {
+function fakeFetch(routes: Record<string, Route>, grantedScopes?: readonly string[]) {
     const calls: string[] = [];
     // Slack's real responses carry the granted scopes; without this header the
     // preflight silently skips and these cases would not exercise the token
     // path they claim to.
-    const headers = { get: (k: string) => (k === 'x-oauth-scopes' ? REQUIRED_SLACK_BOT_SCOPES.join(',') : null) };
+    const granted = (grantedScopes ?? REQUIRED_SLACK_BOT_SCOPES).join(',');
+    const headers = { get: (k: string) => (k === 'x-oauth-scopes' ? granted : null) };
     const fn = async (url: string | URL | Request) => {
         const u = String(url);
         calls.push(u);
@@ -66,11 +67,30 @@ test('slack returns the team id and validates the app token when present', async
     const { calls, fn } = fakeFetch({
         'auth.test': { json: { ok: true, user: 'cli-jaw', team_id: 'T1' } },
         'apps.connections.open': { json: { ok: true } },
-    });
+    }, [...REQUIRED_SLACK_BOT_SCOPES, ...SLACK_CAPABILITY_SCOPES]);
     assert.deepEqual(await validateChannelCredentials(
         { channel: 'slack', botToken: 'xoxb-1', appToken: 'xapp-1' }, fn),
         { ok: true, identity: 'cli-jaw', teamId: 'T1' });
     assert.equal(calls.length, 2);
+});
+
+// files:read is a CAPABILITY scope, not a core one: a text-only workspace must
+// still validate successfully so existing installs can re-save their settings.
+// It only reports the gap so the wizard can show a non-blocking reinstall hint.
+test('slack validation succeeds without files:read but reports the capability gap', async () => {
+    const { fn } = fakeFetch({
+        'auth.test': { json: { ok: true, user: 'cli-jaw', team_id: 'T1' } },
+    }, REQUIRED_SLACK_BOT_SCOPES);
+    assert.deepEqual(await validateChannelCredentials({ channel: 'slack', botToken: 'xoxb-1' }, fn),
+        { ok: true, identity: 'cli-jaw', teamId: 'T1', missingCapabilities: ['files:read'] });
+});
+
+test('a missing core scope still fails validation even when files:read is granted', async () => {
+    const { fn } = fakeFetch({
+        'auth.test': { json: { ok: true, user: 'cli-jaw', team_id: 'T1' } },
+    }, [...REQUIRED_SLACK_BOT_SCOPES.filter(scope => scope !== 'chat:write'), 'files:read']);
+    assert.deepEqual(await validateChannelCredentials({ channel: 'slack', botToken: 'xoxb-1' }, fn),
+        { ok: false, error: 'missing_scopes', missing: ['chat:write'] });
 });
 
 test('slack surfaces a bad app token separately from a bad bot token', async () => {

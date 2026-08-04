@@ -59,8 +59,11 @@ export const SLACK_APP_MANIFEST = {
                 'groups:history',
                 'im:history',
                 'im:write',
-                'chat:write',
-                'files:write',
+            'chat:write',
+            // files.info -> files:read; authenticated private downloads use
+            // the same bot token only after Slack-host and SSRF validation.
+            'files:read',
+            'files:write',
                 'commands',
             ],
         },

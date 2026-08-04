@@ -196,3 +196,23 @@ test('SM-017: collect and interrupt remain scoped queue operations', () => {
     assert.ok(policy.includes("purgeQueueOnStop(ctx.scopeKey, 'interrupt')"));
     assert.ok(policy.includes('return queue({ front: true })'));
 });
+
+test('SM-018: all four started paths declare their internal disposition', () => {
+    const startedReturns = gatewaySrc.match(/return \{ action: 'started'[^;]+;/g) || [];
+    assert.equal(startedReturns.length, 4);
+    assert.equal(startedReturns.filter(line => line.includes("disposition: 'new_run'")).length, 3);
+    assert.equal(startedReturns.filter(line => line.includes("disposition: 'steered'")).length, 1);
+});
+
+test('SM-019: collect, interrupt, and unsupported steer remain queued without disposition', () => {
+    const policy = gatewaySrc.slice(
+        gatewaySrc.indexOf('function applyMidRunPolicy'),
+        gatewaySrc.indexOf('// ── 5s dedup window'),
+    );
+    assert.ok(policy.includes('if (!canSteerAgent(ctx.scopeKey)) return queue()'));
+    assert.ok(policy.includes("if (policy === 'collect') return queue({ collect: true })"));
+    assert.ok(policy.includes('return queue({ front: true })'));
+    const queueReturn = policy.match(/return \{ action: 'queued'[^;]+;/)?.[0] || '';
+    assert.ok(queueReturn);
+    assert.doesNotMatch(queueReturn, /disposition/);
+});

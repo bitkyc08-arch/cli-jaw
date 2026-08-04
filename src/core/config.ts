@@ -245,6 +245,7 @@ function createDefaultSettings() {
             // answering every message is antisocial. DMs bypass this gate.
             mentionOnly: true,
             replyInThread: true,
+            inboundDownloadConcurrency: 6,
         },
         messaging: {
             latestSeen: { telegram: null, discord: null, slack: null },
@@ -418,7 +419,13 @@ export function migrateSettings(s: Record<string, any>) {
             allowBots: false,
             mentionOnly: true,
             replyInThread: true,
+            inboundDownloadConcurrency: 6,
         };
+    }
+    if (!Number.isInteger(s["slack"].inboundDownloadConcurrency)
+        || s["slack"].inboundDownloadConcurrency < 1
+        || s["slack"].inboundDownloadConcurrency > 32) {
+        s["slack"].inboundDownloadConcurrency = 6;
     }
     if (!s["messaging"]) {
         s["messaging"] = {

@@ -117,12 +117,19 @@ export async function slackApi<T = Record<string, unknown>>(
     token: string,
     method: string,
     body?: Record<string, unknown>,
-    options: { fetchImpl?: SlackFetch; form?: boolean } = {},
+    options: { fetchImpl?: SlackFetch; form?: boolean; signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<SlackApiResult<T>> {
     const doFetch = options.fetchImpl || fetch;
     const url = `${SLACK_API_BASE}/${method}`;
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     const init: RequestInit = { method: 'POST', headers };
+    if (options.signal && options.timeoutMs !== undefined) {
+        init.signal = AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs)]);
+    } else if (options.signal) {
+        init.signal = options.signal;
+    } else if (options.timeoutMs !== undefined) {
+        init.signal = AbortSignal.timeout(options.timeoutMs);
+    }
     if (options.form && body) {
         const params = new URLSearchParams();
         for (const [k, v] of Object.entries(body)) {

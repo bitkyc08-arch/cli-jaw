@@ -396,7 +396,7 @@ export function createQueueController(
         scheduledItemIds.add(item.id);
         queueMicrotask(() => { void processQueue(itemScope); });
 
-        await lanes.run(itemScope, async () => {
+        await lanes.runDetachedTurn(itemScope, async () => {
             const liveIndex = messageQueue.findIndex(candidate => candidate.id === item!.id);
             if (liveIndex === -1) {
                 scheduledItemIds.delete(item!.id);

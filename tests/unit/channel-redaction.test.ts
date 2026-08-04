@@ -106,6 +106,22 @@ test('a Slack upload URL is masked path and all', () => {
     assert.equal(out.includes('SECRET'), false);
 });
 
+test('Slack download CDN capability URLs are fully masked after URL normalization', () => {
+    const cases = [
+        ['https://downloads.slack-edge.com/files-pri/T1-F1/OPAQUE', 'OPAQUE'],
+        ['https://files.slack.com/files-pri/T1-F1/SIGNED?X-Amz-Signature=SECRET', 'SIGNED'],
+        ['https://files.slack.com:443/files-pri/T1-F1/PORTCAP', 'PORTCAP'],
+        ['https://files.slack.com./files-pri/T1-F1/DOTCAP', 'DOTCAP'],
+        ['https://user:pass@files.slack.com/files-pri/T1-F1/USERCAP', 'USERCAP'],
+    ] as const;
+    for (const [url, capability] of cases) {
+        const out = redactChannelSecrets(url);
+        assert.equal(out.includes(capability), false, url);
+        assert.equal(out.includes('SECRET'), false, url);
+        assert.equal(out.includes('pass@'), false, url);
+    }
+});
+
 // ─── Discord ─────────────────────────────────────────
 
 /**

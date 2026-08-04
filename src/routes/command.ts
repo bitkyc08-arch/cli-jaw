@@ -8,7 +8,7 @@ import { parseCommand, executeCommand } from '../cli/commands.js';
 import { getVisibleCommands } from '../command-contract/policy.js';
 import { makeWebCommandCtx } from '../cli/web-command-ctx.js';
 import { resolveRequestLocale } from '../http/locale.js';
-import { submitMessage } from '../orchestrator/gateway.js';
+import { publicSubmitResult, submitMessage } from '../orchestrator/gateway.js';
 import { t } from '../core/i18n.js';
 import { validateTarget } from '../messaging/send.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -141,10 +141,10 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                         const submit = submitMessage(cmdResult.steerPrompt, submitMeta);
                         if (submit.action === 'rejected') {
                             const status = (submit.reason === 'busy' || submit.reason === 'duplicate') ? 409 : 400;
-                            res.status(status).json({ ok: false, command: true, error: submit.reason, ...submit });
+                            res.status(status).json({ ok: false, command: true, error: submit.reason, ...publicSubmitResult(submit) });
                             return;
                         }
-                        res.json({ ok: true, command: true, ...cmdResult, submit });
+                        res.json({ ok: true, command: true, ...cmdResult, submit: publicSubmitResult(submit) });
                         return;
                     }
                     res.json({ ok: true, command: true, ...cmdResult });
@@ -160,10 +160,10 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         const result = submitMessage(trimmed, submitMeta);
         if (result.action === 'rejected') {
             const status = (result.reason === 'busy' || result.reason === 'duplicate') ? 409 : 400;
-            res.status(status).json({ ok: false, error: result.reason, ...result });
+            res.status(status).json({ ok: false, error: result.reason, ...publicSubmitResult(result) });
             return;
         }
-        res.json({ ok: true, ...result });
+        res.json({ ok: true, ...publicSubmitResult(result) });
     });
 
     // Hub elicitation callback relay: hub forwards elic:Q:O taps to the instance.
@@ -184,7 +184,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                 chatId,
                 replyViaTarget: Boolean(target),
             }));
-            res.json({ ok: true, kind: 'complete', ack: redactOutboundText(result.ack), submit });
+            res.json({ ok: true, kind: 'complete', ack: redactOutboundText(result.ack), submit: publicSubmitResult(submit) });
             return;
         }
         res.json({

@@ -243,7 +243,14 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
     app.post('/api/channels/validate', requireAuth, async (req, res) => {
         const result = await validateChannelCredentials(req.body || {});
         res.json(result.ok
-            ? { ok: true, identity: result.identity, teamId: result.teamId }
+            ? {
+                ok: true,
+                identity: result.identity,
+                teamId: result.teamId,
+                ...(result.missingCapabilities?.length
+                    ? { missingCapabilities: result.missingCapabilities }
+                    : {}),
+            }
             : { ok: false, error: result.error, ...(result.missing?.length ? { missing: result.missing } : {}) });
     });
 

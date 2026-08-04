@@ -1,6 +1,7 @@
 // Mirrored from agbrowse adaptive-fetch v2; keep runtime behavior aligned while cli-jaw mirror remains experimental.
 
 import net from 'node:net';
+import { lookup } from 'node:dns/promises';
 
 export const DEFAULT_MAX_BYTES = 1024 * 1024;
 export const DEFAULT_TIMEOUT_MS = 15000;
@@ -114,6 +115,37 @@ export function isPrivateHostname(hostname: string): boolean {
     if (ipVersion === 4) return isPrivateIpv4(host);
     if (ipVersion === 6) return isPrivateIpv6(host);
     return false;
+}
+
+export type ResolvedAddress = { address: string; family: number };
+export type ResolveHost = (hostname: string) => Promise<ResolvedAddress[]>;
+
+async function defaultResolveHost(hostname: string): Promise<ResolvedAddress[]> {
+    const literal = net.isIP(hostname);
+    if (literal) return [{ address: hostname, family: literal }];
+    return await lookup(hostname, { all: true, verbatim: true });
+}
+
+export async function assertPublicResolvedHost(
+    url: string | URL,
+    resolveHost: ResolveHost = defaultResolveHost,
+): Promise<void> {
+    const parsed = validateThirdPartyReaderTarget(url);
+    const addresses = await resolveHost(parsed.hostname);
+    if (addresses.length === 0) {
+        throw new AdaptiveFetchInputError('target host could not be resolved', {
+            code: 'unresolved-host',
+            url: parsed.href,
+        });
+    }
+    for (const entry of addresses) {
+        if (isPrivateHostname(entry.address)) {
+            throw new AdaptiveFetchInputError('resolved target address is private or local', {
+                code: 'private-network',
+                url: parsed.href,
+            });
+        }
+    }
 }
 
 export function isPrivateIpv4(ip: string): boolean {

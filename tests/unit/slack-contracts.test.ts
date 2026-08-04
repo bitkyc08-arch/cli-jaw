@@ -9,6 +9,7 @@ import {
 import { DEFAULT_SETTINGS, migrateSettings, settings } from '../../src/core/config.ts';
 import { validateTarget } from '../../src/messaging/send.ts';
 import { getTransportCapability, buildChannelHealthSnapshot } from '../../src/messaging/channel-health.ts';
+import { slackApi } from '../../src/slack/api.ts';
 
 // ─── Settings schema ────────────────────────────────
 
@@ -21,6 +22,40 @@ test('defaults include a complete slack block', () => {
     // Slack bots live in shared channels; answering everything is antisocial.
     assert.equal(sc.mentionOnly, true, 'slack mentionOnly must default true');
     assert.equal(sc.replyInThread, true, 'slack replyInThread must default true');
+    assert.equal(sc.inboundDownloadConcurrency, 6);
+});
+
+test('migration normalizes inboundDownloadConcurrency to an integer from 1 through 32', () => {
+    for (const value of [undefined, 0, 33, 1.5, '6', Number.NaN]) {
+        const migrated = migrateSettings({ slack: { inboundDownloadConcurrency: value } }) as Record<string, any>;
+        assert.equal(migrated['slack'].inboundDownloadConcurrency, 6, String(value));
+    }
+    for (const value of [1, 6, 32]) {
+        const migrated = migrateSettings({ slack: { inboundDownloadConcurrency: value } }) as Record<string, any>;
+        assert.equal(migrated['slack'].inboundDownloadConcurrency, value);
+    }
+});
+
+test('slackApi composes optional cancellation without changing optionless RequestInit', async () => {
+    const captured: RequestInit[] = [];
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        captured.push(init || {});
+        return new Response('{"ok":true}', { status: 200 });
+    }) as typeof fetch;
+    const source = new AbortController();
+
+    await slackApi('token', 'auth.test', undefined, { fetchImpl });
+    await slackApi('token', 'auth.test', undefined, { fetchImpl, signal: source.signal });
+    await slackApi('token', 'auth.test', undefined, { fetchImpl, timeoutMs: 30_000 });
+    await slackApi('token', 'auth.test', undefined, { fetchImpl, signal: source.signal, timeoutMs: 30_000 });
+
+    assert.equal('signal' in captured[0]!, false);
+    assert.equal(captured[1]!.signal, source.signal);
+    assert.ok(captured[2]!.signal instanceof AbortSignal);
+    assert.ok(captured[3]!.signal instanceof AbortSignal);
+    assert.notEqual(captured[3]!.signal, source.signal);
+    source.abort();
+    assert.equal(captured[3]!.signal!.aborted, true);
 });
 
 test('defaults carry slack messaging target slots', () => {
