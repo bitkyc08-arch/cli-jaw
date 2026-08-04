@@ -7,6 +7,7 @@ import { parseArgs } from 'node:util';
 import fs from 'node:fs';
 
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { JAW_HOME, SETTINGS_PATH } from '../../src/core/config.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 
@@ -352,6 +353,23 @@ if (skipEnv('CLI_JAW_SKIP_SKILL_DEPS')) {
     console.log('[jaw:init] skill dependency install skipped (CLI_JAW_SKIP_SKILL_DEPS)');
 } else {
     await installSkillDeps(installOpts);
+}
+
+// Record that user setup finished. This home-side marker (not the install-tree
+// receipt, which only postinstall/sidecar write) is what clears the blocked-
+// postinstall warning even when the global tree is read-only. It carries the
+// package version so an upgrade re-triggers verification.
+if (!values['dry-run']) {
+    try {
+        const { writeSetupState } = await import('../../src/core/install-integrity.js');
+        const pkgJsonPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
+        const pkgJsonAlt = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'package.json');
+        const pkgFile = fs.existsSync(pkgJsonPath) ? pkgJsonPath : pkgJsonAlt;
+        const version = (JSON.parse(fs.readFileSync(pkgFile, 'utf8')) as { version?: string }).version ?? '0.0.0';
+        writeSetupState(JAW_HOME, version);
+    } catch (err) {
+        console.warn(`[jaw:init] setup-state marker skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }
 
 console.log(`

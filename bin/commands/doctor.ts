@@ -7,7 +7,9 @@ import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
+import { inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
@@ -181,7 +183,7 @@ function readBinaryVersion(candidate: string, args: string[] = ['--version']): s
 function verifyClaudeInteractive() {
     const helper = findBinaryPath('claude-e') || findBinaryPath('claude-exec') || findBinaryPath('jaw-claude-i');
     if (!helper) {
-        throw new Error('WARN: runtime missing — install `claude-e` on PATH or build with `npm run build:claude-exec`');
+        throw new Error('WARN: runtime missing — install with `jaw provider install claude-e` (needs Rust cargo) or build with `npm run build:claude-exec`');
     }
 
     let helperVersion = 'unknown';
@@ -269,6 +271,27 @@ check('Home directory', () => {
     }
     fs.accessSync(JAW_HOME, fs.constants.W_OK);
     return JAW_HOME;
+});
+
+// 1b. Install scripts — npm >= 12 blocks unreviewed dependency lifecycle
+// scripts, so a "successful" global install may have skipped our postinstall.
+// The install-state receipt (or the jaw-init setup marker) tells them apart.
+check('Install scripts', () => {
+    // Compiled location is dist/bin/commands/doctor.js, so walk up until the
+    // directory actually holding package.json (same fallback as bin/cli-jaw.ts).
+    let packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    if (!fs.existsSync(path.join(packageRoot, 'package.json'))) {
+        packageRoot = path.join(packageRoot, '..');
+    }
+    const integrity = inspectInstallIntegrity(packageRoot, JAW_HOME);
+    if (integrity.installScriptState === 'completed') {
+        return integrity.userSetupDone ? 'ran (setup complete)' : 'ran';
+    }
+    if (integrity.userSetupDone) {
+        return `install scripts ${integrity.installScriptState} — setup completed manually via jaw init`;
+    }
+    const commands = formatRecoveryCommands(integrity).join('  |  ');
+    throw new Error(`WARN: install scripts ${integrity.installScriptState} — postinstall did not run. Fix: ${commands}  (or run: jaw init)`);
 });
 
 // 2. settings.json

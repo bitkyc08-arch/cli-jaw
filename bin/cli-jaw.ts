@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { maybePromptGithubStar } from './star-prompt.js';
 import { resolveHomePath } from '../src/core/path-expand.js';
+import { inspectInstallIntegrity, formatIntegrityReport } from '../src/core/install-integrity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 interface PackageJson {
@@ -98,8 +99,37 @@ function ensureNativeModulesReady(cmd: string | undefined): void {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[jaw:native] native dependency check failed for Node ${process.version}.`);
         console.error(`[jaw:native] ${message}`);
+        // A blocked postinstall is the likeliest cause on a fresh global
+        // install; say so instead of leaving a bare ABI error on screen.
+        try {
+            const integrity = inspectInstallIntegrity(packageRoot, resolveJawHomeDir());
+            if (integrity.installScriptState !== 'completed' || !integrity.nativeLoadable) {
+                console.error(formatIntegrityReport(integrity));
+            }
+        } catch { /* diagnostics must never mask the original failure */ }
         process.exit(1);
     }
+}
+
+function resolveJawHomeDir(): string {
+    const custom = process.env["CLI_JAW_HOME"];
+    return custom ? resolveHomePath(custom, homedir()) : join(homedir(), '.cli-jaw');
+}
+
+/**
+ * Blocked postinstall with the native prebuild still loading is the common
+ * npm-12 outcome after the better-sqlite3 13 migration: the CLI works, but
+ * ~/.cli-jaw and MCP config were never initialized. Do not die, do not stay
+ * silent — point at `jaw init`, which finishes setup without reinstalling.
+ */
+function warnOnceIfPostinstallSkipped(cmd: string | undefined): void {
+    if (shouldSkipNativeGuard(cmd)) return;
+    try {
+        const integrity = inspectInstallIntegrity(packageRoot, resolveJawHomeDir());
+        if (integrity.installScriptState === 'completed' || integrity.userSetupDone) return;
+        console.error(formatIntegrityReport(integrity));
+        console.error('[jaw:install] continuing — run `jaw init` to finish setup without reinstalling.');
+    } catch { /* advisory only */ }
 }
 
 async function maybePromptForStarOnLaunch(): Promise<void> {
@@ -182,6 +212,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
 }
 
 ensureNativeModulesReady(command);
+warnOnceIfPostinstallSkipped(command);
 
 switch (command) {
     case 'serve':
