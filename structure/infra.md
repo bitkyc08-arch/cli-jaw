@@ -319,6 +319,58 @@ const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
 
 ---
 
+## src/core/platform-kind.ts — 플랫폼 분류 단일 소스
+
+`windows-native | wsl | linux | darwin | other` 를 판정하는 유일한 기준점.
+플랫폼을 다시 유추하는 코드를 새로 만들지 말고 이 모듈을 호출한다.
+
+### 엄격 규칙
+
+`process.platform` 이 먼저다. `win32` 프로세스는 어떤 환경변수가 들어와도
+`windows-native` 이고, WSL 분기는 `linux` 에서만 도달할 수 있다. 두 값은
+구조적으로 겹치지 않는다.
+
+**`WSLENV` 은 판정에 쓰지 않는다.** Microsoft 문서상 이 변수는 Windows 쪽과
+공유되는 값이라 WSL 안에 있다는 증거가 못 된다. 실제로 doctor 와 postinstall
+이 이 변수를 검사하는 바람에, WSL interop 을 설정해 둔 네이티브 Windows
+사용자에게 "WSL 안에서 Windows Node 를 쓰고 있다"는 경고가 나갔다.
+
+### API
+
+| 함수 | 역할 |
+| --- | --- |
+| `resolvePlatformKind(platform, env, probes)` | 플랫폼 분류. 모든 입력이 주입 가능하므로 한 OS 에서 전체 매트릭스를 테스트할 수 있다 |
+| `isWindowsNative(platform)` | `platform === 'win32'`. env 를 받지 않는 것이 의도다 |
+| `isWsl(platform, env, probes)` | WSL 여부 |
+| `isWindowsNodeLaunchedFromWsl(platform, cwd)` | WSL 디렉터리에서 실행된 Windows Node. 환경변수가 아니라 UNC 작업 디렉터리(`\\wsl$\`, `\\wsl.localhost\`)로 판정한다 |
+| `resolveInvocationCwd(env)` | `INIT_CWD` 우선. npm lifecycle script 는 패키지 루트에서 돌기 때문에 `process.cwd()` 로는 사용자의 디렉터리를 알 수 없다 |
+
+WSL 증거는 `WSL_DISTRO_NAME`, `WSL_INTEROP`, `/run/WSL`,
+`/proc/sys/fs/binfmt_misc/WSLInterop`, 그리고 `osrelease`/`/proc/version` 의
+`microsoft` 문자열이다. 마지막 항목은 커스텀 커널에서 빠질 수 있어 경로 마커가
+백업 역할을 한다.
+
+### 위임 사이트 (4곳)
+
+`src/core/browser-open.ts`, `src/core/browser-open-default.ts`,
+`src/browser/connection.ts`, `bin/commands/doctor.ts` 가 모두 이 모듈로
+위임한다. `tests/unit/platform-kind-delegation.test.ts` 가 이 네 파일에
+`WSL_DISTRO_NAME`/`WSL_INTEROP`/`WSLENV` 나 `/proc/version` 직접 참조가 없는지
+검사한다.
+
+`bin/postinstall.ts` 는 위임 사이트가 아니다. "이 Windows 프로세스가 WSL
+디렉터리에서 시작됐는가"라는 다른 질문을 하므로 `isWindowsNodeLaunchedFromWsl`
+을 쓴다.
+
+`src/lib/tui/terminal.ts` 는 의도적으로 제외했다. 루트 `tsconfig.json` 이
+`src/lib/tui` 를 제외하고 있고 그 파일의 `$env` 는 객체가 아니라 함수라서,
+타입 검사도 되지 않는 vendored 번들을 굳이 통과시킬 이유가 없다.
+
+브라우저 헬퍼들은 `probes` 파라미터를 받는다. 이게 없으면 desktop-linux
+픽스처가 실제 호스트의 `/proc` 를 읽어서 WSL 러너에서 결과가 뒤집힌다.
+
+---
+
 ## src/cli/registry.ts — CLI/모델 단일 소스 (231L)
 
 **의존 없음** — `core/config.ts`, `cli/commands.ts`, `server.ts`, 프론트엔드가 모두 이 레지스트리를 참조.

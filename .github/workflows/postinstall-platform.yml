@@ -12,6 +12,7 @@ on:
       - 'bin/postinstall.ts'
       - 'src/core/claude-install.ts'
       - 'src/core/cli-detect.ts'
+      - 'src/core/platform-kind.ts'
       - 'src/core/runtime-path.ts'
       - 'scripts/install-risk-gate.mjs'
       - 'scripts/install.sh'
@@ -24,6 +25,11 @@ on:
       - 'scripts/verify-release-evidence.mjs'
       - 'scripts/require-release-evidence.mjs'
       - 'tests/unit/cli-detect.test.ts'
+      - 'tests/unit/platform-kind.test.ts'
+      - 'tests/unit/platform-kind-runtime.test.ts'
+      - 'tests/unit/platform-kind-delegation.test.ts'
+      - 'tests/unit/windows-native-cli-detect.test.ts'
+      - 'tests/unit/doctor-platform-lanes.test.ts'
       - 'tests/unit/install-sh-exec.test.ts'
       - 'tests/unit/fresh-evidence-audit.test.ts'
       - 'tests/unit/safe-install.test.ts'
@@ -53,6 +59,7 @@ on:
       - 'bin/postinstall.ts'
       - 'src/core/claude-install.ts'
       - 'src/core/cli-detect.ts'
+      - 'src/core/platform-kind.ts'
       - 'src/core/runtime-path.ts'
       - 'scripts/install-risk-gate.mjs'
       - 'scripts/install.sh'
@@ -65,6 +72,11 @@ on:
       - 'scripts/verify-release-evidence.mjs'
       - 'scripts/require-release-evidence.mjs'
       - 'tests/unit/cli-detect.test.ts'
+      - 'tests/unit/platform-kind.test.ts'
+      - 'tests/unit/platform-kind-runtime.test.ts'
+      - 'tests/unit/platform-kind-delegation.test.ts'
+      - 'tests/unit/windows-native-cli-detect.test.ts'
+      - 'tests/unit/doctor-platform-lanes.test.ts'
       - 'tests/unit/install-sh-exec.test.ts'
       - 'tests/unit/fresh-evidence-audit.test.ts'
       - 'tests/unit/safe-install.test.ts'
@@ -212,6 +224,15 @@ jobs:
           cd "$(wslpath '${{ github.workspace }}')"
           npx tsc --noEmit
 
+      # Asserts the LINUX side of the boundary on a genuine WSL process: it
+      # must classify as wsl and must never classify as windows-native.
+      - name: Assert real-runtime classification inside WSL
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          cd "$(wslpath '${{ github.workspace }}')"
+          npx tsx --test tests/unit/platform-kind-runtime.test.ts
+
       - name: Run installer risk gate in WSL
         shell: wsl-bash {0}
         run: |
@@ -258,6 +279,22 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run platform detection tests on native Windows
+        run: npx tsx --test tests/unit/platform-kind.test.ts tests/unit/platform-kind-delegation.test.ts tests/unit/windows-native-cli-detect.test.ts tests/unit/doctor-platform-lanes.test.ts
+
+      # The injected-fixture tables above prove the same thing on every OS.
+      # This one calls the resolver with NO arguments, so it is the only step
+      # that proves correctness when process.platform genuinely is win32.
+      - name: Assert real-runtime classification on native Windows
+        run: npx tsx --test tests/unit/platform-kind-runtime.test.ts
+
+      # Exercises real where.exe discovery rather than injected candidates.
+      - name: Run CLI discovery tests against real where.exe
+        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/cli-detect.test.ts
 
       - name: Build package
         run: npm run build
