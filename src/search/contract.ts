@@ -5,7 +5,7 @@ export type RankingMode = 'recency' | 'rrf' | 'bm25' | 'trigram' | 'like';
 
 export type SearchWarning = {
     code: 'provider_off' | 'provider_failed' | 'engine_fallback' |
-        'legacy_response' | 'invalid_cursor';
+        'legacy_response' | 'invalid_cursor' | 'session_filter_ignored';
     message: string;
     provider?: string;
     instanceId?: string;
