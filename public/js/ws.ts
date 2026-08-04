@@ -12,6 +12,7 @@ import type { HeartbeatRuntimeState, OrcStateName, ResolvedSelectionState } from
 import { notifyUnreadResponse } from './features/attention-badge.js';
 import { shouldApplyOrcStateEvent } from './features/orchestrate-scope.js';
 import { providerLabel } from './provider-icons.js';
+import { handleSessionListBroadcast } from './features/session-hub.js';
 
 const ROADMAP_PHASES = ['I', 'P', 'A', 'B', 'C'] as const;
 
@@ -113,6 +114,7 @@ interface WsMessage {
     steerWaitMs?: number;
     textLen?: number;
     sseReplay?: boolean;
+    deleted?: { id?: string; seq?: number };
 }
 
 // Agent phase state (populated by agent_status events from orchestrator)
@@ -1123,6 +1125,8 @@ function handleServerEvent(msg: WsMessage): void {
         addSystemMsg(`⚠️ Goal continuation failed: ${escapeHtml(msg.error || '')}`, 'tool-activity');
     } else if (msg.type === 'settings_change') {
         handleSettingsChange(msg as { cli?: string; projectDirs?: string[] | null; changedKeys?: string[] });
+    } else if (msg.type === 'session_list') {
+        handleSessionListBroadcast(msg);
     } else if (msg.type === 'session_switched' || msg.type === 'session_created') {
         // Reload messages for the new active session
         window.location.reload();

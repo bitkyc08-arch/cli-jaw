@@ -95,6 +95,7 @@ import { initAttentionBadge } from './features/attention-badge.js';
 import { initHelpDialog } from './features/help-dialog.js';
 import { initChatSearch, toggleChatSearch, closeChatSearch } from './features/chat-search.js';
 import { initMediaLightbox } from './features/media-lightbox.js';
+import { initializeSessionView } from './features/session-hub.js';
 
 function isLocalPreviewOrigin(origin: string): boolean {
     if (origin === window.location.origin) return true;
@@ -559,9 +560,19 @@ async function bootstrap(): Promise<void> {
     ensurePreviewCapabilityListener();
     ensurePreviewInsertTextListener();
     await initI18n();
+    const sessionMode = await initializeSessionView({ cancelRecording });
+    if (sessionMode === 'redirect') return;
     const langSel = document.getElementById('langSelect') as HTMLSelectElement | null;
     if (langSel) langSel.value = getLang();
     initHelpDialog();
+    if (sessionMode === 'hub') {
+        // The hub has no chat surface, but the badge/help listeners are part of
+        // the documented boot order (AB-003 / HD-002): they must be installed
+        // before connect() regardless of which view is rendering.
+        initAttentionBadge();
+        connect();
+        return;
+    }
     initChatSearch();
     initMediaLightbox();
     document.getElementById('chatSearchTrigger')?.addEventListener('click', toggleChatSearch);
@@ -590,6 +601,10 @@ async function bootstrap(): Promise<void> {
     await initAvatar();
     initMsgCopy();
     initGestures();
+    if (window.location.hash === '#settings') {
+        const settingsTab = document.getElementById('tabBtnSettings');
+        if (settingsTab) switchTab('settings', settingsTab);
+    }
     try { sessionStorage.removeItem(STALE_BUNDLE_RELOAD_KEY); } catch {}
 
     // Phase 127-F2: prewarm Mermaid at idle so first diagram renders fast.

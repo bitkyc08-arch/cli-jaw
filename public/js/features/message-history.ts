@@ -21,6 +21,7 @@ import { normalizeMessageToolLog, parseToolLog, toProcessSteps, type MessageItem
 import { canFollowAfterRestore, ensureScrollTracking, markFollowingBottom, settleChatBottomAfterInitialLoad } from './chat-scroll.js';
 import { updateStatMsgs } from './ui-status.js';
 import { seedCompletedElicitationsFromMessages } from './elicitation-state.js';
+import { withCurrentSessionQuery } from './session-hub.js';
 
 export function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
     return msgs.map((m, index) => buildLazyVirtualMessageItem(normalizeMessageToolLog(m), index));
@@ -37,7 +38,7 @@ export function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
 const BOOT_MESSAGE_WINDOW = 3000;
 
 export function bootMessageQuery(): string {
-    return `?limit=${BOOT_MESSAGE_WINDOW}`;
+    return withCurrentSessionQuery(`?limit=${BOOT_MESSAGE_WINDOW}`);
 }
 
 function normalizeMessageScopePart(value: string | null | undefined): string {

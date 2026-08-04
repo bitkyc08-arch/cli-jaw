@@ -8,6 +8,8 @@ import {
     type NormalizedSpec,
 } from './elicitation-state.js';
 import { escapeHtml } from '../render/html.js';
+import { canSendFromCurrentView, showReadOnlySwitchAffordance } from './session-hub.js';
+import { t } from './i18n.js';
 
 type ElicitationKind = 'elicitation' | 'choice-buttons';
 
@@ -262,6 +264,19 @@ function createInputEvent(input: Element, type: string): Event {
 
 function submitComposedPrompt(block: HTMLElement, state: ElicitationState): void {
     if (block.dataset['elicitationState'] === SUBMITTING_STATE) return;
+    if (!canSendFromCurrentView()) {
+        showReadOnlySwitchAffordance();
+        block.classList.add('elicitation-error');
+        let notice = block.querySelector<HTMLElement>('.elicitation-readonly-notice');
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.className = 'elicitation-readonly-notice';
+            notice.setAttribute('role', 'status');
+            block.appendChild(notice);
+        }
+        notice.textContent = t('sessionReadonly.elicitationRejected');
+        return;
+    }
     block.dataset['elicitationState'] = SUBMITTING_STATE;
     const input = document.getElementById('chatInput') as HTMLTextAreaElement | HTMLInputElement | null;
     if (!input) {

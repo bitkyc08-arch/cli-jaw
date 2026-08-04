@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { ICONS } from '../icons.js';
 import { t } from './i18n.js';
 import { showSkeleton, removeSkeleton } from './chat-messages.js';
+import { withCurrentSessionQuery } from './session-hub.js';
 
 export function setStatus(s: string): void {
     const badge = document.getElementById('statusBadge');
@@ -47,7 +48,7 @@ export function updateStatMsgs(count: number): void {
 }
 
 export async function loadStats(): Promise<void> {
-    const result = await api<{ count: number }>('/api/messages/count');
+    const result = await api<{ count: number }>(withCurrentSessionQuery('/api/messages/count'));
     if (!result) return;
     updateStatMsgs(result.count);
 }

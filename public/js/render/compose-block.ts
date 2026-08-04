@@ -1,4 +1,6 @@
 import { escapeHtml } from './html.js';
+import { t } from '../features/i18n.js';
+import { canSendFromCurrentView, showReadOnlySwitchAffordance } from '../features/session-hub.js';
 
 type ComposeKind = 'email' | 'message' | 'document' | 'other';
 
@@ -286,6 +288,11 @@ function submitFollowup(block: HTMLElement, spec: ComposeBlockSpec): void {
     const input = document.getElementById('chatInput') as HTMLTextAreaElement | HTMLInputElement | null;
     if (!input) {
         setFollowupNotice(block, '채팅 입력창을 찾을 수 없습니다.');
+        return;
+    }
+    if (!canSendFromCurrentView()) {
+        showReadOnlySwitchAffordance();
+        setFollowupNotice(block, t('sessionReadonly.composeRejected'));
         return;
     }
     const { subject, body } = currentText(block);

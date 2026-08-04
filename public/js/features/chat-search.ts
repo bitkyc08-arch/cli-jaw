@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { getVirtualScroll } from '../virtual-scroll.js';
 import { escapeHtml } from '../render.js';
 import { bootMessageQuery } from './message-history.js';
+import { withCurrentSessionQuery } from './session-hub.js';
 
 const IS_IFRAME = window.parent !== window;
 
@@ -111,7 +112,7 @@ function buildMessageIndexMap(): void {
 
 async function runSearch(q: string, resultsEl: HTMLElement, countEl: HTMLElement): Promise<void> {
     lastQuery = q;
-    const data = await api<SearchResult[]>(`/api/messages/search?q=${encodeURIComponent(q)}&limit=20`);
+    const data = await api<SearchResult[]>(withCurrentSessionQuery(`/api/messages/search?q=${encodeURIComponent(q)}&limit=20`));
     if (!data || lastQuery !== q) return;
     countEl.textContent = data.length > 0 ? `${data.length} found` : 'no results';
     if (data.length === 0) {

@@ -16,6 +16,7 @@ import { tryCommandInfo } from './command-info.js';
 import { isChatNearBottom, markFollowingBottom, reconcileChatBottomAfterLayout } from './chat-scroll.js';
 import { copyText } from './copy-text.js';
 import { isLocalPreviewRelayOrigin, previewParentOrigin } from '../preview-parent-origin.js';
+import { canSendFromCurrentView, showReadOnlySwitchAffordance } from './session-hub.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -226,6 +227,12 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
     const btn = document.getElementById('btnSend');
     if (!input || !btn) return;
 
+    const text = input.value.trim();
+    if (!canSendFromCurrentView(source === 'button' ? '' : text)) {
+        showReadOnlySwitchAffordance();
+        return;
+    }
+
     // Stop-mode click policy (devlog 260501_chat_pause_and_unread_badge):
     //  - any stop-mode button click  → fire /api/stop and return.
     //    /api/stop calls killAllAgents() server-side, which is the user's
@@ -247,7 +254,6 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
     // Double-submit guard: if a previous send is still in flight, drop this call.
     if (__chatSending) return;
 
-    const text = input.value.trim();
     if (!text && !state.attachedFiles.length) return;
     clearUnreadResponses();
 
@@ -539,6 +545,10 @@ export function initDragDrop(): void {
 
 /** Upload recorded voice blob, combine with pending text/files, send unified message */
 export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): Promise<void> {
+    if (!canSendFromCurrentView()) {
+        showReadOnlySwitchAffordance();
+        return;
+    }
     const input = document.getElementById('chatInput') as HTMLTextAreaElement | null;
     const pendingText = input?.value.trim() || '';
     const pendingFiles = [...state.attachedFiles];
