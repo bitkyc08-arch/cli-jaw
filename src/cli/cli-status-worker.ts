@@ -136,12 +136,22 @@ function runCommand(binary: string, args: string[], timeoutMs: number): Promise<
             clearTimeout(timer);
             resolve({ code, output, timedOut, outputLimited });
         };
+        // Both abort paths face the same process: one that may ignore SIGTERM
+        // and may have left a descendant holding the pipe. Terminating only on
+        // the timeout path would let a chatty command survive by exceeding the
+        // output cap instead of the clock, so they share one escalation.
+        const abortChild = (): void => {
+            if (!child.pid) return;
+            killProcessTree(child.pid, 'SIGTERM');
+            const escalation = setTimeout(() => killProcessTreeIfAlive(child, child.pid), WORKER_KILL_GRACE_MS);
+            escalation.unref();
+        };
         const onData = (chunk: Buffer): void => {
             if (outputLimited) return;
             bytes += chunk.byteLength;
             if (bytes > OUTPUT_LIMIT_BYTES) {
                 outputLimited = true;
-                if (child.pid) killProcessTree(child.pid, 'SIGTERM');
+                abortChild();
                 finish(null);
                 return;
             }
@@ -153,9 +163,7 @@ function runCommand(binary: string, args: string[], timeoutMs: number): Promise<
         child.once('exit', (code) => finish(code));
         const timer = setTimeout(() => {
             timedOut = true;
-            if (child.pid) killProcessTree(child.pid, 'SIGTERM');
-            const escalation = setTimeout(() => killProcessTreeIfAlive(child, child.pid), WORKER_KILL_GRACE_MS);
-            escalation.unref();
+            abortChild();
             finish(null);
         }, timeoutMs);
         timer.unref();

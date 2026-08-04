@@ -586,6 +586,15 @@ export function loadSettings() {
             throw new Error('invalid_settings_document');
         }
         const sourceVersion = readSettingsSchemaVersion(raw);
+        // A v1 document predates the codex-app default, so an absent or unknown
+        // cli is normalised to the historical fallback rather than inheriting
+        // the new default. A v2 document was written by this schema and must
+        // already name a known runtime; if it does not, the file is not
+        // trustworthy enough to silently supply one, so it closes the same way
+        // a corrupt or future-versioned document does.
+        if (sourceVersion === 2 && !CLI_KEYS.includes(raw["cli"])) {
+            throw new Error(`invalid_settings_cli:${String(raw["cli"])}`);
+        }
         const legacyCli = sourceVersion === 1 && !CLI_KEYS.includes(raw["cli"])
             ? 'claude'
             : raw["cli"];

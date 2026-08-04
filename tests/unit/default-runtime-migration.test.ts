@@ -118,6 +118,34 @@ test('DRM-006b: malformed v2 migration state fails closed instead of reconstruct
     assert.equal(original.runtimeDefaultMigration.id, 'client-forged-id');
 });
 
+// A v1 document predates codex-app, so a missing cli is normalised to the old
+// fallback. A v2 document claims this schema wrote it, and this schema always
+// writes a known cli, so a missing or unknown one means the file cannot be
+// trusted to supply the runtime. Without this the defaults merge would quietly
+// hand an existing install codex-app for that run.
+test('DRM-006c: a v2 document with no cli fails closed instead of inheriting the new default', () => {
+    writeSettings({ settingsSchemaVersion: 2, runtimeDefaultMigration: null, model: 'gpt-5.5' });
+    pickerCalls = 0;
+    const loaded = config.loadSettings();
+    assert.equal(pickerCalls, 0, 'the picker must not run for an existing install');
+    assert.equal(loaded.cli, 'claude', 'a v2 document without a cli must not become codex-app');
+    const original = JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8'));
+    assert.equal('cli' in original, false, 'the original document must not be rewritten');
+});
+
+test('DRM-006d: a v2 document naming an unknown runtime fails closed', () => {
+    writeSettings({ settingsSchemaVersion: 2, cli: 'not-a-real-runtime', runtimeDefaultMigration: null });
+    pickerCalls = 0;
+    const loaded = config.loadSettings();
+    assert.equal(pickerCalls, 0);
+    assert.equal(loaded.cli, 'claude', 'an unknown runtime must not survive into the running config');
+    assert.equal(
+        JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8')).cli,
+        'not-a-real-runtime',
+        'the original document must be preserved for the user to repair',
+    );
+});
+
 test('DRM-007: unreadable settings follows the same no-picker fail-safe', { skip: process.platform === 'win32' }, () => {
     writeSettings({ cli: 'codex-app' });
     chmodSync(config.SETTINGS_PATH, 0o000);
