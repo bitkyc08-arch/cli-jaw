@@ -384,13 +384,17 @@ test('S-026c2: install.sh repairs partial installs instead of skipping latest cl
     assert.ok(installCode.includes('unset CLI_JAW_REQUIRE_CLI_TOOLS'), 'one-click install should keep optional backend installs best-effort by default');
 });
 
-test('S-026d: claude-e is optional so npm install works without Cargo', () => {
+test('S-026d: claude-e is not bundled — its postinstall needs cargo and npm >= 12 blocks it anyway', () => {
+    // 260804 install hardening: claude-e moved out of optionalDependencies.
+    // Its postinstall runs `cargo build` (exit 1 without a Rust toolchain) and
+    // npm 12 blocks unreviewed dependency lifecycle scripts, so bundling it
+    // only produced warnings and half-installs. Runtime detection is PATH-based
+    // (src/core/cli-detection.ts); install path is `jaw provider install`.
     const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
     const lock = JSON.parse(readFileSync(join(projectRoot, 'package-lock.json'), 'utf8'));
-    assert.equal(pkg.dependencies?.['claude-e'], undefined, 'claude-e should not be a hard dependency');
-    assert.equal(pkg.optionalDependencies?.['claude-e'], 'latest', 'claude-e should be optional');
-    assert.equal(lock.packages?.['']?.optionalDependencies?.['claude-e'], 'latest', 'lockfile root should mark claude-e optional');
-    assert.equal(lock.packages?.['node_modules/claude-e']?.optional, true, 'lockfile package entry should mark claude-e optional');
+    assert.equal(pkg.dependencies?.['claude-e'], undefined, 'claude-e must not be a hard dependency');
+    assert.equal(pkg.optionalDependencies?.['claude-e'], undefined, 'claude-e must not be bundled — use jaw provider install');
+    assert.equal(lock.packages?.['']?.optionalDependencies?.['claude-e'], undefined, 'lockfile root must not carry claude-e');
 });
 
 test('S-026e: ai-e is not bundled — use jaw provider install ai-e', () => {

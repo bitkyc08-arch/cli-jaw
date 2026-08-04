@@ -7,7 +7,7 @@
  * rebuild it in-place before build/test steps continue.
  */
 const { execFileSync } = require('child_process');
-const { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } = require('fs');
+const { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } = require('fs');
 const { delimiter, dirname, join } = require('path');
 const { createRequire } = require('module');
 const { createHash } = require('crypto');
@@ -58,7 +58,13 @@ function rebuildBetterSqlite3() {
     const betterSqliteDir = join(root, 'node_modules', 'better-sqlite3');
     if (existsSync(join(betterSqliteDir, 'package.json'))) {
         rmSync(join(betterSqliteDir, 'build'), { recursive: true, force: true });
-        runNpm(['run', 'install', '--foreground-scripts'], {
+        // v12 has scripts.install ("prebuild-install || node-gyp rebuild").
+        // v13+ removed it (prebuilds ship in the package), and `npm rebuild`
+        // returns a no-op success there, so the real source-build script is
+        // build-release. Pick by reading the installed package's manifest.
+        const manifest = JSON.parse(readFileSync(join(betterSqliteDir, 'package.json'), 'utf8'));
+        const script = manifest.scripts && manifest.scripts.install ? 'install' : 'build-release';
+        runNpm(['run', script, '--foreground-scripts'], {
             stdio: 'inherit',
             cwd: betterSqliteDir,
             env: nativeBuildEnv(),
@@ -239,10 +245,51 @@ function releaseRepairLock() {
     try { rmSync(LOCK_DIR, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 
+/**
+ * Can this process write into the install tree at all? A global npm prefix is
+ * often root-owned; telling that user to "rebuild" is advice that cannot work.
+ */
+function canWriteInstallTree() {
+    try {
+        accessSync(join(root, 'node_modules'), constants.W_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Package-manager-aware recovery commands. npm >= 12 blocks unreviewed
+ * dependency install scripts, which is the likeliest reason a fresh global
+ * install is missing its native addon. npm's own printed remediation omits
+ * the package argument (npm/cli#9835), so we print the working form.
+ */
+function recoveryHints() {
+    const lines = [];
+    if (/[\\/]\.bun[\\/]/.test(root)) {
+        lines.push('[jaw:native]    reinstall with lifecycle scripts trusted (bun):');
+        lines.push('[jaw:native]      bun add -g --trust cli-jaw');
+    } else if (/[\\/]pnpm[\\/]|[\\/]\.pnpm[\\/]/.test(root)) {
+        lines.push('[jaw:native]    reinstall with build scripts allowed (pnpm 11+):');
+        lines.push('[jaw:native]      pnpm add -g --allow-build=cli-jaw cli-jaw');
+        lines.push('[jaw:native]      (pnpm <= 10: pnpm approve-builds -g)');
+    } else {
+        lines.push('[jaw:native]    reinstall with install scripts allowed (npm >= 11.16):');
+        lines.push('[jaw:native]      npm install -g cli-jaw --allow-scripts=cli-jaw');
+        lines.push('[jaw:native]      npm config set allow-scripts=cli-jaw --location=user');
+    }
+    return lines;
+}
+
 function reportMissing() {
     console.error('[jaw:native] ❌ dependencies are not installed (cannot resolve better-sqlite3).');
     console.error(`[jaw:native]    install root: ${root}`);
-    console.error('[jaw:native]    run: npm install');
+    if (!canWriteInstallTree()) {
+        console.error('[jaw:native]    install tree is not writable — a rebuild cannot help here.');
+        for (const line of recoveryHints()) console.error(line);
+    } else {
+        console.error('[jaw:native]    run: npm install');
+    }
 }
 
 module.exports = {

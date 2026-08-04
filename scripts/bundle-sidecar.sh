@@ -111,6 +111,16 @@ fi
 echo "Rebuilding better-sqlite3 for bundled Node $NODE_VERSION..."
 while IFS= read -r pkg_json; do
   pkg_dir="$(dirname "$pkg_json")"
+  # better-sqlite3 >= 13 is Node-API: it ships prebuilds/ inside the package,
+  # has NO scripts.install (`npm run install` dies with "Missing script"), and
+  # the prebuild is ABI-independent, so no per-Node rebuild is needed at all.
+  # v12 keeps the old install script ("prebuild-install || node-gyp rebuild").
+  # The verification step below opens the DB with the bundled Node either way.
+  has_install_script="$("$NODE_BIN" -e 'const p=require(process.argv[1]);process.stdout.write(p.scripts&&p.scripts.install?"yes":"no")' "$pkg_json")"
+  if [ "$has_install_script" = "no" ]; then
+    echo "  skip rebuild (v13+ bundled prebuilds): ${pkg_dir#$SIDECAR_DIR/}"
+    continue
+  fi
   echo "  rebuild: ${pkg_dir#$SIDECAR_DIR/}"
   (
     cd "$pkg_dir"
@@ -126,8 +136,23 @@ done < <(find "$SIDECAR_DIR/node_modules" -path '*/better-sqlite3/package.json' 
 
 echo "Verifying better-sqlite3 opens with bundled Node..."
 "$NODE_BIN" -e "const Database = require('better-sqlite3'); new Database(':memory:').close()" && echo "  better-sqlite3 OK" || {
-  echo "ERROR: better-sqlite3 failed to open with bundled Node"
-  exit 1
+  echo "  bundled prebuild failed to load — building from source (v13 build-release)..."
+  sidecar_bsql_dir="$SIDECAR_DIR/node_modules/better-sqlite3"
+  if [ -d "$sidecar_bsql_dir" ]; then
+    (
+      cd "$sidecar_bsql_dir"
+      PYTHON="$PYTHON_BIN" \
+      npm_config_python="$PYTHON_BIN" \
+      npm_config_runtime=node \
+      npm_config_target="$NODE_VERSION" \
+      npm_config_disturl="https://nodejs.org/dist" \
+        npm run build-release --foreground-scripts
+    )
+  fi
+  "$NODE_BIN" -e "const Database = require('better-sqlite3'); new Database(':memory:').close()" && echo "  better-sqlite3 OK (source build)" || {
+    echo "ERROR: better-sqlite3 failed to open with bundled Node"
+    exit 1
+  }
 }
 
 echo "Cleaning up Node extract..."
@@ -172,6 +197,29 @@ node "$PROJECT_ROOT/scripts/check-electron-sidecar-no-jwc.cjs" --server-root "$S
 # closes that gap by construction — a dashboard returning 200 never proved the
 # Telegram bot could load.
 node "$PROJECT_ROOT/scripts/check-sidecar-smoke.mjs" --server-root "$SIDECAR_DIR"
+
+# Sidecar install-state receipt. The sidecar is deliberately built with
+# --ignore-scripts, so postinstall-guard never runs here and its receipt would
+# be absent — which the runtime integrity check would misread as a blocked
+# install and nag every desktop user. This is a controlled build: writing the
+# receipt ourselves, with the sidecar's own package version, is the honest
+# record of what happened.
+echo "Writing sidecar install-state receipt..."
+"$NODE_BIN" -e '
+const fs = require("fs"), path = require("path");
+const root = process.argv[1];
+const packageVersion = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+fs.writeFileSync(path.join(root, ".jaw-install-state.json"), JSON.stringify({
+  schema: 1,
+  state: "completed",
+  sidecar: true,
+  packageVersion,
+  ranAt: new Date().toISOString(),
+  node: process.version,
+  platform: process.platform,
+  arch: process.arch,
+}, null, 2));
+' "$SIDECAR_DIR"
 
 echo "=== Sidecar ready ==="
 du -sh "$SIDECAR_DIR"

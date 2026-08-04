@@ -37,3 +37,6 @@ devlog/_plan/*/_ref_*/
 devlog/
 .codegraph
 .codexclaw/
+
+# install-state receipt written by postinstall-guard at install time; never tracked
+.jaw-install-state.json

@@ -18,6 +18,8 @@ interface ProviderSpec {
     package: string;
     binary: string;
     description: string;
+    /** npm package names whose lifecycle scripts the install NEEDS (npm >= 11.16 allow-scripts). */
+    scriptPackages?: string[];
 }
 
 const PROVIDERS: Record<string, ProviderSpec> = {
@@ -27,9 +29,29 @@ const PROVIDERS: Record<string, ProviderSpec> = {
         binary: 'ai-e',
         description: 'AI-E multi-provider PTY runtime helper',
     },
+    'claude-e': {
+        name: 'claude-e',
+        package: 'claude-e@latest',
+        binary: 'claude-e',
+        description: 'Claude E native exec runtime (builds from source — needs Rust cargo)',
+        // claude-e's postinstall runs `cargo build`; without approval npm >= 12
+        // skips it and the install would be a no-op shell.
+        scriptPackages: ['claude-e'],
+    },
 };
 
 const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+/** npm >= 11.16 understands --allow-scripts; older npm rejects unknown config. */
+function npmSupportsAllowScripts(): boolean {
+    try {
+        const out = execFileSync(npmBin, ['--version'], { encoding: 'utf8', timeout: 30_000 }).trim();
+        const [major = 0, minor = 0] = out.split('.').map(Number);
+        return major > 11 || (major === 11 && minor >= 16);
+    } catch {
+        return false;
+    }
+}
 
 function usage(): string {
     const names = Object.keys(PROVIDERS).join(', ');
@@ -118,6 +140,9 @@ function runInstall(providerName: string | undefined, values: Record<string, unk
     try { assertSafePrefix(prefix); } catch (err) { fail((err as Error).message, json); }
 
     const npmArgs = ['install', '--prefix', prefix, spec.package, '--omit=dev', '--no-audit', '--no-fund'];
+    if (spec.scriptPackages?.length && npmSupportsAllowScripts()) {
+        npmArgs.push(`--allow-scripts=${spec.scriptPackages.join(',')}`);
+    }
     if (dryRun) {
         const payload = { ok: true, dryRun: true, provider: spec.name, prefix, package: spec.package, command: [npmBin, ...npmArgs] };
         if (json) console.log(JSON.stringify(payload, null, 2));

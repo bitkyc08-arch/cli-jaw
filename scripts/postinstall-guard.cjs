@@ -48,6 +48,41 @@ function ensurePackageBinExecutable(rootDir) {
 
 ensurePackageBinExecutable(root);
 
+// ─── 2.5 install state receipt ──────────────────────
+// This file records what the install actually did. Its ABSENCE is the signal
+// that npm/pnpm/bun blocked our lifecycle script (npm >= 12 blocks unreviewed
+// dependency scripts by default); its `state` distinguishes a real setup from
+// a safe-mode install that deliberately skipped it.
+//
+// It lives at the package root, NOT under dist/: scripts/atomic-build.sh
+// replaces dist/ wholesale on every build, which would erase the receipt and
+// make ordinary development look like a blocked install. The root path is
+// also outside the `files` allowlist, so it can never leak into the tarball.
+const INSTALL_STATE_FILE = '.jaw-install-state.json';
+
+/** @param {'completed'|'safe-mode'|'failed'} state */
+function writeInstallState(rootDir, state, extra) {
+    try {
+        // packageVersion is REQUIRED by the reader: a receipt whose version
+        // differs from the installed package is classified `stale`, so an
+        // upgrade whose scripts were blocked is never hidden by an old receipt.
+        const packageVersion = JSON.parse(
+            fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version;
+        fs.writeFileSync(path.join(rootDir, INSTALL_STATE_FILE), JSON.stringify({
+            schema: 1,
+            state,
+            packageVersion,
+            ranAt: new Date().toISOString(),
+            node: process.version,
+            platform: process.platform,
+            arch: process.arch,
+            ...extra,
+        }, null, 2));
+    } catch {
+        // A missing receipt only downgrades diagnostics; never fail the install.
+    }
+}
+
 // ─── 3. Safe mode: no build/install work ────────────
 const safeMode =
     process.env.JAW_SAFE === '1'
@@ -59,6 +94,7 @@ const safeMode =
 
 if (safeMode) {
     console.log('[jaw:init] safe mode — skipping postinstall build and installers');
+    writeInstallState(root, 'safe-mode');
     process.exit(0);
 }
 
@@ -103,8 +139,14 @@ if (!fs.existsSync(target)) {
     ensurePackageBinExecutable(root);
 }
 
-runCompiledPostinstall().catch((error) => {
+runCompiledPostinstall().then(() => {
+    writeInstallState(root, 'completed');
+}).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('[jaw:init] ⚠️  postinstall error (non-fatal):');
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(message);
+    // Record the failure so `jaw doctor` can explain it later instead of the
+    // exit(0) silently swallowing it.
+    writeInstallState(root, 'failed', { error: message });
     process.exit(0);
 });
