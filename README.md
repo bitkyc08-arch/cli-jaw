@@ -26,7 +26,11 @@ JAW_SAFE=1 npm install -g cli-jaw    # skips optional tool/runtime setup
 jaw init                              # interactive setup later when you're ready
 ```
 
-Windows users should use the WSL install path below. Native PowerShell is not the supported CLI-JAW install target.
+Windows users should use the WSL install path below. A native PowerShell installer exists as a **beta** surface:
+
+```powershell
+irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
+```
 
 </details>
 
@@ -35,6 +39,12 @@ Windows users should use the WSL install path below. Native PowerShell is not th
 npm install -g cli-jaw
 jaw dashboard
 ```
+
+> **npm 12+?** npm now blocks dependency install scripts by default. If you see `npm warn allow-scripts`, install with the scripts approved:
+>
+> ```bash
+> npm install -g cli-jaw --allow-scripts=cli-jaw
+> ```
 
 That's it. Open **http://localhost:24576** for the manager dashboard. Per-instance agent Web UIs still run from **http://localhost:3457** when you start `jaw serve`. Requires [Node.js 22.4+](https://nodejs.org).
 
@@ -644,6 +654,8 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt cont
 | Problem | Solution |
 |---|---|
 | `cli-jaw: command not found` | `npm install -g cli-jaw` again. macOS/Linux/WSL: check `~/.local/bin` or `npm prefix -g` + `/bin` is in `$PATH`. From Windows PowerShell, invoke WSL through a login shell: `wsl.exe -d Ubuntu -- bash -lc "jaw dashboard"`. |
+| `npm warn allow-scripts ...` | npm >= 12 blocks dependency install scripts by default, so the install "succeeds" without running CLI-JAW's setup. Fix: `npm install -g cli-jaw --allow-scripts=cli-jaw` or persist with `npm config set allow-scripts=cli-jaw --location=user`. Do **not** copy npm's own printed hint — it omits the package argument and fails with `ENOENT package.json` ([npm/cli#9835](https://github.com/npm/cli/issues/9835)). Already installed? `jaw init` finishes setup without reinstalling. |
+| pnpm/bun blocked build scripts | pnpm 11+: `pnpm add -g --allow-build=cli-jaw cli-jaw` (pnpm ≤ 10: `pnpm approve-builds -g`). bun: `bun add -g --trust cli-jaw`. |
 | `cli-jaw: permission denied` | The global shim can see CLI-JAW, but its `dist/bin/cli-jaw.js` target is not executable. Re-run `npm install -g cli-jaw` or, in a checkout, run `npm run build && npm run check:cli-bin-links`. |
 | Fresh install verifier fails | `scripts/verify-fresh-install.sh` checks both public aliases: `jaw` and `cli-jaw`. Fix the reported PATH or executable-bit issue, then rerun `bash "$(npm root -g)/cli-jaw/scripts/verify-fresh-install.sh"`. |
 | `Error: node version` | Upgrade to Node.js 22.4+: `nvm install 22` |

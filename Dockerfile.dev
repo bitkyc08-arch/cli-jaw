@@ -9,7 +9,9 @@ RUN groupadd -r jaw && useradd -r -g jaw -m jaw
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --ignore-scripts && npm rebuild better-sqlite3
+# better-sqlite3 >= 13 ships linux prebuilds inside the package (Node-API),
+# so no rebuild step is needed; `npm rebuild` would be a no-op success anyway.
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build && npm run build:frontend
 

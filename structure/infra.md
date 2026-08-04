@@ -117,8 +117,8 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | Frontend build | `npm run build:frontend` | Vite가 `public/index.html` + `public/manager/index.html`을 `public/dist`로 빌드 |
 | Manager dashboard | `jaw dashboard serve` | `src/manager/server.ts` 또는 `dist/src/manager/server.js` 실행, 기본 port `24576` |
 | Electron manager dashboard | Electron implicit spawn | Web/CLI lane `24576`과 분리된 manager port `24577` 기본값, fallback `24578-24590`; packaged app prefers bundled sidecar `server/bin/jaw` |
-| Docker local source | `Dockerfile` | local source copy → `npm run build` + `npm run build:frontend` → `node dist/server.js` |
-| Docker npm image | `Dockerfile.dev` | `npm install -g cli-jaw@${CLI_JAW_VERSION}` → `jaw serve --no-open` |
+| Docker npm image | `Dockerfile` | `npm install -g cli-jaw@${CLI_JAW_VERSION}` → `jaw serve --no-open` |
+| Docker local source | `Dockerfile.dev` | local source copy → `npm run build` + `npm run build:frontend` → `node dist/server.js` |
 | Compose | `docker-compose.yml` | 단일 `jaw` service, `${PORT:-3457}:3457`, `.env`, named volume `jaw-data` |
 
 ### 환경변수
@@ -150,8 +150,8 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 | 파일 | 실제 내용 |
 | --- | --- |
-| `Dockerfile` | `node:22-slim`, `python3 make g++ chromium curl`, non-root `jaw`, `npm ci --ignore-scripts && npm rebuild better-sqlite3`, `npm run build && npm run build:frontend`, `CLI_JAW_HOME=/home/jaw/.cli-jaw`, `PORT=3457`, healthcheck `/api/health`, entrypoint `node --dns-result-order=ipv4first dist/server.js` |
-| `Dockerfile.dev` | `node:22-slim`, npm global `cli-jaw@${CLI_JAW_VERSION}` (`ARG CLI_JAW_VERSION=latest`), `/api/health` build guard, `CLI_JAW_HOME=/home/jaw/.cli-jaw`, `PORT=3457`, entrypoint `jaw serve --no-open` |
+| `Dockerfile` | `node:22-slim`, `python3 make g++ chromium curl`, non-root `jaw`, npm global `cli-jaw@${CLI_JAW_VERSION}` (`ARG CLI_JAW_VERSION=latest`), `CLI_JAW_HOME=/home/jaw/.cli-jaw`, `PORT=3457`, entrypoint `jaw serve --no-open` |
+| `Dockerfile.dev` | `node:22-slim`, local source copy, `npm ci --ignore-scripts` (better-sqlite3 13은 prebuild 동봉이라 rebuild 불필요), `npm run build && npm run build:frontend`, `node dist/bin/postinstall.js`, `CLI_JAW_HOME=/home/jaw/.cli-jaw`, `PORT=3457`, entrypoint `node dist/server.js` |
 | `docker-compose.yml` | `jaw` service, `build: .`, `container_name: cli-jaw`, `${PORT:-3457}:3457`, `env_file: .env`, `jaw-data:/home/jaw/.cli-jaw`, `restart: unless-stopped`, `/dev/shm` tmpfs 512m |
 
 ### `scripts/` 실제 파일

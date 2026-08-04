@@ -39,6 +39,28 @@ extract_semver() {
   printf '%s' "${1:-}" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true
 }
 
+# npm >= 11.16 understands --allow-scripts; npm 12 blocks unreviewed dependency
+# lifecycle scripts by default, so without this flag a global install can
+# succeed while cli-jaw's postinstall silently never runs. Older npm rejects
+# unknown config, so the flag is attached conditionally.
+JAW_ALLOW_SCRIPTS="cli-jaw"
+
+jaw_npm_supports_allow_scripts() {
+  local npm_version major minor
+  npm_version="$(npm --version 2>/dev/null || true)"
+  major="$(printf '%s' "$npm_version" | cut -d. -f1)"
+  minor="$(printf '%s' "$npm_version" | cut -d. -f2)"
+  case "$major" in (''|*[!0-9]*) return 1 ;; esac
+  case "$minor" in (''|*[!0-9]*) minor=0 ;; esac
+  [ "$major" -gt 11 ] || { [ "$major" -eq 11 ] && [ "$minor" -ge 16 ]; }
+}
+
+jaw_allow_scripts_flag() {
+  if jaw_npm_supports_allow_scripts; then
+    printf '%s' "--allow-scripts=${JAW_ALLOW_SCRIPTS}"
+  fi
+}
+
 resolve_cmd() {
   command -v "$1" 2>/dev/null || true
 }
@@ -433,11 +455,15 @@ install_cli_jaw() {
   fi
 
   # Detect package manager from existing install path to avoid shared-path contamination
-  local pkg_cmd="npm install -g cli-jaw"
+  local allow_flag pkg_cmd
+  allow_flag="$(jaw_allow_scripts_flag)"
+  pkg_cmd="npm install -g cli-jaw${allow_flag:+ $allow_flag}"
   if [ -n "$installed_bin" ]; then
     case "$installed_bin" in
       *"/.bun/bin/"*)
-        pkg_cmd="bun add -g cli-jaw"
+        # bun skips lifecycle scripts for untrusted packages; --trust is the
+        # only surface that runs them for a global add.
+        pkg_cmd="bun add -g --trust cli-jaw"
         info "Detected bun-managed install — using bun"
         ;;
       *)

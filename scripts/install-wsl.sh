@@ -37,6 +37,29 @@ HAS_SUDO=false
 NPM_PREFIX="$HOME/.local"
 NPM_PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
+# npm >= 11.16 understands --allow-scripts; npm 12 blocks unreviewed dependency
+# lifecycle scripts by default, so without this flag a global install can
+# succeed while cli-jaw's postinstall silently never runs. Older npm rejects
+# unknown config, so the flag is attached conditionally. (Duplicated from
+# install.sh — both files are standalone curl-run scripts.)
+JAW_ALLOW_SCRIPTS="cli-jaw"
+
+jaw_npm_supports_allow_scripts() {
+  local npm_version major minor
+  npm_version="$(npm --version 2>/dev/null || true)"
+  major="$(printf '%s' "$npm_version" | cut -d. -f1)"
+  minor="$(printf '%s' "$npm_version" | cut -d. -f2)"
+  case "$major" in (''|*[!0-9]*) return 1 ;; esac
+  case "$minor" in (''|*[!0-9]*) minor=0 ;; esac
+  [ "$major" -gt 11 ] || { [ "$major" -eq 11 ] && [ "$minor" -ge 16 ]; }
+}
+
+jaw_allow_scripts_flag() {
+  if jaw_npm_supports_allow_scripts; then
+    printf '%s' "--allow-scripts=${JAW_ALLOW_SCRIPTS}"
+  fi
+}
+
 # Guard: reject Windows HOME (e.g. /mnt/c/Users/...)
 case "$HOME" in
   /mnt/*) fail "HOME points to Windows path: $HOME — launch a proper WSL shell (wsl.exe -d Ubuntu)" ;;
@@ -315,15 +338,17 @@ verify_jaw_command() {
 #  Step 3: Install cli-jaw
 # ═══════════════════════════════════════
 install_jaw() {
+  local allow_flag
+  allow_flag="$(jaw_allow_scripts_flag)"
   if command -v jaw &>/dev/null; then
     ok "cli-jaw already installed ($(jaw --version 2>/dev/null || echo 'unknown version'))"
     info "Updating to latest..."
     CLI_JAW_INSTALL_CLI_TOOLS=1 \
-      npm install -g cli-jaw@latest
+      npm install -g cli-jaw@latest ${allow_flag:+$allow_flag}
   else
     info "Installing cli-jaw globally..."
     CLI_JAW_INSTALL_CLI_TOOLS=1 \
-      npm install -g cli-jaw
+      npm install -g cli-jaw ${allow_flag:+$allow_flag}
   fi
 
   verify_jaw_command
