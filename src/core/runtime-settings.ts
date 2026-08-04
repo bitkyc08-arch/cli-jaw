@@ -3,7 +3,10 @@ import {
     ensureWorkingDirSkillsLinks, initMcpConfig,
 } from '../../lib/mcp-sync.js';
 import { syncCodexContextWindow } from './codex-config.js';
-import { settings, replaceSettings, saveSettings, migrateSettings, normalizeProjectDirs } from './config.js';
+import {
+    settings, replaceSettings, saveSettings, migrateSettings, normalizeProjectDirs,
+    RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
+} from './config.js';
 import { broadcast } from './bus.js';
 import { syncMainSessionToSettings } from './main-session.js';
 import { mergeSettingsPatch } from './settings-merge.js';
@@ -15,6 +18,52 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from './logger.js';
+
+export type RuntimeDefaultMigrationAction = 'accept' | 'keep';
+
+export class RuntimeDefaultMigrationTerminalError extends Error {
+    constructor() {
+        super('runtime_default_migration_terminal');
+        this.name = 'RuntimeDefaultMigrationTerminalError';
+    }
+}
+
+export function resolveRuntimeDefaultMigration(
+    currentSettings: Record<string, unknown>,
+    action: RuntimeDefaultMigrationAction,
+): Record<string, unknown> {
+    const current = currentSettings["runtimeDefaultMigration"];
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+        throw new RuntimeDefaultMigrationTerminalError();
+    }
+    const migration = current as RuntimeDefaultMigration;
+    if (migration.id !== RUNTIME_DEFAULT_MIGRATION_ID || migration.state !== 'pending') {
+        throw new RuntimeDefaultMigrationTerminalError();
+    }
+    const runtimeDefaultMigration: RuntimeDefaultMigration = {
+        ...migration,
+        state: action === 'accept' ? 'accepted' : 'kept',
+    };
+    return {
+        ...(action === 'accept' ? { cli: 'codex-app' } : {}),
+        runtimeDefaultMigration,
+    };
+}
+
+let runtimeDefaultMigrationTail = Promise.resolve();
+
+export async function withRuntimeDefaultMigrationLock<T>(work: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => { release = resolve; });
+    const previous = runtimeDefaultMigrationTail;
+    runtimeDefaultMigrationTail = previous.then(() => turn);
+    await previous;
+    try {
+        return await work();
+    } finally {
+        release();
+    }
+}
 
 function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
     try {
@@ -51,6 +100,7 @@ function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
 
 type ApplyRuntimeSettingsOptions = {
     resetFallbackState?: () => void;
+    cliSwitchRefresh?: (input: Record<string, unknown>) => Promise<unknown>;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -174,7 +224,8 @@ export async function applyRuntimeSettingsPatch(
             const toCli = settings["cli"];
             const toModel = selectedModelForCli(toCli, settings);
             try {
-                const { cliSwitchRefresh } = await import('./compact.js');
+                const cliSwitchRefresh = opts.cliSwitchRefresh
+                    ?? (await import('./compact.js')).cliSwitchRefresh;
                 await cliSwitchRefresh({
                     sourceWorkDir: prevWorkingDir || '',
                     targetWorkDir: settings["workingDir"] || '',

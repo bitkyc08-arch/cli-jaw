@@ -16,6 +16,7 @@ import { mergeSettingsPatch } from './settings-merge.js';
 import { broadcast } from './bus.js';
 
 export const SETTINGS_WATCH_DEBOUNCE_MS = 300;
+const SERVER_OWNED_SETTINGS_KEYS = ['settingsSchemaVersion', 'runtimeDefaultMigration'] as const;
 
 export type SettingsWatchOptions = {
     debounceMs?: number;
@@ -69,13 +70,19 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
         console.warn('[settings-watch] settings.json is not valid JSON — keeping in-memory settings');
         return false;
     }
+    const externalPatch = { ...parsed };
+    const ignoredKeys = SERVER_OWNED_SETTINGS_KEYS.filter((key) => key in externalPatch);
+    for (const key of ignoredKeys) delete externalPatch[key];
+    if (ignoredKeys.length > 0) {
+        console.warn(`[settings-watch] ignored server-owned settings keys: ${ignoredKeys.join(', ')}`);
+    }
     // Same normalize/migrate path as boot-time load; merge onto current
     // in-memory settings so runtime-only keys survive a partial file.
-    const merged = mergeSettingsPatch(settings, parsed);
+    const merged = mergeSettingsPatch(settings, externalPatch);
     merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
     replaceSettings(migrateSettings(merged));
     broadcast('settings_change', {
-        changedKeys: Object.keys(parsed),
+        changedKeys: Object.keys(externalPatch),
         cli: settings["cli"],
         model: selectedModelForCli(settings["cli"], settings),
         projectDirs: settings["projectDirs"] ?? null,

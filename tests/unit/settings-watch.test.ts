@@ -84,3 +84,32 @@ test('SWA-005: server wires the watcher and producers broadcast settings_change'
     const projectSrc = readFileSync(join(root, 'src/cli/handlers-project.ts'), 'utf8');
     assert.ok(projectSrc.includes("broadcast('settings_change'"), 'project handler must broadcast settings_change');
 });
+
+test('SWA-006: external JSON cannot overwrite schema-owned fields but can update user settings', () => withCapturedBroadcasts((events) => {
+    const migration = {
+        id: 'codex-app-default-v2',
+        state: 'accepted',
+        fromCli: 'claude',
+        toCli: 'codex-app',
+    };
+    replaceSettings({
+        ...settings,
+        settingsSchemaVersion: 2,
+        runtimeDefaultMigration: migration,
+        cli: 'codex-app',
+    });
+    const reloaded = reloadSettingsFromDisk({
+        readImpl: () => JSON.stringify({
+            settingsSchemaVersion: 99,
+            runtimeDefaultMigration: { ...migration, state: 'kept' },
+            cli: 'pi',
+        }),
+        lastSavedRaw: null,
+    });
+    assert.equal(reloaded, true);
+    assert.equal(settings["settingsSchemaVersion"], 2);
+    assert.deepEqual(settings["runtimeDefaultMigration"], migration);
+    assert.equal(settings["cli"], 'pi');
+    const change = events.find(e => e.type === 'settings_change');
+    assert.deepEqual(change?.data["changedKeys"], ['cli']);
+}));
