@@ -428,6 +428,35 @@ const GATES = {
             return { ok: true, detail: 'packaged sidecar keeps every runtime dependency' };
         },
     },
+    'native-load': {
+        description: 'shipped native addons actually dlopen, and spawn-helper stays executable',
+        check() {
+            const r = run('node', ['scripts/check-native-load.cjs'], { timeout: 60_000 });
+            // Exit 3 means nothing was probed. Reporting that as a pass with a
+            // substantive detail would be a lie of exactly the kind this gate
+            // exists to catch, so say what actually happened.
+            if (r.status === 3) {
+                return { ok: true, detail: 'SKIPPED — electron/node_modules absent, nothing probed' };
+            }
+            if (r.status !== 0) {
+                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-800) };
+            }
+            return { ok: true, detail: 'node-pty loads under this runtime' };
+        },
+    },
+    'sidecar-smoke': {
+        description: 'critical sidecar modules import from the bundled tree, not just resolve statically',
+        check() {
+            const r = run('node', ['scripts/check-sidecar-smoke.mjs'], { timeout: 120_000 });
+            if (r.status === 3) {
+                return { ok: true, detail: 'SKIPPED — sidecar not bundled, nothing imported' };
+            }
+            if (r.status !== 0) {
+                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-800) };
+            }
+            return { ok: true, detail: 'bundled sidecar imports its critical entry surfaces' };
+        },
+    },
     'gate-docs': {
         description: 'structure/INDEX.md documents exactly the gates that exist, and each is npm-addressable',
         check() {

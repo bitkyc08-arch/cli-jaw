@@ -153,7 +153,25 @@ export function useEmbeddedBrowserTargetSync(active: boolean, selectedPort: numb
         }
 
         const unsubscribe = bridge.onWebviewState(() => schedulePush());
-        const interval = window.setInterval(() => { void push(); }, REFRESH_INTERVAL_MS);
+        // D4: throttle the refresh while hidden rather than skipping it. This
+        // push is what keeps `lastPushAt` fresh, and the server drops a target
+        // from the registry after STALE_AFTER_MS (5 min,
+        // src/manager/routes/embedded-browser.ts:54). Skipping outright would
+        // 404 the agent's browser targets after five hidden minutes, while the
+        // command long-poll kept delivering commands that then fail. Pushing at
+        // a slower cadence keeps registration alive at a fraction of the cost.
+        const HIDDEN_PUSH_INTERVAL_MS = 4 * 60 * 1000;
+        let lastHiddenPush = 0;
+        const interval = window.setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) {
+                if (Date.now() - lastHiddenPush < HIDDEN_PUSH_INTERVAL_MS) return;
+                lastHiddenPush = Date.now();
+                void push();
+                return;
+            }
+            lastHiddenPush = 0;
+            void push();
+        }, REFRESH_INTERVAL_MS);
         void push();
         void pollCommands();
 

@@ -1,5 +1,25 @@
 import type { CodeSessionReplayEvent } from './code-session-client';
 import type { CodeEvent } from './useCodeEvents';
+import { fnv1a32 } from '../lib/fnv1a';
+import { addBounded } from '../lib/bounded-set';
+
+/**
+ * D3 (260803 unit, 050 phase): the dedupe key used to embed the FULL chunk
+ * text, so the set retained roughly a second copy of the whole transcript and
+ * grew for the session's lifetime.
+ *
+ * Collision domain, stated precisely: `stableId` is a message id or SSE event
+ * id, and a message id is minted once per TURN — every delta of one assistant
+ * turn shares it. So within a turn the text really was the discriminator, and
+ * hashing it does concentrate risk there. What bounds it is that the key also
+ * carries the text length, so only same-length chunks of the same turn can
+ * collide: roughly 10^3 same-length items against 2^32, i.e. ~10^-4.
+ *
+ * The consequence of a collision is a hard drop — `shouldDropDuplicateCodeChunk`
+ * returns before the append — so it is worth keeping that number honest rather
+ * than calling stableId "unique".
+ */
+const MAX_SEEN_KEYS = 2000;
 
 type ChunkLikeEvent = Pick<CodeEvent, 'event' | 'sessionId' | 'update' | 'sseEventId'>;
 export type AssistantChunkMergeAction = 'append' | 'drop' | 'replace';
@@ -29,14 +49,18 @@ export function codeChunkEventKey(event: ChunkLikeEvent, text: string): string |
         : '';
     const stableId = messageId ? `msg:${messageId}` : sseEventId ? `sse:${sseEventId}` : '';
     if (!stableId) return null;
-    return `${event.sessionId ?? ''}:${event.event}:${stableId}:${text}`;
+    return `${event.sessionId ?? ''}:${event.event}:${stableId}:${text.length}:${fnv1a32(text)}`;
 }
 
 export function rememberCodeChunkEvents(seen: Set<string>, events: CodeSessionReplayEvent[]): void {
     for (const event of events) {
         const text = textFromCodeChunk(event.update);
         const key = codeChunkEventKey(event, text);
-        if (key) seen.add(key);
+        // Seeding from a session replay must NOT evict its own earlier entries:
+        // a replay longer than the bound would drop keys for content already on
+        // screen, and the next matching live chunk would be appended again as
+        // "new". Size the bound to the replay, then let the live path trim.
+        if (key) addBounded(seen, key, Math.max(MAX_SEEN_KEYS, events.length));
     }
 }
 
@@ -44,7 +68,7 @@ export function shouldDropDuplicateCodeChunk(seen: Set<string>, event: ChunkLike
     const key = codeChunkEventKey(event, text);
     if (!key) return false;
     if (seen.has(key)) return true;
-    seen.add(key);
+    addBounded(seen, key, MAX_SEEN_KEYS);
     return false;
 }
 

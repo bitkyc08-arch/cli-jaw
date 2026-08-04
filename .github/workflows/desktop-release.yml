@@ -94,6 +94,16 @@ jobs:
       - name: Install Electron dependencies
         run: npm ci --prefix electron
 
+      # The only workflow that actually has electron/node_modules, so the only
+      # place the native probe can run for real. Without this step the gate
+      # exists but never executes outside a developer's laptop: node-tests and
+      # publish install root deps only, and this job used to go straight from
+      # install to packaging.
+      - name: Native addon load gate
+        run: npm run gate:native-load
+        env:
+          JAW_GATE_REQUIRE_NATIVE: '1'
+
       - name: Type check Electron shell
         run: npm --prefix electron run typecheck
 

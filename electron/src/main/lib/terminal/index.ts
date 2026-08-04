@@ -11,6 +11,11 @@ import { isAllowedSender } from '../ipc-origin-guard.js';
 
 const MAX_SESSIONS = 8;
 const BUFFER_CAP = 1024 * 1024;
+// Trim only once the buffer overshoots the cap by this factor. Slicing on every
+// chunk past the cap allocates a fresh 1MB string per chunk under fast output
+// (`yes`, a verbose build), which is pure GC churn. The slack costs at most
+// 256KB per session (2MB across MAX_SESSIONS) and makes the copy amortized.
+const BUFFER_TRIM_SLACK = 1.25;
 
 type TermSession = {
     id: string;
@@ -82,7 +87,7 @@ export function registerTerminalIpc(getWindow: () => BrowserWindow | null): void
 
         pty.onData((text: string) => {
             session.buffer += text;
-            if (session.buffer.length > BUFFER_CAP) {
+            if (session.buffer.length > BUFFER_CAP * BUFFER_TRIM_SLACK) {
                 session.buffer = session.buffer.slice(-BUFFER_CAP);
             }
             const win = getWindow();

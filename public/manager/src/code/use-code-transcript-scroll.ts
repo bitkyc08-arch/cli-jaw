@@ -12,16 +12,41 @@ export function useCodeTranscriptScroll(messages: TranscriptEntry[], sending: bo
     const latestTranscriptFootprint = useMemo(() => {
         const last = messages[messages.length - 1];
         if (!last) return 'empty';
-        const toolContentSize = last.toolContent?.reduce((total, content) => total + JSON.stringify(content).length, 0) ?? 0;
+        // D5: this used to JSON.stringify the whole toolContent on every
+        // `messages` identity change — i.e. every streaming token — which
+        // serializes hundreds of KB just to build a change-detection string.
+        // Length fields discriminate the same transitions at O(items) cost.
+        const toolContentSize = last.toolContent?.reduce((total, content) => {
+            const c = content as { text?: string; diff?: string; output?: string };
+            return total + (c.text?.length ?? 0) + (c.diff?.length ?? 0) + (c.output?.length ?? 0);
+        }, 0) ?? 0;
         return `${messages.length}:${last.role}:${last.text.length}:${last.toolOutput?.length ?? 0}:${toolContentSize}:${last.toolStatus ?? ''}`;
     }, [messages]);
 
+    // D4: coalesce every scroll request onto a single in-flight frame. The old
+    // shape queued a rAF *plus* a nested 80ms timeout per call, and callers fire
+    // per SSE event, so ~40 tok/s produced ~120 layout-forcing callbacks per
+    // second with two smooth-scroll animations fighting each other.
+    const pendingFrameRef = useRef<number | null>(null);
+    const settleTimerRef = useRef<number | null>(null);
+
+    useEffect(() => () => {
+        if (pendingFrameRef.current !== null) cancelAnimationFrame(pendingFrameRef.current);
+        if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
+    }, []);
+
     const scrollTranscriptToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-        window.requestAnimationFrame(() => {
+        if (pendingFrameRef.current !== null) return;
+        pendingFrameRef.current = window.requestAnimationFrame(() => {
+            pendingFrameRef.current = null;
             const node = transcriptRef.current;
             if (!node) return;
             node.scrollTo({ top: node.scrollHeight, behavior });
-            window.setTimeout(() => {
+            // One trailing correction, not one per call: content that lands
+            // after this frame still needs a final snap.
+            if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
+            settleTimerRef.current = window.setTimeout(() => {
+                settleTimerRef.current = null;
                 const latest = transcriptRef.current;
                 if (!latest) return;
                 latest.scrollTo({ top: latest.scrollHeight, behavior: 'auto' });

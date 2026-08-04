@@ -15,7 +15,12 @@ test('code transcript linearizes assistant markdown tables without changing Note
     const notesPreview = read('public/manager/src/notes/MarkdownPreview.tsx');
 
     assert.ok(
-        transcript.includes('<MarkdownRenderer markdown={msg.text} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />'),
+        // The assistant branch now goes through AssistantMarkdown, which applies
+        // the adaptive streaming throttle (260803 unit, 020 phase D1) before
+        // handing off to MarkdownRenderer. The contract is unchanged: linear
+        // tables plus local-file routing on the assistant path.
+        transcript.includes('<AssistantMarkdown text={msg.text} onOpenLocalFile={onOpenLocalFile} />')
+        && transcript.includes('<MarkdownRenderer markdown={throttled} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />'),
         'Code assistant transcript must opt into linear markdown tables and local-file routing',
     );
     assert.ok(

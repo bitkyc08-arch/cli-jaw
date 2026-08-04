@@ -61,6 +61,13 @@ export function createTray(cb: TrayCallbacks): Tray {
   callbacks = cb;
   syncLoginItemSetting();
 
+  // bootstrap() can run twice (bootstrapOnce clears its promise in .finally()),
+  // and overwriting `tray` would strand the previous native tray icon.
+  if (tray && !tray.isDestroyed()) {
+    rebuildMenu();
+    return tray;
+  }
+
   const iconPath = app.isPackaged
     ? join(process.resourcesPath, 'trayTemplate.png')
     : join(__dirname, '..', '..', 'build', 'trayTemplate.png');
