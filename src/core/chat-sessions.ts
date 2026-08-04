@@ -13,9 +13,18 @@ export type ChatSessionRow = {
     id: string;
     seq: number;
     label: string | null;
+    active_run_policy: ActiveRunPolicy | null;
     created_at: string;
     updated_at: string;
 };
+
+export type ActiveRunPolicy = 'steer' | 'followup' | 'collect' | 'interrupt';
+
+const ACTIVE_RUN_POLICIES = new Set<ActiveRunPolicy>(['steer', 'followup', 'collect', 'interrupt']);
+
+export function isActiveRunPolicy(value: unknown): value is ActiveRunPolicy {
+    return typeof value === 'string' && ACTIVE_RUN_POLICIES.has(value as ActiveRunPolicy);
+}
 
 const listStmt = db.prepare('SELECT * FROM chat_sessions ORDER BY seq ASC');
 const getBySeqStmt = db.prepare('SELECT * FROM chat_sessions WHERE seq = ?');
@@ -24,6 +33,8 @@ const insertStmt = db.prepare('INSERT INTO chat_sessions (id, seq, label) VALUES
 const deleteStmt = db.prepare('DELETE FROM chat_sessions WHERE id = ? AND id != \'default\'');
 const maxSeqStmt = db.prepare('SELECT MAX(seq) as max_seq FROM chat_sessions');
 const countMsgsStmt = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?');
+const getRunPolicyStmt = db.prepare('SELECT active_run_policy FROM chat_sessions WHERE id = ?');
+const setRunPolicyStmt = db.prepare('UPDATE chat_sessions SET active_run_policy = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 
 const getActiveStmt = db.prepare("SELECT active_chat_session FROM session WHERE id = 'default'");
 const setActiveStmt = db.prepare("UPDATE session SET active_chat_session = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'");
@@ -44,6 +55,15 @@ export function getActiveChatSession(): string {
     }
     const row = getActiveStmt.get() as { active_chat_session?: string } | undefined;
     return row?.active_chat_session || 'default';
+}
+
+export function getSessionRunPolicy(sessionId: string): ActiveRunPolicy | null {
+    const row = getRunPolicyStmt.get(sessionId) as { active_run_policy?: unknown } | undefined;
+    return isActiveRunPolicy(row?.active_run_policy) ? row.active_run_policy : null;
+}
+
+export function setSessionRunPolicy(sessionId: string, policy: ActiveRunPolicy | null): void {
+    setRunPolicyStmt.run(policy, sessionId);
 }
 
 export function setActiveChatSession(sessionId: string): void {

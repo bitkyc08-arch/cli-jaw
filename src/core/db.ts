@@ -93,6 +93,7 @@ db.exec(`
         id          TEXT PRIMARY KEY,
         seq         INTEGER NOT NULL UNIQUE,
         label       TEXT DEFAULT NULL,
+        active_run_policy TEXT DEFAULT NULL,
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -219,6 +220,11 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)
 const sessionCols = db.prepare('PRAGMA table_info(session)').all();
 if (!(sessionCols as Record<string, unknown>[]).some(c => c["name"] === 'active_chat_session')) {
     db.exec("ALTER TABLE session ADD COLUMN active_chat_session TEXT DEFAULT 'default'");
+}
+
+const chatSessionCols = db.prepare('PRAGMA table_info(chat_sessions)').all();
+if (!(chatSessionCols as Record<string, unknown>[]).some(c => c["name"] === 'active_run_policy')) {
+    db.exec('ALTER TABLE chat_sessions ADD COLUMN active_run_policy TEXT DEFAULT NULL');
 }
 
 const employeeSessionCols = db.prepare('PRAGMA table_info(employee_sessions)').all();

@@ -85,7 +85,7 @@ interface RuntimeSlot {
     unsubscribe: () => void;
 }
 
-class JawRuntime {
+export class JawRuntime {
     #slot: RuntimeSlot | null = null;
     #inFlight: Promise<JawRunResult> | null = null;
     /** Live-run scope of the turn in flight; the event subscription reads this so
@@ -210,4 +210,13 @@ class JawRuntime {
     }
 }
 
-export const jawRuntime = new JawRuntime();
+export const jawRuntimesByScope = new Map<string, JawRuntime>();
+
+export function runtimeForScope(scope: string): JawRuntime {
+    let runtime = jawRuntimesByScope.get(scope);
+    if (!runtime) {
+        runtime = new JawRuntime();
+        jawRuntimesByScope.set(scope, runtime);
+    }
+    return runtime;
+}

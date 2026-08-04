@@ -56,7 +56,7 @@ import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
-import { jawRuntime } from './jwc-runtime.js';
+import { jawRuntimesByScope, runtimeForScope } from './jwc-runtime.js';
 import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
 import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
 import {
@@ -446,10 +446,12 @@ export function isSteerInProgress(scopeKey = 'default'): boolean {
 
 export function isAgentBusy(scopeKey: string | null = 'default'): boolean {
     if (scopeKey === null) {
-        return activeMainProcesses.size > 0 || jawRuntime.busy || queueCtrl.isRetryPending(null);
+        return activeMainProcesses.size > 0
+            || [...jawRuntimesByScope.values()].some(runtime => runtime.busy)
+            || queueCtrl.isRetryPending(null);
     }
     return activeMainProcesses.has(scopeKey)
-        || (scopeKey === 'default' && jawRuntime.busy)
+        || runtimeForScope(scopeKey).busy
         || queueCtrl.isRetryPending(scopeKey);
 }
 
@@ -529,8 +531,9 @@ function clearMainLiveRunOnStop(scopeKey: string, reason: string): void {
 function abortInProcessRuntimeOnStop(scopeKey: string, reason: string): boolean {
     if (reason !== 'api' && reason !== 'user' && reason !== 'steer') return false;
     if (getActiveMainCli(scopeKey) !== 'jwc') return false;
-    if (!jawRuntime.busy) return false;
-    jawRuntime.abort().catch((err: unknown) => {
+    const runtime = runtimeForScope(scopeKey);
+    if (!runtime.busy) return false;
+    runtime.abort().catch((err: unknown) => {
         console.warn('[jaw:stop] jwc abort failed', (err as Error)?.message || err);
     });
     return true;
@@ -659,8 +662,9 @@ export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default'
 
 export async function steerAgent(scopeKey: string, newPrompt: string, source: string) {
     const run = activeMainProcesses.get(scopeKey);
-    if (run?.meta.cli === 'jwc' && jawRuntime.busy) {
-        await jawRuntime.steer(settings["workingDir"] || process.cwd(), newPrompt);
+    const runtime = runtimeForScope(scopeKey);
+    if (run?.meta.cli === 'jwc' && runtime.busy) {
+        await runtime.steer(settings["workingDir"] || process.cwd(), newPrompt);
         return;
     }
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
@@ -1018,6 +1022,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // (insertMessage → beginLiveRun → run → persist → clearLiveRun → processQueue)
     // so isAgentBusy()/queue/SSE behave identically. Employees fall through.
     if (cli === 'jwc' && mainManaged && !opts.internal) {
+        const jawRuntime = runtimeForScope(scopeKey);
         const jwcLabel = 'main';
         const jwcOverrides = settings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
         const jwcPerCli = settings["perCli"]?.['jwc'] as Record<string, string> | undefined;
