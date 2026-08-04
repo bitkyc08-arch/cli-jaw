@@ -446,15 +446,19 @@ export async function orchestrate(
     // (from a hub ThreadRoute) via the existing SpawnOpts.model/sysPrompt — no session
     // persistence, so it affects only this request's agent run.
     const overrides = meta["overrides"] as { model?: string; systemPrompt?: string } | undefined;
-    const { promise } = runSpawnAgent(prompt, {
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const chatSessionId = typeof meta["chatSessionId"] === 'string'
+        ? meta["chatSessionId"]
+        : getActiveChatSession();
+    const spawn = () => runSpawnAgent(prompt, {
         origin,
         target,
         chatId,
         requestId,
         replyViaTarget,
-        ...(settings["multiSession"]?.enabled === true ? {
+        ...(multiSessionEnabled ? {
             scopeKey: scope,
-            ...(typeof meta["chatSessionId"] === 'string' ? { chatSessionId: meta["chatSessionId"] } : {}),
+            chatSessionId,
             ...(typeof meta["remoteKey"] === 'string' ? { remoteKey: meta["remoteKey"] } : {}),
         } : {}),
         _skipInsert: !!meta["_skipInsert"],
@@ -462,6 +466,9 @@ export async function orchestrate(
         ...(overrides?.model ? { model: overrides.model } : {}),
         ...(overrides?.systemPrompt ? { sysPrompt: overrides.systemPrompt } : {}),
     });
+    const { promise } = multiSessionEnabled
+        ? withSessionScope({ scope, chatSessionId }, spawn)
+        : spawn();
     const result = await promise as Record<string, any>;
 
     // Re-read state from DB — it may have changed during agent execution

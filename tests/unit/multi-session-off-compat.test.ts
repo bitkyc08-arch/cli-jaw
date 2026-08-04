@@ -8,6 +8,12 @@ import { DEFAULT_SETTINGS, settings } from '../../src/core/config.ts';
 import { addBroadcastListener, broadcast, removeBroadcastListener } from '../../src/core/bus.ts';
 import { withSessionScope } from '../../src/core/session-context.ts';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { readSource } from './source-normalize.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 test('OFF is the default and captured context adds no event fields', () => {
     assert.deepEqual(DEFAULT_SETTINGS.multiSession, {
@@ -89,4 +95,14 @@ test('OFF preserves legacy queue grouping bytes and does not rewrite persisted v
     assert.equal(newPayload.priority, undefined);
     assert.equal(activeSessionReads, 0);
     assert.equal(broadcasts.at(-1)?.data.scope, undefined, 'OFF queue_update must not add scope');
+});
+
+test('Slack gate-off pins scope and chat session while global OFF keeps the active session fallback', () => {
+    for (const relativePath of ['../../src/slack/bot.ts', '../../src/slack/commands.ts']) {
+        const source = readSource(join(__dirname, relativePath), 'utf8');
+        assert.match(source, /const multiSessionEnabled = settings\.multiSession\?\.enabled === true/);
+        assert.match(source, /const slackGateOn = multiSessionEnabled && channelGateOn\('slack'\)/);
+        assert.match(source, /const chatSessionId = multiSessionEnabled && !slackGateOn\s*\? 'default'\s*: remoteKey \? resolveOrCreateRemoteSession\(remoteKey\) : getActiveChatSession\(\)/);
+        assert.match(source, /const scope = multiSessionEnabled && !slackGateOn \? 'default' : \(remoteKey \|\| 'default'\)/);
+    }
 });

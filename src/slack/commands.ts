@@ -71,11 +71,15 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
     if (!client.token) return;
     const token = client.token;
     const target = slackTargetFromId(channelId);
-    const remoteKey = settings["multiSession"]?.enabled === true && channelGateOn('slack')
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const slackGateOn = multiSessionEnabled && channelGateOn('slack');
+    const remoteKey = multiSessionEnabled && slackGateOn
         ? buildRemoteBindingKey(target)
         : undefined;
-    const chatSessionId = remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
-    const scope = remoteKey || 'default';
+    const chatSessionId = multiSessionEnabled && !slackGateOn
+        ? 'default'
+        : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
+    const scope = multiSessionEnabled && !slackGateOn ? 'default' : (remoteKey || 'default');
     const sessionScope: SessionScope = { scope, chatSessionId };
     setLastActiveTarget('slack', target);
 

@@ -5,16 +5,21 @@ import type { RemoteTarget, RuntimeOrigin } from './types.js';
 
 export interface SessionScope { scope: string; chatSessionId: string }
 
+/** Normalize transport-specific thread identifiers before key construction. */
+export function normalizedThreadId(target?: Pick<RemoteTarget, 'channel' | 'threadId'>): string | undefined {
+    if (!target?.threadId) return undefined;
+    return target.channel === 'telegram' && Number(target.threadId) <= 1
+        ? undefined
+        : target.threadId;
+}
+
 /**
  * Build a deterministic session key from a RemoteTarget.
  * Format: `<channel>:<peerKind>:<targetKind>:<targetId>[:topic|thread:<threadId>]`
  */
 export function buildRemoteSessionKey(target: RemoteTarget): string {
     const base = `${target.channel}:${target.peerKind}:${target.targetKind}:${target.targetId}`;
-    const threadId = target.threadId
-        && !(target.channel === 'telegram' && Number(target.threadId) <= 1)
-        ? target.threadId
-        : undefined;
+    const threadId = normalizedThreadId(target);
     if (threadId) {
         const suffix = target.channel === 'telegram' ? 'topic' : 'thread';
         return `${base}:${suffix}:${threadId}`;
@@ -29,10 +34,7 @@ export function buildRemoteSessionKey(target: RemoteTarget): string {
 export function buildRemoteBindingKey(target: RemoteTarget): string {
     const part = (value: string) => encodeURIComponent(value);
     const base = `jaw:${part(target.channel)}:${part(target.peerKind)}:${part(target.targetId)}`;
-    const threadId = target.threadId
-        && !(target.channel === 'telegram' && Number(target.threadId) <= 1)
-        ? target.threadId
-        : undefined;
+    const threadId = normalizedThreadId(target);
     return threadId ? `${base}:thread:${part(threadId)}` : base;
 }
 

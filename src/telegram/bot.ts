@@ -695,7 +695,13 @@ async function _initTelegramInner() {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         try {
-            const { text: result, data: doneData } = await orchestrateAndCollectData(prompt, { origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true });
+            const { text: collectedText, data: doneData } = await orchestrateAndCollectData(prompt, stripUndefined({
+                origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true,
+                target: responseTarget,
+                scope: result.sessionContext?.scope,
+                chatSessionId: result.sessionContext?.chatSessionId,
+                remoteKey: result.sessionContext?.remoteKey,
+            }));
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
                 clearTimeout(statusUpdateTimer);
@@ -705,10 +711,10 @@ async function _initTelegramInner() {
             if (statusMsgId) {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
-            await sendTelegramMarkdown(ctx.api, chat.id, result, replyOptsOf(ctx));
-            await relayTelegramImages(bot, chat.id, result, responseTarget);
+            await sendTelegramMarkdown(ctx.api, chat.id, collectedText, replyOptsOf(ctx));
+            await relayTelegramImages(bot, chat.id, collectedText, responseTarget);
             await sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]);
-            log.info(`[tg:out] ${chat.id}: ${redactOutboundText(result).slice(0, 80)}`);
+            log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
         } catch (err: unknown) {
             clearInterval(typingInterval);
             if (statusUpdateTimer) {

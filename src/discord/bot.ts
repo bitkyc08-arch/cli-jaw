@@ -171,9 +171,12 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     }, 8000);
 
     try {
-        const text = String(await orchestrateAndCollect(prompt, {
+        const text = String(await orchestrateAndCollect(prompt, stripUndefined({
             origin: 'discord', target, chatId, requestId: result.requestId, _skipInsert: true,
-        }));
+            scope: result.sessionContext?.scope,
+            chatSessionId: result.sessionContext?.chatSessionId,
+            remoteKey: result.sessionContext?.remoteKey,
+        })));
         const chunks = chunkDiscordMessage(text);
         const channel = asSendable(msg.channel);
         if (!channel) throw new Error('Discord channel is not text-based');

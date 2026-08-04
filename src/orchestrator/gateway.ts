@@ -18,7 +18,7 @@ import {
 import { getState } from './state-machine.js';
 import { channelGateOn, resolveOrcScope } from './scope.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
-import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
+import { buildRemoteBindingKey, normalizedThreadId, type SessionScope } from '../messaging/session-key.js';
 import { sessionLanes } from './session-lanes.js';
 
 export type SubmitResult = {
@@ -26,6 +26,7 @@ export type SubmitResult = {
     reason?: string;
     pending?: number;
     requestId?: string;
+    sessionContext?: { scope: string; chatSessionId: string; remoteKey?: string };
     /** Queue item id (only present when action === 'queued') — lets clients
      * tag their optimistic bubble with `data-queued-id` so applyQueuedOverlay's
      * dedup catches it instead of rendering a duplicate. */
@@ -63,6 +64,11 @@ function applyMidRunPolicy(
     policy: ActiveRunPolicy,
     ctx: { scopeKey: string; chatSessionId: string; text: string; meta: SubmitMeta; requestId: string; remoteKey?: string },
 ): SubmitResult {
+    const sessionContext = {
+        scope: ctx.scopeKey,
+        chatSessionId: ctx.chatSessionId,
+        ...(ctx.remoteKey ? { remoteKey: ctx.remoteKey } : {}),
+    };
     const queue = (extra?: { collect?: boolean; front?: boolean }): SubmitResult => {
         const queuedId = enqueueMessage(ctx.text, ctx.meta.origin, stripUndefined({
             target: ctx.meta.target,
@@ -75,7 +81,7 @@ function applyMidRunPolicy(
             replyViaTarget: ctx.meta.replyViaTarget,
             ...extra,
         }));
-        return { action: 'queued', pending: messageQueue.length, queued: true, requestId: ctx.requestId, queuedId };
+        return { action: 'queued', pending: messageQueue.length, queued: true, requestId: ctx.requestId, queuedId, sessionContext };
     };
 
     if (policy === 'steer') {
@@ -92,7 +98,7 @@ function applyMidRunPolicy(
             'steer',
             { ...ctx.meta, requestId: ctx.requestId, eventScope: { scope: ctx.scopeKey, sessionId: ctx.chatSessionId } },
         );
-        return { action: 'started', requestId: ctx.requestId };
+        return { action: 'started', requestId: ctx.requestId, sessionContext };
     }
     if (policy === 'collect') return queue({ collect: true });
     if (policy === 'interrupt') {
@@ -182,11 +188,12 @@ export function submitMessage(
         }))))
         : 'default';
     const sessionScope: SessionScope = { scope, chatSessionId };
+    const sessionContext = { scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}) };
     const eventScope = multiSessionEnabled ? { scope, sessionId: chatSessionId } : undefined;
 
     // Admission must use the resolved persistent scope, not a pre-resolution transport guess.
     const now = Date.now();
-    const key = dedupKey(scope, meta.origin, trimmed, meta.chatId, meta.target?.threadId);
+    const key = dedupKey(scope, meta.origin, trimmed, meta.chatId, normalizedThreadId(meta.target));
     const prior = recentSubmissions.get(key);
     if (prior && now - prior.ts < DEDUP_WINDOW_MS) {
         console.log(`[gateway:dedup] suppressed duplicate (${now - prior.ts}ms window) origin=${meta.origin}`);
@@ -211,7 +218,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
-        return { action: 'started', noPendingContinue: true, requestId };
+        return { action: 'started', noPendingContinue: true, requestId, sessionContext };
     }
 
     // ── reset intent ──
@@ -229,7 +236,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
-        return { action: 'started', requestId };
+        return { action: 'started', requestId, sessionContext };
     }
 
     // ── busy → enqueue only ──
@@ -251,7 +258,7 @@ export function submitMessage(
             });
         }
         const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }));
-        return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId };
+        return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId, sessionContext };
     }
 
     // ── idle → start immediately ──
@@ -268,5 +275,5 @@ export function submitMessage(
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );
     }
-    return { action: 'started', requestId };
+    return { action: 'started', requestId, sessionContext };
 }

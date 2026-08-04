@@ -84,11 +84,15 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
     if (!client.token) return;
     const token = client.token;
     const chatId = target.targetId;
-    const remoteKey = settings["multiSession"]?.enabled === true && channelGateOn('slack')
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const slackGateOn = multiSessionEnabled && channelGateOn('slack');
+    const remoteKey = multiSessionEnabled && slackGateOn
         ? buildRemoteBindingKey(target)
         : undefined;
-    const chatSessionId = remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
-    const scope = remoteKey || 'default';
+    const chatSessionId = multiSessionEnabled && !slackGateOn
+        ? 'default'
+        : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
+    const scope = multiSessionEnabled && !slackGateOn ? 'default' : (remoteKey || 'default');
     const sessionScope: SessionScope = { scope, chatSessionId };
     const result = submitMessage(prompt, {
         origin: 'slack', displayText: displayMsg, skipOrchestrate: true, target, chatId,
