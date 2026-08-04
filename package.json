@@ -117,6 +117,7 @@
     "gate:sidecar-prune-safety": "node scripts/release-gates.mjs sidecar-prune-safety",
     "gate:native-load": "node scripts/release-gates.mjs native-load",
     "gate:sidecar-smoke": "node scripts/release-gates.mjs sidecar-smoke",
+    "gate:install-integrity": "node scripts/release-gates.mjs install-integrity",
     "check:sidecar-prune-safety": "node scripts/check-sidecar-prune-safety.mjs",
     "sync:electron-version": "node scripts/sync-electron-version.cjs",
     "gate:all": "node scripts/release-gates.mjs",

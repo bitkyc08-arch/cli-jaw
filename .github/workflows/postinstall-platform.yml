@@ -31,6 +31,19 @@ on:
       - 'tests/unit/postinstall-strict-tools.test.ts'
       - 'tests/unit/wsl-installer-doctor.test.ts'
       - 'tests/unit/wsl-installer-exec.test.ts'
+      - 'src/core/install-integrity.ts'
+      - 'scripts/install.ps1'
+      - 'scripts/postinstall-guard.cjs'
+      - 'scripts/ensure-native-modules.cjs'
+      - 'scripts/bundle-sidecar.sh'
+      - 'bin/cli-jaw.ts'
+      - 'bin/commands/init.ts'
+      - 'bin/commands/doctor.ts'
+      - 'Dockerfile'
+      - 'Dockerfile.dev'
+      - 'structure/infra.md'
+      - 'tests/unit/install-integrity.test.ts'
+      - 'tests/unit/scriptless-install-contract.test.ts'
       - 'package.json'
       - 'package-lock.json'
   pull_request:
@@ -59,6 +72,19 @@ on:
       - 'tests/unit/postinstall-strict-tools.test.ts'
       - 'tests/unit/wsl-installer-doctor.test.ts'
       - 'tests/unit/wsl-installer-exec.test.ts'
+      - 'src/core/install-integrity.ts'
+      - 'scripts/install.ps1'
+      - 'scripts/postinstall-guard.cjs'
+      - 'scripts/ensure-native-modules.cjs'
+      - 'scripts/bundle-sidecar.sh'
+      - 'bin/cli-jaw.ts'
+      - 'bin/commands/init.ts'
+      - 'bin/commands/doctor.ts'
+      - 'Dockerfile'
+      - 'Dockerfile.dev'
+      - 'structure/infra.md'
+      - 'tests/unit/install-integrity.test.ts'
+      - 'tests/unit/scriptless-install-contract.test.ts'
       - 'package.json'
       - 'package-lock.json'
   workflow_dispatch:
@@ -94,6 +120,23 @@ jobs:
       - name: Run postinstall policy tests
         run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/cli-detect.test.ts tests/unit/safe-install.test.ts
 
+      - name: Run install-integrity contract tests
+        run: npx tsx --experimental-test-module-mocks tests/run.mts tests/unit/install-integrity.test.ts tests/unit/scriptless-install-contract.test.ts
+
+      - name: Scriptless global install smoke (Linux)
+        run: |
+          set -euo pipefail
+          npm run build
+          npm pack
+          TGZ="$(ls cli-jaw-*.tgz | head -n1)"
+          PREFIX="$(mktemp -d)"
+          npm install -g --ignore-scripts --prefix "$PREFIX" "./$TGZ"
+          "$PREFIX/bin/jaw" --version
+          # --version skips the native guard, so open the native addon + vec
+          # extension from the installed root — that is the real scriptless proof.
+          PKG_ROOT="$PREFIX/lib/node_modules/cli-jaw"
+          node -e "const {createRequire}=require('module');const r=createRequire(process.argv[1]+'/package.json');const D=r('better-sqlite3');const db=new D(':memory:');const v=r('sqlite-vec');v.load(db);console.log('native+vec OK', db.prepare('select vec_version() as x').get().x);db.close()" "$PKG_ROOT"
+
   macos-installer-risk:
     name: macOS installer risk gate
     runs-on: macos-latest
@@ -119,6 +162,17 @@ jobs:
 
       - name: Smoke packaged global install
         run: npm run test:fresh-install -- --postinstall --skip-doctor
+
+      - name: Scriptless global install smoke (macOS)
+        run: |
+          set -euo pipefail
+          npm pack
+          TGZ="$(ls cli-jaw-*.tgz | head -n1)"
+          PREFIX="$(mktemp -d)"
+          npm install -g --ignore-scripts --prefix "$PREFIX" "./$TGZ"
+          "$PREFIX/bin/jaw" --version
+          PKG_ROOT="$PREFIX/lib/node_modules/cli-jaw"
+          node -e "const {createRequire}=require('module');const r=createRequire(process.argv[1]+'/package.json');const D=r('better-sqlite3');const db=new D(':memory:');const v=r('sqlite-vec');v.load(db);console.log('native+vec OK', db.prepare('select vec_version() as x').get().x);db.close()" "$PKG_ROOT"
 
   windows-wsl:
     name: Windows WSL postinstall policy
@@ -187,3 +241,38 @@ jobs:
           $linuxWorkspace = (wsl.exe -d Ubuntu-24.04 -- wslpath "$workspaceForWsl").Trim()
           if (-not $linuxWorkspace) { throw "wslpath returned an empty workspace path" }
           wsl.exe -d Ubuntu-24.04 -- bash -lc "cd '$linuxWorkspace' && npm run test:fresh-install -- --postinstall --skip-doctor"
+
+  windows-native:
+    name: Windows native install.ps1 (beta)
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run install.ps1 against the packed tarball (isolated prefix)
+        shell: pwsh
+        run: |
+          npm pack
+          $tgz = Get-ChildItem cli-jaw-*.tgz | Select-Object -First 1
+          $prefix = Join-Path $env:RUNNER_TEMP "jaw-prefix"
+          # Executes the beta installer itself so its npm version gate, PATH
+          # diagnosis, and error handling actually run — not just raw npm.
+          pwsh -NoProfile -File scripts/install.ps1 -TarballPath $tgz.FullName -Prefix $prefix -IgnoreScripts
+          & (Join-Path $prefix "jaw.cmd") --version
+          # --version skips the native guard; opening the addon + vec extension
+          # from the installed root is the real scriptless proof on Windows.
+          $pkgRoot = Join-Path $prefix "node_modules\cli-jaw"
+          node -e "const {createRequire}=require('module');const r=createRequire(process.argv[1]+'/package.json');const D=r('better-sqlite3');const db=new D(':memory:');const v=r('sqlite-vec');v.load(db);console.log('native+vec OK', db.prepare('select vec_version() as x').get().x);db.close()" $pkgRoot

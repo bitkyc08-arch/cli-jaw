@@ -67,6 +67,7 @@ function runPackageContentsCheck() {
   const required = [
     'scripts/install.sh',
     'scripts/install-wsl.sh',
+    'scripts/install.ps1',
     'scripts/verify-fresh-install.sh',
     'scripts/collect-fresh-install-evidence.sh',
     'scripts/audit-fresh-install-evidence.mjs',
@@ -91,6 +92,13 @@ function runPackageContentsCheck() {
     const sample = forbidden.slice(0, 10).join(', ');
     const suffix = forbidden.length > 10 ? `, ... (${forbidden.length} total)` : '';
     console.error(`[install-risk] FAIL ${label}: forbidden frontend build output ${sample}${suffix}`);
+    return false;
+  }
+
+  // The install-state receipt is written at install time; if it ever ships in
+  // the tarball it always exists, which makes blocked-install detection blind.
+  if ([...files].some((file) => file.endsWith('.jaw-install-state.json'))) {
+    console.error(`[install-risk] FAIL ${label}: .jaw-install-state.json must never ship in the package`);
     return false;
   }
 

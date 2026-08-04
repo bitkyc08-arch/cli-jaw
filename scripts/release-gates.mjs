@@ -462,6 +462,18 @@ const GATES = {
             return { ok: true, detail: 'bundled sidecar imports its critical entry surfaces' };
         },
     },
+    'install-integrity': {
+        description: 'scriptless install contract + allow-scripts recovery guidance stay pinned',
+        check() {
+            const r = run('npx', ['tsx', '--experimental-test-module-mocks', 'tests/run.mts',
+                'tests/unit/install-integrity.test.ts',
+                'tests/unit/scriptless-install-contract.test.ts'], { timeout: 180_000 });
+            if (r.status !== 0) {
+                return { ok: false, detail: [r.stdout, r.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            return { ok: true, detail: 'install-integrity + scriptless contract suites green' };
+        },
+    },
     'gate-docs': {
         description: 'structure/INDEX.md documents exactly the gates that exist, and each is npm-addressable',
         check() {

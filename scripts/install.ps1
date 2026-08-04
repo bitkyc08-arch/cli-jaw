@@ -9,8 +9,8 @@
   lifecycle scripts by default). Verifies PATH and the installed binary, and
   prints exact fixes instead of mutating user PATH or system policy.
 
-  This script never runs Set-ExecutionPolicy, never requires elevation, and
-  never edits the user PATH — it prints the command to do so instead.
+  This script never changes the PowerShell execution policy, never requires
+  elevation, and never edits the user PATH — it prints the command instead.
 
 .PARAMETER TarballPath
   Install from a local .tgz produced by `npm pack` instead of the registry.
