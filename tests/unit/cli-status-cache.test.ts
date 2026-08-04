@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { createCliStatusCacheForTest, type CliStatusSnapshot } from '../../src/cli/cli-status.ts';
-import { runCliStatusWorker } from '../../src/cli/cli-status-worker.ts';
+import { runCliStatusWorker, runCommand } from '../../src/cli/cli-status-worker.ts';
 import { CLI_KEYS } from '../../src/cli/registry.ts';
 
 function completedSnapshot(source = 'fixture'): CliStatusSnapshot {
@@ -146,5 +146,41 @@ test('outer timeout kills a non-terminating worker tree and rejects', async () =
             catch { return true; }
         });
     });
+    await rm(dir, { recursive: true, force: true });
+});
+
+// The failure this covers is narrow and easy to miss: the direct command obeys
+// SIGTERM, so an escalation that only checks whether the child is still alive
+// gives up, while a grandchild that ignores the signal is already an orphan and
+// no longer reachable by walking parent PIDs. Aborting on the output cap rather
+// than the clock is the path that used to skip escalation entirely.
+test('an over-cap command takes its SIGTERM-ignoring descendant down with it', {
+    skip: process.platform === 'win32',
+}, async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'jaw-cli-status-cap-'));
+    const fixture = join(dir, 'noisy.mjs');
+    const pidFile = join(dir, 'pid');
+    await writeFile(fixture, [
+        "import { writeFileSync } from 'node:fs';",
+        "import { spawn } from 'node:child_process';",
+        // The descendant only has to outlive its parent; it ignores SIGTERM and
+        // never exits on its own.
+        "const descendant = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
+        `writeFileSync(${JSON.stringify(pidFile)}, JSON.stringify([process.pid, descendant.pid]));`,
+        // The direct child exits cleanly on SIGTERM, which is exactly what makes
+        // a liveness-guarded escalation return without touching the orphan.
+        "process.on('SIGTERM', () => process.exit(0));",
+        "setInterval(() => process.stdout.write('y'.repeat(16384)), 5);",
+    ].join('\n'));
+
+    const result = await runCommand(process.execPath, [fixture], 10_000);
+    assert.equal(result.outputLimited, true, 'the fixture must trip the output cap, not the timeout');
+    assert.equal(result.timedOut, false);
+
+    const pids = JSON.parse(await readFile(pidFile, 'utf8')) as number[];
+    await waitUntil(() => pids.every((pid) => {
+        try { process.kill(pid, 0); return false; }
+        catch { return true; }
+    }), 5_000);
     await rm(dir, { recursive: true, force: true });
 });

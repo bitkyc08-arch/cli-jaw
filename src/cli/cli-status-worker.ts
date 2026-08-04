@@ -117,7 +117,7 @@ export function runCliStatusWorker(options: CliStatusWorkerOptions = {}): Promis
     });
 }
 
-function runCommand(binary: string, args: string[], timeoutMs: number): Promise<{ code: number | null; output: string; timedOut: boolean; outputLimited: boolean }> {
+export function runCommand(binary: string, args: string[], timeoutMs: number): Promise<{ code: number | null; output: string; timedOut: boolean; outputLimited: boolean }> {
     return new Promise((resolve) => {
         const child = spawn(binary, args, {
             detached: process.platform !== 'win32',
@@ -140,14 +140,31 @@ function runCommand(binary: string, args: string[], timeoutMs: number): Promise<
         // and may have left a descendant holding the pipe. Terminating only on
         // the timeout path would let a chatty command survive by exceeding the
         // output cap instead of the clock, so they share one escalation.
+        //
+        // The tree walk alone is not enough. If the direct child obeys SIGTERM
+        // and only a grandchild ignores it, the escalation would find the child
+        // already gone and return, leaving an orphan that no PID-parent scan
+        // can reach any more. On POSIX the child is detached and therefore
+        // leads its own process group, so signalling the negated PID covers
+        // every descendant regardless of what the direct child did.
+        let aborted = false;
+        const signalGroup = (signal: NodeJS.Signals): void => {
+            if (process.platform === 'win32' || !child.pid) return;
+            try { process.kill(-child.pid, signal); } catch { /* group already gone */ }
+        };
         const abortChild = (): void => {
-            if (!child.pid) return;
+            if (aborted || !child.pid) return;
+            aborted = true;
             killProcessTree(child.pid, 'SIGTERM');
-            const escalation = setTimeout(() => killProcessTreeIfAlive(child, child.pid), WORKER_KILL_GRACE_MS);
+            signalGroup('SIGTERM');
+            const escalation = setTimeout(() => {
+                killProcessTreeIfAlive(child, child.pid);
+                signalGroup('SIGKILL');
+            }, WORKER_KILL_GRACE_MS);
             escalation.unref();
         };
         const onData = (chunk: Buffer): void => {
-            if (outputLimited) return;
+            if (settled || outputLimited) return;
             bytes += chunk.byteLength;
             if (bytes > OUTPUT_LIMIT_BYTES) {
                 outputLimited = true;
