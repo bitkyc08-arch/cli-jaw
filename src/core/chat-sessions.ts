@@ -29,7 +29,7 @@ export function isActiveRunPolicy(value: unknown): value is ActiveRunPolicy {
 const listStmt = db.prepare('SELECT * FROM chat_sessions ORDER BY seq ASC');
 const getBySeqStmt = db.prepare('SELECT * FROM chat_sessions WHERE seq = ?');
 const getByIdStmt = db.prepare('SELECT * FROM chat_sessions WHERE id = ?');
-const insertStmt = db.prepare('INSERT INTO chat_sessions (id, seq, label) VALUES (?, ?, ?)');
+const insertStmt = db.prepare('INSERT INTO chat_sessions (id, seq, label, active_run_policy) VALUES (?, ?, ?, ?)');
 const deleteStmt = db.prepare('DELETE FROM chat_sessions WHERE id = ? AND id != \'default\'');
 const maxSeqStmt = db.prepare('SELECT MAX(seq) as max_seq FROM chat_sessions');
 const countMsgsStmt = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?');
@@ -66,6 +66,12 @@ export function setSessionRunPolicy(sessionId: string, policy: ActiveRunPolicy |
     setRunPolicyStmt.run(policy, sessionId);
 }
 
+function defaultRunPolicy(): ActiveRunPolicy | null {
+    if (settings["multiSession"]?.enabled !== true) return null;
+    const configured = settings["multiSession"]?.midRunPolicy;
+    return isActiveRunPolicy(configured) ? configured : 'steer';
+}
+
 export function setActiveChatSession(sessionId: string): void {
     const captured = settings["multiSession"]?.enabled === true ? currentSessionScope() : undefined;
     if (captured && captured.scope !== 'default') {
@@ -85,7 +91,7 @@ export function resolveOrCreateRemoteSession(remoteKey: string): string {
             return found.chat_session_id;
         }
         const id = randomUUID().slice(0, 8);
-        insertStmt.run(id, getNextSeq(), remoteKey);
+        insertStmt.run(id, getNextSeq(), remoteKey, defaultRunPolicy());
         bindStmt.run(remoteKey, id);
         return id;
     })();
@@ -94,7 +100,7 @@ export function resolveOrCreateRemoteSession(remoteKey: string): string {
 export function createChatSession(label?: string): { id: string; seq: number } {
     const id = randomUUID().slice(0, 8);
     const seq = getNextSeq();
-    insertStmt.run(id, seq, label || null);
+    insertStmt.run(id, seq, label || null, defaultRunPolicy());
     setActiveChatSession(id);
     broadcast('session_created', { id, seq, label: label || null }, 'public');
     return { id, seq };
@@ -142,7 +148,7 @@ export function forkChatSession(sourceSessionId?: string): { id: string; seq: nu
     const seq = getNextSeq();
     const srcSession = getByIdStmt.get(srcId) as ChatSessionRow | undefined;
     const label = srcSession?.label ? `fork of "${srcSession.label}"` : `fork of #${srcSession?.seq ?? 0}`;
-    insertStmt.run(id, seq, label);
+    insertStmt.run(id, seq, label, defaultRunPolicy());
     const copyResult = db.prepare(
         `INSERT INTO messages (role, content, cli, model, trace, tool_log, cost_usd, duration_ms, created_at, session_id, working_dir, trace_run_id)
          SELECT role, content, cli, model, trace, tool_log, cost_usd, duration_ms, created_at, ?, working_dir, trace_run_id

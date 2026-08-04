@@ -3,10 +3,10 @@
 // Replaces duplicated intent/queue/orchestrate logic in server.ts + bot.ts.
 
 import { randomUUID } from 'node:crypto';
-import { isAgentBusy, enqueueMessage, messageQueue } from '../agent/spawn.js';
+import { canSteerAgent, isAgentBusy, enqueueMessage, killActiveAgent, messageQueue, purgeQueueOnStop, steerAgent } from '../agent/spawn.js';
 import { hasBlockingWorkers } from './worker-registry.js';
 import { insertMessage } from '../core/db.js';
-import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
+import { getActiveChatSession, getSessionRunPolicy, isActiveRunPolicy, resolveOrCreateRemoteSession, type ActiveRunPolicy } from '../core/chat-sessions.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { broadcast } from '../core/bus.js';
@@ -35,6 +35,73 @@ export type SubmitResult = {
     continued?: true;
     noPendingContinue?: true;
 };
+
+type SubmitMeta = {
+    origin: RuntimeOrigin;
+    displayText?: string;
+    skipOrchestrate?: boolean;
+    target?: RemoteTarget;
+    chatId?: string | number;
+    scope?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
+    overrides?: { model?: string; systemPrompt?: string };
+    replyViaTarget?: boolean;
+    external?: boolean;
+    midRunPolicy?: ActiveRunPolicy;
+};
+
+function resolveMidRunPolicy(meta: SubmitMeta, chatSessionId: string): ActiveRunPolicy {
+    if (isActiveRunPolicy(meta.midRunPolicy)) return meta.midRunPolicy;
+    const sessionPolicy = getSessionRunPolicy(chatSessionId);
+    if (sessionPolicy) return sessionPolicy;
+    const configured = settings["multiSession"]?.midRunPolicy;
+    return isActiveRunPolicy(configured) ? configured : 'steer';
+}
+
+function applyMidRunPolicy(
+    policy: ActiveRunPolicy,
+    ctx: { scopeKey: string; chatSessionId: string; text: string; meta: SubmitMeta; requestId: string; remoteKey?: string },
+): SubmitResult {
+    const queue = (extra?: { collect?: boolean; front?: boolean }): SubmitResult => {
+        const queuedId = enqueueMessage(ctx.text, ctx.meta.origin, stripUndefined({
+            target: ctx.meta.target,
+            chatId: ctx.meta.chatId,
+            requestId: ctx.requestId,
+            scope: ctx.scopeKey,
+            chatSessionId: ctx.chatSessionId,
+            ...(ctx.remoteKey ? { remoteKey: ctx.remoteKey } : {}),
+            overrides: ctx.meta.overrides,
+            replyViaTarget: ctx.meta.replyViaTarget,
+            ...extra,
+        }));
+        return { action: 'queued', pending: messageQueue.length, queued: true, requestId: ctx.requestId, queuedId };
+    };
+
+    if (policy === 'steer') {
+        if (!canSteerAgent(ctx.scopeKey)) return queue();
+        runDetached(
+            steerAgent(ctx.scopeKey, ctx.text, ctx.meta.origin, stripUndefined({
+                chatSessionId: ctx.chatSessionId,
+                target: ctx.meta.target,
+                chatId: ctx.meta.chatId,
+                requestId: ctx.requestId,
+                remoteKey: ctx.remoteKey,
+                replyViaTarget: ctx.meta.replyViaTarget,
+            })),
+            'steer',
+            { ...ctx.meta, requestId: ctx.requestId, eventScope: { scope: ctx.scopeKey, sessionId: ctx.chatSessionId } },
+        );
+        return { action: 'started', requestId: ctx.requestId };
+    }
+    if (policy === 'collect') return queue({ collect: true });
+    if (policy === 'interrupt') {
+        killActiveAgent(ctx.scopeKey, 'interrupt');
+        purgeQueueOnStop(ctx.scopeKey, 'interrupt');
+        return queue({ front: true });
+    }
+    return queue();
+}
 
 // ── 5s dedup window ──
 // L2 defense against duplicate inserts caused by:
@@ -86,7 +153,7 @@ function runDetached(
 
 export function submitMessage(
     text: string,
-    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; scope?: string; chatSessionId?: string; remoteKey?: string; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean; external?: boolean },
+    meta: SubmitMeta,
 ): SubmitResult {
     const trimmed = text.trim();
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
@@ -170,6 +237,16 @@ export function submitMessage(
     // starting immediately is safe and avoids the processQueue deadlock
     // documented in devlog/_fin/260417_message_duplication/02_*.
     if (isAgentBusy(scope) || hasBlockingWorkers(scope)) {
+        if (multiSessionEnabled) {
+            return applyMidRunPolicy(resolveMidRunPolicy(meta, chatSessionId), {
+                scopeKey: scope,
+                chatSessionId,
+                text: trimmed,
+                meta,
+                requestId,
+                ...(remoteKey ? { remoteKey } : {}),
+            });
+        }
         const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }));
         return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId };
     }

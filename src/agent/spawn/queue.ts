@@ -20,6 +20,8 @@ type QueueItem = {
     requestId?: string;
     overrides?: { model?: string; systemPrompt?: string };   // P4 per-topic override, carried through the queue
     replyViaTarget?: boolean;
+    collect?: boolean;
+    priority?: 'head';
     ts: number;
 };
 
@@ -32,6 +34,8 @@ type QueueMessageMeta = {
     remoteKey?: string;
     overrides?: { model?: string; systemPrompt?: string };
     replyViaTarget?: boolean;
+    collect?: boolean;
+    front?: boolean;
 };
 
 export interface QueueDeps {
@@ -130,6 +134,8 @@ export function createQueueController(
                 requestId: parsed.requestId,
                 overrides: parsed.overrides,
                 replyViaTarget: parsed.replyViaTarget === true,
+                ...(multiSessionEnabled && parsed.collect === true ? { collect: true } : {}),
+                ...(multiSessionEnabled && parsed.priority === 'head' ? { priority: 'head' as const } : {}),
                 ts: typeof parsed.ts === 'number' ? parsed.ts : Date.now(),
             })];
         } catch {
@@ -138,7 +144,12 @@ export function createQueueController(
     }
 
     function loadPersistedQueue(): QueueItem[] {
-        return (deps.listQueuedMessages.all() as Array<{ id: string; payload: string }>).flatMap(normalizeQueueItem);
+        const recovered = (deps.listQueuedMessages.all() as Array<{ id: string; payload: string }>).flatMap(normalizeQueueItem);
+        if (!multiSessionEnabled) return recovered;
+        return [
+            ...recovered.filter(item => item.priority === 'head'),
+            ...recovered.filter(item => item.priority !== 'head'),
+        ];
     }
 
     const messageQueue: QueueItem[] = loadPersistedQueue();
@@ -323,10 +334,13 @@ export function createQueueController(
             requestId: meta?.requestId,
             overrides: meta?.overrides,
             replyViaTarget: meta?.replyViaTarget,
+            ...(multiSessionEnabled && meta?.collect === true ? { collect: true } : {}),
+            ...(multiSessionEnabled && meta?.front === true ? { priority: 'head' as const } : {}),
             ts: Date.now(),
         });
         deps.insertQueuedMessage.run(item.id, JSON.stringify(item));
-        messageQueue.push(item);
+        if (multiSessionEnabled && meta?.front === true) messageQueue.unshift(item);
+        else messageQueue.push(item);
         console.log(`[queue] +1 (${messageQueue.length} pending)`);
         deps.broadcast('queue_update', queueUpdatePayload(item.scope));
         void processQueue(item.scope);
@@ -390,10 +404,17 @@ export function createQueueController(
                 queueMicrotask(() => { void processQueue(itemScope); });
                 return;
             }
-            messageQueue.splice(liveIndex, 1);
-            scheduledItemIds.delete(item!.id);
+            const collectedItems = multiSessionEnabled && item!.collect
+                ? messageQueue.filter(candidate => normalizeScope(candidate.scope) === itemScope && candidate.collect === true && !scheduledItemIds.has(candidate.id))
+                : [];
+            const runItems = [item!, ...collectedItems];
+            const runIds = new Set(runItems.map(candidate => candidate.id));
+            for (let index = messageQueue.length - 1; index >= 0; index--) {
+                if (runIds.has(messageQueue[index]!.id)) messageQueue.splice(index, 1);
+            }
+            for (const runItem of runItems) scheduledItemIds.delete(runItem.id);
         const groupKey = groupQueueKey(item.source, item.target);
-        const combined = item.prompt;
+        const combined = runItems.map(candidate => candidate.prompt).join('\n\n');
         const source = item.source;
         const target = item.target;
         const chatId = item.chatId;
@@ -413,8 +434,12 @@ export function createQueueController(
                 ? { scope: item.scope, sessionId: effectiveSessionId }
                 : undefined;
             deps.insertMessage.run('user', combined, source, '', deps.getWorkingDir(), effectiveSessionId);
-            deps.deleteQueuedMessage.run(item.id);
             inserted = true;
+            for (const runItem of runItems) {
+                try { deps.deleteQueuedMessage.run(runItem.id); } catch (err) {
+                    console.warn(`[queue] DB delete failed for ${runItem.id}:`, (err as Error).message);
+                }
+            }
             if (multiSessionEnabled) {
                 deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true, ...eventScope });
             } else {
@@ -447,13 +472,13 @@ export function createQueueController(
         } catch (setupErr) {
             console.error('[queue:setup]', setupErr);
             if (!inserted) {
-                messageQueue.unshift(item);
+                messageQueue.unshift(...runItems);
             } else {
                 deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget,
                     ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
             }
         } finally {
-            scheduledItemIds.delete(item.id);
+            for (const runItem of runItems) scheduledItemIds.delete(runItem.id);
             drainingScopes.delete(itemScope);
             queueMicrotask(() => { void processQueue(itemScope); });
         }

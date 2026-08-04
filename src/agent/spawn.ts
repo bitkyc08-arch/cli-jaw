@@ -424,6 +424,7 @@ export const {
     resetFallbackState,
     getFallbackState,
     getQueuedMessageSnapshotForScope,
+    purgeQueueOnStop,
 } = queueCtrl;
 
 const piProfileFingerprintKey = crypto.randomBytes(32);
@@ -519,7 +520,7 @@ function clearWorkerSlotsOnStop(scopeKey: string, reason: string) {
 }
 
 function clearMainLiveRunOnStop(scopeKey: string, reason: string): void {
-    if (reason !== 'api' && reason !== 'user' && reason !== 'steer') return;
+    if (reason !== 'api' && reason !== 'user' && reason !== 'steer' && reason !== 'interrupt') return;
     clearLiveRun(scopeKey);
 }
 
@@ -529,7 +530,7 @@ function clearMainLiveRunOnStop(scopeKey: string, reason: string): void {
  * /api/stop is a no-op while jwc streams (devlog 260703 tui_steer_esc_rca).
  */
 function abortInProcessRuntimeOnStop(scopeKey: string, reason: string): boolean {
-    if (reason !== 'api' && reason !== 'user' && reason !== 'steer') return false;
+    if (reason !== 'api' && reason !== 'user' && reason !== 'steer' && reason !== 'interrupt') return false;
     if (getActiveMainCli(scopeKey) !== 'jwc') return false;
     const runtime = runtimeForScope(scopeKey);
     if (!runtime.busy) return false;
@@ -560,12 +561,12 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
         if (run.process?.pid) killReasons.set(run.process.pid, reason);
         console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey)} action=lease.cancel`);
         run.cancelTurn(reason);
-        if (reason === 'api' || reason === 'user' || reason === 'steer') activeMainProcesses.delete(scopeKey);
+        if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') activeMainProcesses.delete(scopeKey);
         return true;
     }
     const activeProcess = run?.process ?? null;
     if (!activeProcess) {
-        if (reason === 'api' || reason === 'user' || reason === 'steer') activeMainProcesses.delete(scopeKey);
+        if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') activeMainProcesses.delete(scopeKey);
         return hadTimer || cancelledPendingMain || abortedInProcess;
     }
     const policy = getKillPolicy(scopeKey, reason);
@@ -596,7 +597,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     // Fix C1: 사용자 stop/steer 시 isAgentBusy()가 즉시 false가 되도록 참조를 동기 해제.
     // 실제 child 종료는 위 setTimeout SIGKILL이 백그라운드에서 마무리.
     // exit handler의 setActiveProcess(null) / activeProcesses.delete 는 idempotent.
-    if (reason === 'api' || reason === 'user' || reason === 'steer') {
+    if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') {
         activeMainProcesses.delete(scopeKey);
     }
     return true;
@@ -660,17 +661,31 @@ export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default'
     });
 }
 
-export async function steerAgent(scopeKey: string, newPrompt: string, source: string) {
+export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
     const runtime = runtimeForScope(scopeKey);
+    return run?.meta.cli === 'jwc' && runtime.busy;
+}
+
+export async function steerAgent(
+    scopeKey: string,
+    newPrompt: string,
+    source: string,
+    meta?: { chatSessionId?: string; target?: RemoteTarget; chatId?: string | number; requestId?: string; remoteKey?: string; replyViaTarget?: boolean },
+) {
+    const run = activeMainProcesses.get(scopeKey);
+    const runtime = runtimeForScope(scopeKey);
+    const chatSessionId = meta?.chatSessionId || run?.meta.chatSessionId || getActiveChatSession();
     if (run?.meta.cli === 'jwc' && runtime.busy) {
+        insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
+        broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget }));
         await runtime.steer(settings["workingDir"] || process.cwd(), newPrompt);
         return;
     }
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
     const wasRunning = killActiveAgent(scopeKey, 'steer');
     if (wasRunning) await waitForProcessEnd(scopeKey, steerWaitMs);
-    const chatSessionId = run?.meta.chatSessionId || getActiveChatSession();
     insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
     broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
     broadcast('steer_started', { prompt: newPrompt, origin: source || 'web', scope: scopeKey });
