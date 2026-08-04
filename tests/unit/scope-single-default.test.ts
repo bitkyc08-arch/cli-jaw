@@ -26,10 +26,10 @@ test('SSD-002: findActiveScope always returns default', () => {
     assert.equal(findActiveScope('discord'), 'default');
 });
 
-test('SSD-003: normalizeQueueItem hardcodes scope to default', () => {
+test('SSD-003: normalizeQueueItem restores persisted scope only when multi-session is enabled', () => {
     const queueSrc = readFileSync(new URL('../../src/agent/spawn/queue.ts', import.meta.url), 'utf8');
-    assert.ok(queueSrc.includes("scope: 'default',"),
-        'normalizeQueueItem must hardcode scope to default');
+    assert.ok(queueSrc.includes("scope: multiSessionEnabled && typeof parsed.scope === 'string' ? parsed.scope : 'default'"));
+    assert.ok(queueSrc.includes("chatSessionId: typeof parsed.chatSessionId === 'string' ? parsed.chatSessionId : 'default'"));
 });
 
 test('SSD-004: ctx.scopeId is persisted in default scope', () => {

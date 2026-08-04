@@ -12,6 +12,7 @@ function makeController() {
     const persisted = new Map<string, string>();
 
     const controller = createQueueController({
+        migrateQueuedMessagesV1ToV2() { /* no persisted rows in this fixture */ },
         isSpawnBusy: () => true,
         hasBlockingWorkers: () => false,
         hasPendingWorkerReplays: () => false,
@@ -27,6 +28,7 @@ function makeController() {
             },
         },
         listQueuedMessages: { all: () => [] },
+        getActiveChatSession: () => 'default',
         broadcast(type: string, data: Record<string, unknown>) {
             broadcasts.push({ type, data });
         },
@@ -39,6 +41,7 @@ function makeController() {
             drainPendingReplays: async () => {},
         }),
         getWorkingDir: () => '/tmp',
+        isMultiSessionEnabled: () => false,
     });
 
     return { controller, broadcasts, persisted };

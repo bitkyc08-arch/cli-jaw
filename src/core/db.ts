@@ -374,6 +374,40 @@ export const insertQueuedMessage = db.prepare('INSERT OR REPLACE INTO queued_mes
 export const deleteQueuedMessage = db.prepare('DELETE FROM queued_messages WHERE id = ?');
 export const clearQueuedMessages = db.prepare('DELETE FROM queued_messages');
 
+type QueuedMessageMigrationPayload = Record<string, unknown> & {
+    schemaVersion?: number;
+    chatSessionId?: string;
+};
+const rewriteQueuedMessage = db.prepare('UPDATE queued_messages SET payload = ? WHERE id = ?');
+const queuedSessionExists = db.prepare('SELECT 1 FROM chat_sessions WHERE id = ?');
+
+export const migrateQueuedMessagesV1ToV2 = db.transaction((): void => {
+    const droppedIds: string[] = [];
+    const rows = listQueuedMessages.all() as Array<{ id: string; payload: string }>;
+    for (const row of rows) {
+        let payload: QueuedMessageMigrationPayload;
+        try {
+            const parsed = JSON.parse(row.payload) as unknown;
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+            payload = parsed as QueuedMessageMigrationPayload;
+        } catch {
+            continue;
+        }
+        if (payload.schemaVersion === undefined) {
+            payload = { ...payload, schemaVersion: 2, scope: 'default', chatSessionId: 'default' };
+            rewriteQueuedMessage.run(JSON.stringify(payload), row.id);
+        }
+        const sessionId = typeof payload.chatSessionId === 'string' ? payload.chatSessionId : 'default';
+        if (!queuedSessionExists.get(sessionId)) {
+            deleteQueuedMessage.run(row.id);
+            droppedIds.push(row.id);
+        }
+    }
+    if (droppedIds.length > 0) {
+        console.warn(`[queue:migrate:v2] dropped deleted-session rows: ${droppedIds.join(', ')}`);
+    }
+});
+
 // ─── Heartbeat Anchor Persistence ───────────────────
 export const insertHeartbeatAnchor = db.prepare(
     `INSERT INTO heartbeat_events (job_id, job_name, working_dir, channel, chat_id, prompt, output, created_at, delivered_at, visible)

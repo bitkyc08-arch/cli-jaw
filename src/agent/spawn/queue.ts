@@ -2,14 +2,18 @@
 
 import crypto from 'node:crypto';
 import type { RuntimeOrigin, RemoteTarget } from '../../messaging/types.js';
-import { groupQueueKey } from '../../messaging/session-key.js';
+import { groupQueueKey, type SessionScope } from '../../messaging/session-key.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
+import { withSessionScope } from '../../core/session-context.js';
 
 type QueueItem = {
+    schemaVersion?: 2;
     id: string;
     prompt: string;
     source: RuntimeOrigin;
     scope: string;
+    chatSessionId?: string;
+    remoteKey?: string;
     target?: RemoteTarget;
     chatId?: string | number;
     requestId?: string;
@@ -19,6 +23,7 @@ type QueueItem = {
 };
 
 export interface QueueDeps {
+    migrateQueuedMessagesV1ToV2(): void;
     isSpawnBusy(): boolean;
     hasBlockingWorkers(): boolean;
     hasPendingWorkerReplays(): boolean;
@@ -37,6 +42,7 @@ export interface QueueDeps {
         drainPendingReplays: (opts: { origin: string }) => Promise<void>;
     }>;
     getWorkingDir(): string | null;
+    isMultiSessionEnabled(): boolean;
 }
 
 export const FALLBACK_MAX_RETRIES = 3;
@@ -44,6 +50,7 @@ export const FALLBACK_MAX_RETRIES = 3;
 export interface QueueController {
     enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: {
         target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string;
+        chatSessionId?: string; remoteKey?: string;
         overrides?: { model?: string; systemPrompt?: string };
         replyViaTarget?: boolean;
     }): string;
@@ -75,6 +82,9 @@ export interface QueueController {
 }
 
 export function createQueueController(deps: QueueDeps): QueueController {
+    const multiSessionEnabled = deps.isMultiSessionEnabled();
+    if (multiSessionEnabled) deps.migrateQueuedMessagesV1ToV2();
+
     function normalizeQueueItem(row: { id: string; payload: string }): QueueItem[] {
         try {
             const parsed = JSON.parse(row.payload) as Partial<QueueItem>;
@@ -82,10 +92,15 @@ export function createQueueController(deps: QueueDeps): QueueController {
                 return [];
             }
             return [stripUndefined({
+                ...(multiSessionEnabled ? { schemaVersion: 2 as const } : {}),
                 id: parsed.id,
                 prompt: parsed.prompt,
                 source: parsed.source,
-                scope: 'default',
+                scope: multiSessionEnabled && typeof parsed.scope === 'string' ? parsed.scope : 'default',
+                ...(multiSessionEnabled ? {
+                    chatSessionId: typeof parsed.chatSessionId === 'string' ? parsed.chatSessionId : 'default',
+                    ...(parsed.remoteKey ? { remoteKey: parsed.remoteKey } : {}),
+                } : {}),
                 target: parsed.target,
                 chatId: parsed.chatId,
                 requestId: parsed.requestId,
@@ -194,10 +209,11 @@ export function createQueueController(deps: QueueDeps): QueueController {
             }));
     }
 
-    function queueUpdatePayload(): { pending: number; queued: ReturnType<typeof getQueuedMessageSnapshotForScope> } {
+    function queueUpdatePayload(scope = 'default'): { pending: number; queued: ReturnType<typeof getQueuedMessageSnapshotForScope>; scope?: string } {
         return {
             pending: messageQueue.length,
-            queued: getQueuedMessageSnapshotForScope('default'),
+            queued: getQueuedMessageSnapshotForScope(scope),
+            ...(multiSessionEnabled ? { scope } : {}),
         };
     }
 
@@ -217,16 +233,21 @@ export function createQueueController(deps: QueueDeps): QueueController {
             console.warn(`[queue] DB delete failed for ${id}:`, (err as Error).message);
         }
         console.log(`[queue] -1 (${messageQueue.length} pending) removed=${id}`);
-        deps.broadcast('queue_update', queueUpdatePayload());
+        deps.broadcast('queue_update', queueUpdatePayload(removed!.scope));
         return { removed: removed!, pending: messageQueue.length };
     }
 
-    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean }): string {
+    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string; chatSessionId?: string; remoteKey?: string; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean }): string {
         const item: QueueItem = stripUndefined({
+            ...(multiSessionEnabled ? { schemaVersion: 2 as const } : {}),
             id: crypto.randomUUID(),
             prompt,
             source,
-            scope: meta?.scope || 'default',
+            scope: multiSessionEnabled ? (meta?.scope || 'default') : 'default',
+            ...(multiSessionEnabled ? {
+                chatSessionId: meta?.chatSessionId || deps.getActiveChatSession(),
+                ...(meta?.remoteKey ? { remoteKey: meta.remoteKey } : {}),
+            } : {}),
             target: meta?.target,
             chatId: meta?.chatId,
             requestId: meta?.requestId,
@@ -237,7 +258,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         deps.insertQueuedMessage.run(item.id, JSON.stringify(item));
         messageQueue.push(item);
         console.log(`[queue] +1 (${messageQueue.length} pending)`);
-        deps.broadcast('queue_update', queueUpdatePayload());
+        deps.broadcast('queue_update', queueUpdatePayload(item.scope));
         processQueue();
         return item.id;
     }
@@ -304,34 +325,50 @@ export function createQueueController(deps: QueueDeps): QueueController {
         const origin: RuntimeOrigin = source || 'web';
         console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
 
+        const effectiveSessionId = multiSessionEnabled
+            ? (item.chatSessionId || deps.getActiveChatSession())
+            : deps.getActiveChatSession();
         let inserted = false;
         try {
-            deps.insertMessage.run('user', combined, source, '', deps.getWorkingDir(), deps.getActiveChatSession());
+            const sessionScope: SessionScope = { scope: item.scope, chatSessionId: effectiveSessionId };
+            const eventScope = multiSessionEnabled
+                ? { scope: item.scope, sessionId: effectiveSessionId }
+                : undefined;
+            deps.insertMessage.run('user', combined, source, '', deps.getWorkingDir(), effectiveSessionId);
             deps.deleteQueuedMessage.run(item.id);
             inserted = true;
-            deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true });
-            deps.broadcast('queue_update', queueUpdatePayload());
+            deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true, ...(eventScope || {}) });
+            deps.broadcast('queue_update', queueUpdatePayload(item.scope));
 
-            const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await deps.importPipeline();
-            const task = isResetIntent(combined)
-                ? orchestrateReset({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })
-                : isContinueIntent(combined)
-                    ? orchestrateContinue({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })
-                    : orchestrate(combined, { origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true });
+            await withSessionScope(sessionScope, async () => {
+                const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await deps.importPipeline();
+                const scopedMeta = stripUndefined({
+                    origin, target, chatId, requestId, scope: item.scope,
+                    chatSessionId: effectiveSessionId,
+                    ...(item.remoteKey ? { remoteKey: item.remoteKey } : {}),
+                    overrides, replyViaTarget, _skipInsert: true,
+                });
+                const task = isResetIntent(combined)
+                    ? orchestrateReset(scopedMeta)
+                    : isContinueIntent(combined)
+                        ? orchestrateContinue(scopedMeta)
+                        : orchestrate(combined, scopedMeta);
 
-            try {
-                await task;
-            } catch (err: unknown) {
-                const msg = (err as Error).message;
-                console.error('[queue:orchestrate]', msg);
-                deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget });
-            }
+                try {
+                    await task;
+                } catch (err: unknown) {
+                    const msg = (err as Error).message;
+                    console.error('[queue:orchestrate]', msg);
+                    deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, ...(eventScope || {}) });
+                }
+            });
         } catch (setupErr) {
             console.error('[queue:setup]', setupErr);
             if (!inserted) {
                 messageQueue.unshift(item);
             } else {
-                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget });
+                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget,
+                    ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
             }
         } finally {
             queueProcessing = false;
@@ -342,11 +379,16 @@ export function createQueueController(deps: QueueDeps): QueueController {
     function purgeQueueOnStop(reason: string): void {
         if (messageQueue.length === 0) return;
         const dropped = messageQueue.length;
+        const scopes = new Set(messageQueue.map(item => item.scope));
         for (const item of messageQueue.splice(0)) {
             try { deps.deleteQueuedMessage.run(item.id); } catch { /* best-effort */ }
         }
         console.log(`[jaw:stop] cleared ${dropped} pending message(s) (reason=${reason})`);
-        deps.broadcast('queue_update', queueUpdatePayload());
+        if (multiSessionEnabled) {
+            for (const scope of scopes) deps.broadcast('queue_update', queueUpdatePayload(scope));
+        } else {
+            deps.broadcast('queue_update', queueUpdatePayload());
+        }
     }
 
     return {

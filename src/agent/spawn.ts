@@ -13,7 +13,7 @@ import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import {
     clearEmployeeSession, getSession, insertMessage, insertMessageWithTraceRun, getRecentMessages,
-    listQueuedMessages, insertQueuedMessage, deleteQueuedMessage,
+    listQueuedMessages, insertQueuedMessage, deleteQueuedMessage, migrateQueuedMessagesV1ToV2,
     getSessionBucket, clearSessionBucket, setSessionBucketSnapshot,
 } from '../core/db.js';
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
@@ -357,9 +357,11 @@ const queueCtrl = createQueueController({
     insertQueuedMessage,
     deleteQueuedMessage,
     listQueuedMessages: listQueuedMessages as unknown as { all(): Array<{ id: string; payload: string }> },
+    migrateQueuedMessagesV1ToV2,
     broadcast,
     importPipeline: () => import('../orchestrator/pipeline.js'),
     getWorkingDir: () => settings["workingDir"] || null,
+    isMultiSessionEnabled: () => settings["multiSession"]?.enabled === true,
 });
 
 export const {

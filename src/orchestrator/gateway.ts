@@ -6,10 +6,11 @@ import { randomUUID } from 'node:crypto';
 import { isAgentBusy, enqueueMessage, messageQueue } from '../agent/spawn.js';
 import { hasBlockingWorkers } from './worker-registry.js';
 import { insertMessage } from '../core/db.js';
-import { getActiveChatSession } from '../core/chat-sessions.js';
+import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { broadcast } from '../core/bus.js';
+import { withSessionScope } from '../core/session-context.js';
 import {
     orchestrate, orchestrateContinue, orchestrateReset,
     isContinueIntent, isResetIntent,
@@ -17,6 +18,7 @@ import {
 import { getState } from './state-machine.js';
 import { resolveOrcScope } from './scope.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
+import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
@@ -63,7 +65,7 @@ export function __resetSubmitDedupForTest(): void {
 function runDetached(
     task: Promise<unknown>,
     label: string,
-    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string; replyViaTarget?: boolean },
+    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string; replyViaTarget?: boolean; eventScope?: { scope: string; sessionId: string } },
 ) {
     task.catch((err: unknown) => {
         const msg = (err as Error)?.message || String(err);
@@ -75,6 +77,7 @@ function runDetached(
             chatId: meta.chatId,
             requestId: meta.requestId,
             replyViaTarget: meta.replyViaTarget,
+            ...meta.eventScope,
             error: true,
         });
     });
@@ -82,7 +85,7 @@ function runDetached(
 
 export function submitMessage(
     text: string,
-    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean; external?: boolean },
+    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; scope?: string; chatSessionId?: string; remoteKey?: string; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean; external?: boolean },
 ): SubmitResult {
     const trimmed = text.trim();
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
@@ -102,17 +105,36 @@ export function submitMessage(
     const requestId = randomUUID();
     recentSubmissions.set(key, { ts: now, requestId });
 
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const remoteKey = multiSessionEnabled && meta.target
+        ? (meta.remoteKey || buildRemoteBindingKey(meta.target))
+        : undefined;
+    const chatSessionId = remoteKey
+        ? (meta.chatSessionId || resolveOrCreateRemoteSession(remoteKey))
+        : getActiveChatSession();
+    const scope = multiSessionEnabled
+        ? (meta.scope || resolveOrcScope(stripUndefined({
+            origin: meta.origin,
+            target: meta.target,
+            chatId: meta.chatId,
+            workingDir: settings["workingDir"] || null,
+            persistedScopeId: remoteKey,
+            multiSessionEnabled,
+        })))
+        : 'default';
+    const sessionScope: SessionScope = { scope, chatSessionId };
+    const eventScope = multiSessionEnabled ? { scope, sessionId: chatSessionId } : undefined;
+
     // ── continue intent (only when IDLE) ──
-    const scope = resolveOrcScope(stripUndefined({ origin: meta.origin, chatId: meta.chatId, workingDir: settings["workingDir"] || null }));
     if (getState(scope) === 'IDLE' && isContinueIntent(trimmed)) {
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
-        insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, getActiveChatSession());
-        broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined }));
+        insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, chatSessionId);
+        broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
+                withSessionScope(sessionScope, () => orchestrateContinue(stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true }))),
                 'continue',
-                { ...meta, requestId },
+                { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
         return { action: 'started', noPendingContinue: true, requestId };
@@ -120,13 +142,13 @@ export function submitMessage(
 
     // ── reset intent ──
     if (isResetIntent(trimmed)) {
-        insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, getActiveChatSession());
-        broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined }));
+        insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, chatSessionId);
+        broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
+                withSessionScope(sessionScope, () => orchestrateReset(stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true }))),
                 'reset',
-                { ...meta, requestId },
+                { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
         return { action: 'started', requestId };
@@ -140,18 +162,18 @@ export function submitMessage(
     // starting immediately is safe and avoids the processQueue deadlock
     // documented in devlog/_plan/260417_message_duplication/02_*.
     if (isAgentBusy() || hasBlockingWorkers()) {
-        const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }));
+        const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }));
         return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId };
     }
 
     // ── idle → start immediately ──
-    insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, getActiveChatSession());
-    broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined }));
+    insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, chatSessionId);
+    broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
     if (!meta.skipOrchestrate) {
         runDetached(
-            orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget })),
+            withSessionScope(sessionScope, () => orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }))),
             'orchestrate',
-            { ...meta, requestId },
+            { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );
     }
     return { action: 'started', requestId };
