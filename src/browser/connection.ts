@@ -1,5 +1,6 @@
 import { JAW_HOME, deriveCdpPort, settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { isWsl } from '../core/platform-kind.js';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { join, basename } from 'path';
 import fs from 'node:fs';
@@ -184,12 +185,7 @@ async function resetStaleChromeProcIfCdpUnavailable(port: number): Promise<boole
 }
 
 function isWSL() {
-    if (process.platform !== 'linux') return false;
-    try {
-        return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
-    } catch {
-        return false;
-    }
+    return isWsl();
 }
 
 function validateProfileDir(dir: string): void {

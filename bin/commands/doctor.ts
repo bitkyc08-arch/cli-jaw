@@ -13,6 +13,7 @@ import { inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
+import { isWsl } from '../../src/core/platform-kind.js';
 import { readClaudeCreds } from '../../src/routes/quota.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
@@ -108,14 +109,7 @@ function rejectedCliDetail(name: string): string {
 }
 
 function isWSL() {
-    if (process.env['WSL_DISTRO_NAME'] || process.env['WSL_INTEROP'] || process.env['WSLENV']) {
-        return true;
-    }
-    try {
-        return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
-    } catch {
-        return false;
-    }
+    return isWsl();
 }
 
 function hasWslWindowsChrome() {
