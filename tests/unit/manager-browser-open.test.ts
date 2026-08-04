@@ -31,12 +31,28 @@ function read(path: string): string {
 test('dashboard browser opener uses Windows shell from WSL', () => {
     const command = browserOpenCommand('http://localhost:24576', 'linux', {
         WSL_DISTRO_NAME: 'Ubuntu',
-    });
+    }, inertProbes);
 
     assert.deepEqual(command, {
         command: 'cmd.exe',
         args: ['/c', 'start', '', 'http://localhost:24576'],
     });
+});
+
+test('the absolute /mnt/c cmd.exe path wins when it is present', () => {
+    const mountedProbes: PlatformProbes = {
+        readText: () => null,
+        exists: (path) => path === '/mnt/c/Windows/System32/cmd.exe',
+        release: () => '',
+    };
+
+    assert.deepEqual(
+        browserOpenCommand('http://localhost:24576', 'linux', { WSL_DISTRO_NAME: 'Ubuntu' }, mountedProbes),
+        {
+            command: '/mnt/c/Windows/System32/cmd.exe',
+            args: ['/c', 'start', '', 'http://localhost:24576'],
+        },
+    );
 });
 
 test('dashboard browser opener keeps Linux xdg-open for desktop Linux', () => {

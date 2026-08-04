@@ -24,7 +24,13 @@ const DELEGATING_SITES = [
 test('no site re-derives WSL state from raw env vars', () => {
     for (const relative of DELEGATING_SITES) {
         const source = fs.readFileSync(path.join(root, relative), 'utf8');
-        assert.match(source, /platform-kind/, `${relative} must import the resolver`);
+        // Importing the module is not enough — the site must actually call it.
+        assert.match(
+            source,
+            /from\s+'[^']*platform-kind\.js'/,
+            `${relative} must import the resolver`,
+        );
+        assert.match(source, /\bisWsl\s*\(/, `${relative} must call isWsl()`);
         assert.doesNotMatch(
             source,
             /WSL_DISTRO_NAME|WSL_INTEROP|WSLENV/,

@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { isWsl, defaultPlatformProbes, type PlatformProbes } from './platform-kind.js';
 
 type BrowserOpenCommand = {
@@ -30,7 +29,10 @@ export function browserOpenCommand(
     // The resolver owns the linux guard, so re-testing platform here would
     // imply it cannot be trusted.
     if (isWslEnvironment(env, platform, probes)) {
-        const cmd = existsSync('/mnt/c/Windows/System32/cmd.exe')
+        // Probe-injected so the command choice is testable too, not just the
+        // WSL decision: on a real WSL host the absolute path exists and would
+        // otherwise make these fixtures host-dependent.
+        const cmd = probes.exists('/mnt/c/Windows/System32/cmd.exe')
             ? '/mnt/c/Windows/System32/cmd.exe'
             : 'cmd.exe';
         return { command: cmd, args: ['/c', 'start', '', url] };
