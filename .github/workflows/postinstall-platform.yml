@@ -292,10 +292,11 @@ jobs:
       - name: Assert real-runtime classification on native Windows
         run: npx tsx --test tests/unit/platform-kind-runtime.test.ts
 
-      # Exercises real where.exe discovery rather than injected candidates.
-      - name: Run CLI discovery tests against real where.exe
-        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/cli-detect.test.ts
-
+      # NOTE: tests/unit/cli-detect.test.ts is intentionally NOT run here. Its
+      # fixtures depend on the POSIX executable bit (chmod), which Windows does
+      # not have, so those cases are POSIX-only by construction. Real where.exe
+      # discovery is covered by the win32-gated cases inside
+      # windows-native-cli-detect.test.ts, which run in the step above.
       - name: Build package
         run: npm run build
 

@@ -8,6 +8,7 @@ import {
     prioritizeCliCandidates,
     windowsPathExt,
     buildCliDetectionEnv,
+    listCliBinaryCandidates,
 } from '../../src/core/cli-detect.js';
 
 function fixtureDir(): string {
@@ -118,6 +119,42 @@ test('detection env carries exactly one PATH casing', () => {
     const env = buildCliDetectionEnv('/seed', { PATH: '/a', Path: '/b', path: '/c' });
     const pathKeys = Object.keys(env).filter((key) => key.toLowerCase() === 'path');
     assert.equal(pathKeys.length, 1);
+});
+
+/**
+ * Real-discovery assertions. These run only on a genuine win32 host, where
+ * `where.exe` and the npm shim layout actually exist — everything above uses
+ * injected fixtures and proves the same thing on every OS.
+ *
+ * The pre-existing cli-detect.test.ts is deliberately NOT part of the Windows
+ * CI lane: its fixtures depend on the POSIX executable bit (chmod), which
+ * Windows does not have, so those cases are POSIX-only by construction.
+ */
+const onWindows = process.platform === 'win32' ? test : test.skip;
+
+onWindows('where.exe discovery returns launchable candidates for node', () => {
+    const scan = listCliBinaryCandidates('node');
+    assert.ok(scan.candidates.length > 0, 'node must be discoverable on a Windows runner');
+
+    for (const candidate of scan.candidates) {
+        assert.match(candidate.path, /^[A-Za-z]:\\|^\\\\/, 'where.exe must return absolute Windows paths');
+    }
+
+    // At least one discovered candidate must actually be launchable.
+    assert.ok(
+        scan.candidates.some((candidate) => candidate.spawnable),
+        `no spawnable node candidate among: ${scan.candidates.map((c) => `${c.path} (${c.reason ?? 'ok'})`).join(', ')}`,
+    );
+});
+
+onWindows('a discovered npm shim survives the spawnability rules', () => {
+    const scan = listCliBinaryCandidates('npm');
+    assert.ok(scan.candidates.length > 0, 'npm must be discoverable on a Windows runner');
+    const spawnable = scan.candidates.filter((candidate) => candidate.spawnable);
+    assert.ok(
+        spawnable.length > 0,
+        'the npm .cmd shim must remain detectable after the win32 tightening',
+    );
 });
 // Bun ships on Windows under %USERPROFILE%\.bun\bin, so provenance must keep
 // outranking extension: a bun .exe must not shadow an npm .cmd.
