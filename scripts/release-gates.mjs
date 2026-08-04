@@ -82,7 +82,7 @@ const GATES = {
             ];
             const r = run('npx', args);
             if (r.status !== 0) {
-                return { ok: false, detail: `tests failed:\n${(r.stdout || r.stderr || '').slice(-2000)}` };
+                return { ok: false, detail: `tests failed:\n${[r.stdout, r.stderr].filter(Boolean).join('\n').slice(-2000)}` };
             }
             return { ok: true, detail: `passed ${targets.length} suite(s): ${targets.join(', ')}` };
         },
@@ -382,7 +382,7 @@ const GATES = {
             for (const s of steps) {
                 const r = run(s.cmd, s.args, { timeout: s.timeout });
                 if (r.status !== 0) {
-                    return { ok: false, detail: `${s.name} failed:\n${(r.stdout || r.stderr || '').slice(-1500)}` };
+                    return { ok: false, detail: `${s.name} failed:\n${[r.stdout, r.stderr].filter(Boolean).join('\n').slice(-1500)}` };
                 }
             }
             return { ok: true, detail: 'docs:check + check-doc-drift.sh clean' };
@@ -393,7 +393,7 @@ const GATES = {
         check() {
             const r = run('node', ['scripts/check-strict-baseline.mjs'], { timeout: 120_000 });
             if (r.status !== 0) {
-                return { ok: false, detail: `strict baseline regressed:\n${(r.stdout || r.stderr || '').slice(-1200)}` };
+                return { ok: false, detail: `strict baseline regressed:\n${[r.stdout, r.stderr].filter(Boolean).join('\n').slice(-1200)}` };
             }
             return { ok: true, detail: 'live any/debt/allow counts within frozen baseline' };
         },
@@ -403,7 +403,7 @@ const GATES = {
         check() {
             const r = run('node', ['scripts/check-redaction-sinks.mjs'], { timeout: 60_000 });
             if (r.status !== 0) {
-                return { ok: false, detail: `unmasked channel sink:\n${(r.stdout || r.stderr || '').slice(-1500)}` };
+                return { ok: false, detail: `unmasked channel sink:\n${[r.stdout, r.stderr].filter(Boolean).join('\n').slice(-1500)}` };
             }
             return { ok: true, detail: 'no unmasked sink in telegram/discord/slack/telegram-hub' };
         },
@@ -413,7 +413,7 @@ const GATES = {
         check() {
             const r = run('node', ['scripts/sync-electron-version.cjs', '--check'], { timeout: 60_000 });
             if (r.status !== 0) {
-                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-500) };
+                return { ok: false, detail: [r.stdout, r.stderr].filter(Boolean).join('\n').trim().slice(-500) };
             }
             return { ok: true, detail: 'desktop artifacts will carry the release version' };
         },
@@ -423,7 +423,7 @@ const GATES = {
         check() {
             const r = run('node', ['scripts/check-sidecar-prune-safety.mjs'], { timeout: 60_000 });
             if (r.status !== 0) {
-                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-800) };
+                return { ok: false, detail: [r.stdout, r.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }
             return { ok: true, detail: 'packaged sidecar keeps every runtime dependency' };
         },
@@ -439,7 +439,12 @@ const GATES = {
                 return { ok: true, detail: 'SKIPPED — electron/node_modules absent, nothing probed' };
             }
             if (r.status !== 0) {
-                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-800) };
+                // The probe prints its notes on stdout and its reasons on
+                // stderr. `stdout || stderr` therefore threw the reasons away
+                // whenever a single note had been printed, which is how a Linux
+                // failure reached CI showing only "prebuilds present" and
+                // "round-trip ok" with no stated cause.
+                return { ok: false, detail: [r.stdout, r.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }
             return { ok: true, detail: 'node-pty loads under this runtime' };
         },
@@ -452,7 +457,7 @@ const GATES = {
                 return { ok: true, detail: 'SKIPPED — sidecar not bundled, nothing imported' };
             }
             if (r.status !== 0) {
-                return { ok: false, detail: (r.stdout || r.stderr || '').trim().slice(-800) };
+                return { ok: false, detail: [r.stdout, r.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }
             return { ok: true, detail: 'bundled sidecar imports its critical entry surfaces' };
         },
