@@ -553,6 +553,15 @@ export const clearAllEmployeeSessions = db.prepare('DELETE FROM employee_session
 
 // ─── Session Buckets (per-bucket resume storage) ─────
 export const getSessionBucket = db.prepare('SELECT bucket, session_id, model, resume_key, output_len, memory_snapshot, updated_at, last_run_clean, last_run_cwd, last_run_meta FROM session_buckets WHERE bucket = ?');
+export const copySessionBucketIfMissing = db.prepare(`
+    INSERT OR IGNORE INTO session_buckets (
+        bucket, session_id, model, resume_key, output_len, memory_snapshot,
+        updated_at, last_run_clean, last_run_cwd, last_run_meta
+    )
+    SELECT ?, session_id, model, resume_key, output_len, memory_snapshot,
+        updated_at, last_run_clean, last_run_cwd, last_run_meta
+    FROM session_buckets WHERE bucket = ?
+`);
 export const upsertSessionBucket = db.prepare(`
     INSERT INTO session_buckets (bucket, session_id, model, resume_key, output_len, updated_at)
     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)

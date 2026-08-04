@@ -137,6 +137,30 @@ export function resolveSessionBucket(cli: string | null | undefined, model: stri
     return cli || '';
 }
 
+export type CodexAppLaneMode = 'native' | 'fallback';
+
+export function resolveCodexAppLaneKey(
+    scope: string,
+    model: string,
+    effort: string,
+    laneMode: CodexAppLaneMode,
+): string {
+    return laneMode === 'fallback' ? `${scope}:${model}:${effort}` : scope;
+}
+
+export function resolveScopedSessionBucket(
+    cli: string | null | undefined,
+    model: string | null | undefined,
+    aiEProvider: string | null | undefined,
+    scope: string,
+    effort: string,
+    laneMode: CodexAppLaneMode,
+): string {
+    const base = resolveSessionBucket(cli, model, aiEProvider);
+    const laneKey = resolveCodexAppLaneKey(scope, model || 'default', effort, laneMode);
+    return cli === 'codex-app' ? `${base}:${laneKey}` : base;
+}
+
 export function buildArgs(cli: string, model: string, effort: string, prompt: string, sysPrompt: string, permissions = 'auto', options: BuildArgOptions = {}) {
     const autoPerm = permissions === 'auto';
     switch (cli) {
