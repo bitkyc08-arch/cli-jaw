@@ -10,6 +10,8 @@
 // 3s ack, and every reply is posted asynchronously via chat.postMessage.
 
 import { settings } from '../core/config.js';
+import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
+import { withSessionScope } from '../core/session-context.js';
 import { log } from '../core/logger.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
 import { makeCommandCtx } from '../cli/command-context.js';
@@ -20,6 +22,7 @@ import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js'
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { slackTargetFromId } from '../messaging/slack-target.js';
+import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
 import { setLastActiveTarget } from '../messaging/runtime.js';
 import { getSlackSendClient, sendSlackText } from './send-only-client.js';
 import { isConversationAllowed } from './events.js';
@@ -67,6 +70,10 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
     if (!client.token) return;
     const token = client.token;
     const target = slackTargetFromId(channelId);
+    const remoteKey = settings["multiSession"]?.enabled === true ? buildRemoteBindingKey(target) : undefined;
+    const chatSessionId = remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
+    const scope = remoteKey || 'default';
+    const sessionScope: SessionScope = { scope, chatSessionId };
     setLastActiveTarget('slack', target);
 
     // Slack delivers the command name and its arguments separately; the shared
@@ -81,15 +88,18 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
     }
 
     try {
-        const result = await executeCommand(parsed, makeSlackCommandCtx());
+        const result = await withSessionScope(sessionScope,
+            () => executeCommand(parsed, makeSlackCommandCtx()));
 
         // /steer returns a prompt to run rather than text to print.
         if (result?.steerPrompt) {
+            const steerPrompt = result.steerPrompt;
             if (result.text) await sendSlackText(token, target, result.text);
             const { orchestrateAndCollect } = await import('../orchestrator/collect.js');
-            const reply = String(await orchestrateAndCollect(result.steerPrompt, {
-                origin: 'slack', target, chatId: channelId, _skipInsert: true,
-            }));
+            const reply = String(await withSessionScope(sessionScope, () => orchestrateAndCollect(steerPrompt, {
+                origin: 'slack', target, chatId: channelId,
+                ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope, _skipInsert: true,
+            })));
             await sendSlackText(token, target, reply);
             return;
         }

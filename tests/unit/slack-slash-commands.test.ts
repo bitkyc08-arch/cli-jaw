@@ -1,5 +1,8 @@
+import '../setup/isolated-home.ts';
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { db } from '../../src/core/db.ts';
+import { currentSessionScope } from '../../src/core/session-context.ts';
 
 // The plan's Phase-3 acceptance matrix: slash commands must route through the
 // SHARED parseCommand/executeCommand pipeline, not forward raw text. Isolated
@@ -15,6 +18,7 @@ const state: {
     executeResult: { text?: string; steerPrompt?: string } | null;
     onExecute?: (parsed: unknown, ctx: { interface?: string }) => void;
     onOrchestrate?: (prompt: string, meta: Record<string, unknown>) => void;
+    multiSessionEnabled?: boolean;
 } = { posted: [], parsedSeen: [], executeResult: { text: 'command output' } };
 
 mock.module('../../src/slack/send-only-client.ts', {
@@ -67,6 +71,7 @@ async function loadHandler(options: {
         botToken: 'xoxb-test',
         channelIds: options.channelIds ?? [],
     };
+    (settings as Record<string, unknown>)['multiSession'] = { enabled: options.multiSessionEnabled === true };
 
     const { handleSlackSlashCommand } = await import('../../src/slack/commands.ts');
     return { handleSlackSlashCommand, posted: state.posted, parsedSeen: state.parsedSeen };
@@ -106,6 +111,39 @@ test('a steerPrompt result orchestrates with the slack target preserved', async 
     assert.equal(target.channel, 'slack');
     assert.equal(target.targetId, 'C7', 'the steer path must keep the originating conversation');
     assert.deepEqual(posted.map(p => p.text), ['redirecting', 'steered reply']);
+});
+
+test('multi-session slash and steer keep C1 scope isolated from C2 and the global pointer', async () => {
+    let c1CommandScope: ReturnType<typeof currentSessionScope> = undefined;
+    let c1SteerMeta: Record<string, unknown> | null = null;
+    const c1 = await loadHandler({
+        multiSessionEnabled: true,
+        executeResult: { steerPrompt: 'scoped steer' },
+        onExecute: () => { c1CommandScope = currentSessionScope(); },
+        onOrchestrate: (_prompt, meta) => { c1SteerMeta = meta; },
+    });
+    await c1.handleSlackSlashCommand({ command: '/steer', text: 'scoped steer', channel_id: 'C1' });
+
+    assert.equal(c1CommandScope?.scope, 'jaw:slack:channel:C1');
+    assert.equal(c1SteerMeta?.['scope'], c1CommandScope?.scope);
+    assert.equal(c1SteerMeta?.['chatSessionId'], c1CommandScope?.chatSessionId);
+    assert.equal(c1SteerMeta?.['remoteKey'], c1CommandScope?.scope);
+
+    let c2CommandScope: ReturnType<typeof currentSessionScope> = undefined;
+    const c2 = await loadHandler({
+        multiSessionEnabled: true,
+        onExecute: () => { c2CommandScope = currentSessionScope(); },
+    });
+    await c2.handleSlackSlashCommand({ command: '/status', text: '', channel_id: 'C2' });
+
+    assert.equal(c2CommandScope?.scope, 'jaw:slack:channel:C2');
+    assert.notEqual(c2CommandScope?.chatSessionId, c1CommandScope?.chatSessionId);
+    assert.equal(db.prepare("SELECT active_chat_session FROM session WHERE id = 'default'").pluck().get(), 'default');
+    const bindings = db.prepare("SELECT remote_key, chat_session_id FROM remote_session_bindings WHERE remote_key IN ('jaw:slack:channel:C1', 'jaw:slack:channel:C2') ORDER BY remote_key").all();
+    assert.deepEqual(bindings, [
+        { remote_key: 'jaw:slack:channel:C1', chat_session_id: c1CommandScope?.chatSessionId },
+        { remote_key: 'jaw:slack:channel:C2', chat_session_id: c2CommandScope?.chatSessionId },
+    ]);
 });
 
 test('a slash command from a non-allowlisted channel never executes', async () => {

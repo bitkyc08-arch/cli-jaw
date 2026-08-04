@@ -5,6 +5,8 @@
 // and a forwarder for non-Slack-origin agent output.
 
 import { settings } from '../core/config.js';
+import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
+import { withSessionScope } from '../core/session-context.js';
 import { log } from '../core/logger.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
@@ -13,6 +15,7 @@ import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
 import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-target.js';
+import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope } from './socket.js';
@@ -80,8 +83,13 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
     if (!client.token) return;
     const token = client.token;
     const chatId = target.targetId;
+    const remoteKey = settings["multiSession"]?.enabled === true ? buildRemoteBindingKey(target) : undefined;
+    const chatSessionId = remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
+    const scope = remoteKey || 'default';
+    const sessionScope: SessionScope = { scope, chatSessionId };
     const result = submitMessage(prompt, {
         origin: 'slack', displayText: displayMsg, skipOrchestrate: true, target, chatId,
+        ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope,
     });
 
     if (result.action === 'queued') {
@@ -144,13 +152,15 @@ async function slackOrchestrate(target: RemoteTarget, prompt: string, displayMsg
             if (line) progress.update(line);
         };
         if (progress) addBroadcastListener(progressHandler);
-        const text = String(await orchestrateAndCollect(prompt, {
-            origin: 'slack', target, chatId, requestId: result.requestId, _skipInsert: true,
-        }).finally(async () => {
+        const text = String(await withSessionScope(sessionScope, () =>
+            orchestrateAndCollect(prompt, {
+                origin: 'slack', target, chatId, requestId: result.requestId,
+                ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope, _skipInsert: true,
+            }).finally(async () => {
             if (!progress) return;
             removeBroadcastListener(progressHandler);
             await progress.finish().catch(() => { });
-        }));
+            })));
         await sendSlackText(token, target, text);
         await relaySlackImages(token, target, text);
         log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
