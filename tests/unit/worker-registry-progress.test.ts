@@ -13,10 +13,30 @@ import {
     markWorkerStalled,
     markWorkerTimedOut,
     updateWorkerTools,
+    hasBlockingWorkers,
+    hasPendingWorkerReplays,
 } from '../../src/orchestrator/worker-registry.ts';
 
 test.afterEach(() => {
     clearAllWorkers();
+});
+
+test('worker blocking and pending replay are isolated by replayMeta.scopeId', () => {
+    claimWorker({ id: 'worker-a', name: 'A' }, 'A task', { scopeId: 'A' });
+    assert.equal(hasBlockingWorkers('A'), true);
+    assert.equal(hasBlockingWorkers('B'), false);
+    assert.equal(hasBlockingWorkers(null), true);
+
+    finishWorker('worker-a', 'done');
+    assert.equal(hasPendingWorkerReplays('A'), true);
+    assert.equal(hasPendingWorkerReplays('B'), false);
+    assert.equal(hasPendingWorkerReplays(null), true);
+});
+
+test('legacy worker scope is canonical default only', () => {
+    claimWorker({ id: 'legacy', name: 'Legacy' }, 'legacy task');
+    assert.equal(hasBlockingWorkers('default'), true);
+    assert.equal(hasBlockingWorkers('A'), false);
 });
 
 test('worker registry stores readable employee tool progress while running', () => {

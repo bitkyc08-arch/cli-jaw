@@ -100,7 +100,7 @@ test('PRD-013: replyViaTarget is preserved from spawn main meta into replay drai
     assert.match(workerSrc, /replyViaTarget\?:\s*boolean/, 'WorkerReplayMeta should carry replyViaTarget');
     assert.match(spawnSrc, /replyViaTarget\?:\s*boolean/, 'SpawnOpts/MainSessionMeta should carry replyViaTarget');
     assert.match(spawnSrc, /replyViaTarget:\s*opts\.replyViaTarget/, 'setCurrentMainMeta should capture replyViaTarget from SpawnOpts');
-    assert.match(pipelineSrc, /replyViaTarget,\s*\n\s*_skipInsert/, 'pipeline spawn options should pass replyViaTarget');
+    assert.match(pipelineSrc, /replyViaTarget,[\s\S]*_skipInsert/, 'pipeline spawn options should pass replyViaTarget');
     assert.match(routeSrc, /replyViaTarget:\s*bossMeta\.replyViaTarget/, 'dispatch replayMeta should capture replyViaTarget');
     assert.match(pipelineSrc, /slotMeta\.replyViaTarget === true \|\| fallbackMeta\["replyViaTarget"\] === true/, 'drain should preserve replyViaTarget');
 });
@@ -113,7 +113,7 @@ test('PRD-007: processQueue auto-drains pending replays when Boss goes idle', ()
     const src = fs.readFileSync(join(srcRoot, 'agent/spawn/queue.ts'), 'utf8');
     const fn = src.slice(src.indexOf('async function processQueue'));
     const block = fn.slice(0, fn.indexOf('queueProcessing = true'));
-    assert.match(block, /hasPendingWorkerReplays\(\)/, 'processQueue must check for pending replays');
+    assert.match(block, /hasPendingWorkerReplays\(requestedScope\)/, 'processQueue must check for scoped pending replays');
     assert.match(block, /drainPendingReplays/, 'processQueue must trigger drain');
     assert.match(block, /queueMicrotask/, 'drain must be scheduled via microtask to avoid re-entrancy');
 });
@@ -122,9 +122,9 @@ test('PRD-007: processQueue auto-drains pending replays when Boss goes idle', ()
 
 test('PRD-005: drainPendingReplays is a no-op when no pending replays exist', async () => {
     // No workers claimed → listPendingWorkerResults returns empty
-    const before = listPendingWorkerResults().length;
-    await drainPendingReplays({ origin: 'system' });
-    const after = listPendingWorkerResults().length;
+    const before = listPendingWorkerResults('default').length;
+    await drainPendingReplays('default', { origin: 'system' });
+    const after = listPendingWorkerResults('default').length;
     assert.equal(after, before, 'drain must not change state when nothing pending');
 });
 
@@ -140,7 +140,7 @@ test('PRD-006: finished worker transitions from pending to claimed after first i
     claimWorker(fakeEmp, 'test task');
     finishWorker(id, 'synthetic result');
 
-    const pending = listPendingWorkerResults();
+    const pending = listPendingWorkerResults('default');
     assert.ok(
         pending.some(p => p.agentId === id),
         'worker should appear in pending list after finishWorker (pre-drain invariant)',
@@ -153,9 +153,29 @@ test('PRD-012: empty worker result is still drainable', () => {
     claimWorker(fakeEmp, 'empty test');
     finishWorker(id, '');
 
-    const pending = listPendingWorkerResults();
+    const pending = listPendingWorkerResults('default');
     assert.ok(
         pending.some(p => p.agentId === id && p.text === ''),
         'empty worker result should appear in pending list after finishWorker',
     );
+});
+
+test('PRD-014: replay listing and identity metadata remain scope-local', () => {
+    const suffix = Date.now();
+    const a = `scope-a-${suffix}`;
+    const b = `scope-b-${suffix}`;
+    claimWorker({ id: a, name: 'A' }, 'A task', {
+        scopeId: 'A', chatSessionId: 'session-A', remoteKey: 'remote-A',
+    });
+    claimWorker({ id: b, name: 'B' }, 'B task', {
+        scopeId: 'B', chatSessionId: 'session-B', remoteKey: 'remote-B',
+    });
+    finishWorker(a, 'A done');
+    finishWorker(b, 'B done');
+
+    const pendingA = listPendingWorkerResults('A');
+    assert.deepEqual(pendingA.map(item => item.agentId), [a]);
+    assert.equal(pendingA[0]?.meta?.chatSessionId, 'session-A');
+    assert.equal(pendingA[0]?.meta?.remoteKey, 'remote-A');
+    assert.equal(listPendingWorkerResults('B')[0]?.agentId, b);
 });

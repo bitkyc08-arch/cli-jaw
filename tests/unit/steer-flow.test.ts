@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createQueueController } from '../../src/agent/spawn/queue.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,7 +23,7 @@ test('SF-001: steerAgent flow: kill → wait → insert → orchestrate', () => 
     const steerBody = src.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 500);
 
     // Step 1: kill with 'steer' reason
-    const killIdx = steerBody.indexOf("killActiveAgent('steer')");
+    const killIdx = steerBody.indexOf("killActiveAgent(scopeKey, 'steer')");
     assert.ok(killIdx > 0, 'should call killActiveAgent("steer")');
 
     // Step 2: wait for process end
@@ -196,7 +198,7 @@ test('SF-005: ai-e PTY steer uses graceful interrupt timing', () => {
         'claude-e steer should not inherit the default 2s SIGKILL escalation',
     );
     assert.ok(
-        spawnSrc.includes("reason === 'steer' && isActiveAiEPtyRuntime()"),
+        spawnSrc.includes("reason === 'steer' && isActiveAiEPtyRuntime(scopeKey)"),
         'kill policy should be scoped to ai-e/claude-e PTY runtimes',
     );
     assert.ok(
@@ -251,10 +253,31 @@ test('SF-006: queued web steer accepts item before background old-process wait',
         'route must not block the button response on waitForProcessEnd',
     );
     assert.ok(routeBlock.includes('isSteerInProgress()'), 'route should reject concurrent queued steer attempts');
-    assert.ok(spawnSrc.includes('export function isSteerInProgress()'), 'spawn.ts should expose steer-in-progress state for route gating');
+    assert.ok(spawnSrc.includes('export function isSteerInProgress(scopeKey'), 'spawn.ts should expose scoped steer-in-progress state for route gating');
     const queueSrc = fs.readFileSync(join(__dirname, '../../src/agent/spawn/queue.ts'), 'utf8');
     assert.ok(
-        queueSrc.includes('function setQueueHold(id: string, timeoutMs = QUEUE_HOLD_TIMEOUT_MS)'),
+        queueSrc.includes('function setQueueHold(scopeKey: string, idOrTimeout?: string | number, timeoutMs = QUEUE_HOLD_TIMEOUT_MS)'),
         'queue hold should accept an extended timeout for long provider steer waits',
     );
+});
+
+test('SF-007: clearing A queue hold leaves B hold intact', () => {
+    const controller = createQueueController({
+        migrateQueuedMessagesV1ToV2() {}, isSpawnBusy: () => true,
+        hasBlockingWorkers: () => false, hasPendingWorkerReplays: () => false,
+        insertMessage: { run() {} }, getActiveChatSession: () => 'default',
+        insertQueuedMessage: { run() {} }, deleteQueuedMessage: { run() {} },
+        listQueuedMessages: { all: () => [] }, broadcast() {},
+        importPipeline: async () => ({
+            orchestrate: async () => {}, orchestrateContinue: async () => {}, orchestrateReset: async () => {},
+            isContinueIntent: () => false, isResetIntent: () => false, drainPendingReplays: async () => {},
+        }),
+        getWorkingDir: () => null, isMultiSessionEnabled: () => true,
+    }, new SessionLanes(() => 2));
+    controller.setQueueHold('A', 'hold-a');
+    controller.setQueueHold('B', 'hold-b');
+    controller.clearQueueHold('A', 'hold-a', { resume: false });
+    assert.equal(controller.getQueueHoldId('A'), null);
+    assert.equal(controller.getQueueHoldId('B'), 'hold-b');
+    controller.clearQueueHold('B', 'hold-b', { resume: false });
 });

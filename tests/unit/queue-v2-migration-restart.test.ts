@@ -11,6 +11,7 @@ import {
 } from '../../src/core/db.ts';
 import { createQueueController } from '../../src/agent/spawn/queue.ts';
 import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 afterEach(() => {
     db.prepare("DELETE FROM queued_messages WHERE id LIKE 'queue-v2-%'").run();
@@ -46,7 +47,7 @@ function makeController(options: {
         }),
         getWorkingDir: () => null,
         isMultiSessionEnabled: () => true,
-    });
+    }, new SessionLanes(() => 2));
 }
 
 test('ON migration rewrites v1 once and drops a deleted-session v2 row once', () => {

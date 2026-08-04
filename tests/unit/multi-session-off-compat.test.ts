@@ -7,6 +7,7 @@ import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
 import { DEFAULT_SETTINGS, settings } from '../../src/core/config.ts';
 import { addBroadcastListener, broadcast, removeBroadcastListener } from '../../src/core/bus.ts';
 import { withSessionScope } from '../../src/core/session-context.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 test('OFF is the default and captured context adds no event fields', () => {
     assert.deepEqual(DEFAULT_SETTINGS.multiSession, { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer' });
@@ -54,7 +55,7 @@ test('OFF preserves legacy queue grouping bytes and does not rewrite persisted v
         }),
         getWorkingDir: () => null,
         isMultiSessionEnabled: () => false,
-    });
+    }, new SessionLanes(() => 1));
 
     assert.equal(migrationCalls, 0);
     assert.equal(persisted.get('legacy-v1'), legacyPayload);

@@ -4,6 +4,8 @@ import {
     resetFallbackState,
     getFallbackState,
 } from '../../src/agent/spawn.ts';
+import { createQueueController } from '../../src/agent/spawn/queue.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 // ─── Unit tests for fallback retry state ─────────────
 
@@ -47,6 +49,40 @@ test('resetFallbackState is idempotent', () => {
     resetFallbackState();
     resetFallbackState();
     assert.deepEqual(getFallbackState(), {});
+});
+
+test('retry and fallback state are isolated by scope', () => {
+    const controller = createQueueController({
+        migrateQueuedMessagesV1ToV2() {},
+        isSpawnBusy: () => true,
+        hasBlockingWorkers: () => false,
+        hasPendingWorkerReplays: () => false,
+        insertMessage: { run() {} },
+        getActiveChatSession: () => 'default',
+        insertQueuedMessage: { run() {} },
+        deleteQueuedMessage: { run() {} },
+        listQueuedMessages: { all: () => [] },
+        broadcast() {},
+        importPipeline: async () => ({
+            orchestrate: async () => {}, orchestrateContinue: async () => {}, orchestrateReset: async () => {},
+            isContinueIntent: () => false, isResetIntent: () => false, drainPendingReplays: async () => {},
+        }),
+        getWorkingDir: () => null,
+        isMultiSessionEnabled: () => true,
+    }, new SessionLanes(() => 2));
+    const timerA = setTimeout(() => {}, 60_000);
+    const timerB = setTimeout(() => {}, 60_000);
+    controller.retryStateForScope('A').setTimer(timerA);
+    controller.retryStateForScope('B').setTimer(timerB);
+    controller.fallbackStateForScope('A').set('claude', { fallbackCli: 'codex', retriesLeft: 1 });
+    controller.fallbackStateForScope('B').set('claude', { fallbackCli: 'pi', retriesLeft: 2 });
+
+    controller.clearRetryTimer('A', false);
+    assert.equal(controller.isRetryPending('A'), false);
+    assert.equal(controller.isRetryPending('B'), true);
+    assert.equal(controller.fallbackStateForScope('A').get('claude')?.fallbackCli, 'codex');
+    assert.equal(controller.fallbackStateForScope('B').get('claude')?.fallbackCli, 'pi');
+    controller.clearRetryTimer('B', false);
 });
 
 // ─── Integration scenario: fallback flow logic ──────
@@ -120,21 +156,22 @@ function extractFn(src: string, name: string): string {
 test('429: isAgentBusy checks activeProcess + retry pending state', () => {
     const src = readSrc('../../src/agent/spawn.ts');
     assert.ok(src.includes('function isAgentBusy'));
-    assert.ok(src.includes('queueCtrl.isRetryPending()'));
+    assert.ok(src.includes('queueCtrl.isRetryPending(scopeKey)'));
+    assert.ok(src.includes('activeMainProcesses.has(scopeKey)'));
 });
 
 test('429: clearRetryTimer accepts resumeQueue param and defaults true', () => {
     const src = readSrc('../../src/agent/spawn/queue.ts');
     const fn = extractFn(src, 'clearRetryTimer');
     assert.ok(fn.includes('resumeQueue = true'), 'default resumeQueue=true');
-    assert.ok(fn.includes('if (resumeQueue) processQueue'), 'conditional processQueue');
+    assert.ok(fn.includes('if (shouldResume) void processQueue(scope)'), 'conditional scoped processQueue');
     assert.ok(fn.includes('error: true'), 'broadcasts error:true');
 });
 
-test('429: killActiveAgent calls clearRetryTimer(false) and returns hadTimer', () => {
+test('429: killActiveAgent clears only the scoped retry timer and returns hadTimer', () => {
     const src = readSrc('../../src/agent/spawn.ts');
     const fn = extractFn(src, 'killActiveAgent');
-    assert.ok(fn.includes('clearRetryTimer(false)'), 'passes resumeQueue=false');
+    assert.ok(fn.includes('clearRetryTimer(scopeKey, false)'), 'passes scope and resumeQueue=false');
     assert.ok(fn.includes('hadTimer'), 'returns hadTimer');
     assert.ok(!fn.includes('return false'), 'no plain return false');
 });
@@ -142,25 +179,26 @@ test('429: killActiveAgent calls clearRetryTimer(false) and returns hadTimer', (
 test('429: killAllAgents returns true when timer cancelled', () => {
     const src = readSrc('../../src/agent/spawn.ts');
     const fn = extractFn(src, 'killAllAgents');
-    assert.ok(fn.includes('clearRetryTimer(false)'));
+    assert.ok(fn.includes('queueCtrl.isRetryPending(null)'));
+    assert.ok(fn.includes('killActiveAgent(scopeKey, reason)'));
     assert.ok(fn.includes('hadTimer'), 'tracks hadTimer for return value');
 });
 
-test('429: resetFallbackState calls clearRetryTimer(true)', () => {
+test('429: resetFallbackState clears scoped retry state without cross-scope resume', () => {
     const src = readSrc('../../src/agent/spawn/queue.ts');
     const fn = extractFn(src, 'resetFallbackState');
-    assert.ok(fn.includes('clearRetryTimer(true)'));
+    assert.ok(fn.includes('clearRetryTimer(scope, false)'));
 });
 
 test('429: processQueue guards against busy state (retry-aware via deps.isSpawnBusy)', () => {
     const src = readSrc('../../src/agent/spawn/queue.ts');
     const fn = extractFn(src, 'processQueue');
-    assert.ok(fn.includes('deps.isSpawnBusy()'), 'processQueue delegates busy check to deps.isSpawnBusy');
+    assert.ok(fn.includes('deps.isSpawnBusy(candidateScope)'), 'processQueue delegates scoped busy check to deps.isSpawnBusy');
 });
 
-test('429: INVARIANT comment present', () => {
+test('429: retry state is keyed by scope', () => {
     const src = readSrc('../../src/agent/spawn/queue.ts');
-    assert.ok(src.includes('INVARIANT: single-main'));
+    assert.ok(src.includes('const retryByScope = new Map<string, RetryState>()'));
 });
 
 test('429: retryPendingResolve stored before setTimeout', () => {
@@ -226,7 +264,7 @@ describe('429 retry: behavioral tests', () => {
 
     test('isAgentBusy reflects activeProcess state', async () => {
         const spawn = await import('../../src/agent/spawn.ts');
-        assert.equal(spawn.isAgentBusy(), !!spawn.activeProcess);
+        assert.equal(spawn.isAgentBusy(), spawn.activeMainProcesses.has('default'));
     });
 
     test('processQueue guards against retryPendingTimer at runtime', async () => {
@@ -242,7 +280,7 @@ describe('429 retry: edge case coverage', () => {
     test('timer pending blocks processQueue at runtime', async () => {
         const src = readSrc('../../src/agent/spawn/queue.ts');
         const fn = extractFn(src, 'processQueue');
-        assert.ok(fn.includes('deps.isSpawnBusy()'), 'processQueue must guard on busy state (includes active process + retry timer)');
+        assert.ok(fn.includes('deps.isSpawnBusy(candidateScope)'), 'processQueue must guard on scoped busy state');
         assert.ok(fn.includes('messageQueue.length === 0'), 'processQueue must guard on empty queue');
     });
 
@@ -251,15 +289,15 @@ describe('429 retry: edge case coverage', () => {
         const src = readSrc('../../src/agent/spawn.ts');
         const killFn = extractFn(src, 'killActiveAgent');
         // Must call clearRetryTimer(false) BEFORE the activeProcess check
-        const clearIdx = killFn.indexOf('clearRetryTimer(false)');
+        const clearIdx = killFn.indexOf('clearRetryTimer(scopeKey, false)');
         const processCheck = killFn.indexOf('if (!activeProcess)');
         assert.ok(clearIdx > 0 && processCheck > 0, 'both calls should exist');
         assert.ok(clearIdx < processCheck, 'clearRetryTimer(false) must precede activeProcess check');
 
-        // killAllAgents also uses false
+        // killAllAgents delegates each concrete scope through killActiveAgent.
         const killAllFn = extractFn(src, 'killAllAgents');
-        assert.ok(killAllFn.includes('clearRetryTimer(false)'),
-            'killAllAgents must also use resumeQueue=false');
+        assert.ok(killAllFn.includes('killActiveAgent(scopeKey, reason)'),
+            'killAllAgents must clear each scope through the scoped stop path');
     });
 
     test('429 retry branch appears BEFORE fallback branch in unified exit handler', () => {
@@ -286,7 +324,7 @@ describe('429 retry: runtime timer simulation', () => {
         const spawn = await import('../../src/agent/spawn.ts');
         const wasBusy = spawn.isAgentBusy();
         // If no test left a dangling timer or process, should be false
-        if (spawn.activeProcess) {
+        if (spawn.activeMainProcesses.has('default')) {
             assert.ok(wasBusy, 'should be busy when activeProcess is set');
         } else {
             assert.equal(wasBusy, false, 'should not be busy with no process and no timer');
@@ -323,7 +361,7 @@ describe('429 retry: runtime timer simulation', () => {
         spawn.killActiveAgent('steer');
         assert.equal(spawn.isAgentBusy(), false,
             'killActiveAgent on empty state must not leave busy flag set');
-        assert.equal(spawn.activeProcess, null,
-            'activeProcess must remain null after kill on empty state');
+        assert.equal(spawn.activeMainProcesses.has('default'), false,
+            'default main run entry must remain absent after kill on empty state');
     });
 });

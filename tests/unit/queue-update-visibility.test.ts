@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createQueueController } from '../../src/agent/spawn/queue.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -42,7 +43,7 @@ function makeController() {
         }),
         getWorkingDir: () => '/tmp',
         isMultiSessionEnabled: () => false,
-    });
+    }, new SessionLanes(() => 1));
 
     return { controller, broadcasts, persisted };
 }

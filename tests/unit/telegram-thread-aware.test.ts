@@ -53,8 +53,9 @@ test('sendTelegramFile omits message_thread_id when absent (byte-identical to to
 });
 
 test('dedupKey distinguishes forum topics, stable within a topic', () => {
-    assert.notEqual(dedupKey('telegram', 'hi', '-100', '5'), dedupKey('telegram', 'hi', '-100', '6'));
-    assert.equal(dedupKey('telegram', 'hi', '-100', '5'), dedupKey('telegram', 'hi', '-100', '5'));
+    assert.notEqual(dedupKey('scope-A', 'telegram', 'hi', '-100', '5'), dedupKey('scope-A', 'telegram', 'hi', '-100', '6'));
+    assert.equal(dedupKey('scope-A', 'telegram', 'hi', '-100', '5'), dedupKey('scope-A', 'telegram', 'hi', '-100', '5'));
     // no-thread (DM/General) key is stable and distinct from a topic key
-    assert.notEqual(dedupKey('telegram', 'hi', '-100'), dedupKey('telegram', 'hi', '-100', '5'));
+    assert.notEqual(dedupKey('scope-A', 'telegram', 'hi', '-100'), dedupKey('scope-A', 'telegram', 'hi', '-100', '5'));
+    assert.notEqual(dedupKey('scope-A', 'telegram', 'hi', '-100', '5'), dedupKey('scope-B', 'telegram', 'hi', '-100', '5'));
 });

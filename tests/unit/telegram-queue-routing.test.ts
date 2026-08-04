@@ -29,8 +29,10 @@ test('TQ-002: busy path forwards target+chatId+requestId into enqueueMessage', (
             && busyBlock.includes('chatId: meta.chatId')
             && busyBlock.includes('requestId')
             && busyBlock.includes('scope')
+            && busyBlock.includes('chatSessionId')
+            && busyBlock.includes('remoteKey')
             && busyBlock.includes('replyViaTarget: meta.replyViaTarget'),
-        'busy path should enqueue with target+chatId+requestId+scope+replyViaTarget metadata',
+        'busy path should enqueue the complete queued payload v2 identity',
     );
 });
 
@@ -82,32 +84,32 @@ test('TQ-003e: hub target validation allows private direct topic targets', () =>
 });
 
 test('TQ-004: processQueue isolates queue by groupQueueKey', () => {
-    const queueStart = queueSrc.indexOf('async function processQueue()');
-    const queueBlock = queueSrc.slice(queueStart, queueStart + 3000);
+    const queueStart = queueSrc.indexOf('async function processQueue');
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
     assert.ok(
-        queueBlock.includes('groupQueueKey(first.source, first.target)'),
+        queueBlock.includes('groupQueueKey(item.source, item.target)'),
         'processQueue should use groupQueueKey for group isolation',
     );
     assert.ok(
-        queueBlock.includes('if (key === groupKey) batch.push(m)'),
-        'processQueue should batch only same group',
+        queueBlock.includes('drainingScopes.has(candidateScope)'),
+        'processQueue should admit only one drain per scope',
     );
     assert.ok(
-        queueBlock.includes('messageQueue.push(...remaining)'),
-        'processQueue should keep non-matching groups in queue',
+        queueBlock.includes('scheduledItemIds.has(candidate.id)'),
+        'processQueue should leave already-admitted items scheduled exactly once',
     );
 });
 
 test('TQ-005: processQueue uses batch head source/chatId (no last-item leakage)', () => {
-    const queueStart = queueSrc.indexOf('async function processQueue()');
-    const queueBlock = queueSrc.slice(queueStart, queueStart + 3000);
+    const queueStart = queueSrc.indexOf('async function processQueue');
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
     assert.ok(
-        queueBlock.includes('batch[0]') && queueBlock.includes('source'),
-        'source should come from batch head',
+        queueBlock.includes('const source = item.source'),
+        'source should come from the admitted item',
     );
     assert.ok(
-        queueBlock.includes('batch[0]') && queueBlock.includes('chatId'),
-        'chatId should come from batch head',
+        queueBlock.includes('const chatId = item.chatId'),
+        'chatId should come from the admitted item',
     );
     assert.ok(
         !queueBlock.includes('const source = batched[batched.length - 1].source'),
@@ -116,8 +118,8 @@ test('TQ-005: processQueue uses batch head source/chatId (no last-item leakage)'
 });
 
 test('TQ-006: processQueue broadcasts new_message with fromQueue=true (web client renders here, not at enqueue)', () => {
-    const queueStart = queueSrc.indexOf('async function processQueue()');
-    const queueBlock = queueSrc.slice(queueStart, queueStart + 3000);
+    const queueStart = queueSrc.indexOf('async function processQueue');
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
     const executableLines = queueBlock
         .split('\n')
         .map(line => line.trim())
@@ -128,10 +130,19 @@ test('TQ-006: processQueue broadcasts new_message with fromQueue=true (web clien
 });
 
 test('TQ-006b: processQueue respects worker busy guards', () => {
-    const queueStart = queueSrc.indexOf('async function processQueue()');
-    const queueBlock = queueSrc.slice(queueStart, queueStart + 800);
-    assert.ok(queueBlock.includes('hasBlockingWorkers()'), 'processQueue should guard against active workers');
-    assert.ok(queueBlock.includes('hasPendingWorkerReplays()'), 'processQueue should guard against pending worker replay');
+    const queueStart = queueSrc.indexOf('async function processQueue');
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 3000);
+    assert.ok(queueBlock.includes('hasBlockingWorkers(candidateScope)'), 'worker guard must be scope-local');
+    assert.ok(queueBlock.includes('hasPendingWorkerReplays(candidateScope)'), 'replay guard must be scope-local');
+});
+
+test('TQ-009: queue drain schedules captured scope/session without recomputation', () => {
+    const queueStart = queueSrc.indexOf('async function processQueue');
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
+    assert.ok(queueBlock.includes('lanes.run(itemScope'));
+    assert.ok(queueBlock.includes('chatSessionId: effectiveSessionId'));
+    assert.ok(queueBlock.includes('...(item.remoteKey ? { remoteKey: item.remoteKey } : {})'));
+    assert.ok(!queueBlock.includes("scope: 'default'"));
 });
 
 test('TQ-007: tgOrchestrate passes chatId to submitMessage', () => {

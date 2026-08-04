@@ -68,7 +68,7 @@ test('SM-005: continue intent when busy → rejected/busy', () => {
         gatewaySrc.indexOf('// ── reset'),
     );
     assert.ok(
-        continueBlock.includes("if (isAgentBusy()) return { action: 'rejected', reason: 'busy' }"),
+        continueBlock.includes("if (isAgentBusy(scope)) return { action: 'rejected', reason: 'busy' }"),
         'continue intent rejects when busy (429 retry-aware)',
     );
 });
@@ -140,4 +140,26 @@ test('SM-011: detached orchestration calls are rejection-safe', () => {
         gatewaySrc.includes('.catch((err: unknown) =>'),
         'detached orchestrate calls should handle rejections',
     );
+});
+
+test('SM-012: admission and continue busy checks use the resolved scope', () => {
+    const continueBlock = gatewaySrc.slice(gatewaySrc.indexOf('// ── continue'), gatewaySrc.indexOf('// ── reset'));
+    const busyBlock = gatewaySrc.slice(gatewaySrc.indexOf('// ── busy'), gatewaySrc.indexOf('// ── idle'));
+    assert.ok(continueBlock.includes('isAgentBusy(scope)'));
+    assert.ok(busyBlock.includes('isAgentBusy(scope)'));
+    assert.ok(busyBlock.includes('hasBlockingWorkers(scope)'));
+    assert.ok(!gatewaySrc.includes('isAgentBusy()'));
+});
+
+test('SM-013: continue, reset, and idle starts all enter the captured session lane', () => {
+    const starts = gatewaySrc.match(/sessionLanes\.run\(scope,/g) || [];
+    assert.equal(starts.length, 3, 'continue/reset/idle must each use sessionLanes.run(scope, ...)');
+    assert.ok(gatewaySrc.includes('chatSessionId'));
+    assert.ok(gatewaySrc.includes('withSessionScope(sessionScope'));
+});
+
+test('SM-014: dedup admission happens only after persistent scope resolution', () => {
+    const scopeResolved = gatewaySrc.indexOf('const sessionScope: SessionScope = { scope, chatSessionId }');
+    const dedupAdmission = gatewaySrc.indexOf('const key = dedupKey(scope,');
+    assert.ok(scopeResolved >= 0 && dedupAdmission > scopeResolved);
 });
