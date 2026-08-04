@@ -176,6 +176,8 @@ const actualRoutes = new Set([
   ...prefixedRoutes('src/manager/schedule/routes.ts', '/api/dashboard/schedule'),
   ...prefixedRoutes('src/routes/jaw-ceo.ts', '/api/jaw-ceo'),
 ].filter((route) => route !== 'GET /'));
+const dynamicAppRouteCount = [serverText, ...routeTexts]
+  .reduce((count, text) => count + [...text.matchAll(/app\.(?:get|post|put|delete|patch)\(\s*\/\^/g)].length, 0);
 
 function expandDocRoutes(token) {
   const [methodsPart, ...rest] = token.trim().split(/\s+/);
@@ -232,8 +234,8 @@ const docCounts = {
 };
 
 const actualCounts = {
-  totalHandlers: actualRoutes.size + 1,
-  apiEndpoints: actualRoutes.size,
+  totalHandlers: actualRoutes.size + dynamicAppRouteCount + 1,
+  apiEndpoints: actualRoutes.size + dynamicAppRouteCount,
   browserRoutes: extractAppRoutes(browserText).length,
 };
 

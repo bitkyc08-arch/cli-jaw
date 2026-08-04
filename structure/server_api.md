@@ -29,7 +29,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/search.ts` | 95L | 1 | `/api/search` 통합 검색 (requireAuth, corpus 검증, cursor 400) |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
-| `src/routes/settings.ts` | 496L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
+| `src/routes/settings.ts` | 504L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 489L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
@@ -115,8 +115,9 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Core/Auth | `GET /api/health` `GET /api/slack/manifest` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/image` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
 | Commands | `POST /api/command` `GET /api/commands?interface=` `POST /api/elicitation/callback` |
 | Events | `GET /api/events` |
-| Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` |
+| Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` `DELETE /api/chat-sessions/:id` |
 | Instance Lock | `GET /api/instance/lock` `POST /api/instance/lock` `DELETE /api/instance/lock` |
+| Search | `GET /api/search` |
 | Settings/Prompt | `GET/PUT /api/settings` `POST /api/settings/runtime-default-migration` `POST /api/project/pick` `GET /api/project/git-summary` `GET /api/codex-context` `GET/PUT /api/prompt` `GET /api/prompt-templates` `PUT /api/prompt-templates/:id` `GET/PUT /api/heartbeat-md` |
 | MCP/CLI/Quota | `GET/PUT /api/mcp` `POST /api/mcp/sync` `POST /api/mcp/install` `POST /api/mcp/reset` `GET /api/mcp/registry` `GET /api/cli-registry` `GET /api/cli-status` `GET /api/quota` `POST /api/copilot/refresh` `POST /api/pi/profiles/register` `GET /api/pi/models` |
 | Runtime Context | `GET /api/runtime-context` `POST /api/runtime-context` `DELETE /api/runtime-context/:id` `DELETE /api/runtime-context` |
@@ -242,6 +243,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 - `GET /api/project/git-summary`는 Settings의 `projectDirs[0]`만 읽는 read-only header helper다.
 - `POST /api/settings/runtime-default-migration`은 `requireAuth` 뒤에서 정확히 `{ "action": "accept" | "keep" }`만 받는다. `settingsSchemaVersion`과 `runtimeDefaultMigration`은 server-owned라 generic `PUT /api/settings`에 포함하면 `400`이다. 이미 terminal인 migration은 `409 runtime_default_migration_terminal`과 최신 settings snapshot을 반환한다. 성공 `200`과 conflict `409`의 snapshot은 모두 `GET/PUT /api/settings`와 같은 redaction을 거친다.
+- `runtime.codexApp.multiplex`는 사용자 소유 boolean gate이며 실행 기본값은 `false`다. raw settings에 키가 없으면 `GET /api/settings`의 실행 snapshot은 `false`를 제공하지만 다음 저장에서도 키와 그 결과 비는 `codexApp`/`runtime` container를 만들지 않는다. explicit `false`/`true`는 보존한다. generic `PUT /api/settings`에서 문자열·숫자·`null`은 `400 invalid_settings_field`, host probe 소유인 `runtime.codexApp.laneMode`는 값과 무관하게 기존 호환 오류 `400 server_owned_settings_field`로 거부한다.
 - `GET /api/cli-status`는 cold에서 nullable `probeState:"checking"`, stale에서 즉시 이전 snapshot을 반환한다. binary/PATH, auth, capability detection은 request event loop가 아니라 finite-lifetime child worker에서 수행된다.
 - 응답은 legacy Web UI header의 compact git status 전용이다: branch/hash, tracked modified count, untracked count.
 - project root가 없거나, home 밖 경로거나, git repository가 아니거나, git 호출이 실패하면 mutation 없이 `{ available:false, reason }` 형태로 조용히 숨길 수 있는 payload를 반환한다.
