@@ -153,6 +153,9 @@ type LifecycleSpawnOptions = {
     _kiroFreshRetry?: boolean;
     agentId?: string;
     employeeSessionId?: string;
+    scopeKey?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
     cli?: string;
     model?: string;
     _heartbeatAnchorId?: number;
@@ -197,11 +200,13 @@ interface MainSessionMetaRef {
     chatId?: string | number;
     requestId?: string;
     scopeId?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
     effectiveProvider?: string;
 }
 
-let _setCurrentMainMeta: ((meta: MainSessionMetaRef | null) => void) | null = null;
-export function setMainMetaHandler(fn: (meta: MainSessionMetaRef | null) => void): void {
+let _setCurrentMainMeta: ((scopeKey: string, meta: MainSessionMetaRef | null) => void) | null = null;
+export function setMainMetaHandler(fn: (scopeKey: string, meta: MainSessionMetaRef | null) => void): void {
     _setCurrentMainMeta = fn;
 }
 
@@ -268,7 +273,9 @@ export interface ExitHandlerParams {
     costLine: string;
     resolve: (result: LifecycleResolveResult) => void;
     activeProcesses: Map<string, ChildProcess>;
-    setActiveProcess: (v: ChildProcess | null) => void;
+    scopeKey: string;
+    childProcess: ChildProcess | null;
+    releaseMainRun: (scopeKey: string, child: ChildProcess | null, ownerGeneration: number) => boolean;
     retryState: {
         setTimer: (t: ReturnType<typeof setTimeout> | null) => void;
         setResolve: (r: ((result: LifecycleResolveResult) => void) | null) => void;
@@ -277,7 +284,7 @@ export interface ExitHandlerParams {
     };
     fallbackState: Map<string, FallbackStateEntry>;
     fallbackMaxRetries: number;
-    processQueue: () => void;
+    processQueue: (scopeKey: string) => void;
     outputLen?: number;
 }
 
@@ -293,7 +300,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         prompt, opts, cfg, ownerGeneration, forceNew, empSid,
         isResume, wasKilled, wasSteer, smokeResult,
         effortDefault, costLine, resolve,
-        activeProcesses, setActiveProcess,
+        activeProcesses, scopeKey, childProcess, releaseMainRun,
         retryState, fallbackState, fallbackMaxRetries, processQueue,
     } = params;
 
@@ -336,8 +343,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
 
         activeProcesses.delete(agentLabel);
-        setActiveProcess(null);
-        broadcast('agent_status', { running: false, agentId: agentLabel, ...empTag });
+        if (releaseMainRun(scopeKey, childProcess, ownerGeneration)) {
+            broadcast('agent_status', { running: false, agentId: agentLabel, scope: scopeKey, ...empTag });
+        }
         finalizeTraceRun(ctx.traceRunId, 'done');
 
         const contPrompt = buildContinuationPrompt(prompt, ctx.fullText);
@@ -355,7 +363,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 sessionId: ctx.sessionId, cost: ctx.cost,
                 tools: ctx.toolLog, smoke: smokeResult,
             });
-            processQueue();
+            processQueue(scopeKey);
         });
         return;
     }
@@ -367,9 +375,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     if (mainManaged) {
         if (!wasSteer) {
             activeProcesses.delete(agentLabel);
-            setActiveProcess(null);
-            _setCurrentMainMeta?.(null);
-            broadcast('agent_status', { running: false, agentId: agentLabel, ...empTag });
+            if (releaseMainRun(scopeKey, childProcess, ownerGeneration)) {
+                _setCurrentMainMeta?.(scopeKey, null);
+                broadcast('agent_status', { running: false, agentId: agentLabel, scope: scopeKey, ...empTag });
+            }
         }
     } else {
         activeProcesses.delete(agentLabel);
@@ -530,7 +539,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 ...empTag,
             }, isEmployee ? 'internal' : 'public');
             resolve({ text: '', code: 1 });
-            if (mainManaged && !opts.internal) processQueue();
+            if (mainManaged && !opts.internal) processQueue(scopeKey);
         });
         return;
     }
@@ -641,7 +650,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         );
         finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
         resolve({ text: '', code: code ?? 1, diagnostic: errMsg });
-        if (mainManaged && !opts.internal) processQueue();
+        if (mainManaged && !opts.internal) processQueue(scopeKey);
         return;
     } else if (mainManaged && code !== 0 && !wasKilled) {
         // ─── Error handling ───
@@ -696,7 +705,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             retryP.then(resolve).catch(() => {
                 broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg} (fresh-session retry failed)`, error: true, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
                 resolve({ text: '', code: 1 });
-                if (mainManaged && !opts.internal) processQueue();
+                if (mainManaged && !opts.internal) processQueue(scopeKey);
             });
             return;
         }
@@ -716,7 +725,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
             resolve({ text: '', code: 1 });
-            if (mainManaged && !opts.internal) processQueue();
+            if (mainManaged && !opts.internal) processQueue(scopeKey);
             return;
         }
 
@@ -749,7 +758,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 retryP.then((r) => resolve(r)).catch(() => {
                     broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg} (재시도 실패, attempt ${mainAttempt + 1})`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
                     resolve({ text: '', code: 1 });
-                    if (mainManaged && !opts.internal) processQueue();
+                    if (mainManaged && !opts.internal) processQueue(scopeKey);
                 });
             }, delayMs));
             return;
@@ -799,7 +808,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         ...empTag,
                     }, isEmployee ? 'internal' : 'public');
                     resolve({ text: '', code: 1 });
-                    if (mainManaged && !opts.internal) processQueue();
+                    if (mainManaged && !opts.internal) processQueue(scopeKey);
                 });
                 return;
             }
@@ -921,7 +930,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 ...empTag,
             }, isEmployee ? 'internal' : 'public');
             resolve({ text: '', code: 1 });
-            if (mainManaged && !opts.internal) processQueue();
+            if (mainManaged && !opts.internal) processQueue(scopeKey);
         });
         return;
     }
@@ -1112,7 +1121,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
     }
 
-    if (mainManaged && !wasSteer) processQueue();
+    if (mainManaged && !wasSteer) processQueue(scopeKey);
 }
 
 // ─── Post-flush reindex (3-C) ────────────────────────

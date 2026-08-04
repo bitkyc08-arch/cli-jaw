@@ -5,6 +5,7 @@ import type { RuntimeOrigin, RemoteTarget } from '../../messaging/types.js';
 import { groupQueueKey, type SessionScope } from '../../messaging/session-key.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { withSessionScope } from '../../core/session-context.js';
+import { sessionLanes, type SessionLanes } from '../../orchestrator/session-lanes.js';
 
 type QueueItem = {
     schemaVersion?: 2;
@@ -35,9 +36,9 @@ type QueueMessageMeta = {
 
 export interface QueueDeps {
     migrateQueuedMessagesV1ToV2(): void;
-    isSpawnBusy(): boolean;
-    hasBlockingWorkers(): boolean;
-    hasPendingWorkerReplays(): boolean;
+    isSpawnBusy(scopeKey: string): boolean;
+    hasBlockingWorkers(scopeKey: string): boolean;
+    hasPendingWorkerReplays(scopeKey: string): boolean;
     insertMessage: { run(...args: any[]): any };
     getActiveChatSession(): string;
     insertQueuedMessage: { run(...args: any[]): any };
@@ -50,7 +51,7 @@ export interface QueueDeps {
         orchestrateReset: (...args: any[]) => Promise<void>;
         isContinueIntent: (text: string) => boolean;
         isResetIntent: (text: string) => boolean;
-        drainPendingReplays: (opts: { origin: string }) => Promise<void>;
+        drainPendingReplays: (scopeKey: string, opts: { origin: string }) => Promise<void>;
     }>;
     getWorkingDir(): string | null;
     isMultiSessionEnabled(): boolean;
@@ -58,25 +59,39 @@ export interface QueueDeps {
 
 export const FALLBACK_MAX_RETRIES = 3;
 
+export type FallbackStateEntry = { fallbackCli?: string; retriesLeft: number };
+
+type RetryState = {
+    timer: ReturnType<typeof setTimeout> | null;
+    resolve: ((v: { text: string; code: number }) => void) | null;
+    origin: string | null;
+    isEmployee: boolean;
+};
+
+type HoldState = {
+    id: string;
+    timer: ReturnType<typeof setTimeout>;
+};
+
 export interface QueueController {
     enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: QueueMessageMeta): string;
     removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number };
-    processQueue(): Promise<void>;
-    setQueueHold(id: string, timeoutMs?: number): void;
-    clearQueueHold(id?: string, opts?: { resume?: boolean }): void;
-    getQueueHoldId(): string | null;
-    clearRetryTimer(resumeQueue?: boolean): void;
-    resetFallbackState(): void;
-    getFallbackState(): Record<string, unknown>;
+    processQueue(scopeKey?: string): Promise<void>;
+    setQueueHold(scopeKey: string, idOrTimeout?: string | number, timeoutMs?: number): void;
+    clearQueueHold(scopeKey?: string | null, idOrOpts?: string | { resume?: boolean }, opts?: { resume?: boolean }): void;
+    getQueueHoldId(scopeKey?: string): string | null;
+    clearRetryTimer(scopeKeyOrResume?: string | boolean, resumeQueue?: boolean): void;
+    resetFallbackState(scopeKey?: string | null): void;
+    getFallbackState(scopeKey?: string | null): Record<string, unknown>;
     getQueuedMessageSnapshotForScope(scope: string): Array<{
         id: string; prompt: string; source: RuntimeOrigin; ts: number;
     }>;
     readonly messageQueue: QueueItem[];
-    readonly fallbackState: Map<string, any>;
-    isRetryPending(): boolean;
-    isQueueBusy(): boolean;
-    purgeQueueOnStop(reason: string): void;
-    readonly retryState: {
+    fallbackStateForScope(scopeKey: string): Map<string, FallbackStateEntry>;
+    isRetryPending(scopeKey?: string | null): boolean;
+    isQueueBusy(scopeKey?: string | null): boolean;
+    purgeQueueOnStop(scopeKey: string | null, reason: string): void;
+    retryStateForScope(scopeKey: string): {
         timer: ReturnType<typeof setTimeout> | null;
         resolve: Function | null;
         origin: string | null;
@@ -87,7 +102,10 @@ export interface QueueController {
     };
 }
 
-export function createQueueController(deps: QueueDeps): QueueController {
+export function createQueueController(
+    deps: QueueDeps,
+    lanes: SessionLanes = sessionLanes,
+): QueueController {
     const multiSessionEnabled = deps.isMultiSessionEnabled();
     if (multiSessionEnabled) deps.migrateQueuedMessagesV1ToV2();
 
@@ -127,79 +145,124 @@ export function createQueueController(deps: QueueDeps): QueueController {
     if (messageQueue.length > 0) {
         console.log(`[queue] recovered ${messageQueue.length} persisted message(s) from previous session`);
     }
-    let queueProcessing = false;
-
-    // ─── 429 Retry Timer State ──────────────────────────
-    // INVARIANT: single-main — 동시에 1개의 main spawnAgent만 존재한다고 가정.
-    // 멀티 main task 도입 시 request-id 키 맵으로 전환 필요.
-    let retryPendingTimer: ReturnType<typeof setTimeout> | null = null;
-    let retryPendingResolve: ((v: { text: string; code: number }) => void) | null = null;
-    let retryPendingOrigin: string | null = null;
-    let retryPendingIsEmployee = false;
-
-    const fallbackState = new Map();
-
-    let queueHoldId: string | null = null;
-    let queueHoldTimer: ReturnType<typeof setTimeout> | null = null;
     const QUEUE_HOLD_TIMEOUT_MS = 10_000;
+    const drainingScopes = new Set<string>();
+    const retryByScope = new Map<string, RetryState>();
+    const fallbackByScope = new Map<string, Map<string, FallbackStateEntry>>();
+    const holdByScope = new Map<string, HoldState>();
+    const scheduledItemIds = new Set<string>();
+    const normalizeScope = (scopeKey = 'default') => multiSessionEnabled ? scopeKey : 'default';
 
-    function clearRetryTimer(resumeQueue = true): void {
-        if (retryPendingTimer) {
-            clearTimeout(retryPendingTimer);
-            retryPendingTimer = null;
-            console.log('[jaw:retry] timer cancelled');
+    function retryEntry(scopeKey: string): RetryState {
+        const scope = normalizeScope(scopeKey);
+        let state = retryByScope.get(scope);
+        if (!state) {
+            state = { timer: null, resolve: null, origin: null, isEmployee: false };
+            retryByScope.set(scope, state);
+        }
+        return state;
+    }
 
-            if (retryPendingResolve) {
+    function fallbackStateForScope(scopeKey: string): Map<string, FallbackStateEntry> {
+        const scope = normalizeScope(scopeKey);
+        let state = fallbackByScope.get(scope);
+        if (!state) {
+            state = new Map<string, FallbackStateEntry>();
+            fallbackByScope.set(scope, state);
+        }
+        return state;
+    }
+
+    function clearRetryTimer(scopeKeyOrResume: string | boolean = 'default', resumeQueue = true): void {
+        const legacyCall = typeof scopeKeyOrResume === 'boolean';
+        const scope = normalizeScope(legacyCall ? 'default' : scopeKeyOrResume);
+        const shouldResume = legacyCall ? scopeKeyOrResume : resumeQueue;
+        const state = retryByScope.get(scope);
+        if (state?.timer) {
+            clearTimeout(state.timer);
+            state.timer = null;
+            console.log(`[jaw:retry] timer cancelled scope=${scope}`);
+
+            if (state.resolve) {
                 deps.broadcast('agent_done', {
                     text: '⏹️ 재시도 취소됨',
                     error: true,
-                    origin: retryPendingOrigin || 'web',
-                    ...(retryPendingIsEmployee ? { isEmployee: true } : {}),
-                }, retryPendingIsEmployee ? 'internal' : 'public');
-                retryPendingResolve({ text: '', code: -1 });
-                retryPendingResolve = null;
-                retryPendingOrigin = null;
-                retryPendingIsEmployee = false;
+                    origin: state.origin || 'web',
+                    ...(state.isEmployee ? { isEmployee: true } : {}),
+                }, state.isEmployee ? 'internal' : 'public');
+                state.resolve({ text: '', code: -1 });
+                state.resolve = null;
+                state.origin = null;
+                state.isEmployee = false;
             }
-            if (resumeQueue) processQueue();
+            if (shouldResume) void processQueue(scope);
         }
     }
 
-    function resetFallbackState() {
-        clearRetryTimer(true);
-        fallbackState.clear();
+    function resetFallbackState(scopeKey: string | null = 'default') {
+        if (scopeKey === null) {
+            for (const scope of retryByScope.keys()) clearRetryTimer(scope, false);
+            retryByScope.clear();
+            fallbackByScope.clear();
+        } else {
+            const scope = normalizeScope(scopeKey);
+            clearRetryTimer(scope, false);
+            retryByScope.delete(scope);
+            fallbackByScope.delete(scope);
+        }
         console.log('[jaw:fallback] state reset');
     }
 
-    function getFallbackState() {
-        return Object.fromEntries(fallbackState);
+    function getFallbackState(scopeKey: string | null = 'default'): Record<string, unknown> {
+        if (scopeKey === null) {
+            return Object.fromEntries([...fallbackByScope].map(([scope, state]) => [scope, Object.fromEntries(state)]));
+        }
+        return Object.fromEntries(fallbackStateForScope(scopeKey));
     }
 
-    function setQueueHold(id: string, timeoutMs = QUEUE_HOLD_TIMEOUT_MS): void {
-        if (queueHoldId && queueHoldId !== id) clearQueueHold();
-        queueHoldId = id;
-        if (queueHoldTimer) clearTimeout(queueHoldTimer);
-        const holdId = id;
-        queueHoldTimer = setTimeout(() => {
-            if (queueHoldId !== holdId) return;
-            console.warn(`[queue:hold] hold for ${holdId} expired after ${timeoutMs}ms`);
-            clearQueueHold();
-        }, timeoutMs);
-        console.log(`[queue:hold] set for ${id}`);
+    function setQueueHold(scopeKey: string, idOrTimeout?: string | number, timeoutMs = QUEUE_HOLD_TIMEOUT_MS): void {
+        const legacyCall = typeof idOrTimeout !== 'string';
+        const scope = normalizeScope(legacyCall ? 'default' : scopeKey);
+        const id = legacyCall ? scopeKey : idOrTimeout;
+        const timeout = typeof idOrTimeout === 'number' ? idOrTimeout : timeoutMs;
+        const previous = holdByScope.get(scope);
+        if (previous) clearTimeout(previous.timer);
+        const timer = setTimeout(() => {
+            if (holdByScope.get(scope)?.id !== id) return;
+            console.warn(`[queue:hold] hold for ${id} expired after ${timeout}ms scope=${scope}`);
+            clearQueueHold(scope, id);
+        }, timeout);
+        holdByScope.set(scope, { id, timer });
+        console.log(`[queue:hold] set for ${id} scope=${scope}`);
     }
 
-    function clearQueueHold(id?: string, opts?: { resume?: boolean }): void {
-        if (id && queueHoldId !== id) return;
-        if (queueHoldTimer) clearTimeout(queueHoldTimer);
-        queueHoldTimer = null;
-        const hadHold = queueHoldId !== null;
-        if (hadHold) console.log(`[queue:hold] cleared (was ${queueHoldId})`);
-        queueHoldId = null;
-        if (hadHold && (opts?.resume ?? true)) queueMicrotask(() => processQueue());
+    function clearQueueHold(
+        scopeKey: string | null = 'default',
+        idOrOpts?: string | { resume?: boolean },
+        opts?: { resume?: boolean },
+    ): void {
+        const legacyCall = typeof idOrOpts === 'object' || (arguments.length === 1 && typeof scopeKey === 'string');
+        const requestedId = legacyCall ? scopeKey ?? undefined : idOrOpts;
+        const clearOpts = typeof idOrOpts === 'object' ? idOrOpts : opts;
+        let scope: string;
+        if (scopeKey === null) {
+            if (!requestedId) return;
+            const match = [...holdByScope].find(([, hold]) => hold.id === requestedId);
+            if (!match) return;
+            scope = match[0];
+        } else {
+            scope = normalizeScope(legacyCall ? 'default' : scopeKey);
+        }
+        const hold = holdByScope.get(scope);
+        if (!hold || (requestedId && hold.id !== requestedId)) return;
+        clearTimeout(hold.timer);
+        holdByScope.delete(scope);
+        console.log(`[queue:hold] cleared (was ${hold.id}) scope=${scope}`);
+        if (clearOpts?.resume ?? true) queueMicrotask(() => { void processQueue(scope); });
     }
 
-    function getQueueHoldId(): string | null {
-        return queueHoldId;
+    function getQueueHoldId(scopeKey = 'default'): string | null {
+        return holdByScope.get(normalizeScope(scopeKey))?.id ?? null;
     }
 
     function getQueuedMessageSnapshotForScope(scope: string): Array<{
@@ -235,6 +298,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         const idx = messageQueue.findIndex(item => item.id === id);
         if (idx === -1) return { removed: null, pending: messageQueue.length };
         const [removed] = messageQueue.splice(idx, 1);
+        scheduledItemIds.delete(id);
         try { deps.deleteQueuedMessage.run(id); } catch (err) {
             console.warn(`[queue] DB delete failed for ${id}:`, (err as Error).message);
         }
@@ -265,60 +329,65 @@ export function createQueueController(deps: QueueDeps): QueueController {
         messageQueue.push(item);
         console.log(`[queue] +1 (${messageQueue.length} pending)`);
         deps.broadcast('queue_update', queueUpdatePayload(item.scope));
-        processQueue();
+        void processQueue(item.scope);
         return item.id;
     }
 
     // Queue policy: "fair" — batch head runs, tail goes after remaining.
     // Pending worker replays are intentionally not gated here: orchestrate()
     // drains them at entry, avoiding the documented processQueue deadlock.
-    async function processQueue() {
-        if (queueProcessing) return;
-
-        if (!deps.isSpawnBusy() && !deps.hasBlockingWorkers() && deps.hasPendingWorkerReplays()) {
+    async function processQueue(scopeKey = 'default'): Promise<void> {
+        const requestedScope = normalizeScope(scopeKey);
+        if (
+            !deps.isSpawnBusy(requestedScope)
+            && !deps.hasBlockingWorkers(requestedScope)
+            && deps.hasPendingWorkerReplays(requestedScope)
+        ) {
             queueMicrotask(() => {
                 deps.importPipeline()
-                    .then(({ drainPendingReplays }) => drainPendingReplays({ origin: 'system' }))
+                    .then(({ drainPendingReplays }) => drainPendingReplays(requestedScope, { origin: 'system' }))
                     .catch(err => console.error('[processQueue:drain]', (err as Error).message));
             });
         }
         if (
-            !deps.isSpawnBusy()
-            && !deps.hasBlockingWorkers()
-            && !deps.hasPendingWorkerReplays()
+            !deps.isSpawnBusy(requestedScope)
+            && !deps.hasBlockingWorkers(requestedScope)
+            && !deps.hasPendingWorkerReplays(requestedScope)
             && messageQueue.length === 0
-            && !queueHoldId
+            && !holdByScope.has(requestedScope)
         ) {
             drainHeartbeatPendingSoon();
         }
 
-        if (
-            deps.isSpawnBusy()
-            || deps.hasBlockingWorkers()
-            || messageQueue.length === 0
-            || queueHoldId
-        ) return;
-        queueProcessing = true;
-
-        const first = messageQueue[0]!;
-        const groupKey = groupQueueKey(first.source, first.target);
-        const batch: QueueItem[] = [];
-        const remaining: QueueItem[] = [];
-
-        for (const m of messageQueue) {
-            const key = groupQueueKey(m.source, m.target);
-            if (key === groupKey) batch.push(m);
-            else remaining.push(m);
+        let item: QueueItem | undefined;
+        for (const candidate of messageQueue) {
+            const candidateScope = normalizeScope(candidate.scope);
+            if (scheduledItemIds.has(candidate.id) || drainingScopes.has(candidateScope) || holdByScope.has(candidateScope)) continue;
+            if (deps.isSpawnBusy(candidateScope) || deps.hasBlockingWorkers(candidateScope)) continue;
+            if (deps.hasPendingWorkerReplays(candidateScope)) {
+                queueMicrotask(() => {
+                    deps.importPipeline()
+                        .then(({ drainPendingReplays }) => drainPendingReplays(candidateScope, { origin: 'system' }))
+                        .catch(err => console.error('[processQueue:drain]', (err as Error).message));
+                });
+                continue;
+            }
+            item = candidate;
+            break;
         }
+        if (!item) return;
 
-        messageQueue.length = 0;
-        if (batch.length > 1) {
-            messageQueue.push(...remaining, ...batch.slice(1));
-        } else {
-            messageQueue.push(...remaining);
-        }
+        const itemScope = normalizeScope(item.scope);
+        drainingScopes.add(itemScope);
+        scheduledItemIds.add(item.id);
+        queueMicrotask(() => { void processQueue(itemScope); });
 
-        const item = batch[0]!;
+        await lanes.run(itemScope, async () => {
+            const liveIndex = messageQueue.findIndex(candidate => candidate.id === item!.id);
+            if (liveIndex === -1) return;
+            messageQueue.splice(liveIndex, 1);
+            scheduledItemIds.delete(item!.id);
+        const groupKey = groupQueueKey(item.source, item.target);
         const combined = item.prompt;
         const source = item.source;
         const target = item.target;
@@ -327,7 +396,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         const overrides = item.overrides;
         const replyViaTarget = item.replyViaTarget;
         const origin: RuntimeOrigin = source || 'web';
-        console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
+        console.log(`[queue] processing message for ${groupKey}, ${messageQueue.length} remaining`);
 
         const effectiveSessionId = multiSessionEnabled
             ? (item.chatSessionId || deps.getActiveChatSession())
@@ -379,19 +448,27 @@ export function createQueueController(deps: QueueDeps): QueueController {
                     ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
             }
         } finally {
-            queueProcessing = false;
-            queueMicrotask(() => processQueue());
+            scheduledItemIds.delete(item.id);
+            drainingScopes.delete(itemScope);
+            queueMicrotask(() => { void processQueue(itemScope); });
         }
+        });
     }
 
-    function purgeQueueOnStop(reason: string): void {
-        if (messageQueue.length === 0) return;
-        const dropped = messageQueue.length;
-        const scopes = new Set(messageQueue.map(item => item.scope));
-        for (const item of messageQueue.splice(0)) {
+    function purgeQueueOnStop(scopeKey: string | null, reason: string): void {
+        const scope = scopeKey === null ? null : normalizeScope(scopeKey);
+        const droppedItems = messageQueue.filter(item => scope === null || normalizeScope(item.scope) === scope);
+        if (droppedItems.length === 0) return;
+        const droppedIds = new Set(droppedItems.map(item => item.id));
+        const scopes = new Set(droppedItems.map(item => item.scope));
+        for (let index = messageQueue.length - 1; index >= 0; index--) {
+            const item = messageQueue[index]!;
+            if (!droppedIds.has(item.id)) continue;
+            messageQueue.splice(index, 1);
+            scheduledItemIds.delete(item.id);
             try { deps.deleteQueuedMessage.run(item.id); } catch { /* best-effort */ }
         }
-        console.log(`[jaw:stop] cleared ${dropped} pending message(s) (reason=${reason})`);
+        console.log(`[jaw:stop] cleared ${droppedItems.length} pending message(s) (reason=${reason})`);
         if (multiSessionEnabled) {
             for (const scope of scopes) deps.broadcast('queue_update', queueUpdatePayload(scope));
         } else {
@@ -411,18 +488,25 @@ export function createQueueController(deps: QueueDeps): QueueController {
         getFallbackState,
         getQueuedMessageSnapshotForScope,
         messageQueue,
-        fallbackState,
-        isRetryPending: () => !!retryPendingTimer,
-        isQueueBusy: () => queueProcessing,
+        fallbackStateForScope,
+        isRetryPending: (scopeKey: string | null = 'default') => scopeKey === null
+            ? [...retryByScope.values()].some(state => state.timer !== null)
+            : Boolean(retryByScope.get(normalizeScope(scopeKey))?.timer),
+        isQueueBusy: (scopeKey: string | null = 'default') => scopeKey === null
+            ? drainingScopes.size > 0
+            : drainingScopes.has(normalizeScope(scopeKey)),
         purgeQueueOnStop,
-        retryState: {
-            get timer() { return retryPendingTimer; },
-            get resolve() { return retryPendingResolve as Function | null; },
-            get origin() { return retryPendingOrigin; },
-            setTimer: (t: ReturnType<typeof setTimeout> | null) => { retryPendingTimer = t; },
-            setResolve: (r: any) => { retryPendingResolve = r; },
-            setOrigin: (o: string | null) => { retryPendingOrigin = o; },
-            setIsEmployee: (v: boolean) => { retryPendingIsEmployee = v; },
+        retryStateForScope: (scopeKey: string) => {
+            const state = retryEntry(scopeKey);
+            return {
+                get timer() { return state.timer; },
+                get resolve() { return state.resolve as Function | null; },
+                get origin() { return state.origin; },
+                setTimer: (t: ReturnType<typeof setTimeout> | null) => { state.timer = t; },
+                setResolve: (r: any) => { state.resolve = r; },
+                setOrigin: (o: string | null) => { state.origin = o; },
+                setIsEmployee: (v: boolean) => { state.isEmployee = v; },
+            };
         },
     };
 }

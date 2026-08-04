@@ -19,6 +19,7 @@ import {
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
+import { currentSessionScope } from '../core/session-context.js';
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, extractOutputChunk, logEventSummary, flushClaudeBuffers, flushOpenCodeBuffers } from './events.js';
 import { detectSmokeResponse } from './smoke-detector.js';
@@ -30,7 +31,7 @@ import {
 } from './session-persistence.js';
 import { isCompactMarkerRow } from '../core/compact.js';
 import { isRuntimeSettingsMutationInFlight, waitForRuntimeSettingsIdle } from '../core/runtime-settings-gate.js';
-import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAllWorkers } from '../orchestrator/worker-registry.js';
+import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAllWorkers, clearWorkersForScope } from '../orchestrator/worker-registry.js';
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
@@ -103,7 +104,6 @@ import { getEmployeeMcpServers } from './mcp-passthrough.js';
 
 // ─── State ───────────────────────────────────────────
 
-export let activeProcess: ChildProcess | null = null;
 export const activeProcesses = new Map<string, ChildProcess>(); // agentId → child process
 
 /** Kill reason recorded when a duplicate registration reaps the previous child. */
@@ -163,17 +163,65 @@ export interface MainSessionMeta {
     requestId?: string;
     replyViaTarget?: boolean;
     scopeId?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
     cli?: string;
     model?: string;
     effectiveProvider?: string;
     policyVerdicts?: PolicyVerdict[];
 }
-let currentMainMeta: MainSessionMeta | null = null;
-export function getCurrentMainMeta(): MainSessionMeta | null {
-    return currentMainMeta;
+
+export type MainRunState = {
+    process: ChildProcess | null;
+    starting: boolean;
+    steering: boolean;
+    ownerGeneration: number;
+    meta: MainSessionMeta;
+    cancelPending?: (reason: string) => void;
+    cancelTurn?: (reason: string) => void;
+};
+
+export const activeMainProcesses = new Map<string, MainRunState>();
+
+export function getCurrentMainMeta(scopeKey?: string): MainSessionMeta | null {
+    const scope = scopeKey ?? currentSessionScope()?.scope ?? 'default';
+    return activeMainProcesses.get(scope)?.meta ?? null;
 }
-export function setCurrentMainMeta(meta: MainSessionMeta | null): void {
-    currentMainMeta = meta;
+
+export function setCurrentMainMeta(scopeKey: string, meta: MainSessionMeta | null): void;
+export function setCurrentMainMeta(meta: MainSessionMeta | null): void;
+export function setCurrentMainMeta(scopeKeyOrMeta: string | MainSessionMeta | null, nextMeta?: MainSessionMeta | null): void {
+    const scopeKey = typeof scopeKeyOrMeta === 'string'
+        ? scopeKeyOrMeta
+        : currentSessionScope()?.scope ?? 'default';
+    const meta = typeof scopeKeyOrMeta === 'string' ? nextMeta ?? null : scopeKeyOrMeta;
+    const run = activeMainProcesses.get(scopeKey);
+    if (!meta) {
+        activeMainProcesses.delete(scopeKey);
+        return;
+    }
+    if (run) {
+        run.meta = meta;
+    } else {
+        activeMainProcesses.set(scopeKey, {
+            process: null,
+            starting: false,
+            steering: false,
+            ownerGeneration: 0,
+            meta,
+        });
+    }
+}
+
+export function releaseMainRun(
+    scopeKey: string,
+    child: ChildProcess | null,
+    ownerGeneration: number,
+): boolean {
+    const run = activeMainProcesses.get(scopeKey);
+    if (!run || run.process !== child || run.ownerGeneration !== ownerGeneration) return false;
+    activeMainProcesses.delete(scopeKey);
+    return true;
 }
 
 export function buildAiERuntimeStatusMeta(cli: string, provider: string, model: string): Record<string, unknown> {
@@ -349,7 +397,7 @@ export function killAgentById(agentId: string): boolean {
 export { memoryFlushCounter, flushCycleCount } from './memory-flush-controller.js';
 
 const queueCtrl = createQueueController({
-    isSpawnBusy: () => Boolean(activeProcess) || mainSpawnStarting || steerInProgress || queueCtrl.isRetryPending(),
+    isSpawnBusy: (scopeKey) => isAgentBusy(scopeKey),
     hasBlockingWorkers,
     hasPendingWorkerReplays,
     insertMessage,
@@ -378,27 +426,31 @@ export const {
     getQueuedMessageSnapshotForScope,
 } = queueCtrl;
 
-let mainSpawnStarting = false;
-let cancelPendingMainSpawn: ((reason: string) => void) | null = null;
-let steerInProgress = false;
-let cancelActiveCodexAppTurn: ((reason: string) => void) | null = null;
-let cancelActivePiTurn: ((reason: string) => void) | null = null;
 const piProfileFingerprintKey = crypto.randomBytes(32);
 
-export function setSteerInProgress(v: boolean): void {
-    const was = steerInProgress;
-    steerInProgress = v;
-    if (was && !v) queueMicrotask(() => processQueue());
+export function setSteerInProgress(scopeKey: string, value: boolean): void;
+export function setSteerInProgress(value: boolean): void;
+export function setSteerInProgress(scopeKeyOrValue: string | boolean, nextValue?: boolean): void {
+    const scopeKey = typeof scopeKeyOrValue === 'string' ? scopeKeyOrValue : 'default';
+    const value = typeof scopeKeyOrValue === 'boolean' ? scopeKeyOrValue : nextValue === true;
+    const run = activeMainProcesses.get(scopeKey);
+    if (!run) return;
+    const was = run.steering;
+    run.steering = value;
+    if (was && !value) queueMicrotask(() => { void processQueue(scopeKey); });
 }
 
-export function isSteerInProgress(): boolean {
-    return steerInProgress;
+export function isSteerInProgress(scopeKey = 'default'): boolean {
+    return activeMainProcesses.get(scopeKey)?.steering === true;
 }
 
-export function isAgentBusy(): boolean {
-    // jwc in-process turns hold no ChildProcess, so activeProcess stays null —
-    // fold the resident runtime's own busy flag in (110.3 §D).
-    return !!activeProcess || jawRuntime.busy || queueCtrl.isRetryPending() || mainSpawnStarting || steerInProgress;
+export function isAgentBusy(scopeKey: string | null = 'default'): boolean {
+    if (scopeKey === null) {
+        return activeMainProcesses.size > 0 || jawRuntime.busy || queueCtrl.isRetryPending(null);
+    }
+    return activeMainProcesses.has(scopeKey)
+        || (scopeKey === 'default' && jawRuntime.busy)
+        || queueCtrl.isRetryPending(scopeKey);
 }
 
 // ─── Kill / Steer ────────────────────────────────────
@@ -417,24 +469,25 @@ function configuredPositiveMs(value: string | undefined, fallback: number): numb
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function getActiveMainCli(): string | null {
-    return typeof currentMainMeta?.cli === 'string' ? currentMainMeta.cli : null;
+function getActiveMainCli(scopeKey: string): string | null {
+    const cli = activeMainProcesses.get(scopeKey)?.meta.cli;
+    return typeof cli === 'string' ? cli : null;
 }
 
-function isActiveAiEPtyRuntime(): boolean {
-    const cli = getActiveMainCli();
+function isActiveAiEPtyRuntime(scopeKey: string): boolean {
+    const cli = getActiveMainCli(scopeKey);
     return cli === 'claude-e' || cli === 'ai-e';
 }
 
-function getKillPolicy(reason: string): { signal: NodeJS.Signals; escalationMs: number } {
-    if (reason === 'steer' && isActiveAiEPtyRuntime()) {
+function getKillPolicy(scopeKey: string, reason: string): { signal: NodeJS.Signals; escalationMs: number } {
+    if (reason === 'steer' && isActiveAiEPtyRuntime(scopeKey)) {
         return { signal: 'SIGINT', escalationMs: CLAUDE_E_STEER_KILL_ESCALATION_MS };
     }
     return { signal: 'SIGTERM', escalationMs: DEFAULT_KILL_ESCALATION_MS };
 }
 
-export function getSteerWaitMsForActiveAgent(): number {
-    return isActiveAiEPtyRuntime() ? CLAUDE_E_STEER_WAIT_MS : DEFAULT_STEER_WAIT_MS;
+export function getSteerWaitMsForActiveAgent(scopeKey = 'default'): number {
+    return isActiveAiEPtyRuntime(scopeKey) ? CLAUDE_E_STEER_WAIT_MS : DEFAULT_STEER_WAIT_MS;
 }
 
 /** Get kill reason for a process (by PID), consuming it */
@@ -456,21 +509,16 @@ function consumeKillReason(pid: number | undefined): string | null {
  * 도 검사하므로, 이걸 비우지 않으면 stop 직후 새 메시지가 busy 분기 → 큐로 떨어지고
  * 프론트는 (1) 낙관 bubble + (2) applyQueuedOverlay 가 만든 queued bubble = 2개를 보여준다.
  */
-function clearWorkerSlotsOnStop(reason: string) {
-    const active = getActiveWorkers().length;
-    if (active === 0 && !hasPendingWorkerReplays()) return;
-    clearAllWorkers();
-    console.log(`[jaw:stop] cleared worker registry (active=${active}, reason=${reason})`);
+function clearWorkerSlotsOnStop(scopeKey: string, reason: string) {
+    const active = getActiveWorkers(scopeKey).length;
+    if (active === 0 && !hasPendingWorkerReplays(scopeKey)) return;
+    clearWorkersForScope(scopeKey);
+    console.log(`[jaw:stop] cleared worker registry (active=${active}, scope=${scopeKey}, reason=${reason})`);
 }
 
-function clearMainLiveRunOnStop(reason: string): void {
+function clearMainLiveRunOnStop(scopeKey: string, reason: string): void {
     if (reason !== 'api' && reason !== 'user' && reason !== 'steer') return;
-    const scope = currentMainMeta?.scopeId || resolveOrcScope(stripUndefined({
-        origin: currentMainMeta?.origin || 'web',
-        chatId: currentMainMeta?.chatId,
-        workingDir: settings["workingDir"] || null,
-    }));
-    clearLiveRun(scope);
+    clearLiveRun(scopeKey);
 }
 
 /**
@@ -478,8 +526,9 @@ function clearMainLiveRunOnStop(reason: string): void {
  * below never touch them — abort the resident runtime session explicitly or
  * /api/stop is a no-op while jwc streams (devlog 260703 tui_steer_esc_rca).
  */
-function abortInProcessRuntimeOnStop(reason: string): boolean {
+function abortInProcessRuntimeOnStop(scopeKey: string, reason: string): boolean {
     if (reason !== 'api' && reason !== 'user' && reason !== 'steer') return false;
+    if (getActiveMainCli(scopeKey) !== 'jwc') return false;
     if (!jawRuntime.busy) return false;
     jawRuntime.abort().catch((err: unknown) => {
         console.warn('[jaw:stop] jwc abort failed', (err as Error)?.message || err);
@@ -487,35 +536,37 @@ function abortInProcessRuntimeOnStop(reason: string): boolean {
     return true;
 }
 
-export function killActiveAgent(reason = 'user') {
-    const hadTimer = queueCtrl.isRetryPending();
-    const cancelledPendingMain = cancelPendingMainSpawn ? (cancelPendingMainSpawn(reason), true) : false;
-    clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
-    clearMainLiveRunOnStop(reason);
-    const abortedInProcess = abortInProcessRuntimeOnStop(reason);
+export function killActiveAgent(scopeKey: string, reason: string): boolean;
+export function killActiveAgent(reason?: string): boolean;
+export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
+    const scopeKey = scopedReason === undefined ? 'default' : scopeKeyOrReason;
+    const reason = scopedReason ?? scopeKeyOrReason;
+    const run = activeMainProcesses.get(scopeKey);
+    const hadTimer = queueCtrl.isRetryPending(scopeKey);
+    const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
+    clearRetryTimer(scopeKey, false);
+    clearMainLiveRunOnStop(scopeKey, reason);
+    const abortedInProcess = abortInProcessRuntimeOnStop(scopeKey, reason);
     // Fix A: 사용자 stop은 큐도 폐기. steer/internal kill은 큐 보존.
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
     if (reason === 'api' || reason === 'user') {
-        queueCtrl.purgeQueueOnStop(reason);
-        clearWorkerSlotsOnStop(reason);
+        queueCtrl.purgeQueueOnStop(scopeKey, reason);
+        clearWorkerSlotsOnStop(scopeKey, reason);
     }
-    if (cancelActiveCodexAppTurn && getActiveMainCli() === 'codex-app') {
-        if (activeProcess?.pid) killReasons.set(activeProcess.pid, reason);
-        console.log(`[jaw:kill] reason=${reason} cli=codex-app action=lease.cancel`);
-        cancelActiveCodexAppTurn(reason);
-        if (reason === 'api' || reason === 'user' || reason === 'steer') activeProcess = null;
+    if (run?.cancelTurn && (getActiveMainCli(scopeKey) === 'codex-app' || getActiveMainCli(scopeKey) === 'pi')) {
+        if (run.process?.pid) killReasons.set(run.process.pid, reason);
+        console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey)} action=lease.cancel`);
+        run.cancelTurn(reason);
+        if (reason === 'api' || reason === 'user' || reason === 'steer') activeMainProcesses.delete(scopeKey);
         return true;
     }
-    if (cancelActivePiTurn && getActiveMainCli() === 'pi') {
-        if (activeProcess?.pid) killReasons.set(activeProcess.pid, reason);
-        console.log(`[jaw:kill] reason=${reason} cli=pi action=lease.cancel`);
-        cancelActivePiTurn(reason);
-        if (reason === 'api' || reason === 'user' || reason === 'steer') activeProcess = null;
-        return true;
+    const activeProcess = run?.process ?? null;
+    if (!activeProcess) {
+        if (reason === 'api' || reason === 'user' || reason === 'steer') activeMainProcesses.delete(scopeKey);
+        return hadTimer || cancelledPendingMain || abortedInProcess;
     }
-    if (!activeProcess) return hadTimer || cancelledPendingMain || abortedInProcess;  // timer/gated spawn/jwc abort 취소도 "killed" 취급
-    const policy = getKillPolicy(reason);
-    console.log(`[jaw:kill] reason=${reason} cli=${getActiveMainCli() || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
+    const policy = getKillPolicy(scopeKey, reason);
+    console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey) || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
     if (activeProcess.pid) killReasons.set(activeProcess.pid, reason);
     try {
         if (activeProcess.pid) {
@@ -543,22 +594,19 @@ export function killActiveAgent(reason = 'user') {
     // 실제 child 종료는 위 setTimeout SIGKILL이 백그라운드에서 마무리.
     // exit handler의 setActiveProcess(null) / activeProcesses.delete 는 idempotent.
     if (reason === 'api' || reason === 'user' || reason === 'steer') {
-        activeProcess = null;
+        activeMainProcesses.delete(scopeKey);
     }
     return true;
 }
 
 export function killAllAgents(reason = 'user') {
-    const hadTimer = queueCtrl.isRetryPending();
-    const cancelledPendingMain = cancelPendingMainSpawn ? (cancelPendingMainSpawn(reason), true) : false;
-    clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
-    clearMainLiveRunOnStop(reason);
-    const abortedInProcess = abortInProcessRuntimeOnStop(reason);
-    // Fix A: 사용자 stop은 큐도 폐기. Fix C2: worker 슬롯도 비움.
-    if (reason === 'api' || reason === 'user') {
-        queueCtrl.purgeQueueOnStop(reason);
-        clearWorkerSlotsOnStop(reason);
+    const hadTimer = queueCtrl.isRetryPending(null);
+    const mainScopes = [...activeMainProcesses.keys()];
+    let killedMain = false;
+    for (const scopeKey of mainScopes) {
+        killedMain = killActiveAgent(scopeKey, reason) || killedMain;
     }
+    if (reason === 'api' || reason === 'user') queueCtrl.purgeQueueOnStop(null, reason);
     let killed = 0;
     for (const [id, proc] of activeProcesses) {
         console.log(`[jaw:killAll] killing ${id}, reason=${reason}`);
@@ -587,42 +635,48 @@ export function killAllAgents(reason = 'user') {
             ref.stderr?.destroy();
         }, 2000);
     }
-    // Also kill main activeProcess if not in map
-    if (activeProcess && !activeProcesses.has('main')) {
-        killActiveAgent(reason);
-    }
-    // Fix C1: 사용자 stop 시 isAgentBusy() 즉시 false. 실제 종료는 백그라운드 SIGKILL.
     if (reason === 'api' || reason === 'user') {
-        activeProcess = null;
         activeProcesses.clear();
+        activeMainProcesses.clear();
+        clearAllWorkers();
     }
-    return killed > 0 || !!activeProcess || hadTimer || cancelledPendingMain || abortedInProcess;
+    return killed > 0 || killedMain || hadTimer;
 }
 
-export function waitForProcessEnd(timeoutMs = 3000) {
-    if (!activeProcess) return Promise.resolve();
+export function waitForProcessEnd(scopeKey: string, timeoutMs?: number): Promise<void>;
+export function waitForProcessEnd(timeoutMs?: number): Promise<void>;
+export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default', scopedTimeout = 3000) {
+    const scopeKey = typeof scopeKeyOrTimeout === 'string' ? scopeKeyOrTimeout : 'default';
+    const timeoutMs = typeof scopeKeyOrTimeout === 'number' ? scopeKeyOrTimeout : scopedTimeout;
+    if (!activeMainProcesses.has(scopeKey)) return Promise.resolve();
     return new Promise<void>(resolve => {
         const check = setInterval(() => {
-            if (!activeProcess) { clearInterval(check); resolve(); }
+            if (!activeMainProcesses.has(scopeKey)) { clearInterval(check); resolve(); }
         }, 100);
         setTimeout(() => { clearInterval(check); resolve(); }, timeoutMs);
     });
 }
 
-export async function steerAgent(newPrompt: string, source: string) {
-    const steerWaitMs = getSteerWaitMsForActiveAgent();
-    const wasRunning = killActiveAgent('steer');
-    if (wasRunning) await waitForProcessEnd(steerWaitMs);
-    insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, getActiveChatSession());
-    broadcast('new_message', { role: 'user', content: newPrompt, source });
-    broadcast('steer_started', { prompt: newPrompt, origin: source || 'web' });
+export async function steerAgent(scopeKey: string, newPrompt: string, source: string) {
+    const run = activeMainProcesses.get(scopeKey);
+    if (run?.meta.cli === 'jwc' && jawRuntime.busy) {
+        await jawRuntime.steer(settings["workingDir"] || process.cwd(), newPrompt);
+        return;
+    }
+    const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
+    const wasRunning = killActiveAgent(scopeKey, 'steer');
+    if (wasRunning) await waitForProcessEnd(scopeKey, steerWaitMs);
+    const chatSessionId = run?.meta.chatSessionId || getActiveChatSession();
+    insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
+    broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+    broadcast('steer_started', { prompt: newPrompt, origin: source || 'web', scope: scopeKey });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
     const task = isResetIntent(newPrompt)
-        ? orchestrateReset({ origin, _skipInsert: true })
+        ? orchestrateReset({ origin, scope: scopeKey, chatSessionId, _skipInsert: true })
         : isContinueIntent(newPrompt)
-            ? orchestrateContinue({ origin, _skipInsert: true })
-            : orchestrate(newPrompt, { origin, _skipInsert: true });
+            ? orchestrateContinue({ origin, scope: scopeKey, chatSessionId, _skipInsert: true })
+            : orchestrate(newPrompt, { origin, scope: scopeKey, chatSessionId, _skipInsert: true });
     task.catch((err: Error) => {
         console.error('[steer:orchestrate]', err.message);
         broadcast('orchestrate_done', { text: `[error] ${err.message}`, error: true, origin });
@@ -795,6 +849,9 @@ interface SpawnOpts {
     employeeSessionId?: string;
     employeeOutputLen?: number;
     chatId?: string | number;
+    scopeKey?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
     cli?: string;
     model?: string;
     effort?: string;
@@ -827,20 +884,59 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const gateEligibleMain = mainManaged && !opts.agentId && !opts.internal && !opts._isFallback && !opts._isSmokeContinuation && !opts._isGoalContinuation;
     const isEmployee = !mainManaged;
     const empTag = isEmployee ? { isEmployee: true } : {};
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const capturedScope = currentSessionScope();
+    const scopeKey = multiSessionEnabled
+        ? (opts.scopeKey || capturedScope?.scope || resolveOrcScope(stripUndefined({
+            origin,
+            target: opts.target,
+            chatId: opts.chatId,
+            workingDir: settings["workingDir"] || null,
+            persistedScopeId: opts.remoteKey,
+            multiSessionEnabled,
+        })))
+        : 'default';
+    const chatSessionId = multiSessionEnabled
+        ? (opts.chatSessionId || capturedScope?.chatSessionId || getActiveChatSession())
+        : getActiveChatSession();
+    if (multiSessionEnabled) {
+        opts = stripUndefined({
+            ...opts,
+            scopeKey,
+            chatSessionId,
+            ...(opts.remoteKey ? { remoteKey: opts.remoteKey } : {}),
+        });
+    }
+
+    let mainRun = mainManaged ? activeMainProcesses.get(scopeKey) : undefined;
+    if (mainManaged && mainRun && !opts._settingsGateWaited) {
+        console.log(`[jaw] Agent already running for scope=${scopeKey}, skipping`);
+        return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
+    }
+    if (mainManaged && !mainRun) {
+        mainRun = {
+            process: null,
+            starting: false,
+            steering: false,
+            ownerGeneration: 0,
+            meta: { origin, scopeId: scopeKey, chatSessionId, ...(opts.remoteKey ? { remoteKey: opts.remoteKey } : {}) },
+        };
+        activeMainProcesses.set(scopeKey, mainRun);
+    }
 
     if (gateEligibleMain && !opts._settingsGateWaited && isRuntimeSettingsMutationInFlight()) {
-        if (activeProcess || queueCtrl.isRetryPending() || mainSpawnStarting) {
+        if (queueCtrl.isRetryPending(scopeKey) || mainRun?.starting) {
             console.log('[jaw] Agent already running, skipping');
             return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
         }
-        mainSpawnStarting = true;
+        mainRun!.starting = true;
         let cancelled = false;
         let cancelReason = 'user';
         const cancelThisSpawn = (reason: string) => {
             cancelled = true;
             cancelReason = reason;
         };
-        cancelPendingMainSpawn = cancelThisSpawn;
+        mainRun!.cancelPending = cancelThisSpawn;
         const promise: Promise<SpawnPromiseResult> = (async () => {
             try {
                 await waitForRuntimeSettingsIdle();
@@ -850,9 +946,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const next: SpawnResult = spawnAgent(prompt, { ...opts, _settingsGateWaited: true });
                 return await next.promise;
             } finally {
-                if (cancelPendingMainSpawn === cancelThisSpawn) cancelPendingMainSpawn = null;
-                mainSpawnStarting = false;
-                processQueue();
+                const latest = activeMainProcesses.get(scopeKey);
+                if (latest?.cancelPending === cancelThisSpawn) delete latest.cancelPending;
+                if (latest) latest.starting = false;
+                void processQueue(scopeKey);
             }
         })();
         return { child: null, promise };
@@ -862,13 +959,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Skip for employee spawns — distribute.ts manages AGENTS.md isolation
     if (!opts.internal && !opts._isFallback && !opts.agentId) regenerateB();
 
-    const liveScope = resolveOrcScope(stripUndefined({ origin, chatId: opts.chatId, workingDir: settings["workingDir"] || null }));
+    const liveScope = scopeKey;
     // Employee must not pollute boss's liveRun (see devlog 260423_employee_liverun_contamination)
     const effectiveLiveScope = mainManaged ? liveScope : null;
 
     // INVARIANT: 모든 외부 호출은 gateway.ts isAgentBusy()를 거침.
     // 직접 spawnAgent 호출 시 retryPendingTimer도 확인할 것.
-    if ((activeProcess || (mainSpawnStarting && gateEligibleMain && !opts._settingsGateWaited)) && mainManaged) {
+    if (mainManaged && mainRun?.starting && gateEligibleMain && !opts._settingsGateWaited) {
         console.log('[jaw] Agent already running, skipping');
         return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
     }
@@ -876,13 +973,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Capture Boss main session channel so disconnected worker results can be
     // replayed to the correct origin/chatId later. Cleared in lifecycle-handler.
     if (mainManaged) {
-        setCurrentMainMeta(stripUndefined({
+        setCurrentMainMeta(scopeKey, stripUndefined({
             origin,
             target: opts.target,
             chatId: opts.chatId,
             requestId: opts.requestId,
             replyViaTarget: opts.replyViaTarget,
             scopeId: liveScope,
+            chatSessionId,
+            ...(opts.remoteKey ? { remoteKey: opts.remoteKey } : {}),
         }));
     }
 
@@ -891,7 +990,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     const session = (getSession() as SessionRow | undefined) ?? {};
     const ownerGeneration = getSessionOwnershipGeneration();
+    if (mainRun) mainRun.ownerGeneration = ownerGeneration;
     let cli = resolveMainCli(opts.cli, settings, session);
+    if (mainRun) mainRun.meta.cli = cli;
 
     // Phase 52: Bootstrap consumption is moved BELOW the bucket-aware `isResume`
     // computation so we can use the authoritative per-bucket resume decision
@@ -899,8 +1000,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     // ─── Fallback retry: skip to fallback if retries exhausted ───
     if (!opts._isFallback && !opts.internal) {
-        const st = queueCtrl.fallbackState.get(cli);
-        if (st && st.retriesLeft <= 0) {
+        const st = queueCtrl.fallbackStateForScope(scopeKey).get(cli);
+        if (st?.fallbackCli && st.retriesLeft <= 0) {
             const fbAvail = detectCli(st.fallbackCli)?.available;
             if (fbAvail) {
                 console.log(`[jaw:fallback] ${cli} retries exhausted → direct ${st.fallbackCli}`);
@@ -924,9 +1025,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const jwcProvider = jwcOverrides?.['provider'] || jwcPerCli?.['provider'] || 'anthropic';
         const jwcCwd = settings["workingDir"] || process.cwd();
         if (!opts._skipInsert) {
-            insertMessage.run('user', prompt, 'jwc', jwcModel, settings["workingDir"] || null, getActiveChatSession());
+            insertMessage.run('user', prompt, 'jwc', jwcModel, settings["workingDir"] || null, chatSessionId);
         }
-        mainSpawnStarting = true;
+        mainRun!.starting = true;
         beginLiveRun(liveScope, 'jwc');
         broadcast('agent_status', { running: true, agentId: jwcLabel, cli: 'jwc' });
         const jwcEffort = jwcOverrides?.['effort'] || jwcPerCli?.['effort'] || '';
@@ -943,7 +1044,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 insertMessageWithTraceRun.run(
                     'assistant', finalText, 'jwc', jwcModel, null,
                     JSON.stringify(sanitizeToolLogForDurableStorage(live.toolLog)),
-                    settings["workingDir"] || null, live.traceRunId || null, getActiveChatSession(),
+                    settings["workingDir"] || null, live.traceRunId || null, chatSessionId,
                 );
                 broadcast('agent_done', { text: finalText, origin, ...(result.code === 0 ? {} : { error: true }) });
             } catch (err) {
@@ -952,10 +1053,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             } finally {
                 clearLiveRun(liveScope);
                 broadcast('agent_status', { running: false, agentId: jwcLabel, cli: 'jwc' });
-                mainSpawnStarting = false;
+                mainRun!.starting = false;
                 jawRuntime.setLiveScope(undefined);
+                releaseMainRun(scopeKey, null, ownerGeneration);
                 resolve!({ text: finalText, code: result.code });
-                processQueue();
+                void processQueue(scopeKey);
             }
         };
         // jawRuntime.prompt is designed never to reject, but guard defensively so a
@@ -990,13 +1092,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         : requestedModel;
     const runtimeModel = cli === 'cursor' ? resolveCursorModelVariant(model, effort) : model;
     if (mainManaged) {
-        setCurrentMainMeta(stripUndefined({
+        setCurrentMainMeta(scopeKey, stripUndefined({
             origin,
             target: opts.target,
             chatId: opts.chatId,
             requestId: opts.requestId,
             replyViaTarget: opts.replyViaTarget,
             scopeId: liveScope,
+            chatSessionId,
+            ...(opts.remoteKey ? { remoteKey: opts.remoteKey } : {}),
             cli,
             model: runtimeModel,
             effectiveProvider,
@@ -1255,7 +1359,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         promptChars: promptForArgs.length + (sysPrompt?.length || 0),
         prompt: `${sysPrompt || ''}\n${promptForArgs}`,
     });
-    if (policyVerdicts.length && currentMainMeta) currentMainMeta.policyVerdicts = policyVerdicts;
+    if (policyVerdicts.length && mainRun) mainRun.meta.policyVerdicts = policyVerdicts;
 
     // ─── DIFF-A: Preflight — verify CLI binary exists before spawn ───
     const detected = detectCli(cli);
@@ -1271,7 +1375,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (mainManaged) clearLiveRun(liveScope);
         broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
         resolve!({ text: '', code: 127 });
-        if (mainManaged) processQueue();
+        if (mainManaged) {
+            releaseMainRun(scopeKey, null, ownerGeneration);
+            void processQueue(scopeKey);
+        }
         cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
         return { child: null, promise: resultPromise };
     }
@@ -1313,8 +1420,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (!child) {
             throw new Error('Copilot ACP process was not created');
         }
-        if (mainManaged) activeProcess = child;
-        registerActiveProcess(agentLabel, child);
+        if (mainManaged) mainRun!.process = child;
+        else registerActiveProcess(agentLabel, child);
         if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
         if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 
@@ -1327,19 +1434,20 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             opts.lifecycle?.onExit?.(null);
             const msg = `Copilot ACP spawn failed: ${err.message}`;
             console.error(`[acp:error] ${msg}`);
-            activeProcesses.delete(agentLabel);
             if (mainManaged) {
-                activeProcess = null;
+                releaseMainRun(scopeKey, child, ownerGeneration);
                 clearLiveRun(liveScope);
                 broadcast('agent_status', { running: false, agentId: agentLabel });
+            } else {
+                activeProcesses.delete(agentLabel);
             }
             broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
             resolve!({ text: '', code: 1 });
-            if (mainManaged) processQueue();
+            if (mainManaged) void processQueue(scopeKey);
         });
 
         if (mainManaged && !opts.internal && !opts._skipInsert) {
-            insertMessage.run('user', prompt, cli, model, settings["workingDir"] || null, getActiveChatSession());
+            insertMessage.run('user', prompt, cli, model, settings["workingDir"] || null, chatSessionId);
         }
         if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag }, traceAudience);
 
@@ -1578,9 +1686,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 effortDefault: '', costLine: '',
                 resolve: resolve!,
                 activeProcesses,
-                setActiveProcess: (v) => { activeProcess = v; },
-                retryState: queueCtrl.retryState,
-                fallbackState: queueCtrl.fallbackState,
+                scopeKey,
+                childProcess: child,
+                releaseMainRun,
+                retryState: queueCtrl.retryStateForScope(scopeKey),
+                fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                 fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                 processQueue,
             }).catch((err: Error) => {
@@ -1705,7 +1815,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 return leaseCancel;
             };
             const cancelHook = (_reason: string) => { void requestCancel(); };
-            if (lease) cancelActivePiTurn = cancelHook;
+            if (lease && mainRun) mainRun.cancelTurn = cancelHook;
             const piWatchdog = attachWatchdog(child, agentLabel, (reason) => {
                 console.log(`[jaw:watchdog] cancelling ${agentLabel} (pi) — ${reason}`);
                 ctx.stallReason = reason;
@@ -1713,21 +1823,21 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             });
             ctx.stallWatchdog = piWatchdog;
 
-            if (mainManaged) activeProcess = child;
-            registerActiveProcess(agentLabel, child);
+            if (mainManaged) mainRun!.process = child;
+            else registerActiveProcess(agentLabel, child);
             if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, provider: profile.id, ...empTag });
             if (mainManaged && !opts.internal) {
                 beginLiveRun(liveScope, cli);
                 setLiveRunTraceId(liveScope, traceRunId);
             }
             if (mainManaged && !opts.internal && !opts._skipInsert) {
-                insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, getActiveChatSession());
+                insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, chatSessionId);
             }
             if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, provider: profile.id, ...empTag }, traceAudience);
 
             const releaseLease = async (): Promise<void> => {
                 if (leaseCancel) await leaseCancel;
-                if (cancelActivePiTurn === cancelHook) cancelActivePiTurn = null;
+                if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
                 if (lease) lease.release();
                 else cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
             };
@@ -1754,9 +1864,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     effortDefault: 'medium', costLine: '',
                     resolve: resolve!,
                     activeProcesses,
-                    setActiveProcess: (v) => { activeProcess = v; },
-                    retryState: queueCtrl.retryState,
-                    fallbackState: queueCtrl.fallbackState,
+                    scopeKey,
+                    childProcess: child,
+                    releaseMainRun,
+                    retryState: queueCtrl.retryStateForScope(scopeKey),
+                    fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                     processQueue,
                 });
@@ -1773,9 +1885,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     effortDefault: 'medium', costLine: '',
                     resolve: resolve!,
                     activeProcesses,
-                    setActiveProcess: (v) => { activeProcess = v; },
-                    retryState: queueCtrl.retryState,
-                    fallbackState: queueCtrl.fallbackState,
+                    scopeKey,
+                    childProcess: child,
+                    releaseMainRun,
+                    retryState: queueCtrl.retryStateForScope(scopeKey),
+                    fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                     processQueue,
                 }).catch((handleErr: Error) => {
@@ -1802,10 +1916,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             .update(profile.apiKey || '')
             .digest('hex')
             .slice(0, 12);
-        mainSpawnStarting = true;
+        mainRun!.starting = true;
         void acquirePiRuntime({
             key: {
-                scopeKey: `chat:${getActiveChatSession()}`,
+                scopeKey,
                 cwd: spawnCwd,
                 profileId: profile.id,
                 fullEndpoint: profile.endpoint,
@@ -1819,20 +1933,21 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             instructions: piSysPrompt,
             forceNew,
         }).then((lease) => {
-            mainSpawnStarting = false;
+            mainRun!.starting = false;
             ctx.sessionId = lease.session.sessionId;
             console.log(`[jaw:pi:pool] reused=${lease.reused} sessionId=${lease.session.sessionId || 'new'}`);
             const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent })
                 .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
             runPiTurn(lease.session.child, done, lease);
         }).catch((err: Error) => {
-            mainSpawnStarting = false;
+            mainRun!.starting = false;
             console.error(`[jaw:pi:pool] acquire failed: ${err.message}`);
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
             broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
+            releaseMainRun(scopeKey, null, ownerGeneration);
             resolve!({ text: '', code: 1 });
-            processQueue();
+            void processQueue(scopeKey);
         });
         return { child: null, promise: resultPromise };
     }
@@ -1974,8 +2089,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const runCodexAppTurn = async (appClient: CodexAppClient, lease: CodexAppLease | null): Promise<void> => {
             const child = appClient.proc;
             if (!child) throw new Error('Codex AppServer process was not created');
-            if (mainManaged) activeProcess = child;
-            registerActiveProcess(agentLabel, child);
+            if (mainManaged) mainRun!.process = child;
+            else registerActiveProcess(agentLabel, child);
             if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
 
             const processExit: { value: { code: number | null; signal: string | null } | null } = { value: null };
@@ -1996,7 +2111,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 return leaseCancel;
             };
             const cancelHook = (_reason: string) => { void requestLeaseCancel(); };
-            if (lease) cancelActiveCodexAppTurn = cancelHook;
+            if (lease && mainRun) mainRun.cancelTurn = cancelHook;
             const watchdogTimeout = (kind: 'idle' | 'absolute') => {
                 if (watchdogCancel) return;
                 console.warn(`[codex-app:turn] watchdog stall (${kind}, idleMs=${idleMs}, absoluteMs=${absoluteMs})`);
@@ -2085,7 +2200,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 clearTimeout(absoluteTimer);
                 markCodexProgress = () => {};
                 if (watchdogCancel) await watchdogCancel;
-                if (cancelActiveCodexAppTurn === cancelHook) cancelActiveCodexAppTurn = null;
+                if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
                 scope.dispose();
                 if (lease) lease.release();
                 else {
@@ -2114,9 +2229,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 effortDefault: '', costLine: '',
                 resolve: resolve!,
                 activeProcesses,
-                setActiveProcess: (v) => { activeProcess = v; },
-                retryState: queueCtrl.retryState,
-                fallbackState: queueCtrl.fallbackState,
+                scopeKey,
+                childProcess: child,
+                releaseMainRun,
+                retryState: queueCtrl.retryStateForScope(scopeKey),
+                fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                 fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                 processQueue,
             }).catch((err: Error) => {
@@ -2136,27 +2253,28 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             return { child, promise: resultPromise };
         }
 
-        mainSpawnStarting = true;
+        mainRun!.starting = true;
         void acquireCodexAppRuntime({
             binary: detected.path || 'codex', env: spawnEnv,
             key: {
-                scopeKey: `chat:${getActiveChatSession()}`,
+                scopeKey,
                 cwd: spawnCwd, model, effort, fastMode: effectiveFastMode,
             },
             storedThreadId: resumeSessionId || null,
             instructions: sysPrompt,
             forceNew,
         }).then(async (lease) => {
-            mainSpawnStarting = false;
+            mainRun!.starting = false;
             await runCodexAppTurn(lease.client, lease);
         }).catch((err: Error) => {
-            mainSpawnStarting = false;
+            mainRun!.starting = false;
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
             broadcast('agent_done', { text: `❌ Codex AppServer acquire failed: ${err.message}`, error: true, origin }, 'public');
+            releaseMainRun(scopeKey, null, ownerGeneration);
             resolve!({ text: '', code: 1 });
-            processQueue();
+            void processQueue(scopeKey);
         });
 
         return { child: null, promise: resultPromise };
@@ -2181,8 +2299,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(windowsSpawnUsesShell ? { shell: true } : {}),
     });
-    if (mainManaged) activeProcess = child;
-    registerActiveProcess(agentLabel, child);
+    if (mainManaged) mainRun!.process = child;
+    else registerActiveProcess(agentLabel, child);
     if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...runtimeStatusMeta, ...empTag });
     if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 
@@ -2224,19 +2342,20 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ? `CLI '${cli}' 실행 실패 (ENOEXEC). PATH의 실행 파일이 바이너리 또는 shebang 스크립트가 아닙니다. \`jaw doctor --json\`으로 깨진 shim을 확인하세요.`
                 : `CLI '${cli}' 실행 실패: ${err.message}`;
         console.error(`[jaw:${agentLabel}:error] ${msg}`);
-        activeProcesses.delete(agentLabel);
         if (mainManaged) {
-            activeProcess = null;
+            releaseMainRun(scopeKey, child, ownerGeneration);
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
+        } else {
+            activeProcesses.delete(agentLabel);
         }
         broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
         resolve!({ text: '', code: 127 });
-        if (mainManaged) processQueue();
+        if (mainManaged) void processQueue(scopeKey);
     });
 
     if (mainManaged && !opts.internal && !opts._skipInsert) {
-        insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, getActiveChatSession());
+        insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, chatSessionId);
     }
 
     if (cli === 'claude') {
@@ -2619,8 +2738,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             } catch (e) { console.warn('[jaw:agy] stale bucket clear failed:', (e as Error).message); }
             ctx.sessionId = null;
             if (agyResumeDecision.ok && !opts._agyStaleFreshRetry) {
-                activeProcesses.delete(agentLabel);
-                if (mainManaged) activeProcess = null;
+                if (mainManaged) releaseMainRun(scopeKey, child, ownerGeneration);
+                else activeProcesses.delete(agentLabel);
                 const { promise: freshPromise } = spawnAgent(prompt, {
                     ...opts, _agyStaleFreshRetry: true, _skipResume: true, _skipInsert: true,
                 });
@@ -2786,9 +2905,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             effortDefault: cli === 'grok' ? '' : 'medium', costLine,
             resolve: resolve!,
             activeProcesses,
-            setActiveProcess: (v) => { activeProcess = v; },
-            retryState: queueCtrl.retryState,
-            fallbackState: queueCtrl.fallbackState,
+            scopeKey,
+            childProcess: child,
+            releaseMainRun,
+            retryState: queueCtrl.retryStateForScope(scopeKey),
+            fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
             fallbackMaxRetries: FALLBACK_MAX_RETRIES,
             processQueue,
             ...(agyTotalOutputLen > 0 ? { outputLen: agyTotalOutputLen } : {}),

@@ -34,6 +34,8 @@ export interface WorkerReplayMeta {
     requestId?: string;
     replyViaTarget?: boolean;
     scopeId?: string;
+    chatSessionId?: string;
+    remoteKey?: string;
 }
 
 export interface WorkerSlot {
@@ -338,28 +340,34 @@ export function listWorkerProgressSnapshots(): WorkerProgressSnapshot[] {
     return snapshots;
 }
 
-export function getActiveWorkers(): WorkerSlot[] {
-    return [...workers.values()].filter((slot) => slot.state === 'running');
+function workerScope(slot: WorkerSlot): string {
+    return slot.replayMeta?.scopeId ?? 'default';
 }
 
-export function hasBlockingWorkers(): boolean {
+export function getActiveWorkers(scopeKey: string | null = null): WorkerSlot[] {
+    return [...workers.values()].filter(slot =>
+        slot.state === 'running' && (scopeKey === null || workerScope(slot) === scopeKey));
+}
+
+export function hasBlockingWorkers(scopeKey: string | null = 'default'): boolean {
     for (const slot of workers.values()) {
-        if (slot.state === 'running') return true;
+        if (slot.state === 'running' && (scopeKey === null || workerScope(slot) === scopeKey)) return true;
     }
     return false;
 }
 
-export function hasPendingWorkerReplays(): boolean {
+export function hasPendingWorkerReplays(scopeKey: string | null = 'default'): boolean {
     for (const slot of workers.values()) {
-        if (slot.pendingReplay) return true;
+        if (slot.pendingReplay && (scopeKey === null || workerScope(slot) === scopeKey)) return true;
     }
     return false;
 }
 
-export function listPendingWorkerResults(): Array<{ agentId: string; runId: string; employeeName: string; taskPreview: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> {
+export function listPendingWorkerResults(scopeKey = 'default'): Array<{ agentId: string; runId: string; employeeName: string; taskPreview: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> {
     const results: Array<{ agentId: string; runId: string; employeeName: string; taskPreview: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> = [];
     for (const slot of workers.values()) {
-        if (slot.state === 'done' && slot.pendingReplay && !slot.replayClaimed && slot.result !== null) {
+        if (slot.state === 'done' && slot.pendingReplay && !slot.replayClaimed
+            && slot.result !== null && workerScope(slot) === scopeKey) {
             results.push(stripUndefined({
                 agentId: slot.agentId,
                 runId: slot.runId,
@@ -374,9 +382,9 @@ export function listPendingWorkerResults(): Array<{ agentId: string; runId: stri
     return results;
 }
 
-export function claimWorkerReplay(agentId: string): boolean {
+export function claimWorkerReplay(agentId: string, scopeKey = 'default'): boolean {
     const slot = workers.get(agentId);
-    if (!slot || !slot.pendingReplay || slot.replayClaimed) return false;
+    if (!slot || !slot.pendingReplay || slot.replayClaimed || workerScope(slot) !== scopeKey) return false;
     slot.replayClaimed = true;
     return true;
 }
@@ -414,4 +422,10 @@ export function clearAllWorkers(): void {
     workers.clear();
     previousRuns.clear();
     previousRunIdsByAgentId.clear();
+}
+
+export function clearWorkersForScope(scopeKey: string): void {
+    for (const [agentId, slot] of workers) {
+        if (workerScope(slot) === scopeKey) workers.delete(agentId);
+    }
 }

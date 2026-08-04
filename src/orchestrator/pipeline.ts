@@ -12,6 +12,7 @@ import {
     getLatestUnconsumedAnchor,
 } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
+import { withSessionScope } from '../core/session-context.js';
 
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
@@ -22,7 +23,7 @@ import {
 } from '../memory/worklog.js';
 import {
     listPendingWorkerResults, claimWorkerReplay, markWorkerReplayed, releaseWorkerReplay,
-    getActiveWorkers, cancelWorker, clearAllWorkers,
+    getActiveWorkers, cancelWorker, clearWorkersForScope,
 } from './worker-registry.js';
 import { buildWorkerReplayNotice } from './worker-replay-notice.js';
 import { processQueue } from '../agent/spawn.js';
@@ -44,6 +45,7 @@ import {
     renderPlainElicitationSpec,
 } from '../shared/elicitation-spec.js';
 import { resolveOrcScope } from './scope.js';
+import { sessionLanes } from './session-lanes.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -204,14 +206,22 @@ export function buildApprovedPlanPromptBlock(
 // entry, orchestrate entry). Bookkeeping via claim/mark/releaseWorkerReplay
 // prevents double-injection. Each iteration recurses into orchestrate() with
 // _skipReplayDrain:true so we don't re-enter this loop.
-export async function drainPendingReplays(fallbackMeta: Record<string, any> = {}): Promise<void> {
-    const pendingResults = listPendingWorkerResults();
+export function drainPendingReplays(scopeKey?: string, fallbackMeta?: Record<string, any>): Promise<void>;
+export function drainPendingReplays(fallbackMeta?: Record<string, any>): Promise<void>;
+export async function drainPendingReplays(
+    scopeKeyOrMeta: string | Record<string, any> = 'default',
+    fallbackMeta: Record<string, any> = {},
+): Promise<void> {
+    const scopeKey = typeof scopeKeyOrMeta === 'string' ? scopeKeyOrMeta : 'default';
+    if (typeof scopeKeyOrMeta !== 'string') fallbackMeta = scopeKeyOrMeta;
+    const pendingResults = listPendingWorkerResults(scopeKey);
     for (const pr of pendingResults) {
-        if (!claimWorkerReplay(pr.agentId)) continue;
+        if (!claimWorkerReplay(pr.agentId, scopeKey)) continue;
         // Prefer per-slot replayMeta captured at dispatch time so the result
         // routes back to the original channel (web/telegram/discord + chatId).
         // Fallback meta (caller-supplied) only fills in when slot meta is absent.
         const slotMeta = pr.meta || {};
+        const chatSessionId = slotMeta.chatSessionId || fallbackMeta["chatSessionId"] || 'default';
         const meta = {
             ...fallbackMeta,
             ...(slotMeta.origin ? { origin: slotMeta.origin } : {}),
@@ -219,12 +229,18 @@ export async function drainPendingReplays(fallbackMeta: Record<string, any> = {}
             ...(slotMeta.chatId != null ? { chatId: slotMeta.chatId } : {}),
             ...(slotMeta.requestId ? { requestId: slotMeta.requestId } : {}),
             ...(slotMeta.replyViaTarget === true || fallbackMeta["replyViaTarget"] === true ? { replyViaTarget: true } : {}),
+            scope: scopeKey,
+            chatSessionId,
+            ...(slotMeta.remoteKey ? { remoteKey: slotMeta.remoteKey } : {}),
         };
         try {
             const replayText = buildWorkerReplayNotice(pr);
-            await orchestrate(replayText, { ...meta, _workerResult: true, _skipInsert: true, _skipReplayDrain: true });
+            await sessionLanes.run(scopeKey, () => withSessionScope(
+                { scope: scopeKey, chatSessionId },
+                () => orchestrate(replayText, { ...meta, _workerResult: true, _skipInsert: true, _skipReplayDrain: true }),
+            ));
             markWorkerReplayed(pr.agentId);
-            processQueue();
+            void processQueue(scopeKey);
         } catch {
             releaseWorkerReplay(pr.agentId);
             break;
@@ -244,18 +260,18 @@ export async function orchestrate(
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
     const userText = String(prompt || '').trim();
-
-    // --- drain pending worker results before normal processing ---
-    if (!meta["_skipReplayDrain"]) {
-        await drainPendingReplays(meta);
-    }
-    const runSpawnAgent: SpawnAgentLike = typeof meta["_spawnAgent"] === 'function'
-        ? meta["_spawnAgent"]
-        : spawnAgent;
     const scope = meta["scope"] || resolveOrcScope({
         origin, target, chatId, persistedScopeId: meta["remoteKey"],
         multiSessionEnabled: settings["multiSession"]?.enabled === true,
     });
+
+    // --- drain pending worker results before normal processing ---
+    if (!meta["_skipReplayDrain"]) {
+        await drainPendingReplays(scope, meta);
+    }
+    const runSpawnAgent: SpawnAgentLike = typeof meta["_spawnAgent"] === 'function'
+        ? meta["_spawnAgent"]
+        : spawnAgent;
     let ctx = getCtx(scope);
 
     let state = getState(scope);
@@ -433,6 +449,11 @@ export async function orchestrate(
         chatId,
         requestId,
         replyViaTarget,
+        ...(settings["multiSession"]?.enabled === true ? {
+            scopeKey: scope,
+            ...(typeof meta["chatSessionId"] === 'string' ? { chatSessionId: meta["chatSessionId"] } : {}),
+            ...(typeof meta["remoteKey"] === 'string' ? { remoteKey: meta["remoteKey"] } : {}),
+        } : {}),
         _skipInsert: !!meta["_skipInsert"],
         _heartbeatAnchorId: meta["_heartbeatAnchorId"],
         ...(overrides?.model ? { model: overrides.model } : {}),
@@ -664,18 +685,18 @@ export async function orchestrateReset(
     const target = meta["target"];
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
-    // --- cancel PABCD workers only — preserve main agent + message queue ---
-    for (const w of getActiveWorkers()) {
-        killAgentById(w.agentId);
-        cancelWorker(w.agentId);
-    }
-    clearAllWorkers();
-    clearAllEmployeeSessions.run();
-    resetFriction();
     const scope = meta["scope"] || resolveOrcScope({
         origin, target, chatId, persistedScopeId: meta["remoteKey"],
         multiSessionEnabled: settings["multiSession"]?.enabled === true,
     });
+    // --- cancel PABCD workers only — preserve main agent + message queue ---
+    for (const w of getActiveWorkers(scope)) {
+        killAgentById(w.agentId);
+        cancelWorker(w.agentId);
+    }
+    clearWorkersForScope(scope);
+    clearAllEmployeeSessions.run();
+    resetFriction();
     resetState(scope);
     try {
         const { drainPending } = await import('../memory/heartbeat.js');
