@@ -69,6 +69,24 @@ npm run build:frontend  # public/js·public/manager 변경 시 (→ public/dist)
 - 프론트엔드(`public/js/*.ts`, `public/manager/src/**`)는 `build:frontend`만으로 충분하며 서버 재시작 없이 브라우저 새로고침으로 반영된다 (`public/dist` 정적 서빙).
 - 반영 여부 검증: `grep <new-symbol> dist/...` 또는 해당 엔드포인트 curl로 확인 후 안내.
 
+### Test Scope (`npm test`는 전체가 아니다)
+
+`npm test`는 root와 `tests/unit/`만 실행한다 (`tests/run.mts`의 파일 수집). `tests/integration/`은
+**포함되지 않으므로**, "전체 스위트 통과"를 근거로 삼기 전에 범위를 확인할 것.
+
+```bash
+npm test              # root + tests/unit/ (integration 제외)
+npm run test:all      # + tests/integration/
+npm run test:integration
+```
+
+- 회귀 판정은 깨끗한 baseline과 `comm -13`으로 비교해 **신규 실패 0건**을 증명한다.
+- 테스트 파일은 각자 별도 프로세스로 돌지만 `CLI_JAW_HOME`과 SQLite 파일은 공유한다.
+  실제 DB를 건드리는 케이스를 여러 파일에 나눠 두면 잠금으로 간헐 실패한다 — 한 파일에 모으거나
+  주입 지점으로 DB를 우회할 것.
+- 소스를 정규식으로 검사하는 테스트는 리팩터링 때마다 의미 없이 깨진다. 새로 만들지 말고,
+  기존 것이 깨지면 문자열을 갱신하기 전에 **동작 검증으로 교체할 수 있는지** 먼저 볼 것.
+
 ### Line Count Format (`str_func.md`)
 
 File tree の行数は **`(NNNL)`** 형식으로 기재. 두 가지 변형 허용:
