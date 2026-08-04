@@ -267,6 +267,7 @@ function createDefaultSettings() {
             autoReflectAfterFlush: false,
             flushMessageWindow: 0,
         },
+        search: { engine: 'like' as 'fts5' | 'like' },
         trace: {
             retentionDays: 7,
             maxRows: 50000,
@@ -545,6 +546,11 @@ export function loadSettings() {
             discord: { ...defaults.discord, ...(raw.discord || {}) },
             slack: { ...defaults.slack, ...(raw.slack || {}) },
             memory: { ...defaults.memory, ...(raw.memory || {}) },
+            search: {
+                ...defaults.search,
+                ...(raw.search || {}),
+                engine: raw.search?.engine === 'fts5' ? 'fts5' : 'like',
+            },
             trace: { ...defaults.trace, ...(raw.trace || {}) },
             avatar: {
                 agent: { ...defaults.avatar.agent, ...(raw.avatar?.agent || {}) },
