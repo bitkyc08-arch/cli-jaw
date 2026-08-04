@@ -3,7 +3,7 @@
 // State persisted in jaw.db orc_state table.
 // CLI (bin/commands/orchestrate.ts) and server share the same DB.
 
-import { getOrcState, setOrcState, resetOrcState, resetAllOrcStates, deleteNonDefaultOrcStates } from '../core/db.js';
+import { getOrcState, setOrcState, resetOrcState, resetAllOrcStates } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
 import { readLatestWorklog } from '../memory/worklog.js';
 import { checkAttestationGate } from './attestation.js';
@@ -167,10 +167,6 @@ export function resetAllStaleStates(): number {
   if (cleared > 0) {
     console.log(`[jaw:pabcd] cleared ${cleared} stale orchestration state(s) (>24h old)`);
     broadcast('orc_state', { state: 'IDLE', title: '', scope: 'all' });
-  }
-  const pruned = deleteNonDefaultOrcStates.run();
-  if (pruned.changes > 0) {
-    console.log(`[jaw:pabcd] pruned ${pruned.changes} non-default scope row(s)`);
   }
   return cleared;
 }

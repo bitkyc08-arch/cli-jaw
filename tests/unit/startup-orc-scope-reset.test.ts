@@ -58,7 +58,7 @@ test('SOS-004: resetAllStaleStates preserves recent states and resets stale ones
     assert.equal(getState('default'), 'IDLE', 'stale state (>24h) must be reset');
 });
 
-test('SOS-005: resetAllStaleStates prunes non-default scope rows', () => {
+test('SOS-005: resetAllStaleStates preserves fresh non-default rows', () => {
     setState('A', {
         originalPrompt: 'legacy', workingDir: '/tmp', scopeId: 'legacy:scope',
         plan: null, workerResults: [], origin: 'web',
@@ -66,5 +66,5 @@ test('SOS-005: resetAllStaleStates prunes non-default scope rows', () => {
     assert.equal(getState('legacy:scope'), 'A');
 
     resetAllStaleStates();
-    assert.equal(getState('legacy:scope'), 'IDLE');
+    assert.equal(getState('legacy:scope'), 'A');
 });

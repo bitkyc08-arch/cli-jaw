@@ -43,7 +43,7 @@ import {
     extractElicitationSpecs,
     renderPlainElicitationSpec,
 } from '../shared/elicitation-spec.js';
-// scope is globally 'default' — resolveOrcScope/findActiveScope no longer needed here
+import { resolveOrcScope } from './scope.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -252,7 +252,10 @@ export async function orchestrate(
     const runSpawnAgent: SpawnAgentLike = typeof meta["_spawnAgent"] === 'function'
         ? meta["_spawnAgent"]
         : spawnAgent;
-    const scope = 'default';
+    const scope = meta["scope"] || resolveOrcScope({
+        origin, target, chatId, persistedScopeId: meta["remoteKey"],
+        multiSessionEnabled: settings["multiSession"]?.enabled === true,
+    });
     let ctx = getCtx(scope);
 
     let state = getState(scope);
@@ -274,7 +277,7 @@ export async function orchestrate(
     const numericResolution = state === 'P' && !ctx?.plan
         ? resolveNumericReference(
             userText,
-            getRecentMessagesLite.all(settings["workingDir"] || null, getActiveChatSession(), 20) as Array<{ role?: string; content?: string }>,
+            getRecentMessagesLite.all(settings["workingDir"] || null, meta["chatSessionId"] || getActiveChatSession(), 20) as Array<{ role?: string; content?: string }>,
         )
         : null;
     if (numericResolution?.needsConfirmation) {
@@ -285,6 +288,7 @@ export async function orchestrate(
             target,
             requestId,
             replyViaTarget,
+            ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
         return;
     }
@@ -607,6 +611,7 @@ export async function orchestrate(
         target,
         requestId,
         replyViaTarget,
+        ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         ...(typeof result['agyPlannerOnly'] === 'boolean' ? { agyPlannerOnly: result['agyPlannerOnly'] } : {}),
         ...(typeof result['agyCheckpointSeen'] === 'boolean' ? { agyCheckpointSeen: result['agyCheckpointSeen'] } : {}),
         ...(elicitationSpecs.length > 0 ? { elicitationSpecs } : {}),
@@ -623,7 +628,10 @@ export async function orchestrateContinue(
     const target = meta["target"];
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
-    const scope = 'default';
+    const scope = meta["scope"] || resolveOrcScope({
+        origin, target, chatId, persistedScopeId: meta["remoteKey"],
+        multiSessionEnabled: settings["multiSession"]?.enabled === true,
+    });
     const state = getState(scope);
 
     // Active PABCD → resume from current state
@@ -642,6 +650,7 @@ export async function orchestrateContinue(
         target,
         requestId,
         replyViaTarget,
+        ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
 }
 
@@ -663,7 +672,10 @@ export async function orchestrateReset(
     clearAllWorkers();
     clearAllEmployeeSessions.run();
     resetFriction();
-    const scope = 'default';
+    const scope = meta["scope"] || resolveOrcScope({
+        origin, target, chatId, persistedScopeId: meta["remoteKey"],
+        multiSessionEnabled: settings["multiSession"]?.enabled === true,
+    });
     resetState(scope);
     try {
         const { drainPending } = await import('../memory/heartbeat.js');
@@ -680,6 +692,7 @@ export async function orchestrateReset(
             target,
             requestId,
             replyViaTarget,
+            ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
         return;
     }
@@ -692,5 +705,6 @@ export async function orchestrateReset(
         target,
         requestId,
         replyViaTarget,
+        ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
 }
