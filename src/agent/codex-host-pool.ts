@@ -170,6 +170,16 @@ function createLane(host: Host, meta: TokenMeta, scopeKey: string, waiters: Wait
     host.lanes.set(laneScope, lane);
     return lane;
 }
+
+// Apply a reset that landed while the lane was running. Called on EVERY path back to
+// idle, not just lease release: a lane that returns to idle still holding a revoked
+// thread would hand that conversation to the next turn.
+function consumeRevokedBinding(lane: Lane): void {
+    if (!lane.bindingRevoked) return;
+    lane.bindingRevoked = false;
+    lane.threadId = null;
+    lane.bindingEpoch = nextBindingEpoch++;
+}
 function replaceClosedLane(host: Host, lane: Lane): void {
     const waiters = lane.waiters.splice(0);
     removeLane(host, lane);
@@ -191,6 +201,7 @@ async function closeLane(host: Host, lane: Lane): Promise<void> {
         catch (error) {
             if (host.state !== 'ready' || host.lanes.get(lane.laneScope) !== lane) return;
             if (host.client!.getActiveTurnId(lane.laneScope)) return;
+            consumeRevokedBinding(lane);
             lane.state = 'idle'; lane.lastUsedAt = Date.now(); wakeHead(lane); return;
         }
         if (host.state === 'ready' && host.lanes.get(lane.laneScope) === lane) replaceClosedLane(host, lane);
@@ -349,13 +360,9 @@ async function bindLane(
                 if (meta.host.state !== 'ready' || meta.host.generation !== meta.generation
                     || meta.host.lanes.get(lane.laneScope) !== lane || lane.state !== 'busy') return;
                 // A reset that landed mid-turn could not drop this binding then, because
-                // the turn was still using it. It gets dropped here so the next
-                // acquisition cannot continue a conversation that was already discarded.
-                if (lane.bindingRevoked) {
-                    lane.bindingRevoked = false;
-                    lane.threadId = null;
-                    lane.bindingEpoch = nextBindingEpoch++;
-                }
+                // the turn was still using it. It is dropped here, before any waiter is
+                // woken, so the next acquisition cannot continue a discarded conversation.
+                consumeRevokedBinding(lane);
                 lane.state = 'idle'; lane.lastUsedAt = Date.now(); meta.host.lastUsedAt = lane.lastUsedAt; wakeHead(lane);
             },
             cancel: async () => {

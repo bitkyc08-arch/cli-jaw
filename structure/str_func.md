@@ -101,7 +101,7 @@ cli-jaw/
 │   │   ├── alert-escalation.ts ← alert escalation event helper (86L)
 │   │   ├── cli-helpers.ts    ← Claude-like CLI 판별 helper (9L)
 │   │   ├── codex-app-client.ts ← Codex App stdio server client (1404L)
-│   │   ├── codex-host-pool.ts ← Codex App shared host generation + lane lease/FIFO/reaper/shutdown owner (476L)
+│   │   ├── codex-host-pool.ts ← Codex App shared host generation + lane lease/FIFO/reaper/shutdown owner (483L)
 │   │   ├── codex-app-events.ts ← Codex App turn/tool/message event adapter (405L)
 │   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 (57L)
 │   │   ├── grok-trace-backfill.ts ← Grok trace backfill helper (167L) ✨
