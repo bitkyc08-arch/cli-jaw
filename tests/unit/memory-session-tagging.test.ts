@@ -383,3 +383,35 @@ test('MEM-WM: each session carries its own watermark', async () => {
     assert.ok(marks['mem-wm-one'] > 0, 'the flushing session has a mark');
     assert.equal(marks['mem-wm-never-flushed'], undefined, 'and a session that never flushed has none');
 });
+
+// 073 §2.3a — the writer lock stays global because every session appends to one memory
+// file. What must not stay is the silent drop: the turn counter has already been reset by
+// the time the flush is turned away, so nothing brought that session back. A session that
+// only ever reached the threshold while a busier one held the lock was never summarised.
+test('MEM-LOCK: a flush turned away by the lock is run once the lock frees', async () => {
+    const slowA = deferred<SpawnResult>();
+    installSpawn([
+        () => slowA.promise,
+        { text: 'summary from starved B', code: 0 },
+    ]);
+
+    insertConversation('mem-lock-a', 'busy-a');
+    insertConversation('mem-lock-b', 'quiet-b');
+
+    // A takes the lock and stays in flight.
+    await withSessionScope({ scope: 'local:a', chatSessionId: 'mem-lock-a' }, () => triggerMemoryFlush());
+    assert.equal(getFlushStatus().locked, true, 'A holds the lock');
+
+    // B reaches its threshold while A is still writing, and is turned away.
+    await withSessionScope({ scope: 'local:b', chatSessionId: 'mem-lock-b' }, () => triggerMemoryFlush());
+    assert.deepEqual(getFlushStatus().deferredFlushSessions, ['mem-lock-b'],
+        'B must be remembered rather than dropped — its turn counter is already spent');
+
+    // B never runs again on its own: it is idle now.
+    slowA.resolve({ text: 'summary from busy A', code: 0 });
+    await waitForFlushCompletion();
+
+    assert.match(readMemory(), /summary from starved B/,
+        "B's rows must be summarised once the writer frees, without B taking another turn");
+    assert.deepEqual(getFlushStatus().deferredFlushSessions, []);
+});

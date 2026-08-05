@@ -20,6 +20,13 @@ let _flushLock = false;
 // a quiet session with older unflushed rows could never summarise them again, since
 // they all sat below a mark that a busier session had already pushed past (073 §2.3).
 const _lastFlushedMessageId = new Map<string, number>();
+// Sessions whose flush was turned away because another session held the writer lock.
+// The lock stays global on purpose — every session appends to one memory file, and
+// letting two writers in would corrupt it rather than isolate them. But a turned-away
+// flush used to just vanish, and the trigger counter had already been reset by the
+// caller, so nothing brought that session back. A session that only ever reached the
+// threshold while a busier one held the lock would never be summarised (073 §2.3a).
+const _deferredFlushSessions = new Set<string>();
 let _flushGeneration = 0;
 let _activeFlushGeneration: number | null = null;
 
@@ -134,15 +141,39 @@ function loadFlushSysPrompt(): string {
 // ─── Trigger ─────────────────────────────────────────
 
 export async function triggerMemoryFlush(): Promise<void> {
+    return triggerMemoryFlushForSession(null);
+}
+
+// Draining runs one deferred session per release rather than all of them, because the
+// first one takes the lock again anyway. The rest stay queued and the next release picks
+// up where this left off; the set is insertion-ordered, so nobody is passed over twice.
+function drainDeferredFlushes(): void {
+    const next = _deferredFlushSessions.values().next();
+    if (next.done) return;
+    _deferredFlushSessions.delete(next.value);
+    // Detached on purpose: this runs from inside a lock release, and awaiting the next
+    // flush there would keep the releasing attempt's frame alive for the whole of it.
+    void triggerMemoryFlushForSession(next.value).catch(error => {
+        console.warn('[memory] deferred flush failed:', (error as Error).message);
+    });
+}
+
+async function triggerMemoryFlushForSession(deferredSessionId: string | null): Promise<void> {
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    // A deferred flush names its session outright: by the time it runs, the async-local
+    // context of the turn that asked for it is long gone.
+    const sessionId = deferredSessionId
+        ?? (multiSessionEnabled
+            ? (currentSessionScope()?.chatSessionId ?? getActiveChatSession())
+            : getActiveChatSession());
+
     if (_flushLock) {
-        console.log('[memory] flush lock held, skipping');
+        _deferredFlushSessions.add(sessionId);
+        console.log(`[memory] flush lock held; deferring session=${sessionId}`);
         return;
     }
+    _deferredFlushSessions.delete(sessionId);
 
-    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
-    const sessionId = multiSessionEnabled
-        ? (currentSessionScope()?.chatSessionId ?? getActiveChatSession())
-        : getActiveChatSession();
     const threshold = settings["memory"]?.flushEvery ?? 10;
     const recent = (getRecentMessages.all(settings["workingDir"] || null, sessionId, threshold) as any[])
         .filter((m: any) => {
@@ -166,6 +197,7 @@ export async function triggerMemoryFlush(): Promise<void> {
         if (_activeFlushGeneration === generation) {
             _activeFlushGeneration = null;
             _flushLock = false;
+            drainDeferredFlushes();
         }
     };
     const lockTimeout = setTimeout(() => {
@@ -360,6 +392,7 @@ export function getFlushStatus() {
             ? null
             : Math.max(..._lastFlushedMessageId.values()),
         lastFlushedMessageIdBySession: Object.fromEntries(_lastFlushedMessageId),
+        deferredFlushSessions: [..._deferredFlushSessions],
         counter: memoryFlushCounter,
         cycleCount: flushCycleCount,
     };
