@@ -54,7 +54,7 @@ test('TQ-003: orchestrate paths forward target+chatId+requestId for continue/res
 test('TQ-003b: hub-forwarded /api/message marks replies for explicit target delivery', () => {
     const commandSrc = readSource(join(__dirname, '../../src/routes/command.ts'), 'utf8');
     const messageStart = commandSrc.indexOf("app.post('/api/message'");
-    const messageBlock = commandSrc.slice(messageStart, messageStart + 3500);
+    const messageBlock = commandSrc.slice(messageStart, messageStart + 5000);
     assert.ok(messageBlock.includes('replyViaTarget: Boolean(target)'), 'hub-forwarded requests should set replyViaTarget');
     assert.ok(messageBlock.includes('chatId: target?.targetId'), 'hub-forwarded requests should carry chatId for scope/dedup');
 });

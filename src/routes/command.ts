@@ -155,7 +155,12 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         const targetSessionContext = target && settings["multiSession"]?.enabled === true
             ? (() => {
                 const gateOn = channelGateOn(target.channel);
-                if (!gateOn) return undefined;
+                // With the channel gate off every topic shares the default session, and an
+                // ordinary targeted message is pinned to it (gateway.ts). Leaving the
+                // command unscoped instead would let a topic's /compact reset whichever
+                // local session happens to be active — the same destructive mismatch, one
+                // branch further in.
+                if (!gateOn) return { scope: 'default', chatSessionId: 'default' };
                 const remoteKey = buildRemoteBindingKey(target);
                 const chatSessionId = resolveOrCreateRemoteSession(remoteKey);
                 return { scope: scopeForChatSession(chatSessionId, remoteKey), chatSessionId };

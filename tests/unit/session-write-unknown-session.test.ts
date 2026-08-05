@@ -215,3 +215,27 @@ test('a targeted slash command runs in the remote conversation session', async (
     assert.equal(inRemote.n, 1, 'the compact acted on the remote conversation session');
     assert.equal(inActive.n, 0, 'the globally active session was left alone');
 });
+
+// With the channel gate off every topic shares the default session, and an ordinary
+// targeted message is pinned to it. A slash command from the same topic must land in the
+// same place, or it resets whichever local session happens to be active instead.
+test('a targeted slash command with the channel gate off acts on the default session', async () => {
+    settings.multiSession.enabled = true;
+    settings.multiSession.channels.telegram = false;
+    const active = createChatSession('unknown-sess-hub-gateoff');
+    setActiveChatSession(active.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'active history', ?)").run(active.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'default history', 'default')").run();
+
+    const target = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: '-100888', threadId: '7' };
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/message', { prompt: '/compact', target });
+        assert.equal(response.status, 200, await response.text());
+    });
+
+    const inDefault = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = 'default' AND role = 'assistant'").get() as { n: number };
+    const inActive = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ? AND role = 'assistant'").get(active.id) as { n: number };
+    assert.equal(inDefault.n, 1, 'the compact acted on the default session');
+    assert.equal(inActive.n, 0, 'the active local session was left alone');
+});
