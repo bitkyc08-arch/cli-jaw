@@ -121,3 +121,51 @@ test('legacy notifications sent before the first listener still arrive exactly o
     });
     assert.deepEqual(second, [], 'the buffer is handed over once, not to every listener');
 });
+
+// The pool reuses one client across turns, so there is a gap every time a
+// listener is disposed before the next one attaches. Treating "a listener
+// existed once" as permanent lost everything that arrived in those gaps.
+test('notifications in the gap between listeners are handed to the next one', async () => {
+    const client = new CodexAppClient();
+    Object.defineProperty(client, 'request', {
+        value: async () => ({ thread: { id: 'thread-a' } }),
+    });
+    await client.startThread({});
+
+    const first: string[] = [];
+    const attached = client.listenTurn({
+        onNotification: (method) => { first.push(method); },
+        onStderr: () => {},
+    });
+    client['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'a' } }));
+    assert.deepEqual(first, ['configWarning']);
+    attached.dispose();
+
+    client['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'b' } }));
+
+    const second: string[] = [];
+    client.listenTurn({
+        onNotification: (method, params) => { second.push(`${method}:${String(params['message'])}`); },
+        onStderr: () => {},
+    });
+    assert.deepEqual(second, ['configWarning:b'],
+        'the gap must be replayed to the next listener, and only what arrived in it');
+});
+
+// Only genuinely unrecognised methods take the legacy raw path. A known method
+// that arrived malformed is a diagnostic, and letting it through the queue
+// would put it back on the raw channel it was supposed to be kept off.
+test('malformed known methods do not reach the legacy consumer through the queue', () => {
+    const client = new CodexAppClient();
+    client['handleLine'](JSON.stringify({
+        method: 'item/agentMessage/delta',
+        params: { threadId: 'thread-a' },
+    }));
+
+    const seen: string[] = [];
+    client.listenTurn({
+        onNotification: (method) => { seen.push(method); },
+        onStderr: () => {},
+    });
+    assert.deepEqual(seen, [], 'a malformed known method stays a diagnostic');
+});

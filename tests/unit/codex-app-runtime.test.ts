@@ -292,16 +292,15 @@ test('rebind clears old indexes and a pending interrupt latch atomically', async
     assert.deepEqual(stale, []);
 
     // Dropping the old thread from the reverse index is what makes it claimable
-    // again; asserting only that its notifications stop would also pass if the
-    // entry were merely pointing somewhere harmless.
-    const other = new CodexAppClient();
-    injectRequest(other, async () => ({ thread: { id: 'thread-old' } }));
-    await other.startThread('scope-a', laneOptions);
-    await other.startThread('scope-a', laneOptions);
-    await other.startThread('scope-b', laneOptions).then(
-        () => assert.fail('a live binding must still be exclusive'),
-        (err: Error) => assert.match(err.message, /already bound/),
-    );
+    // again, and this has to be checked on the client that did the rebind. A
+    // fresh client would pass no matter what the original one left behind.
+    thread = 'thread-old';
+    await client.startThread('scope-b', laneOptions);
+    assert.equal(client.getThreadId('scope-b'), 'thread-old',
+        'the rebound scope must have released its previous thread');
+    thread = 'thread-new';
+    await assert.rejects(client.startThread('scope-c', laneOptions), /already bound/,
+        'a thread that is still held stays exclusive');
 });
 
 // The thread stays the same across both turns here, so a guard that only
@@ -381,6 +380,51 @@ test('a turn that finishes before its response is not resurrected by the late re
     assert.equal(client.getActiveTurnId('scope-a'), null,
         'the completed turn must not be active again');
     await client.closeScope('scope-a');
+});
+
+// Ending the first turn through notifications frees the lane, so a second turn
+// can be running by the time the first request finally rejects. Cleaning up
+// unconditionally in that catch would tear down the turn that is now live.
+test('a late failure from a finished turn does not tear down its successor', async () => {
+    const client = new CodexAppClient();
+    let rejectFirst!: (err: Error) => void;
+    const firstResponse = new Promise<unknown>((_, reject) => { rejectFirst = reject; });
+    let call = 0;
+    injectRequest(client, async (method) => {
+        if (method === 'thread/start') return { thread: { id: 'thread-a' } };
+        if (method === 'turn/start') {
+            call += 1;
+            return call === 1 ? firstResponse : { turn: { id: 'turn-2' } };
+        }
+        return {};
+    });
+
+    await client.startThread('scope-a', laneOptions);
+    const first = client.startTurn('scope-a', 'first');
+    client['handleLine'](JSON.stringify({
+        method: 'turn/started',
+        params: { threadId: 'thread-a', turn: { id: 'turn-1' } },
+    }));
+    client['handleLine'](JSON.stringify({
+        method: 'turn/completed',
+        params: { threadId: 'thread-a', turn: { id: 'turn-1' } },
+    }));
+
+    await client.startTurn('scope-a', 'second');
+    assert.equal(client.getActiveTurnId('scope-a'), 'turn-2');
+
+    rejectFirst(new Error('late failure'));
+    await assert.rejects(first, /late failure/);
+    assert.equal(client.getActiveTurnId('scope-a'), 'turn-2',
+        'the stale request must not clear the running turn');
+
+    const seen: string[] = [];
+    client.on('notification:scope-a', (method: string) => { seen.push(method); });
+    client['handleLine'](JSON.stringify({
+        method: 'item/agentMessage/delta',
+        params: { threadId: 'thread-a', turnId: 'turn-2', delta: 'live' },
+    }));
+    assert.deepEqual(seen, ['item/agentMessage/delta'], 'the running turn still delivers');
 });
 
 test('thread notification before start response is replayed once after binding', async () => {
