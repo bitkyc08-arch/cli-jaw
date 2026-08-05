@@ -89,10 +89,7 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
 
     const { insertMessageWithTrace, clearSessionBucketsByPrefix } = await import('../core/db.js');
-    const { resolveSessionBucket } = await import('../agent/args.js');
-    const {
-        bumpSessionOwnershipGeneration,
-    } = await import('../agent/session-persistence.js');
+    const { resolveScopedSessionBucket, resolveSessionBucket } = await import('../agent/args.js');
     const {
         clearBossSessionOnly,
         setPendingBootstrapPrompt,
@@ -100,28 +97,29 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
 
     const model = getActiveModel(settings, session, activeCli);
     const chatSessionId = getActiveChatSession();
-    const { scopeForChatSession, isNativeStateIsolatedScope } = await import('../orchestrator/scope.js');
+    const { scopeForChatSession } = await import('../orchestrator/scope.js');
     const { getChatSessionRemoteKey } = await import('../core/chat-sessions.js');
     const scope = scopeForChatSession(
         chatSessionId,
         getChatSessionRemoteKey(chatSessionId) ?? undefined,
         settings?.multiSession?.enabled === true,
     );
-    // The marker and bootstrap below go to the session being compacted, while the shared
-    // bucket and singleton row belong to the DEFAULT session. Clearing those would
-    // discard a conversation another tab is still using while the user believes they
-    // reset their own (072 §1.2b).
+    // Every runtime now keys its bucket by scope (073 §2.1), so this compacts the session
+    // it was typed into rather than refusing to touch anything. Its marker, its bootstrap
+    // and the state it drops all belong to the same session, which is what 072 could not
+    // arrange when a non-default scope had no bucket of its own.
     //
-    // Codex App multiplex is the exception: it keeps a bucket per scope, so a local
-    // session there owns real native state that its own compact must drop. The exact
-    // key depends on lane mode and effort, which this command cannot know, so it clears
-    // by scope prefix instead of trying to rebuild the key.
-    const scopeIsolated = isNativeStateIsolatedScope(scope);
-    const ownsScopedBucket = scopeIsolated
-        && activeCli === 'codex-app'
-        && settings?.runtime?.codexApp?.multiplex === true;
-    // An isolated scope with no bucket of its own has nothing to resolve.
-    const bucket = scopeIsolated && !ownsScopedBucket ? '' : resolveSessionBucket(activeCli, model);
+    // The exact codex-app key folds in lane mode and effort, which this command cannot
+    // know, so it clears that runtime by scope prefix instead of rebuilding the key.
+    const isCodexApp = activeCli === 'codex-app';
+    // This command knows the scope but not the effort, and codex-app folds effort into
+    // its multiplex key. Rather than build a key with a hole in it, clear by the prefix
+    // that identifies the scope: base for every runtime, base plus scope for codex-app.
+    const multiplex = settings?.runtime?.codexApp?.multiplex === true;
+    const base = resolveSessionBucket(activeCli, model);
+    const bucket = isCodexApp && multiplex
+        ? `${base}:${scope}`
+        : resolveScopedSessionBucket(activeCli, model, null, scope, '', 'fallback', false);
     insertMessageWithTrace.run(
         'assistant',
         COMPACT_MARKER_CONTENT,
@@ -132,34 +130,34 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         workingDir,
         chatSessionId,
     );
-    // A local session's bootstrap belongs under its own scope key whether or not it
-    // owns a bucket, otherwise its next turn would take the default session's bootstrap.
-    setPendingBootstrapPrompt(bootstrap, scopeIsolated ? scope : undefined);
-    if (scopeIsolated) {
-        const { bumpScopeSessionGeneration } = await import('../agent/session-persistence.js');
-        bumpScopeSessionGeneration(scope);
-        if (ownsScopedBucket) {
-            // Only this scope's rows. The singleton row and the other scopes' buckets
-            // belong to sessions this compact was not asked to reset.
-            clearSessionBucketsByPrefix.run(`${bucket}:${scope}`, `${bucket}:${scope}:%`);
-            // The DB rows are only half of it: an idle lane keeps its thread binding in
-            // memory, and with no stored thread left to contradict it the next turn would
-            // reuse the very conversation this compact discarded.
-            const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
-            invalidateCodexAppLanesForScope(scope);
-        }
-    } else {
-        bumpSessionOwnershipGeneration();
+    const isDefaultScope = scope === 'default';
+    // The bootstrap is keyed by scope so the next turn of THIS session picks it up and
+    // no other session does. The default scope keeps the bare key it always had.
+    setPendingBootstrapPrompt(bootstrap, isDefaultScope ? undefined : scope);
+
+    // Only this session's generation moves. Bumping the global one would make every
+    // other session's in-flight turn fail its ownership check and discard the vendor
+    // conversation it had just created (073 §2e).
+    const { bumpScopeSessionGeneration } = await import('../agent/session-persistence.js');
+    bumpScopeSessionGeneration(scope);
+    if (isDefaultScope) {
+        // The singleton row belongs to the default session, so only its own compact
+        // clears it.
         clearBossSessionOnly();
-        // An explicit compact resets the conversation the user is looking at, and it
-        // cannot know which scope or effort produced the scoped rows, so it drops all
-        // of them alongside the legacy row. Leaving one behind would let the next
-        // multiplex run resume the thread the user just discarded.
-        clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
-        // Same reason the scoped branch above invalidates its lane: an idle lane keeps
-        // its thread in memory and would be reused despite the rows being gone.
+    }
+
+    // codex-app folds lane mode and effort into its key, which this command cannot know,
+    // so it clears that runtime by prefix. Every other runtime has one key per scope.
+    // The prefix form covers codex-app, whose key folds in lane mode and effort that this
+    // command cannot know. For every other runtime the exact key is the only match, so the
+    // same call is correct without a branch.
+    clearSessionBucketsByPrefix.run(bucket, `${bucket}:%`);
+    if (isCodexApp) {
+        // The rows are half of it: an idle lane keeps its thread in memory and, with no
+        // stored thread left to contradict it, the next turn would reuse the very
+        // conversation this compact discarded.
         const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
-        invalidateCodexAppLanesForScope(null);
+        invalidateCodexAppLanesForScope(scope);
     }
 
     return {

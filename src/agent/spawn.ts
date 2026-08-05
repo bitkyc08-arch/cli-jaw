@@ -35,7 +35,7 @@ import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAll
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
-import { LOCAL_SESSION_SCOPE_ACTIVATION, isNativeStateIsolatedScope, resolveOrcScope } from '../orchestrator/scope.js';
+import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
 import {
@@ -1161,16 +1161,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Bucket-aware resume: codex-spark is kept in its own session bucket so
     // cross-model resume (gpt-5.4 ↔ gpt-5.3-codex-spark) doesn't send a
     // mismatched session_id to the server.
-    // Only the codex-app multiplex path puts the scope inside the bucket key. Every other
-    // runtime would have a `local:` scope reading and overwriting the default session's
-    // vendor conversation (072 §1.2b), so it runs with no bucket at all: no resume, no
-    // snapshot freeze, no stale clear.
-    const nativeStateIsolated = isNativeStateIsolatedScope(scopeKey) && !codexMultiplexMain;
-    const currentBucket = nativeStateIsolated
-        ? ''
-        : codexMultiplexMain
-        ? resolveScopedSessionBucket(cli, runtimeModel, effectiveProvider, scopeKey, effort, 'fallback')
-        : resolveSessionBucket(cli, runtimeModel, effectiveProvider);
+    // Every runtime now keys its bucket by scope (073 §2.1), which replaces the guard 072
+    // put here. That guard gave a non-default scope no bucket at all — no resume, no
+    // snapshot, no stale clear — because sharing one was worse. Having its own is better
+    // than either. The default scope keeps the bare bucket name, so a session that existed
+    // before this change continues the conversation it was already in.
+    const currentBucket = resolveScopedSessionBucket(
+        cli, runtimeModel, effectiveProvider, scopeKey, effort, 'fallback', codexMultiplexMain,
+    );
     const envDefaultsCli = cli === 'ai-e' ? effectiveProvider : cli;
     const cliEnv = applyCliEnvDefaults(envDefaultsCli, opts.env);
     const spawnEnv = makeCleanEnv(cliEnv);
@@ -1749,6 +1747,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                scopedBucket: currentBucket,
                 chatSessionId,
                 childProcess: child,
                 releaseMainRun,
@@ -1928,6 +1927,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
                     releaseMainRun,
@@ -1950,6 +1950,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
                     releaseMainRun,
@@ -2331,6 +2332,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                scopedBucket: currentBucket,
                 chatSessionId,
                 ...(lease?.bucketKey ? { codexAppBucket: lease.bucketKey } : {}),
                 childProcess: child,
@@ -2956,10 +2958,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'agy') {
             ctx.agyTranscriptMode = classifyAgyTranscriptMode(ctx);
         }
-        if (cli === 'agy' && isResume && !nativeStateIsolated && (agyGuardedStaleDetected || isAgyStaleSessionOutput(ctx.fullText))) {
+        if (cli === 'agy' && isResume && (agyGuardedStaleDetected || isAgyStaleSessionOutput(ctx.fullText))) {
             console.log(`[jaw:agy] stale session detected (Warning: conversation not found) — clearing bucket`);
             try {
-                const bucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);
+                const bucket = currentBucket;
                 clearSessionBucket.run(bucket);
             } catch (e) { console.warn('[jaw:agy] stale bucket clear failed:', (e as Error).message); }
             ctx.sessionId = null;
@@ -2990,10 +2992,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             if (!ctx.sessionId) {
                 console.warn(`[jaw:kiro] session id capture failed cwd=${spawnCwd}`);
             }
-            if (isResume && !nativeStateIsolated && isKiroStaleSessionOutput(ctx.fullText)) {
+            if (isResume && isKiroStaleSessionOutput(ctx.fullText)) {
                 console.log('[jaw:kiro] stale session detected in output — clearing bucket');
                 try {
-                    const bucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);
+                    const bucket = currentBucket;
                     clearSessionBucket.run(bucket);
                 } catch (e) { console.warn('[jaw:kiro] stale bucket clear failed:', (e as Error).message); }
                 ctx.sessionId = null;
@@ -3132,6 +3134,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             resolve: resolve!,
             activeProcesses,
             scopeKey,
+            scopedBucket: currentBucket,
             chatSessionId,
             childProcess: child,
             releaseMainRun,

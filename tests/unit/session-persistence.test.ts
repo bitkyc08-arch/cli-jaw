@@ -166,10 +166,43 @@ test('codex-app buckets match native and fallback lane identity', () => {
         resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'scope-a', 'low', 'fallback'),
         'codex-app:scope-a:gpt-5.5:low',
     );
+    // 073 gave every runtime a per-scope bucket, not just codex-app. The default scope
+    // keeps the bare name so a session that predates the change carries on where it was.
     assert.equal(
         resolveScopedSessionBucket('pi', 'default', null, 'scope-a', 'high', 'native'),
-        'pi',
+        'pi:scope-a',
     );
+    assert.equal(
+        resolveScopedSessionBucket('pi', 'default', null, 'default', 'high', 'native'),
+        'pi',
+        'the default scope must keep the legacy bucket name',
+    );
+    assert.equal(
+        resolveScopedSessionBucket('claude', 'default', null, 'local:sess-2', 'high', 'native'),
+        'claude:local:sess-2',
+    );
+});
+
+// The bucket is per scope now, but the singleton `session` row is still one row for the
+// whole instance. A second session writing there would point the next default resume at
+// a thread belonging to someone else (073 §2.1).
+test('only the default scope writes the singleton session row', () => {
+    resetSessionOwnershipGenerationForTest();
+    const seen: string[] = [];
+    for (const scopeKey of ['default', 'local:sess-2', 'jaw:slack:channel:C1']) {
+        const ok = shouldPersistMainSession({
+            persistenceOwner: getSessionOwnershipGeneration(scopeKey),
+            scopeKey,
+            cli: 'claude',
+            model: 'default',
+            effort: 'medium',
+            sessionId: `vendor-${scopeKey}`,
+            code: 0,
+        });
+        if (ok) seen.push(scopeKey);
+    }
+    assert.deepEqual(seen, ['default', 'local:sess-2', 'jaw:slack:channel:C1'],
+        'every scope persists its own bucket now');
 });
 
 test('codex-app bucket persistence, copy, compact, and reset preserve isolation', () => {

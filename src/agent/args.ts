@@ -155,10 +155,20 @@ export function resolveScopedSessionBucket(
     scope: string,
     effort: string,
     laneMode: CodexAppLaneMode,
+    // Multiplex owns the scoped codex-app key. Without this flag a non-multiplex
+    // codex-app run would be handed the multiplex key shape and, on the default scope,
+    // stop finding the conversation it has been using all along.
+    codexAppMultiplex = true,
 ): string {
     const base = resolveSessionBucket(cli, model, aiEProvider);
-    const laneKey = resolveCodexAppLaneKey(scope, model || 'default', effort, laneMode);
-    return cli === 'codex-app' ? `${base}:${laneKey}` : base;
+    if (cli === 'codex-app' && codexAppMultiplex) {
+        const laneKey = resolveCodexAppLaneKey(scope, model || 'default', effort, laneMode);
+        return `${base}:${laneKey}`;
+    }
+    // Every other runtime gets a per-scope bucket too (073 §2.1). The default scope keeps
+    // the bare name on purpose: a session that existed before this change continues in the
+    // conversation it was already using instead of silently starting over.
+    return scope === 'default' ? base : `${base}:${scope}`;
 }
 
 export function buildArgs(cli: string, model: string, effort: string, prompt: string, sysPrompt: string, permissions = 'auto', options: BuildArgOptions = {}) {

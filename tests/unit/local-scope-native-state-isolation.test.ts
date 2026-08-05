@@ -29,7 +29,11 @@ test('the canonical scope helper is what produces the isolated prefix', () => {
     assert.equal(isNativeStateIsolatedScope(scopeForChatSession('sess-2', undefined, false)), false);
 });
 
-test('a local scope without a scoped bucket does not persist the shared session row', () => {
+// 072 refused to persist a local scope at all, because it would have written into the
+// default session's bucket and singleton row. 073 gave it a bucket of its own, so it
+// persists like any other session — what it must NOT do is touch the singleton row,
+// which is asserted in tests/unit/session-persistence.test.ts.
+test('a local scope persists now that it owns a bucket', () => {
     resetSessionOwnershipGenerationForTest();
     const scopeKey = scopeForChatSession('sess-2');
     const ok = shouldPersistMainSession({
@@ -41,7 +45,7 @@ test('a local scope without a scoped bucket does not persist the shared session 
         sessionId: 'vendor-session-from-tab-2',
         code: 0,
     });
-    assert.equal(ok, false);
+    assert.equal(ok, true);
 });
 
 test('the default scope keeps persisting exactly as before', () => {

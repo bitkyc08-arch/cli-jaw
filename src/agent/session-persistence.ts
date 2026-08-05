@@ -1,7 +1,6 @@
 import { settings } from '../core/config.js';
 import { db, updateSession, upsertSessionBucket } from '../core/db.js';
 import { resolveSessionBucket } from './args.js';
-import { isNativeStateIsolatedScope } from '../orchestrator/scope.js';
 
 export type SessionOwnerToken = { global: number; scope: number };
 
@@ -24,6 +23,8 @@ export type SessionPersistenceInput = {
     workingDir?: string;
     outputLen?: number | undefined;
     codexAppBucket?: string | undefined;
+    // The bucket the run actually used, already keyed by scope (073 §2.1).
+    scopedBucket?: string | undefined;
 };
 
 let globalGeneration = 0;
@@ -59,11 +60,6 @@ export function isCurrentSessionOwner(token: SessionOwnerToken, scopeKey: string
 
 export function shouldPersistMainSession(input: SessionPersistenceInput): boolean {
     if (input.skipSessionPersist) return false;
-    // A `local:` scope on a runtime without a scoped bucket shares the default session's
-    // singleton row and bucket. Writing there would overwrite the default session's vendor
-    // conversation, so the scope runs stateless instead (072 §1.2b). codex-app multiplex
-    // carries the scope inside its bucket key and keeps persisting normally.
-    if (isNativeStateIsolatedScope(input.scopeKey) && input.codexAppBucket === undefined) return false;
     if (input.forceNew || input.employeeSessionId || !input.sessionId || input.isFallback) return false;
     if (input.cli === 'ai-e' && input.provider !== 'claude' && input.provider !== 'kiro' && input.provider !== 'codex' && input.provider !== 'grok') return false;
     // User-initiated kill (SIGTERM/SIGKILL) yields exit codes like 143/137/1 depending on
@@ -97,16 +93,24 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
     // plain codex (gpt-5.4 etc.) — avoids 'thread/resume failed: no rollout found'
     // on cross-model toggles. Both writes go together: a singleton row pointing at
     // a thread the bucket never recorded sends the next resume to the wrong place.
-    const bucket = codexAppBucket ?? resolveSessionBucket(input.cli, input.model, input.provider);
+    const bucket = input.scopedBucket
+        ?? codexAppBucket
+        ?? resolveSessionBucket(input.cli, input.model, input.provider);
+    // The bucket is per scope now, but the singleton `session` row is still one row for
+    // the instance. Only the default scope owns it; a second session writing there would
+    // point the next default resume at a thread that belongs to someone else (073 §2.1).
+    const ownsSingletonRow = (input.scopeKey || 'default') === 'default';
     db.transaction(() => {
-        updateSession.run(
-            input.cli,
-            input.sessionId,
-            input.model,
-            input.permissions || settings["permissions"] || 'auto',
-            input.workingDir || settings["workingDir"] || '~',
-            input.effort,
-        );
+        if (ownsSingletonRow) {
+            updateSession.run(
+                input.cli,
+                input.sessionId,
+                input.model,
+                input.permissions || settings["permissions"] || 'auto',
+                input.workingDir || settings["workingDir"] || '~',
+                input.effort,
+            );
+        }
         if (bucket && input.sessionId) {
             upsertSessionBucket.run(bucket, input.sessionId, input.model, input.resumeKey || null, input.outputLen ?? 0);
         }

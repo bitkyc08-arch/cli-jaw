@@ -101,7 +101,7 @@ test('Cursor resume rejects cross-effort bucket reuse', () => {
 test('Cursor spawn plan computes runtimeModel before session boundaries', () => {
     const src = fs.readFileSync('src/agent/spawn.ts', 'utf8');
     assert.match(src, /const runtimeModel = cli === 'cursor'/);
-    assert.match(src, /resolveSessionBucket\(cli, runtimeModel/);
+    assert.match(src, /resolveScopedSessionBucket\(\s*cli, runtimeModel/);
     assert.match(src, /shouldResumeBucketSession\(\s*cli,\s*runtimeModel/);
     assert.match(src, /buildArgs\(cli, runtimeModel/);
     assert.match(src, /model: runtimeModel/);

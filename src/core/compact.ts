@@ -90,6 +90,7 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { getRecentMessages, getRecentToolLogs, searchMessages } from './db.js';
 import { getActiveChatSession } from './chat-sessions.js';
+import { settings } from './config.js';
 import { expandHomePath } from './path-expand.js';
 import { searchMemoryWithPolicy } from '../memory/injection.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
@@ -614,27 +615,30 @@ export async function autoCompactRefresh(opts: {
     const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
 
     const { insertMessageWithTrace, clearSessionBucket } = await import('./db.js');
-    const { resolveSessionBucket } = await import('../agent/args.js');
+    const { resolveScopedSessionBucket } = await import('../agent/args.js');
     const {
         bumpSessionOwnershipGeneration, bumpScopeSessionGeneration,
     } = await import('../agent/session-persistence.js');
     const { clearBossSessionOnly, setPendingBootstrapPrompt } = await import('./main-session.js');
     const { broadcast } = await import('./bus.js');
-    const { isNativeStateIsolatedScope } = await import('../orchestrator/scope.js');
-    // A `local:` scope on a runtime whose bucket key carries no scope shares the default
-    // session's bucket and singleton row. Refreshing it here would throw away the default
-    // session's vendor conversation because another tab happened to compact (072 §1.2b).
-    // Such a scope keeps no native state to refresh in the first place.
-    const nativeStateIsolated = isNativeStateIsolatedScope(opts.scopeKey) && !opts.sessionBucket;
-    const bucket = nativeStateIsolated
-        ? ''
-        : (opts.sessionBucket ?? resolveSessionBucket(opts.cli, opts.model));
+    // Each scope refreshes its own bucket now (073 §2.1) rather than being blocked from
+    // touching a shared one. The singleton session row is still global, so only the
+    // default scope clears it — a second tab compacting must not reset the row the first
+    // one is using.
+    const scopeKey = opts.scopeKey || 'default';
+    // codex-app keys its bucket by lane only when multiplex is on. Passing the multiplex
+    // shape to a run that is not multiplexing would point the default scope at a bucket
+    // it has never used, which reads as the conversation having disappeared.
+    const codexAppMultiplex = settings["runtime"]?.codexApp?.multiplex === true;
+    const bucket = opts.sessionBucket
+        ?? resolveScopedSessionBucket(opts.cli, opts.model, null, scopeKey, '', 'fallback', codexAppMultiplex);
+    const ownsSingletonRow = scopeKey === 'default';
 
     insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, getActiveChatSession());
     setPendingBootstrapPrompt(bootstrap, opts.scopeKey);
     if (opts.scopeKey) bumpScopeSessionGeneration(opts.scopeKey);
     else bumpSessionOwnershipGeneration();
-    if (!nativeStateIsolated) clearBossSessionOnly();
+    if (ownsSingletonRow) clearBossSessionOnly();
     if (bucket) clearSessionBucket.run(bucket);
     // Clearing the row is not enough for Codex App: an idle lane still holds its thread
     // in memory and, with no stored thread left to contradict it, the next turn would

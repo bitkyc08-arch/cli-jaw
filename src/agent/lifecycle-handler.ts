@@ -15,7 +15,6 @@ import { backfillGrokTraceTools } from './grok-trace-backfill.js';
 import { shouldClearHighTurnSessionBucket, shouldUseTurnCountRefresh } from './spawn/resume.js';
 import { recordError, clearErrors } from './alert-escalation.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
-import { isNativeStateIsolatedScope } from '../orchestrator/scope.js';
 import { clearLiveRun, getLiveRun } from './live-run-state.js';
 import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../shared/tool-log-sanitize.js';
 import { scanStructuredFence } from '../shared/structured-fence.js';
@@ -277,6 +276,10 @@ export interface ExitHandlerParams {
     scopeKey: string;
     chatSessionId: string;
     codexAppBucket?: string | undefined;
+    // The bucket this run actually used, already keyed by scope (073 §2.1). Passed in
+    // rather than recomputed, because recomputing it here loses the scope and lands on
+    // the bucket belonging to whichever session is globally active.
+    scopedBucket?: string | undefined;
     childProcess: ChildProcess | null;
     releaseMainRun: (scopeKey: string, child: ChildProcess | null, ownerGeneration: number) => boolean;
     retryState: {
@@ -310,11 +313,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     const effectiveProvider = params.effectiveProvider;
     const runtimeCli = lifecycleRuntimeCli(cli, effectiveProvider);
     const effortVal = cfg.effort || effortDefault;
-    // A `local:` scope whose runtime has no scoped bucket must not touch the shared
-    // native state at all — reading it would resume another session's conversation and
-    // clearing it would throw that session away (072 §1.2b). codex-app multiplex carries
-    // the scope inside its bucket key, so it stays a normal owner.
-    const nativeStateIsolated = isNativeStateIsolatedScope(scopeKey) && codexAppBucket === undefined;
+    // Every runtime now has a bucket of its own keyed by scope (073 §2.1), so the guard
+    // 072 put here is gone: instead of refusing to touch shared state, each session
+    // touches only its own. The bucket comes from the run rather than being recomputed,
+    // because recomputing loses the scope.
+    const runBucket = params.scopedBucket
+        ?? params.codexAppBucket
+        ?? resolveSessionBucket(cli, model, effectiveProvider);
     const isEmployee = !mainManaged;
     const empTag = isEmployee ? { isEmployee: true } : {};
     const liveScope = ctx.liveScope || 'default';
@@ -347,6 +352,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 skipSessionPersist: opts._skipSessionPersist === true,
                 outputLen: params.outputLen,
                 ...(params.codexAppBucket ? { codexAppBucket: params.codexAppBucket } : {}),
+        scopedBucket: runBucket,
             });
             console.log(`[jaw:smoke] persisted session ${smokeSessionId.slice(0, 12)}... for continuation`);
         }
@@ -425,10 +431,11 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         skipSessionPersist: opts._skipSessionPersist === true,
         outputLen: params.outputLen,
         ...(params.codexAppBucket ? { codexAppBucket: params.codexAppBucket } : {}),
+        scopedBucket: runBucket,
     })) {
         console.log(`[jaw:session] saved ${cli} session=${persistedSessionId.slice(0, 12)}...${wasKilled ? ' (post-kill)' : ''}`);
     }
-    if (cli === 'agy' && persistedSessionId && !nativeStateIsolated) {
+    if (cli === 'agy' && persistedSessionId) {
         const checkpointSeen = ctx.metadata?.['agyCheckpointSeen'] === true;
         const plannerOnly = ctx.metadata?.['agyPlannerOnly'] === true;
         const clean = code === 0 && !wasKilled && !ctx.stallReason && !plannerOnly && !checkpointSeen;
@@ -436,7 +443,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             clean ? 1 : 0,
             settings['workingDir'] || '',
             JSON.stringify({ checkpointSeen, plannerOnly, exitCode: code, at: Date.now() }),
-            resolveSessionBucket(cli, model, effectiveProvider),
+            runBucket,
         );
     }
 
@@ -475,10 +482,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // conservative fresh-session guard when their compaction is not observable.
     if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
-        if (shouldClearHighTurnSessionBucket(runtimeCli, turns) && !nativeStateIsolated) {
+        if (shouldClearHighTurnSessionBucket(runtimeCli, turns)) {
             console.log(`[jaw:compact] ${cli} exited after ${turns} turns — clearing session bucket for fresh start`);
             try {
-                const bucket = params.codexAppBucket ?? resolveSessionBucket(cli, model, effectiveProvider);
+                const bucket = runBucket;
                 clearSessionBucket.run(bucket);
             } catch (e) {
                 console.warn('[jaw:compact] session bucket clear failed:', (e as Error).message);
@@ -520,7 +527,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         && ctx.toolLog.length === 0
         && shouldInvalidateResumeSession(runtimeCli, code, ctx.stderrBuf, kiroDiagnosticText)
     ) {
-        const bucket = nativeStateIsolated ? '' : resolveSessionBucket(cli, model, effectiveProvider);
+        const bucket = runBucket;
         if (bucket) {
             try { clearSessionBucket.run(bucket); } catch { /* ignore */ }
         }
@@ -690,11 +697,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             if (empSid && opts.agentId) {
                 clearEmployeeSession.run(opts.agentId);
                 console.log(`[jaw:session] invalidated stale employee resume — ${cli} agent=${opts.agentId}`);
-            } else if (nativeStateIsolated) {
-                console.log(`[jaw:session] invalidated stale resume — ${cli} scope=${scopeKey} runs without native state, nothing to clear`);
             } else {
                 updateSession.run(cli, null, model, settings["permissions"], settings["workingDir"], effortVal);
-                const bucket = params.codexAppBucket ?? resolveSessionBucket(cli, model, effectiveProvider);
+                const bucket = runBucket;
                 if (bucket) clearSessionBucket.run(bucket);
                 console.log(`[jaw:session] invalidated stale resume — ${cli}/${bucket} session cleared`);
             }
@@ -928,7 +933,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         && (code === 0 || code === null)
         && isKiroResumeDegradedOutput(kiroOutputText, ctx.toolLog.length, isResume)
     ) {
-        const bucket = nativeStateIsolated ? '' : resolveSessionBucket(cli, model, effectiveProvider);
+        const bucket = runBucket;
         if (bucket) {
             try { clearSessionBucket.run(bucket); } catch { /* ignore */ }
         }
