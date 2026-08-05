@@ -30,7 +30,7 @@ test('listenTurn dispose removes exactly its attached listener references', () =
     }
 });
 
-test('host notifications stay off scoped lanes and reach the host listener once', () => {
+test('known host and unknown raw notifications stay off scoped lanes and reach the host listener once', () => {
     const client = new CodexAppClient();
     const lane: string[] = [];
     const host: string[] = [];
@@ -43,12 +43,14 @@ test('host notifications stay off scoped lanes and reach the host listener once'
     });
 
     client.emit('host-notification', 'account/updated', {});
+    client.emit('notification', 'future/method', {});
     assert.deepEqual(lane, []);
-    assert.deepEqual(host, ['account/updated']);
+    assert.deepEqual(host, ['account/updated', 'future/method']);
 
     laneListener.dispose();
     hostListener.dispose();
     assert.equal(client.listenerCount('host-notification'), 0);
+    assert.equal(client.listenerCount('notification'), 0);
 });
 
 test('legacy listener bridges lane, host, and future raw notifications once each', () => {

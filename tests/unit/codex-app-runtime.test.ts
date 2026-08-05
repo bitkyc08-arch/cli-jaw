@@ -748,34 +748,62 @@ test('closeScope rejects active lanes and cleans idle state, latch, listener, an
         'closing a scope must release its thread for another scope to claim');
 });
 
-test('process death makes every lane terminal and rejects pending operations', async () => {
-    const client = new CodexAppClient();
-    const never = new Promise<unknown>(() => {});
-    injectRequest(client, async (method, params) => {
-        if (method === 'thread/start') return { thread: { id: String(params['cwd']) } };
-        return never;
+for (const firstSignal of ['error', 'exit'] as const) {
+    test(`process ${firstSignal} rejects pending work, emits before cleanup, and suppresses the second signal`, async () => {
+        const client = new CodexAppClient();
+        const never = new Promise<unknown>(() => {});
+        injectRequest(client, async (method, params) => {
+            if (method === 'thread/start') return { thread: { id: String(params['cwd']) } };
+            return never;
+        });
+        await client.startThread('scope-a', { ...laneOptions, cwd: 'thread-a' });
+        await client.startThread('scope-b', { ...laneOptions, cwd: 'thread-b' });
+        const pending = client.startTurn('scope-a', 'hello');
+        const observed: string[] = [];
+        const listener = client.listenTurn('scope-a', {
+            onNotification: () => {},
+            onStderr: () => {},
+            onError: (err) => {
+                observed.push(`error:${err.message}`);
+                assert.equal(client['scopes'].get('scope-a')?.operation, 'terminal');
+                assert.match(client['scopes'].get('scope-a')?.pendingOperation?.failed?.message ?? '',
+                    /Process error: wire failed/, 'pending operation is rejected before error delivery');
+                assert.equal(client['scopes'].size, 2, 'scope rows survive through synchronous error delivery');
+                assert.equal(client['threadToScope'].size, 2, 'thread index survives through synchronous error delivery');
+                assert.equal(client.listenerCount('error'), 1, 'listener is still attached during error delivery');
+            },
+            onExit: (code, signal) => {
+                observed.push(`exit:${code}:${signal}`);
+                assert.equal(client['scopes'].get('scope-a')?.operation, 'terminal');
+                assert.match(client['scopes'].get('scope-a')?.pendingOperation?.failed?.message ?? '',
+                    /Process exited/, 'pending operation is rejected before exit delivery');
+                assert.equal(client['scopes'].size, 2, 'scope rows survive through synchronous exit delivery');
+                assert.equal(client['threadToScope'].size, 2, 'thread index survives through synchronous exit delivery');
+                assert.equal(client.listenerCount('exit'), 1, 'listener is still attached during exit delivery');
+            },
+        });
+
+        if (firstSignal === 'error') client['handleProcessError'](new Error('wire failed'));
+        else client['handleProcessExit'](17, 'SIGTERM');
+
+        await assert.rejects(pending, firstSignal === 'error' ? /Process error: wire failed/ : /Process exited/);
+        await assert.rejects(client.startTurn('scope-b', 'after death'), /client is terminal/);
+        await assert.rejects(client.startThread('scope-c', laneOptions), /client is terminal/);
+        assert.deepEqual(observed, firstSignal === 'error' ? ['error:wire failed'] : ['exit:17:SIGTERM']);
+        assert.equal(client['scopes'].size, 0, 'scope rows are removed after process event delivery');
+        assert.equal(client['threadToScope'].size, 0);
+        assert.equal(client['turnToScope'].size, 0);
+        assert.equal(client['pendingNotifications'].length, 0);
+        assert.equal(client.listenerCount('error'), 0);
+        assert.equal(client.listenerCount('exit'), 0);
+
+        client['handleProcessError'](new Error('late error'));
+        client['handleProcessExit'](18, null);
+        assert.deepEqual(observed, firstSignal === 'error' ? ['error:wire failed'] : ['exit:17:SIGTERM'],
+            'the terminal gate suppresses every later process signal');
+        listener.dispose();
     });
-    await client.startThread('scope-a', { ...laneOptions, cwd: 'thread-a' });
-    await client.startThread('scope-b', { ...laneOptions, cwd: 'thread-b' });
-    const pending = client.startTurn('scope-a', 'hello');
-    client['handleProcessDeath']('test process death');
-
-    await assert.rejects(pending, /test process death/);
-    await assert.rejects(client.startTurn('scope-b', 'after death'), /client is terminal/);
-    await assert.rejects(client.startThread('scope-c', laneOptions), /client is terminal/);
-    assert.equal(client.getActiveTurnId('scope-a'), null);
-    assert.equal(client.getActiveTurnId('scope-b'), null);
-
-    // The rejections above come from the client-wide terminal flag, so they pass
-    // even if the individual lanes were left usable. Read the lane rows to prove
-    // each one was marked, which is what stops a lane from being reused.
-    const lanes = client['scopes'] as Map<string, { operation: string }>;
-    assert.deepEqual(
-        [...lanes.values()].map((lane) => lane.operation),
-        ['terminal', 'terminal'],
-        'every lane must be marked terminal, not just the client',
-    );
-});
+}
 
 test('legacy and scoped lane APIs cannot be mixed on one client', async () => {
     const scoped = new CodexAppClient();
