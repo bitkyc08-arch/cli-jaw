@@ -347,6 +347,12 @@ async function bindLane(
                 }
             } else lane.threadId = await client.startThread(lane.laneScope, threadOptions);
             lane.bindingEpoch = nextBindingEpoch++;
+            // A reset can arrive while this binding is being established. What it means
+            // depends on what we got: a thread we STARTED carries no history, so there is
+            // nothing for the reset to discard and the turn about to run keeps it. A thread
+            // we RESUMED is the very conversation the reset was discarding, so the mark
+            // stays and the binding is dropped when this turn releases the lane.
+            if (!resumedThread) lane.bindingRevoked = false;
         }
         assertCurrent(meta);
         const threadId = lane.threadId;
@@ -432,8 +438,12 @@ export function invalidateCodexAppLanesForScope(scopeKey: string | null): number
         for (const lane of host.lanes.values()) {
             // A null scope means every scope, which is what an instance-wide reset wants.
             if (scopeKey !== null && lane.scopeKey !== scopeKey) continue;
-            if (!lane.threadId) continue;
+            // A busy lane is marked even when it has no thread yet: bindLane() flips the
+            // lane to busy BEFORE awaiting startThread, so a reset arriving during that
+            // await would otherwise be skipped and the thread it is about to establish
+            // would outlive the reset that was supposed to discard it.
             if (lane.state === 'busy') { lane.bindingRevoked = true; dropped += 1; continue; }
+            if (!lane.threadId) continue;
             lane.threadId = null;
             lane.bindingEpoch = nextBindingEpoch++;
             dropped += 1;

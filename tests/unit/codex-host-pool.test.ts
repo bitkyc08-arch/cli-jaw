@@ -52,6 +52,8 @@ class FakeCodexAppClient extends EventEmitter {
     closeGracefullyCount = 0;
     killCount = 0;
     closeScopeGate: Deferred | null = null;
+    startThreadGate: Deferred | null = null;
+    resumeThreadGate: Deferred | null = null;
     closeScopeError: Error | null = null;
     closeGracefullyGate: Deferred | null = null;
     interruptError: Error | null = null;
@@ -85,6 +87,7 @@ class FakeCodexAppClient extends EventEmitter {
 
     async startThread(scope: string, options: unknown): Promise<string> {
         this.startCalls.push({ scope, options });
+        if (this.startThreadGate) await this.startThreadGate.promise;
         const threadId = `thread-${fakeState.nextThread++}`;
         this.threads.set(scope, threadId);
         return threadId;
@@ -92,6 +95,7 @@ class FakeCodexAppClient extends EventEmitter {
 
     async resumeThread(scope: string, threadId: string, options: unknown): Promise<string> {
         this.resumeCalls.push({ scope, threadId, options });
+        if (this.resumeThreadGate) await this.resumeThreadGate.promise;
         if (threadId.startsWith('missing-')) throw new Error(`no rollout found for thread id ${threadId}`);
         this.threads.set(scope, threadId);
         return threadId;
@@ -722,6 +726,78 @@ test('a waiter queued before an invalidation does not inherit the discarded bind
     const waiter = await waiterPromise;
     assert.notEqual(waiter.threadId, 'stored-epoch', 'the waiter must not continue the discarded thread');
     waiter.release();
+});
+
+// bindLane flips the lane to busy BEFORE awaiting the thread call, so between those two
+// moments a lane is busy with no thread. A reset arriving there used to be skipped by the
+// null-thread check, and the thread that then arrived outlived the reset that discarded it.
+test('a reset during a resume is not lost while the binding is still being established', async () => {
+    const model = `lane-invalidate-binding-${identity++}`;
+    const seedToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const seeded = await pool.acquireCodexAppLane(seedToken, {
+        scopeKey: 'scope-binding', bucketKey: bucket('scope-binding', model), storedThreadId: 'stored-binding',
+    });
+    const client = seeded.client as unknown as FakeCodexAppClient;
+    seeded.release();
+    pool.invalidateCodexAppLanesForScope('scope-binding');
+
+    // Now a turn starts resuming the same stored conversation, and the reset lands mid-flight.
+    const gate = deferred();
+    client.resumeThreadGate = gate;
+    const token = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const acquiring = pool.acquireCodexAppLane(token, {
+        scopeKey: 'scope-binding', bucketKey: bucket('scope-binding', model), storedThreadId: 'stored-binding',
+    });
+    await flush();
+    assert.equal(pool.invalidateCodexAppLanesForScope('scope-binding'), 1, 'a lane binding right now must still be marked');
+    gate.resolve();
+    client.resumeThreadGate = null;
+    const lease = await acquiring;
+    assert.equal(lease.threadId, 'stored-binding', 'the turn in flight keeps the thread it was handed');
+    lease.release();
+
+    const nextToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const next = await pool.acquireCodexAppLane(nextToken, {
+        scopeKey: 'scope-binding', bucketKey: bucket('scope-binding', model),
+    });
+    assert.equal(next.reused, false, 'the resumed conversation must not survive the reset');
+    assert.notEqual(next.threadId, 'stored-binding');
+    next.release();
+});
+
+// A thread we just STARTED carries no history, so a reset that lands while it is being
+// created has nothing to discard and the turn about to run should keep it.
+test('a reset during a fresh start does not throw away the thread it just created', async () => {
+    const model = `lane-invalidate-fresh-${identity++}`;
+    const seedToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const seeded = await pool.acquireCodexAppLane(seedToken, {
+        scopeKey: 'scope-fresh', bucketKey: bucket('scope-fresh', model),
+    });
+    const client = seeded.client as unknown as FakeCodexAppClient;
+    seeded.release();
+    pool.invalidateCodexAppLanesForScope('scope-fresh');
+
+    const gate = deferred();
+    client.startThreadGate = gate;
+    const token = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const acquiring = pool.acquireCodexAppLane(token, {
+        scopeKey: 'scope-fresh', bucketKey: bucket('scope-fresh', model),
+    });
+    await flush();
+    pool.invalidateCodexAppLanesForScope('scope-fresh');
+    gate.resolve();
+    client.startThreadGate = null;
+    const lease = await acquiring;
+    const freshThread = lease.threadId;
+    lease.release();
+
+    const nextToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const next = await pool.acquireCodexAppLane(nextToken, {
+        scopeKey: 'scope-fresh', bucketKey: bucket('scope-fresh', model),
+    });
+    assert.equal(next.reused, true, 'a thread with no history survives a reset that raced its creation');
+    assert.equal(next.threadId, freshThread);
+    next.release();
 });
 
 test('shutdown is deadline-bound, rejects waiters, and memoizes the first deadline and reserve', async () => {
