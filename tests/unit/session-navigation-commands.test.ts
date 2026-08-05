@@ -5,6 +5,7 @@ import { db } from '../../src/core/db.ts';
 import { settings } from '../../src/core/config.ts';
 import {
     createChatSession,
+    forkChatSession,
     getActiveChatSession,
     getChatSessionRemoteKey,
     setActiveChatSession,
@@ -69,4 +70,34 @@ test('with multi-session off the ambient scope is ignored entirely', () => {
 
     assert.equal(getActiveChatSession(), target.id);
     assert.equal(getChatSessionRemoteKey(target.id), null);
+});
+
+// /switch is not the only command that reaches the setter. /new and /fork create a
+// session and switch to it, so they carried the same defect.
+test('creating a session from a local scope switches to it without binding', () => {
+    settings.multiSession.enabled = true;
+    const from = createChatSession('nav-cmd-create-from');
+    setActiveChatSession(from.id);
+
+    const created = withSessionScope(
+        { scope: `local:${from.id}`, chatSessionId: from.id },
+        () => createChatSession('nav-cmd-created'),
+    );
+
+    assert.equal(getActiveChatSession(), created.id, 'creating a session switches to it');
+    assert.equal(getChatSessionRemoteKey(created.id), null, 'and it is not remotely bound');
+});
+
+test('forking from a local scope switches to the fork without binding', () => {
+    settings.multiSession.enabled = true;
+    const source = createChatSession('nav-cmd-fork-source');
+    setActiveChatSession(source.id);
+
+    const forked = withSessionScope(
+        { scope: `local:${source.id}`, chatSessionId: source.id },
+        () => forkChatSession(source.id),
+    );
+
+    assert.equal(getActiveChatSession(), forked.id, 'forking switches to the fork');
+    assert.equal(getChatSessionRemoteKey(forked.id), null, 'and the fork is not remotely bound');
 });
