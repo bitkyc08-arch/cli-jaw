@@ -7,7 +7,7 @@ import { registerAgentControlRoutes } from '../../src/routes/agent-control.ts';
 import { registerCommandRoutes } from '../../src/routes/command.ts';
 import { db } from '../../src/core/db.ts';
 import { settings } from '../../src/core/config.ts';
-import { createChatSession, setActiveChatSession } from '../../src/core/chat-sessions.ts';
+import { createChatSession, resolveOrCreateRemoteSession, setActiveChatSession } from '../../src/core/chat-sessions.ts';
 import { addBroadcastListener, clearAllBroadcastListeners } from '../../src/core/bus.ts';
 
 function noAuth(_req: Request, _res: Response, next: NextFunction): void { next(); }
@@ -41,10 +41,12 @@ function post(baseUrl: string, path: string, body?: unknown): Promise<globalThis
 
 afterEach(() => {
     clearAllBroadcastListeners();
+    db.prepare('DELETE FROM remote_session_bindings').run();
     db.prepare("DELETE FROM chat_sessions WHERE label LIKE 'unknown-sess%'").run();
     db.prepare("DELETE FROM messages WHERE session_id LIKE '%' AND content LIKE '%session%'").run();
     db.prepare("UPDATE session SET active_chat_session = 'default' WHERE id = 'default'").run();
     settings.multiSession.enabled = false;
+    settings.multiSession.channels.telegram = false;
 });
 
 // 072 §1.1 — stopping or clearing the wrong session is worse than doing nothing.
@@ -171,4 +173,45 @@ test('a command naming a session that no longer exists is refused', async () => 
 
     const survived = db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_id = ?').get(active.id) as { n: number };
     assert.equal(survived.n, 1, 'a refused command must not touch another session');
+});
+
+// A targeted request carries no session id: its session comes from the remote binding,
+// which the gateway resolves for ordinary messages. Slash commands are intercepted before
+// that point, so a Telegram topic running /compact would otherwise reset the globally
+// active session rather than its own (072 §1.2a).
+test('a targeted slash command runs in the remote conversation session', async () => {
+    settings.multiSession.enabled = true;
+    // Telegram multi-session is opt-in; with the channel gate off every topic shares the
+    // default session and there is nothing to route.
+    settings.multiSession.channels.telegram = true;
+    const active = createChatSession('unknown-sess-hub-other');
+    setActiveChatSession(active.id);
+
+    const target = {
+        channel: 'telegram',
+        targetKind: 'channel',
+        peerKind: 'group',
+        targetId: '-100777',
+        threadId: '42',
+    };
+
+    // Give both sessions history so the compact has something to act on and the assertion
+    // distinguishes which one it acted on.
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'active history', ?)").run(active.id);
+    const remoteKey = 'jaw:telegram:group:-100777:thread:42';
+    const preboundId = resolveOrCreateRemoteSession(remoteKey);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'remote history', ?)").run(preboundId);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/message', { prompt: '/compact', target });
+        assert.equal(response.status, 200, await response.text());
+    });
+
+    const remoteSessionId = db.prepare('SELECT chat_session_id FROM remote_session_bindings WHERE remote_key LIKE ?')
+        .pluck().get('jaw:telegram:group:-100777%') as string | undefined;
+    assert.ok(remoteSessionId, 'the target must have resolved to its own session');
+    const inRemote = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ? AND role = 'assistant'").get(remoteSessionId) as { n: number };
+    const inActive = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ? AND role = 'assistant'").get(active.id) as { n: number };
+    assert.equal(inRemote.n, 1, 'the compact acted on the remote conversation session');
+    assert.equal(inActive.n, 0, 'the globally active session was left alone');
 });

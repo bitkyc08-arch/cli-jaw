@@ -5,6 +5,7 @@
 import { db } from './db.js';
 import { settings } from './config.js';
 import { currentSessionScope } from './session-context.js';
+import { isRemoteBindingScope } from '../orchestrator/scope.js';
 import { randomUUID } from 'node:crypto';
 import { broadcast } from './bus.js';
 import { removeWidgetDir } from './widget-watcher.js';
@@ -100,7 +101,11 @@ function defaultRunPolicy(): ActiveRunPolicy | null {
 
 export function setActiveChatSession(sessionId: string): void {
     const captured = settings["multiSession"]?.enabled === true ? currentSessionScope() : undefined;
-    if (captured && captured.scope !== 'default') {
+    // "not default" used to mean "remote", because remote binding keys were the only
+    // non-default scopes. Local session scopes broke that: a /switch from a web tab would
+    // write a binding from `local:<id>` to the target session, leaving the active session
+    // unchanged while making the target look remotely bound (072 §1.2a).
+    if (captured && isRemoteBindingScope(captured.scope)) {
         bindStmt.run(captured.scope, sessionId);
         broadcast('session_switched', { sessionId, scope: captured.scope }, 'public');
         return;

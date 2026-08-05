@@ -17,6 +17,10 @@ import { log } from '../core/logger.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { resolveRequestSessionStrict } from './session-request.js';
 import { withSessionScope } from '../core/session-context.js';
+import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
+import { buildRemoteBindingKey } from '../messaging/session-key.js';
+import { resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
+import { settings } from '../core/config.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -144,6 +148,20 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             return;
         }
         const sessionContext = resolvedSession?.ok ? resolvedSession : undefined;
+        // A targeted request carries no session id — its session comes from the remote
+        // binding, which the gateway resolves later for ordinary messages. Slash commands
+        // are intercepted before that point, so a Telegram topic running /compact would
+        // otherwise reset the globally active session instead of its own (072 §1.2a).
+        const targetSessionContext = target && settings["multiSession"]?.enabled === true
+            ? (() => {
+                const gateOn = channelGateOn(target.channel);
+                if (!gateOn) return undefined;
+                const remoteKey = buildRemoteBindingKey(target);
+                const chatSessionId = resolveOrCreateRemoteSession(remoteKey);
+                return { scope: scopeForChatSession(chatSessionId, remoteKey), chatSessionId };
+            })()
+            : undefined;
+        const commandSessionContext = sessionContext ?? targetSessionContext;
         const submitMeta = stripUndefined({
             origin: target ? 'telegram' as const : 'web' as const,
             target,
@@ -168,9 +186,9 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                     // Same reason as /api/command: the route resolved a session above, and
                     // running the command outside that context would let it act on whichever
                     // session happens to be globally active instead.
-                    const cmdResult = sessionContext
+                    const cmdResult = commandSessionContext
                         ? await withSessionScope(
-                            { scope: sessionContext.scope, chatSessionId: sessionContext.chatSessionId },
+                            { scope: commandSessionContext.scope, chatSessionId: commandSessionContext.chatSessionId },
                             () => executeCommand(parsed, makeWebCommandCtx(req, locale)),
                         )
                         : await executeCommand(parsed, makeWebCommandCtx(req, locale));

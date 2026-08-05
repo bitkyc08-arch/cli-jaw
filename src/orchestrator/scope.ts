@@ -25,6 +25,13 @@ export function isNativeStateIsolatedScope(scope: string | null | undefined): bo
     return typeof scope === 'string' && scope.startsWith(LOCAL_SESSION_SCOPE_PREFIX);
 }
 
+// A remote binding key, and only that, is a persistent binding between a remote
+// conversation and a chat session. Local execution scopes look non-default too but bind
+// nothing — treating them as remote writes a binding that hijacks the session (072 §1.2a).
+export function isRemoteBindingScope(scope: string | null | undefined): boolean {
+    return typeof scope === 'string' && scope.startsWith('jaw:');
+}
+
 export function channelGateOn(channel: string | undefined): boolean {
     if (channel === 'slack') return settings["multiSession"]?.channels?.slack !== false;
     if (channel === 'telegram' || channel === 'discord') {

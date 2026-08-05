@@ -42,7 +42,7 @@ cli-jaw/
 │   │   ├── compact.ts        ← compact 헬퍼 (COMPACT_MARKER_CONTENT, managed summary builder, cutoff logic, harvestGitGrep + harvestChatGrep 1KB/1KB budget split) (742L)
 │   │   ├── instance.ts       ← 인스턴스 ID, node/jaw 경로, 유닛명 sanitize (61L)
 │   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace + tool_log + working_dir migration + closeDb() WAL checkpoint + checkOrphanedWal + busy_timeout + clearMessagesScoped + queued_messages table + model-aware clearEmployeeSession + getRecentMessagesLite + searchMessages(days+recent scope) + getMessageContext(±N range) (694L)
-│   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (223L)
+│   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (228L)
 │   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (65L)
 │   │   ├── logger.ts         ← 로거 유틸 (35L)
 │   │   ├── i18n.ts           ← 서버사이드 번역 (90L)
@@ -138,7 +138,7 @@ cli-jaw/
 │   │   ├── gateway.ts        ← submitMessage 통합 진입점 (WebUI+CLI+TG+Discord 공통) + working_dir scoped insertMessage (293L)
 │   │   ├── collect.ts        ← orchestrateAndCollect + orchestrateAndCollectData (84L)
 │   │   ├── session-work.ts   ← hasChatSessionWork — 세션 삭제 전 진행중 작업 관측 (활성 run·큐·replay는 정확 매칭, drain/retry/hold/worker/lane은 scope 단위 보수적 판정) (42L) ✨
-│   │   ├── scope.ts          ← 현재 단일 'default' scope를 반환하는 stub (54L)
+│   │   ├── scope.ts          ← 현재 단일 'default' scope를 반환하는 stub (61L)
 │   │   ├── worker-monitor.ts ← Worker stall detection — activity timestamps + stall/disconnect/timeout callbacks (58L)
 │   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + runId-aware current/previous snapshot types
 │   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + runId progress current/previous memory retention + pending replay metadata + durable worker-run hook (431L)
