@@ -47,6 +47,7 @@ import { SearchCoordinator } from './src/search/coordinator.js';
 import { SearchProviderRegistry } from './src/search/provider.js';
 import { WikiSearchProvider } from './src/search/providers/wiki.js';
 import { registerWikiRoutes } from './src/routes/wiki.js';
+import { forbiddenWikiRoots, setForbiddenWikiRoots } from './src/wiki/config.js';
 import { dashboardPath } from './src/manager/dashboard-home.js';
 import { ChatSearchProvider } from './src/search/providers/chat.js';
 import { MemorySearchProvider } from './src/search/providers/memory.js';
@@ -390,7 +391,8 @@ registerSearchRoutes(app, requireAuth, new SearchCoordinator(searchRegistry));
 // The notes vault is the one root the wiki must never occupy. The path is computed
 // lazily so an environment change is picked up without a restart, and passed in rather
 // than imported by the wiki module so core keeps no dependency on manager config.
-registerWikiRoutes(app, requireAuth, { forbiddenRoots: () => [dashboardPath('notes')] });
+setForbiddenWikiRoots([dashboardPath('notes')]);
+registerWikiRoutes(app, requireAuth, { forbiddenRoots: () => forbiddenWikiRoots() });
 registerSystemRoutes(app, { jawAuthToken: JAW_AUTH_TOKEN });
 registerAgentControlRoutes(app, requireAuth);
 registerCommandRoutes(app, requireAuth);

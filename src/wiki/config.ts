@@ -100,6 +100,23 @@ export function readWikiConfig(): WikiConfig {
     return normalizeWikiConfig({ ...DEFAULT_WIKI_CONFIG, ...raw });
 }
 
+// The enable route validates the root before it scaffolds, but the generic settings API
+// and the settings-file watcher can both write this block without going near that route.
+// Enforcing the rule where the config is CONSUMED is what makes it hold whatever path
+// the setting arrived by.
+export function readUsableWikiConfig(forbiddenRoots: readonly string[] = []): WikiConfig {
+    const config = readWikiConfig();
+    if (!config.enabled) return config;
+    try {
+        assertUsableWikiRoot(config.root, forbiddenRoots);
+    } catch {
+        // A root that should never have been accepted is treated as disabled rather than
+        // as an error, because the vault it names is not one this instance may read.
+        return { ...config, enabled: false, promptDigest: false };
+    }
+    return config;
+}
+
 // Writes go through the same serialized runtime-settings path every other settings
 // mutation uses, so a wiki change cannot race a concurrent settings write.
 export async function writeWikiConfig(next: WikiConfig): Promise<WikiConfig> {
@@ -130,4 +147,17 @@ export function wikiProviderStatus(config: WikiConfig): ProviderStatus {
         // an absence: the user asked for it to be on.
         return 'error';
     }
+}
+
+// The roots the vault must not occupy, registered once at composition. The registry
+// exists so the consumers below can enforce the rule without importing manager config:
+// core sets it at boot, everything else just asks.
+let forbiddenRoots: readonly string[] = [];
+
+export function setForbiddenWikiRoots(roots: readonly string[]): void {
+    forbiddenRoots = [...roots];
+}
+
+export function forbiddenWikiRoots(): readonly string[] {
+    return forbiddenRoots;
 }

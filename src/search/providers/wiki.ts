@@ -5,7 +5,7 @@
 import { searchNotes } from '../../notes/search.js';
 import type { ProviderStatus, SearchHit, SearchQuery, SearchWarning } from '../contract.js';
 import { providerEnvelope, type ProviderSearchOptions, type SearchProvider } from '../provider.js';
-import { readWikiConfig, wikiProviderStatus, type WikiConfig } from '../../wiki/config.js';
+import { forbiddenWikiRoots, readUsableWikiConfig, wikiProviderStatus, type WikiConfig } from '../../wiki/config.js';
 
 // The shared note search refuses a request for more than this many results, so a page
 // deep enough to ask for more would throw rather than return an empty tail. Wiki search
@@ -19,7 +19,10 @@ export class WikiSearchProvider implements SearchProvider {
 
     // The config is read per call rather than captured, because enabling the vault must
     // take effect without restarting the process that registered this provider.
-    constructor(private readonly readConfig: () => WikiConfig = readWikiConfig) {}
+    // Reads the validated view rather than the raw one: the generic settings API can
+    // write this block without going through the enable route, so a root that route
+    // would have refused must not become readable by that back door.
+    constructor(private readonly readConfig: () => WikiConfig = () => readUsableWikiConfig(forbiddenWikiRoots())) {}
 
     private config(): WikiConfig {
         try {
