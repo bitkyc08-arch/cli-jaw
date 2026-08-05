@@ -107,6 +107,13 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
     const bucket = input.scopedBucket
         ?? codexAppBucket
         ?? resolveSessionBucket(input.cli, input.model, input.provider);
+    // A caller that forgets `scopedBucket` used to land here on the bare, unscoped name —
+    // which is the default session's row. Silently writing another session's vendor id
+    // there is the worst outcome available, so a non-default scope scopes the fallback
+    // itself. Two pre-shutdown saves reached this state before it was caught by review.
+    const scopedFallback = bucket && (input.scopeKey || 'default') !== 'default' && !input.scopedBucket && !codexAppBucket
+        ? `${bucket}:${input.scopeKey}`
+        : bucket;
     // The bucket is per scope now, but the singleton `session` row is still one row for
     // the instance. Only the default scope owns it; a second session writing there would
     // point the next default resume at a thread that belongs to someone else (073 §2.1).
@@ -122,8 +129,8 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
                 input.effort,
             );
         }
-        if (bucket && input.sessionId) {
-            upsertSessionBucket.run(bucket, input.sessionId, input.model, input.resumeKey || null, input.outputLen ?? 0);
+        if (scopedFallback && input.sessionId) {
+            upsertSessionBucket.run(scopedFallback, input.sessionId, input.model, input.resumeKey || null, input.outputLen ?? 0);
         }
     })();
     return true;

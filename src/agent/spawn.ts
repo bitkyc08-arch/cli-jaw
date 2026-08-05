@@ -87,7 +87,6 @@ import {
 } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
 import { appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
-import { listKiroConversationIdsForCwd } from './kiro-auth.js';
 import {
     captureKiroSessionIdAfterExit,
     finalizeKiroFullText,
@@ -96,6 +95,7 @@ import {
     isKiroStaleSessionOutput,
     parseAiESessionIdFromStderr,
     processKiroStdoutChunk,
+    spawnWithKiroSnapshot,
     type KiroStreamEvent,
 } from './kiro-runtime.js';
 import { resolveCursorModelVariant } from './cursor-runtime.js';
@@ -1708,6 +1708,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resumeKey,
                     effort: cfg.effort || '',
                     skipSessionPersist: opts._skipSessionPersist === true,
+                    // Without this the save falls back to the bare, unscoped bucket, and a
+                    // successful turn in another session writes its vendor id into the row
+                    // the default session resumes from. The exit handler below passes the
+                    // same value; this path runs first and must not disagree with it.
+                    scopedBucket: currentBucket,
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedAcpSessionId.slice(0, 12)}... (pre-shutdown)`);
                 }
@@ -2290,6 +2295,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     effort: cfg.effort || '',
                     skipSessionPersist: opts._skipSessionPersist === true,
                     ...(lease?.bucketKey ? { codexAppBucket: lease.bucketKey } : {}),
+                    // With multiplex off there is no lease bucket key, and without this the
+                    // save lands on the bare `codex-app` row that belongs to the default
+                    // session. codex-app is the default runtime, so that is the common case.
+                    scopedBucket: currentBucket,
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedThreadId.slice(0, 12)}... (pre-shutdown)`);
                 }
@@ -2525,11 +2534,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (opencodeSpawnAudit) {
         console.log(`[jaw:opencode:audit] ${JSON.stringify(opencodeSpawnAudit)}`);
     }
-    const child = spawn(spawnCommand, args, {
+    // The snapshot has to predate the child; the helper owns that ordering (073 §2.4).
+    const kiroPlainText = isKiroPlainTextCli(cli, effectiveProvider);
+    const { child, kiroConversationIdsBefore, kiroSpawnStartedAt } = spawnWithKiroSnapshot({
+        kiroPlainText,
+        isFreshMainRun: !isResume && !empSid,
         cwd: spawnCwd,
-        env: spawnEnv,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        ...(windowsSpawnUsesShell ? { shell: true } : {}),
+        spawn: () => spawn(spawnCommand, args, {
+            cwd: spawnCwd,
+            env: spawnEnv,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            ...(windowsSpawnUsesShell ? { shell: true } : {}),
+        }),
     });
     if (mainManaged) mainRun!.process = child;
     else registerActiveProcess(agentLabel, child);
@@ -2606,11 +2622,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
     if (mainManaged && !opts.internal) setLiveRunTraceId(liveScope, traceRunId);
-    const kiroPlainText = isKiroPlainTextCli(cli, effectiveProvider);
-    const kiroSpawnStartedAt = kiroPlainText ? Date.now() - 1000 : 0;
-    const kiroConversationIdsBefore = (kiroPlainText && !isResume && !empSid)
-        ? listKiroConversationIdsForCwd(spawnCwd)
-        : null;
     // Native `agy --conversation ... -p` may emit only the current answer.
     // Length-based replay trimming can therefore swallow the whole new answer.
     const agyResumeOffset = 0;

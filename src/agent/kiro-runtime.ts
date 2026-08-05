@@ -172,6 +172,37 @@ export function isKiroPlainTextCli(cli: string, effectiveProvider?: string | nul
     return cli === 'kiro-code' || (cli === 'ai-e' && effectiveProvider === 'kiro');
 }
 
+/**
+ * Snapshot the conversation store, then start the child — in that order, always.
+ *
+ * Kiro tells us nothing about which conversation a fresh run created, so the id is
+ * recovered by diffing this store against a snapshot. The snapshot used to be taken a
+ * few statements after the spawn, which opens a window: a concurrent run writes its row
+ * inside it, that row is missing from this run's "before" set, and at exit it is the one
+ * novel id. This run then saves the other run's conversation, and nothing downstream can
+ * tell the difference (073 §2.4, 110 ON-24).
+ *
+ * Keeping both halves here makes the ordering a property of the code rather than a rule
+ * someone has to remember at the call site.
+ */
+export function spawnWithKiroSnapshot<T>(args: {
+    kiroPlainText: boolean;
+    /** Only a fresh main run diffs the store; a resume already knows its id. */
+    isFreshMainRun: boolean;
+    cwd: string;
+    spawn: () => T;
+    dataPath?: string;
+}): { child: T; kiroConversationIdsBefore: Set<string> | null; kiroSpawnStartedAt: number } {
+    const takeSnapshot = args.kiroPlainText && args.isFreshMainRun;
+    const kiroSpawnStartedAt = args.kiroPlainText ? Date.now() - 1000 : 0;
+    const kiroConversationIdsBefore = takeSnapshot
+        ? (args.dataPath
+            ? listKiroConversationIdsForCwd(args.cwd, args.dataPath)
+            : listKiroConversationIdsForCwd(args.cwd))
+        : null;
+    return { child: args.spawn(), kiroConversationIdsBefore, kiroSpawnStartedAt };
+}
+
 export type KiroStreamEvent =
     | { kind: 'assistant_delta'; text: string }
     | {

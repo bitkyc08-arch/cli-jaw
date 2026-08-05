@@ -80,7 +80,7 @@ test('switching into Codex App drops the scoped rows along with the legacy one',
         sourceWorkDir: '/tmp/from', targetWorkDir: '/tmp/to',
         fromCli: 'claude', toCli: 'codex-app', toModel: 'gpt-5.5',
     });
-    assert.deepEqual(prefixClears, [{ bucket: 'codex-app', pattern: 'codex-app:%' }]);
+    assert.deepEqual(prefixClears, [{ bucket: 'codex-app', pattern: 'codex-app:' }]);
     assert.deepEqual(singleClears, [], 'the codex-app branch owns the whole clear');
 });
 
@@ -120,7 +120,12 @@ test('an explicit compact drops the scoped rows too', async () => {
         getRuntime: () => ({ activeAgent: false }),
     } as never);
     assert.equal(result.ok, true, JSON.stringify(result));
-    assert.deepEqual(prefixClears, [{ bucket: 'codex-app', pattern: 'codex-app:%' }],
+    // The prefix is the caller's own scope, never the bare runtime name. Clearing
+    // `codex-app` plus `codex-app:%` would drop every other session's lane along with
+    // this one's — the default session is still just a session (073 §2.1).
+    assert.deepEqual(prefixClears, [{ bucket: 'codex-app:default', pattern: 'codex-app:default:' }],
         'a compact that leaves scoped rows lets the discarded thread come back');
-    assert.deepEqual(singleClears, []);
+    // The default scope also owns the bare legacy row, cleared by exact key so the
+    // neighbours stay out of it.
+    assert.deepEqual(singleClears, ['codex-app']);
 });

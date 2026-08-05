@@ -21,6 +21,7 @@ import {
     processKiroStdoutChunk,
     resolveKiroSessionIdAfterSpawn,
     resolveKiroSpawnIdentity,
+    spawnWithKiroSnapshot,
     stripKiroAnsi,
 } from '../../src/agent/kiro-runtime.ts';
 
@@ -404,4 +405,72 @@ test('a stdout id is preferred over the shared store', () => {
         if (previousDataDir === undefined) delete process.env['KIRO_CLI_DATA_DIR'];
         else process.env['KIRO_CLI_DATA_DIR'] = previousDataDir;
     }
+});
+
+// The resolver is only as good as the snapshot handed to it, and the snapshot's TIMING is
+// the part that was wrong: it used to be taken after the child had already been spawned.
+// Between spawn and snapshot a concurrent run writes its own row, that row is therefore
+// absent from this run's "before" set, and at exit it looks like the one novel id — so
+// this session saves the other session's conversation. Nothing downstream can tell.
+//
+// The two cases below are the same store; only the moment of the snapshot differs.
+test('a snapshot taken before the spawn keeps a concurrent run out of the diff', () => {
+    const { dataPath, cwd } = seedKiroStore([
+        ['conversation-of-a', '', Date.parse('2026-05-30T12:00:00.000Z')],
+        ['conversation-of-b', '', Date.parse('2026-05-30T12:00:02.000Z')],
+    ]);
+
+    // A snapshots before spawning, so it sees neither its own row nor B's — both appear
+    // afterwards and the pair is correctly ambiguous rather than confidently wrong.
+    const beforeSpawn = new Set<string>();
+    const honest = resolveKiroSpawnIdentity(cwd, beforeSpawn, 0, dataPath);
+    assert.equal(honest.kind, 'ambiguous', 'two rows appeared, so neither can be claimed');
+
+    // The old ordering: A snapshots after its child started, so its own row is already in
+    // the set and only B's looks new. That reads as an exact match for B's conversation.
+    const afterSpawn = new Set(['conversation-of-a']);
+    const wrong = resolveKiroSpawnIdentity(cwd, afterSpawn, 0, dataPath);
+    assert.equal(wrong.kind, 'exact');
+    assert.equal(wrong.kind === 'exact' && wrong.id, 'conversation-of-b',
+        'this is the failure the snapshot ordering has to prevent, not something to allow');
+});
+
+// Asserting the ordering by reading spawn.ts would break on the next refactor without
+// meaning anything. Instead the snapshot and the spawn are one helper, so the ordering is
+// a property of the code rather than a rule someone has to remember. Here a fake spawn
+// writes a row the way a concurrent process would, and the snapshot must predate it.
+test('the spawn helper snapshots before it starts the child', () => {
+    const { dataPath, cwd } = seedKiroStore([
+        ['already-running', '', Date.parse('2026-05-30T11:00:00.000Z')],
+    ]);
+
+    const appeared: string[] = [];
+    const { kiroConversationIdsBefore } = spawnWithKiroSnapshot({
+        kiroPlainText: true,
+        isFreshMainRun: true,
+        cwd,
+        dataPath,
+        spawn: () => {
+            // Whatever runs after the snapshot must not be inside it.
+            appeared.push('child-started');
+            return 'child' as unknown as never;
+        },
+    });
+
+    assert.deepEqual([...(kiroConversationIdsBefore ?? [])], ['already-running'],
+        'the snapshot sees the store as it was before this run existed');
+    assert.deepEqual(appeared, ['child-started'], 'and the child did start');
+});
+
+test('the spawn helper takes no snapshot when kiro is not the runtime', () => {
+    const { dataPath, cwd } = seedKiroStore([['irrelevant', '', 0]]);
+    const { kiroConversationIdsBefore, kiroSpawnStartedAt } = spawnWithKiroSnapshot({
+        kiroPlainText: false,
+        isFreshMainRun: true,
+        cwd,
+        dataPath,
+        spawn: () => 'child' as unknown as never,
+    });
+    assert.equal(kiroConversationIdsBefore, null);
+    assert.equal(kiroSpawnStartedAt, 0);
 });

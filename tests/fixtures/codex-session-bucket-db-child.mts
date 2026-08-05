@@ -72,9 +72,30 @@ try {
     assert.equal(bucketSessionId(capturedBucket), 'thread-scoped');
     assert.equal(bucketSessionId('codex-app'), undefined,
         'captured bucket writes must not be recomputed into the legacy row');
+    // A caller that names no bucket used to fall through to the bare `codex-app` row,
+    // which belongs to the default session — so a run in `scope-a` overwrote the thread
+    // the default session resumes from. Two pre-shutdown saves did exactly that. The
+    // fallback now scopes itself, so a forgotten bucket costs a fresh row, not another
+    // session's conversation (073 §2.1).
     assert.equal(persistence.persistMainSession({
         persistenceOwner,
         scopeKey,
+        cli: 'codex-app',
+        model: 'gpt-5.5',
+        effort: 'high',
+        sessionId: 'thread-unnamed-bucket',
+        code: 0,
+    }), true);
+    assert.equal(bucketSessionId('codex-app'), undefined,
+        'a non-default scope must never land on the default session row');
+    assert.equal(bucketSessionId('codex-app:scope-a'), 'thread-unnamed-bucket');
+    assert.equal(bucketSessionId(capturedBucket), 'thread-scoped');
+
+    // The default scope keeps the bare name, which is what a session created before 073
+    // has been resuming from all along.
+    assert.equal(persistence.persistMainSession({
+        persistenceOwner: persistence.getSessionOwnershipGeneration('default'),
+        scopeKey: 'default',
         cli: 'codex-app',
         model: 'gpt-5.5',
         effort: 'high',
@@ -82,7 +103,6 @@ try {
         code: 0,
     }), true);
     assert.equal(bucketSessionId('codex-app'), 'thread-legacy');
-    assert.equal(bucketSessionId(capturedBucket), 'thread-scoped');
 
     database.db.prepare('DELETE FROM session_buckets').run();
     database.updateSession.run('codex-app', 'singleton-before', 'gpt-5.5', 'auto', '/tmp', 'high');

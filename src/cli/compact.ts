@@ -16,8 +16,8 @@ import type { SlashResult } from './types.js';
 interface CompactSettings {
     cli?: string;
     workingDir?: string | null;
-    activeOverrides?: Record<string, { model?: string }>;
-    perCli?: Record<string, { model?: string }>;
+    activeOverrides?: Record<string, { model?: string; provider?: string }>;
+    perCli?: Record<string, { model?: string; provider?: string }>;
     multiSession?: { enabled?: boolean };
     runtime?: { codexApp?: { multiplex?: boolean } };
 }
@@ -91,8 +91,8 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     const bootstrap = renderBootstrapPrompt(slots);
     const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
 
-    const { insertMessageWithTrace, clearSessionBucketsByPrefix } = await import('../core/db.js');
-    const { resolveScopedSessionBucket, resolveSessionBucket } = await import('../agent/args.js');
+    const { insertMessageWithTrace, clearSessionBucket, clearSessionBucketsByPrefix } = await import('../core/db.js');
+    const { resolveAiEProvider, resolveSessionBucket } = await import('../agent/args.js');
     const {
         clearBossSessionOnly,
         setPendingBootstrapPrompt,
@@ -111,17 +111,23 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     // and the state it drops all belong to the same session, which is what 072 could not
     // arrange when a non-default scope had no bucket of its own.
     //
-    // The exact codex-app key folds in lane mode and effort, which this command cannot
-    // know, so it clears that runtime by scope prefix instead of rebuilding the key.
     const isCodexApp = activeCli === 'codex-app';
-    // This command knows the scope but not the effort, and codex-app folds effort into
-    // its multiplex key. Rather than build a key with a hole in it, clear by the prefix
-    // that identifies the scope: base for every runtime, base plus scope for codex-app.
-    const multiplex = settings?.runtime?.codexApp?.multiplex === true;
-    const base = resolveSessionBucket(activeCli, model);
-    const bucket = isCodexApp && multiplex
-        ? `${base}:${scope}`
-        : resolveScopedSessionBucket(activeCli, model, null, scope, '', 'fallback', false);
+    // ai-e keys its bucket by provider, and passing null here would make the bucket infer
+    // one from the model name instead. When the configured provider and that inference
+    // disagree, the clear lands on a bucket the conversation never used. Same precedence
+    // as the spawn path, so both name the same row.
+    const aiEProvider = activeCli === 'ai-e'
+        ? resolveAiEProvider(
+            settings?.perCli?.['ai-e']?.provider ?? settings?.activeOverrides?.['ai-e']?.provider,
+            model,
+        )
+        : null;
+    const base = resolveSessionBucket(activeCli, model, aiEProvider);
+    // Always the scoped form, including the default scope. Letting default resolve to the
+    // bare name looks harmless until the prefix clear below runs: `claude` plus `claude:%`
+    // deletes every other session's bucket for this runtime. Default's own legacy bare row
+    // is cleared separately, by exact key.
+    const bucket = `${base}:${scope}`;
     insertMessageWithTrace.run(
         'assistant',
         COMPACT_MARKER_CONTENT,
@@ -148,12 +154,14 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         clearBossSessionOnly();
     }
 
-    // codex-app folds lane mode and effort into its key, which this command cannot know,
-    // so it clears that runtime by prefix. Every other runtime has one key per scope.
     // The prefix form covers codex-app, whose key folds in lane mode and effort that this
-    // command cannot know. For every other runtime the exact key is the only match, so the
-    // same call is correct without a branch.
-    clearSessionBucketsByPrefix.run(bucket, `${bucket}:%`);
+    // command cannot know. The scope is a whole segment of the pattern, so `claude:local:a`
+    // plus `claude:local:a:%` cannot reach `claude:local:abc`. For every other runtime the
+    // exact key is the only match, so the same call is correct without a branch.
+    clearSessionBucketsByPrefix.run(bucket, `${bucket}:`);
+    // The default scope also owns the bare legacy name, which is what a session created
+    // before 073 resumes from. Clearing it by exact key keeps the neighbours out of it.
+    if (isDefaultScope) clearSessionBucket.run(base);
     if (isCodexApp) {
         // The rows are half of it: an idle lane keeps its thread in memory and, with no
         // stored thread left to contradict it, the next turn would reuse the very

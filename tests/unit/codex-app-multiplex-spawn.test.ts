@@ -709,19 +709,26 @@ test('route tokens survive both gate-flip directions without re-reading settings
     resetHarness();
     setMultiplex(false);
     const offScope = 'flip-off-to-on';
+    // Multiplex off still keys the bucket by scope: the read path resolves it that way
+    // (resolveScopedSessionBucket), and before 073 only the WRITE fell back to the bare
+    // name — which is the default session's row.
+    const offBucket = resolveScopedSessionBucket('codex-app', model, 'codex-app', offScope, effort, 'fallback', false);
     const offRun = spawnAgent('captured OFF', spawnOptions(offScope));
     setMultiplex(true);
     assert.equal((await offRun.promise).code, 0);
     assert.equal(harness.prepares.length, 0);
     assert.equal(harness.laneAcquires.length, 0);
     assert.equal(harness.genericAcquires.length, 1);
-    assert.ok(getSessionBucket.get('codex-app'));
+    assert.ok(getSessionBucket.get(offBucket));
+    assert.equal(getSessionBucket.get('codex-app'), undefined,
+        'a non-default scope must not write into the default session bucket');
 });
 
 test('ON to OFF to ON returns to the composite thread instead of the legacy OFF thread', async () => {
     resetHarness();
     const scopeKey = 'route-roundtrip';
     const bucket = resolveScopedSessionBucket('codex-app', model, 'codex-app', scopeKey, effort, 'fallback');
+    const offBucket = resolveScopedSessionBucket('codex-app', model, 'codex-app', scopeKey, effort, 'fallback', false);
 
     setMultiplex(true);
     assert.equal((await runMain(scopeKey)).code, 0);
@@ -729,7 +736,7 @@ test('ON to OFF to ON returns to the composite thread instead of the legacy OFF 
 
     setMultiplex(false);
     assert.equal((await runMain(scopeKey)).code, 0);
-    const offThread = (getSessionBucket.get('codex-app') as { session_id: string }).session_id;
+    const offThread = (getSessionBucket.get(offBucket) as { session_id: string }).session_id;
     assert.notEqual(offThread, onThread);
 
     setMultiplex(true);

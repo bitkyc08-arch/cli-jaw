@@ -209,3 +209,61 @@ test('a local scope with its own scoped bucket still compacts that bucket', asyn
     const shared = getSessionBucket.get('claude') as { session_id?: string } | undefined;
     assert.equal(shared?.session_id, 'vendor-thread-of-default', 'another runtime bucket is untouched');
 });
+
+// The tests above check each direction on its own: a local compact spares the default,
+// and a default compact clears itself. Neither seeds a NEIGHBOUR before the default
+// compacts, which is where the damage was. Default used to resolve to the bare bucket
+// name, and the prefix clear then took `claude` plus everything under `claude:%` — every
+// other session's row for that runtime (110 ON-17).
+test('a compact from the default session leaves the other sessions their buckets', async () => {
+    settings.multiSession.enabled = true;
+    seedSharedState();
+    setActiveChatSession('default');
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'something to compact', 'default')").run();
+
+    upsertSessionBucket.run('claude:local:sess-b', 'thread-of-b', 'default', null, 0);
+    upsertSessionBucket.run('claude:jaw:slack:T1:C1', 'thread-of-slack', 'default', null, 0);
+
+    const previousCli = settings["cli"];
+    settings["cli"] = 'claude';
+    try {
+        assert.equal(await compactHandler([], compactCtx()).then(r => r.ok), true);
+    } finally {
+        settings["cli"] = previousCli;
+    }
+
+    assert.equal(getSessionBucket.get('claude'), undefined, 'the default session clears its own legacy bucket');
+    const b = getSessionBucket.get('claude:local:sess-b') as { session_id?: string } | undefined;
+    assert.equal(b?.session_id, 'thread-of-b', 'a local session keeps its conversation');
+    const slack = getSessionBucket.get('claude:jaw:slack:T1:C1') as { session_id?: string } | undefined;
+    assert.equal(slack?.session_id, 'thread-of-slack', 'a Slack session keeps its conversation');
+    db.prepare("DELETE FROM session_buckets WHERE bucket LIKE 'claude:%'").run();
+});
+
+// Same defect, the runtime that ships as the default. With multiplex off the bucket key
+// has no lane in it, so the default scope resolved to bare `codex-app` and the wildcard
+// reached every scoped lane row of every other session.
+test('a default compact on non-multiplex codex-app spares the scoped lanes', async () => {
+    settings.multiSession.enabled = true;
+    setActiveChatSession('default');
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'something to compact', 'default')").run();
+
+    upsertSessionBucket.run('codex-app', 'thread-of-default', 'gpt-5.5', null, 0);
+    upsertSessionBucket.run('codex-app:local:sess-b', 'thread-of-b', 'gpt-5.5', null, 0);
+
+    const previousCli = settings["cli"];
+    const previousRuntime = settings["runtime"];
+    settings["cli"] = 'codex-app';
+    settings["runtime"] = { ...(previousRuntime ?? {}), codexApp: { ...(previousRuntime?.codexApp ?? {}), multiplex: false } };
+    try {
+        assert.equal(await compactHandler([], compactCtx()).then(r => r.ok), true);
+    } finally {
+        settings["cli"] = previousCli;
+        settings["runtime"] = previousRuntime;
+    }
+
+    assert.equal(getSessionBucket.get('codex-app'), undefined, 'the default session clears its own legacy bucket');
+    const b = getSessionBucket.get('codex-app:local:sess-b') as { session_id?: string } | undefined;
+    assert.equal(b?.session_id, 'thread-of-b', 'another session keeps its lane');
+    db.prepare("DELETE FROM session_buckets WHERE bucket LIKE 'codex-app%'").run();
+});
