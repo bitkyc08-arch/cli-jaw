@@ -89,6 +89,7 @@ export async function scanPort(port: number, fetchImpl: FetchLike, timeoutMs: nu
             row.projectDirs = metadata.projectDirs;
             row.currentCli = metadata.currentCli;
             row.currentModel = metadata.currentModel;
+            row.multiSession = metadata.multiSession;
             row.instanceId = deriveDashboardInstanceId(metadata.homeDisplay);
         } catch (error) {
             row.healthReason = `metadata unavailable: ${(error as Error).message}`;

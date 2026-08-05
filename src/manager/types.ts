@@ -105,6 +105,9 @@ export type DashboardInstance = {
     currentCli: string | null;
     currentModel: string | null;
     serviceMode: DashboardServiceMode;
+    // Only instances running several sessions get an expandable session tree; the
+    // rows themselves are fetched on demand rather than during the port scan.
+    multiSession?: boolean;
     profileId?: DashboardProfileId | null;
     label?: string | null;
     favorite?: boolean;

@@ -94,7 +94,33 @@ test('manager scan derives instance metadata from settings response', async () =
     assert.equal(row.currentCli, 'codex');
     assert.equal(row.currentModel, 'gpt-5.5');
     assert.equal(row.profileId, 'default');
+    assert.equal(row.multiSession, false, 'an instance without the flag reads as single-session');
     assert.equal(result.manager.profiles?.[0]?.profileId, 'default');
+});
+
+// 072 §1.4 — the session tree can only be offered for instances that report running
+// several sessions, so the scan has to carry that flag through instead of dropping it.
+test('manager scan reports whether an instance runs several sessions', async () => {
+    const fetchImpl: FetchLike = async (url) => {
+        if (url.includes('/api/health')) return response({ ok: true, version: '1.7.34', uptime: 99 });
+        if (url.includes('/api/settings')) {
+            return response({
+                ok: true,
+                data: {
+                    home: '/Users/jun/.cli-jaw',
+                    workingDir: '/tmp/work',
+                    cli: 'codex',
+                    model: 'gpt-5.5',
+                    multiSession: { enabled: true },
+                },
+            });
+        }
+        if (url.includes('/api/runtime')) return response({ ok: true, data: {} });
+        throw new Error('unexpected url');
+    };
+
+    const result = await scanDashboardInstances({ from: 3457, count: 1, fetchImpl });
+    assert.equal(result.instances[0]!.multiSession, true);
 });
 
 test('manager scan falls back to workingDir for instance id when home is absent', async () => {

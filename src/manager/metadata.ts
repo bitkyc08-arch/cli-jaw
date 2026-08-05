@@ -7,6 +7,9 @@ export type DashboardSettingsMetadata = {
     projectDirs: string[] | null;
     currentCli: string | null;
     currentModel: string | null;
+    // Whether the instance runs several chat sessions. The manager only offers the
+    // session tree for instances that actually have one (072 §1.4).
+    multiSession: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -55,5 +58,9 @@ export function normalizeSettingsMetadata(settingsBody: unknown): DashboardSetti
         : [];
     const projectDirs = filteredDirs.length > 0 ? filteredDirs : null;
 
-    return { homeDisplay, workingDir, projectDirs, currentCli, currentModel };
+    // Absent or malformed means off. An instance too old to report the flag has no
+    // session list to expand anyway, so treating it as single-session is correct.
+    const multiSession = asRecord(source?.["multiSession"])?.["enabled"] === true;
+
+    return { homeDisplay, workingDir, projectDirs, currentCli, currentModel, multiSession };
 }
