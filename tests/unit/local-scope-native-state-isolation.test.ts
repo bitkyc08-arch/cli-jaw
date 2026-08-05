@@ -5,34 +5,38 @@ import {
     resetSessionOwnershipGenerationForTest,
     shouldPersistMainSession,
 } from '../../src/agent/session-persistence.ts';
-import {
-    isNativeStateIsolatedScope,
-    scopeForChatSession,
-} from '../../src/orchestrator/scope.ts';
+import { resolveScopedSessionBucket } from '../../src/agent/args.ts';
+import { scopeForChatSession } from '../../src/orchestrator/scope.ts';
 
-// 072 §1.2b — a local session scope on a runtime without a scoped bucket must not read
-// or write the shared native state, because that state belongs to the default session.
+// This file was written for 072, which kept a non-default scope away from the shared
+// vendor state because sharing it would have destroyed the default session's
+// conversation. 073 gave every scope a bucket of its own, so the contract is now the
+// opposite: each scope persists, and what it must not do is reach into another's.
 
-test('local session scopes are the only ones isolated from native state', () => {
-    assert.equal(isNativeStateIsolatedScope('local:sess-2'), true);
-    assert.equal(isNativeStateIsolatedScope('default'), false);
-    // Remote scopes share a bucket today too, but cutting their resume here would break
-    // working Slack sessions. That separation belongs to unit 073.
-    assert.equal(isNativeStateIsolatedScope('jaw:slack:T1:C1'), false);
-    assert.equal(isNativeStateIsolatedScope(undefined), false);
+test('every scope gets a bucket of its own, and the default keeps the legacy name', () => {
+    assert.equal(resolveScopedSessionBucket('claude', 'default', null, 'default', 'high', 'native', false), 'claude');
+    assert.equal(resolveScopedSessionBucket('claude', 'default', null, 'local:sess-2', 'high', 'native', false), 'claude:local:sess-2');
+    assert.equal(
+        resolveScopedSessionBucket('claude', 'default', null, 'jaw:slack:T1:C1', 'high', 'native', false),
+        'claude:jaw:slack:T1:C1',
+        'a remote scope is separated too — 072 deferred this and 073 owns it',
+    );
 });
 
-test('the canonical scope helper is what produces the isolated prefix', () => {
-    assert.equal(isNativeStateIsolatedScope(scopeForChatSession('sess-2')), true);
-    assert.equal(isNativeStateIsolatedScope(scopeForChatSession('default')), false);
-    assert.equal(isNativeStateIsolatedScope(scopeForChatSession('sess-2', 'jaw:slack:T1:C1')), false);
-    assert.equal(isNativeStateIsolatedScope(scopeForChatSession('sess-2', undefined, false)), false);
+test('two scopes on the same runtime never land on the same bucket', () => {
+    const a = resolveScopedSessionBucket('claude', 'default', null, 'local:a', 'high', 'native', false);
+    const b = resolveScopedSessionBucket('claude', 'default', null, 'local:b', 'high', 'native', false);
+    const slack = resolveScopedSessionBucket('claude', 'default', null, 'jaw:slack:T1:C1', 'high', 'native', false);
+    assert.equal(new Set([a, b, slack]).size, 3);
 });
 
-// 072 refused to persist a local scope at all, because it would have written into the
-// default session's bucket and singleton row. 073 gave it a bucket of its own, so it
-// persists like any other session — what it must NOT do is touch the singleton row,
-// which is asserted in tests/unit/session-persistence.test.ts.
+test('the canonical scope helper produces the keys those buckets are built from', () => {
+    assert.equal(scopeForChatSession('default'), 'default');
+    assert.equal(scopeForChatSession('sess-2'), 'local:sess-2');
+    assert.equal(scopeForChatSession('sess-2', 'jaw:slack:T1:C1'), 'jaw:slack:T1:C1');
+    assert.equal(scopeForChatSession('sess-2', undefined, false), 'default', 'gate off collapses to default');
+});
+
 test('a local scope persists now that it owns a bucket', () => {
     resetSessionOwnershipGenerationForTest();
     const scopeKey = scopeForChatSession('sess-2');
@@ -48,48 +52,35 @@ test('a local scope persists now that it owns a bucket', () => {
     assert.equal(ok, true);
 });
 
-test('the default scope keeps persisting exactly as before', () => {
-    resetSessionOwnershipGenerationForTest();
-    const scopeKey = scopeForChatSession('default');
-    const ok = shouldPersistMainSession({
-        persistenceOwner: getSessionOwnershipGeneration(scopeKey),
-        scopeKey,
-        cli: 'claude',
-        model: 'default',
-        effort: 'medium',
-        sessionId: 'vendor-session-from-tab-1',
-        code: 0,
-    });
-    assert.equal(ok, true);
+test('the default scope and a remote scope persist as they always did', () => {
+    for (const scopeKey of ['default', 'jaw:slack:channel:C1']) {
+        resetSessionOwnershipGenerationForTest();
+        const ok = shouldPersistMainSession({
+            persistenceOwner: getSessionOwnershipGeneration(scopeKey),
+            scopeKey,
+            cli: 'claude',
+            model: 'default',
+            effort: 'medium',
+            sessionId: `vendor-${scopeKey}`,
+            code: 0,
+        });
+        assert.equal(ok, true, `${scopeKey} must still persist`);
+    }
 });
 
-test('a remote scope keeps persisting so existing Slack resume survives', () => {
-    resetSessionOwnershipGenerationForTest();
-    const scopeKey = scopeForChatSession('sess-slack', 'jaw:slack:T1:C1');
-    const ok = shouldPersistMainSession({
-        persistenceOwner: getSessionOwnershipGeneration(scopeKey),
-        scopeKey,
-        cli: 'claude',
-        model: 'default',
-        effort: 'medium',
-        sessionId: 'vendor-session-from-slack',
-        code: 0,
-    });
-    assert.equal(ok, true);
-});
-
-test('codex-app multiplex carries the scope in its bucket and stays a normal owner', () => {
-    resetSessionOwnershipGenerationForTest();
-    const scopeKey = scopeForChatSession('sess-2');
-    const ok = shouldPersistMainSession({
-        persistenceOwner: getSessionOwnershipGeneration(scopeKey),
-        scopeKey,
-        cli: 'codex-app',
-        model: 'gpt-5.5',
-        effort: 'medium',
-        sessionId: 'thread-2',
-        code: 0,
-        codexAppBucket: `codex-app:${scopeKey}`,
-    });
-    assert.equal(ok, true);
+// codex-app multiplex folds lane mode and effort into its key, and that is unchanged.
+test('codex-app multiplex keeps its own key shape', () => {
+    assert.equal(
+        resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'local:sess-2', 'high', 'native', true),
+        'codex-app:local:sess-2',
+    );
+    assert.equal(
+        resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'local:sess-2', 'high', 'fallback', true),
+        'codex-app:local:sess-2:gpt-5.5:high',
+    );
+    assert.equal(
+        resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'default', 'high', 'native', false),
+        'codex-app',
+        'multiplex off keeps the bare name on the default scope',
+    );
 });

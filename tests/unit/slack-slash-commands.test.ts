@@ -27,7 +27,6 @@ mock.module('../../src/orchestrator/scope.ts', {
     namedExports: {
         LOCAL_SESSION_SCOPE_ACTIVATION: true,
         LOCAL_SESSION_SCOPE_PREFIX: 'local:',
-        isNativeStateIsolatedScope: (scope?: string | null) => typeof scope === 'string' && scope.startsWith('local:'),
         isRemoteBindingScope: (scope?: string | null) => typeof scope === 'string' && scope.startsWith('jaw:'),
         channelGateOn: () => true,
         resolveOrcScope: () => 'default',

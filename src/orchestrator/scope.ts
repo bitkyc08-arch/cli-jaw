@@ -18,13 +18,11 @@ export const LOCAL_SESSION_SCOPE_ACTIVATION = true;
 
 export const LOCAL_SESSION_SCOPE_PREFIX = 'local:';
 
-// Only `local:` scopes get native-state isolation. Remote scopes such as
-// `jaw:slack:...` already share a runtime bucket today, and cutting their resume
-// here would break Slack sessions that work — that sharing belongs to unit 073.
-export function isNativeStateIsolatedScope(scope: string | null | undefined): boolean {
-    return typeof scope === 'string' && scope.startsWith(LOCAL_SESSION_SCOPE_PREFIX);
-}
-
+// 072 had an `isNativeStateIsolatedScope` here, used to decide which scopes must not
+// touch the shared vendor state at all. 073 gave every scope a bucket of its own, so
+// there is nothing left to isolate FROM and the predicate has no callers. It is removed
+// rather than left behind, because a helper that describes a rule the code no longer
+// follows is worse than no helper.
 // A remote binding key, and only that, is a persistent binding between a remote
 // conversation and a chat session. Local execution scopes look non-default too but bind
 // nothing — treating them as remote writes a binding that hijacks the session (072 §1.2a).
