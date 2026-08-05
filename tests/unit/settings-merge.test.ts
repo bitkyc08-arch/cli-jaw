@@ -108,3 +108,41 @@ test('SM-011: shared sanitizer strips laneMode and classifies invalid multiplex'
     assert.deepEqual(api.invalidPaths, ['runtime.codexApp.multiplex']);
     assert.deepEqual(api.value.runtime.codexApp, { keep: 1 });
 });
+
+// ON-12b — a non-object multiSession is not a harmless no-op. It survives the merge, and
+// migrateSettings reads a falsy block as an absent one and fills it with the current
+// defaults; once those default to enabled, `{"multiSession": null}` switches sessions on
+// for someone who never accepted the migration (110 §4b-3). Both ingresses that can carry
+// one — the API patch and the settings-file watcher — pass through this function.
+test('SM-012: a multiSession that is not an object never reaches the merge', () => {
+    for (const source of ['api', 'watch', 'boot'] as const) {
+        for (const bad of [null, 'on', 42, ['enabled']]) {
+            const out = sanitizeSettingsInput({ cli: 'codex-app', multiSession: bad }, source);
+            assert.equal('multiSession' in out.value, false,
+                `${source} must drop ${JSON.stringify(bad)} rather than pass it on`);
+            assert.ok(out.invalidPaths.includes('multiSession'));
+        }
+    }
+});
+
+test('SM-013: a well-formed multiSession is preserved, and a bad channels is not', () => {
+    const kept = sanitizeSettingsInput({
+        multiSession: { enabled: true, maxConcurrent: 2, channels: { slack: true } },
+    }, 'api');
+    assert.deepEqual(kept.value.multiSession, { enabled: true, maxConcurrent: 2, channels: { slack: true } });
+    assert.deepEqual(kept.invalidPaths, []);
+
+    const badChannels = sanitizeSettingsInput({
+        multiSession: { enabled: true, channels: 'all' },
+    }, 'api');
+    assert.deepEqual(badChannels.value.multiSession, { enabled: true });
+    assert.deepEqual(badChannels.invalidPaths, ['multiSession.channels']);
+});
+
+// A patch that says nothing about sessions must stay silent about them, or every unrelated
+// settings save would rewrite the block.
+test('SM-014: a patch without multiSession does not invent one', () => {
+    const out = sanitizeSettingsInput({ cli: 'claude' }, 'api');
+    assert.equal('multiSession' in out.value, false);
+    assert.deepEqual(out.invalidPaths, []);
+});

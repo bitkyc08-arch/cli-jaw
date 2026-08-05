@@ -36,13 +36,13 @@ function pending(fromCli = 'claude') {
     };
 }
 
-test('DRM-001: ENOENT alone uses the clean-install picker and persists schema v2', () => {
+test('DRM-001: ENOENT alone uses the clean-install picker and persists the current schema', () => {
     if (existsSync(config.SETTINGS_PATH)) unlinkSync(config.SETTINGS_PATH);
     pickerCalls = 0;
     const loaded = config.loadSettings();
     assert.equal(pickerCalls, 1);
     assert.equal(loaded.cli, 'codex-app');
-    assert.equal(loaded.settingsSchemaVersion, 2);
+    assert.equal(loaded.settingsSchemaVersion, config.SETTINGS_SCHEMA_VERSION);
     assert.equal(loaded.runtimeDefaultMigration, null);
     assert.equal(config.getSettingsPersistenceShape(), 'absent');
     assert.equal(JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8')).cli, 'codex-app');
@@ -59,7 +59,7 @@ for (const [name, input] of [
         assert.equal(pickerCalls, 0);
         assert.equal(loaded.cli, 'claude');
         assert.deepEqual(loaded.runtimeDefaultMigration, pending());
-        assert.equal(loaded.settingsSchemaVersion, 2);
+        assert.equal(loaded.settingsSchemaVersion, config.SETTINGS_SCHEMA_VERSION);
     });
 }
 
@@ -75,8 +75,17 @@ test('DRM-003: v1 preserves explicit cli and never changes it during migration',
     assert.equal(already.runtimeDefaultMigration.state, 'already-codex-app');
 });
 
-test('DRM-004: valid v2 pending reload is not rewritten', () => {
-    const document = { settingsSchemaVersion: 2, runtimeDefaultMigration: pending(), cli: 'claude' };
+// A document already at the current schema is the one that must not be rewritten. A v2
+// document no longer qualifies: the session-default migration rewrites it on the way to
+// v3, which is the point of that migration.
+test('DRM-004: a current-schema pending reload is not rewritten', () => {
+    const document = {
+        settingsSchemaVersion: config.SETTINGS_SCHEMA_VERSION,
+        runtimeDefaultMigration: pending(),
+        multiSessionDefaultMigration: { id: 'multi-session-default-v3', state: 'pending' },
+        multiSession: { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer', channels: { telegram: false, discord: false, slack: true } },
+        cli: 'claude',
+    };
     writeSettings(document);
     const before = readFileSync(config.SETTINGS_PATH, 'utf8');
     const loaded = config.loadSettings();

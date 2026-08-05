@@ -16,7 +16,11 @@ import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
 
 export const SETTINGS_WATCH_DEBOUNCE_MS = 300;
-const SERVER_OWNED_SETTINGS_KEYS = ['settingsSchemaVersion', 'runtimeDefaultMigration'] as const;
+const SERVER_OWNED_SETTINGS_KEYS = [
+    'settingsSchemaVersion',
+    'runtimeDefaultMigration',
+    'multiSessionDefaultMigration',
+] as const;
 
 export type SettingsWatchOptions = {
     debounceMs?: number;

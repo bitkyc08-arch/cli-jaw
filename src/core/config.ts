@@ -186,8 +186,9 @@ export function runMigration(projectDir: string) {
 
 // ─── Settings ────────────────────────────────────────
 
-export const SETTINGS_SCHEMA_VERSION = 2;
+export const SETTINGS_SCHEMA_VERSION = 3;
 export const RUNTIME_DEFAULT_MIGRATION_ID = 'codex-app-default-v2' as const;
+export const MULTI_SESSION_DEFAULT_MIGRATION_ID = 'multi-session-default-v3' as const;
 
 export type RuntimeDefaultMigration = {
     id: typeof RUNTIME_DEFAULT_MIGRATION_ID;
@@ -196,10 +197,29 @@ export type RuntimeDefaultMigration = {
     toCli: 'codex-app';
 };
 
+export type MultiSessionDefaultMigration = {
+    id: typeof MULTI_SESSION_DEFAULT_MIGRATION_ID;
+    // `already-enabled` is for the opt-in user who turned sessions on before this
+    // existed. Offering them a choice they already made would be noise, and accepting
+    // on their behalf would change a concurrency they had set deliberately.
+    state: 'pending' | 'accepted' | 'kept' | 'already-enabled';
+};
+
+// What multiSession meant before this flip. A document written by a schema that predates
+// the new defaults must resolve absent keys to these, not to the new ones — otherwise the
+// upgrade turns sessions on for someone who never asked (110 §4b-1).
+export const LEGACY_MULTI_SESSION_BASELINE = {
+    enabled: false,
+    maxConcurrent: 1,
+    midRunPolicy: 'steer' as const,
+    channels: { telegram: false, discord: false, slack: true },
+};
+
 function createDefaultSettings() {
     return {
         settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
         runtimeDefaultMigration: null as RuntimeDefaultMigration | null,
+        multiSessionDefaultMigration: null as MultiSessionDefaultMigration | null,
         port: '',  // persisted by server on startup; CLI commands use as fallback
         cli: DEFAULT_CLI,
         fallbackOrder: [],
@@ -268,8 +288,13 @@ function createDefaultSettings() {
             lastActive: { telegram: null, discord: null, slack: null },
         },
         multiSession: {
-            enabled: false,
-            maxConcurrent: 1,
+            // Sessions are on by default as of schema v3. An existing install does not
+            // get this silently: the merge substitutes the legacy baseline for its
+            // cohort and asks (110 §4b).
+            enabled: true,
+            // Two, not more: the observable unit is that a second tab does not wait for
+            // the first. Beyond that is the user's CPU and token budget to spend.
+            maxConcurrent: 2,
             midRunPolicy: 'steer' as const,
             channels: { telegram: false, discord: false, slack: true },
         },
@@ -355,6 +380,30 @@ function createDefaultSettings() {
 
 export const DEFAULT_SETTINGS = createDefaultSettings();
 
+/**
+ * The keys a document must carry to legitimately claim the current schema.
+ *
+ * `cli-jaw init` writes a settings file, so a new install is not the ENOENT case the
+ * cohort rules were written around. Left unstamped, its document reads as v1 and the
+ * person who just installed is offered a migration away from a state they never had.
+ * Stamping the version alone is not enough either — the loader holds a document claiming
+ * this schema to what this schema writes — so the writer takes the whole set from here
+ * rather than assembling it from memory (110 §4b-3).
+ */
+export function freshInstallSchemaFields(): {
+    settingsSchemaVersion: number;
+    multiSession: typeof DEFAULT_SETTINGS.multiSession;
+    multiSessionDefaultMigration: MultiSessionDefaultMigration | null;
+} {
+    const defaults = createDefaultSettings();
+    return {
+        settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
+        multiSession: defaults.multiSession,
+        // No marker: there is no prior state to migrate from and nothing to ask about.
+        multiSessionDefaultMigration: null,
+    };
+}
+
 export function normalizeModelForCli(cli: string, model: unknown): unknown {
     if (typeof model !== 'string') return model;
     if (cli === 'claude' || cli === 'claude-e') return migrateLegacyClaudeValue(model);
@@ -419,6 +468,23 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
         } satisfies RuntimeDefaultMigration;
     } else {
         validateRuntimeDefaultMigration(s["runtimeDefaultMigration"]);
+    }
+
+    // The session-default flip is its own migration with its own marker. It is NOT
+    // folded into the runtime one: the two flips can be rolled back at different times
+    // for different reasons, and a shared marker would make that impossible to express.
+    // A v1 document crosses both boundaries and so gets both markers in this one pass.
+    if (sourceVersion < SETTINGS_SCHEMA_VERSION) {
+        s["settingsSchemaVersion"] = SETTINGS_SCHEMA_VERSION;
+        s["multiSessionDefaultMigration"] = {
+            id: MULTI_SESSION_DEFAULT_MIGRATION_ID,
+            // Someone who already turned sessions on made this decision before we asked.
+            // Offering it again would be noise, and accepting for them would change a
+            // concurrency they chose.
+            state: s["multiSession"]?.enabled === true ? 'already-enabled' : 'pending',
+        } satisfies MultiSessionDefaultMigration;
+    } else {
+        validateMultiSessionDefaultMigration(s["multiSessionDefaultMigration"]);
     }
 
     // Claude model alias migration
@@ -489,8 +555,19 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     if (!s["multiSession"]) {
         s["multiSession"] = createDefaultSettings().multiSession;
     } else {
-        if (s["multiSession"].enabled === undefined) s["multiSession"].enabled = false;
-        if (s["multiSession"].maxConcurrent === undefined) s["multiSession"].maxConcurrent = 1;
+        // Deliberately the OLD defaults, not createDefaultSettings(). This function takes
+        // an already-merged object and cannot tell which cohort it came from, so handing
+        // out the new defaults here would enable sessions for a legacy document that
+        // reached this line by some path other than the boot merge. The boot merge fills
+        // both keys from the cohort baseline, which makes these two lines unreachable on
+        // the normal path — they are the net under it, and a net set to the new defaults
+        // is not a net (110 §4b-2).
+        if (s["multiSession"].enabled === undefined) {
+            s["multiSession"].enabled = LEGACY_MULTI_SESSION_BASELINE.enabled;
+        }
+        if (s["multiSession"].maxConcurrent === undefined) {
+            s["multiSession"].maxConcurrent = LEGACY_MULTI_SESSION_BASELINE.maxConcurrent;
+        }
         if (s["multiSession"].midRunPolicy === undefined) s["multiSession"].midRunPolicy = 'steer';
         if (s["multiSession"].channels === undefined) {
             s["multiSession"].channels = { telegram: false, discord: false, slack: true };
@@ -575,13 +652,13 @@ export type SettingsStateCandidate = {
     shape: SettingsPersistenceShape;
 };
 
-function readSettingsSchemaVersion(raw: Record<string, any>): 1 | 2 {
+function readSettingsSchemaVersion(raw: Record<string, any>): 1 | 2 | 3 {
     if (!("settingsSchemaVersion" in raw)) return 1;
     const version = raw["settingsSchemaVersion"];
     if (!Number.isInteger(version) || version < 1 || version > SETTINGS_SCHEMA_VERSION) {
         throw new Error(`unsupported_settings_schema_version:${String(version)}`);
     }
-    return version as 1 | 2;
+    return version as 1 | 2 | 3;
 }
 
 function validateRuntimeDefaultMigration(value: unknown): void {
@@ -602,6 +679,51 @@ function validateRuntimeDefaultMigration(value: unknown): void {
     }
 }
 
+function validateMultiSessionDefaultMigration(value: unknown): void {
+    if (value === null || value === undefined) return;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('invalid_multi_session_default_migration');
+    }
+    const migration = value as Record<string, unknown>;
+    const keys = Object.keys(migration).sort();
+    const validState = ['pending', 'accepted', 'kept', 'already-enabled'].includes(String(migration["state"]));
+    if (JSON.stringify(keys) !== JSON.stringify(['id', 'state'])
+        || migration["id"] !== MULTI_SESSION_DEFAULT_MIGRATION_ID
+        || !validState) {
+        throw new Error('invalid_multi_session_default_migration');
+    }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * A v3 document was written by this schema, and this schema always writes both the
+ * multiSession block and its migration marker. If either is missing or malformed, the
+ * document is not what it claims to be — and the consequence of guessing is specific:
+ * an absent block would inherit the new defaults and start running sessions while the
+ * marker still said the user had not consented (110 §4b-3). Older documents are held to
+ * no such rule: their schema did not know these keys, so absent is normal there and the
+ * legacy baseline covers it.
+ */
+function assertCurrentSchemaSessionShape(raw: Record<string, any>): void {
+    const block = raw["multiSession"];
+    if (!isPlainRecord(block)) throw new Error('invalid_multi_session_block');
+    if (typeof block["enabled"] !== 'boolean') throw new Error('invalid_multi_session_enabled');
+    const maxConcurrent = block["maxConcurrent"];
+    if (!Number.isInteger(maxConcurrent) || (maxConcurrent as number) < 1) {
+        throw new Error('invalid_multi_session_max_concurrent');
+    }
+    if ('channels' in block && !isPlainRecord(block["channels"])) {
+        throw new Error('invalid_multi_session_channels');
+    }
+    if (!('multiSessionDefaultMigration' in raw)) {
+        throw new Error('missing_multi_session_default_migration');
+    }
+    validateMultiSessionDefaultMigration(raw["multiSessionDefaultMigration"]);
+}
+
 export function loadSettings() {
     try {
         let raw: any = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
@@ -618,20 +740,38 @@ export function loadSettings() {
             console.warn(`[jaw:settings] ignored invalid settings fields: ${sanitized.invalidPaths.join(', ')}`);
         }
         const sourceVersion = readSettingsSchemaVersion(raw);
+        // Dropping a malformed field and carrying on is right for a patch arriving over
+        // the API — the rest of the patch is still what the caller meant. It is wrong for
+        // a document claiming the current schema at boot: this schema wrote that block,
+        // so a malformed one means the file is not what it says, and silently replacing
+        // it with defaults is how a pending consent turns into a running feature.
+        if (sourceVersion >= 3 && sanitized.invalidPaths.some(path => path.startsWith('multiSession'))) {
+            throw new Error(`invalid_multi_session_block:${sanitized.invalidPaths.join(',')}`);
+        }
         // A v1 document predates the codex-app default, so an absent or unknown
         // cli is normalised to the historical fallback rather than inheriting
         // the new default. A v2 document was written by this schema and must
         // already name a known runtime; if it does not, the file is not
         // trustworthy enough to silently supply one, so it closes the same way
         // a corrupt or future-versioned document does.
-        if (sourceVersion === 2 && !CLI_KEYS.includes(raw["cli"])) {
+        if (sourceVersion >= 2 && !CLI_KEYS.includes(raw["cli"])) {
             throw new Error(`invalid_settings_cli:${String(raw["cli"])}`);
         }
+        // A document claiming the current schema must actually carry what this schema
+        // writes. Checked before the merge, because after it the absence is gone.
+        if (sourceVersion >= 3) assertCurrentSchemaSessionShape(raw);
         const legacyCli = sourceVersion === 1 && !CLI_KEYS.includes(raw["cli"])
             ? 'claude'
             : raw["cli"];
         const hadPlanning = !!raw.planning;
         const defaults = createDefaultSettings();
+        // Everything below the current schema predates the session defaults, so absent
+        // keys resolve to what they used to mean rather than to the new defaults. The
+        // merge runs before migrateSettings, so this is the only place that still knows
+        // whether a key was in the document or is about to be invented (110 §4b-1).
+        const multiSessionBaseline = sourceVersion < SETTINGS_SCHEMA_VERSION
+            ? LEGACY_MULTI_SESSION_BASELINE
+            : defaults.multiSession;
         // Deep merge perCli so new CLI defaults (e.g. copilot) are preserved
         const mergedPerCli: Record<string, any> = buildDefaultPerCli();
         if (raw.perCli) {
@@ -676,15 +816,19 @@ export function loadSettings() {
             },
             code: { ...defaults.code, ...(raw.code || {}) },
             multiSession: {
-                ...defaults.multiSession,
+                ...multiSessionBaseline,
                 ...(raw.multiSession || {}),
-                channels: { ...defaults.multiSession.channels, ...(raw.multiSession?.channels || {}) },
+                channels: { ...multiSessionBaseline.channels, ...(raw.multiSession?.channels || {}) },
             },
             wiki: { ...defaults.wiki, ...(raw.wiki || {}) },
         }, sourceVersion);
         // #64 safety: auto-correct stale workingDir (e.g. copied instance)
         // but allow valid paths to persist (dynamic project targeting)
-        let needsSave = sourceVersion === 1 || hadPlanning;
+        // Any document below the current schema was rewritten by the migration above, so
+        // it has to reach disk. Leaving it unsaved would keep memory at v3 while the file
+        // stayed older, and the next boot would run the migration again — including
+        // recreating a marker the user had already resolved.
+        let needsSave = sourceVersion < SETTINGS_SCHEMA_VERSION || hadPlanning;
         if (typeof merged["workingDir"] === 'string' && merged["workingDir"] !== JAW_HOME && !fs.existsSync(merged["workingDir"])) {
             console.warn(`[jaw:workingDir] stale path ${merged["workingDir"]}, resetting to JAW_HOME`);
             merged["workingDir"] = JAW_HOME;
@@ -727,6 +871,13 @@ export function loadSettings() {
 
         const next = createDefaultSettings();
         next.cli = 'claude';
+        // This branch stands in for a state we could not read — corrupt JSON, an
+        // unsupported version, a permission error. The new-install defaults are the wrong
+        // thing to borrow here: they would turn sessions on for someone whose real
+        // settings might have had them off, and who was never asked. Pinned to what the
+        // previous schema meant (110 §4c). The ENOENT branch above is genuinely new and
+        // keeps the new defaults.
+        next.multiSession = { ...next.multiSession, ...LEGACY_MULTI_SESSION_BASELINE };
         applyEnvOverrides(next);
         commitCandidate({ value: next, shape: 'absent' });
 

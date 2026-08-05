@@ -6,6 +6,7 @@ import { syncCodexContextWindow } from './codex-config.js';
 import {
     settings, persistAndCommit, snapshotSettingsState, migrateSettings, normalizeProjectDirs,
     RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
+    MULTI_SESSION_DEFAULT_MIGRATION_ID, type MultiSessionDefaultMigration,
     type SettingsStateCandidate, type SettingsWrite,
 } from './config.js';
 import { broadcast } from './bus.js';
@@ -58,6 +59,73 @@ export async function withRuntimeDefaultMigrationLock<T>(work: () => Promise<T>)
     const turn = new Promise<void>((resolve) => { release = resolve; });
     const previous = runtimeDefaultMigrationTail;
     runtimeDefaultMigrationTail = previous.then(() => turn);
+    await previous;
+    try {
+        return await work();
+    } finally {
+        release();
+    }
+}
+
+export type MultiSessionDefaultMigrationAction = 'accept' | 'keep';
+
+export class MultiSessionDefaultMigrationTerminalError extends Error {
+    constructor() {
+        super('multi_session_default_migration_terminal');
+        this.name = 'MultiSessionDefaultMigrationTerminalError';
+    }
+}
+
+/**
+ * Accept means both halves of what the prompt offered: sessions on, and a second lane so
+ * a second tab does not queue behind the first. Turning it on without the lane would
+ * change the UI and change nothing about how it runs.
+ *
+ * A concurrency the user moved off 1 is left alone. A stored 1 and a chosen 1 are the
+ * same byte, so this is stated in terms of the value rather than of intent — the prompt
+ * says what it will do and this does exactly that (110 §4d).
+ */
+export function resolveMultiSessionDefaultMigration(
+    currentSettings: Record<string, unknown>,
+    action: MultiSessionDefaultMigrationAction,
+): Record<string, unknown> {
+    const current = currentSettings["multiSessionDefaultMigration"];
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+        throw new MultiSessionDefaultMigrationTerminalError();
+    }
+    const migration = current as MultiSessionDefaultMigration;
+    if (migration.id !== MULTI_SESSION_DEFAULT_MIGRATION_ID || migration.state !== 'pending') {
+        throw new MultiSessionDefaultMigrationTerminalError();
+    }
+    const multiSessionDefaultMigration: MultiSessionDefaultMigration = {
+        ...migration,
+        state: action === 'accept' ? 'accepted' : 'kept',
+    };
+    if (action !== 'accept') return { multiSessionDefaultMigration };
+
+    const block = currentSettings["multiSession"];
+    const currentMax = (block && typeof block === 'object' && !Array.isArray(block))
+        ? (block as Record<string, unknown>)["maxConcurrent"]
+        : undefined;
+    const keepsOwnConcurrency = Number.isInteger(currentMax) && (currentMax as number) > 1;
+    return {
+        // A partial patch here is safe because multiSession is a merge boundary; the
+        // policy and the channel gates survive it.
+        multiSession: {
+            enabled: true,
+            ...(keepsOwnConcurrency ? {} : { maxConcurrent: 2 }),
+        },
+        multiSessionDefaultMigration,
+    };
+}
+
+let multiSessionDefaultMigrationTail = Promise.resolve();
+
+export async function withMultiSessionDefaultMigrationLock<T>(work: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => { release = resolve; });
+    const previous = multiSessionDefaultMigrationTail;
+    multiSessionDefaultMigrationTail = previous.then(() => turn);
     await previous;
     try {
         return await work();

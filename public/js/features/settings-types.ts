@@ -52,6 +52,10 @@ export interface RuntimeDefaultMigration {
     fromCli: string;
     toCli: 'codex-app';
 }
+export interface MultiSessionDefaultMigration {
+    id: 'multi-session-default-v3';
+    state: 'pending' | 'accepted' | 'kept' | 'already-enabled';
+}
 export interface CliStatusInfo {
     available: boolean | null;
     binaryInstalled: boolean | null;
@@ -86,4 +90,5 @@ export interface SettingsData {
     pi?: PiSettingsView;
     settingsSchemaVersion?: number;
     runtimeDefaultMigration?: RuntimeDefaultMigration | null;
+    multiSessionDefaultMigration?: MultiSessionDefaultMigration | null;
 }

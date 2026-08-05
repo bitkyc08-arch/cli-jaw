@@ -30,8 +30,19 @@ function document(
     runtime?: Record<string, unknown>,
 ): Record<string, unknown> {
     return {
-        settingsSchemaVersion: 2,
+        // At the current schema on purpose. These scenarios are about whether the
+        // multiplex gate is rewritten to disk, and a document below the current schema
+        // would be rewritten by its own migration — which would answer the question
+        // before the gate ever got a say.
+        settingsSchemaVersion: 3,
         runtimeDefaultMigration: cli === 'claude' ? pending() : null,
+        multiSessionDefaultMigration: null,
+        multiSession: {
+            enabled: true,
+            maxConcurrent: 2,
+            midRunPolicy: 'steer',
+            channels: { telegram: false, discord: false, slack: true },
+        },
         cli,
         ...(runtime ? { runtime } : {}),
     };

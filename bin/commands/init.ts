@@ -8,7 +8,7 @@ import fs from 'node:fs';
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { JAW_HOME, SETTINGS_PATH } from '../../src/core/config.js';
+import { JAW_HOME, SETTINGS_PATH, freshInstallSchemaFields } from '../../src/core/config.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 
 const CLI_CHOICES = CLI_KEYS.join(', ');
@@ -255,6 +255,18 @@ if (!channelFlag) {
 
 // Merge (preserve existing values unless --force)
 const merged: InitSettings = values.force ? {} : { ...settings };
+// A document being created here is a new install, so it says which schema it was written
+// under and carries what that schema requires. Left unstamped, the loader reads an absent
+// version as v1 and treats the install as legacy — the person who just ran `init` would be
+// offered a migration away from a state they never had (110 §4b-3).
+//
+// This applies ONLY when there was no file. Stamping an existing document would be the
+// same mistake pointing the other way: a genuine legacy install would claim the current
+// schema, skip its migration, and be switched on without ever being asked. `--force`
+// rewrites the document but does not make the installation new, so it is excluded too.
+if (!settingsExist) {
+    Object.assign(merged, freshInstallSchemaFields());
+}
 merged.workingDir = workingDir;
 merged.cli = cli;
 merged["permissions"] = 'auto';

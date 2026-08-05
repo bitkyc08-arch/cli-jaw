@@ -11,6 +11,7 @@ import { settings } from '../../src/core/config.ts';
 import {
     activeMainProcesses,
     clearQueueHold,
+    isScopedQueue,
     isRetryPending,
     messageQueue,
     retryStateForScope,
@@ -18,6 +19,7 @@ import {
 } from '../../src/agent/spawn.ts';
 import { createQueueController } from '../../src/agent/spawn/queue.ts';
 import { SessionLanes, sessionLanes } from '../../src/orchestrator/session-lanes.ts';
+import { scopeForChatSession } from '../../src/orchestrator/scope.ts';
 import { claimWorker, clearAllWorkers } from '../../src/orchestrator/worker-registry.ts';
 
 const IDS = ['route-delete', 'route-active', 'route-queued', 'route-hold', 'route-worker', 'route-lane', 'route-remote'];
@@ -127,30 +129,33 @@ test('DELETE returns 409 for exact active-run and queued-item matches', async ()
     });
 });
 
-// The production queue captures the multi-session gate at construction and this process boots
-// with it off, so every scope collapses onto 'default'. Session-work follows that same gate
-// (isScopedQueue) instead of re-reading settings, which is what keeps these 409s real: a scope
-// key the queue never fills would report "no work" for a session that has some.
+// The production queue captures the multi-session gate at construction, and session-work
+// follows that same captured value (isScopedQueue) rather than re-reading settings — which
+// is what keeps these 409s real: a scope key the queue never fills would report "no work"
+// for a session that has some. So the work here has to be seeded on the lane the queue
+// actually uses, which is what scopeForChatSession resolves it to.
 test('DELETE returns 409 for hold, worker, and session-lane work on the queue own lane', async () => {
     settings.multiSession.enabled = true;
     insertSession('route-hold', 933);
     insertSession('route-worker', 934);
     insertSession('route-lane', 935);
 
-    setQueueHold('default', 'route-hold-id', 60_000);
+    const queueLane = (sessionId: string) => scopeForChatSession(sessionId, undefined, isScopedQueue());
+
+    setQueueHold(queueLane('route-hold'), 'route-hold-id', 60_000);
     await withServer(async baseUrl => {
         assert.equal((await fetch(`${baseUrl}/api/chat-sessions/route-hold`, { method: 'DELETE' })).status, 409);
     });
-    clearQueueHold('default', 'route-hold-id', { resume: false });
+    clearQueueHold(queueLane('route-hold'), 'route-hold-id', { resume: false });
 
-    claimWorker({ id: 'route-worker-agent', name: 'Route Worker' }, 'pending', { scopeId: 'default', chatSessionId: 'route-worker' });
+    claimWorker({ id: 'route-worker-agent', name: 'Route Worker' }, 'pending', { scopeId: queueLane('route-worker'), chatSessionId: 'route-worker' });
     await withServer(async baseUrl => {
         assert.equal((await fetch(`${baseUrl}/api/chat-sessions/route-worker`, { method: 'DELETE' })).status, 409);
     });
     clearAllWorkers();
 
     let release!: () => void;
-    const pending = sessionLanes.run('default', () => new Promise<void>(resolve => { release = resolve; }));
+    const pending = sessionLanes.run(queueLane('route-lane'), () => new Promise<void>(resolve => { release = resolve; }));
     await Promise.resolve();
     await withServer(async baseUrl => {
         assert.equal((await fetch(`${baseUrl}/api/chat-sessions/route-lane`, { method: 'DELETE' })).status, 409);
@@ -222,9 +227,10 @@ test('DELETE consults the production retry window and refuses (409)', async () =
 
     const retryTimer = setTimeout(() => {}, 60_000);
     retryTimer.unref();
-    retryStateForScope('default').setTimer(retryTimer);
+    const retryLane = scopeForChatSession('route-retry', undefined, isScopedQueue());
+    retryStateForScope(retryLane).setTimer(retryTimer);
     try {
-        assert.equal(isRetryPending('default'), true, 'production controller must report the retry window');
+        assert.equal(isRetryPending(retryLane), true, 'production controller must report the retry window');
         await withServer(async baseUrl => {
             const response = await fetch(`${baseUrl}/api/chat-sessions/route-retry`, { method: 'DELETE' });
             assert.equal(response.status, 409, 'a pending retry in the session scope must block deletion');
@@ -234,7 +240,7 @@ test('DELETE consults the production retry window and refuses (409)', async () =
         const msgs = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?').get('route-retry') as { cnt: number };
         assert.equal(msgs.cnt, 1, 'refused deletion must leave its messages intact');
     } finally {
-        retryStateForScope('default').setTimer(null);
+        retryStateForScope(retryLane).setTimer(null);
         clearTimeout(retryTimer);
     }
 

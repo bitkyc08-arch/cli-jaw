@@ -99,7 +99,7 @@ test('SWA-006: external JSON cannot overwrite schema-owned fields but can update
     };
     replaceSettings({
         ...settings,
-        settingsSchemaVersion: 2,
+        settingsSchemaVersion: 3,
         runtimeDefaultMigration: migration,
         cli: 'codex-app',
     }, 'absent');
@@ -112,7 +112,9 @@ test('SWA-006: external JSON cannot overwrite schema-owned fields but can update
         lastSavedRaw: null,
     });
     assert.equal(reloaded, true);
-    assert.equal(settings["settingsSchemaVersion"], 2);
+    // The external document said 99. What matters is that the number in memory is the one
+    // this process owns, not the one an outside writer asked for.
+    assert.equal(settings["settingsSchemaVersion"], 3);
     assert.deepEqual(settings["runtimeDefaultMigration"], migration);
     assert.equal(settings["cli"], 'pi');
     const change = events.find(e => e.type === 'settings_change');

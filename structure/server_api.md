@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 245개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 244개다.
+> 현재 라이브 surface는 총 246개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 245개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -122,7 +122,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` `DELETE /api/chat-sessions/:id` |
 | Instance Lock | `GET /api/instance/lock` `POST /api/instance/lock` `DELETE /api/instance/lock` |
 | Search | `GET /api/search` |
-| Settings/Prompt | `GET/PUT /api/settings` `POST /api/settings/runtime-default-migration` `POST /api/project/pick` `GET /api/project/git-summary` `GET /api/codex-context` `GET/PUT /api/prompt` `GET /api/prompt-templates` `PUT /api/prompt-templates/:id` `GET/PUT /api/heartbeat-md` |
+| Settings/Prompt | `GET/PUT /api/settings` `POST /api/settings/runtime-default-migration` `POST /api/settings/multi-session-default-migration` `POST /api/project/pick` `GET /api/project/git-summary` `GET /api/codex-context` `GET/PUT /api/prompt` `GET /api/prompt-templates` `PUT /api/prompt-templates/:id` `GET/PUT /api/heartbeat-md` |
 | MCP/CLI/Quota | `GET/PUT /api/mcp` `POST /api/mcp/sync` `POST /api/mcp/install` `POST /api/mcp/reset` `GET /api/mcp/registry` `GET /api/cli-registry` `GET /api/cli-status` `GET /api/quota` `POST /api/copilot/refresh` `POST /api/pi/profiles/register` `GET /api/pi/models` |
 | Runtime Context | `GET /api/runtime-context` `POST /api/runtime-context` `DELETE /api/runtime-context/:id` `DELETE /api/runtime-context` |
 | Security Audit | `GET /api/security-audit/entries` `GET /api/security-audit/verify` |
@@ -148,7 +148,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 245개 route handler 기준이다. 이 중 API 엔드포인트는 244개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 246개 route handler 기준이다. 이 중 API 엔드포인트는 245개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
@@ -247,6 +247,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 - `GET /api/project/git-summary`는 Settings의 `projectDirs[0]`만 읽는 read-only header helper다.
 - `POST /api/settings/runtime-default-migration`은 `requireAuth` 뒤에서 정확히 `{ "action": "accept" | "keep" }`만 받는다. `settingsSchemaVersion`과 `runtimeDefaultMigration`은 server-owned라 generic `PUT /api/settings`에 포함하면 `400`이다. 이미 terminal인 migration은 `409 runtime_default_migration_terminal`과 최신 settings snapshot을 반환한다. 성공 `200`과 conflict `409`의 snapshot은 모두 `GET/PUT /api/settings`와 같은 redaction을 거친다.
+- `POST /api/settings/multi-session-default-migration`은 같은 계약을 따르며 다중 세션 기본 ON 전환(schema v3)을 소유한다. `multiSessionDefaultMigration`도 server-owned이므로 generic `PUT`에 포함하면 `400`이고, terminal이면 `409 multi_session_default_migration_terminal`이다. **런타임 migration과 별도 route인 이유**는 두 전환이 서로 다른 시점에 서로 다른 이유로 롤백될 수 있고, v1 문서는 둘이 동시에 pending이기 때문이다 — 한 쪽 응답이 다른 쪽 답으로 읽히면 안 된다. `accept`는 `enabled:true`와, 현재 `maxConcurrent`가 1일 때 `2`를 함께 적용한다(동의 문구가 그 둘을 말한다). 1이 아닌 유효 값은 그대로 둔다.
 - `runtime.codexApp.multiplex`는 사용자 소유 boolean gate이며 실행 기본값은 `false`다. raw settings에 키가 없으면 `GET /api/settings`의 실행 snapshot은 `false`를 제공하지만 다음 저장에서도 키와 그 결과 비는 `codexApp`/`runtime` container를 만들지 않는다. explicit `false`/`true`는 보존한다. generic `PUT /api/settings`에서 문자열·숫자·`null`은 `400 invalid_settings_field`, host probe 소유인 `runtime.codexApp.laneMode`는 값과 무관하게 기존 호환 오류 `400 server_owned_settings_field`로 거부한다.
 - `GET /api/cli-status`는 cold에서 nullable `probeState:"checking"`, stale에서 즉시 이전 snapshot을 반환한다. binary/PATH, auth, capability detection은 request event loop가 아니라 finite-lifetime child worker에서 수행된다.
 - 응답은 legacy Web UI header의 compact git status 전용이다: branch/hash, tracked modified count, untracked count.

@@ -9,13 +9,10 @@ import { addBroadcastListener, broadcast, removeBroadcastListener } from '../../
 import { withSessionScope } from '../../src/core/session-context.ts';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
-test('OFF is the default and captured context adds no event fields', () => {
-    assert.deepEqual(DEFAULT_SETTINGS.multiSession, {
-        enabled: false,
-        maxConcurrent: 1,
-        midRunPolicy: 'steer',
-        channels: { telegram: false, discord: false, slack: true },
-    });
+// The subject here is what OFF looks like on the wire, not what the default is. Sessions
+// default to on as of schema v3 (110), but a user who keeps them off — or an install that
+// has not consented yet — must see byte-identical events to before.
+test('with sessions OFF the captured context adds no event fields', () => {
     settings.multiSession = {
         enabled: false,
         maxConcurrent: 1,

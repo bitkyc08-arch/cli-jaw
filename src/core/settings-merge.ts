@@ -64,6 +64,27 @@ export function sanitizeSettingsInput(
         value["runtime"] = runtime;
     }
 
+    // `multiSession` has to be a plain object or not be here at all. A non-object survives
+    // the merge as-is and then meets `if (!s["multiSession"])` in migrateSettings, which
+    // reads falsy as absent and fills the block with the current defaults — so a single
+    // `{"multiSession": null}` would switch sessions on for a user who never accepted the
+    // migration. Both ingresses that can carry one, the API patch and the settings-file
+    // watcher, pass through here, which is why the guard lives in this function rather
+    // than at either call site (110 §4b-3).
+    if (Object.prototype.hasOwnProperty.call(input, 'multiSession') && !isPlainRecord(input["multiSession"])) {
+        delete value["multiSession"];
+        invalidPaths.push('multiSession');
+    } else if (isPlainRecord(input["multiSession"])) {
+        const block = { ...input["multiSession"] };
+        // Same reasoning one level down: a non-object `channels` reaches the per-channel
+        // reads as something that is not indexable.
+        if (Object.prototype.hasOwnProperty.call(block, 'channels') && !isPlainRecord(block["channels"])) {
+            delete block["channels"];
+            invalidPaths.push('multiSession.channels');
+        }
+        value["multiSession"] = block;
+    }
+
     return {
         value,
         persistenceShape,
@@ -131,6 +152,21 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
             };
         }
         delete remaining["runtime"];
+    }
+
+    // multiSession.channels is the same shape of boundary. An enabled-only patch must
+    // keep midRunPolicy and the channel gates, and a single-channel patch must keep the
+    // other two channels — which is exactly what a per-channel session gate will send.
+    if (isPlainRecord(remaining["multiSession"])) {
+        const sessionPatch = remaining["multiSession"];
+        result["multiSession"] = { ...(result["multiSession"] || {}), ...sessionPatch };
+        if (isPlainRecord(sessionPatch["channels"])) {
+            result["multiSession"].channels = {
+                ...(current["multiSession"]?.channels || {}),
+                ...sessionPatch["channels"],
+            };
+        }
+        delete remaining["multiSession"];
     }
 
     // Top-level scalar fields

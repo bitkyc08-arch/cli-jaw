@@ -40,9 +40,17 @@ import {
     RuntimeDefaultMigrationTerminalError,
     withRuntimeDefaultMigrationLock,
     type RuntimeDefaultMigrationAction,
+    resolveMultiSessionDefaultMigration,
+    MultiSessionDefaultMigrationTerminalError,
+    withMultiSessionDefaultMigrationLock,
+    type MultiSessionDefaultMigrationAction,
 } from '../core/runtime-settings.js';
 
-const SERVER_OWNED_SETTINGS_KEYS = ['settingsSchemaVersion', 'runtimeDefaultMigration'] as const;
+const SERVER_OWNED_SETTINGS_KEYS = [
+    'settingsSchemaVersion',
+    'runtimeDefaultMigration',
+    'multiSessionDefaultMigration',
+] as const;
 
 function redactSttSettings(input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
     if (!input) return input;
@@ -190,6 +198,45 @@ export function registerSettingsRoutes(
             }
             const result = await applySettings(patch) as Record<string, unknown>;
             const migration = result["runtimeDefaultMigration"] as Record<string, unknown> | undefined;
+            try {
+                getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
+                    action,
+                    migrationId: migration?.["id"],
+                    status: migration?.["state"],
+                });
+            } catch { /* non-fatal */ }
+            ok(res, redactRuntimeSettings(result));
+        });
+    }));
+
+    // Its own route rather than a branch on the runtime one: the two flips resolve
+    // independently, and a v1 install has both pending at once. Sharing an endpoint
+    // would make one answer look like an answer to the other.
+    app.post('/api/settings/multi-session-default-migration', requireAuth, asyncHandler(async (req, res) => {
+        const body = req.body;
+        if (!body || typeof body !== 'object' || Array.isArray(body)
+            || Object.keys(body).length !== 1
+            || !Object.prototype.hasOwnProperty.call(body, 'action')
+            || !['accept', 'keep'].includes(body.action)) {
+            res.status(400).json({ ok: false, error: 'invalid_multi_session_default_migration_action' });
+            return;
+        }
+        const action = body.action as MultiSessionDefaultMigrationAction;
+        await withMultiSessionDefaultMigrationLock(async () => {
+            let patch: Record<string, unknown>;
+            try {
+                patch = resolveMultiSessionDefaultMigration(settings, action);
+            } catch (error) {
+                if (!(error instanceof MultiSessionDefaultMigrationTerminalError)) throw error;
+                res.status(409).json({
+                    ok: false,
+                    error: 'multi_session_default_migration_terminal',
+                    settings: redactRuntimeSettings(settings),
+                });
+                return;
+            }
+            const result = await applySettings(patch) as Record<string, unknown>;
+            const migration = result["multiSessionDefaultMigration"] as Record<string, unknown> | undefined;
             try {
                 getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
                     action,

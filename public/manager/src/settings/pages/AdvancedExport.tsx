@@ -38,7 +38,12 @@ export function validateImportPayload(text: string): { ok: true; value: Record<s
 }
 
 export function stripServerOwnedSettingsFields(settings: Record<string, unknown>): Record<string, unknown> {
-    const { settingsSchemaVersion: _schema, runtimeDefaultMigration: _migration, ...userOwned } = settings;
+    const {
+        settingsSchemaVersion: _schema,
+        runtimeDefaultMigration: _migration,
+        multiSessionDefaultMigration: _sessionMigration,
+        ...userOwned
+    } = settings;
     return userOwned;
 }
 
