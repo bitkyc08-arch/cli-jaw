@@ -169,6 +169,11 @@ type PendingOperation = {
     failure: Promise<never>;
     reject: (err: Error) => void;
     failed: Error | null;
+    // A turn can finish before the request that created it returns, since the
+    // notification stream and the response race. Without remembering which ids
+    // already ended, the late response would rebind a turn the lane has already
+    // torn down, leaving it active forever and rejecting every turn after it.
+    settledTurnIds: Set<string>;
 };
 
 type ScopeThreadState = CodexThreadOptions & {
@@ -212,6 +217,10 @@ export class CodexAppClient extends EventEmitter {
     private pendingNotifications: BufferedNotification[] = [];
     private pendingNotificationSequence = 0;
     private pendingNotificationTimer: NodeJS.Timeout | null = null;
+    private preListenerNotifications: Array<{
+        method: string; params: EvRec; owner: RoutedIdentity | undefined;
+    }> = [];
+    private legacyListenerAttached = false;
     private readonly pendingNotificationLimit = PENDING_NOTIFICATION_LIMIT;
     private readonly pendingNotificationTtlMs = PENDING_NOTIFICATION_TTL_MS;
     private nextId = 1;
@@ -305,6 +314,14 @@ export class CodexAppClient extends EventEmitter {
         if (legacy) {
             this.on('host-notification', onHostNotification);
             this.on('notification', onHostNotification);
+        }
+        if (legacy && !this.legacyListenerAttached) {
+            this.legacyListenerAttached = true;
+            const buffered = this.preListenerNotifications;
+            this.preListenerNotifications = [];
+            for (const entry of buffered) {
+                handlers.onNotification(entry.method, entry.params, entry.owner);
+            }
         }
 
         let disposed = false;
@@ -612,6 +629,13 @@ export class CodexAppClient extends EventEmitter {
             ]);
             const turnId = result.turn?.id;
             if (!turnId) throw new Error(`turn/start returned no turn id for scope ${scope}`);
+            // The notification stream may have started and finished this turn
+            // while the response was still travelling. Rebinding it here would
+            // make a completed turn active again and block every turn after it.
+            if (operation.settledTurnIds.has(turnId)) {
+                this.throwIfOperationFailed(operation);
+                return;
+            }
             if (state.activeTurnId && state.activeTurnId !== turnId) {
                 throw new Error(
                     `turn/start response ${turnId} conflicts with active turn ${state.activeTurnId} for scope ${scope}`,
@@ -688,6 +712,11 @@ export class CodexAppClient extends EventEmitter {
     }
 
     private clearActiveTurn(state: ScopeThreadState): void {
+        // Record the id before dropping it. The turn/start response may still be
+        // in flight, and it must not resurrect a turn that has already ended.
+        if (state.activeTurnId && state.pendingOperation?.kind === 'turn') {
+            state.pendingOperation.settledTurnIds.add(state.activeTurnId);
+        }
         if (state.activeTurnId && this.turnToScope.get(state.activeTurnId) === state.scope) {
             this.turnToScope.delete(state.activeTurnId);
         }
@@ -767,7 +796,9 @@ export class CodexAppClient extends EventEmitter {
         const failure = new Promise<never>((_resolve, rejectPromise) => {
             reject = rejectPromise;
         });
-        const operation: PendingOperation = { kind, failure, reject, failed: null };
+        const operation: PendingOperation = {
+            kind, failure, reject, failed: null, settledTurnIds: new Set(),
+        };
         state.pendingOperation = operation;
         return operation;
     }
@@ -1044,6 +1075,7 @@ export class CodexAppClient extends EventEmitter {
         params: EvRec,
         owner: RoutedIdentity,
     ): void {
+        this.recordPreListenerNotification(scope, method, params, owner);
         this.emit(`notification:${scope}`, method, params, owner);
         if (scope === LEGACY_SCOPE && (method === 'turn/started' || method === 'turn/completed')) {
             this.emit(method, params);
@@ -1051,11 +1083,33 @@ export class CodexAppClient extends EventEmitter {
     }
 
     private emitHostNotification(method: string, params: EvRec): void {
+        this.recordPreListenerNotification(LEGACY_SCOPE, method, params, undefined);
         this.emit('host-notification', method, params);
     }
 
     private emitUnrouted(method: string, params: EvRec, reason: string): void {
+        if (this.unknownNotificationPolicy === 'legacy-raw') {
+            this.recordPreListenerNotification(LEGACY_SCOPE, method, params, undefined);
+        }
         this.emit('unrouted-notification', { method, params, reason });
+    }
+
+    // The pool starts a thread and drains the replay buffer before it hands the
+    // lease back, and spawn only attaches its listener afterwards. Anything the
+    // server sent in between would otherwise be emitted to nobody and never
+    // reach the raw trace, so the legacy lane keeps a bounded copy and hands it
+    // to the first listener exactly once.
+    private recordPreListenerNotification(
+        scope: string,
+        method: string,
+        params: EvRec,
+        owner: RoutedIdentity | undefined,
+    ): void {
+        if (scope !== LEGACY_SCOPE || this.legacyListenerAttached) return;
+        if (this.preListenerNotifications.length >= PENDING_NOTIFICATION_LIMIT) {
+            this.preListenerNotifications.shift();
+        }
+        this.preListenerNotifications.push({ method, params, owner });
     }
 
     // ─── Bounded pending notification replay ─────────
