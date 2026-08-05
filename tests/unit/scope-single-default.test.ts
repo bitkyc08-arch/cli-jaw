@@ -25,7 +25,7 @@ test('SSD-001: OFF stays default; ON isolates target and honors persisted scope'
 });
 
 test('SSD-001a: chat-session scope canonicalizes default, remote, local, and gate-off identities', () => {
-    assert.equal(LOCAL_SESSION_SCOPE_ACTIVATION, false, 'local execution must remain dormant until native-state isolation lands');
+    assert.equal(LOCAL_SESSION_SCOPE_ACTIVATION, true, 'local execution scopes are live now that native-state isolation guards them');
     assert.equal(scopeForChatSession('default'), 'default');
     assert.equal(scopeForChatSession('default', 'jaw:slack:channel:C1'), 'default');
     assert.equal(scopeForChatSession('remote-session', 'jaw:slack:channel:C1'), 'jaw:slack:channel:C1');

@@ -86,6 +86,7 @@ export interface QueueController {
     setQueueHold(scopeKey: string, idOrTimeout?: string | number, timeoutMs?: number): void;
     clearQueueHold(scopeKey?: string | null, idOrOpts?: string | { resume?: boolean }, opts?: { resume?: boolean }): void;
     getQueueHoldId(scopeKey?: string): string | null;
+    isScopedQueue(): boolean;
     clearRetryTimer(scopeKeyOrResume?: string | boolean, resumeQueue?: boolean): void;
     resetFallbackState(scopeKey?: string | null): void;
     getFallbackState(scopeKey?: string | null): Record<string, unknown>;
@@ -522,6 +523,11 @@ export function createQueueController(
         setQueueHold,
         clearQueueHold,
         getQueueHoldId,
+        // The gate is read once at construction, so every scope collapses onto 'default'
+        // for the whole process life when it is off. Callers that build a scope key must
+        // ask this instead of re-reading settings, or they look at a lane the queue never
+        // uses (a live-settings read made session deletion miss real work).
+        isScopedQueue: () => multiSessionEnabled,
         clearRetryTimer,
         resetFallbackState,
         getFallbackState,

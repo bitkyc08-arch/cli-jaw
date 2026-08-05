@@ -3,6 +3,7 @@ import {
     activeMainProcesses,
     getQueueHoldId,
     isQueueBusy,
+    isScopedQueue,
     isRetryPending,
     messageQueue,
 } from '../agent/spawn.js';
@@ -22,10 +23,13 @@ export function hasChatSessionWork(
     if (messageQueue.some(item => item.chatSessionId === sessionId)) return true;
 
     const remoteKey = getChatSessionRemoteKey(sessionId) ?? undefined;
+    // The queue reads the multi-session gate once at construction and collapses every scope
+    // onto 'default' when it is off. Asking the queue itself keeps this key on the same lane
+    // the queue actually uses; re-reading settings here would drift after a settings change.
     const scopeKey = scopeForChatSession(
         sessionId,
         remoteKey,
-        remoteKey !== undefined || localSessionScopesEnabled,
+        isScopedQueue() && (remoteKey !== undefined || localSessionScopesEnabled),
     );
     if (listPendingWorkerResults(scopeKey).some(result => result.meta?.chatSessionId === sessionId)) return true;
 

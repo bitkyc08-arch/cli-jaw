@@ -35,7 +35,7 @@ import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAll
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
-import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
+import { LOCAL_SESSION_SCOPE_ACTIVATION, isNativeStateIsolatedScope, resolveOrcScope } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
 import {
@@ -421,6 +421,7 @@ export const {
     setQueueHold,
     clearQueueHold,
     getQueueHoldId,
+    isScopedQueue,
     isRetryPending,
     isQueueBusy,
     clearRetryTimer,
@@ -1160,7 +1161,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Bucket-aware resume: codex-spark is kept in its own session bucket so
     // cross-model resume (gpt-5.4 ↔ gpt-5.3-codex-spark) doesn't send a
     // mismatched session_id to the server.
-    const currentBucket = codexMultiplexMain
+    // Only the codex-app multiplex path puts the scope inside the bucket key. Every other
+    // runtime would have a `local:` scope reading and overwriting the default session's
+    // vendor conversation (072 §1.2b), so it runs with no bucket at all: no resume, no
+    // snapshot freeze, no stale clear.
+    const nativeStateIsolated = isNativeStateIsolatedScope(scopeKey) && !codexMultiplexMain;
+    const currentBucket = nativeStateIsolated
+        ? ''
+        : codexMultiplexMain
         ? resolveScopedSessionBucket(cli, runtimeModel, effectiveProvider, scopeKey, effort, 'fallback')
         : resolveSessionBucket(cli, runtimeModel, effectiveProvider);
     const envDefaultsCli = cli === 'ai-e' ? effectiveProvider : cli;
@@ -2948,7 +2956,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'agy') {
             ctx.agyTranscriptMode = classifyAgyTranscriptMode(ctx);
         }
-        if (cli === 'agy' && isResume && (agyGuardedStaleDetected || isAgyStaleSessionOutput(ctx.fullText))) {
+        if (cli === 'agy' && isResume && !nativeStateIsolated && (agyGuardedStaleDetected || isAgyStaleSessionOutput(ctx.fullText))) {
             console.log(`[jaw:agy] stale session detected (Warning: conversation not found) — clearing bucket`);
             try {
                 const bucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);
@@ -2982,7 +2990,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             if (!ctx.sessionId) {
                 console.warn(`[jaw:kiro] session id capture failed cwd=${spawnCwd}`);
             }
-            if (isResume && isKiroStaleSessionOutput(ctx.fullText)) {
+            if (isResume && !nativeStateIsolated && isKiroStaleSessionOutput(ctx.fullText)) {
                 console.log('[jaw:kiro] stale session detected in output — clearing bucket');
                 try {
                     const bucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);

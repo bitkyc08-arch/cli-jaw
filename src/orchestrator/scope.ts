@@ -12,9 +12,18 @@ type OrcScopeInput = {
     persistedScopeId?: string | null;
 };
 
-// Local execution scopes stay dormant until the no-native-state guard lands.
-// Remote scopes are already isolated and continue to use the canonical helper.
-export const LOCAL_SESSION_SCOPE_ACTIVATION = false;
+// Local execution scopes are live once the no-native-state guard below is in place.
+// Remote scopes were already isolated and keep using the canonical helper.
+export const LOCAL_SESSION_SCOPE_ACTIVATION = true;
+
+export const LOCAL_SESSION_SCOPE_PREFIX = 'local:';
+
+// Only `local:` scopes get native-state isolation. Remote scopes such as
+// `jaw:slack:...` already share a runtime bucket today, and cutting their resume
+// here would break Slack sessions that work — that sharing belongs to unit 073.
+export function isNativeStateIsolatedScope(scope: string | null | undefined): boolean {
+    return typeof scope === 'string' && scope.startsWith(LOCAL_SESSION_SCOPE_PREFIX);
+}
 
 export function channelGateOn(channel: string | undefined): boolean {
     if (channel === 'slack') return settings["multiSession"]?.channels?.slack !== false;
@@ -31,7 +40,7 @@ export function scopeForChatSession(
 ): string {
     if (!gateEnabled || sessionId === 'default') return 'default';
     if (remoteKey) return remoteKey;
-    return `local:${sessionId}`;
+    return `${LOCAL_SESSION_SCOPE_PREFIX}${sessionId}`;
 }
 
 export function resolveOrcScope(input: OrcScopeInput = {}): string {

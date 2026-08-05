@@ -127,7 +127,11 @@ test('DELETE returns 409 for exact active-run and queued-item matches', async ()
     });
 });
 
-test('DELETE returns 409 for conservative hold, worker, and session-lane scope work', async () => {
+// The production queue captures the multi-session gate at construction and this process boots
+// with it off, so every scope collapses onto 'default'. Session-work follows that same gate
+// (isScopedQueue) instead of re-reading settings, which is what keeps these 409s real: a scope
+// key the queue never fills would report "no work" for a session that has some.
+test('DELETE returns 409 for hold, worker, and session-lane work on the queue own lane', async () => {
     settings.multiSession.enabled = true;
     insertSession('route-hold', 933);
     insertSession('route-worker', 934);

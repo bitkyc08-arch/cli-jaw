@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const scopeCalls: Array<{ sessionId: string; remoteKey?: string; gateEnabled?: boolean }> = [];
 const queueBusyScopes: string[] = [];
+let scopedQueue = true;
 
 mock.module('../../src/core/chat-sessions.ts', {
     namedExports: { getChatSessionRemoteKey: () => null },
@@ -10,7 +11,7 @@ mock.module('../../src/core/chat-sessions.ts', {
 
 mock.module('../../src/orchestrator/scope.ts', {
     namedExports: {
-        LOCAL_SESSION_SCOPE_ACTIVATION: false,
+        LOCAL_SESSION_SCOPE_ACTIVATION: true,
         scopeForChatSession: (sessionId: string, remoteKey?: string, gateEnabled?: boolean) => {
             scopeCalls.push({ sessionId, ...(remoteKey ? { remoteKey } : {}), ...(gateEnabled === undefined ? {} : { gateEnabled }) });
             return gateEnabled ? 'canonical:sentinel' : 'default';
@@ -22,6 +23,7 @@ mock.module('../../src/agent/spawn.ts', {
     namedExports: {
         activeMainProcesses: new Map(),
         getQueueHoldId: () => null,
+        isScopedQueue: () => scopedQueue,
         isQueueBusy: (scope: string) => {
             queueBusyScopes.push(scope);
             return scope === 'canonical:sentinel';
@@ -54,11 +56,27 @@ test('session-work delegates session identity to the canonical helper before pro
     assert.deepEqual(queueBusyScopes, ['canonical:sentinel']);
 });
 
-test('session-work keeps local scope activation off by default', () => {
+test('session-work uses the live local scope by default now that activation is on', () => {
     scopeCalls.length = 0;
     queueBusyScopes.length = 0;
 
-    assert.equal(hasChatSessionWork('local-session'), false);
-    assert.deepEqual(scopeCalls, [{ sessionId: 'local-session', gateEnabled: false }]);
-    assert.deepEqual(queueBusyScopes, ['default']);
+    assert.equal(hasChatSessionWork('local-session'), true);
+    assert.deepEqual(scopeCalls, [{ sessionId: 'local-session', gateEnabled: true }]);
+    assert.deepEqual(queueBusyScopes, ['canonical:sentinel']);
+});
+
+// The queue captures the multi-session gate once at construction. If it collapsed every
+// scope onto 'default', asking about a `local:` scope would look at a lane the queue never
+// fills and report "no work" for a session that has some.
+test('session-work follows the queue own gate instead of building a scope the queue ignores', () => {
+    scopeCalls.length = 0;
+    queueBusyScopes.length = 0;
+    scopedQueue = false;
+    try {
+        assert.equal(hasChatSessionWork('local-session', true), false);
+        assert.deepEqual(scopeCalls, [{ sessionId: 'local-session', gateEnabled: false }]);
+        assert.deepEqual(queueBusyScopes, ['default']);
+    } finally {
+        scopedQueue = true;
+    }
 });

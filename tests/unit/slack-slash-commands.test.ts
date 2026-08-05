@@ -25,7 +25,9 @@ const state: {
 
 mock.module('../../src/orchestrator/scope.ts', {
     namedExports: {
-        LOCAL_SESSION_SCOPE_ACTIVATION: false,
+        LOCAL_SESSION_SCOPE_ACTIVATION: true,
+        LOCAL_SESSION_SCOPE_PREFIX: 'local:',
+        isNativeStateIsolatedScope: (scope?: string | null) => typeof scope === 'string' && scope.startsWith('local:'),
         channelGateOn: () => true,
         resolveOrcScope: () => 'default',
         scopeForChatSession: (sessionId: string, remoteKey?: string, gateEnabled?: boolean) => {
