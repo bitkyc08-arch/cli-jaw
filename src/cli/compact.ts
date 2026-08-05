@@ -142,6 +142,11 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
             // Only this scope's rows. The singleton row and the other scopes' buckets
             // belong to sessions this compact was not asked to reset.
             clearSessionBucketsByPrefix.run(`${bucket}:${scope}`, `${bucket}:${scope}:%`);
+            // The DB rows are only half of it: an idle lane keeps its thread binding in
+            // memory, and with no stored thread left to contradict it the next turn would
+            // reuse the very conversation this compact discarded.
+            const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
+            invalidateCodexAppLanesForScope(scope);
         }
     } else {
         bumpSessionOwnershipGeneration();
@@ -151,6 +156,10 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         // of them alongside the legacy row. Leaving one behind would let the next
         // multiplex run resume the thread the user just discarded.
         clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
+        // Same reason the scoped branch above invalidates its lane: an idle lane keeps
+        // its thread in memory and would be reused despite the rows being gone.
+        const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
+        invalidateCodexAppLanesForScope(null);
     }
 
     return {

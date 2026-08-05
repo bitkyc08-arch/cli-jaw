@@ -552,6 +552,15 @@ export async function cliSwitchRefresh(opts: {
 
     const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
     bumpSessionOwnershipGeneration();
+    // A switch into Codex App drops its scoped rows above; the idle lanes holding those
+    // threads in memory have to go with them or the first run after the switch resumes
+    // a thread from before it.
+    try {
+        const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
+        invalidateCodexAppLanesForScope(null);
+    } catch (e) {
+        console.warn('[jaw:cli-switch] lane invalidation failed:', (e as Error).message);
+    }
 
     try {
         const { broadcast } = await import('./bus.js');
@@ -627,6 +636,15 @@ export async function autoCompactRefresh(opts: {
     else bumpSessionOwnershipGeneration();
     if (!nativeStateIsolated) clearBossSessionOnly();
     if (bucket) clearSessionBucket.run(bucket);
+    // Clearing the row is not enough for Codex App: an idle lane still holds its thread
+    // in memory and, with no stored thread left to contradict it, the next turn would
+    // continue the conversation this refresh just discarded.
+    try {
+        const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
+        invalidateCodexAppLanesForScope(opts.scopeKey ?? null);
+    } catch (e) {
+        console.warn('[jaw:compact] lane invalidation failed:', (e as Error).message);
+    }
 
     broadcast('system_notice', { code: 'auto_compact_refresh', text: 'compact detected — session refreshed' }, 'public');
 }

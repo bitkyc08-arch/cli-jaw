@@ -583,6 +583,79 @@ test('host reaper waits until the last lane is gone and then closes the process'
     assert.equal(pool.codexAppHostPoolStats().hosts, 0);
 });
 
+// A compact deletes the scope's session_buckets rows, so the next spawn passes no
+// stored thread and forceNew stays false. bindLane() then finds the idle lane still
+// holding its threadId, decides nothing needs rebinding, and hands back the very
+// conversation the compact discarded — with the fresh bootstrap injected into it.
+// Dropping the binding is what makes the reset real (072 §1.2b).
+test('invalidating a scope drops its idle lane binding so the next acquire starts a new thread', async () => {
+    const model = `lane-invalidate-${identity++}`;
+    const first = await prepareFor(model, 'scope-invalidate');
+    const originalThread = first.lease!.threadId;
+    first.lease!.release();
+
+    // Without invalidation the idle lane is reused as-is.
+    const preparedAgain = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const reusedLease = await pool.acquireCodexAppLane(preparedAgain, {
+        scopeKey: 'scope-invalidate', bucketKey: bucket('scope-invalidate', model),
+    });
+    assert.equal(reusedLease.reused, true, 'an idle lane is reused when nothing invalidates it');
+    assert.equal(reusedLease.threadId, originalThread);
+    reusedLease.release();
+
+    assert.equal(pool.invalidateCodexAppLanesForScope('scope-invalidate'), 1);
+
+    const preparedAfter = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const freshLease = await pool.acquireCodexAppLane(preparedAfter, {
+        scopeKey: 'scope-invalidate', bucketKey: bucket('scope-invalidate', model),
+    });
+    assert.equal(freshLease.reused, false, 'the lane must rebind after invalidation');
+    assert.notEqual(freshLease.threadId, originalThread, 'and it must be a different thread');
+    freshLease.release();
+});
+
+test('invalidating one scope leaves another scope and a busy lane alone', async () => {
+    const model = `lane-invalidate-scoped-${identity++}`;
+    const mine = await prepareFor(model, 'scope-mine');
+    mine.lease!.release();
+    const other = await prepareFor(model, 'scope-other');
+    const otherThread = other.lease!.threadId;
+    other.lease!.release();
+
+    // A lane still running belongs to that turn, which owns its own binding.
+    const busy = await prepareFor(model, 'scope-busy');
+    assert.equal(pool.invalidateCodexAppLanesForScope('scope-busy'), 0, 'a busy lane is left alone');
+    busy.lease!.release();
+
+    assert.equal(pool.invalidateCodexAppLanesForScope('scope-mine'), 1);
+
+    const preparedOther = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const otherAgain = await pool.acquireCodexAppLane(preparedOther, {
+        scopeKey: 'scope-other', bucketKey: bucket('scope-other', model),
+    });
+    assert.equal(otherAgain.reused, true, 'another scope keeps its binding');
+    assert.equal(otherAgain.threadId, otherThread);
+    otherAgain.release();
+});
+
+// An instance-wide reset has no single scope to name.
+test('a null scope invalidates every idle lane', async () => {
+    const model = `lane-invalidate-all-${identity++}`;
+    const a = await prepareFor(model, 'scope-all-a');
+    a.lease!.release();
+    const b = await prepareFor(model, 'scope-all-b');
+    b.lease!.release();
+
+    assert.ok(pool.invalidateCodexAppLanesForScope(null) >= 2);
+
+    const prepared = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const lease = await pool.acquireCodexAppLane(prepared, {
+        scopeKey: 'scope-all-a', bucketKey: bucket('scope-all-a', model),
+    });
+    assert.equal(lease.reused, false);
+    lease.release();
+});
+
 test('shutdown is deadline-bound, rejects waiters, and memoizes the first deadline and reserve', async () => {
     const model = 'shutdown';
     const reaped = await prepareFor('shutdown-reaped', 'scope-reaped');

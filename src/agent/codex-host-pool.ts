@@ -391,6 +391,31 @@ export function acquireCodexAppLane(prepared: PreparedCodexAppHost, options: Cod
     const meta = consumeToken(prepared, options);
     return acquireValidated(meta, options);
 }
+
+// Drop a scope's thread bindings so its next acquisition starts a new thread.
+//
+// Deleting the scope's session_buckets rows is not enough on its own. A lane that is
+// idle rather than gone still holds `threadId` in memory, and bindLane() only rebinds
+// when the lane has no thread, when forceNew is set, or when a STORED thread disagrees
+// with it. After a compact there is no stored thread to disagree, so the lane is reused
+// and the conversation the user just discarded continues — with the fresh bootstrap
+// injected into it (072 §1.2b).
+//
+// A busy lane is left alone: the run using it owns its binding, and its own completion
+// path decides what happens next. Returns how many bindings were dropped.
+export function invalidateCodexAppLanesForScope(scopeKey: string | null): number {
+    let dropped = 0;
+    for (const host of hosts.values()) {
+        for (const lane of host.lanes.values()) {
+            // A null scope means every scope, which is what an instance-wide reset wants.
+            if ((scopeKey !== null && lane.scopeKey !== scopeKey) || lane.state === 'busy' || !lane.threadId) continue;
+            lane.threadId = null;
+            lane.bindingEpoch = nextBindingEpoch++;
+            dropped += 1;
+        }
+    }
+    return dropped;
+}
 export function codexAppHostPoolStats(): { hosts: number; creatingHosts: number; lanes: number; busyLanes: number; closing: boolean } {
     let creatingHosts = 0; let lanes = 0; let busyLanes = 0;
     for (const host of hosts.values()) {
