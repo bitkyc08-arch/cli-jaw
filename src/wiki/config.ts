@@ -6,7 +6,7 @@
 
 import { accessSync, constants as fsConstants, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, parse, resolve } from 'node:path';
+import { isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { settings } from '../core/config.js';
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import type { ProviderStatus } from '../search/contract.js';
@@ -66,6 +66,30 @@ export function normalizeWikiConfig(input: Partial<WikiConfig>): WikiConfig {
         enabled: input.enabled === true,
         promptDigest: input.promptDigest === true,
     };
+}
+
+// Roots the vault must never occupy. Pointing it at the notes vault would scatter wiki
+// scaffold files through the user's notes and break the isolation the two are supposed
+// to have. The roots are passed in rather than imported so core keeps no dependency on
+// manager configuration (040 §0c R2).
+export function assertUsableWikiRoot(root: string, forbiddenRoots: readonly string[]): void {
+    const target = resolve(root);
+    for (const raw of forbiddenRoots) {
+        if (!raw) continue;
+        const forbidden = resolve(raw);
+        const rel = relative(forbidden, target);
+        const inside = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+        const contains = relative(target, forbidden) === ''
+            || (!relative(target, forbidden).startsWith('..') && !isAbsolute(relative(target, forbidden)));
+        // Either direction is a collision: the vault inside the notes root mixes files
+        // into it, and the notes root inside the vault puts notes under wiki management.
+        if (inside || contains) {
+            throw Object.assign(
+                new Error(`settings.wiki.root collides with an existing vault: ${raw}`),
+                { code: 'wiki_root_collision' },
+            );
+        }
+    }
 }
 
 // Reads the live settings binding rather than loadSettings(): that function is a boot and

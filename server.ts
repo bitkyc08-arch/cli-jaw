@@ -44,7 +44,8 @@ import { createRuntimeContextRouter } from './src/routes/runtime-context.js';
 import { createSecurityAuditRouter } from './src/routes/security-audit.js';
 import { getSecurityAuditLog } from './src/security/security-audit-log.js';
 import { SearchCoordinator } from './src/search/coordinator.js';
-import { createOffProvider, SearchProviderRegistry } from './src/search/provider.js';
+import { SearchProviderRegistry } from './src/search/provider.js';
+import { WikiSearchProvider } from './src/search/providers/wiki.js';
 import { ChatSearchProvider } from './src/search/providers/chat.js';
 import { MemorySearchProvider } from './src/search/providers/memory.js';
 import { createDashboardBoardRouter } from './src/manager/board/routes.js';
@@ -379,7 +380,10 @@ registerMessageRoutes(app);
 const searchRegistry = new SearchProviderRegistry();
 searchRegistry.register(new ChatSearchProvider(settings['search'].engine));
 searchRegistry.register(new MemorySearchProvider(settings['memory'].enabled));
-searchRegistry.register(createOffProvider('wiki-placeholder', 'wiki'));
+// The placeholder is removed rather than left alongside: the registry is keyed by
+// provider id, not corpus, so both would take part in every wiki query and the
+// placeholder's "disabled" warning would ride along with real results.
+searchRegistry.register(new WikiSearchProvider());
 registerSearchRoutes(app, requireAuth, new SearchCoordinator(searchRegistry));
 registerSystemRoutes(app, { jawAuthToken: JAW_AUTH_TOKEN });
 registerAgentControlRoutes(app, requireAuth);
