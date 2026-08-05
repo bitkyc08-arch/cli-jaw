@@ -315,20 +315,11 @@ export class CodexAppClient extends EventEmitter {
             this.on('host-notification', onHostNotification);
             this.on('notification', onHostNotification);
         }
-        if (legacy) {
-            // Only the transition out of "nobody is listening" drains the queue.
-            // A second concurrent listener must not receive a replay of what the
-            // first one already handled.
-            const wasIdle = this.legacyListenerCount === 0;
-            this.legacyListenerCount += 1;
-            if (wasIdle && this.preListenerNotifications.length > 0) {
-                const buffered = this.preListenerNotifications;
-                this.preListenerNotifications = [];
-                for (const entry of buffered) {
-                    handlers.onNotification(entry.method, entry.params, entry.owner);
-                }
-            }
-        }
+        // Only the transition out of "nobody is listening" drains the queue. A
+        // second concurrent listener must not receive a replay of what the first
+        // one already handled.
+        const wasIdle = legacy && this.legacyListenerCount === 0;
+        if (legacy) this.legacyListenerCount += 1;
 
         let disposed = false;
         const dispose = () => {
@@ -354,6 +345,24 @@ export class CodexAppClient extends EventEmitter {
         const disposers = this.scopeDisposers.get(scope) ?? new Set<() => void>();
         disposers.add(dispose);
         this.scopeDisposers.set(scope, disposers);
+
+        // The handover runs a caller-supplied callback, so it happens only after
+        // registration is complete and a disposer exists. A throwing handler
+        // would otherwise leave the listener attached with no way to detach it,
+        // and with queueing switched off for good.
+        if (wasIdle && this.preListenerNotifications.length > 0) {
+            const buffered = this.preListenerNotifications;
+            this.preListenerNotifications = [];
+            try {
+                for (const entry of buffered) {
+                    handlers.onNotification(entry.method, entry.params, entry.owner);
+                }
+            } catch (err) {
+                dispose();
+                this.preListenerNotifications = buffered;
+                throw err;
+            }
+        }
         return { dispose };
     }
 
@@ -833,6 +842,9 @@ export class CodexAppClient extends EventEmitter {
     private setApiMode(mode: Exclude<ApiMode, 'unset'>): void {
         if (this.apiMode === 'unset') {
             this.apiMode = mode;
+            // Anything queued before the mode was known can only be handed over
+            // by the legacy facade, so a scoped client would retain it forever.
+            if (mode === 'scoped') this.preListenerNotifications = [];
             return;
         }
         if (this.apiMode !== mode) {
@@ -1120,10 +1132,13 @@ export class CodexAppClient extends EventEmitter {
         // would retain payloads nothing can ever hand over.
         if (this.apiMode === 'scoped' || this.legacyListenerCount > 0) return;
         if (this.preListenerNotifications.length >= PENDING_NOTIFICATION_LIMIT) {
-            this.preListenerNotifications.shift();
-            this.emit('unrouted-notification', {
-                method, params, reason: 'pre-listener-overflow',
-            });
+            const evicted = this.preListenerNotifications.shift();
+            // Report what was actually lost, not what pushed it out.
+            if (evicted) {
+                this.emit('unrouted-notification', {
+                    method: evicted.method, params: evicted.params, reason: 'pre-listener-overflow',
+                });
+            }
         }
         this.preListenerNotifications.push({ method, params, owner });
     }

@@ -169,3 +169,27 @@ test('malformed known methods do not reach the legacy consumer through the queue
     });
     assert.deepEqual(seen, [], 'a malformed known method stays a diagnostic');
 });
+
+// The handover calls a caller-supplied handler, so it must not run until the
+// listener is fully registered and disposable. Otherwise a handler that throws
+// leaves the client attached with no way to detach and queueing switched off.
+test('a throwing replay handler leaves no half-registered listener behind', () => {
+    const client = new CodexAppClient();
+    client['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'a' } }));
+
+    assert.throws(() => client.listenTurn({
+        onNotification: () => { throw new Error('handler blew up'); },
+        onStderr: () => {},
+    }), /handler blew up/);
+
+    assert.equal(client.listenerCount('notification'), 0, 'the failed listener must be detached');
+    assert.equal(client.listenerCount('host-notification'), 0);
+
+    const seen: string[] = [];
+    client.listenTurn({
+        onNotification: (method) => { seen.push(method); },
+        onStderr: () => {},
+    });
+    assert.deepEqual(seen, ['configWarning'],
+        'the queue survives so the next listener still receives it');
+});
