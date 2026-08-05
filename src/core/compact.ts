@@ -558,7 +558,7 @@ export async function cliSwitchRefresh(opts: {
         // Switching into Codex App has to drop its scoped rows too, otherwise the
         // next multiplex run resumes a thread from before the switch. Switching to
         // any other CLI leaves those rows alone.
-        if (opts.toCli === 'codex-app') clearSessionBucketsByPrefix.run(targetBucket, 'codex-app:%');
+        if (opts.toCli === 'codex-app') clearSessionBucketsByPrefix.run(targetBucket, 'codex-app:');
         else if (targetBucket) clearSessionBucket.run(targetBucket);
     });
     tx();

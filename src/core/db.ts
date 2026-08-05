@@ -583,9 +583,29 @@ export const setSessionBucketSnapshot = db.prepare(`
     ON CONFLICT(bucket) DO UPDATE SET memory_snapshot=excluded.memory_snapshot
 `);
 export const clearSessionBucket = db.prepare('DELETE FROM session_buckets WHERE bucket = ?');
-export const clearSessionBucketsByPrefix = db.prepare(
+const clearSessionBucketsByPrefixStmt = db.prepare(
     "DELETE FROM session_buckets WHERE bucket = ? OR bucket LIKE ? ESCAPE '\\'",
 );
+
+// A scope name reaches this statement verbatim, and a remote binding key is
+// percent-encoded (`jaw:slack:T1:C%20name`), so it can carry the very characters LIKE
+// treats as wildcards. Unescaped, the prefix for one Slack scope would match — and
+// delete — every other scope's bucket. The statement already declared an escape
+// character; nothing was using it.
+export function escapeLikePattern(value: string): string {
+    return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+}
+
+/**
+ * Deletes one bucket and everything beneath it. The caller passes the literal prefix,
+ * not a LIKE pattern, so the wildcard is appended here — otherwise every caller would
+ * have to remember to escape the prefix but not the trailing `%`, and one of them
+ * eventually would not.
+ */
+export const clearSessionBucketsByPrefix = {
+    run: (bucket: string, descendantsOf: string) =>
+        clearSessionBucketsByPrefixStmt.run(bucket, `${escapeLikePattern(descendantsOf)}%`),
+};
 export const updateSessionBucketLastRun = db.prepare('UPDATE session_buckets SET last_run_clean=?, last_run_cwd=?, last_run_meta=? WHERE bucket=?');
 
 // ─── Message Queue Persistence ──────────────────────

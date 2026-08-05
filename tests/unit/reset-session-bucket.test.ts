@@ -58,7 +58,7 @@ test.mock.module('../../src/core/config.ts', {
 test('RESET-BUCKET-01: reset clears the session bucket even when compaction fails', async () => {
     const { clearSessionState } = await import('../../src/core/session-ops.ts');
     await clearSessionState();
-    assert.deepEqual(clearedBucketGroups, [['agy', 'codex-app:%']],
+    assert.deepEqual(clearedBucketGroups, [['agy', 'codex-app:']],
         'active legacy and codex-app scoped buckets must be cleared despite compact failure');
     assert.equal(ownershipBumps, 1);
     assert.equal(mainStateClears, 1);
@@ -76,7 +76,7 @@ test('RESET-BUCKET-02: a scoped reset clears its own bucket family and no other'
     const { clearSessionState } = await import('../../src/core/session-ops.ts');
     const { withSessionScope } = await import('../../src/core/session-context.ts');
     await withSessionScope({ scope: 'local:b', chatSessionId: 'b' }, () => clearSessionState());
-    assert.deepEqual(clearedBucketGroups, [['agy:local:b', 'agy:local:b:%']],
+    assert.deepEqual(clearedBucketGroups, [['agy:local:b', 'agy:local:b:']],
         'a scoped reset must not take the whole codex-app lane family with it');
     assert.deepEqual(invalidatedLaneScopes, ['local:b'],
         'only this scope loses its in-memory lanes');

@@ -82,3 +82,40 @@ test('an unscoped reset still clears every lane', async () => {
 
     assert.deepEqual(buckets(), []);
 });
+
+// A remote binding key is percent-encoded, so a Slack channel named with a space or an
+// underscore puts a LIKE wildcard straight into the scope. Unescaped, one channel's reset
+// matched every other channel's bucket and deleted conversations nobody touched.
+test('a scope carrying LIKE wildcards deletes only its own rows', async () => {
+    settings.multiSession.enabled = true;
+    settings.cli = 'codex-app';
+    db.prepare('DELETE FROM session_buckets').run();
+    // buildRemoteBindingKey percent-encodes, so "C 1" becomes "C%201".
+    upsertSessionBucket.run('codex-app:jaw:slack:T1:C%201', 'thread-encoded', 'default', null, 0);
+    upsertSessionBucket.run('codex-app:jaw:slack:T1:C%201:gpt-5.5:high', 'thread-encoded-lane', 'default', null, 0);
+    upsertSessionBucket.run('codex-app:jaw:slack:T1:CZZZZ', 'thread-other-channel', 'default', null, 0);
+    upsertSessionBucket.run('codex-app:jaw:slack:T1:C_1', 'thread-underscore', 'default', null, 0);
+
+    await withSessionScope(
+        { scope: 'jaw:slack:T1:C%201', chatSessionId: 'slack-1' },
+        () => clearSessionState(),
+    );
+
+    assert.deepEqual(
+        buckets(),
+        ['codex-app:jaw:slack:T1:CZZZZ', 'codex-app:jaw:slack:T1:C_1'],
+        'the other channels keep their conversations',
+    );
+});
+
+test('an underscore in a scope is not a single-character wildcard', async () => {
+    settings.multiSession.enabled = true;
+    settings.cli = 'codex-app';
+    db.prepare('DELETE FROM session_buckets').run();
+    upsertSessionBucket.run('codex-app:local:a_b:lane', 'thread-underscore-lane', 'default', null, 0);
+    upsertSessionBucket.run('codex-app:local:axb:lane', 'thread-lookalike', 'default', null, 0);
+
+    await withSessionScope({ scope: 'local:a_b', chatSessionId: 'ab' }, () => clearSessionState());
+
+    assert.deepEqual(buckets(), ['codex-app:local:axb:lane']);
+});

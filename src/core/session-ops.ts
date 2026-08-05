@@ -47,7 +47,7 @@ export async function clearSessionState(): Promise<void> {
         const scope = scopeKey ?? 'default';
         const base = resolveSessionBucket(cli, model);
         if (isInstanceWide) {
-            clearSessionBucketsByPrefix.run(base, 'codex-app:%');
+            clearSessionBucketsByPrefix.run(base, 'codex-app:');
         } else {
             // Since 073 §2.1 every scope owns its bucket. The prefix form is needed
             // because codex-app folds lane mode and effort into its key and this path
@@ -55,7 +55,7 @@ export async function clearSessionState(): Promise<void> {
             // The scope has to be a whole segment of the pattern: `codex-app:local:a%`
             // would also delete `local:abc`, a different session's rows.
             const scoped = `${base}:${scope}`;
-            clearSessionBucketsByPrefix.run(scoped, `${scoped}:%`);
+            clearSessionBucketsByPrefix.run(scoped, `${scoped}:`);
             // The default scope also owns the bare legacy name, which is what a session
             // created before 073 has been resuming from all along.
             if (scope === 'default') clearSessionBucket.run(base);
