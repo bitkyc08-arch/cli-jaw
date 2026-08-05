@@ -8,6 +8,7 @@ import { DEFAULT_CLI, CLI_KEYS, buildDefaultPerCli } from '../cli/registry.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { resolveHomePath } from './path-expand.js';
+import { SETUP_STATE_FILE } from './install-integrity.js';
 import {
     sanitizeSettingsInput,
     type SettingsPersistenceShape,
@@ -407,10 +408,27 @@ export function freshInstallSchemaFields(): {
     };
 }
 
-// Things this home only has once it has been used. A settings file can be deleted, lost
-// to a failed write, or restored from a backup that omitted it — none of which makes the
-// install new. These do not come back on their own.
-const ESTABLISHED_HOME_ARTIFACTS = [DB_PATH, MIGRATION_MARKER, PROMPTS_DIR, UPLOADS_DIR];
+// Things a home only has once someone has set it up or used it. A settings file can be
+// deleted, lost to a failed write, or restored from a backup that omitted it — none of
+// which makes the install new. These do not come back on their own.
+//
+// The list errs toward "established" on purpose. Calling a new home established costs a
+// question the user did not need to answer; calling an established home new turns a
+// feature on for someone who was never asked. Those are not the same mistake. That is
+// also why the postinstall-created directories stay in the list even though they can
+// precede a first boot.
+const ESTABLISHED_HOME_ARTIFACTS = [
+    DB_PATH,
+    MIGRATION_MARKER,
+    PROMPTS_DIR,
+    UPLOADS_DIR,
+    // `jaw init` leaves all three, and an init-only home whose settings file was then
+    // lost is exactly the case that must not read as new.
+    join(JAW_HOME, SETUP_STATE_FILE),
+    HEARTBEAT_JOBS_PATH,
+    SKILLS_DIR,
+    WIDGETS_DIR,
+];
 
 /**
  * An absent settings file is not proof of a new install, and the difference decides
@@ -519,6 +537,21 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
         } satisfies MultiSessionDefaultMigration;
     } else {
         validateMultiSessionDefaultMigration(s["multiSessionDefaultMigration"]);
+    }
+
+    // A pending marker means the user has not answered yet, so sessions being on
+    // contradicts it. The dedicated accept route moves both together, but it is not the
+    // only way in: the settings watcher merges an external file write, and a generic
+    // settings patch can set `multiSession.enabled` directly. Both strip the marker as
+    // server-owned and then leave this pair inconsistent — enabled, and still pending.
+    //
+    // Resolved by treating an enable while pending AS the answer rather than by refusing
+    // it. Someone who reaches in and turns it on has decided; what must not survive is a
+    // marker that still claims to be waiting, because the next boot would ask again and
+    // the record would no longer mean anything.
+    const sessionMigration = s["multiSessionDefaultMigration"] as MultiSessionDefaultMigration | null | undefined;
+    if (sessionMigration?.state === 'pending' && s["multiSession"]?.enabled === true) {
+        s["multiSessionDefaultMigration"] = { ...sessionMigration, state: 'accepted' };
     }
 
     // Claude model alias migration

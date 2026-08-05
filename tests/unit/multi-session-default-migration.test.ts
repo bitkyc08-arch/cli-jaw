@@ -150,6 +150,51 @@ test('a home that has been used before is not treated as a new install', () => {
     assert.equal(s["multiSessionDefaultMigration"].state, 'pending');
 });
 
+// A home where `jaw init` ran but nothing else did leaves no database. It is still not a
+// new install, and the second audit reproduced exactly this: run init, delete the
+// settings file, come back to sessions on.
+for (const artifact of ['.setup-state.json', 'heartbeat.json'] as const) {
+    test(`a home carrying ${artifact} is not treated as a new install`, () => {
+        try { fs.unlinkSync(SETTINGS_PATH); } catch { /* expected */ }
+        try { fs.rmSync(DB_PATH); } catch { /* not there */ }
+        fs.mkdirSync(JAW_HOME, { recursive: true });
+        fs.writeFileSync(join(JAW_HOME, artifact), '{}', 'utf8');
+
+        const s = load();
+
+        assert.equal(s["multiSession"].enabled, false);
+        assert.equal(s["multiSessionDefaultMigration"].state, 'pending');
+
+        fs.unlinkSync(join(JAW_HOME, artifact));
+    });
+}
+
+// The marker is the record of consent, so `pending` alongside enabled means the record
+// is lying. It can be produced without touching the accept route at all: an external
+// write to the settings file, or a generic settings patch. Both strip the marker as
+// server-owned and set the flag, and the marker would go on claiming nobody had answered.
+test('enabling sessions outside the accept route settles the marker rather than leaving it pending', () => {
+    const s = migrateSettings({
+        settingsSchemaVersion: 3,
+        multiSessionDefaultMigration: { id: 'multi-session-default-v3', state: 'pending' },
+        multiSession: { enabled: true, maxConcurrent: 2, midRunPolicy: 'steer', channels: { telegram: false, discord: false, slack: true } },
+    }) as Record<string, any>;
+
+    assert.equal(s["multiSession"].enabled, true, 'the choice the user made is kept');
+    assert.equal(s["multiSessionDefaultMigration"].state, 'accepted',
+        'and it is recorded, so the next boot does not ask again as though it never happened');
+});
+
+test('a pending marker with sessions off is left alone', () => {
+    const s = migrateSettings({
+        settingsSchemaVersion: 3,
+        multiSessionDefaultMigration: { id: 'multi-session-default-v3', state: 'pending' },
+        multiSession: { enabled: false, maxConcurrent: 1, midRunPolicy: 'steer', channels: { telegram: false, discord: false, slack: true } },
+    }) as Record<string, any>;
+
+    assert.equal(s["multiSessionDefaultMigration"].state, 'pending', 'still waiting for an answer');
+});
+
 // ON-08 — a document we could not read stands in for an unknown prior state, so it gets
 // the old meaning rather than the new default.
 test('ON-08: an unreadable document falls back to sessions off', () => {
