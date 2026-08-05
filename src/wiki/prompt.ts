@@ -35,17 +35,27 @@ export type DigestLoad =
 // and it is announced as data. What this does prevent is the digest terminating its own
 // block early and continuing as if it were the surrounding prompt.
 //
-// Matching ignores characters that carry no visible meaning, because a sentinel split by
-// a zero-width joiner reads as the sentinel to a human and to most models while escaping
-// a plain substring replace.
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
+// A sentinel split by a zero-width character reads as the sentinel to a human and to most
+// models while escaping a plain substring replace. Matching therefore allows those
+// characters BETWEEN the sentinel's own characters — but only there. Stripping them from
+// the whole digest would rewrite legitimate content, since a zero-width joiner is what
+// holds a family emoji together.
+const INVISIBLE_CLASS = '[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u206F\\uFEFF]*';
+
+function sentinelPattern(sentinel: string): RegExp {
+    const spaced = [...sentinel]
+        .map(char => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join(INVISIBLE_CLASS);
+    return new RegExp(spaced, 'g');
+}
+
+const CLOSE_PATTERN = sentinelPattern(FENCE_CLOSE);
+const OPEN_PATTERN = sentinelPattern(FENCE_OPEN);
 
 function escapeFence(text: string): string {
-    // Strip the invisible characters first so a disguised sentinel becomes a real one and
-    // is then neutralised by the replacements below.
-    const visible = text.replace(INVISIBLE, '');
-    return visible.split(FENCE_CLOSE).join('JAW_WIKI_DIGEST_ESCAPED>>>')
-        .split(FENCE_OPEN).join('<<<JAW_WIKI_DIGEST_ESCAPED');
+    return text
+        .replace(CLOSE_PATTERN, 'JAW_WIKI_DIGEST_ESCAPED>>>')
+        .replace(OPEN_PATTERN, '<<<JAW_WIKI_DIGEST_ESCAPED');
 }
 
 // Reads at most MAX_DIGEST_BYTES + 1 through a single descriptor. A stat followed by a

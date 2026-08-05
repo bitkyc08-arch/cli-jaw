@@ -294,3 +294,43 @@ test('a root the enable route would refuse is not readable through the settings 
         await writeWikiConfig(normalizeWikiConfig({ enabled: false, root: forbidden, promptDigest: false }));
     }
 });
+
+// A configured path running through a symlink follows that link wherever it is later
+// retargeted, so the same setting could read a vault it was never enabled for. Pinning
+// the root to what it resolved to at configuration time closes that.
+test('retargeting an ancestor symlink cannot move the vault out from under the setting', async () => {
+    const { mkdirSync: mkdirs, unlinkSync } = await import('node:fs');
+    const base = mkdtempSync(join(tmpdir(), 'jaw-wiki-retarget-'));
+    const [aDir, bDir] = [join(base, 'A'), join(base, 'B')];
+    mkdirs(aDir); mkdirs(bDir);
+    const [vaultA, vaultB] = [join(aDir, 'vault'), join(bDir, 'vault')];
+    await scaffoldWikiVault(vaultA);
+    await scaffoldWikiVault(vaultB);
+    writeFileSync(join(vaultA, DIGEST_RELATIVE_PATH), '# the enabled vault\n', 'utf8');
+    writeFileSync(join(vaultB, DIGEST_RELATIVE_PATH), '# a different vault\n', 'utf8');
+
+    const alias = join(base, 'alias');
+    symlinkSync(aDir, alias);
+    const { normalizeWikiConfig: normalize } = await import('../../src/wiki/config.ts');
+    const config = normalize({ enabled: true, root: join(alias, 'vault'), promptDigest: true });
+
+    const before = loadCompiledDigest(config);
+    assert.equal(before.ok === true && before.text.trim(), '# the enabled vault');
+
+    unlinkSync(alias);
+    symlinkSync(bDir, alias);
+
+    const after = loadCompiledDigest(config);
+    assert.equal(after.ok === true && after.text.trim(), '# the enabled vault',
+        'the setting still names the vault it was enabled for');
+});
+
+// Zero-width joiners are what hold a family emoji together, so neutralising a disguised
+// sentinel must not rewrite the rest of the digest.
+test('legitimate zero-width characters survive sentinel neutralisation', async () => {
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}';
+    const root = await readyVault(`family: ${family}\n`);
+
+    const block = buildDigestPromptBlock(on(root));
+    assert.ok(block.includes(family), 'the emoji is unchanged');
+});

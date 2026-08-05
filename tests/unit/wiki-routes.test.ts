@@ -150,5 +150,28 @@ test('the digest flag can be set without touching the other fields', async () =>
     const config = readWikiConfig();
     assert.equal(config.promptDigest, true);
     assert.equal(config.enabled, true, 'a partial patch must not clear the other flags');
-    assert.equal(config.root, root, 'nor the root');
+    // The persisted root is canonical, which on macOS resolves /var to /private/var.
+    const { realpathSync } = await import('node:fs');
+    assert.equal(config.root, realpathSync(root), 'nor the root');
+});
+
+// The root does not exist when it is first validated, so it cannot be pinned to its
+// canonical form then. Persisting the alias instead would leave the setting following a
+// link wherever it is later retargeted.
+test('enabling through a symlinked path persists the canonical root', async () => {
+    const { mkdirSync, symlinkSync, realpathSync } = await import('node:fs');
+    const base = mkdtempSync(join(tmpdir(), 'jaw-wiki-alias-'));
+    const real = join(base, 'real');
+    mkdirSync(real);
+    const alias = join(base, 'alias');
+    symlinkSync(real, alias);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/wiki/enable', { root: join(alias, 'vault') });
+        const body = await response.json();
+        assert.equal(response.status, 200, JSON.stringify(body));
+        assert.equal(body.data.root, join(realpathSync(real), 'vault'), 'the alias is resolved away');
+    });
+
+    assert.equal(readWikiConfig().root, join(realpathSync(real), 'vault'));
 });

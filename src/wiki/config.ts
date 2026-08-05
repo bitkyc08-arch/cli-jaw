@@ -4,7 +4,7 @@
 // write and chmod boundary, and a second config file would be a second thing to keep
 // in sync.
 
-import { accessSync, constants as fsConstants, lstatSync } from 'node:fs';
+import { accessSync, constants as fsConstants, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { settings } from '../core/config.js';
@@ -45,6 +45,17 @@ export const WIKI_REQUIRED_FILES = [
     'syntheses/compiled-digest.md',
 ] as const;
 
+// Canonical form when the path exists, otherwise the resolved text. A path that has not
+// been created yet still needs to normalise, and it cannot be aliased by a link that does
+// not exist either.
+function canonicalOrResolved(path: string): string {
+    try {
+        return realpathSync(path);
+    } catch {
+        return resolve(path);
+    }
+}
+
 export function normalizeWikiConfig(input: Partial<WikiConfig>): WikiConfig {
     const rawRoot = String(input.root ?? DEFAULT_WIKI_CONFIG.root).trim();
     if (!rawRoot) throw new Error('invalid settings.wiki.root: empty');
@@ -61,8 +72,16 @@ export function normalizeWikiConfig(input: Partial<WikiConfig>): WikiConfig {
     if (root === parse(root).root) {
         throw new Error(`invalid settings.wiki.root: refusing the filesystem root`);
     }
+    // Pin the root to what it resolves to on disk right now. A configured path that runs
+    // through a symlink would otherwise follow that link wherever it is later retargeted,
+    // so the same setting could read a different vault than the one it was enabled for.
+    // A root that does not exist yet stays as written; the scaffold creates it.
+    let canonicalRoot = root;
+    try {
+        canonicalRoot = realpathSync(root);
+    } catch { /* not created yet — normalization must still work before enable */ }
     return {
-        root,
+        root: canonicalRoot,
         enabled: input.enabled === true,
         promptDigest: input.promptDigest === true,
     };
@@ -73,10 +92,12 @@ export function normalizeWikiConfig(input: Partial<WikiConfig>): WikiConfig {
 // to have. The roots are passed in rather than imported so core keeps no dependency on
 // manager configuration (040 §0c R2).
 export function assertUsableWikiRoot(root: string, forbiddenRoots: readonly string[]): void {
-    const target = resolve(root);
+    // Both sides are canonicalised, because an alias reaching the forbidden root through
+    // a symlink is the same directory by every meaning except the spelling.
+    const target = canonicalOrResolved(root);
     for (const raw of forbiddenRoots) {
         if (!raw) continue;
-        const forbidden = resolve(raw);
+        const forbidden = canonicalOrResolved(raw);
         const rel = relative(forbidden, target);
         const inside = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
         const contains = relative(target, forbidden) === ''

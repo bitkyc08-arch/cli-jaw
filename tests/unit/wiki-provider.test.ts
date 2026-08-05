@@ -113,3 +113,18 @@ test('a root colliding with another vault is refused', () => {
     assert.doesNotThrow(() => assertUsableWikiRoot(join(tmpdir(), 'jaw-wiki-elsewhere'), [notes]));
     assert.doesNotThrow(() => assertUsableWikiRoot(join(tmpdir(), 'jaw-wiki-elsewhere'), []));
 });
+
+// An alias reaching the forbidden root through a symlink is the same directory by every
+// meaning except its spelling, so a lexical comparison would let it through.
+test('a forbidden root reached through a symlink is still refused', async () => {
+    const { mkdirSync, symlinkSync } = await import('node:fs');
+    const { mkdtempSync } = await import('node:fs');
+    const base = mkdtempSync(join(tmpdir(), 'jaw-wiki-forbidden-'));
+    const notes = join(base, 'notes');
+    mkdirSync(notes);
+    const alias = join(base, 'alias');
+    symlinkSync(notes, alias);
+
+    assert.throws(() => assertUsableWikiRoot(alias, [notes]), /collides/);
+    assert.throws(() => assertUsableWikiRoot(notes, [alias]), /collides/, 'and in the other direction');
+});

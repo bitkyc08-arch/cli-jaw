@@ -71,9 +71,13 @@ export function registerWikiRoutes(
             // layout it created is left alone rather than deleted: telling a user's own
             // files apart from ours is not something this can do safely.
             await scaffold(candidate.root);
-            const provider = wikiProviderStatus(candidate);
+            // Re-normalise after the scaffold: the root did not exist a moment ago, so it
+            // could not be pinned to its canonical form then. Persisting the alias instead
+            // would leave the setting following a link wherever it is later retargeted.
+            const settled = normalizeWikiConfig(candidate);
+            const provider = wikiProviderStatus(settled);
             if (provider !== 'ready') throw new Error(`wiki provider is ${provider}`);
-            const persisted = await writeWikiConfig(candidate);
+            const persisted = await writeWikiConfig(settled);
             ok(res, statusPayload(persisted));
         } catch (error) {
             fail(res, 500, 'wiki_enable_failed', { reason: (error as Error).message });
@@ -98,12 +102,16 @@ export function registerWikiRoutes(
         try {
             if (next.enabled) {
                 await scaffold(next.root);
-                const provider = wikiProviderStatus(next);
+            }
+            // Same reason as enable: pin only once the directory exists.
+            const settled = next.enabled ? normalizeWikiConfig(next) : next;
+            if (settled.enabled) {
+                const provider = wikiProviderStatus(settled);
                 if (provider !== 'ready') throw new Error(`wiki provider is ${provider}`);
             }
             // Disabling never touches the vault. The files and their history stay; the
             // provider simply stops answering. Deleting data is not a rollback.
-            const persisted = await writeWikiConfig(next);
+            const persisted = await writeWikiConfig(settled);
             ok(res, statusPayload(persisted));
         } catch (error) {
             fail(res, 500, 'wiki_configure_failed', { reason: (error as Error).message });
