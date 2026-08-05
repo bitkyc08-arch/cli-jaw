@@ -43,6 +43,9 @@ type Lane = {
     model: string; effort: string; cwd: string; fastMode: boolean; waiters: Waiter[];
     lastUsedAt: number; initializedGeneration: number; handoff: boolean;
     maintenanceQueued: boolean; listener: { dispose(): void } | null; bindingEpoch: number;
+    // Set when a reset lands while this lane is running. Its binding is dropped on
+    // release instead of immediately, because the turn in flight is still using it.
+    bindingRevoked: boolean;
 };
 type Host = {
     key: string; state: HostState; generation: number; client: CodexAppClient | null;
@@ -151,7 +154,7 @@ function createLane(host: Host, meta: TokenMeta, scopeKey: string, waiters: Wait
         laneScope, scopeKey, state: 'idle', threadId: null, model: meta.model, effort: meta.effort,
         cwd: meta.cwd, fastMode: meta.fastMode, waiters, lastUsedAt: Date.now(),
         initializedGeneration: meta.generation, handoff: false, maintenanceQueued: false, listener: null,
-        bindingEpoch: nextBindingEpoch++,
+        bindingEpoch: nextBindingEpoch++, bindingRevoked: false,
     };
     adoptWaiters(lane, waiters);
     const client = meta.client;
@@ -345,6 +348,14 @@ async function bindLane(
                 if (released) return; released = true;
                 if (meta.host.state !== 'ready' || meta.host.generation !== meta.generation
                     || meta.host.lanes.get(lane.laneScope) !== lane || lane.state !== 'busy') return;
+                // A reset that landed mid-turn could not drop this binding then, because
+                // the turn was still using it. It gets dropped here so the next
+                // acquisition cannot continue a conversation that was already discarded.
+                if (lane.bindingRevoked) {
+                    lane.bindingRevoked = false;
+                    lane.threadId = null;
+                    lane.bindingEpoch = nextBindingEpoch++;
+                }
                 lane.state = 'idle'; lane.lastUsedAt = Date.now(); meta.host.lastUsedAt = lane.lastUsedAt; wakeHead(lane);
             },
             cancel: async () => {
@@ -401,20 +412,21 @@ export function acquireCodexAppLane(prepared: PreparedCodexAppHost, options: Cod
 // and the conversation the user just discarded continues — with the fresh bootstrap
 // injected into it (072 §1.2b).
 //
-// A busy lane is left alone: the run using it owns its binding, and its own completion
-// path decides what happens next. That leaves a theoretical window where a turn finishing
-// just after a reset re-persists the thread it was already using, but the explicit
-// command refuses to run while an agent is active (cli/compact.ts) and the automatic
-// refresh runs from the exit handler of the very turn in question, so neither reset can
-// actually observe a busy lane of its own scope.
+// A lane that is running cannot have its binding pulled out from under the turn using
+// it, so it is MARKED and dropped on release instead. Skipping it outright was wrong:
+// the busy check that guards the explicit command reads the default scope rather than
+// the caller's, so a local session really can compact while its own lane is running,
+// and release preserves threadId, so the discarded conversation would come back.
 //
-// Returns how many bindings were dropped.
+// Returns how many bindings were dropped or marked.
 export function invalidateCodexAppLanesForScope(scopeKey: string | null): number {
     let dropped = 0;
     for (const host of hosts.values()) {
         for (const lane of host.lanes.values()) {
             // A null scope means every scope, which is what an instance-wide reset wants.
-            if ((scopeKey !== null && lane.scopeKey !== scopeKey) || lane.state === 'busy' || !lane.threadId) continue;
+            if (scopeKey !== null && lane.scopeKey !== scopeKey) continue;
+            if (!lane.threadId) continue;
+            if (lane.state === 'busy') { lane.bindingRevoked = true; dropped += 1; continue; }
             lane.threadId = null;
             lane.bindingEpoch = nextBindingEpoch++;
             dropped += 1;

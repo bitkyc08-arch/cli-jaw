@@ -614,18 +614,13 @@ test('invalidating a scope drops its idle lane binding so the next acquire start
     freshLease.release();
 });
 
-test('invalidating one scope leaves another scope and a busy lane alone', async () => {
+test('invalidating one scope leaves another scope alone and defers a busy lane', async () => {
     const model = `lane-invalidate-scoped-${identity++}`;
     const mine = await prepareFor(model, 'scope-mine');
     mine.lease!.release();
     const other = await prepareFor(model, 'scope-other');
     const otherThread = other.lease!.threadId;
     other.lease!.release();
-
-    // A lane still running belongs to that turn, which owns its own binding.
-    const busy = await prepareFor(model, 'scope-busy');
-    assert.equal(pool.invalidateCodexAppLanesForScope('scope-busy'), 0, 'a busy lane is left alone');
-    busy.lease!.release();
 
     assert.equal(pool.invalidateCodexAppLanesForScope('scope-mine'), 1);
 
@@ -636,6 +631,52 @@ test('invalidating one scope leaves another scope and a busy lane alone', async 
     assert.equal(otherAgain.reused, true, 'another scope keeps its binding');
     assert.equal(otherAgain.threadId, otherThread);
     otherAgain.release();
+});
+
+// The busy case is the dangerous one. The check that guards the explicit compact reads
+// the default scope rather than the caller's, so a local session can compact while its
+// own lane is running, and release preserves the thread id. Skipping such a lane would
+// hand the discarded conversation straight back on the next turn.
+test('a lane that is running when the reset lands loses its binding on release', async () => {
+    const model = `lane-invalidate-busy-${identity++}`;
+    const busy = await prepareFor(model, 'scope-busy');
+    const runningThread = busy.lease!.threadId;
+
+    assert.equal(pool.invalidateCodexAppLanesForScope('scope-busy'), 1, 'a busy lane is marked, not ignored');
+    // The turn in flight keeps using its own thread; nothing is pulled out from under it.
+    assert.equal(busy.lease!.threadId, runningThread);
+    busy.lease!.release();
+
+    const prepared = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const next = await pool.acquireCodexAppLane(prepared, {
+        scopeKey: 'scope-busy', bucketKey: bucket('scope-busy', model),
+    });
+    assert.equal(next.reused, false, 'the deferred drop must force a rebind');
+    assert.notEqual(next.threadId, runningThread, 'and the discarded thread must not come back');
+    next.release();
+});
+
+// One reset marks the lane; the turn that follows must not keep paying for it.
+test('a deferred drop is consumed once and does not disturb the following turn', async () => {
+    const model = `lane-invalidate-once-${identity++}`;
+    const busy = await prepareFor(model, 'scope-once');
+    pool.invalidateCodexAppLanesForScope('scope-once');
+    busy.lease!.release();
+
+    const firstPrepared = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const first = await pool.acquireCodexAppLane(firstPrepared, {
+        scopeKey: 'scope-once', bucketKey: bucket('scope-once', model),
+    });
+    const rebound = first.threadId;
+    first.release();
+
+    const secondPrepared = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const second = await pool.acquireCodexAppLane(secondPrepared, {
+        scopeKey: 'scope-once', bucketKey: bucket('scope-once', model),
+    });
+    assert.equal(second.reused, true, 'the next turn reuses the lane normally');
+    assert.equal(second.threadId, rebound);
+    second.release();
 });
 
 // An instance-wide reset has no single scope to name.
