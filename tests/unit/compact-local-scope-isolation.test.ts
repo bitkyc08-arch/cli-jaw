@@ -75,6 +75,42 @@ test('a compact in a multiplex local session clears its own scoped rows only', a
     db.prepare("DELETE FROM session_buckets WHERE bucket LIKE 'codex-app:%'").run();
 });
 
+// The compact clears by scope prefix because the exact bucket key folds in lane mode
+// and effort (resolveScopedSessionBucket). Native mode is `codex-app:<scope>` and
+// fallback is `codex-app:<scope>:<model>:<effort>`, so the pair must cover both without
+// reaching into a neighbouring scope. Session ids are fixed-width, so no scope name can
+// be a prefix of another, and the LIKE pattern anchors the boundary on a colon anyway.
+test('the scope prefix covers both lane modes and stops at the scope boundary', async () => {
+    settings.multiSession.enabled = true;
+    const local = createChatSession('compact-iso-lanes');
+    setActiveChatSession(local.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'something to compact', ?)").run(local.id);
+
+    const scope = `local:${local.id}`;
+    upsertSessionBucket.run(`codex-app:${scope}`, 'native-thread', 'gpt-5.5', null, 0);
+    upsertSessionBucket.run(`codex-app:${scope}:gpt-5.5:medium`, 'fallback-thread', 'gpt-5.5', null, 0);
+    // A different session whose scope shares the same leading characters.
+    const neighbour = `${scope}extra`;
+    upsertSessionBucket.run(`codex-app:${neighbour}`, 'neighbour-thread', 'gpt-5.5', null, 0);
+
+    const previousCli = settings["cli"];
+    const previousRuntime = settings["runtime"];
+    settings["cli"] = 'codex-app';
+    settings["runtime"] = { ...(previousRuntime ?? {}), codexApp: { ...(previousRuntime?.codexApp ?? {}), multiplex: true } };
+    try {
+        assert.equal(await compactHandler([], compactCtx()).then(r => r.ok), true);
+    } finally {
+        settings["cli"] = previousCli;
+        settings["runtime"] = previousRuntime;
+    }
+
+    assert.equal(getSessionBucket.get(`codex-app:${scope}`), undefined, 'the native lane row is cleared');
+    assert.equal(getSessionBucket.get(`codex-app:${scope}:gpt-5.5:medium`), undefined, 'the fallback lane row is cleared');
+    const neighbourRow = getSessionBucket.get(`codex-app:${neighbour}`) as { session_id?: string } | undefined;
+    assert.equal(neighbourRow?.session_id, 'neighbour-thread', 'a scope sharing a prefix must survive');
+    db.prepare("DELETE FROM session_buckets WHERE bucket LIKE 'codex-app:%'").run();
+});
+
 // The /compact command writes its marker and bootstrap into the session the user is
 // looking at. If it cleared the shared bucket and singleton row as well, the visible
 // half would land on one session and the destructive half on another.
