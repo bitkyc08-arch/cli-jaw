@@ -6,6 +6,7 @@ import { autoCompactRefresh } from '../../src/core/compact.ts';
 import { compactHandler } from '../../src/cli/compact.ts';
 import { settings } from '../../src/core/config.ts';
 import { createChatSession, setActiveChatSession } from '../../src/core/chat-sessions.ts';
+import { peekPendingBootstrapPrompt } from '../../src/core/main-session.ts';
 import type { CliCommandContext } from '../../src/cli/command-context.ts';
 
 // 072 §1.2b — a `local:` scope shares the default session's bucket and singleton row on
@@ -42,6 +43,38 @@ function compactCtx(): CliCommandContext {
     } as unknown as CliCommandContext;
 }
 
+// Codex App multiplex is the one runtime where a local session owns a bucket of its
+// own, so its compact has to drop that bucket while still leaving the shared state and
+// the other scopes alone.
+test('a compact in a multiplex local session clears its own scoped rows only', async () => {
+    settings.multiSession.enabled = true;
+    seedSharedState();
+    const local = createChatSession('compact-iso-multiplex');
+    setActiveChatSession(local.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'something to compact', ?)").run(local.id);
+
+    const scope = `local:${local.id}`;
+    upsertSessionBucket.run(`codex-app:${scope}`, 'thread-mine', 'gpt-5.5', null, 0);
+    upsertSessionBucket.run('codex-app:default', 'thread-of-default', 'gpt-5.5', null, 0);
+
+    const previousCli = settings["cli"];
+    const previousRuntime = settings["runtime"];
+    settings["cli"] = 'codex-app';
+    settings["runtime"] = { ...(previousRuntime ?? {}), codexApp: { ...(previousRuntime?.codexApp ?? {}), multiplex: true } };
+    try {
+        assert.equal(await compactHandler([], compactCtx()).then(r => r.ok), true);
+    } finally {
+        settings["cli"] = previousCli;
+        settings["runtime"] = previousRuntime;
+    }
+
+    assert.equal(getSessionBucket.get(`codex-app:${scope}`), undefined, 'its own scoped bucket is cleared');
+    const otherScope = getSessionBucket.get('codex-app:default') as { session_id?: string } | undefined;
+    assert.equal(otherScope?.session_id, 'thread-of-default', 'another scope keeps its thread');
+    assert.equal(defaultSessionId(), 'vendor-thread-of-default', 'the singleton row still belongs to the default session');
+    db.prepare("DELETE FROM session_buckets WHERE bucket LIKE 'codex-app:%'").run();
+});
+
 // The /compact command writes its marker and bootstrap into the session the user is
 // looking at. If it cleared the shared bucket and singleton row as well, the visible
 // half would land on one session and the destructive half on another.
@@ -58,6 +91,24 @@ test('an explicit compact from a local session does not clear the default sessio
     const bucket = getSessionBucket.get('claude') as { session_id?: string } | undefined;
     assert.equal(bucket?.session_id, 'vendor-thread-of-default', 'the default session bucket must survive');
     assert.equal(defaultSessionId(), 'vendor-thread-of-default', 'the default session row must survive');
+});
+
+// Skipping the bucket clear only makes sense if the local session still starts fresh.
+// It does, for a reason that predates this change: an isolated scope runs with no
+// bucket at all, so there is no vendor session id to resume, and the bootstrap is
+// stored under that scope's own key ready for its next turn.
+test('a compacted local session keeps its own bootstrap ready to inject', async () => {
+    settings.multiSession.enabled = true;
+    seedSharedState();
+    const local = createChatSession('compact-iso-bootstrap');
+    setActiveChatSession(local.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'something to compact', ?)").run(local.id);
+
+    assert.equal(await compactHandler([], compactCtx()).then(r => r.ok), true);
+
+    const scope = `local:${local.id}`;
+    assert.ok(peekPendingBootstrapPrompt(scope), 'the bootstrap must be waiting under its own scope');
+    assert.equal(peekPendingBootstrapPrompt('default'), null, 'and must not be waiting for the default session');
 });
 
 test('an explicit compact from the default session still resets its own state', async () => {

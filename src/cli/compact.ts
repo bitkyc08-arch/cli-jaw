@@ -19,6 +19,7 @@ interface CompactSettings {
     activeOverrides?: Record<string, { model?: string }>;
     perCli?: Record<string, { model?: string }>;
     multiSession?: { enabled?: boolean };
+    runtime?: { codexApp?: { multiplex?: boolean } };
 }
 interface CompactSession {
     active_cli?: string;
@@ -106,12 +107,21 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         getChatSessionRemoteKey(chatSessionId) ?? undefined,
         settings?.multiSession?.enabled === true,
     );
-    // The marker and bootstrap below go to the session the user is compacting. Clearing
-    // the shared bucket and singleton row would land on the DEFAULT session instead,
-    // discarding a conversation another tab is still using while the user believes they
-    // reset their own (072 §1.2b). A scope with no native state has nothing to clear.
-    const nativeStateIsolated = isNativeStateIsolatedScope(scope);
-    const bucket = nativeStateIsolated ? '' : resolveSessionBucket(activeCli, model);
+    // The marker and bootstrap below go to the session being compacted, while the shared
+    // bucket and singleton row belong to the DEFAULT session. Clearing those would
+    // discard a conversation another tab is still using while the user believes they
+    // reset their own (072 §1.2b).
+    //
+    // Codex App multiplex is the exception: it keeps a bucket per scope, so a local
+    // session there owns real native state that its own compact must drop. The exact
+    // key depends on lane mode and effort, which this command cannot know, so it clears
+    // by scope prefix instead of trying to rebuild the key.
+    const scopeIsolated = isNativeStateIsolatedScope(scope);
+    const ownsScopedBucket = scopeIsolated
+        && activeCli === 'codex-app'
+        && settings?.runtime?.codexApp?.multiplex === true;
+    // An isolated scope with no bucket of its own has nothing to resolve.
+    const bucket = scopeIsolated && !ownsScopedBucket ? '' : resolveSessionBucket(activeCli, model);
     insertMessageWithTrace.run(
         'assistant',
         COMPACT_MARKER_CONTENT,
@@ -122,10 +132,17 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         workingDir,
         chatSessionId,
     );
-    setPendingBootstrapPrompt(bootstrap, nativeStateIsolated ? scope : undefined);
-    if (nativeStateIsolated) {
+    // A local session's bootstrap belongs under its own scope key whether or not it
+    // owns a bucket, otherwise its next turn would take the default session's bootstrap.
+    setPendingBootstrapPrompt(bootstrap, scopeIsolated ? scope : undefined);
+    if (scopeIsolated) {
         const { bumpScopeSessionGeneration } = await import('../agent/session-persistence.js');
         bumpScopeSessionGeneration(scope);
+        if (ownsScopedBucket) {
+            // Only this scope's rows. The singleton row and the other scopes' buckets
+            // belong to sessions this compact was not asked to reset.
+            clearSessionBucketsByPrefix.run(`${bucket}:${scope}`, `${bucket}:${scope}:%`);
+        }
     } else {
         bumpSessionOwnershipGeneration();
         clearBossSessionOnly();
