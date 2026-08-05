@@ -833,9 +833,18 @@ export { buildMediaPrompt, buildMediaPromptMany };
 
 import { AcpClient } from '../cli/acp-client.js';
 import { CodexAppClient, isRecoverableResumeError } from './codex-app-client.js';
-import { acquireCodexAppRuntime, acquirePiRuntime, type CodexAppLease, type PiLease } from './runtime-pool.js';
+import {
+    acquireCodexAppRuntime,
+    acquirePiRuntime,
+    resolveCodexAppProductionLaneScope,
+    type CodexAppLease,
+    type PiLease,
+} from './runtime-pool.js';
 import { loadCatalogEfforts, resolveCatalogPath, validateModelEffort } from './codex-app-catalog.js';
-import { extractFromCodexAppEvent } from './codex-app-events.js';
+import {
+    listenCodexAppTurnAdapter,
+    type CodexAppEventResult,
+} from './codex-app-events.js';
 
 import { canGuardedAgyResume, resolveAgyNativeResume, shouldEmitHeartbeat, shouldResumeBucketSession } from './spawn/resume.js';
 export { canGuardedAgyResume, resolveAgyNativeResume, shouldEmitHeartbeat, shouldResumeBucketSession };
@@ -2034,13 +2043,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             rejectTurn = rejectTurnPromise;
         });
 
-        const handleNotification = (method: string, params: Record<string, unknown>) => {
-            markCodexProgress();
-            if (method === 'turn/completed' || method === 'turn/started' || method === 'error') {
-                console.log(`[codex-app:notify] ${method}`);
-            }
-            appendTraceEvent({ runId: ctx.traceRunId, source: 'codex_app_raw', eventType: method, raw: params });
-            const parsed = extractFromCodexAppEvent(method, params, ctx);
+        const consumeCodexAppEvent = (method: string, parsed: CodexAppEventResult | null) => {
             if (!parsed) {
                 if (method === 'turn/completed') settleTurn();
                 return;
@@ -2110,7 +2113,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
         const effectiveFastMode = cfg.fastMode ?? settings["perCli"]?.["codex"]?.fastMode ?? false;
 
-        const runCodexAppTurn = async (appClient: CodexAppClient, lease: CodexAppLease | null): Promise<void> => {
+        type CodexAppTurnLeaseView = Pick<
+            CodexAppLease,
+            'threadId' | 'reused' | 'resumedThread' | 'release' | 'cancel'
+        >;
+        const runCodexAppTurn = async (
+            appClient: CodexAppClient,
+            lease: CodexAppTurnLeaseView | null,
+            laneScope: string | null,
+        ): Promise<void> => {
             const child = appClient.proc;
             if (!child) throw new Error('Codex AppServer process was not created');
             if (mainManaged) mainRun!.process = child;
@@ -2149,8 +2160,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             idleTimer = setTimeout(() => { watchdogTimeout('idle'); }, idleMs);
             absoluteTimer = setTimeout(() => { watchdogTimeout('absolute'); }, absoluteMs);
             markCodexProgress = resetIdleTimer;
-            const scope = appClient.listenTurn({
-                onNotification: handleNotification,
+            const listener = listenCodexAppTurnAdapter(appClient, lease, laneScope, ctx, {
+                onProgress: () => { markCodexProgress(); },
+                onRawNotification: (method, params) => {
+                    if (method === 'turn/completed' || method === 'turn/started' || method === 'error') {
+                        console.log(`[codex-app:notify] ${method}`);
+                    }
+                    appendTraceEvent({ runId: ctx.traceRunId, source: 'codex_app_raw', eventType: method, raw: params });
+                },
+                onEvent: consumeCodexAppEvent,
                 onStderr: handleStderr,
                 onExit: (code, signal) => {
                     processExit.value = { code, signal };
@@ -2194,7 +2212,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     ? `${historyBlock}\n\n[User Message]\n${prompt}`
                     : prompt;
 
-                await Promise.race([appClient.startTurn(codexAppPrompt), turnDone]);
+                const startTurn = laneScope === null
+                    ? appClient.startTurn(codexAppPrompt)
+                    : appClient.startTurn(laneScope, codexAppPrompt);
+                await Promise.race([startTurn, turnDone]);
                 await turnDone;
                 turnCompleted = !turnReportedFailure;
 
@@ -2225,7 +2246,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 markCodexProgress = () => {};
                 if (watchdogCancel) await watchdogCancel;
                 if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
-                scope.dispose();
+                listener.dispose();
                 if (lease) lease.release();
                 else {
                     await appClient.closeGracefully();
@@ -2265,6 +2286,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             });
         };
 
+        const laneScope = resolveCodexAppProductionLaneScope({
+            multiplexEnabled: settings["runtime"]?.codexApp?.multiplex === true,
+            employee: Boolean(opts.agentId),
+        });
+
         if (opts.agentId) {
             const appClient = new CodexAppClient({
                 binary: detected.path || 'codex', workDir: spawnCwd, env: spawnEnv,
@@ -2273,7 +2299,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             appClient.spawn();
             const child = appClient.proc;
             if (!child) throw new Error('Codex AppServer process was not created');
-            void runCodexAppTurn(appClient, null);
+            void runCodexAppTurn(appClient, null, laneScope);
             return { child, promise: resultPromise };
         }
 
@@ -2289,7 +2315,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             forceNew,
         }).then(async (lease) => {
             mainRun!.starting = false;
-            await runCodexAppTurn(lease.client, lease);
+            await runCodexAppTurn(lease.client, lease, laneScope);
         }).catch((err: Error) => {
             mainRun!.starting = false;
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);

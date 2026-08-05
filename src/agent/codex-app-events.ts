@@ -3,6 +3,10 @@
 // { tool, text, sessionId, tokens } shape spawn.ts expects.
 
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
+import type {
+    CodexAppClient,
+    CodexAppNotificationOwner,
+} from './codex-app-client.js';
 
 type EvRec = Record<string, unknown>;
 
@@ -13,6 +17,68 @@ export interface CodexAppEventResult {
     tokens?: Record<string, number> | undefined;
     flushThinking?: boolean | undefined;
     turnStatus?: string | undefined;
+}
+
+export interface CodexAppTurnLeaseIdentity {
+    readonly threadId: string;
+}
+
+export interface CodexAppTurnAdapterHandlers {
+    onProgress(): void;
+    onRawNotification(method: string, params: EvRec): void;
+    onEvent(method: string, result: CodexAppEventResult | null): void;
+    onStderr(text: string): void;
+    onExit?(code: number | null, signal: string | null): void;
+    onError?(err: Error): void;
+    onInterruptFailed?(err: Error): void;
+}
+
+export function listenCodexAppTurnAdapter(
+    client: CodexAppClient,
+    lease: CodexAppTurnLeaseIdentity | null,
+    laneScope: string | null,
+    ctx: SpawnContext,
+    handlers: CodexAppTurnAdapterHandlers,
+): { dispose(): void } {
+    const onNotification = (
+        method: string,
+        params: EvRec,
+        owner?: CodexAppNotificationOwner,
+    ) => {
+        handlers.onProgress();
+        handlers.onRawNotification(method, params);
+        if (laneScope === null) {
+            handlers.onEvent(method, extractFromCodexAppEvent(method, params, ctx));
+            return;
+        }
+
+        const expectedThreadId = lease?.threadId ?? client.getThreadId(laneScope);
+        const expectedTurnId = client.getActiveTurnId(laneScope);
+        if (
+            !expectedThreadId
+            || !expectedTurnId
+            || !owner
+            || owner.threadId !== expectedThreadId
+            || owner.turnId !== expectedTurnId
+        ) return;
+        handlers.onEvent(method, extractFromCodexAppLaneEvent(
+            method,
+            params,
+            ctx,
+            expectedThreadId,
+            expectedTurnId,
+        ));
+    };
+    const turnHandlers = {
+        onNotification,
+        onStderr: handlers.onStderr,
+        onExit: (code: number | null, signal: string | null) => { handlers.onExit?.(code, signal); },
+        onError: (err: Error) => { handlers.onError?.(err); },
+        onInterruptFailed: (err: Error) => { handlers.onInterruptFailed?.(err); },
+    };
+    return laneScope === null
+        ? client.listenTurn(turnHandlers)
+        : client.listenTurn(laneScope, turnHandlers);
 }
 
 function f(obj: EvRec, key: string): unknown { return obj[key]; }
