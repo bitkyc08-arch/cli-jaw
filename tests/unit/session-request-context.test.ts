@@ -4,7 +4,13 @@ import assert from 'node:assert/strict';
 import { db } from '../../src/core/db.ts';
 import { settings } from '../../src/core/config.ts';
 import { createChatSession, setActiveChatSession } from '../../src/core/chat-sessions.ts';
-import { resolveRequestSession } from '../../src/routes/session-request.ts';
+import { resolveRequestSessionStrict } from '../../src/routes/session-request.ts';
+
+function resolved(raw: unknown) {
+    const result = resolveRequestSessionStrict(raw);
+    assert.equal(result.ok, true, 'expected the session to resolve');
+    return result as Extract<typeof result, { ok: true }>;
+}
 
 afterEach(() => {
     db.prepare("DELETE FROM remote_session_bindings WHERE chat_session_id LIKE 'req-%'").run();
@@ -22,9 +28,9 @@ test('a named session wins over the globally active one', () => {
     const active = createChatSession('req-ctx-active');
     setActiveChatSession(active.id);
 
-    const resolved = resolveRequestSession(viewed.id);
-    assert.equal(resolved.chatSessionId, viewed.id);
-    assert.equal(resolved.scope, `local:${viewed.id}`);
+    const context = resolved(viewed.id);
+    assert.equal(context.chatSessionId, viewed.id);
+    assert.equal(context.scope, `local:${viewed.id}`);
 });
 
 test('no session named falls back to the active one', () => {
@@ -33,19 +39,21 @@ test('no session named falls back to the active one', () => {
     setActiveChatSession(active.id);
 
     for (const raw of [undefined, '', '   ', 42, null]) {
-        const resolved = resolveRequestSession(raw);
-        assert.equal(resolved.chatSessionId, active.id, `${String(raw)} must fall back`);
+        assert.equal(resolved(raw).chatSessionId, active.id, `${String(raw)} must fall back`);
     }
 });
 
-// A tab racing a deletion should not lose the message the user just typed.
-test('an unknown session id falls back instead of failing', () => {
+// Falling back here would write one tab's message into a different session: tab A views
+// X, X is deleted, another tab makes Y active, and A's next send lands in Y.
+test('a named session that no longer exists fails instead of redirecting the write', () => {
     settings.multiSession.enabled = true;
     const active = createChatSession('req-ctx-unknown');
     setActiveChatSession(active.id);
 
-    const resolved = resolveRequestSession('req-does-not-exist');
-    assert.equal(resolved.chatSessionId, active.id);
+    const result = resolveRequestSessionStrict('req-does-not-exist');
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, 'unknown_session');
+    assert.equal(result.ok === false && result.requested, 'req-does-not-exist');
 });
 
 test('with multi-session off a named session cannot redirect the write', () => {
@@ -54,16 +62,23 @@ test('with multi-session off a named session cannot redirect the write', () => {
     setActiveChatSession('default');
     settings.multiSession.enabled = false;
 
-    const resolved = resolveRequestSession(other.id);
-    assert.equal(resolved.chatSessionId, 'default');
-    assert.equal(resolved.scope, 'default');
+    const context = resolved(other.id);
+    assert.equal(context.chatSessionId, 'default');
+    assert.equal(context.scope, 'default');
+});
+
+// With the gate off there are no per-session semantics to protect, and an old client
+// sending a stale id must not start getting 404s it never got before.
+test('with multi-session off an unknown id is not an error', () => {
+    settings.multiSession.enabled = false;
+    assert.equal(resolved('req-does-not-exist').chatSessionId, 'default');
 });
 
 test('the default session keeps the default scope', () => {
     settings.multiSession.enabled = true;
-    const resolved = resolveRequestSession('default');
-    assert.equal(resolved.chatSessionId, 'default');
-    assert.equal(resolved.scope, 'default');
+    const context = resolved('default');
+    assert.equal(context.chatSessionId, 'default');
+    assert.equal(context.scope, 'default');
 });
 
 test('a remotely bound session resolves to its remote scope, not a local one', () => {
@@ -72,8 +87,8 @@ test('a remotely bound session resolves to its remote scope, not a local one', (
     db.prepare('INSERT INTO remote_session_bindings (remote_key, chat_session_id) VALUES (?, ?)')
         .run('jaw:slack:channel:C9', bound.id);
 
-    const resolved = resolveRequestSession(bound.id);
-    assert.equal(resolved.chatSessionId, bound.id);
-    assert.equal(resolved.scope, 'jaw:slack:channel:C9');
-    assert.equal(resolved.remoteKey, 'jaw:slack:channel:C9');
+    const context = resolved(bound.id);
+    assert.equal(context.chatSessionId, bound.id);
+    assert.equal(context.scope, 'jaw:slack:channel:C9');
+    assert.equal(context.remoteKey, 'jaw:slack:channel:C9');
 });

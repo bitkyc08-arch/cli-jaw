@@ -611,13 +611,21 @@ export async function autoCompactRefresh(opts: {
     } = await import('../agent/session-persistence.js');
     const { clearBossSessionOnly, setPendingBootstrapPrompt } = await import('./main-session.js');
     const { broadcast } = await import('./bus.js');
-    const bucket = opts.sessionBucket ?? resolveSessionBucket(opts.cli, opts.model);
+    const { isNativeStateIsolatedScope } = await import('../orchestrator/scope.js');
+    // A `local:` scope on a runtime whose bucket key carries no scope shares the default
+    // session's bucket and singleton row. Refreshing it here would throw away the default
+    // session's vendor conversation because another tab happened to compact (072 §1.2b).
+    // Such a scope keeps no native state to refresh in the first place.
+    const nativeStateIsolated = isNativeStateIsolatedScope(opts.scopeKey) && !opts.sessionBucket;
+    const bucket = nativeStateIsolated
+        ? ''
+        : (opts.sessionBucket ?? resolveSessionBucket(opts.cli, opts.model));
 
     insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, getActiveChatSession());
     setPendingBootstrapPrompt(bootstrap, opts.scopeKey);
     if (opts.scopeKey) bumpScopeSessionGeneration(opts.scopeKey);
     else bumpSessionOwnershipGeneration();
-    clearBossSessionOnly();
+    if (!nativeStateIsolated) clearBossSessionOnly();
     if (bucket) clearSessionBucket.run(bucket);
 
     broadcast('system_notice', { code: 'auto_compact_refresh', text: 'compact detected — session refreshed' }, 'public');

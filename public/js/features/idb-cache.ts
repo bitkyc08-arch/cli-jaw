@@ -224,11 +224,16 @@ export async function clearCache(): Promise<void> {
     }
 }
 
-// Clearing one session's screen must not erase another session's offline
-// fallback: with several tabs open, a global wipe makes every other tab
-// re-fetch its whole history for a clear it did not ask for (072 §1.3a).
-export async function clearScopedCache(scope?: string): Promise<void> {
-    const targetScope = scope || currentScope;
+// Clearing one session's screen must not erase another session's offline fallback:
+// with several tabs open, a global wipe makes every other tab re-fetch its whole
+// history for a clear it did not ask for (072 §1.3a).
+//
+// It takes no scope on purpose. This store is keyed by location and working directory
+// (message-history.ts), which is a different namespace from the execution scopes the
+// server puts on events, and a caller passing one of those would name a key that was
+// never written and silently delete nothing.
+export async function clearScopedCache(): Promise<void> {
+    const targetScope = currentScope;
     if (!targetScope) {
         await clearCache();
         return;

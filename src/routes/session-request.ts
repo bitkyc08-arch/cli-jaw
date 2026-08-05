@@ -14,16 +14,25 @@ export type RequestSessionContext = {
     remoteKey?: string;
 };
 
-// An id that names no session falls back to the active one rather than failing the
-// request: a tab racing a deletion should not lose the message it just typed.
-export function resolveRequestSession(rawSessionId: unknown): RequestSessionContext {
+export type RequestSessionResolution =
+    | ({ ok: true } & RequestSessionContext)
+    | { ok: false; reason: 'unknown_session'; requested: string };
+
+// A request that NAMES a session it cannot find fails closed. Falling back to the active
+// session looks forgiving but writes one tab's message into a different session: tab A
+// views X, X gets deleted, another tab makes Y active, and A's next send lands in Y.
+// Sending no id at all is a different thing — it means "the active session", which is
+// what every client did before per-tab routing and what the hub still does.
+export function resolveRequestSessionStrict(rawSessionId: unknown): RequestSessionResolution {
     const multiSessionEnabled = settings["multiSession"]?.enabled === true;
     const requested = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
-    const chatSessionId = multiSessionEnabled && requested && getChatSessionById(requested) !== null
-        ? requested
-        : getActiveChatSession();
+    if (multiSessionEnabled && requested && getChatSessionById(requested) === null) {
+        return { ok: false, reason: 'unknown_session', requested };
+    }
+    const chatSessionId = multiSessionEnabled && requested ? requested : getActiveChatSession();
     const remoteKey = getChatSessionRemoteKey(chatSessionId) ?? undefined;
     return {
+        ok: true,
         chatSessionId,
         scope: scopeForChatSession(chatSessionId, remoteKey, multiSessionEnabled),
         ...(remoteKey ? { remoteKey } : {}),

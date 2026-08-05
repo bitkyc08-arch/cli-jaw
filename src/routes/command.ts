@@ -15,7 +15,7 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { log } from '../core/logger.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
-import { resolveRequestSession } from './session-request.js';
+import { resolveRequestSessionStrict } from './session-request.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -123,8 +123,14 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         const external = req.body?.external === true ? true : undefined;
         // A tab on /:seq names the session it is viewing; without this the write goes
         // to whatever session is globally active, which is a different session than the
-        // one the user is looking at (072 §1.1).
-        const sessionContext = target ? undefined : resolveRequestSession(req.body?.sessionId);
+        // one the user is looking at (072 §1.1). A named session that no longer exists
+        // fails the request rather than silently redirecting the message elsewhere.
+        const resolvedSession = target ? null : resolveRequestSessionStrict(req.body?.sessionId);
+        if (resolvedSession && !resolvedSession.ok) {
+            res.status(404).json({ error: 'unknown_session', sessionId: resolvedSession.requested });
+            return;
+        }
+        const sessionContext = resolvedSession?.ok ? resolvedSession : undefined;
         const submitMeta = stripUndefined({
             origin: target ? 'telegram' as const : 'web' as const,
             target,

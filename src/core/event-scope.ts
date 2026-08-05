@@ -30,10 +30,27 @@ export const INSTANCE_WIDE_EVENTS: ReadonlySet<string> = new Set<string>([
     'heartbeat_pending',
     'bgtask_update',
     'alert_escalation',
-    'system_notice',
     'schedule_wakeup',
     'schedule_wakeup_failed',
+    // A global switch is published outside any session context, so it carries no scope
+    // and a strict filter would drop it from every scoped tab — leaving each of them
+    // showing a stale idea of which session is active.
+    'session_switched',
 ]);
+
+// `system_notice` is a mixed bag: some notices describe one session's turn and some
+// describe the instance. Classifying the whole type either way is wrong, so the code
+// decides. An unrecognised code is treated as instance-wide, which is the safe error:
+// an extra notice is noise, a missing one is invisible.
+const SESSION_OWNED_NOTICE_CODES: ReadonlySet<string> = new Set<string>([
+    'compact_suggest',
+    'auto_compact_refresh',
+]);
+
+function isSessionOwnedNotice(data: Record<string, unknown>): boolean {
+    const code = data["code"];
+    return typeof code === 'string' && SESSION_OWNED_NOTICE_CODES.has(code);
+}
 
 // Goal state is a single instance-wide file with no session field (goal/store.ts).
 // A goal finished in one tab must clear the cockpit in every tab, so goal events are
@@ -45,6 +62,11 @@ export function isInstanceWideEvent(event: string): boolean {
 export function shouldDeliverToScope(entry: BusEvent, scopeFilter: string | undefined): boolean {
     // No filter means "everything", which is what manager and worker connections rely on.
     if (!scopeFilter) return true;
+    if (entry.event === 'system_notice') {
+        return isSessionOwnedNotice(entry.data)
+            ? entry.data["scope"] === scopeFilter
+            : true;
+    }
     if (isInstanceWideEvent(entry.event)) return true;
     return entry.data["scope"] === scopeFilter;
 }

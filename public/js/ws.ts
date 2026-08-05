@@ -1065,10 +1065,13 @@ function handleServerEvent(msg: WsMessage): void {
         getVirtualScroll().clear();
         const el = document.getElementById('chatMessages');
         if (el) el.innerHTML = '';
-        // Intentional clear — also wipe this session's IndexedDB cache. Scoped so
-        // clearing one tab does not force every other tab to re-fetch its history.
-        const clearScope = typeof msg.scope === 'string' ? msg.scope : undefined;
-        import('./features/idb-cache.js').then(m => m.clearScopedCache(clearScope)).catch(() => {});
+        // Intentional clear — also wipe this tab's cached history. The cache is keyed by
+        // location and working directory, NOT by execution scope, so it clears its own
+        // current scope rather than the one the event carries: passing the server's scope
+        // here would name a key the cache has never written and delete nothing.
+        // The tab only reaches this branch for a clear it owns, because the SSE filter
+        // already dropped other sessions' clears upstream.
+        import('./features/idb-cache.js').then(m => m.clearScopedCache()).catch(() => {});
     } else if (msg.type === 'session_reset') {
         addSystemMsg(`${ICONS.refresh} Session reset — history preserved`, 'tool-activity');
     } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
