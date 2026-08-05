@@ -16,7 +16,7 @@ import { tryCommandInfo } from './command-info.js';
 import { isChatNearBottom, markFollowingBottom, reconcileChatBottomAfterLayout } from './chat-scroll.js';
 import { copyText } from './copy-text.js';
 import { isLocalPreviewRelayOrigin, previewParentOrigin } from '../preview-parent-origin.js';
-import { canSendFromCurrentView, showReadOnlySwitchAffordance } from './session-hub.js';
+import { canSendFromCurrentView, showReadOnlySwitchAffordance, withCurrentSessionBody } from './session-hub.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -106,7 +106,7 @@ async function postChatMessage(prompt: string): Promise<MessagePostResult> {
         const res = await fetch(`${API_BASE}/api/message`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify(withCurrentSessionBody({ prompt })),
         });
         const data: MessageResult = await res.json().catch(() => ({}));
         return { ok: res.ok, status: res.status, data };
@@ -156,7 +156,7 @@ async function handleSlashCommandResponse(
         }
         addMessage('user', originalText);
         upsertMessage({ role: 'user', content: originalText, timestamp: Date.now() });
-        await apiJson('/api/message', 'POST', { prompt: originalText });
+        await apiJson('/api/message', 'POST', withCurrentSessionBody({ prompt: originalText }));
         return;
     }
     if (!response.ok && !result?.text) throw new Error(`HTTP ${response.status}`);
@@ -168,7 +168,7 @@ async function handleSlashCommandResponse(
     }
     if (result?.text || result?.recovery) addSystemMsg(renderCommandRecovery(result), '', result.type);
     if (result?.steerPrompt) {
-        await apiJson('/api/message', 'POST', { prompt: result.steerPrompt });
+        await apiJson('/api/message', 'POST', withCurrentSessionBody({ prompt: result.steerPrompt }));
     }
 }
 
@@ -253,7 +253,10 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
     // SendSource keeps detection deterministic across cross-frame clicks.
     const stopByExplicitButton = source === 'button';
     if (btn.classList.contains('stop-mode') && stopByExplicitButton) {
-        apiFire('/api/stop', 'POST');
+        // On /:seq this stops only that session. Elsewhere the body carries no
+        // session and the server falls back to stopping everything, which is what
+        // the single-session view has always done.
+        apiFire('/api/stop', 'POST', withCurrentSessionBody({}));
         return;
     }
 
@@ -310,7 +313,7 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
                         const commandText = buildSlashCommandAttachmentText(text, paths);
                         const commandResponse = await postSlashCommand(commandText);
                         await handleSlashCommandResponse(commandText, commandResponse, async () => {
-                            await apiJson('/api/message', 'POST', { prompt });
+                            await apiJson('/api/message', 'POST', withCurrentSessionBody({ prompt }));
                         });
                     } catch (err) {
                         addSystemMsg(t('chat.cmd.fail', { msg: (err as Error).message }), '', 'error');
@@ -319,7 +322,7 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
                     }
                     return;
                 }
-                await apiJson('/api/message', 'POST', { prompt });
+                await apiJson('/api/message', 'POST', withCurrentSessionBody({ prompt }));
             } catch (err) {
                 addSystemMsg(t('chat.file.uploadFail', { msg: (err as Error).message }));
                 clearAttachedFiles();
@@ -604,7 +607,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
         promptParts.push(`🎤 ${sttResult.text}`);
         if (pendingText) promptParts.push(pendingText);
 
-        await apiJson('/api/message', 'POST', { prompt: promptParts.join('\n') });
+        await apiJson('/api/message', 'POST', withCurrentSessionBody({ prompt: promptParts.join('\n') }));
     } catch (err) {
         addSystemMsg(t('voice.sttFail', { msg: (err as Error).message }), '', 'error');
     }

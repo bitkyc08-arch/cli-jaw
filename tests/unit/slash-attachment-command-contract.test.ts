@@ -28,7 +28,7 @@ test('SAC-002: slash commands with attachments execute through command response 
     );
     assert.match(
         chatSource,
-        /handleSlashCommandResponse\(commandText, commandResponse, async \(\) => \{[\s\S]*apiJson\('\/api\/message', 'POST', \{ prompt \}\);[\s\S]*\}\);/s,
+        /handleSlashCommandResponse\(commandText, commandResponse, async \(\) => \{[\s\S]*apiJson\('\/api\/message', 'POST', withCurrentSessionBody\(\{ prompt \}\)\);[\s\S]*\}\);/s,
         'not_command fallback should preserve normal attachment message submission',
     );
 });
@@ -37,7 +37,7 @@ test('SAC-003: normal attachment messages still use /api/message', () => {
     assert.match(chatSource, /const prompt = buildAttachmentPrompt\(paths, text\);/);
     assert.match(
         chatSource,
-        /if \(isSlashCommand\) \{[\s\S]*return;[\s\S]*\}\s*await apiJson\('\/api\/message', 'POST', \{ prompt \}\);/s,
+        /if \(isSlashCommand\) \{[\s\S]*return;[\s\S]*\}\s*await apiJson\('\/api\/message', 'POST', withCurrentSessionBody\(\{ prompt \}\)\);/s,
     );
 });
 

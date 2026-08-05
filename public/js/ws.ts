@@ -1065,8 +1065,10 @@ function handleServerEvent(msg: WsMessage): void {
         getVirtualScroll().clear();
         const el = document.getElementById('chatMessages');
         if (el) el.innerHTML = '';
-        // Intentional clear — also wipe IndexedDB cache
-        import('./features/idb-cache.js').then(m => m.clearCache()).catch(() => {});
+        // Intentional clear — also wipe this session's IndexedDB cache. Scoped so
+        // clearing one tab does not force every other tab to re-fetch its history.
+        const clearScope = typeof msg.scope === 'string' ? msg.scope : undefined;
+        import('./features/idb-cache.js').then(m => m.clearScopedCache(clearScope)).catch(() => {});
     } else if (msg.type === 'session_reset') {
         addSystemMsg(`${ICONS.refresh} Session reset — history preserved`, 'tool-activity');
     } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {

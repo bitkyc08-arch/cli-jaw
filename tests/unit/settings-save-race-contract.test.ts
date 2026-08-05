@@ -37,7 +37,7 @@ test('SSR-004: chat waits for pending settings save before sending message', () 
     const sendPoints = [
         ['await handleSlashCommandResponse(text, await postSlashCommand(text))', 'slash command POST'],
         ['await handleSlashCommandResponse(commandText, commandResponse', 'slash attachment command POST'],
-        ["apiJson('/api/message', 'POST', { prompt })", 'file attachment message POST'],
+        ["apiJson('/api/message', 'POST', withCurrentSessionBody({ prompt }))", 'file attachment message POST'],
         ['postChatMessage(text)', 'normal message POST'],
     ] as const;
 

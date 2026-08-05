@@ -223,3 +223,32 @@ export async function clearCache(): Promise<void> {
         console.warn('[idb-cache] clearCache failed:', e);
     }
 }
+
+// Clearing one session's screen must not erase another session's offline
+// fallback: with several tabs open, a global wipe makes every other tab
+// re-fetch its whole history for a clear it did not ask for (072 §1.3a).
+export async function clearScopedCache(scope?: string): Promise<void> {
+    const targetScope = scope || currentScope;
+    if (!targetScope) {
+        await clearCache();
+        return;
+    }
+    try {
+        const db = await openDB();
+        const tx = db.transaction(STORE, 'readwrite');
+        const store = tx.objectStore(STORE);
+        const cursorReq = store.index('scope').openCursor(IDBKeyRange.only(targetScope));
+        cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) return;
+            cursor.delete();
+            cursor.continue();
+        };
+        await new Promise<void>((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch (e) {
+        console.warn('[idb-cache] clearScopedCache failed:', e);
+    }
+}

@@ -30,7 +30,8 @@ test('guard owns all seven write entry points and runs before stop, preview rela
     // The guard itself now reads stop-mode to decide whether a button click is a
     // stop attempt (which carries no command text), so anchor on the branch that
     // actually fires /api/stop rather than the first stop-mode mention.
-    const stopBranch = chatSource.indexOf("apiFire('/api/stop', 'POST')", sendStart);
+    const stopBranch = chatSource.indexOf("apiFire('/api/stop', 'POST'", sendStart);
+    assert.ok(stopBranch > -1, 'the stop branch anchor must still exist');
     const relay = chatSource.indexOf('postChatMessage(text)', sendStart);
     const voiceStart = chatSource.indexOf('export async function sendVoiceToServer');
     const voiceGuard = chatSource.indexOf('canSendFromCurrentView', voiceStart);
@@ -42,7 +43,7 @@ test('guard owns all seven write entry points and runs before stop, preview rela
 
     const entryPointEvidence = [
         ['normal send and preview relay', /postChatMessage\(text\)/],
-        ['retry message admission', /apiJson\('\/api\/message', 'POST', \{ prompt: originalText \}\)/],
+        ['retry message admission', /apiJson\('\/api\/message', 'POST', withCurrentSessionBody\(\{ prompt: originalText \}\)\)/],
         ['slash steer fallback', /result\?\.steerPrompt[\s\S]*apiJson\('\/api\/message'/],
         ['attachments', /state\.attachedFiles\.length[\s\S]*uploadFile/],
         ['voice', /sendVoiceToServer[\s\S]*\/api\/voice/],

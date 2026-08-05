@@ -15,6 +15,7 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { log } from '../core/logger.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
+import { resolveRequestSession } from './session-request.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -120,6 +121,10 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         // new_message handler renders externally-injected user bubbles live
         // instead of waiting for a history reload (devlog 260705).
         const external = req.body?.external === true ? true : undefined;
+        // A tab on /:seq names the session it is viewing; without this the write goes
+        // to whatever session is globally active, which is a different session than the
+        // one the user is looking at (072 §1.1).
+        const sessionContext = target ? undefined : resolveRequestSession(req.body?.sessionId);
         const submitMeta = stripUndefined({
             origin: target ? 'telegram' as const : 'web' as const,
             target,
@@ -127,6 +132,11 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             overrides,
             replyViaTarget: Boolean(target),
             external,
+            ...(sessionContext ? {
+                chatSessionId: sessionContext.chatSessionId,
+                scope: sessionContext.scope,
+                ...(sessionContext.remoteKey ? { remoteKey: sessionContext.remoteKey } : {}),
+            } : {}),
         });
 
         // Slash command pre-processing: Telegram/Discord already do this,

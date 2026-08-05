@@ -129,6 +129,15 @@ export function withCurrentSessionQuery(path: string): string {
     return `${url.pathname}${url.search}${url.hash}`;
 }
 
+// Writes carry the session id, not a scope: the scope rule belongs to the server
+// (src/orchestrator/scope.ts). A tab on the hub or a pre-navigation build sends
+// nothing extra and the server keeps using the globally active session, which is
+// exactly the behaviour before per-tab routing existed.
+export function withCurrentSessionBody<T extends Record<string, unknown>>(body: T): T & { sessionId?: string } {
+    const sessionId = currentSessionId();
+    return sessionId ? { ...body, sessionId } : body;
+}
+
 function sessionHref(seq: number): string {
     return `${API_BASE}/${seq}`;
 }
