@@ -61,7 +61,12 @@ function escapeFence(text: string): string {
 // Reads at most MAX_DIGEST_BYTES + 1 through a single descriptor. A stat followed by a
 // read would be neither bounded nor race-safe: the file can be replaced between the two
 // calls, and reading it whole defeats the size limit entirely.
-function readDigestFile(root: string, path: string): DigestLoad {
+// The read function is injectable so a test can produce a short read. A local filesystem
+// will not do it on demand, but a network or FUSE mount does it routinely, and treating a
+// short read as end-of-file is exactly how a truncated digest would reach the prompt.
+type ReadChunk = (fd: number, buffer: Buffer, offset: number, length: number, position: number) => number;
+
+function readDigestFile(root: string, path: string, readChunk: ReadChunk = readSync): DigestLoad {
     let fd: number | undefined;
     try {
         // Three flags, each for a different attack. O_NOFOLLOW rejects a symlink at the
@@ -102,8 +107,19 @@ function readDigestFile(root: string, path: string): DigestLoad {
         // Same shape: the size check above uses the descriptor's stat, and this one bounds
         // what is actually read. The file can grow between them, so the read cap is what
         // makes the limit real rather than advisory.
+        //
+        // The loop matters. A single readSync can return fewer bytes than asked for without
+        // being at the end of the file — network and FUSE filesystems do this routinely —
+        // and treating that as EOF would inject a truncated digest, or reject a valid one
+        // whose last multi-byte character got split.
         const buffer = Buffer.allocUnsafe(MAX_DIGEST_BYTES + 1);
-        const read = readSync(fd, buffer, 0, MAX_DIGEST_BYTES + 1, 0);
+        let read = 0;
+        for (;;) {
+            const chunk = readChunk(fd, buffer, read, buffer.length - read, read);
+            if (chunk === 0) break;
+            read += chunk;
+            if (read >= buffer.length) break;
+        }
         if (read > MAX_DIGEST_BYTES) return { ok: false, reason: 'compiled_digest_too_large' };
 
         const slice = buffer.subarray(0, read);

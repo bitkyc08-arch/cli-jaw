@@ -8,6 +8,7 @@ import { ok, fail } from '../http/response.js';
 import {
     assertUsableWikiRoot,
     normalizeWikiConfig,
+    readUsableWikiConfig,
     readWikiConfig,
     wikiProviderStatus,
     writeWikiConfig,
@@ -41,7 +42,10 @@ export function registerWikiRoutes(
 
     app.get('/api/wiki/status', requireAuth, (_req, res) => {
         try {
-            ok(res, statusPayload(readWikiConfig()));
+            // The validated view, for the same reason the provider and the prompt use it:
+            // the settings API can write this block without passing through enable, and
+            // status must not report a forbidden root as ready or probe underneath it.
+            ok(res, statusPayload(readUsableWikiConfig(forbiddenRoots())));
         } catch (error) {
             // An unusable persisted root should still produce a readable status rather
             // than a 500 the user cannot act on.

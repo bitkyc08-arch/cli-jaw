@@ -175,3 +175,34 @@ test('enabling through a symlinked path persists the canonical root', async () =
 
     assert.equal(readWikiConfig().root, join(realpathSync(real), 'vault'));
 });
+
+// The settings API can write the wiki block without going through enable, so status has
+// to apply the same forbidden-root rule the provider and the prompt do. Reporting a
+// forbidden root as ready would tell the user the opposite of what search actually does.
+test('status refuses to report a forbidden root as enabled', async () => {
+    const notes = tempRoot();
+    const { scaffoldWikiVault } = await import('../../src/wiki/scaffold.ts');
+    await scaffoldWikiVault(notes);
+    await writeWikiConfig(normalizeWikiConfig({ enabled: true, root: notes, promptDigest: true }));
+
+    await withServer(async baseUrl => {
+        const body = await (await fetch(`${baseUrl}/api/wiki/status`)).json();
+        assert.equal(body.data.enabled, false, 'a forbidden root reads as disabled');
+        assert.equal(body.data.provider, 'off');
+    }, { forbiddenRoots: [notes] });
+});
+
+// Fixing a forbidden root has to remain possible: enable reads the raw config so a user
+// who got into that state can point the vault somewhere else.
+test('a vault stuck on a forbidden root can still be moved', async () => {
+    const notes = tempRoot();
+    const elsewhere = tempRoot();
+    await writeWikiConfig(normalizeWikiConfig({ enabled: true, root: notes, promptDigest: false }));
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/wiki/enable', { root: elsewhere });
+        const body = await response.json();
+        assert.equal(response.status, 200, JSON.stringify(body));
+        assert.equal(body.data.provider, 'ready');
+    }, { forbiddenRoots: [notes] });
+});

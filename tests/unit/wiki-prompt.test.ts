@@ -365,3 +365,35 @@ test('a digest that grows past the limit is still refused', async () => {
     assert.equal(load.ok, false);
     assert.equal(load.ok === false && load.reason, 'compiled_digest_too_large');
 });
+
+// A single read can return fewer bytes than asked for without being at the end of the
+// file — network and FUSE filesystems do this routinely. Treating that as EOF would inject
+// a truncated digest, or reject a valid one whose last multi-byte character was split.
+test('a digest delivered in short reads is assembled rather than truncated', async () => {
+    const { readSync } = await import('node:fs');
+    const body = 'the whole digest, delivered a few bytes at a time\n';
+    const root = await readyVault(body);
+
+    // Hand back at most seven bytes per call, the way a slow mount would.
+    const trickle = (fd: number, buffer: Buffer, offset: number, length: number, position: number) =>
+        readSync(fd, buffer, offset, Math.min(length, 7), position);
+
+    const load = loadDigestFileForTest(root, join(root, DIGEST_RELATIVE_PATH), trickle);
+    assert.equal(load.ok, true, 'a short read is not the end of the file');
+    assert.equal(load.ok === true && load.text, body, 'and the whole digest is assembled');
+});
+
+// The same applies to a multi-byte character split across two reads: decoding the first
+// chunk alone would fail, so the bytes have to be joined before they are decoded.
+test('a short read splitting a multi-byte character does not corrupt the digest', async () => {
+    const { readSync } = await import('node:fs');
+    const body = '한글 문서입니다\n';
+    const root = await readyVault(body);
+
+    const trickle = (fd: number, buffer: Buffer, offset: number, length: number, position: number) =>
+        readSync(fd, buffer, offset, Math.min(length, 2), position);
+
+    const load = loadDigestFileForTest(root, join(root, DIGEST_RELATIVE_PATH), trickle);
+    assert.equal(load.ok, true);
+    assert.equal(load.ok === true && load.text, body);
+});

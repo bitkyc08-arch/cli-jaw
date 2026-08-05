@@ -225,3 +225,31 @@ test('reading the configuration never creates the vault it names', async () => {
     assert.equal(wikiProviderStatus(readWikiConfig()), 'off');
     assert.equal(existsSync(root), false, 'nothing was created by reading');
 });
+
+// Pinning the root canonically depends on the directory existing, which it does not when
+// a vault is first configured. These pin the two halves of that: a path that is not there
+// yet normalises unchanged, and one that is gets resolved.
+test('a root that does not exist yet normalises without being resolved away', () => {
+    const notYet = join(tempRoot(), 'never', 'made');
+    assert.equal(normalizeWikiConfig({ root: notYet }).root, notYet);
+});
+
+test('an existing root is pinned to its canonical form', async () => {
+    const root = tempRoot();
+    await scaffoldWikiVault(root);
+    const { realpathSync } = await import('node:fs');
+    assert.equal(normalizeWikiConfig({ root }).root, realpathSync(root));
+});
+
+// And a configuration written before the vault existed keeps working once it does, since
+// the uncanonical path still names the same directory.
+test('a config written before the vault existed still reports ready afterwards', async () => {
+    const root = tempRoot();
+    const early = normalizeWikiConfig({ enabled: true, root, promptDigest: false });
+    await scaffoldWikiVault(early.root);
+    assert.equal(wikiProviderStatus(early), 'ready');
+});
+
+test('the tilde still expands to the home directory', () => {
+    assert.equal(normalizeWikiConfig({ root: '~/jaw-wiki' }).root, join(homedir(), 'jaw-wiki'));
+});
