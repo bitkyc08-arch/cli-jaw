@@ -402,7 +402,13 @@ export function acquireCodexAppLane(prepared: PreparedCodexAppHost, options: Cod
 // injected into it (072 §1.2b).
 //
 // A busy lane is left alone: the run using it owns its binding, and its own completion
-// path decides what happens next. Returns how many bindings were dropped.
+// path decides what happens next. That leaves a theoretical window where a turn finishing
+// just after a reset re-persists the thread it was already using, but the explicit
+// command refuses to run while an agent is active (cli/compact.ts) and the automatic
+// refresh runs from the exit handler of the very turn in question, so neither reset can
+// actually observe a busy lane of its own scope.
+//
+// Returns how many bindings were dropped.
 export function invalidateCodexAppLanesForScope(scopeKey: string | null): number {
     let dropped = 0;
     for (const host of hosts.values()) {

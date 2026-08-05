@@ -656,6 +656,33 @@ test('a null scope invalidates every idle lane', async () => {
     lease.release();
 });
 
+// A waiter that queued before the invalidation must not continue the discarded thread.
+// Clearing threadId is what carries this case: the waiter finds an unbound lane, so it
+// rebinds regardless of what it inherits. The epoch bump alongside it keeps the lane
+// consistent with every other rebinding path rather than being load-bearing here.
+test('a waiter queued before an invalidation does not inherit the discarded binding', async () => {
+    const model = `lane-invalidate-epoch-${identity++}`;
+    const seedToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const seeded = await pool.acquireCodexAppLane(seedToken, {
+        scopeKey: 'scope-epoch', bucketKey: bucket('scope-epoch', model), storedThreadId: 'stored-epoch',
+    });
+    assert.equal(seeded.threadId, 'stored-epoch');
+
+    const waiterToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const waiterPromise = pool.acquireCodexAppLane(waiterToken, {
+        scopeKey: 'scope-epoch', bucketKey: bucket('scope-epoch', model),
+    });
+    await flush();
+
+    // The compact lands while the first turn still holds the lane, then the turn ends.
+    seeded.release();
+    assert.equal(pool.invalidateCodexAppLanesForScope('scope-epoch'), 1);
+
+    const waiter = await waiterPromise;
+    assert.notEqual(waiter.threadId, 'stored-epoch', 'the waiter must not continue the discarded thread');
+    waiter.release();
+});
+
 test('shutdown is deadline-bound, rejects waiters, and memoizes the first deadline and reserve', async () => {
     const model = 'shutdown';
     const reaped = await prepareFor('shutdown-reaped', 'scope-reaped');
