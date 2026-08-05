@@ -2,6 +2,18 @@
 // The only path that puts vault content into the system prompt. Two things make it
 // dangerous and both are handled here: the file is user-controlled, and it can be
 // swapped for a symlink after the vault was scaffolded.
+//
+// What the guards below prove is the SHAPE of the file at the moment it is read: a
+// regular file, one link, inside the canonical vault, the same object the descriptor
+// holds, within the size cap, valid UTF-8. What they cannot prove is authorship. A
+// process running as the user can write a perfectly ordinary file into the vault and
+// every check passes, because the vault is a directory the user chose and writes to
+// themselves — that is the trust boundary, and it is stated rather than engineered
+// around. Hashing or an approval step would be the alternative if it ever moves.
+//
+// The reads are synchronous, so a stalled network mount can block prompt construction.
+// That is true of every file the prompt already reads, including its own A1/A2 sources,
+// so it is a property of the prompt path rather than of this feature.
 
 import { closeSync, openSync, fstatSync, readSync, realpathSync, statSync, constants as fsConstants } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
