@@ -27,6 +27,13 @@ const _lastFlushedMessageId = new Map<string, number>();
 // caller, so nothing brought that session back. A session that only ever reached the
 // threshold while a busier one held the lock would never be summarised (073 §2.3a).
 const _deferredFlushSessions = new Set<string>();
+// A drain runs from inside a lock release, and the flush it starts can release the lock
+// again before the loop finishes — re-entering here and processing the same queue twice.
+let _drainInProgress = false;
+// A session that never comes back would otherwise sit in the set forever. The bound is
+// generous because the real ceiling is how many sessions exist, and dropping the oldest
+// costs one deferred summary rather than unbounded memory.
+const MAX_DEFERRED_FLUSH_SESSIONS = 256;
 let _flushGeneration = 0;
 let _activeFlushGeneration: number | null = null;
 
@@ -144,18 +151,31 @@ export async function triggerMemoryFlush(): Promise<void> {
     return triggerMemoryFlushForSession(null);
 }
 
-// Draining runs one deferred session per release rather than all of them, because the
-// first one takes the lock again anyway. The rest stay queued and the next release picks
-// up where this left off; the set is insertion-ordered, so nobody is passed over twice.
+// Draining stops at the first session that actually takes the lock, because that one now
+// owns the writer and its own release will come back here for the rest. It cannot stop at
+// the first session it merely TRIES: a session whose rows were deleted, or that has since
+// fallen under the threshold, does nothing and frees no lock, so the queue behind it would
+// sit until some unrelated flush happened to release. The set is insertion-ordered, so
+// each pass continues where the last one stopped.
 function drainDeferredFlushes(): void {
-    const next = _deferredFlushSessions.values().next();
-    if (next.done) return;
-    _deferredFlushSessions.delete(next.value);
-    // Detached on purpose: this runs from inside a lock release, and awaiting the next
-    // flush there would keep the releasing attempt's frame alive for the whole of it.
-    void triggerMemoryFlushForSession(next.value).catch(error => {
-        console.warn('[memory] deferred flush failed:', (error as Error).message);
-    });
+    if (_drainInProgress) return;
+    _drainInProgress = true;
+    try {
+        while (!_flushLock) {
+            const next = _deferredFlushSessions.values().next();
+            if (next.done) return;
+            _deferredFlushSessions.delete(next.value);
+            // Detached on purpose: this runs from inside a lock release, and awaiting the
+            // whole flush there would hold the releasing attempt's frame open for it. The
+            // part that decides whether the lock is taken runs synchronously before the
+            // first await, so the loop condition above sees the result.
+            void triggerMemoryFlushForSession(next.value).catch(error => {
+                console.warn('[memory] deferred flush failed:', (error as Error).message);
+            });
+        }
+    } finally {
+        _drainInProgress = false;
+    }
 }
 
 async function triggerMemoryFlushForSession(deferredSessionId: string | null): Promise<void> {
@@ -169,6 +189,13 @@ async function triggerMemoryFlushForSession(deferredSessionId: string | null): P
 
     if (_flushLock) {
         _deferredFlushSessions.add(sessionId);
+        if (_deferredFlushSessions.size > MAX_DEFERRED_FLUSH_SESSIONS) {
+            const oldest = _deferredFlushSessions.values().next();
+            if (!oldest.done) {
+                _deferredFlushSessions.delete(oldest.value);
+                console.warn(`[memory] deferred flush queue full; dropped session=${oldest.value}`);
+            }
+        }
         console.log(`[memory] flush lock held; deferring session=${sessionId}`);
         return;
     }

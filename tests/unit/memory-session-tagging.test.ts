@@ -415,3 +415,32 @@ test('MEM-LOCK: a flush turned away by the lock is run once the lock frees', asy
         "B's rows must be summarised once the writer frees, without B taking another turn");
     assert.deepEqual(getFlushStatus().deferredFlushSessions, []);
 });
+
+// Draining one per release is not enough. If the session at the head has since been
+// deleted, or has fallen under the threshold, it does nothing and frees no lock — so
+// everyone queued behind it waits for an unrelated flush that may never come.
+test('MEM-LOCK: a deferred session that can no longer flush does not block the queue', async () => {
+    const slowA = deferred<SpawnResult>();
+    installSpawn([
+        () => slowA.promise,
+        { text: 'summary from the session behind', code: 0 },
+    ]);
+
+    insertConversation('mem-drain-a', 'busy-a');
+    // The head of the queue has nothing to summarise.
+    insertConversation('mem-drain-empty', 'gone');
+    db.prepare('DELETE FROM messages WHERE session_id = ?').run('mem-drain-empty');
+    insertConversation('mem-drain-c', 'quiet-c');
+
+    await withSessionScope({ scope: 'local:a', chatSessionId: 'mem-drain-a' }, () => triggerMemoryFlush());
+    await withSessionScope({ scope: 'local:e', chatSessionId: 'mem-drain-empty' }, () => triggerMemoryFlush());
+    await withSessionScope({ scope: 'local:c', chatSessionId: 'mem-drain-c' }, () => triggerMemoryFlush());
+    assert.deepEqual(getFlushStatus().deferredFlushSessions, ['mem-drain-empty', 'mem-drain-c']);
+
+    slowA.resolve({ text: 'summary from busy A', code: 0 });
+    await waitForFlushCompletion();
+
+    assert.match(readMemory(), /summary from the session behind/,
+        'the session behind the dead one must still be reached');
+    assert.deepEqual(getFlushStatus().deferredFlushSessions, []);
+});
