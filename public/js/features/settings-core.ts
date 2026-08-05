@@ -55,6 +55,35 @@ async function resolvePendingRuntimeMigration(snapshot: SettingsData): Promise<S
     return snapshot;
 }
 
+async function resolvePendingMultiSessionMigration(snapshot: SettingsData): Promise<SettingsData> {
+    if (snapshot.multiSessionDefaultMigration?.state !== 'pending') return snapshot;
+    // The prompt names both halves because accepting applies both: sessions on, and a
+    // second lane so a second tab does not queue behind the first. Turning it on without
+    // the lane would change what the screen shows and nothing about how it runs.
+    const action = window.confirm(
+        '이제 대화 세션을 여러 개 열 수 있습니다. 켜면 동시 실행도 2로 올라가서, 두 번째 세션이 첫 번째가 끝나기를 기다리지 않습니다. 지금 켤까요?',
+    ) ? 'accept' : 'keep';
+    try {
+        const token = await getAuthToken();
+        const response = await fetch(`${API_BASE}/api/settings/multi-session-default-migration`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ action }),
+        });
+        const payload = await response.json().catch(() => null) as MigrationResponse | null;
+        if (shouldHydrateRuntimeMigrationResponse(response.status)) {
+            return unwrapMigrationSettings(payload) ?? snapshot;
+        }
+        window.alert(`세션 선택을 저장하지 못했습니다 (${response.status}). 다음 설정 진입 때 다시 안내합니다.`);
+    } catch {
+        window.alert('세션 선택을 저장하지 못했습니다. 다음 설정 진입 때 다시 안내합니다.');
+    }
+    return snapshot;
+}
+
 function setHeaderCli(cli: string): void {
     const hdr = document.getElementById('headerCli');
     if (!hdr) return;
@@ -400,6 +429,10 @@ export async function loadSettings(): Promise<void> {
     let s = await api<SettingsData>('/api/settings');
     if (!s) return;
     s = await resolvePendingRuntimeMigration(s);
+    // Runtime first, then sessions: which CLI runs is the earlier decision, and a v1
+    // install has both pending at once. The second call takes the snapshot the first
+    // returned — passing the pre-call one would write back over the answer just given.
+    s = await resolvePendingMultiSessionMigration(s);
     syncStoredLocale(s.locale ?? '');
     syncCliOptionSelects(s);
     setCachedPi(s.pi);

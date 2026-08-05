@@ -107,6 +107,8 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     const [cliStatus, setCliStatus] = useState<Record<string, CliStatusInfo>>({});
     const [migrationBusy, setMigrationBusy] = useState(false);
     const [migrationError, setMigrationError] = useState<string | null>(null);
+    const [sessionMigrationBusy, setSessionMigrationBusy] = useState(false);
+    const [sessionMigrationError, setSessionMigrationError] = useState<string | null>(null);
 
     const loadCliMeta = useCallback(async () => {
         try {
@@ -257,6 +259,33 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         }
     }, [client, setData]);
 
+    // Same shape, its own endpoint and its own busy state, because a v1 install has both
+    // migrations pending and answering one must not look like answering the other.
+    const resolveSessionMigration = useCallback(async (action: 'accept' | 'keep') => {
+        setSessionMigrationBusy(true);
+        setSessionMigrationError(null);
+        try {
+            const response = await client.post<AgentSnapshot | { data?: AgentSnapshot; settings?: AgentSnapshot }>(
+                '/api/settings/multi-session-default-migration',
+                { action },
+            );
+            let next: AgentSnapshot;
+            if ('settings' in response && response.settings) next = response.settings as AgentSnapshot;
+            else if ('data' in response && response.data) next = response.data as AgentSnapshot;
+            else next = response as AgentSnapshot;
+            setData(next);
+        } catch (error) {
+            const conflictSettings = conflictSettingsFromError(error);
+            if (conflictSettings) {
+                setData(conflictSettings);
+                return;
+            }
+            setSessionMigrationError(describeError(error));
+        } finally {
+            setSessionMigrationBusy(false);
+        }
+    }, [client, setData]);
+
     if (state.kind === 'loading') return <PageLoading />;
     if (state.kind === 'offline') return <PageOffline port={port} />;
     if (state.kind === 'error') return <PageError message={state.message} />;
@@ -288,6 +317,17 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                         <button type="button" className="settings-action settings-action-secondary" disabled={migrationBusy} onClick={() => void resolveMigration('keep')}>현재 런타임 유지</button>
                     </div>
                     {migrationError ? <span className="settings-field-error" role="alert">{migrationError}</span> : null}
+                </div>
+            ) : null}
+            {settingsData.multiSessionDefaultMigration?.state === 'pending' ? (
+                <div className="settings-inline-notice" role="status">
+                    <strong>다중 세션 안내</strong>
+                    <p>대화 세션을 여러 개 열 수 있습니다. 켜면 동시 실행도 2로 올라가서, 두 번째 세션이 첫 번째가 끝나기를 기다리지 않습니다. 지금 설정은 그대로 유지됩니다.</p>
+                    <div className="settings-inline-actions">
+                        <button type="button" className="settings-action settings-action-save" disabled={sessionMigrationBusy} onClick={() => void resolveSessionMigration('accept')}>다중 세션 켜기</button>
+                        <button type="button" className="settings-action settings-action-secondary" disabled={sessionMigrationBusy} onClick={() => void resolveSessionMigration('keep')}>지금 설정 유지</button>
+                    </div>
+                    {sessionMigrationError ? <span className="settings-field-error" role="alert">{sessionMigrationError}</span> : null}
                 </div>
             ) : null}
             {cliStatus[draft.cli]?.probeState === 'checking' ? (
