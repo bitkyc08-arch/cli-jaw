@@ -39,6 +39,30 @@ let lastMessageAt = 0;
 let pingCapable = false;
 let stallTimer: ReturnType<typeof setInterval> | null = null;
 
+// ── Per-tab scope (072 §1.3a) ──
+// A tab viewing one session subscribes to that session's scope so another
+// session's output never lands in it. Injected rather than imported: the scope
+// comes from the session view, which imports the API layer, and reading it
+// through a provider keeps this module free of that cycle and picks up the
+// current value on every reconnect rather than freezing the boot-time one.
+let scopeProvider: (() => string | null) | null = null;
+
+export function setEventChannelScopeProvider(provider: (() => string | null) | null): void {
+    scopeProvider = provider;
+}
+
+function currentScopeParam(): string {
+    let scope: string | null = null;
+    try {
+        scope = scopeProvider?.() ?? null;
+    } catch {
+        // A broken provider must not take the whole channel down; an unscoped
+        // connection still receives everything, which is the old behaviour.
+        scope = null;
+    }
+    return scope ? `&scope=${encodeURIComponent(scope)}` : '';
+}
+
 function armStallWatchdog(): void {
     if (stallTimer) return;
     stallTimer = setInterval(() => {
@@ -111,6 +135,7 @@ export function connectEventChannel(lang: string): void {
     if (source) source.close();
 
     const url = `${API_BASE}/api/events?lang=${encodeURIComponent(lang)}` +
+        currentScopeParam() +
         (lastEventId ? `&lastEventId=${lastEventId}` : '');
     openedThisAttempt = false;
     unavailableFiredThisAttempt = false;

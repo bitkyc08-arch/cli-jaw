@@ -30,7 +30,15 @@ test('widget watcher broadcasts widget_updated for html files', async () => {
         fs.writeFileSync(join(WIDGETS_DIR, chatId, 'chart.html'), '<h1>one</h1>');
         const event = await seen;
         assert.equal(event.topic, 'widget');
-        assert.deepEqual(event.data, { chatId, widgetId: 'chart' });
+        // The scope rides along because the watcher fires from a filesystem timer,
+        // outside any session's async context, so broadcast() cannot stamp it and a
+        // scoped tab would otherwise never see its own widget update (072 §1.3a).
+        assert.deepEqual(event.data, {
+            chatId,
+            widgetId: 'chart',
+            scope: `local:${chatId}`,
+            sessionId: chatId,
+        });
     } finally {
         stop();
     }

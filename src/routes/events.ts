@@ -7,6 +7,7 @@ import {
     subscribe, replaySince, hasReplayGap, currentSeq,
     MAX_SSE_LISTENERS, isPublicSseTopic, type BusEvent,
 } from '../core/event-bus.js';
+import { shouldDeliverToScope } from '../core/event-scope.js';
 
 const HEARTBEAT_MS = 15_000;
 let activeConnections = 0;
@@ -85,7 +86,7 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
             // could hold a trace entry from a future/mistaken publisher).
             for (const entry of replaySince(lastId)) {
                 if (!isPublicSseTopic(entry.topic)) { droppedInternalTopicEvents++; continue; }
-                if (scopeFilter && entry.data["scope"] !== scopeFilter) continue;
+                if (!shouldDeliverToScope(entry, scopeFilter)) continue;
                 res.write(formatSse(entry, true));
             }
         }
@@ -111,7 +112,7 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
         unsub = subscribe((entry) => {
             if (res.writableEnded) return;
             if (!isPublicSseTopic(entry.topic)) { droppedInternalTopicEvents++; return; }
-            if (scopeFilter && entry.data["scope"] !== scopeFilter) return;
+            if (!shouldDeliverToScope(entry, scopeFilter)) return;
             res.write(formatSse(entry));
             if (exceedsBackpressureLimit(res.writableLength)) {
                 slowClientClosed++;

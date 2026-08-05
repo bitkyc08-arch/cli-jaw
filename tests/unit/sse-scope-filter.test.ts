@@ -85,3 +85,32 @@ test('unfiltered SSE receives all scopes and scoped stale cursors still receive 
         assert.ok(staleOut.includes('replay_gap'));
     });
 });
+
+// broadcast() stamps whichever session's async context published an event, so an
+// instance-wide event emitted during another session's turn arrives carrying that
+// session's scope. Strict equality alone would delete it from this tab, leaving the
+// settings header, employee list and heartbeat frozen (072 §1.3a).
+test('the route delivers instance-wide events to a scoped tab on both replay and live', async () => {
+    await withServer(async baseUrl => {
+        publish('system', 'system_notice', { marker: 'instance-primer' });
+        const replayMark = currentSeq();
+        publish('settings', 'settings_change', { scope: 'scope-B', marker: 'replay-settings' });
+        publish('message', 'new_message', { scope: 'scope-B', marker: 'replay-other-session' });
+
+        const replay = await fetch(`${baseUrl}/api/events?scope=scope-A&lastEventId=${replayMark}`);
+        assert.ok(replay.body);
+        const replayOut = await readUntil(replay.body, 'replay-settings');
+        assert.ok(replayOut.includes('replay-settings'), 'an instance-wide event must survive replay filtering');
+        assert.ok(!replayOut.includes('replay-other-session'), 'another session output must still be filtered out');
+
+        const live = await fetch(`${baseUrl}/api/events?scope=scope-A`);
+        assert.ok(live.body);
+        setTimeout(() => {
+            publish('message', 'new_message', { scope: 'scope-B', marker: 'live-other-session' });
+            publish('goal', 'goal_done', { scope: 'scope-B', marker: 'live-goal' });
+        }, 25);
+        const liveOut = await readUntil(live.body, 'live-goal');
+        assert.ok(liveOut.includes('live-goal'), 'goal state is instance-wide and must reach every tab');
+        assert.ok(!liveOut.includes('live-other-session'));
+    });
+});

@@ -2,6 +2,8 @@ import fs, { type FSWatcher } from 'node:fs';
 import { join, parse } from 'node:path';
 import { broadcast } from './bus.js';
 import { WIDGETS_DIR } from './config.js';
+import { scopeForChatSession } from '../orchestrator/scope.js';
+import { getChatSessionRemoteKey } from './chat-sessions.js';
 
 const DEBOUNCE_MS = 300;
 function warn(message: string, error: unknown): void {
@@ -44,7 +46,19 @@ export function startWidgetWatcher(): () => void {
         clearTimer(key);
         timers.set(key, setTimeout(() => {
             timers.delete(key);
-            if (!stopped) broadcast('widget_updated', { chatId, widgetId }, 'public');
+            // The watcher fires from a filesystem timer, outside any session's async
+            // context, so broadcast() cannot stamp the scope for us. A widget belongs to
+            // the session whose directory holds it (that is the same id removeWidgetDir
+            // takes), and without this a scoped tab would never see its own widget update.
+            if (!stopped) {
+                const remoteKey = getChatSessionRemoteKey(chatId) ?? undefined;
+                broadcast('widget_updated', {
+                    chatId,
+                    widgetId,
+                    scope: scopeForChatSession(chatId, remoteKey),
+                    sessionId: chatId,
+                }, 'public');
+            }
         }, DEBOUNCE_MS));
     };
     const attachChatWatcher = (chatId: string) => {

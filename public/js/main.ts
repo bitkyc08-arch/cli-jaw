@@ -95,7 +95,8 @@ import { initAttentionBadge } from './features/attention-badge.js';
 import { initHelpDialog } from './features/help-dialog.js';
 import { initChatSearch, toggleChatSearch, closeChatSearch } from './features/chat-search.js';
 import { initMediaLightbox } from './features/media-lightbox.js';
-import { initializeSessionView } from './features/session-hub.js';
+import { currentEventScope, initializeSessionView } from './features/session-hub.js';
+import { setEventChannelScopeProvider } from './event-channel.js';
 
 function isLocalPreviewOrigin(origin: string): boolean {
     if (origin === window.location.origin) return true;
@@ -562,6 +563,10 @@ async function bootstrap(): Promise<void> {
     await initI18n();
     const sessionMode = await initializeSessionView({ cancelRecording });
     if (sessionMode === 'redirect') return;
+    // Must run before either connect() below: the channel reads this on every
+    // (re)connect, and an unregistered provider opens an unfiltered stream that
+    // would carry other sessions' output into this tab.
+    setEventChannelScopeProvider(currentEventScope);
     const langSel = document.getElementById('langSelect') as HTMLSelectElement | null;
     if (langSel) langSel.value = getLang();
     initHelpDialog();

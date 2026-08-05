@@ -101,6 +101,21 @@ export function currentSessionId(): string | null {
     return viewState.enabled && viewState.mode === 'session' ? viewState.viewed?.id || null : null;
 }
 
+// Mirrors scopeForChatSession() on the server (src/orchestrator/scope.ts). A tab on the
+// hub or on a pre-navigation build returns null, which means an unfiltered connection
+// that receives everything — the behaviour before per-tab scoping existed.
+//
+// Remotely bound sessions run under their remote key, so a tab viewing one must
+// subscribe to that key rather than a local scope it would never see events on.
+export function currentEventScope(): string | null {
+    if (!viewState.enabled || viewState.mode !== 'session') return null;
+    const viewed = viewState.viewed;
+    if (!viewed) return null;
+    if (viewed.id === 'default') return 'default';
+    if (viewed.remoteKey) return viewed.remoteKey;
+    return `local:${viewed.id}`;
+}
+
 export function withCurrentSessionQuery(path: string): string {
     const sessionId = currentSessionId();
     if (!sessionId) return path;
