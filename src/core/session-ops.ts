@@ -8,9 +8,15 @@ import { resetFallbackState } from '../agent/spawn.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from './main-session.js';
 import { applyRuntimeSettingsPatch } from './runtime-settings.js';
 import { settings } from './config.js';
+import { currentSessionScope } from './session-context.js';
 
 /** Full reset: compact first, then delete message history. */
 export async function clearSessionState(): Promise<void> {
+    // The reset belongs to whichever session asked for it. Without passing the scope on,
+    // the compact below falls back to the global ownership bump and the narrowing done at
+    // the end of this function never matters — a reset in one tab still discards the turn
+    // another tab has in flight (073 §2.2a).
+    const scopeKey = currentSessionScope()?.scope;
     try {
         const { autoCompactRefresh } = await import('./compact.js');
         await autoCompactRefresh({
@@ -18,6 +24,7 @@ export async function clearSessionState(): Promise<void> {
             instructions: '',
             cli: settings["cli"] || 'claude',
             model: settings["model"] || '',
+            ...(scopeKey ? { scopeKey } : {}),
         });
     } catch {} // best-effort: compact failure must not block session reset
     try {
@@ -25,10 +32,20 @@ export async function clearSessionState(): Promise<void> {
         // an explicit reset must invalidate resumable native sessions (guarded AGY
         // resume reads session_buckets, not the main session row), even when
         // autoCompactRefresh() threw before reaching its own bucket clear.
-        const { clearSessionBucketsByPrefix } = await import('./db.js');
-        const { resolveSessionBucket } = await import('../agent/args.js');
-        const bucket = resolveSessionBucket(settings["cli"] || 'claude', settings["model"] || '');
-        clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
+        const { clearSessionBucket, clearSessionBucketsByPrefix } = await import('./db.js');
+        const { resolveScopedSessionBucket } = await import('../agent/args.js');
+        const cli = settings["cli"] || 'claude';
+        const model = settings["model"] || '';
+        const codexAppMultiplex = settings["runtime"]?.codexApp?.multiplex === true;
+        const bucket = resolveScopedSessionBucket(
+            cli, model, null, scopeKey || 'default', '', 'fallback', codexAppMultiplex,
+        );
+        // Since 073 §2.1 every scope owns its bucket, so a reset clears its own. Only a
+        // reset with no session behind it is an instance-wide one, and only that may take
+        // the codex-app lane rows with it — those are keyed by scope, and wiping them all
+        // would cut lanes belonging to sessions that never asked for a reset.
+        if (scopeKey && scopeKey !== 'default') clearSessionBucket.run(bucket);
+        else clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
     } catch (e) {
         console.warn('[jaw:reset] session bucket clear failed:', (e as Error).message);
     }

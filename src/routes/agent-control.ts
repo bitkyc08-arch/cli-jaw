@@ -7,6 +7,7 @@ import { killActiveAgent, killAllAgents } from '../agent/spawn.js';
 import { broadcast } from '../core/bus.js';
 import { clearSessionState } from '../core/session-ops.js';
 import { resolveRequestSessionStrict } from './session-request.js';
+import { withSessionScope } from '../core/session-context.js';
 
 export function registerAgentControlRoutes(app: Router, requireAuth: RequestHandler): void {
     app.post('/api/stop', requireAuth, (req, res) => {
@@ -46,8 +47,20 @@ export function registerAgentControlRoutes(app: Router, requireAuth: RequestHand
     });
 
     // Explicit session reset — deletes messages (used by /reset confirm, cli-jaw reset)
-    app.post('/api/session/reset', requireAuth, async (_, res) => {
-        await clearSessionState();
+    app.post('/api/session/reset', requireAuth, async (req, res) => {
+        // The reset used to ignore which session asked for it, so it fell back to the
+        // instance-wide behaviour: bumping the ownership generation for every scope and
+        // clearing buckets it did not own. /api/clear right above already resolves the
+        // session; the destructive sibling has more reason to, not less (073 §2.2a).
+        const resolved = resolveRequestSessionStrict(req.body?.sessionId);
+        if (!resolved.ok) {
+            res.status(404).json({ error: 'unknown_session', sessionId: resolved.requested });
+            return;
+        }
+        await withSessionScope(
+            { scope: resolved.scope, chatSessionId: resolved.chatSessionId },
+            () => clearSessionState(),
+        );
         ok(res, null);
     });
 }
