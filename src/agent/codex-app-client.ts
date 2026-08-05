@@ -379,12 +379,14 @@ export class CodexAppClient extends EventEmitter {
             handlers.onNotification(method, params);
         };
         this.on('host-notification', listener);
+        this.on('notification', listener);
         let disposed = false;
         return {
             dispose: () => {
                 if (disposed) return;
                 disposed = true;
                 this.off('host-notification', listener);
+                this.off('notification', listener);
             },
         };
     }
@@ -407,14 +409,8 @@ export class CodexAppClient extends EventEmitter {
             this.emit('stderr', chunk.toString());
         });
 
-        this.proc.on('error', (err) => {
-            this.handleProcessDeath(`Process error: ${err.message}`);
-            this.emit('error', err);
-        });
-        this.proc.on('exit', (code, signal) => {
-            this.handleProcessDeath('Process exited');
-            this.emit('exit', code, signal);
-        });
+        this.proc.on('error', (err) => { this.handleProcessError(err); });
+        this.proc.on('exit', (code, signal) => { this.handleProcessExit(code, signal); });
     }
 
     async initialize(): Promise<unknown> {
@@ -563,7 +559,7 @@ export class CodexAppClient extends EventEmitter {
     cleanup(): void {
         if (this.cleaned) return;
         this.cleaned = true;
-        this.handleProcessDeath('Client cleanup');
+        if (this.beginProcessDeath('Client cleanup')) this.finalizeProcessDeath();
         this.rl?.close();
         this.rl = null;
         this.removeAllListeners();
@@ -1416,8 +1412,26 @@ export class CodexAppClient extends EventEmitter {
         }
     }
 
-    private handleProcessDeath(reason: string): void {
-        if (this.terminal) return;
+    private handleProcessError(err: Error): void {
+        if (!this.beginProcessDeath(`Process error: ${err.message}`)) return;
+        try {
+            this.emit('error', err);
+        } finally {
+            this.finalizeProcessDeath();
+        }
+    }
+
+    private handleProcessExit(code: number | null, signal: NodeJS.Signals | null): void {
+        if (!this.beginProcessDeath('Process exited')) return;
+        try {
+            this.emit('exit', code, signal);
+        } finally {
+            this.finalizeProcessDeath();
+        }
+    }
+
+    private beginProcessDeath(reason: string): boolean {
+        if (this.terminal) return false;
         this.terminal = true;
         this.rejectAllPending(reason);
         const error = new Error(reason);
@@ -1426,16 +1440,22 @@ export class CodexAppClient extends EventEmitter {
                 state.pendingOperation.failed = error;
                 state.pendingOperation.reject(error);
             }
-            state.pendingInterrupt = false;
-            state.activeTurnId = null;
             state.operation = 'terminal';
         }
+        return true;
+    }
+
+    private finalizeProcessDeath(): void {
+        for (const scope of [...this.scopes.keys()]) this.removeScope(scope);
         this.threadToScope.clear();
         this.turnToScope.clear();
         this.pendingNotifications = [];
         // Nothing will ever attach to drain these once the process is gone.
         this.preListenerNotifications = [];
         this.clearPendingTimer();
+        this.scopeDisposers.clear();
+        this.legacyListenerCount = 0;
+        this.removeAllListeners();
     }
 
     private mergeLegacyOptions(options: LegacyThreadOptions): CodexThreadOptions {
