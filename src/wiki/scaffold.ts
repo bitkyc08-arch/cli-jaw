@@ -62,8 +62,9 @@ async function writeExclusive(path: string, content: string): Promise<void> {
 }
 
 export async function scaffoldWikiVault(root: string): Promise<void> {
-    // The root itself may be a symlink the user deliberately set up; what must not happen
-    // is a path INSIDE the vault silently redirecting writes elsewhere.
+    // The root is rejected if it is a symlink, and so is every path inside it. A vault
+    // reached through a link cannot be checked for containment reliably, and a linked
+    // path inside it silently redirects writes somewhere the user never chose.
     await assertNotSymlink(root);
     await mkdir(root, { recursive: true });
     for (const dir of WIKI_REQUIRED_DIRS) {
