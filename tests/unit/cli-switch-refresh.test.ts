@@ -37,12 +37,6 @@ test('CSR-003: target bucket clear is inside transaction', () => {
     assert.match(compactSrc, /db\.transaction\(\(\)\s*=>\s*\{[\s\S]*?if\s*\(\s*targetBucket\s*\)\s*clearSessionBucket\.run\(targetBucket\)[\s\S]*?\}\)/);
 });
 
-test('CSR-003b: auto compact clears active session bucket after bootstrap handoff', () => {
-    assert.match(compactSrc, /export\s+async\s+function\s+autoCompactRefresh/);
-    assert.match(compactSrc, /const\s+bucket\s*=\s*resolveSessionBucket\(opts\.cli,\s*opts\.model\)/);
-    assert.match(compactSrc, /clearBossSessionOnly\(\);\s*if\s*\(\s*bucket\s*\)\s*clearSessionBucket\.run\(bucket\)/);
-});
-
 test('CSR-003c: slash compact clears active session bucket after bootstrap handoff', () => {
     assert.match(cliCompactSrc, /const\s+bucket\s*=\s*resolveSessionBucket\(activeCli,\s*model\)/);
     assert.match(cliCompactSrc, /clearBossSessionOnly\(\);\s*if\s*\(\s*bucket\s*\)\s*clearSessionBucket\.run\(bucket\)/);

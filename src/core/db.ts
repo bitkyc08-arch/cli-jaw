@@ -583,6 +583,9 @@ export const setSessionBucketSnapshot = db.prepare(`
     ON CONFLICT(bucket) DO UPDATE SET memory_snapshot=excluded.memory_snapshot
 `);
 export const clearSessionBucket = db.prepare('DELETE FROM session_buckets WHERE bucket = ?');
+export const clearSessionBucketsByPrefix = db.prepare(
+    "DELETE FROM session_buckets WHERE bucket = ? OR bucket LIKE ? ESCAPE '\\'",
+);
 export const updateSessionBucketLastRun = db.prepare('UPDATE session_buckets SET last_run_clean=?, last_run_cwd=?, last_run_meta=? WHERE bucket=?');
 
 // ─── Message Queue Persistence ──────────────────────

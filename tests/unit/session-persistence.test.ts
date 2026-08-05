@@ -172,7 +172,7 @@ test('codex-app buckets match native and fallback lane identity', () => {
     );
 });
 
-test('legacy codex-app bucket copy is lossless and never overwrites scoped state', () => {
+test('codex-app bucket persistence, copy, compact, and reset preserve isolation', () => {
     const home = mkdtempSync(join(tmpdir(), 'cli-jaw-codex-bucket-copy-'));
     const fixture = join(__dirname, '../fixtures/codex-session-bucket-db-child.mts');
     try {

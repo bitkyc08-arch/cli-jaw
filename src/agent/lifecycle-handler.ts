@@ -275,6 +275,7 @@ export interface ExitHandlerParams {
     activeProcesses: Map<string, ChildProcess>;
     scopeKey: string;
     chatSessionId: string;
+    codexAppBucket?: string | undefined;
     childProcess: ChildProcess | null;
     releaseMainRun: (scopeKey: string, child: ChildProcess | null, ownerGeneration: number) => boolean;
     retryState: {
@@ -465,7 +466,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         if (shouldClearHighTurnSessionBucket(runtimeCli, turns)) {
             console.log(`[jaw:compact] ${cli} exited after ${turns} turns — clearing session bucket for fresh start`);
             try {
-                const bucket = resolveSessionBucket(cli, model, effectiveProvider);
+                const bucket = params.codexAppBucket ?? resolveSessionBucket(cli, model, effectiveProvider);
                 clearSessionBucket.run(bucket);
             } catch (e) {
                 console.warn('[jaw:compact] session bucket clear failed:', (e as Error).message);
@@ -676,7 +677,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 console.log(`[jaw:session] invalidated stale employee resume — ${cli} agent=${opts.agentId}`);
             } else {
                 updateSession.run(cli, null, model, settings["permissions"], settings["workingDir"], effortVal);
-                const bucket = resolveSessionBucket(cli, model, effectiveProvider);
+                const bucket = params.codexAppBucket ?? resolveSessionBucket(cli, model, effectiveProvider);
                 if (bucket) clearSessionBucket.run(bucket);
                 console.log(`[jaw:session] invalidated stale resume — ${cli}/${bucket} session cleared`);
             }

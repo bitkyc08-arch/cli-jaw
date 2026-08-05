@@ -8,6 +8,11 @@ assert.ok(home && isAbsolute(home) && home.startsWith(tmpdir()) && home !== tmpd
 
 const database = await import('../../src/core/db.ts');
 
+function bucketSessionId(bucket: string): string | undefined {
+    const row = database.getSessionBucket.get(bucket) as { session_id?: string } | undefined;
+    return row?.session_id;
+}
+
 try {
     const insert = database.db.prepare(`
         INSERT INTO session_buckets (
@@ -47,6 +52,97 @@ try {
     assert.equal(preserved["session_id"], 'thread-scoped');
     assert.equal(preserved["resume_key"], 'resume-scoped');
     assert.equal(preserved["memory_snapshot"], '{"summary":"scoped"}');
+
+    database.db.prepare('DELETE FROM session_buckets').run();
+    const persistence = await import('../../src/agent/session-persistence.ts');
+    persistence.resetSessionOwnershipGenerationForTest();
+    const scopeKey = 'scope-a';
+    const persistenceOwner = persistence.getSessionOwnershipGeneration(scopeKey);
+    const capturedBucket = 'codex-app:scope-a:gpt-5.5:high';
+    assert.equal(persistence.persistMainSession({
+        persistenceOwner,
+        scopeKey,
+        cli: 'codex-app',
+        model: 'gpt-5.5',
+        effort: 'high',
+        sessionId: 'thread-scoped',
+        code: 0,
+        codexAppBucket: capturedBucket,
+    }), true);
+    assert.equal(bucketSessionId(capturedBucket), 'thread-scoped');
+    assert.equal(bucketSessionId('codex-app'), undefined,
+        'captured bucket writes must not be recomputed into the legacy row');
+    assert.equal(persistence.persistMainSession({
+        persistenceOwner,
+        scopeKey,
+        cli: 'codex-app',
+        model: 'gpt-5.5',
+        effort: 'high',
+        sessionId: 'thread-legacy',
+        code: 0,
+    }), true);
+    assert.equal(bucketSessionId('codex-app'), 'thread-legacy');
+    assert.equal(bucketSessionId(capturedBucket), 'thread-scoped');
+
+    database.db.prepare('DELETE FROM session_buckets').run();
+    database.updateSession.run('codex-app', 'singleton-before', 'gpt-5.5', 'auto', '/tmp', 'high');
+    database.upsertSessionBucket.run('codex-app', 'legacy-before', 'gpt-5.5', null, 0);
+    const singletonBefore = database.getSession() as Record<string, unknown>;
+    const legacyBefore = database.getSessionBucket.get('codex-app') as Record<string, unknown>;
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+        assert.equal(persistence.persistMainSession({
+            persistenceOwner: persistence.getSessionOwnershipGeneration(scopeKey),
+            scopeKey,
+            cli: 'codex-app',
+            model: 'gpt-5.5',
+            effort: 'high',
+            sessionId: 'must-not-persist',
+            code: 0,
+            codexAppBucket: '',
+        }), false);
+    } finally {
+        console.warn = originalWarn;
+    }
+    assert.ok(warnings.length > 0, 'invalid bucket rejection must emit a diagnostic warning');
+    assert.deepEqual(database.getSession(), singletonBefore, 'singleton row must stay unchanged');
+    assert.deepEqual(database.getSessionBucket.get('codex-app'), legacyBefore,
+        'legacy bucket row must stay unchanged');
+    assert.equal(bucketSessionId(''), undefined, 'invalid bucket row must not be created');
+
+    database.db.prepare('DELETE FROM session_buckets').run();
+    database.upsertSessionBucket.run('codex-app', 'thread-legacy', 'gpt-5.5', null, 0);
+    database.upsertSessionBucket.run(capturedBucket, 'thread-scoped', 'gpt-5.5', null, 0);
+    const { autoCompactRefresh } = await import('../../src/core/compact.ts');
+    await autoCompactRefresh({
+        workDir: home,
+        instructions: '',
+        cli: 'codex-app',
+        model: 'gpt-5.5',
+        sessionBucket: capturedBucket,
+    });
+    assert.equal(bucketSessionId(capturedBucket), undefined, 'captured bucket must be cleared');
+    assert.equal(bucketSessionId('codex-app'), 'thread-legacy',
+        'auto compact must not recompute a captured bucket into the legacy row');
+
+    database.db.prepare('DELETE FROM session_buckets').run();
+    const { settings } = await import('../../src/core/config.ts');
+    settings['cli'] = 'claude';
+    settings['model'] = 'sonnet';
+    settings['workingDir'] = home;
+    database.upsertSessionBucket.run('claude', 'thread-active', 'sonnet', null, 0);
+    database.upsertSessionBucket.run('codex-app:scope-a', 'thread-a', 'gpt-5.5', null, 0);
+    database.upsertSessionBucket.run('codex-app:scope-b:gpt-5.5:high', 'thread-b', 'gpt-5.5', null, 0);
+    database.upsertSessionBucket.run('pi', 'thread-pi', 'default', null, 0);
+    const { clearSessionState } = await import('../../src/core/session-ops.ts');
+    await clearSessionState();
+    assert.equal(bucketSessionId('claude'), undefined, 'active legacy bucket must be cleared');
+    assert.equal(bucketSessionId('codex-app:scope-a'), undefined, 'native scoped bucket must be cleared');
+    assert.equal(bucketSessionId('codex-app:scope-b:gpt-5.5:high'), undefined,
+        'fallback scoped bucket must be cleared');
+    assert.equal(bucketSessionId('pi'), 'thread-pi', 'unrelated CLI buckets must remain');
 } finally {
     database.closeDb();
 }

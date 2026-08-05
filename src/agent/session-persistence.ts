@@ -22,6 +22,7 @@ export type SessionPersistenceInput = {
     permissions?: string;
     workingDir?: string;
     outputLen?: number | undefined;
+    codexAppBucket?: string | undefined;
 };
 
 let globalGeneration = 0;
@@ -73,6 +74,18 @@ export function shouldPersistMainSession(input: SessionPersistenceInput): boolea
 }
 
 export function persistMainSession(input: SessionPersistenceInput): boolean {
+    const codexAppBucket = input.codexAppBucket;
+    if (
+        codexAppBucket !== undefined
+        && (
+            typeof codexAppBucket !== 'string'
+            || !codexAppBucket.startsWith('codex-app:')
+            || codexAppBucket.slice('codex-app:'.length).trim().length === 0
+        )
+    ) {
+        console.warn('[jaw:session] rejected invalid codexAppBucket before persistence');
+        return false;
+    }
     if (!shouldPersistMainSession(input)) return false;
     updateSession.run(
         input.cli,
@@ -85,7 +98,7 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
     // Mirror into per-bucket table so codex-spark keeps a session independent from
     // plain codex (gpt-5.4 etc.) — avoids 'thread/resume failed: no rollout found'
     // on cross-model toggles.
-    const bucket = resolveSessionBucket(input.cli, input.model, input.provider);
+    const bucket = codexAppBucket ?? resolveSessionBucket(input.cli, input.model, input.provider);
     if (bucket && input.sessionId) {
         upsertSessionBucket.run(bucket, input.sessionId, input.model, input.resumeKey || null, input.outputLen ?? 0);
     }

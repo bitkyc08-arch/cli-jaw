@@ -570,6 +570,7 @@ export async function autoCompactRefresh(opts: {
     instructions: string;
     cli: string;
     model: string;
+    sessionBucket?: string | undefined;
 }) {
     const slots = harvestBootstrapSlots({ workingDir: opts.workDir, instructions: opts.instructions });
     let bootstrap = renderBootstrapPrompt(slots);
@@ -598,7 +599,7 @@ export async function autoCompactRefresh(opts: {
     const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
     const { clearBossSessionOnly, setPendingBootstrapPrompt } = await import('./main-session.js');
     const { broadcast } = await import('./bus.js');
-    const bucket = resolveSessionBucket(opts.cli, opts.model);
+    const bucket = opts.sessionBucket ?? resolveSessionBucket(opts.cli, opts.model);
 
     insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, getActiveChatSession());
     setPendingBootstrapPrompt(bootstrap);

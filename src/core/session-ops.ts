@@ -25,10 +25,10 @@ export async function clearSessionState(): Promise<void> {
         // an explicit reset must invalidate resumable native sessions (guarded AGY
         // resume reads session_buckets, not the main session row), even when
         // autoCompactRefresh() threw before reaching its own bucket clear.
-        const { clearSessionBucket } = await import('./db.js');
+        const { clearSessionBucketsByPrefix } = await import('./db.js');
         const { resolveSessionBucket } = await import('../agent/args.js');
         const bucket = resolveSessionBucket(settings["cli"] || 'claude', settings["model"] || '');
-        if (bucket) clearSessionBucket.run(bucket);
+        clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
     } catch (e) {
         console.warn('[jaw:reset] session bucket clear failed:', (e as Error).message);
     }
