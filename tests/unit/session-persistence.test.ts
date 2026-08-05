@@ -7,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { resolveScopedSessionBucket } from '../../src/agent/args.ts';
 import {
+    bumpScopeSessionGeneration,
     bumpSessionOwnershipGeneration,
     getSessionOwnershipGeneration,
+    isCurrentSessionOwner,
     resetSessionOwnershipGenerationForTest,
     shouldPersistMainSession,
 } from '../../src/agent/session-persistence.ts';
@@ -18,9 +20,11 @@ const __dirname = dirname(__filename);
 
 test('session persistence allows current owner to save successful non-fallback result', () => {
     resetSessionOwnershipGenerationForTest();
-    const ownerGeneration = getSessionOwnershipGeneration();
+    const scopeKey = 'default';
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
     const ok = shouldPersistMainSession({
-        ownerGeneration,
+        persistenceOwner,
+        scopeKey,
         cli: 'codex',
         model: 'gpt-5-codex',
         effort: 'high',
@@ -32,9 +36,11 @@ test('session persistence allows current owner to save successful non-fallback r
 
 test('session persistence blocks fallback runs from saving main session row', () => {
     resetSessionOwnershipGenerationForTest();
-    const ownerGeneration = getSessionOwnershipGeneration();
+    const scopeKey = 'default';
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
     const ok = shouldPersistMainSession({
-        ownerGeneration,
+        persistenceOwner,
+        scopeKey,
         cli: 'copilot',
         model: 'default',
         effort: '',
@@ -47,10 +53,12 @@ test('session persistence blocks fallback runs from saving main session row', ()
 
 test('session persistence blocks stale owner after generation bump', () => {
     resetSessionOwnershipGenerationForTest();
-    const staleOwner = getSessionOwnershipGeneration();
+    const scopeKey = 'default';
+    const staleOwner = getSessionOwnershipGeneration(scopeKey);
     bumpSessionOwnershipGeneration();
     const ok = shouldPersistMainSession({
-        ownerGeneration: staleOwner,
+        persistenceOwner: staleOwner,
+        scopeKey,
         cli: 'claude',
         model: 'sonnet',
         effort: 'medium',
@@ -62,9 +70,11 @@ test('session persistence blocks stale owner after generation bump', () => {
 
 test('session persistence blocks non-zero exits', () => {
     resetSessionOwnershipGenerationForTest();
-    const ownerGeneration = getSessionOwnershipGeneration();
+    const scopeKey = 'default';
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
     const ok = shouldPersistMainSession({
-        ownerGeneration,
+        persistenceOwner,
+        scopeKey,
         cli: 'claude',
         model: 'sonnet',
         effort: 'medium',
@@ -76,9 +86,11 @@ test('session persistence blocks non-zero exits', () => {
 
 test('session persistence treats ai-e exit code 2 as graceful only for Claude provider', () => {
     resetSessionOwnershipGenerationForTest();
-    const ownerGeneration = getSessionOwnershipGeneration();
+    const scopeKey = 'default';
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
     assert.equal(shouldPersistMainSession({
-        ownerGeneration,
+        persistenceOwner,
+        scopeKey,
         cli: 'ai-e',
         provider: 'claude',
         model: 'sonnet',
@@ -87,7 +99,8 @@ test('session persistence treats ai-e exit code 2 as graceful only for Claude pr
         code: 2,
     }), true);
     assert.equal(shouldPersistMainSession({
-        ownerGeneration,
+        persistenceOwner,
+        scopeKey,
         cli: 'ai-e',
         provider: 'codex',
         model: 'gpt-5.4',
@@ -99,9 +112,11 @@ test('session persistence treats ai-e exit code 2 as graceful only for Claude pr
 
 test('session persistence skips ai-e headless provider session ids', () => {
     resetSessionOwnershipGenerationForTest();
-    const ownerGeneration = getSessionOwnershipGeneration();
+    const scopeKey = 'default';
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
     assert.equal(shouldPersistMainSession({
-        ownerGeneration,
+        persistenceOwner,
+        scopeKey,
         cli: 'ai-e',
         provider: 'gemini',
         model: 'gemini-3-flash-preview',
@@ -109,6 +124,22 @@ test('session persistence skips ai-e headless provider session ids', () => {
         sessionId: 'headless-native-session',
         code: 0,
     }), false);
+});
+
+test('session ownership tracks scoped and global invalidation independently', () => {
+    resetSessionOwnershipGenerationForTest();
+    const scopeAOwner = getSessionOwnershipGeneration('scope-a');
+    const scopeBOwner = getSessionOwnershipGeneration('scope-b');
+
+    bumpScopeSessionGeneration('scope-a');
+    assert.equal(isCurrentSessionOwner(scopeAOwner, 'scope-a'), false);
+    assert.equal(isCurrentSessionOwner(scopeBOwner, 'scope-b'), true);
+
+    bumpSessionOwnershipGeneration();
+    assert.equal(isCurrentSessionOwner(scopeBOwner, 'scope-b'), false);
+
+    resetSessionOwnershipGenerationForTest();
+    assert.deepEqual(getSessionOwnershipGeneration('scope-a'), { global: 0, scope: 0 });
 });
 
 test('agent system uses shared persistence and resume-classifier helpers', () => {

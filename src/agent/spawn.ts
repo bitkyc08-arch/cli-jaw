@@ -740,8 +740,8 @@ function formatCliUnavailableMessage(cli: string, detected: ReturnType<typeof de
     return `CLI '${cli}' not found in PATH. Run \`jaw doctor --json\`.`;
 }
 
-function buildHistoryBlock(currentPrompt: string, workingDir?: string | null, maxSessions = 10, maxTotalChars = 8000) {
-    const recent = getRecentMessages.all(workingDir || null, getActiveChatSession(), Math.max(1, maxSessions * 2)) as RecentMessageRow[];
+function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
+    const recent = getRecentMessages.all(workingDir || null, chatSessionId, Math.max(1, maxSessions * 2)) as RecentMessageRow[];
     if (!recent.length) return '';
 
     const promptText = String(currentPrompt || '').trim();
@@ -1021,7 +1021,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const resultPromise = new Promise<SpawnPromiseResult>(r => { resolve = r; });
 
     const session = (getSession() as SessionRow | undefined) ?? {};
-    const ownerGeneration = getSessionOwnershipGeneration();
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
+    const ownerGeneration = persistenceOwner.global;
     if (mainRun) mainRun.ownerGeneration = ownerGeneration;
     let cli = resolveMainCli(opts.cli, settings, session);
     if (mainRun) mainRun.meta.cli = cli;
@@ -1276,6 +1277,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ? buildHistoryBlock(
             prompt,
             settings["workingDir"],
+            chatSessionId,
             10,
             8000,
         )
@@ -1654,7 +1656,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
                 // If loadSession failed (or not resuming), inject history into prompt
                 const needsHistoryFallback = isResume && !loadSessionOk;
-                const fallbackHistory = needsHistoryFallback && !opts._skipHistory ? buildHistoryBlock(prompt, settings["workingDir"]) : '';
+                const fallbackHistory = needsHistoryFallback && !opts._skipHistory ? buildHistoryBlock(prompt, settings["workingDir"], chatSessionId) : '';
                 const acpPrompt = needsHistoryFallback
                     ? withHistoryPrompt(prompt, fallbackHistory)
                     : (isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
@@ -1667,7 +1669,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 // which skips the exit handler's code===0 gate, losing session continuity.
                 const persistedAcpSessionId = ctx.sessionId;
                 if (persistedAcpSessionId && persistMainSession(stripUndefined({
-                    ownerGeneration,
+                    persistenceOwner,
+                    scopeKey,
                     forceNew,
                     employeeSessionId: empSid,
                     sessionId: persistedAcpSessionId,
@@ -1714,12 +1717,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             handleAgentExit({
                 ctx, code: acpCode, cli, model, agentLabel, mainManaged, origin,
                 resumeKey,
-                prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+                prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
                 isResume, wasKilled, wasSteer, smokeResult,
                 effortDefault: '', costLine: '',
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                chatSessionId,
                 childProcess: child,
                 releaseMainRun,
                 retryState: queueCtrl.retryStateForScope(scopeKey),
@@ -1892,12 +1896,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 return handleAgentExit({
                     ctx, code: result.code, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
-                    prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+                    prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
                     isResume: false, wasKilled, wasSteer, smokeResult,
                     effortDefault: 'medium', costLine: '',
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    chatSessionId,
                     childProcess: child,
                     releaseMainRun,
                     retryState: queueCtrl.retryStateForScope(scopeKey),
@@ -1913,12 +1918,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 handleAgentExit({
                     ctx, code: 1, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
-                    prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+                    prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
                     isResume: false, wasKilled: false, wasSteer: false, smokeResult: detectSmokeResponse('', [], 1, cli),
                     effortDefault: 'medium', costLine: '',
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    chatSessionId,
                     childProcess: child,
                     releaseMainRun,
                     retryState: queueCtrl.retryStateForScope(scopeKey),
@@ -1995,7 +2001,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
         }
         if (mainManaged && !opts.internal && !opts._skipInsert) {
-            insertMessage.run('user', prompt, cli, model, settings["workingDir"] || null, getActiveChatSession());
+            insertMessage.run('user', prompt, cli, model, settings["workingDir"] || null, chatSessionId);
         }
         if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag }, traceAudience);
 
@@ -2223,7 +2229,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
                 const persistedThreadId = lease?.threadId ?? appClient.threadId;
                 if (persistedThreadId && persistMainSession(stripUndefined({
-                    ownerGeneration,
+                    persistenceOwner,
+                    scopeKey,
                     forceNew,
                     employeeSessionId: empSid,
                     sessionId: persistedThreadId,
@@ -2269,12 +2276,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             await handleAgentExit({
                 ctx, code: exitCode, cli, model, agentLabel, mainManaged, origin,
                 resumeKey,
-                prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+                prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
                 isResume, wasKilled, wasSteer, smokeResult,
                 effortDefault: '', costLine: '',
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                chatSessionId,
                 childProcess: child,
                 releaseMainRun,
                 retryState: queueCtrl.retryStateForScope(scopeKey),
@@ -2950,12 +2958,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         handleAgentExit({
             ctx, code: effectiveExitCode, cli, model: runtimeModel, effectiveProvider, agentLabel, mainManaged, origin,
             resumeKey,
-            prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+            prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
             isResume, wasKilled, wasSteer, smokeResult,
             effortDefault: cli === 'grok' ? '' : 'medium', costLine,
             resolve: resolve!,
             activeProcesses,
             scopeKey,
+            chatSessionId,
             childProcess: child,
             releaseMainRun,
             retryState: queueCtrl.retryStateForScope(scopeKey),

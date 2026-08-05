@@ -2,8 +2,11 @@ import { settings } from '../core/config.js';
 import { updateSession, upsertSessionBucket } from '../core/db.js';
 import { resolveSessionBucket } from './args.js';
 
+export type SessionOwnerToken = { global: number; scope: number };
+
 export type SessionPersistenceInput = {
-    ownerGeneration: number;
+    persistenceOwner: SessionOwnerToken;
+    scopeKey: string;
     forceNew?: boolean;
     employeeSessionId?: string | null;
     sessionId?: string | null;
@@ -21,23 +24,35 @@ export type SessionPersistenceInput = {
     outputLen?: number | undefined;
 };
 
-let sessionOwnershipGeneration = 0;
+let globalGeneration = 0;
+const scopeGenerations = new Map<string, number>();
 
-export function getSessionOwnershipGeneration(): number {
-    return sessionOwnershipGeneration;
+export function getSessionOwnershipGeneration(scopeKey: string): SessionOwnerToken {
+    return {
+        global: globalGeneration,
+        scope: scopeGenerations.get(scopeKey) ?? 0,
+    };
 }
 
 export function bumpSessionOwnershipGeneration(): number {
-    sessionOwnershipGeneration += 1;
-    return sessionOwnershipGeneration;
+    globalGeneration += 1;
+    return globalGeneration;
+}
+
+export function bumpScopeSessionGeneration(scopeKey: string): number {
+    const nextGeneration = (scopeGenerations.get(scopeKey) ?? 0) + 1;
+    scopeGenerations.set(scopeKey, nextGeneration);
+    return nextGeneration;
 }
 
 export function resetSessionOwnershipGenerationForTest(): void {
-    sessionOwnershipGeneration = 0;
+    globalGeneration = 0;
+    scopeGenerations.clear();
 }
 
-export function isCurrentSessionOwner(ownerGeneration: number): boolean {
-    return ownerGeneration === sessionOwnershipGeneration;
+export function isCurrentSessionOwner(token: SessionOwnerToken, scopeKey: string): boolean {
+    return token.global === globalGeneration
+        && token.scope === (scopeGenerations.get(scopeKey) ?? 0);
 }
 
 export function shouldPersistMainSession(input: SessionPersistenceInput): boolean {
@@ -54,7 +69,7 @@ export function shouldPersistMainSession(input: SessionPersistenceInput): boolea
         input.code !== undefined && input.code !== null && input.code !== 0
         && !input.wasKilled && !isGracefulInterrupt
     ) return false;
-    return isCurrentSessionOwner(input.ownerGeneration);
+    return isCurrentSessionOwner(input.persistenceOwner, input.scopeKey);
 }
 
 export function persistMainSession(input: SessionPersistenceInput): boolean {

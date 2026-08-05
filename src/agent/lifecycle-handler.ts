@@ -6,7 +6,7 @@ import { broadcast } from '../core/bus.js';
 import { settings, detectCli } from '../core/config.js';
 import { clearEmployeeSession, insertMessage, insertMessageWithTraceRun, updateSession, clearSessionBucket, markAnchorConsumed, updateSessionBucketLastRun } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
-import { persistMainSession } from './session-persistence.js';
+import { persistMainSession, type SessionOwnerToken } from './session-persistence.js';
 import { resolveSessionBucket } from './args.js';
 import { buildContinuationPrompt, type SmokeDetectionResult } from './smoke-detector.js';
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
@@ -260,6 +260,7 @@ export interface ExitHandlerParams {
     opts: LifecycleSpawnOptions;
     cfg: LifecycleConfig;
     ownerGeneration: number;
+    persistenceOwner: SessionOwnerToken;
     forceNew: boolean;
     empSid: string | null;
     isResume: boolean;
@@ -273,6 +274,7 @@ export interface ExitHandlerParams {
     resolve: (result: LifecycleResolveResult) => void;
     activeProcesses: Map<string, ChildProcess>;
     scopeKey: string;
+    chatSessionId: string;
     childProcess: ChildProcess | null;
     releaseMainRun: (scopeKey: string, child: ChildProcess | null, ownerGeneration: number) => boolean;
     retryState: {
@@ -296,10 +298,10 @@ export interface ExitHandlerParams {
 export async function handleAgentExit(params: ExitHandlerParams): Promise<void> {
     const {
         ctx, code, cli, model, agentLabel, mainManaged, origin,
-        prompt, opts, cfg, ownerGeneration, forceNew, empSid,
+        prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
         isResume, wasKilled, wasSteer, smokeResult,
         effortDefault, costLine, resolve,
-        activeProcesses, scopeKey, childProcess, releaseMainRun,
+        activeProcesses, scopeKey, chatSessionId, childProcess, releaseMainRun,
         retryState, fallbackState, fallbackMaxRetries, processQueue,
     } = params;
 
@@ -332,7 +334,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         const smokeSessionId = ctx.sessionId;
         if (smokeSessionId) {
             persistMainSession({
-                ownerGeneration, forceNew, employeeSessionId: empSid,
+                persistenceOwner, scopeKey, forceNew, employeeSessionId: empSid,
                 sessionId: smokeSessionId, isFallback: opts._isFallback === true,
                 code, cli, model, provider: effectiveProvider, resumeKey: params.resumeKey, effort: effortVal,
                 skipSessionPersist: opts._skipSessionPersist === true,
@@ -407,7 +409,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // ─── Session persistence ───
     const persistedSessionId = ctx.sessionId;
     if (persistedSessionId && persistMainSession({
-        ownerGeneration, forceNew, employeeSessionId: empSid,
+        persistenceOwner, scopeKey, forceNew, employeeSessionId: empSid,
         sessionId: persistedSessionId, isFallback: opts._isFallback === true,
         code, wasKilled, cli, model, provider: effectiveProvider, resumeKey: params.resumeKey, effort: effortVal,
         skipSessionPersist: opts._skipSessionPersist === true,
@@ -599,7 +601,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             const info = insertMessageWithTraceRun.run(
                 'assistant', finalContent, cli, model,
                 traceText || null, toolLogJson, settings["workingDir"] || null,
-                ctx.traceRunId || null, getActiveChatSession(),
+                ctx.traceRunId || null, chatSessionId,
             );
             const messageId = Number(info.lastInsertRowid || 0);
             if (ctx.traceRunId && Number.isInteger(messageId) && messageId > 0) linkTraceRunToMessage(ctx.traceRunId, messageId);
@@ -639,7 +641,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 cli,
                 model,
                 settings["workingDir"] || null,
-                getActiveChatSession(),
+                chatSessionId,
             );
         }
         broadcast(
@@ -719,7 +721,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
                     } catch {}
                 }
-                insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, getActiveChatSession());
+                insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, chatSessionId);
             }
             broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
