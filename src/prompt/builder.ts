@@ -18,6 +18,7 @@ import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { getEmployeeMcpToolSummary } from '../agent/mcp-passthrough.js';
 import { buildInjectionBlock as buildRuntimeContextBlock } from './runtime-context.js';
 import { buildPrePromptContextHook } from './context-hooks.js';
+import { buildDigestPromptBlock } from '../wiki/prompt.js';
 import { invalidateSkillCommandsCache, registerSkillLoader } from '../core/skill-cache.js';
 import { log } from '../core/logger.js';
 
@@ -687,6 +688,16 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
             }));
             if (hook.block) prompt += '\n\n---\n' + hook.block;
         } catch { /* pre-prompt hooks are fail-open */ }
+
+        // The wiki digest is read only when a fresh session is being built, not on every
+        // turn or resume: it is a synchronous filesystem read on the prompt path, and a
+        // resumed conversation already carries whatever digest it started with.
+        if (opts.freshSession === true) {
+            try {
+                const digest = buildDigestPromptBlock();
+                if (digest) prompt += '\n\n' + digest;
+            } catch { /* a broken vault must never take the prompt down */ }
+        }
     }
 
     prompt += '\n\n---\n' + getBoundedLocalSearchContract();
