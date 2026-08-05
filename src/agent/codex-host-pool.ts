@@ -347,12 +347,12 @@ async function bindLane(
                 }
             } else lane.threadId = await client.startThread(lane.laneScope, threadOptions);
             lane.bindingEpoch = nextBindingEpoch++;
-            // A reset can arrive while this binding is being established. What it means
-            // depends on what we got: a thread we STARTED carries no history, so there is
-            // nothing for the reset to discard and the turn about to run keeps it. A thread
-            // we RESUMED is the very conversation the reset was discarding, so the mark
-            // stays and the binding is dropped when this turn releases the lane.
-            if (!resumedThread) lane.bindingRevoked = false;
+            // A reset that arrived while this binding was being established keeps its mark,
+            // whatever the binding produced. A freshly started thread looks empty for exactly
+            // as long as it takes this acquisition to hand it to the turn that was already
+            // waiting for it, and that turn runs after the reset. Treating "started" as
+            // "nothing to discard" therefore preserved a conversation created after the
+            // compact reported one, and handed the next request's bootstrap into it.
         }
         assertCurrent(meta);
         const threadId = lane.threadId;

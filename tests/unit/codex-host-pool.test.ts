@@ -765,9 +765,11 @@ test('a reset during a resume is not lost while the binding is still being estab
     next.release();
 });
 
-// A thread we just STARTED carries no history, so a reset that lands while it is being
-// created has nothing to discard and the turn about to run should keep it.
-test('a reset during a fresh start does not throw away the thread it just created', async () => {
+// A freshly started thread is empty only until this acquisition hands it to the turn that
+// was already waiting for it, and that turn runs AFTER the reset. So a reset overlapping a
+// start is kept too: otherwise the conversation created after a compact reported a reset
+// would survive it, and the next request's bootstrap would be injected into it.
+test('a reset during a fresh start still drops the binding the pending turn populates', async () => {
     const model = `lane-invalidate-fresh-${identity++}`;
     const seedToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
     const seeded = await pool.acquireCodexAppLane(seedToken, {
@@ -795,16 +797,15 @@ test('a reset during a fresh start does not throw away the thread it just create
     const next = await pool.acquireCodexAppLane(nextToken, {
         scopeKey: 'scope-fresh', bucketKey: bucket('scope-fresh', model),
     });
-    assert.equal(next.reused, true, 'a thread with no history survives a reset that raced its creation');
-    assert.equal(next.threadId, freshThread);
+    assert.equal(next.reused, false, 'the thread the pending turn populated must not survive');
+    assert.notEqual(next.threadId, freshThread);
     next.release();
 });
 
-// A resume that fails recoverably falls back to starting a thread. That thread is new and
-// carries no history, so a reset racing its CREATION has nothing to discard and it belongs
-// on the same side of the split as an ordinary start. A reset that lands after the binding
-// is established is a different thing and still applies.
-test('a resume that falls back to a fresh start keeps the thread it created', async () => {
+// A resume that fails recoverably falls back to starting a thread. The result is the same
+// as an ordinary start: empty at creation, populated moments later by the turn that was
+// already waiting. A reset overlapping it applies.
+test('a resume that falls back to a fresh start still drops that binding', async () => {
     const model = `lane-invalidate-fallback-${identity++}`;
     // Take the client this model's host actually uses, then release its lane.
     const seeded = await prepareFor(model, 'scope-fallback-seed');
@@ -833,7 +834,7 @@ test('a resume that falls back to a fresh start keeps the thread it created', as
     const next = await pool.acquireCodexAppLane(nextToken, {
         scopeKey: 'scope-fallback', bucketKey: bucket('scope-fallback', model),
     });
-    assert.equal(next.threadId, startedThread, 'a thread with no history survives the reset');
+    assert.notEqual(next.threadId, startedThread, 'the fallback thread must not survive the reset either');
     next.release();
 });
 
