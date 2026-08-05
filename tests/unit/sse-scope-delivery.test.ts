@@ -76,6 +76,15 @@ test('a system notice is routed by its code, not by its type', () => {
     }
 });
 
+// The same notice code is published by a session's own turn AND by the instance-wide
+// reset, and only the first carries a scope. A scopeless notice has no session to
+// belong to, so treating the code alone as session-owned would delete it everywhere.
+test('a session-coded notice with no scope is still delivered everywhere', () => {
+    assert.equal(shouldDeliverToScope(entry('system_notice', undefined, { code: 'auto_compact_refresh' }), 'local:a'), true);
+    assert.equal(shouldDeliverToScope(entry('system_notice', 'local:a', { code: 'auto_compact_refresh' }), 'local:a'), true);
+    assert.equal(shouldDeliverToScope(entry('system_notice', 'local:b', { code: 'auto_compact_refresh' }), 'local:a'), false);
+});
+
 // Goal state is one instance-wide file with no session field (goal/store.ts). A goal
 // finished in one tab has to clear the cockpit in every tab, or the others keep showing
 // a goal that is already over.

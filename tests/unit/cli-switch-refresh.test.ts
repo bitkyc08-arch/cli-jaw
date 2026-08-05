@@ -38,11 +38,12 @@ test('CSR-003: target bucket clear is inside transaction', () => {
     assert.match(compactSrc, /db\.transaction\(\(\)\s*=>\s*\{[\s\S]*?if\s*\(\s*targetBucket\s*\)\s*clearSessionBucket\.run\(targetBucket\)[\s\S]*?\}\)/);
 });
 
-test('CSR-003c: slash compact clears active session bucket after bootstrap handoff', () => {
-    assert.match(cliCompactSrc, /const\s+bucket\s*=\s*resolveSessionBucket\(activeCli,\s*model\)/);
-    // See CSR-003e: an explicit compact must also drop the scoped Codex App rows,
-    // which is a behaviour rather than a statement order.
-});
+// CSR-003c used to assert the exact expression that computes the bucket, which broke
+// the moment a guard was added around it while the behaviour stayed correct. The
+// behaviour it cared about — an explicit compact clearing the active session's bucket,
+// scoped rows included — is proven end to end by CSR-003e in
+// tests/unit/codex-app-scoped-bucket-clear.test.ts, and the local-session case by
+// tests/unit/compact-local-scope-isolation.test.ts.
 
 test('CSR-004: cli_switch_refresh notice broadcast includes both fromCli and toCli', () => {
     assert.match(compactSrc, /broadcast\(\s*'system_notice',\s*\{\s*code:\s*'cli_switch_refresh'/);

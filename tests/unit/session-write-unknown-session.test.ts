@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { registerAgentControlRoutes } from '../../src/routes/agent-control.ts';
+import { registerCommandRoutes } from '../../src/routes/command.ts';
 import { db } from '../../src/core/db.ts';
 import { settings } from '../../src/core/config.ts';
 import { createChatSession, setActiveChatSession } from '../../src/core/chat-sessions.ts';
@@ -15,6 +16,7 @@ async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void>
     const app = express();
     app.use(express.json());
     registerAgentControlRoutes(app, noAuth);
+    registerCommandRoutes(app, noAuth);
     const server: Server = createServer(app);
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
@@ -93,4 +95,21 @@ test('stop with no body is still the aggregate stop', async () => {
         const body = await response.json();
         assert.equal(body.data?.aggregate ?? body.aggregate, true);
     });
+});
+
+// The write that matters most: a message posted to a session that is gone must not be
+// silently rerouted into whichever session another tab made active.
+test('a message naming a session that no longer exists is refused', async () => {
+    settings.multiSession.enabled = true;
+    const active = createChatSession('unknown-sess-message');
+    setActiveChatSession(active.id);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/message', { prompt: 'hello', sessionId: 'gone-session' });
+        assert.equal(response.status, 404);
+        assert.equal((await response.json()).error, 'unknown_session');
+    });
+
+    const landed = db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_id = ?').get(active.id) as { n: number };
+    assert.equal(landed.n, 0, 'the refused message must not land in another session');
 });

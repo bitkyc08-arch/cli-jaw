@@ -18,6 +18,7 @@ interface CompactSettings {
     workingDir?: string | null;
     activeOverrides?: Record<string, { model?: string }>;
     perCli?: Record<string, { model?: string }>;
+    multiSession?: { enabled?: boolean };
 }
 interface CompactSession {
     active_cli?: string;
@@ -97,7 +98,20 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     } = await import('../core/main-session.js');
 
     const model = getActiveModel(settings, session, activeCli);
-    const bucket = resolveSessionBucket(activeCli, model);
+    const chatSessionId = getActiveChatSession();
+    const { scopeForChatSession, isNativeStateIsolatedScope } = await import('../orchestrator/scope.js');
+    const { getChatSessionRemoteKey } = await import('../core/chat-sessions.js');
+    const scope = scopeForChatSession(
+        chatSessionId,
+        getChatSessionRemoteKey(chatSessionId) ?? undefined,
+        settings?.multiSession?.enabled === true,
+    );
+    // The marker and bootstrap below go to the session the user is compacting. Clearing
+    // the shared bucket and singleton row would land on the DEFAULT session instead,
+    // discarding a conversation another tab is still using while the user believes they
+    // reset their own (072 §1.2b). A scope with no native state has nothing to clear.
+    const nativeStateIsolated = isNativeStateIsolatedScope(scope);
+    const bucket = nativeStateIsolated ? '' : resolveSessionBucket(activeCli, model);
     insertMessageWithTrace.run(
         'assistant',
         COMPACT_MARKER_CONTENT,
@@ -106,16 +120,21 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
         trace,
         null,
         workingDir,
-        getActiveChatSession(),
+        chatSessionId,
     );
-    setPendingBootstrapPrompt(bootstrap);
-    bumpSessionOwnershipGeneration();
-    clearBossSessionOnly();
-    // An explicit compact resets the conversation the user is looking at, and it
-    // cannot know which scope or effort produced the scoped rows, so it drops all
-    // of them alongside the legacy row. Leaving one behind would let the next
-    // multiplex run resume the thread the user just discarded.
-    clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
+    setPendingBootstrapPrompt(bootstrap, nativeStateIsolated ? scope : undefined);
+    if (nativeStateIsolated) {
+        const { bumpScopeSessionGeneration } = await import('../agent/session-persistence.js');
+        bumpScopeSessionGeneration(scope);
+    } else {
+        bumpSessionOwnershipGeneration();
+        clearBossSessionOnly();
+        // An explicit compact resets the conversation the user is looking at, and it
+        // cannot know which scope or effort produced the scoped rows, so it drops all
+        // of them alongside the legacy row. Leaving one behind would let the next
+        // multiplex run resume the thread the user just discarded.
+        clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
+    }
 
     return {
         ok: true,

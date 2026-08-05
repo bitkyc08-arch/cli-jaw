@@ -58,7 +58,10 @@ test.mock.module('../../src/agent/session-persistence.ts', {
     },
 });
 test.mock.module('../../src/core/chat-sessions.ts', {
-    namedExports: { getActiveChatSession: () => 'chat-1' },
+    namedExports: {
+        getActiveChatSession: () => 'chat-1',
+        getChatSessionRemoteKey: () => null,
+    },
 });
 
 const coreCompact = await import('../../src/core/compact.js');

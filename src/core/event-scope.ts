@@ -42,6 +42,11 @@ export const INSTANCE_WIDE_EVENTS: ReadonlySet<string> = new Set<string>([
 // describe the instance. Classifying the whole type either way is wrong, so the code
 // decides. An unrecognised code is treated as instance-wide, which is the safe error:
 // an extra notice is noise, a missing one is invisible.
+//
+// The code is not sufficient on its own. `auto_compact_refresh` is published both by a
+// session's own turn AND by the instance-wide reset in session-ops, and only the first
+// carries a scope. A notice with no scope has no session to belong to, so it is
+// delivered everywhere rather than nowhere.
 const SESSION_OWNED_NOTICE_CODES: ReadonlySet<string> = new Set<string>([
     'compact_suggest',
     'auto_compact_refresh',
@@ -49,7 +54,9 @@ const SESSION_OWNED_NOTICE_CODES: ReadonlySet<string> = new Set<string>([
 
 function isSessionOwnedNotice(data: Record<string, unknown>): boolean {
     const code = data["code"];
-    return typeof code === 'string' && SESSION_OWNED_NOTICE_CODES.has(code);
+    return typeof code === 'string'
+        && SESSION_OWNED_NOTICE_CODES.has(code)
+        && typeof data["scope"] === 'string';
 }
 
 // Goal state is a single instance-wide file with no session field (goal/store.ts).
