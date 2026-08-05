@@ -311,6 +311,9 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
         const model = 'gpt-5.5';
         const effort = 'low';
         const workingDir = process.env['CLI_JAW_HOME']!;
+        // The prompt builder writes B.md on every fresh spawn and does not create
+        // its own directory, so an isolated home needs it before the first run.
+        mkdirSync(join(workingDir, 'prompts'), { recursive: true });
         settings['cli'] = 'codex-app';
         settings['model'] = model;
         settings['workingDir'] = workingDir;
@@ -342,6 +345,11 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
             B: resolveScopedSessionBucket('codex-app', model, 'codex-app', scopeKeys.B, effort, 'fallback'),
         };
         const marker = { A: 'ACTIVATION_SCOPE_A_OK', B: 'ACTIVATION_SCOPE_B_OK' } as const;
+        // A model may wrap or bullet its answer, so the marker can arrive split
+        // across lines. What matters is which scope's marker came back, not how
+        // it was formatted, so compare against text with the noise removed.
+        const carries = (text: string, value: string): boolean =>
+            text.replace(/[\s\-*_`]+/g, '').includes(value.replace(/_/g, ''));
         const spawnRun = (scope: ActivationScope, prompt: string) => {
             const run = spawn.spawnAgent(prompt, {
                 cli: 'codex-app', model, effort, scopeKey: scopeKeys[scope],
@@ -391,8 +399,8 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
         const firstBSettled = bounded(firstB.promise, COMPLETION_TIMEOUT_MS, 'B completion');
         const [, firstBResult] = await Promise.all([firstASettled, firstBSettled]);
         assert.equal(firstBResult.code, 0);
-        assert.match(firstBResult.text, new RegExp(marker.B));
-        assert.doesNotMatch(firstBResult.text, new RegExp(marker.A));
+        assert.ok(carries(firstBResult.text, marker.B), firstBResult.text);
+        assert.ok(!carries(firstBResult.text, marker.A), firstBResult.text);
 
         const interrupts = evidence.records.filter((entry) => entry.generation === 1
             && entry.method === 'turn/interrupt' && entry.phase === 'request');
@@ -442,10 +450,10 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
             'restart and two resumed completions');
         assert.equal(secondAResult.code, 0);
         assert.equal(secondBResult.code, 0);
-        assert.match(secondAResult.text, new RegExp(marker.A));
-        assert.doesNotMatch(secondAResult.text, new RegExp(marker.B));
-        assert.match(secondBResult.text, new RegExp(marker.B));
-        assert.doesNotMatch(secondBResult.text, new RegExp(marker.A));
+        assert.ok(carries(secondAResult.text, marker.A), secondAResult.text);
+        assert.ok(!carries(secondAResult.text, marker.B), secondAResult.text);
+        assert.ok(carries(secondBResult.text, marker.B), secondBResult.text);
+        assert.ok(!carries(secondBResult.text, marker.A), secondBResult.text);
         assert.equal(sessionId(buckets.A), firstThreads.A);
         assert.equal(sessionId(buckets.B), firstThreads.B);
 
