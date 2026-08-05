@@ -188,6 +188,29 @@ function pickNewestKiroConversationId(
  * After a **fresh** `--no-interactive` spawn, resolve the conversation id kiro-cli
  * created for this cwd. Prefer set-diff over "latest row" to avoid cross-dispatch races.
  */
+export type KiroSpawnIdResolution =
+    | { kind: 'exact'; id: string }
+    | { kind: 'none' }
+    // More than one conversation appeared under this working directory while we were
+    // running, so the store cannot say which one is ours. Picking the newest would hand
+    // one session another session's conversation, and nothing downstream could detect
+    // that — so ambiguity ends the search rather than guessing (devlog 110 §2h).
+    | { kind: 'ambiguous'; candidates: readonly string[] };
+
+export function resolveKiroSpawnIdentity(
+    cwd: string,
+    beforeIds: ReadonlySet<string>,
+    updatedAfterMs = 0,
+    dataPath = resolveKiroDataPath(),
+): KiroSpawnIdResolution {
+    const afterIds = listKiroConversationIdsForCwd(cwd, dataPath);
+    const novel = [...afterIds].filter((id) => !beforeIds.has(id));
+    if (novel.length === 1 && novel[0]) return { kind: 'exact', id: novel[0] };
+    if (novel.length > 1) return { kind: 'ambiguous', candidates: novel };
+    const stored = extractKiroSessionIdFromV2Store(cwd, updatedAfterMs, dataPath);
+    return stored ? { kind: 'exact', id: stored } : { kind: 'none' };
+}
+
 export function resolveKiroSessionIdAfterSpawn(
     cwd: string,
     beforeIds: ReadonlySet<string>,

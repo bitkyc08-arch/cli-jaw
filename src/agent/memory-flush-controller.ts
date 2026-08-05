@@ -15,7 +15,11 @@ import { DASHBOARD_DEFAULT_PORT } from '../manager/constants.js';
 export let memoryFlushCounter = 0;
 export let flushCycleCount = 0;
 let _flushLock = false;
-let _lastFlushedMessageId: number | null = null;
+// Per session, because the rows being filtered are per session. A single watermark
+// meant the highest id any session had flushed became the floor for every other one:
+// a quiet session with older unflushed rows could never summarise them again, since
+// they all sat below a mark that a busier session had already pushed past (073 §2.3).
+const _lastFlushedMessageId = new Map<string, number>();
 let _flushGeneration = 0;
 let _activeFlushGeneration: number | null = null;
 
@@ -141,7 +145,10 @@ export async function triggerMemoryFlush(): Promise<void> {
         : getActiveChatSession();
     const threshold = settings["memory"]?.flushEvery ?? 10;
     const recent = (getRecentMessages.all(settings["workingDir"] || null, sessionId, threshold) as any[])
-        .filter((m: any) => !_lastFlushedMessageId || m.id > _lastFlushedMessageId)
+        .filter((m: any) => {
+            const mark = _lastFlushedMessageId.get(sessionId);
+            return mark === undefined || m.id > mark;
+        })
         .reverse();
     if (recent.length < 4) return;
 
@@ -269,7 +276,7 @@ async function completeFlushAttempt(opts: CompleteFlushAttemptOptions): Promise<
 
     const trimmed = raw.trim();
     if (!trimmed || trimmed === 'SKIP') {
-        if (trimmed === 'SKIP') _lastFlushedMessageId = opts.maxId;
+        if (trimmed === 'SKIP') _lastFlushedMessageId.set(opts.sessionId, opts.maxId);
         opts.releaseLock();
         return;
     }
@@ -317,9 +324,9 @@ async function completeFlushAttempt(opts: CompleteFlushAttemptOptions): Promise<
     await triggerEmbeddingSync();
     if (!opts.ownsGeneration()) return;
 
-    _lastFlushedMessageId = opts.maxId;
+    _lastFlushedMessageId.set(opts.sessionId, opts.maxId);
     opts.releaseLock();
-    console.log(`[memory] flush complete (code=${opts.result.code}), watermark=${opts.maxId}`);
+    console.log(`[memory] flush complete (code=${opts.result.code}), watermark=${opts.maxId} session=${opts.sessionId}`);
 }
 
 async function triggerEmbeddingSync(): Promise<void> {
@@ -347,7 +354,12 @@ async function triggerEmbeddingSync(): Promise<void> {
 export function getFlushStatus() {
     return {
         locked: _flushLock,
-        lastFlushedMessageId: _lastFlushedMessageId,
+        // Kept as a single number for callers that predate multi-session, reporting the
+        // furthest any session has reached, plus the per-session marks behind it.
+        lastFlushedMessageId: _lastFlushedMessageId.size === 0
+            ? null
+            : Math.max(..._lastFlushedMessageId.values()),
+        lastFlushedMessageIdBySession: Object.fromEntries(_lastFlushedMessageId),
         counter: memoryFlushCounter,
         cycleCount: flushCycleCount,
     };

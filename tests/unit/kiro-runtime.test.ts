@@ -20,6 +20,7 @@ import {
     parseAiESessionIdFromStderr,
     processKiroStdoutChunk,
     resolveKiroSessionIdAfterSpawn,
+    resolveKiroSpawnIdentity,
     stripKiroAnsi,
 } from '../../src/agent/kiro-runtime.ts';
 
@@ -301,4 +302,106 @@ test('isKiroStaleSessionOutput detects no-saved-sessions and not-found phrases',
         isResume: true,
     });
     assert.deepEqual(carry, { id: 'abc-123', source: 'resume-carry' });
+});
+
+// devlog 110 §2h — Kiro learns its fresh session id by diffing a store shared across a
+// working directory. With two sessions running at once, two conversations appear and the
+// diff cannot say which is which. Picking the most recently touched one hands one session
+// the other's conversation, and nothing downstream can detect that.
+function seedKiroStore(rows: Array<[string, string, number]>): { homedir: string; dataPath: string; cwd: string } {
+    const homedir = fs.mkdtempSync(join(os.tmpdir(), 'kiro-ambig-'));
+    const dataPath = resolveKiroDataPath(homedir);
+    fs.mkdirSync(dirname(dataPath), { recursive: true });
+    const db = new Database(dataPath);
+    db.exec(`CREATE TABLE conversations_v2 (
+        key TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        value TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (key, conversation_id)
+    );`);
+    const cwd = '/tmp/kiro-ambiguous-cwd';
+    const insert = db.prepare(
+        'INSERT INTO conversations_v2 (key, conversation_id, value, created_at, updated_at) VALUES (?,?,?,?,?)',
+    );
+    for (const [id, , updatedAt] of rows) insert.run(cwd, id, '{}', 0, updatedAt);
+    db.close();
+    return { homedir, dataPath, cwd };
+}
+
+test('two conversations appearing at once yields no id rather than the newest one', () => {
+    const { dataPath, cwd } = seedKiroStore([
+        ['session-of-tab-a', '', Date.parse('2026-05-30T12:00:00.000Z')],
+        ['session-of-tab-b', '', Date.parse('2026-05-30T12:00:01.000Z')],
+    ]);
+
+    const resolved = resolveKiroSpawnIdentity(cwd, new Set(), 0, dataPath);
+    assert.equal(resolved.kind, 'ambiguous');
+    assert.equal(resolved.kind === 'ambiguous' && resolved.candidates.length, 2);
+});
+
+test('one new conversation is still resolved exactly', () => {
+    const { dataPath, cwd } = seedKiroStore([
+        ['already-there', '', Date.parse('2026-05-30T10:00:00.000Z')],
+        ['the-new-one', '', Date.parse('2026-05-30T12:00:00.000Z')],
+    ]);
+
+    const resolved = resolveKiroSpawnIdentity(cwd, new Set(['already-there']), 0, dataPath);
+    assert.equal(resolved.kind, 'exact');
+    assert.equal(resolved.kind === 'exact' && resolved.id, 'the-new-one');
+});
+
+// The capture path is where this has to be observed. Watching the resolver alone would
+// miss the fallthrough that made the guard necessary: returning nothing from the resolver
+// used to reach the store lookup, which picks the newest row — the same wrong id.
+test('an ambiguous capture does not fall through to the store lookup', () => {
+    const { homedir, cwd } = seedKiroStore([
+        ['session-of-tab-a', '', Date.parse('2026-05-30T12:00:00.000Z')],
+        ['session-of-tab-b', '', Date.parse('2026-05-30T12:00:01.000Z')],
+    ]);
+    // KIRO_CLI_DATA_DIR is the documented override and, unlike HOME, changing it cannot
+    // disturb other suites that resolve paths from the home directory.
+    const previousDataDir = process.env['KIRO_CLI_DATA_DIR'];
+    process.env['KIRO_CLI_DATA_DIR'] = dirname(resolveKiroDataPath(homedir));
+    try {
+        const captured = captureKiroSessionIdAfterExit({
+            cwd,
+            spawnStartedAt: 0,
+            beforeIds: new Set(),
+            stdout: '',
+            stderr: '',
+            resumeSessionId: null,
+            isResume: false,
+        });
+        assert.equal(captured.id, null, 'no id is better than another session id');
+        assert.equal(captured.source, null);
+    } finally {
+        if (previousDataDir === undefined) delete process.env['KIRO_CLI_DATA_DIR'];
+        else process.env['KIRO_CLI_DATA_DIR'] = previousDataDir;
+    }
+});
+
+// What the process told us beats what we inferred from a file other processes write to.
+test('a stdout id is preferred over the shared store', () => {
+    const { homedir, cwd } = seedKiroStore([
+        ['store-would-say-this', '', Date.parse('2026-05-30T12:00:00.000Z')],
+    ]);
+    const previousDataDir = process.env['KIRO_CLI_DATA_DIR'];
+    process.env['KIRO_CLI_DATA_DIR'] = dirname(resolveKiroDataPath(homedir));
+    try {
+        const captured = captureKiroSessionIdAfterExit({
+            cwd,
+            spawnStartedAt: 0,
+            beforeIds: new Set(),
+            stdout: 'Session ID: 3f2b1c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d\n',
+            stderr: '',
+            resumeSessionId: null,
+            isResume: false,
+        });
+        assert.equal(captured.source, 'stdout');
+    } finally {
+        if (previousDataDir === undefined) delete process.env['KIRO_CLI_DATA_DIR'];
+        else process.env['KIRO_CLI_DATA_DIR'] = previousDataDir;
+    }
 });

@@ -4,9 +4,10 @@ import {
     listKiroConversationIdsForCwd,
     resolveKiroDataPath,
     resolveKiroSessionIdAfterSpawn,
+    resolveKiroSpawnIdentity,
 } from './kiro-auth.js';
 
-export { listKiroConversationIdsForCwd, resolveKiroSessionIdAfterSpawn };
+export { listKiroConversationIdsForCwd, resolveKiroSessionIdAfterSpawn, resolveKiroSpawnIdentity };
 
 const KIRO_SESSION_ID_STDOUT_RE = /Session\s+ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
@@ -132,16 +133,28 @@ export function captureKiroSessionIdAfterExit(args: {
     const fromStderr = parseAiESessionIdFromStderr(args.stderr);
     if (fromStderr) return { id: fromStderr, source: 'stderr' };
 
+    // What this process told us beats what we inferred from a store other processes are
+    // writing to, so stdout moves ahead of the shared-store paths for the same reason
+    // stderr is already first.
+    const fromStdout = parseKiroSessionIdFromStdout(args.stdout);
+    if (fromStdout) return { id: fromStdout, source: 'stdout' };
+
     if (args.beforeIds) {
-        const fromDiff = resolveKiroSessionIdAfterSpawn(args.cwd, args.beforeIds, args.spawnStartedAt);
-        if (fromDiff) return { id: fromDiff, source: 'diff' };
+        const resolved = resolveKiroSpawnIdentity(args.cwd, args.beforeIds, args.spawnStartedAt);
+        if (resolved.kind === 'exact') return { id: resolved.id, source: 'diff' };
+        // Ambiguity is terminal. Falling through would reach the store lookup below,
+        // which picks the most recently touched row — the same wrong id, one step later.
+        if (resolved.kind === 'ambiguous') {
+            console.warn(
+                `[jaw:kiro] ${resolved.candidates.length} new conversations appeared for this directory; `
+                + 'refusing to guess which one belongs to this run',
+            );
+            return { id: null, source: null };
+        }
     }
 
     const fromStore = extractKiroSessionIdFromStore(args.cwd, args.spawnStartedAt);
     if (fromStore) return { id: fromStore, source: 'store' };
-
-    const fromStdout = parseKiroSessionIdFromStdout(args.stdout);
-    if (fromStdout) return { id: fromStdout, source: 'stdout' };
 
     return { id: null, source: null };
 }

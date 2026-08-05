@@ -339,3 +339,47 @@ test('MEM-13d: legacy {{memFile}} in a custom template stays inert', () => {
         fs.rmSync(customPath, { force: true });
     }
 });
+
+// 073 §2.3 — the watermark used to be one number for the whole process while the rows
+// it filtered were chosen per session. The order matters: B's rows have to exist BEFORE
+// A flushes, so that A's higher ids push the mark past them. The tests above insert B's
+// rows after A has flushed, which is why they never caught this.
+test('MEM-WM: a session keeps its older unflushed rows after another session flushes', async () => {
+    installSpawn([
+        { text: 'summary from A', code: 0 },
+        { text: 'summary from B', code: 0 },
+    ]);
+
+    // B's conversation happens first and stays unflushed.
+    insertConversation('mem-wm-b', 'older-b');
+    // A's conversation is newer, so its ids are all higher than B's.
+    insertConversation('mem-wm-a', 'newer-a');
+
+    setActiveChatSession('mem-wm-a');
+    await triggerMemoryFlush();
+    await waitForFlushCompletion();
+
+    const afterA = readMemory();
+    assert.match(afterA, /summary from A/, 'A flushed');
+
+    setActiveChatSession('mem-wm-b');
+    await triggerMemoryFlush();
+    await waitForFlushCompletion();
+
+    const afterB = readMemory().slice(afterA.length);
+    assert.match(afterB, /summary from B/,
+        'B must still summarise its own older rows rather than being skipped by a mark A moved');
+});
+
+test('MEM-WM: each session carries its own watermark', async () => {
+    installSpawn([{ text: 'summary from one', code: 0 }]);
+    insertConversation('mem-wm-one', 'one');
+    setActiveChatSession('mem-wm-one');
+    await triggerMemoryFlush();
+    await waitForFlushCompletion();
+
+    const { getFlushStatus } = await import('../../src/agent/memory-flush-controller.ts');
+    const marks = getFlushStatus().lastFlushedMessageIdBySession as Record<string, number>;
+    assert.ok(marks['mem-wm-one'] > 0, 'the flushing session has a mark');
+    assert.equal(marks['mem-wm-never-flushed'], undefined, 'and a session that never flushed has none');
+});
