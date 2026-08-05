@@ -800,6 +800,43 @@ test('a reset during a fresh start does not throw away the thread it just create
     next.release();
 });
 
+// A resume that fails recoverably falls back to starting a thread. That thread is new and
+// carries no history, so a reset racing its CREATION has nothing to discard and it belongs
+// on the same side of the split as an ordinary start. A reset that lands after the binding
+// is established is a different thing and still applies.
+test('a resume that falls back to a fresh start keeps the thread it created', async () => {
+    const model = `lane-invalidate-fallback-${identity++}`;
+    // Take the client this model's host actually uses, then release its lane.
+    const seeded = await prepareFor(model, 'scope-fallback-seed');
+    const client = seeded.client!;
+    seeded.lease!.release();
+
+    const gate = deferred();
+    client.startThreadGate = gate;
+    const token = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const acquiring = pool.acquireCodexAppLane(token, {
+        scopeKey: 'scope-fallback', bucketKey: bucket('scope-fallback', model), storedThreadId: 'missing-fallback',
+    });
+    await flush();
+    // The reset lands while the fallback start is still in flight.
+    pool.invalidateCodexAppLanesForScope('scope-fallback');
+    gate.resolve();
+    client.startThreadGate = null;
+    const lease = await acquiring;
+    // The resume failed and a new thread was started in its place.
+    assert.notEqual(lease.threadId, 'missing-fallback');
+    assert.equal(lease.resumedThread, false);
+    const startedThread = lease.threadId;
+    lease.release();
+
+    const nextToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const next = await pool.acquireCodexAppLane(nextToken, {
+        scopeKey: 'scope-fallback', bucketKey: bucket('scope-fallback', model),
+    });
+    assert.equal(next.threadId, startedThread, 'a thread with no history survives the reset');
+    next.release();
+});
+
 test('shutdown is deadline-bound, rejects waiters, and memoizes the first deadline and reserve', async () => {
     const model = 'shutdown';
     const reaped = await prepareFor('shutdown-reaped', 'scope-reaped');
