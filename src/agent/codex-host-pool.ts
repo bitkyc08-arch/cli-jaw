@@ -34,12 +34,15 @@ export interface CodexHostPoolShutdownOptions {
 }
 type HostState = 'creating' | 'ready' | 'closing' | 'dead';
 type LaneState = 'idle' | 'busy' | 'poisoned' | 'closing';
-type Waiter = { resolve(): void; reject(error: Error): void; timer: NodeJS.Timeout };
+type Waiter = {
+    resolve(): void; reject(error: Error): void; timer: NodeJS.Timeout | null;
+    lane: Lane; settled: boolean;
+};
 type Lane = {
     laneScope: string; scopeKey: string; state: LaneState; threadId: string | null;
     model: string; effort: string; cwd: string; fastMode: boolean; waiters: Waiter[];
     lastUsedAt: number; initializedGeneration: number; handoff: boolean;
-    maintenanceQueued: boolean; listener: { dispose(): void } | null;
+    maintenanceQueued: boolean; listener: { dispose(): void } | null; bindingEpoch: number;
 };
 type Host = {
     key: string; state: HostState; generation: number; client: CodexAppClient | null;
@@ -54,8 +57,9 @@ type TokenMeta = {
     model: string; effort: string; cwd: string; fastMode: boolean;
     envSnapshot: NodeJS.ProcessEnv; envIdentity: string; laneMode: 'fallback'; consumed: boolean;
 };
-const hosts = new Map<string, Host>(); let tokenMetadata = new WeakMap<PreparedCodexAppHost, TokenMeta>();
-let nextGeneration = 1, reaper: NodeJS.Timeout | null = null, closing = false;
+const hosts = new Map<string, Host>(); const closingHosts = new Set<Host>();
+let tokenMetadata = new WeakMap<PreparedCodexAppHost, TokenMeta>();
+let nextGeneration = 1, nextBindingEpoch = 1, reaper: NodeJS.Timeout | null = null, closing = false;
 let shutdownPromise: Promise<void> | null = null;
 function snapshotEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     const snapshot: NodeJS.ProcessEnv = {};
@@ -89,17 +93,30 @@ function hostFailure(): { promise: Promise<never>; reject(error: Error): void } 
     let reject!: (error: Error) => void;
     const promise = new Promise<never>((_resolve, fail) => { reject = fail; }); void promise.catch(() => {});
     return { promise, reject }; }
+function settleWaiter(waiter: Waiter): boolean {
+    if (waiter.settled) return false;
+    waiter.settled = true;
+    if (waiter.timer) { clearTimeout(waiter.timer); waiter.timer = null; }
+    const queue = waiter.lane.waiters, index = queue.indexOf(waiter);
+    if (index >= 0) queue.splice(index, 1);
+    return true;
+}
 function rejectWaiters(lane: Lane, error: Error): void {
     lane.handoff = false;
-    for (const waiter of lane.waiters.splice(0)) {
-        clearTimeout(waiter.timer); waiter.reject(error);
-    }
+    for (const waiter of [...lane.waiters]) if (settleWaiter(waiter)) waiter.reject(error);
+    lane.waiters.length = 0;
+}
+function adoptWaiters(lane: Lane, waiters: Waiter[]): void {
+    for (const waiter of waiters) waiter.lane = lane;
 }
 function wakeHead(lane: Lane): void {
     if (lane.handoff) return;
-    const waiter = lane.waiters.shift();
-    if (!waiter) return;
-    clearTimeout(waiter.timer); lane.handoff = true; waiter.resolve();
+    for (;;) {
+        const waiter = lane.waiters[0];
+        if (!waiter) return;
+        if (!settleWaiter(waiter)) { const index = lane.waiters.indexOf(waiter); if (index >= 0) lane.waiters.splice(index, 1); continue; }
+        lane.handoff = true; waiter.resolve(); return;
+    }
 }
 function removeLane(host: Host, lane: Lane, error?: Error): void {
     if (host.lanes.get(lane.laneScope) !== lane) return;
@@ -111,6 +128,7 @@ function invalidateHost(host: Host, error: Error): void {
     if (host.state === 'dead') return;
     host.state = 'dead'; host.rejectFailure(error);
     if (hosts.get(host.key) === host) hosts.delete(host.key);
+    closingHosts.delete(host);
     for (const lane of [...host.lanes.values()]) removeLane(host, lane, error);
     host.disposeDeath?.(); host.disposeDeath = null;
 }
@@ -133,7 +151,9 @@ function createLane(host: Host, meta: TokenMeta, scopeKey: string, waiters: Wait
         laneScope, scopeKey, state: 'idle', threadId: null, model: meta.model, effort: meta.effort,
         cwd: meta.cwd, fastMode: meta.fastMode, waiters, lastUsedAt: Date.now(),
         initializedGeneration: meta.generation, handoff: false, maintenanceQueued: false, listener: null,
+        bindingEpoch: nextBindingEpoch++,
     };
+    adoptWaiters(lane, waiters);
     const client = meta.client;
     lane.listener = client.listenTurn(laneScope, {
         onNotification: (method) => {
@@ -149,7 +169,12 @@ function createLane(host: Host, meta: TokenMeta, scopeKey: string, waiters: Wait
 function replaceClosedLane(host: Host, lane: Lane): void {
     const waiters = lane.waiters.splice(0);
     removeLane(host, lane);
-    if (waiters.length === 0 || host.state !== 'ready') return;
+    if (waiters.length === 0) return;
+    if (host.state !== 'ready') {
+        const error = stale('Codex App host is no longer ready');
+        for (const waiter of waiters) if (settleWaiter(waiter)) waiter.reject(error);
+        return;
+    }
     const meta = tokenMetaFromHost(host);
     const replacement = createLane(host, meta, lane.scopeKey, waiters);
     wakeHead(replacement);
@@ -211,7 +236,7 @@ function startReaper(): void {
                 }
             }
             if (host.lanes.size === 0 && !host.maintenance && now - host.lastUsedAt >= HOST_IDLE_MS) {
-                host.state = 'closing'; hosts.delete(host.key);
+                host.state = 'closing'; hosts.delete(host.key); closingHosts.add(host);
                 enqueueMaintenance(host, async () => {
                     try { await host.client!.closeGracefully(); } catch { host.client!.kill(); }
                     invalidateHost(host, stale('Codex App host reaped'));
@@ -275,20 +300,22 @@ function waitForLane(lane: Lane, waitMs: number): Promise<void> {
     if (waitMs <= 0) return Promise.reject(new Error('Codex App lane acquire timed out'));
     return new Promise((resolveWaiter, reject) => {
         const waiter: Waiter = {
-            resolve: resolveWaiter, reject,
-            timer: setTimeout(() => {
-                const index = lane.waiters.indexOf(waiter);
-                if (index >= 0) lane.waiters.splice(index, 1);
-                reject(new Error(`Codex App lane acquire timed out after ${waitMs}ms`));
-            }, waitMs),
+            resolve: resolveWaiter, reject, lane, settled: false, timer: null,
         };
+        waiter.timer = setTimeout(() => {
+            if (!settleWaiter(waiter)) return;
+            reject(new Error(`Codex App lane acquire timed out after ${waitMs}ms`));
+        }, waitMs);
         lane.waiters.push(waiter);
     });
 }
-async function bindLane(meta: TokenMeta, lane: Lane, options: CodexLaneAcquireOptions): Promise<CodexAppLaneLease> {
+async function bindLane(
+    meta: TokenMeta, lane: Lane, options: CodexLaneAcquireOptions, inheritBinding = false,
+): Promise<CodexAppLaneLease> {
     const client = meta.client;
     const stored = options.forceNew ? null : options.storedThreadId ?? null;
-    const needsBinding = !lane.threadId || !!options.forceNew || (!!stored && stored !== lane.threadId);
+    const needsBinding = !lane.threadId || !!options.forceNew
+        || (!inheritBinding && !!stored && stored !== lane.threadId);
     lane.state = 'busy'; lane.lastUsedAt = Date.now(); meta.host.lastUsedAt = lane.lastUsedAt;
     let resumedThread = false;
     try {
@@ -304,6 +331,7 @@ async function bindLane(meta: TokenMeta, lane: Lane, options: CodexLaneAcquireOp
                     lane.threadId = await client.startThread(lane.laneScope, threadOptions);
                 }
             } else lane.threadId = await client.startThread(lane.laneScope, threadOptions);
+            lane.bindingEpoch = nextBindingEpoch++;
         }
         assertCurrent(meta);
         const threadId = lane.threadId;
@@ -336,7 +364,7 @@ async function bindLane(meta: TokenMeta, lane: Lane, options: CodexLaneAcquireOp
 async function acquireValidated(meta: TokenMeta, options: CodexLaneAcquireOptions): Promise<CodexAppLaneLease> {
     const laneScope = resolveCodexAppLaneKey(options.scopeKey, meta.model, meta.effort, meta.laneMode);
     const deadline = Date.now() + (options.waitMs ?? DEFAULT_WAIT_MS);
-    let priority = false;
+    let priority = false, waited = false, enqueuedEpoch = 0;
     for (;;) {
         try { assertCurrent(meta); }
         catch (error) {
@@ -350,9 +378,10 @@ async function acquireValidated(meta: TokenMeta, options: CodexLaneAcquireOption
         if (lane.state === 'poisoned') throw new Error(`Codex App lane ${laneScope} is poisoned`);
         if (lane.state === 'idle' && (!lane.handoff || priority)) {
             if (priority) lane.handoff = false;
-            return bindLane(meta, lane, options);
+            return bindLane(meta, lane, options, waited && lane.bindingEpoch !== enqueuedEpoch);
         }
         priority = false;
+        if (!waited) { enqueuedEpoch = lane.bindingEpoch; waited = true; }
         await waitForLane(lane, deadline - Date.now());
         priority = true;
     }
@@ -372,12 +401,15 @@ export function codexAppHostPoolStats(): { hosts: number; creatingHosts: number;
 }
 function delay(ms: number): Promise<void> { return new Promise((done) => { setTimeout(done, ms); }); }
 async function runShutdown(deadlineAt: number, reserveMs: number, reason: string): Promise<void> {
-    const owned = [...hosts.values()];
+    const owned = [...new Set([...hosts.values(), ...closingHosts])].filter((host) => host.state !== 'dead');
     for (const host of owned) {
         host.state = 'closing'; host.rejectFailure(new CodexHostPoolClosingError(reason));
         for (const lane of host.lanes.values()) rejectWaiters(lane, new CodexHostPoolClosingError(reason));
     }
     const closes = owned.map(async (host) => {
+        const pending = host.maintenance;
+        if (pending) { try { await pending; } catch { /* maintenance failure is handled by the bounded kill */ } }
+        if (host.state === 'dead') return;
         try { await host.client?.closeGracefully(); } catch { /* bounded kill below */ }
     });
     const allClosed = Promise.allSettled(closes);
@@ -388,7 +420,7 @@ async function runShutdown(deadlineAt: number, reserveMs: number, reason: string
     const remaining = Math.max(0, deadlineAt - Date.now());
     if (!settled && remaining > 0) await Promise.race([allClosed, delay(remaining)]);
     for (const host of owned) invalidateHost(host, new CodexHostPoolClosingError(reason));
-    hosts.clear(); tokenMetadata = new WeakMap();
+    hosts.clear(); closingHosts.clear(); tokenMetadata = new WeakMap();
 }
 export function shutdownCodexAppHostPool(options: CodexHostPoolShutdownOptions): Promise<void> {
     if (shutdownPromise) return shutdownPromise;
