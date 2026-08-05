@@ -333,6 +333,17 @@ function requestBrowserRestoreSync(reason: string): void {
 // same path for forward-compat and resolves to a signature-skip no-op today.
 function handleSettingsChange(msg: { cli?: string; projectDirs?: string[] | null; changedKeys?: string[] }): void {
     const changedKeys = Array.isArray(msg.changedKeys) ? msg.changedKeys : [];
+    // Turning multi-session on or off changes what the SERVER puts on every event and
+    // what this tab is subscribed to, and the two are decided at different times: the
+    // session view is built once at boot and the channel carries the scope it produced.
+    // Leaving a live page running across that change gives one of two bad outcomes — a
+    // tab still filtered to `local:<id>` after the server stopped stamping scopes goes
+    // silent, and an unscoped connection after the gate comes on starts receiving every
+    // session's output. Neither is repairable from here, so the page reloads (072 §1.3a).
+    if (changedKeys.includes('multiSession')) {
+        window.location.reload();
+        return;
+    }
     if (changedKeys.includes('workingDir') || changedKeys.includes('projectDirs')) {
         // 82 A-phase audit: never reassign snapshotReady here — only
         // channel-up/replay-gap own that promise (orc_state gate awaits it).

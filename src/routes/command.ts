@@ -16,6 +16,7 @@ import type { RemoteTarget } from '../messaging/types.js';
 import { log } from '../core/logger.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { resolveRequestSessionStrict } from './session-request.js';
+import { withSessionScope } from '../core/session-context.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -62,7 +63,19 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                 });
                 return;
             }
-            const result = await executeCommand(parsed, makeWebCommandCtx(req, locale as string));
+            // Commands read and mutate the session they run in — /compact resets its
+            // native state, /clear wipes its history. Without the caller's session they
+            // all act on whatever session is globally active, which is a different one
+            // than the tab the user typed into (072 §1.1).
+            const resolvedSession = resolveRequestSessionStrict(req.body?.sessionId);
+            if (!resolvedSession.ok) {
+                res.status(404).json({ ok: false, error: 'unknown_session', sessionId: resolvedSession.requested });
+                return;
+            }
+            const result = await withSessionScope(
+                { scope: resolvedSession.scope, chatSessionId: resolvedSession.chatSessionId },
+                () => executeCommand(parsed, makeWebCommandCtx(req, locale as string)),
+            );
             res.json(result);
         } catch (err: unknown) {
             log.error('[cmd:error]', logErrorText(err));
@@ -152,7 +165,15 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             if (parsed && (parsed.type === 'known' || parsed.type === 'skill' || parsed.type === 'unknown')) {
                 try {
                     const locale = resolveRequestLocale(req);
-                    const cmdResult = await executeCommand(parsed, makeWebCommandCtx(req, locale));
+                    // Same reason as /api/command: the route resolved a session above, and
+                    // running the command outside that context would let it act on whichever
+                    // session happens to be globally active instead.
+                    const cmdResult = sessionContext
+                        ? await withSessionScope(
+                            { scope: sessionContext.scope, chatSessionId: sessionContext.chatSessionId },
+                            () => executeCommand(parsed, makeWebCommandCtx(req, locale)),
+                        )
+                        : await executeCommand(parsed, makeWebCommandCtx(req, locale));
                     if (cmdResult?.steerPrompt) {
                         const submit = submitMessage(cmdResult.steerPrompt, submitMeta);
                         if (submit.action === 'rejected') {

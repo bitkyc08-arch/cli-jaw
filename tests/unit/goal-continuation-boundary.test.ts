@@ -83,7 +83,9 @@ test('EXT-002: gateway new_message broadcasts include the external marker', () =
 });
 
 test('EXT-003: manager relays declare external:true', () => {
-    const relays = managerSrc.match(/JSON\.stringify\(\{ prompt, external: true \}\)/g) || [];
+    // One relay now also forwards a session id, so match the marker rather than the
+    // whole literal — the point of the test is that neither relay drops external:true.
+    const relays = managerSrc.match(/JSON\.stringify\([^)]*external: true[^)]*\)/g) || [];
     assert.ok(relays.length >= 2, `both manager relay POSTs must send external:true, found ${relays.length}`);
 });
 

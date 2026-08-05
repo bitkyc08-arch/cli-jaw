@@ -43,8 +43,9 @@ type Lane = {
     model: string; effort: string; cwd: string; fastMode: boolean; waiters: Waiter[];
     lastUsedAt: number; initializedGeneration: number; handoff: boolean;
     maintenanceQueued: boolean; listener: { dispose(): void } | null; bindingEpoch: number;
-    // Set when a reset lands while this lane is running. Its binding is dropped on
-    // release instead of immediately, because the turn in flight is still using it.
+    // Set when a reset lands while this lane is running. The binding is dropped on
+    // whichever path returns the lane to idle rather than immediately, because the turn
+    // in flight is still using it.
     bindingRevoked: boolean;
 };
 type Host = {

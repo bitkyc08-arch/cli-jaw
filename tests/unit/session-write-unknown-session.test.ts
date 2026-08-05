@@ -42,6 +42,7 @@ function post(baseUrl: string, path: string, body?: unknown): Promise<globalThis
 afterEach(() => {
     clearAllBroadcastListeners();
     db.prepare("DELETE FROM chat_sessions WHERE label LIKE 'unknown-sess%'").run();
+    db.prepare("DELETE FROM messages WHERE session_id LIKE '%' AND content LIKE '%session%'").run();
     db.prepare("UPDATE session SET active_chat_session = 'default' WHERE id = 'default'").run();
     settings.multiSession.enabled = false;
 });
@@ -112,4 +113,62 @@ test('a message naming a session that no longer exists is refused', async () => 
 
     const landed = db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_id = ?').get(active.id) as { n: number };
     assert.equal(landed.n, 0, 'the refused message must not land in another session');
+});
+
+// The rejection tests above would all still pass if a named session were simply ignored
+// and the write fell through to the active one. This is the positive half: the message
+// has to land in the session that was named, not in the one that happens to be active.
+test('a message naming a session lands in that session, not the active one', async () => {
+    settings.multiSession.enabled = true;
+    const named = createChatSession('unknown-sess-target');
+    const active = createChatSession('unknown-sess-elsewhere');
+    setActiveChatSession(active.id);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/message', { prompt: 'goes to the named session', sessionId: named.id });
+        assert.equal(response.status, 200, await response.text());
+    });
+
+    const inNamed = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ? AND content = 'goes to the named session'").get(named.id) as { n: number };
+    const inActive = db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_id = ?').get(active.id) as { n: number };
+    assert.equal(inNamed.n, 1, 'the named session received the message');
+    assert.equal(inActive.n, 0, 'the globally active session received nothing');
+});
+
+// A command mutates the session it runs in, so it has to run in the named one. Without
+// that, /compact typed into one tab resets a different session's conversation. /compact
+// is the right probe because it writes its marker into the session it acted on, whereas
+// /clear only blanks the screen.
+test('a command naming a session executes against that session', async () => {
+    settings.multiSession.enabled = true;
+    const named = createChatSession('unknown-sess-cmd');
+    const active = createChatSession('unknown-sess-cmd-other');
+    setActiveChatSession(active.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'history in the named session', ?)").run(named.id);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/command', { text: '/compact', sessionId: named.id });
+        assert.equal(response.status, 200, await response.text());
+    });
+
+    // The compact marker lands in the session the command was told to act on.
+    const inNamed = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ? AND role = 'assistant'").get(named.id) as { n: number };
+    const inActive = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ? AND role = 'assistant'").get(active.id) as { n: number };
+    assert.equal(inNamed.n, 1, 'the named session was compacted');
+    assert.equal(inActive.n, 0, 'the globally active session was left alone');
+});
+
+test('a command naming a session that no longer exists is refused', async () => {
+    settings.multiSession.enabled = true;
+    const active = createChatSession('unknown-sess-cmd-missing');
+    setActiveChatSession(active.id);
+    db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'must survive', ?)").run(active.id);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/command', { text: '/compact', sessionId: 'gone-session' });
+        assert.equal(response.status, 404);
+    });
+
+    const survived = db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_id = ?').get(active.id) as { n: number };
+    assert.equal(survived.n, 1, 'a refused command must not touch another session');
 });

@@ -41,6 +41,7 @@ type PreviewSendMessage = {
     type?: unknown;
     requestId?: unknown;
     prompt?: unknown;
+    sessionId?: unknown;
 };
 
 type PreviewDroppedFilesMessage = {
@@ -345,7 +346,10 @@ export function InstancePreview(props: InstancePreviewProps) {
                 });
                 return;
             }
-            void sendInstanceMessage(props.instance!.port, prompt)
+            // Forward the session the preview is showing, or the instance writes into
+            // whichever session happens to be globally active instead.
+            const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined;
+            void sendInstanceMessage(props.instance!.port, prompt, sessionId)
                 .then(result => {
                     postPreviewSendResult(event.source, event.origin, requestId, {
                         ok: result.ok,

@@ -92,7 +92,13 @@ function sendPreviewMessageViaParent(prompt: string): Promise<MessagePostResult 
         const timeout = window.setTimeout(() => settle(null), PREVIEW_SEND_RELAY_TIMEOUT_MS);
         window.addEventListener('message', onMessage);
         try {
-            window.parent.postMessage({ type: 'jaw-preview-send-message', requestId, prompt }, targetOrigin);
+            // The session travels with the relay too. Without it the manager forwards a
+            // bare prompt and the instance writes to whichever session is globally
+            // active, which is not the one this preview is showing (072 §1.1).
+            window.parent.postMessage(
+                withCurrentSessionBody({ type: 'jaw-preview-send-message', requestId, prompt }),
+                targetOrigin,
+            );
         } catch {
             settle(null);
         }
@@ -134,7 +140,7 @@ async function postSlashCommand(text: string): Promise<{ ok: boolean; status: nu
             'Accept-Language': locale,
             ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ text, locale }),
+        body: JSON.stringify(withCurrentSessionBody({ text, locale })),
         signal,
     });
     if (timer) clearTimeout(timer);
@@ -241,10 +247,10 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
 
     // Stop-mode click policy (devlog 260501_chat_pause_and_unread_badge):
     //  - any stop-mode button click  → fire /api/stop and return.
-    //    /api/stop calls killAllAgents() server-side, which is the user's
-    //    intent ("실제로 정지가 안돼"). The early `return` preserves typed
-    //    text and attachments — typing is never auto-steered into the
-    //    just-killed run.
+    //    /api/stop stops this session's run when the tab names one, and every
+    //    run otherwise, which is the user's intent ("실제로 정지가 안돼").
+    //    The early `return` preserves typed text and attachments — typing is
+    //    never auto-steered into the just-killed run.
     //  - Enter key and slash-command execute do NOT enter this branch
     //    (source !== 'button'), so they keep their normal behavior even
     //    while the agent is busy.

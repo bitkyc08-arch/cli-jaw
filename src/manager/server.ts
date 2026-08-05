@@ -583,6 +583,9 @@ app.get('/api/dashboard/instances/:port', async (req, res) => {
 app.post('/api/dashboard/instances/:port/message', async (req, res) => {
     const portValue = Number(req.params.port);
     const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+    // Relayed from a preview that is showing one session; without it the instance falls
+    // back to whichever session is globally active there (072 §1.1).
+    const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : '';
     if (!Number.isInteger(portValue) || portValue < scanFrom || portValue >= scanFrom + scanCount) {
         res.status(400).json({ ok: false, error: 'port out of configured scan range' });
         return;
@@ -596,7 +599,7 @@ app.post('/api/dashboard/instances/:port/message', async (req, res) => {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             // external: dashboard relay — see sendWorkerMessage above.
-            body: JSON.stringify({ prompt, external: true }),
+            body: JSON.stringify(sessionId ? { prompt, external: true, sessionId } : { prompt, external: true }),
         });
         const data = await response.json().catch(() => ({ error: `worker returned ${response.status}` })) as unknown;
         res.status(response.status).json(data);

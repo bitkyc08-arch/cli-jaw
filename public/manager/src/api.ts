@@ -120,11 +120,12 @@ export async function pickInstanceProjectFolder(port: number): Promise<{ project
 export async function sendInstanceMessage(
     port: number,
     prompt: string,
+    sessionId?: string,
 ): Promise<{ ok: boolean; status: number; data: DashboardInstanceMessageResult }> {
     const response = await fetch(`/api/dashboard/instances/${port}/message`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(sessionId ? { prompt, sessionId } : { prompt }),
     });
     const data = await response.json().catch(() => ({})) as DashboardInstanceMessageResult;
     return { ok: response.ok, status: response.status, data };

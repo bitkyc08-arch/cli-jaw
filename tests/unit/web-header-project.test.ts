@@ -24,7 +24,7 @@ test('WHP-002: settings_change updates the header without reloading settings', (
     assert.ok(idx > 0, 'ws dispatcher must handle settings_change');
     const handlerIdx = wsSrc.indexOf('function handleSettingsChange');
     assert.ok(handlerIdx > 0, 'ws must centralize settings_change handling');
-    const block = wsSrc.slice(handlerIdx, handlerIdx + 1400);
+    const block = wsSrc.slice(handlerIdx, handlerIdx + 2600);
     assert.ok(block.includes("syncOrchestrateSnapshot('settings_change')"), 'existing snapshot sync must stay');
     assert.ok(block.includes('refreshHeaderFromSettingsChange'), 'header must refresh from the event payload');
     assert.ok(!block.includes('loadSettings('), 'must not re-run the full settings load per event');
@@ -35,7 +35,7 @@ test('WHP-005: scope-affecting settings_change reloads history before snapshot',
     // payload always carries projectDirs, so the gate must use changedKeys.
     const handlerIdx = wsSrc.indexOf('function handleSettingsChange');
     assert.ok(handlerIdx > 0, 'ws must centralize settings_change handling');
-    const block = wsSrc.slice(handlerIdx, handlerIdx + 1400);
+    const block = wsSrc.slice(handlerIdx, handlerIdx + 2600);
     assert.ok(block.includes('changedKeys'), 'gate must read the changedKeys payload, not key presence');
     assert.ok(block.includes("changedKeys.includes('workingDir')"), 'workingDir is the message-scope key');
     assert.ok(block.includes("changedKeys.includes('projectDirs')"), 'projectDirs change must route through the scope-refresh path');

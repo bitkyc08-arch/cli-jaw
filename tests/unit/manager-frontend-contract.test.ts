@@ -169,14 +169,14 @@ test('manager frontend exposes one-instance preview controls', () => {
     assert.ok(preview.includes("data.type !== 'jaw-preview-send-message'"), 'Manager preview must listen for child iframe send relay requests');
     assert.ok(preview.includes('previewFrameOriginMatches(event.origin, state.src, iframeRef.current)'), 'Manager preview send relay must validate the actual iframe origin');
     assert.ok(preview.includes('loopbackOriginsEquivalent'), 'Manager preview send relay must treat localhost and 127.0.0.1 as equivalent on loopback');
-    assert.ok(preview.includes('sendInstanceMessage(props.instance!.port, prompt)'), 'Manager preview send relay must forward to the selected instance port');
+    assert.ok(preview.includes('sendInstanceMessage(props.instance!.port, prompt, sessionId)'), 'Manager preview send relay must forward the prompt and its session to the selected instance port');
     assert.ok(preview.includes("type: 'jaw-preview-send-result'"), 'Manager preview send relay must answer the child iframe request');
     assert.ok(api.includes('/api/dashboard/instances/${port}/message'), 'manager API must expose a selected-instance message relay');
     assert.ok(server.includes("app.post('/api/dashboard/instances/:port/message'"), 'manager server must implement the selected-instance message relay endpoint');
     assert.ok(server.includes('prompt must be a non-empty string'), 'manager message relay must reject empty prompts');
     assert.ok(server.includes('http://127.0.0.1:${portValue}/api/message'), 'manager message relay must only forward to the validated loopback instance port');
     assert.ok(chat.includes('sendPreviewMessageViaParent'), 'classic preview UI must try the Manager parent send relay when embedded');
-    assert.ok(chat.includes("window.parent.postMessage({ type: 'jaw-preview-send-message'"), 'classic preview UI must request parent relay through postMessage');
+    assert.ok(chat.includes("withCurrentSessionBody({ type: 'jaw-preview-send-message'"), 'classic preview UI must request parent relay through postMessage, carrying its session');
     assert.ok(chat.includes("data.type !== 'jaw-preview-send-result'"), 'classic preview UI must wait for the matching parent relay response');
     assert.ok(chat.includes('PREVIEW_SEND_RELAY_TIMEOUT_MS'), 'classic preview UI must fall back if an older parent does not support the relay');
     assert.ok(chat.includes('relayed?.ok'), 'classic preview UI must fall back to direct /api/message when parent relay fails');

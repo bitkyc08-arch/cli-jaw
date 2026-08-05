@@ -2,7 +2,8 @@ import { broadcast } from './bus.js';
 import { DEFAULT_CLI } from '../cli/registry.js';
 import { settings } from './config.js';
 import { db, clearMessages, clearMessagesScoped, getSession, updateSession } from './db.js';
-import { getActiveChatSession } from './chat-sessions.js';
+import { getActiveChatSession, getChatSessionRemoteKey } from './chat-sessions.js';
+import { scopeForChatSession } from '../orchestrator/scope.js';
 
 export type MainSessionRecord = {
     active_cli?: string | null;
@@ -106,8 +107,15 @@ const clearMainTx = db.transaction((row: MainSessionRow) => {
 export function clearMainSessionState(): MainSessionRow {
     const session = getSession() as MainSessionRecord;
     const row = buildClearedSessionRow(settings, session);
+    // Capture the session BEFORE the transaction so the notice names exactly the history
+    // that was deleted. Without a scope on it, a scoped tab drops the event and keeps
+    // showing messages that no longer exist — including the tab whose history this was.
+    const clearedSessionId = getActiveChatSession();
     clearMainTx(row);
-    broadcast('clear', {});
+    broadcast('clear', {
+        scope: scopeForChatSession(clearedSessionId, getChatSessionRemoteKey(clearedSessionId) ?? undefined),
+        sessionId: clearedSessionId,
+    });
     return row;
 }
 
@@ -124,7 +132,13 @@ export function resetSessionPreservingHistory(): MainSessionRow {
     const session = getSession() as MainSessionRecord;
     const row = buildClearedSessionRow(settings, session);
     writeMainSessionRow(row);
-    broadcast('session_reset', { cli: row.cli, model: row.model });
+    const resetSessionId = getActiveChatSession();
+    broadcast('session_reset', {
+        cli: row.cli,
+        model: row.model,
+        scope: scopeForChatSession(resetSessionId, getChatSessionRemoteKey(resetSessionId) ?? undefined),
+        sessionId: resetSessionId,
+    });
     return row;
 }
 

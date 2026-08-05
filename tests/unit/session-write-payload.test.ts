@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { configureSessionView, withCurrentSessionBody } from '../../public/js/features/session-hub.ts';
+import { configureSessionView, currentEventScope, withCurrentSessionBody } from '../../public/js/features/session-hub.ts';
 
 // 072 §1.1 — a tab on /:seq must name the session it is viewing on every write, or
 // the message lands on whatever session is globally active instead.
@@ -52,4 +52,43 @@ test('a stop with no other fields still carries the session on a session route',
     // everything" — the behaviour the single-session view has always had.
     configureSessionView(list('sess-1', [session({ id: 'sess-1', seq: 1 })]), '/');
     assert.deepEqual(withCurrentSessionBody({}), {});
+});
+
+// The client mirrors the server's scope rule but does NOT read the multi-session gate.
+// It does not need to, and the reason is worth pinning because it is a coupling between
+// two files: with the gate off the server omits the navigation fields from the session
+// list, which turns the session view off, which makes both the scope and the write
+// payload empty. If that field ever became unconditional, a tab would subscribe to
+// `local:<id>` while the server published everything under `default`, and the tab would
+// go silent while looking perfectly healthy.
+test('a session list without navigation fields yields no scope and no session payload', () => {
+    const gateOff = {
+        active: 'sess-1',
+        sessions: [{ id: 'sess-1', seq: 1, label: null }, { id: 'sess-2', seq: 2, label: null }],
+    } as Parameters<typeof configureSessionView>[0];
+
+    configureSessionView(gateOff, '/2');
+    assert.equal(currentEventScope(), null, 'an unfiltered connection receives everything, as before');
+    assert.deepEqual(withCurrentSessionBody({ prompt: 'hello' }), { prompt: 'hello' });
+});
+
+// And with the fields present the two agree on every shape the server can produce.
+test('the client scope mirror agrees with the server rule for default, local and remote', () => {
+    const sessions = [
+        session({ id: 'default', seq: 1 }),
+        session({ id: 'sess-local', seq: 2 }),
+        session({ id: 'sess-remote', seq: 3, remoteKey: 'jaw:slack:channel:C1' }),
+    ];
+
+    configureSessionView(list('default', sessions), '/1');
+    assert.equal(currentEventScope(), 'default');
+
+    configureSessionView(list('default', sessions), '/2');
+    assert.equal(currentEventScope(), 'local:sess-local');
+
+    configureSessionView(list('default', sessions), '/3');
+    assert.equal(currentEventScope(), 'jaw:slack:channel:C1');
+
+    configureSessionView(list('default', sessions), '/');
+    assert.equal(currentEventScope(), null, 'the hub stays unfiltered');
 });

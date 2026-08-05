@@ -182,7 +182,11 @@ export function submitMessage(
         ? 'default'
         : remoteKey
         ? (meta.chatSessionId || resolveOrCreateRemoteSession(remoteKey))
-        : getActiveChatSession();
+        // A caller that names its session has already had it validated (routes/session-request),
+        // and ignoring it here is how a scope and a session id from two different sessions
+        // ended up on the same message: the scope named the tab, the id named whatever was
+        // globally active, and the write landed in the wrong place (072 §1.1).
+        : (multiSessionEnabled && meta.chatSessionId) || getActiveChatSession();
     const scope = multiSessionEnabled
         ? (meta.target && !gateOn ? 'default' : (meta.scope || resolveOrcScope(stripUndefined({
             origin: meta.origin,
