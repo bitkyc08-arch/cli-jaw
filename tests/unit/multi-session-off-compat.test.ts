@@ -8,12 +8,6 @@ import { DEFAULT_SETTINGS, settings } from '../../src/core/config.ts';
 import { addBroadcastListener, broadcast, removeBroadcastListener } from '../../src/core/bus.ts';
 import { withSessionScope } from '../../src/core/session-context.ts';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { readSource } from './source-normalize.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 test('OFF is the default and captured context adds no event fields', () => {
     assert.deepEqual(DEFAULT_SETTINGS.multiSession, {
@@ -95,25 +89,4 @@ test('OFF preserves legacy queue grouping bytes and does not rewrite persisted v
     assert.equal(newPayload.priority, undefined);
     assert.equal(activeSessionReads, 0);
     assert.equal(broadcasts.at(-1)?.data.scope, undefined, 'OFF queue_update must not add scope');
-});
-
-// The inbound reply path's scope resolution moved from bot.ts into
-// ingress.ts/admitSlackRun (phase 100), which owns the synchronous
-// submitMessage + sessionLanes reservation. The slash-command path still
-// resolves inline in commands.ts. Both must keep the same gate-off pinning.
-test('Slack gate-off pins scope and chat session while global OFF keeps the active session fallback', () => {
-    // readSource normalizes settings["x"] to settings.x, so one pattern covers both.
-    const owners: Array<{ path: string; gateName: string }> = [
-        { path: '../../src/slack/ingress.ts', gateName: 'gateEnabled' },
-        { path: '../../src/slack/commands.ts', gateName: 'slackGateOn' },
-    ];
-    for (const { path: relativePath, gateName } of owners) {
-        const source = readSource(join(__dirname, relativePath), 'utf8');
-        assert.match(source, /const multiSessionEnabled = settings\.multiSession\?\.enabled === true/);
-        assert.match(source, new RegExp(`const ${gateName} = multiSessionEnabled && channelGateOn\\('slack'\\)`));
-        assert.match(source, new RegExp(
-            `const chatSessionId = multiSessionEnabled && !${gateName}\\s*\\? 'default'\\s*: remoteKey \\? resolveOrCreateRemoteSession\\(remoteKey\\) : getActiveChatSession\\(\\)`));
-        assert.match(source, new RegExp(
-            `const scope = multiSessionEnabled && !${gateName} \\? 'default' : \\(remoteKey \\|\\| 'default'\\)`));
-    }
 });

@@ -6,6 +6,7 @@ import { groupQueueKey, type SessionScope } from '../../messaging/session-key.js
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { withSessionScope } from '../../core/session-context.js';
 import { sessionLanes, type SessionLanes } from '../../orchestrator/session-lanes.js';
+import { scopeForChatSession } from '../../orchestrator/scope.js';
 
 type QueueItem = {
     schemaVersion?: 2;
@@ -59,6 +60,7 @@ export interface QueueDeps {
     }>;
     getWorkingDir(): string | null;
     isMultiSessionEnabled(): boolean;
+    isLocalSessionScopeEnabled?(): boolean;
 }
 
 export const FALLBACK_MAX_RETRIES = 3;
@@ -111,6 +113,7 @@ export function createQueueController(
     lanes: SessionLanes = sessionLanes,
 ): QueueController {
     const multiSessionEnabled = deps.isMultiSessionEnabled();
+    const localSessionScopeEnabled = deps.isLocalSessionScopeEnabled?.() === true;
     if (multiSessionEnabled) deps.migrateQueuedMessagesV1ToV2();
 
     function normalizeQueueItem(row: { id: string; payload: string }): QueueItem[] {
@@ -119,15 +122,21 @@ export function createQueueController(
             if (typeof parsed?.id !== 'string' || typeof parsed?.prompt !== 'string' || typeof parsed?.source !== 'string') {
                 return [];
             }
+            const chatSessionId = typeof parsed.chatSessionId === 'string' ? parsed.chatSessionId : 'default';
+            const remoteKey = typeof parsed.remoteKey === 'string' ? parsed.remoteKey : undefined;
+            const persistedScope = multiSessionEnabled && typeof parsed.scope === 'string' ? parsed.scope : 'default';
+            const scope = persistedScope === 'default'
+                ? scopeForChatSession(chatSessionId, remoteKey, localSessionScopeEnabled)
+                : persistedScope;
             return [stripUndefined({
                 ...(multiSessionEnabled ? { schemaVersion: 2 as const } : {}),
                 id: parsed.id,
                 prompt: parsed.prompt,
                 source: parsed.source,
-                scope: multiSessionEnabled && typeof parsed.scope === 'string' ? parsed.scope : 'default',
+                scope,
                 ...(multiSessionEnabled ? {
-                    chatSessionId: typeof parsed.chatSessionId === 'string' ? parsed.chatSessionId : 'default',
-                    ...(parsed.remoteKey ? { remoteKey: parsed.remoteKey } : {}),
+                    chatSessionId,
+                    ...(remoteKey ? { remoteKey } : {}),
                 } : {}),
                 target: parsed.target,
                 chatId: parsed.chatId,

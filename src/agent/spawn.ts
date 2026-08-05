@@ -35,7 +35,7 @@ import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAll
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
-import { resolveOrcScope } from '../orchestrator/scope.js';
+import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
 import {
@@ -410,6 +410,7 @@ const queueCtrl = createQueueController({
     importPipeline: () => import('../orchestrator/pipeline.js'),
     getWorkingDir: () => settings["workingDir"] || null,
     isMultiSessionEnabled: () => settings["multiSession"]?.enabled === true,
+    isLocalSessionScopeEnabled: () => LOCAL_SESSION_SCOPE_ACTIVATION,
 });
 
 export const {

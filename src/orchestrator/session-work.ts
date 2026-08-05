@@ -12,12 +12,21 @@ import {
     listPendingWorkerResults,
 } from './worker-registry.js';
 import { sessionLanes } from './session-lanes.js';
+import { LOCAL_SESSION_SCOPE_ACTIVATION, scopeForChatSession } from './scope.js';
 
-export function hasChatSessionWork(sessionId: string): boolean {
+export function hasChatSessionWork(
+    sessionId: string,
+    localSessionScopesEnabled = LOCAL_SESSION_SCOPE_ACTIVATION,
+): boolean {
     if ([...activeMainProcesses.values()].some(run => run.meta.chatSessionId === sessionId)) return true;
     if (messageQueue.some(item => item.chatSessionId === sessionId)) return true;
 
-    const scopeKey = getChatSessionRemoteKey(sessionId) ?? 'default';
+    const remoteKey = getChatSessionRemoteKey(sessionId) ?? undefined;
+    const scopeKey = scopeForChatSession(
+        sessionId,
+        remoteKey,
+        remoteKey !== undefined || localSessionScopesEnabled,
+    );
     if (listPendingWorkerResults(scopeKey).some(result => result.meta?.chatSessionId === sessionId)) return true;
 
     return isQueueBusy(scopeKey)

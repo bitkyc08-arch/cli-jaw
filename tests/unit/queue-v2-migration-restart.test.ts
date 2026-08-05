@@ -27,6 +27,7 @@ function makeController(options: {
     metas?: Array<Record<string, unknown>>;
     runs?: Array<{ prompt: string; meta: Record<string, unknown> }>;
     maxConcurrent?: number;
+    localSessionScopesEnabled?: boolean;
 }) {
     return createQueueController({
         migrateQueuedMessagesV1ToV2,
@@ -54,8 +55,38 @@ function makeController(options: {
         }),
         getWorkingDir: () => null,
         isMultiSessionEnabled: () => true,
+        isLocalSessionScopeEnabled: () => options.localSessionScopesEnabled === true,
     }, new SessionLanes(() => options.maxConcurrent ?? 2));
 }
+
+test('queue load reclassifies legacy local rows only when local session scopes are enabled', () => {
+    db.prepare("INSERT INTO chat_sessions (id, seq, label) VALUES ('queue-v2-local-session', 800, 'local')").run();
+    const rows = [
+        {
+            schemaVersion: 2, id: 'queue-v2-local', prompt: 'queue-v2-local', source: 'web',
+            scope: 'default', chatSessionId: 'queue-v2-local-session', ts: 1,
+        },
+        {
+            schemaVersion: 2, id: 'queue-v2-default', prompt: 'queue-v2-default', source: 'web',
+            scope: 'default', chatSessionId: 'default', ts: 2,
+        },
+        {
+            schemaVersion: 2, id: 'queue-v2-missing-session', prompt: 'queue-v2-missing-session', source: 'web',
+            scope: 'default', ts: 3,
+        },
+    ];
+    for (const row of rows) insertQueuedMessage.run(row.id, JSON.stringify(row));
+
+    const off = makeController({ busy: () => true });
+    assert.deepEqual(off.messageQueue.map(item => item.scope), ['default', 'default', 'default']);
+
+    const on = makeController({ busy: () => true, localSessionScopesEnabled: true });
+    assert.deepEqual(on.messageQueue.map(item => item.scope), [
+        'local:queue-v2-local-session',
+        'default',
+        'default',
+    ]);
+});
 
 test('ON migration rewrites v1 once and drops a deleted-session v2 row once', () => {
     const v1 = { id: 'queue-v2-v1', prompt: 'queue-v2-v1', source: 'slack', scope: 'legacy-scope', ts: 1 };

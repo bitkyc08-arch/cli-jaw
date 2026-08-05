@@ -1,7 +1,11 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolveOrcScope, findActiveScope } from '../../src/orchestrator/scope.ts';
+import {
+    LOCAL_SESSION_SCOPE_ACTIVATION,
+    resolveOrcScope,
+    findActiveScope,
+    scopeForChatSession,
+} from '../../src/orchestrator/scope.ts';
 import { getCtx, setState, resetState } from '../../src/orchestrator/state-machine.ts';
 import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
 
@@ -20,16 +24,20 @@ test('SSD-001: OFF stays default; ON isolates target and honors persisted scope'
     );
 });
 
+test('SSD-001a: chat-session scope canonicalizes default, remote, local, and gate-off identities', () => {
+    assert.equal(LOCAL_SESSION_SCOPE_ACTIVATION, false, 'local execution must remain dormant until native-state isolation lands');
+    assert.equal(scopeForChatSession('default'), 'default');
+    assert.equal(scopeForChatSession('default', 'jaw:slack:channel:C1'), 'default');
+    assert.equal(scopeForChatSession('remote-session', 'jaw:slack:channel:C1'), 'jaw:slack:channel:C1');
+    assert.equal(scopeForChatSession('local-session'), 'local:local-session');
+    assert.equal(scopeForChatSession('local-session', undefined, false), 'default');
+    assert.equal(scopeForChatSession('remote-session', 'jaw:slack:channel:C1', false), 'default');
+});
+
 test('SSD-002: findActiveScope always returns default', () => {
     assert.equal(findActiveScope('web'), 'default');
     assert.equal(findActiveScope('telegram', 123, { workingDir: '/tmp' }), 'default');
     assert.equal(findActiveScope('discord'), 'default');
-});
-
-test('SSD-003: normalizeQueueItem restores persisted scope only when multi-session is enabled', () => {
-    const queueSrc = readFileSync(new URL('../../src/agent/spawn/queue.ts', import.meta.url), 'utf8');
-    assert.ok(queueSrc.includes("scope: multiSessionEnabled && typeof parsed.scope === 'string' ? parsed.scope : 'default'"));
-    assert.ok(queueSrc.includes("chatSessionId: typeof parsed.chatSessionId === 'string' ? parsed.chatSessionId : 'default'"));
 });
 
 test('SSD-004: ctx.scopeId is persisted in default scope', () => {

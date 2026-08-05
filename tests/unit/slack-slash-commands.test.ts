@@ -19,7 +19,23 @@ const state: {
     onExecute?: (parsed: unknown, ctx: { interface?: string }) => void;
     onOrchestrate?: (prompt: string, meta: Record<string, unknown>) => void;
     multiSessionEnabled?: boolean;
-} = { posted: [], parsedSeen: [], executeResult: { text: 'command output' } };
+    scopeOverride?: string;
+    scopeCalls: Array<{ sessionId: string; remoteKey?: string; gateEnabled?: boolean }>;
+} = { posted: [], parsedSeen: [], executeResult: { text: 'command output' }, scopeCalls: [] };
+
+mock.module('../../src/orchestrator/scope.ts', {
+    namedExports: {
+        LOCAL_SESSION_SCOPE_ACTIVATION: false,
+        channelGateOn: () => true,
+        resolveOrcScope: () => 'default',
+        scopeForChatSession: (sessionId: string, remoteKey?: string, gateEnabled?: boolean) => {
+            state.scopeCalls.push({ sessionId, ...(remoteKey ? { remoteKey } : {}), ...(gateEnabled === undefined ? {} : { gateEnabled }) });
+            if (state.scopeOverride) return state.scopeOverride;
+            if (!gateEnabled || sessionId === 'default') return 'default';
+            return remoteKey || `local:${sessionId}`;
+        },
+    },
+});
 
 mock.module('../../src/slack/send-only-client.ts', {
     namedExports: {
@@ -58,12 +74,15 @@ async function loadHandler(options: {
     channelIds?: string[];
     onExecute?: (parsed: unknown, ctx: { interface?: string }) => void;
     onOrchestrate?: (prompt: string, meta: Record<string, unknown>) => void;
+    scopeOverride?: string;
 } = {}) {
     state.posted = [];
     state.parsedSeen = [];
     state.executeResult = options.executeResult === undefined ? { text: 'command output' } : options.executeResult;
     state.onExecute = options.onExecute ?? undefined;
     state.onOrchestrate = options.onOrchestrate ?? undefined;
+    state.scopeOverride = options.scopeOverride ?? undefined;
+    state.scopeCalls = [];
 
     const { settings } = await import('../../src/core/config.ts');
     (settings as Record<string, unknown>)['slack'] = {
@@ -144,6 +163,24 @@ test('multi-session slash and steer keep C1 scope isolated from C2 and the globa
         { remote_key: 'jaw:slack:channel:C1', chat_session_id: c1CommandScope?.chatSessionId },
         { remote_key: 'jaw:slack:channel:C2', chat_session_id: c2CommandScope?.chatSessionId },
     ]);
+});
+
+test('Slack slash delegates its resolved chat identity to the canonical scope helper', async () => {
+    let commandScope: ReturnType<typeof currentSessionScope> = undefined;
+    const handler = await loadHandler({
+        multiSessionEnabled: true,
+        scopeOverride: 'canonical:sentinel',
+        onExecute: () => { commandScope = currentSessionScope(); },
+    });
+
+    await handler.handleSlackSlashCommand({ command: '/status', text: '', channel_id: 'C9' });
+
+    assert.deepEqual(state.scopeCalls, [{
+        sessionId: commandScope?.chatSessionId,
+        remoteKey: 'jaw:slack:channel:C9',
+        gateEnabled: true,
+    }]);
+    assert.equal(commandScope?.scope, 'canonical:sentinel');
 });
 
 test('a slash command from a non-allowlisted channel never executes', async () => {

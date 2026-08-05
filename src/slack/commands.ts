@@ -23,7 +23,7 @@ import { clearMainSessionState, resetSessionPreservingHistory } from '../core/ma
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { slackTargetFromId } from '../messaging/slack-target.js';
 import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
-import { channelGateOn } from '../orchestrator/scope.js';
+import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
 import { setLastActiveTarget } from '../messaging/runtime.js';
 import { getSlackSendClient, sendSlackText } from './send-only-client.js';
 import { isConversationAllowed } from './events.js';
@@ -79,7 +79,7 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
     const chatSessionId = multiSessionEnabled && !slackGateOn
         ? 'default'
         : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
-    const scope = multiSessionEnabled && !slackGateOn ? 'default' : (remoteKey || 'default');
+    const scope = scopeForChatSession(chatSessionId, remoteKey, slackGateOn);
     const sessionScope: SessionScope = { scope, chatSessionId };
     setLastActiveTarget('slack', target);
 

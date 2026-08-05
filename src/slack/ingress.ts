@@ -1,6 +1,6 @@
 import { settings } from '../core/config.js';
 import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
-import { channelGateOn } from '../orchestrator/scope.js';
+import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
 import { submitMessage, type SubmitResult } from '../orchestrator/gateway.js';
 import { sessionLanes } from '../orchestrator/session-lanes.js';
 import { buildRemoteBindingKey } from '../messaging/session-key.js';
@@ -104,7 +104,7 @@ export function admitSlackRun(params: {
     const chatSessionId = multiSessionEnabled && !gateEnabled
         ? 'default'
         : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
-    const scope = multiSessionEnabled && !gateEnabled ? 'default' : (remoteKey || 'default');
+    const scope = scopeForChatSession(chatSessionId, remoteKey, gateEnabled);
     const result = submitMessage(params.prompt, {
         origin: 'slack', displayText: params.displayText, skipOrchestrate: true,
         target: params.target, chatId: params.chatId,
