@@ -373,10 +373,26 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
         assert.equal(consumerRecords(1, 'A', 'turn/completed').length + consumerRecords(1, 'B', 'turn/completed').length, 0,
             'both turns must be active before the first completion');
 
+        // AC-1, last clause: a second acquire on the same lane waits for the
+        // first lease. Asking for A again while A is still running must not
+        // start another turn on that lane.
+        const startsBeforeQueued = evidence.records.filter((entry) => entry.generation === 1
+            && entry.scope === lanes.A && entry.method === 'turn/start' && entry.phase === 'request').length;
+        const queuedA = spawnRun('A', `Do not use tools. Reply with exactly ${marker.A}.`);
+        await new Promise<void>((resolve) => { setTimeout(resolve, 2_000); });
+        assert.equal(
+            evidence.records.filter((entry) => entry.generation === 1
+                && entry.scope === lanes.A && entry.method === 'turn/start' && entry.phase === 'request').length,
+            startsBeforeQueued,
+            'a second acquire on a busy lane must not start a turn before the first lease is released',
+        );
+
         assert.equal(spawn.killActiveAgent(scopeKeys.A, 'interrupt'), true);
         const firstASettled = bounded(firstA.promise, INTERRUPT_SETTLE_TIMEOUT_MS, 'A interrupt settle');
         const firstBSettled = bounded(firstB.promise, COMPLETION_TIMEOUT_MS, 'B completion');
         const [, firstBResult] = await Promise.all([firstASettled, firstBSettled]);
+        // The queued A is only allowed to proceed once the lane is free.
+        await bounded(queuedA.promise, COMPLETION_TIMEOUT_MS, 'queued A completion');
         assert.equal(firstBResult.code, 0);
         assert.ok(carries(firstBResult.text, marker.B), firstBResult.text);
         assert.ok(!carries(firstBResult.text, marker.A), firstBResult.text);
@@ -395,7 +411,35 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
         assert.equal(firstThreads.B, firstStartedB.ownerThreadId);
         const firstPid = firstClient.proc?.pid ?? null;
         assert.ok(firstClient.proc);
+        // AC-2: the process dies while turns are in flight. Both promises have to
+        // fail and nothing may replay the prompts on its own.
+        const longWork = 'Do not use tools. Count slowly from 1 to 400, writing every number on its own line, and only then reply.';
+        const dyingA = spawnRun('A', longWork);
+        const dyingB = spawnRun('B', longWork);
+        await waitFor(() => consumerRecords(1, 'A', 'turn/started').length >= 2
+            && consumerRecords(1, 'B', 'turn/started').length >= 2,
+            STARTED_TIMEOUT_MS, 'in-flight turns before the process dies');
+        // A turn that already finished proves nothing about dying mid-flight, so
+        // the prompts above are long enough that neither can complete this fast.
+        assert.equal(consumerRecords(1, 'A', 'turn/completed').length, 1,
+            'the second A turn must still be running when the process dies');
+        assert.equal(consumerRecords(1, 'B', 'turn/completed').length, 1,
+            'the second B turn must still be running when the process dies');
+        const startsBeforeDeath = evidence.records.filter((entry) => entry.generation === 1
+            && entry.method === 'turn/start' && entry.phase === 'request').length;
         await terminateProcess(firstClient.proc);
+        const [dyingAResult, dyingBResult] = await Promise.all([
+            bounded(dyingA.promise, INTERRUPT_SETTLE_TIMEOUT_MS, 'A death settle'),
+            bounded(dyingB.promise, INTERRUPT_SETTLE_TIMEOUT_MS, 'B death settle'),
+        ]);
+        assert.notEqual(dyingAResult.code, 0, 'an in-flight turn must fail when its process dies');
+        assert.notEqual(dyingBResult.code, 0, 'an in-flight turn must fail when its process dies');
+        assert.equal(
+            evidence.records.filter((entry) => entry.generation === 1
+                && entry.method === 'turn/start' && entry.phase === 'request').length,
+            startsBeforeDeath,
+            'a dead process must not replay the prompts on its own',
+        );
         await waitFor(() => hostPool.codexAppHostPoolStats().hosts === 0, INITIALIZE_TIMEOUT_MS, 'old host invalidation');
 
         const restartDeadline = Date.now() + RESTART_TIMEOUT_MS;

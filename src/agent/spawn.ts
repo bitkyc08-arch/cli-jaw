@@ -2298,7 +2298,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 }
             }
 
-            const exitCode = turnCompleted ? 0 : (processExit.value?.code ?? 1);
+            // A turn that never completed is a failure even when the process it
+            // was running on exited cleanly. Trusting the child's status here
+            // reports success for a turn that produced nothing, which is exactly
+            // what happens when a shared host is closed mid-turn.
+            const exitCode = turnCompleted ? 0 : (processExit.value?.code || 1);
             opts.lifecycle?.onExit?.(exitCode);
             const killReason = consumeKillReason(child.pid);
             if (processExit.value && processExit.value.code !== 0 && !killReason) {
