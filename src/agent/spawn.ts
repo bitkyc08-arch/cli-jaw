@@ -809,14 +809,17 @@ function isStaleWorklogHistoryArtifact(text: string): boolean {
     ].some(marker => value.includes(marker));
 }
 
-function getLatestAssistantContentForAgyResume(workingDir?: string | null): string | null {
-    const rows = getRecentMessages.all(workingDir || null, getActiveChatSession(), 12) as RecentMessageRow[];
+// The session is passed in rather than read globally: the replay is prepended to THIS
+// run's prompt, so it has to come from this run's conversation and not from whichever
+// one happens to be active (073 §2.5a).
+function getLatestAssistantContentForAgyResume(workingDir: string | null | undefined, chatSessionId: string): string | null {
+    const rows = getRecentMessages.all(workingDir || null, chatSessionId, 12) as RecentMessageRow[];
     const row = rows.find((msg) => msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.trim().length > 0);
     return row?.content || null;
 }
 
-function getRecentAssistantContentsForAgyResume(workingDir?: string | null): string[] {
-    const rows = getRecentMessages.all(workingDir || null, getActiveChatSession(), 20) as RecentMessageRow[];
+function getRecentAssistantContentsForAgyResume(workingDir: string | null | undefined, chatSessionId: string): string[] {
+    const rows = getRecentMessages.all(workingDir || null, chatSessionId, 20) as RecentMessageRow[];
     return rows
         .filter((msg) => msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.trim().length > 0)
         .map((msg) => String(msg.content || '').trim());
@@ -1227,6 +1230,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             import('../core/compact.js')
                 .then(({ autoCompactRefresh }) => autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model: runtimeModel, scopeKey,
+                    chatSessionId,
                     ...(currentBucket ? { sessionBucket: currentBucket } : {}),
                 }))
                 .catch(() => {});
@@ -1316,10 +1320,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         isResume,
     });
     const agyResumeReplayPrefix = cli === 'agy' && isResume
-        ? getLatestAssistantContentForAgyResume(settings["workingDir"])
+        ? getLatestAssistantContentForAgyResume(settings["workingDir"], chatSessionId)
         : null;
     const agyResumeReplayPrefixes = cli === 'agy' && isResume
-        ? getRecentAssistantContentsForAgyResume(settings["workingDir"])
+        ? getRecentAssistantContentsForAgyResume(settings["workingDir"], chatSessionId)
         : [];
     const claudeBin = (cli === 'claude-e' || (cli === 'ai-e' && effectiveProvider === 'claude'))
         ? detectCli('claude').path

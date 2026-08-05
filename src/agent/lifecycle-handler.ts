@@ -415,6 +415,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 cli,
                 model,
                 scopeKey,
+                chatSessionId,
                 ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
             });
         } catch (e) {
@@ -463,6 +464,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     cli,
                     model,
                     scopeKey,
+                    chatSessionId,
                     ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
                 });
             } catch (e) {
@@ -538,6 +540,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 const { autoCompactRefresh } = await import('../core/compact.js');
                 await autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
+                    chatSessionId,
                     ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
                 });
             }
@@ -743,6 +746,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         const { autoCompactRefresh } = await import('../core/compact.js');
                         await autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
+                    chatSessionId,
                     ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
                 });
                     } catch {}
@@ -825,6 +829,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         const { autoCompactRefresh } = await import('../core/compact.js');
                         await autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
+                    chatSessionId,
                     ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
                 });
                     }

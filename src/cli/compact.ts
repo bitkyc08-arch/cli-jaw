@@ -69,7 +69,10 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     const activeCli = settings?.cli || session?.active_cli || session?.activeCli || 'claude';
     const workingDir = normalizeWorkingDir(settings?.workingDir || null);
 
-    const slots = harvestBootstrapSlots({ workingDir, instructions });
+    // Resolved before the harvest, not after: the marker below and the bootstrap built
+    // here have to describe the same conversation, and the harvest reads it (073 §2.5a).
+    const chatSessionId = getActiveChatSession();
+    const slots = harvestBootstrapSlots({ workingDir, instructions, chatSessionId });
     const hasAnyContent = Boolean(
         slots.recent_turns
         || slots.tool_context
@@ -96,7 +99,6 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     } = await import('../core/main-session.js');
 
     const model = getActiveModel(settings, session, activeCli);
-    const chatSessionId = getActiveChatSession();
     const { scopeForChatSession } = await import('../orchestrator/scope.js');
     const { getChatSessionRemoteKey } = await import('../core/chat-sessions.js');
     const scope = scopeForChatSession(

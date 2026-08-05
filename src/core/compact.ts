@@ -119,6 +119,12 @@ export type BootstrapSlots = {
 export type HarvestInput = {
     workingDir: string | null;
     instructions: string;
+    // Which conversation this bootstrap is built FROM. Every read below used to take the
+    // globally active session, which is correct only while the async-local context that
+    // sets it survives. Naming the session makes the dependency explicit instead of
+    // resting on that (073 §2.5a). Omitted, it falls back to the active session, which is
+    // what every caller relied on before.
+    chatSessionId?: string | undefined;
 };
 
 // ─── Keyword Extraction ───────────────────────────────
@@ -343,10 +349,10 @@ function harvestRecentTurns(rows: MessageRow[], goalText: string): string {
     return joined;
 }
 
-function harvestToolContext(workingDir: string | null): string {
+function harvestToolContext(workingDir: string | null, chatSessionId: string): string {
     try {
         type ToolLogRow = { id: number; tool_log: string; created_at: string };
-        const rows = (getRecentToolLogs.all(workingDir, getActiveChatSession(), 20) as ToolLogRow[]) || [];
+        const rows = (getRecentToolLogs.all(workingDir, chatSessionId, 20) as ToolLogRow[]) || [];
         if (!rows.length) return '';
 
         const lines: string[] = [];
@@ -444,11 +450,10 @@ function harvestGitGrep(goal: string, workingDir: string | null): string {
     return lines.join('\n');
 }
 
-function harvestChatGrep(goal: string): string {
+function harvestChatGrep(goal: string, session_id: string): string {
     try {
         const keywords = extractKeywords(goal, 4);
         if (!keywords.length) return '';
-        const session_id = getActiveChatSession();
         const lines: string[] = [];
         for (const kw of keywords) {
             const rows = searchMessages.all({ q: kw, limit: 5, session_id, days: 7, recent: null }) as Array<Record<string, unknown>>;
@@ -465,12 +470,12 @@ function harvestChatGrep(goal: string): string {
     }
 }
 
-function harvestGrepHits(goal: string, workingDir: string | null): string {
+function harvestGrepHits(goal: string, workingDir: string | null, chatSessionId: string): string {
     const gitBudget = Math.floor(BOOTSTRAP_BUDGET.grep_hits / 2);
     const chatBudget = BOOTSTRAP_BUDGET.grep_hits - gitBudget;
 
     const gitPart = clipSlot(harvestGitGrep(goal, workingDir), gitBudget);
-    const chatPart = clipSlot(harvestChatGrep(goal), chatBudget);
+    const chatPart = clipSlot(harvestChatGrep(goal, chatSessionId), chatBudget);
 
     const parts: string[] = [];
     if (gitPart) parts.push('### Code\n' + gitPart);
@@ -492,12 +497,13 @@ function harvestTaskSnapshot(goal: string): string {
 export function harvestBootstrapSlots(input: HarvestInput): BootstrapSlots {
     const t0 = performance.now();
     const wd = normalizeWorkingDir(input.workingDir);
-    const rows = (getRecentMessages.all(wd, getActiveChatSession(), 50) as MessageRow[]) || [];
+    const chatSessionId = input.chatSessionId || getActiveChatSession();
+    const rows = (getRecentMessages.all(wd, chatSessionId, 50) as MessageRow[]) || [];
     const goal = harvestGoal(rows, input.instructions);
     const recent_turns = harvestRecentTurns(rows, goal);
-    const tool_context = harvestToolContext(wd);
+    const tool_context = harvestToolContext(wd, chatSessionId);
     const memory_hits = harvestMemoryHits(goal, recent_turns);
-    const grep_hits = harvestGrepHits(goal, wd);
+    const grep_hits = harvestGrepHits(goal, wd, chatSessionId);
     const task_snapshot = harvestTaskSnapshot(goal);
     const elapsed = Math.round(performance.now() - t0);
     if (elapsed > 100) {
@@ -516,7 +522,13 @@ export async function cliSwitchRefresh(opts: {
     toModel: string;
     toProvider?: string | undefined;
 }): Promise<{ refreshed: boolean; bootstrapWritten: boolean; targetBucketCleared: boolean }> {
-    const slots = harvestBootstrapSlots({ workingDir: opts.sourceWorkDir, instructions: '' });
+    // Deliberately the instance-active session, unlike the per-session paths. A CLI switch
+    // changes the instance's runtime for everyone, rewrites the singleton session row and
+    // invalidates every lane, so there is no one session it belongs to. The bootstrap it
+    // carries across is the active conversation's, which is the one the switch was made
+    // from (073 §2.5a).
+    const chatSessionId = getActiveChatSession();
+    const slots = harvestBootstrapSlots({ workingDir: opts.sourceWorkDir, instructions: '', chatSessionId });
     const hasAnyContent = Boolean(
         slots.recent_turns || slots.tool_context || slots.memory_hits || slots.grep_hits || slots.task_snapshot,
     );
@@ -538,7 +550,7 @@ export async function cliSwitchRefresh(opts: {
         if (hasAnyContent) {
             insertMessageWithTrace.run(
                 'assistant', COMPACT_MARKER_CONTENT,
-                opts.toCli, opts.toModel, trace, null, opts.targetWorkDir, getActiveChatSession(),
+                opts.toCli, opts.toModel, trace, null, opts.targetWorkDir, chatSessionId,
             );
             setPendingBootstrapPromptStrict(bootstrap);
         }
@@ -591,8 +603,17 @@ export async function autoCompactRefresh(opts: {
      * what an explicit reset wants and what every caller did before scopes existed.
      */
     scopeKey?: string | undefined;
+    /**
+     * The conversation this refresh belongs to. The bootstrap is built from it and the
+     * compact marker is written into it. Without it both fall back to the globally
+     * active session, which is right only while the async-local context holds (073 §2.5a).
+     */
+    chatSessionId?: string | undefined;
 }) {
-    const slots = harvestBootstrapSlots({ workingDir: opts.workDir, instructions: opts.instructions });
+    const chatSessionId = opts.chatSessionId || getActiveChatSession();
+    const slots = harvestBootstrapSlots({
+        workingDir: opts.workDir, instructions: opts.instructions, chatSessionId,
+    });
     let bootstrap = renderBootstrapPrompt(slots);
 
     try {
@@ -634,7 +655,7 @@ export async function autoCompactRefresh(opts: {
         ?? resolveScopedSessionBucket(opts.cli, opts.model, null, scopeKey, '', 'fallback', codexAppMultiplex);
     const ownsSingletonRow = scopeKey === 'default';
 
-    insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, getActiveChatSession());
+    insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, chatSessionId);
     setPendingBootstrapPrompt(bootstrap, opts.scopeKey);
     if (opts.scopeKey) bumpScopeSessionGeneration(opts.scopeKey);
     else bumpSessionOwnershipGeneration();
