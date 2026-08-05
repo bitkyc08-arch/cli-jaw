@@ -100,8 +100,8 @@ cli-jaw/
 │   │   ├── claude-e-runtime.ts ← `jaw_runtime` helper event를 internal `agent:claude-e:*` broadcast로 변환 (46L)
 │   │   ├── alert-escalation.ts ← alert escalation event helper (86L)
 │   │   ├── cli-helpers.ts    ← Claude-like CLI 판별 helper (9L)
-│   │   ├── codex-app-client.ts ← Codex App stdio server client (370L)
-│   │   ├── codex-app-events.ts ← Codex App turn/tool/message event adapter (291L)
+│   │   ├── codex-app-client.ts ← Codex App stdio server client (1367L)
+│   │   ├── codex-app-events.ts ← Codex App turn/tool/message event adapter (327L)
 │   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 (57L)
 │   │   ├── grok-trace-backfill.ts ← Grok trace backfill helper (167L) ✨
 │   │   ├── live-run-state.ts ← active run snapshot / hydrate helper (108L)

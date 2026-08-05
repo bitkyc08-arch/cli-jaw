@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractFromCodexAppEvent } from '../../src/agent/codex-app-events.ts';
+import {
+    extractFromCodexAppEvent,
+    extractFromCodexAppLaneEvent,
+} from '../../src/agent/codex-app-events.ts';
 
 function createCtx() {
     return {
@@ -122,4 +125,46 @@ test('codex-app completed reasoning does not duplicate streamed buffer', () => {
 
     assert.equal(result?.flushThinking, true);
     assert.equal(result?.tool, undefined);
+});
+
+test('codex-app lane normalizer rejects another thread before mutating context', () => {
+    const ctx = createCtx();
+    const result = extractFromCodexAppLaneEvent(
+        'turn/started',
+        { threadId: 'thread-b', turn: { id: 'turn-b' } },
+        ctx,
+        'thread-a',
+        'turn-a',
+    );
+
+    assert.equal(result, null);
+    assert.equal(ctx.sessionId, null);
+    assert.equal(ctx.tokens, null);
+});
+
+test('codex-app lane normalizer rejects stale turn deltas without context mutation', () => {
+    const cases = [
+        ['item/agentMessage/delta', { delta: 'late text' }],
+        ['item/reasoning/textDelta', { delta: 'late thought' }],
+        ['thread/tokenUsage/updated', {
+            tokenUsage: { last: { inputTokens: 3, outputTokens: 4 } },
+        }],
+    ] as const;
+
+    for (const [method, payload] of cases) {
+        const ctx = createCtx();
+        ctx.sessionId = 'thread-a';
+        ctx.thinkingBuf = 'current';
+        const result = extractFromCodexAppLaneEvent(
+            method,
+            { threadId: 'thread-a', turnId: 'turn-a', ...payload },
+            ctx,
+            'thread-a',
+            'turn-b',
+        );
+        assert.equal(result, null, method);
+        assert.equal(ctx.sessionId, 'thread-a', method);
+        assert.equal(ctx.thinkingBuf, 'current', method);
+        assert.equal(ctx.tokens, null, method);
+    }
 });
