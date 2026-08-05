@@ -1219,7 +1219,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (!empSid && !forceNew && bucketSessionId && !canResumeBucketSession) {
         if (!peekPendingBootstrapPrompt(scopeKey)) {
             import('../core/compact.js')
-                .then(({ autoCompactRefresh }) => autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model }))
+                .then(({ autoCompactRefresh }) => autoCompactRefresh({
+                    workDir: settings["workingDir"] || null, instructions: '', cli, model: runtimeModel, scopeKey,
+                    ...(currentBucket ? { sessionBucket: currentBucket } : {}),
+                }))
                 .catch(() => {});
         }
         try {

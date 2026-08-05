@@ -143,6 +143,38 @@ try {
     assert.equal(bucketSessionId('codex-app:scope-b:gpt-5.5:high'), undefined,
         'fallback scoped bucket must be cleared');
     assert.equal(bucketSessionId('pi'), 'thread-pi', 'unrelated CLI buckets must remain');
+
+    // The singleton session row and the bucket row have to move together. A
+    // singleton pointing at a thread the bucket never recorded sends the next
+    // resume somewhere the server has no rollout for.
+    database.db.prepare('DELETE FROM session_buckets').run();
+    database.updateSession.run('codex-app', 'thread-before', 'gpt-5.5', 'auto', home, 'high');
+    database.upsertSessionBucket.run('codex-app:scope-tx:gpt-5.5:high', 'thread-before', 'gpt-5.5', null, 0);
+    database.db.exec(`
+        CREATE TRIGGER reject_bucket_write BEFORE UPDATE ON session_buckets
+        WHEN NEW.session_id = 'thread-after'
+        BEGIN SELECT RAISE(ABORT, 'forced bucket failure'); END
+    `);
+    let threw: string | null = null;
+    try {
+        persistence.persistMainSession({
+            persistenceOwner: persistence.getSessionOwnershipGeneration('scope-tx'),
+            scopeKey: 'scope-tx',
+            sessionId: 'thread-after',
+            cli: 'codex-app',
+            model: 'gpt-5.5',
+            effort: 'high',
+            codexAppBucket: 'codex-app:scope-tx:gpt-5.5:high',
+        });
+    } catch (error) {
+        threw = (error as Error).message;
+    }
+    database.db.exec('DROP TRIGGER reject_bucket_write');
+    assert.match(threw ?? '', /forced bucket failure/, 'the injected bucket failure must surface');
+    const singleton = database.getSession() as { session_id?: string } | undefined;
+    assert.equal(singleton?.session_id, 'thread-before',
+        'a failed bucket write must roll the singleton row back with it');
+    assert.equal(bucketSessionId('codex-app:scope-tx:gpt-5.5:high'), 'thread-before');
 } finally {
     database.closeDb();
 }

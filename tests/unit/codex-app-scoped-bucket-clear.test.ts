@@ -22,8 +22,18 @@ test.mock.module('../../src/core/db.ts', {
         getMemory: { all: () => [] },
         upsertMemory: { run: () => {} },
         deleteMemory: { run: () => {} },
-        getRecentMessages: { all: () => [] },
-        getRecentMessagesLite: { all: () => [] },
+        getRecentMessages: {
+            all: () => [
+                { role: 'user', content: 'hello there', cli: 'codex-app', model: 'gpt-5.5' },
+                { role: 'assistant', content: 'general kenobi', cli: 'codex-app', model: 'gpt-5.5' },
+            ],
+        },
+        getRecentMessagesLite: {
+            all: () => [
+                { role: 'user', content: 'hello there', cli: 'codex-app', model: 'gpt-5.5' },
+                { role: 'assistant', content: 'general kenobi', cli: 'codex-app', model: 'gpt-5.5' },
+            ],
+        },
         getRecentToolLogs: { all: () => [] },
         searchMessages: { all: () => [] },
         clearMessages: { run: () => {} },
@@ -52,6 +62,7 @@ test.mock.module('../../src/core/chat-sessions.ts', {
 });
 
 const coreCompact = await import('../../src/core/compact.js');
+const cliCompact = await import('../../src/cli/compact.js');
 
 function reset(): void {
     prefixClears.length = 0;
@@ -96,4 +107,17 @@ test('an auto compact without a scope keeps the old global invalidation', async 
     await coreCompact.autoCompactRefresh({ workDir: '/tmp', instructions: '', cli: 'claude', model: 'sonnet' });
     assert.deepEqual(scopeBumps, []);
     assert.equal(globalBumps, 1);
+});
+
+test('an explicit compact drops the scoped rows too', async () => {
+    reset();
+    const result = await cliCompact.compactHandler([], {
+        getSettings: () => ({ cli: 'codex-app', workingDir: '/tmp', perCli: {} }),
+        getSession: () => ({}),
+        getRuntime: () => ({ activeAgent: false }),
+    } as never);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(prefixClears, [{ bucket: 'codex-app', pattern: 'codex-app:%' }],
+        'a compact that leaves scoped rows lets the discarded thread come back');
+    assert.deepEqual(singleClears, []);
 });
