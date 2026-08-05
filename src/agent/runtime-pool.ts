@@ -46,6 +46,7 @@ type ReadyEntry<R extends ManagedRuntime, S> = Extract<PoolEntry<R, S>, { state:
 export interface AcquireOptions {
     binary: string;
     env: NodeJS.ProcessEnv;
+    route: 'legacy' | 'multiplex';
     key: CodexAppPoolKey;
     storedThreadId?: string | null;
     instructions?: string;
@@ -457,6 +458,9 @@ async function createCodexEntry(
 }
 
 export async function acquireCodexAppRuntime(opts: AcquireOptions): Promise<CodexAppLease> {
+    if (opts.route === 'multiplex') {
+        throw new Error('multiplex route reached generic Codex App runtime pool');
+    }
     startPoolReaper();
     const store = storeFor('codex-app');
     const key = fullKey(opts.key);

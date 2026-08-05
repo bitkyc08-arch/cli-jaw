@@ -2314,6 +2314,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         mainRun!.starting = true;
         void acquireCodexAppRuntime({
             binary: detected.path || 'codex', env: spawnEnv,
+            route: 'legacy',
             key: {
                 scopeKey,
                 cwd: spawnCwd, model, effort, fastMode: effectiveFastMode,

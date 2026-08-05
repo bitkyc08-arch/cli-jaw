@@ -92,6 +92,7 @@ const {
 
 let scopeSequence = 1;
 function options(overrides: {
+    route?: 'legacy' | 'multiplex';
     scopeKey?: string;
     model?: string;
     forceNew?: boolean;
@@ -101,6 +102,7 @@ function options(overrides: {
     return {
         binary: 'fake-codex',
         env: {},
+        route: overrides.route ?? 'legacy',
         key: {
             scopeKey: overrides.scopeKey ?? `scope-${scopeSequence++}`,
             cwd: '/tmp/runtime-pool-test',
@@ -122,6 +124,33 @@ function retire(lease: { release(): void; client: unknown }): void {
     lease.release();
     fakeClient(lease).die();
 }
+
+test('multiplex route is rejected before pool state or reaper initialization', async (t) => {
+    const before = poolStats();
+    let reaperStarts = 0;
+    t.mock.method(globalThis, 'setInterval', (() => {
+        reaperStarts += 1;
+        return { unref() {} } as NodeJS.Timeout;
+    }) as typeof setInterval);
+
+    await assert.rejects(
+        acquireCodexAppRuntime(options({
+            route: 'multiplex',
+            scopeKey: `multiplex-reject-${scopeSequence++}`,
+        })),
+        /multiplex route reached generic Codex App runtime pool/,
+    );
+    assert.deepEqual(poolStats(), before);
+    assert.equal(reaperStarts, 0);
+
+    const legacy = await acquireCodexAppRuntime(options({
+        scopeKey: `legacy-after-reject-${scopeSequence++}`,
+    }));
+    assert.equal(reaperStarts, 1);
+    assert.equal(poolStats().size, before.size + 1);
+    retire(legacy);
+    assert.deepEqual(poolStats(), before);
+});
 
 test('full pool keys keep different scopes in independent entries', async () => {
     const before = poolStats().size;
