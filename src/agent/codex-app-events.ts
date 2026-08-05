@@ -18,7 +18,43 @@ export interface CodexAppEventResult {
 function f(obj: EvRec, key: string): unknown { return obj[key]; }
 function fs(obj: EvRec, key: string): string { return String(obj[key] ?? ''); }
 
+export function readCodexAppThreadId(params: EvRec): string | undefined {
+    const direct = fs(params, 'threadId');
+    if (direct) return direct;
+    const thread = f(params, 'thread') as EvRec | undefined;
+    return thread ? (fs(thread, 'id') || undefined) : undefined;
+}
+
+export function readCodexAppTurnId(params: EvRec): string | undefined {
+    const direct = fs(params, 'turnId');
+    if (direct) return direct;
+    const turn = f(params, 'turn') as EvRec | undefined;
+    return turn ? (fs(turn, 'id') || undefined) : undefined;
+}
+
+export function extractFromCodexAppLaneEvent(
+    method: string,
+    params: EvRec,
+    ctx: SpawnContext,
+    expectedThreadId: string,
+    expectedTurnId: string,
+): CodexAppEventResult | null {
+    const wireThreadId = readCodexAppThreadId(params);
+    const wireTurnId = readCodexAppTurnId(params);
+    if (wireThreadId !== expectedThreadId || wireTurnId !== expectedTurnId) return null;
+    return normalizeCodexAppEvent(method, params, ctx);
+}
+
+/** 050-B legacy facade; the scoped spawn caller migration belongs to 050-C. */
 export function extractFromCodexAppEvent(
+    method: string,
+    params: EvRec,
+    ctx: SpawnContext,
+): CodexAppEventResult | null {
+    return normalizeCodexAppEvent(method, params, ctx);
+}
+
+function normalizeCodexAppEvent(
     method: string,
     params: EvRec,
     ctx: SpawnContext,
