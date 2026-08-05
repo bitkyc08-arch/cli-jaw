@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { isWsl, defaultPlatformProbes, type PlatformProbes } from './platform-kind.js';
 
 type BrowserOpenCommand = {
     command: string;
@@ -10,22 +10,29 @@ type BrowserOpenOptions = {
     logPrefix?: string;
 };
 
-export function isWslEnvironment(env: NodeJS.ProcessEnv = process.env): boolean {
-    if (env["WSL_DISTRO_NAME"] || env["WSL_INTEROP"]) return true;
-    if (!existsSync('/proc/version')) return false;
-
-    try {
-        return readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
-    } catch {
-        return false;
-    }
+export function isWslEnvironment(
+    env: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+    probes: PlatformProbes = defaultPlatformProbes,
+): boolean {
+    return isWsl(platform, env, probes);
 }
 
-export function browserOpenCommand(url: string, platform = process.platform, env: NodeJS.ProcessEnv = process.env): BrowserOpenCommand {
+export function browserOpenCommand(
+    url: string,
+    platform = process.platform,
+    env: NodeJS.ProcessEnv = process.env,
+    probes: PlatformProbes = defaultPlatformProbes,
+): BrowserOpenCommand {
     if (platform === 'darwin') return { command: 'open', args: [url] };
     if (platform === 'win32') return { command: 'cmd', args: ['/c', 'start', '', url] };
-    if (platform === 'linux' && isWslEnvironment(env)) {
-        const cmd = existsSync('/mnt/c/Windows/System32/cmd.exe')
+    // The resolver owns the linux guard, so re-testing platform here would
+    // imply it cannot be trusted.
+    if (isWslEnvironment(env, platform, probes)) {
+        // Probe-injected so the command choice is testable too, not just the
+        // WSL decision: on a real WSL host the absolute path exists and would
+        // otherwise make these fixtures host-dependent.
+        const cmd = probes.exists('/mnt/c/Windows/System32/cmd.exe')
             ? '/mnt/c/Windows/System32/cmd.exe'
             : 'cmd.exe';
         return { command: cmd, args: ['/c', 'start', '', url] };

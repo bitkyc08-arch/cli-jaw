@@ -13,6 +13,7 @@ import { inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
+import { isWsl, isWindowsNative, resolvePlatformKind } from '../../src/core/platform-kind.js';
 import { readClaudeCreds } from '../../src/routes/quota.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
@@ -108,14 +109,7 @@ function rejectedCliDetail(name: string): string {
 }
 
 function isWSL() {
-    if (process.env['WSL_DISTRO_NAME'] || process.env['WSL_INTEROP'] || process.env['WSLENV']) {
-        return true;
-    }
-    try {
-        return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
-    } catch {
-        return false;
-    }
+    return isWsl();
 }
 
 function hasWslWindowsChrome() {
@@ -515,7 +509,34 @@ check('uv (Python)', () => {
     }
 });
 
-if (isWSL()) {
+if (isWindowsNative()) {
+    check('Windows (native)', () => {
+        return `platform=${resolvePlatformKind()}; npm prefix=${getNpmPrefix() || 'unknown'}`;
+    });
+
+    check('CLI tools (Windows-native)', () => {
+        // The interesting information is in `rejected`: paths found on PATH
+        // that cannot be launched (extensionless POSIX shim, .ps1, missing
+        // file). Re-testing an ACCEPTED path would just re-ask a question
+        // detectCli already answered yes.
+        const unusable: string[] = [];
+        for (const name of ['claude', 'codex', 'gemini', 'copilot', 'opencode', 'jaw']) {
+            const detected = detectCli(name);
+            for (const entry of detected.rejected ?? []) {
+                if (entry.reason === 'ENOENT') continue;
+                unusable.push(`${name} → ${entry.path} (${entry.reason})`);
+            }
+        }
+        if (unusable.length > 0) {
+            throw new Error(
+                `WARN: ${unusable.length} candidate(s) found on PATH but not launchable:\n`
+                + unusable.map(t => `     ${t}`).join('\n')
+                + '\n     Reinstall with: npm i -g <package>'
+            );
+        }
+        return 'all detected CLI tools are Windows-executable';
+    });
+} else if (isWSL()) {
     check('WSL sudo', () => {
         const ready = canSudoNonInteractive();
         if (ready === true) return 'passwordless sudo available';
@@ -823,6 +844,7 @@ if (values.json) {
         activeChannel: loadedSettings().channel || 'telegram',
         discord: buildDiscordStatus(),
         slack: buildSlackStatus(),
+        platform: resolvePlatformKind(),
         wsl: isWSL() ? {
             sudoNonInteractive: canSudoNonInteractive(),
             npmPrefix: getNpmPrefix(),

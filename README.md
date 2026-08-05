@@ -32,6 +32,11 @@ Windows users should use the WSL install path below. A native PowerShell install
 irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 ```
 
+Either way cli-jaw now tells the two apart precisely: `jaw doctor --json` reports
+`platform` as `windows-native` or `wsl`, and each gets its own diagnostics. Native
+Windows no longer receives "reinstall inside WSL" advice just because WSL interop
+is configured on the machine.
+
 </details>
 
 ```bash
