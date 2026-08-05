@@ -54,7 +54,7 @@ cli-jaw/
 │   │   ├── runtime-settings-gate.ts ← settings mutation in-flight gate (41L)
 │   │   ├── codex-config.ts   ← Codex config.toml context window sync (96L)
 │   │   ├── runtime-path.ts   ← buildServicePath() PATH 보강 (nvm/fnm/homebrew/volta/asdf/cargo/bun/yarn/pnpm 14+ dirs) (101L)
-│   │   ├── cli-detect.ts     ← PATH 후보 spawnability 검사 + rejected candidate reason 수집 (340L)
+│   │   ├── cli-detect.ts     ← PATH 후보 spawnability 검사 + rejected candidate reason 수집 (379L)
 │   │   ├── browser-open.ts   ← 브라우저 open 정책/명령 실행 helper (57L)
 │   │   ├── browser-open-default.ts ← OS/headless 기본 open 여부 판별 (21L)
 │   │   ├── strip-undefined.ts ← 설정/응답 객체 undefined 제거 helper (16L)
