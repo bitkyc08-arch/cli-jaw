@@ -65,15 +65,14 @@ test('a directory is not spawnable even with an executable extension', () => {
     assert.equal(isSpawnableCliFile(dirShim, 'win32').ok, false);
 });
 
-test('an extension outside PATHEXT is not spawnable', () => {
+test('an extension outside the launchable allowlist is not spawnable', () => {
     const dir = fixtureDir();
     const pyTool = path.join(dir, 'codex.py');
     fs.writeFileSync(pyTool, 'print(1)\n');
-    // Not in PATHEXT: cmd.exe has no association to resolve, so it cannot run.
-    assert.equal(isSpawnableCliFile(pyTool, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD' }).ok, false);
-    // In PATHEXT: the ComSpec route can launch it, so refusing to detect it
-    // would be a regression against pre-detection behavior.
-    assert.equal(isSpawnableCliFile(pyTool, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.PY' }).ok, true);
+    // PATHEXT membership alone does not make a file launchable: cmd.exe also
+    // needs a registered assoc/ftype handler. Accepting it on PATHEXT alone
+    // would let it shadow a working .cmd and then fail at spawn.
+    assert.equal(isSpawnableCliFile(pyTool, 'win32').ok, false);
 });
 
 test('mixed-case extensions and paths with spaces are handled', () => {
@@ -283,20 +282,21 @@ test('a CLI outside the bun-deprioritized set ranks by extension within one dire
     );
 });
 
-test('a PATHEXT-associated script stays detectable', () => {
-    // Regression guard: narrowing acceptance to .com/.exe/.bat/.cmd would make
-    // a CLI installed as an associated script report missing, even though
-    // spawn.ts runs every non-.exe win32 path through ComSpec, which resolves
-    // PATHEXT associations.
+test('script-host extensions are not accepted on PATHEXT membership alone', () => {
+    // A .wsf/.vbs/.js needs a registered association to launch, and the
+    // default Windows Script Host is interactive. Detecting it as spawnable
+    // would let it shadow a working .cmd and then fail — or hang on a prompt.
+    // Reporting it missing is the safer failure, so the allowlist stays
+    // narrow until an association check exists.
     const dir = fixtureDir();
     const wsf = path.join(dir, 'codex.wsf');
     fs.writeFileSync(wsf, '<job/>\n');
+    assert.equal(isSpawnableCliFile(wsf, 'win32').ok, false);
 
-    assert.equal(isSpawnableCliFile(wsf, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.WSF' }).ok, true);
-    // Not in PATHEXT means not launchable.
-    assert.equal(isSpawnableCliFile(wsf, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD' }).ok, false);
-    // .ps1 stays rejected regardless: ComSpec cannot run it.
+    // .ps1 is rejected with its own reason: ComSpec cannot run it at all.
     const ps1 = path.join(dir, 'codex.ps1');
     fs.writeFileSync(ps1, 'Write-Host 1\n');
-    assert.equal(isSpawnableCliFile(ps1, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.PS1' }).ok, false);
+    const ps1Result = isSpawnableCliFile(ps1, 'win32');
+    assert.equal(ps1Result.ok, false);
+    assert.match(ps1Result.reason ?? '', /powershell/i);
 });

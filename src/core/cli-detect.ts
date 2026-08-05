@@ -44,9 +44,19 @@ const BUN_DEPRIO_CLIS = new Set(['claude', 'codex', 'copilot', 'opencode']);
  * Extensions the Windows spawn path can actually launch: a bare .exe/.com
  * directly, and .cmd/.bat through ComSpec.
  *
- * This is the set that needs no file association to work. Extensions that are
- * only launchable through a PATHEXT association are handled separately in
- * `isSpawnableCliFile` — see the note there.
+ * Deliberately NOT the full PATHEXT list. src/agent/spawn.ts sets
+ * `shell: true` for any non-.exe path on win32, which is the documented-safe
+ * route for batch files and nothing else — cmd.exe cannot run a .ps1, and a
+ * custom PATHEXT entry only works if a file association happens to exist.
+ *
+ * This is a KNOWN, deliberate narrowing: a CLI installed only as a
+ * PATHEXT-associated script (.vbs/.js/.wsf/...) was accepted before Windows
+ * detection existed and now reports missing. Widening it was tried and
+ * reverted, because PATHEXT membership does not prove an `assoc`/`ftype`
+ * handler is registered — accepting such a candidate would let it shadow a
+ * working .cmd and then fail at spawn, or hand off to an interactive script
+ * host. Reporting missing is the safer failure. Widening needs a real
+ * association check plus Windows runtime evidence; see the PR follow-up.
  */
 const WINDOWS_SPAWNABLE_EXTENSIONS = ['.COM', '.EXE', '.BAT', '.CMD'];
 
@@ -238,11 +248,7 @@ function hasKnownExecutableMagic(head: Buffer, platform: NodeJS.Platform = proce
     ].includes(magic);
 }
 
-export function isSpawnableCliFile(
-    filePath: string,
-    platform: NodeJS.Platform = process.platform,
-    env: NodeJS.ProcessEnv = process.env,
-): { ok: boolean; reason?: string } {
+export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform = process.platform): { ok: boolean; reason?: string } {
     if (platform === 'win32') {
         try {
             if (!fs.statSync(filePath).isFile()) return { ok: false, reason: 'not a regular file' };
@@ -273,15 +279,6 @@ export function isSpawnableCliFile(
         if (filePath.toUpperCase().endsWith('.PS1')) {
             return { ok: false, reason: 'powershell shim is not spawnable via ComSpec' };
         }
-        // Anything else listed in the effective PATHEXT is launchable through
-        // the same ComSpec route: spawn.ts sets `shell: true` for every
-        // non-.exe path on win32, and cmd.exe resolves PATHEXT associations.
-        // Rejecting these would be a REGRESSION — before this detection work,
-        // every `where.exe` hit was accepted, so a CLI installed as an
-        // associated script would newly report missing. .PS1 stays excluded
-        // above because cmd.exe genuinely cannot run it, and the extensionless
-        // npm shim is a POSIX sh script, not a PATHEXT entry.
-        if (hasExtension(filePath, windowsPathExt(env))) return { ok: true };
         return { ok: false, reason: 'no windows-executable extension' };
     }
 
@@ -307,11 +304,10 @@ export function isSpawnableCliFile(
 export function selectSpawnableCliPath(
     candidates: string[],
     platform: NodeJS.Platform = process.platform,
-    env: NodeJS.ProcessEnv = process.env,
 ): CliDetection {
     const rejected: RejectedCliCandidate[] = [];
     for (const candidate of candidates) {
-        const check = isSpawnableCliFile(candidate, platform, env);
+        const check = isSpawnableCliFile(candidate, platform);
         if (check.ok) {
             return {
                 available: true,
