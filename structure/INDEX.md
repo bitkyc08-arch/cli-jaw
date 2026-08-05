@@ -11,7 +11,9 @@ aliases: [CLI-JAW Architecture Reference, cli-jaw 구조 허브, structure index
 > Planning state lives separately under `devlog/_plan/README.md`. The latest GitHub-issue triage snapshot (2026-05-16) is in that file's "Triage Snapshot" section.
 >
 > Multi-session architecture roadmap (Slack 다중 스레드 세션 분할, 통합 검색 계층, opt-in wiki, codex-app 기본 런타임):
-> diff-level decade docs는 `devlog/_plan/260804_multi_session_architecture/` (000 roadmap + 001-005 research + 010-070 PRD; 010은 done, 나머지 planning).
+> diff-level decade docs는 `devlog/_plan/260804_multi_session_architecture/` (000 roadmap + 001-008 research +
+> 010·020·030·032·033·040·050·060·070·072·073·080·090·100·110 PRD). **구현 15건 전부 done** (2026-08-06).
+> 후속으로 남은 것은 041(위키 entity/ontology/manager proxy), 074(세션별 CLI·모델), SSE-ring, 033b/033c다.
 
 ---
 
