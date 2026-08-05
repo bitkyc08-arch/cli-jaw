@@ -302,7 +302,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
         isResume, wasKilled, wasSteer, smokeResult,
         effortDefault, costLine, resolve,
-        activeProcesses, scopeKey, chatSessionId, childProcess, releaseMainRun,
+        activeProcesses, scopeKey, chatSessionId, codexAppBucket, childProcess, releaseMainRun,
         retryState, fallbackState, fallbackMaxRetries, processQueue,
     } = params;
 
@@ -402,6 +402,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 instructions: prompt || '',
                 cli,
                 model,
+                scopeKey,
+                ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
             });
         } catch (e) {
             console.warn('[jaw:compact] auto-refresh failed:', (e as Error).message);
@@ -447,6 +449,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     instructions: prompt || '',
                     cli,
                     model,
+                    scopeKey,
+                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
                 });
             } catch (e) {
                 console.warn('[jaw:compact] turn-count auto-refresh failed:', (e as Error).message);
@@ -517,9 +521,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         console.log('[jaw:kiro] stale resume detected on success exit — retrying fresh with history');
         try {
             const { peekPendingBootstrapPrompt } = await import('../core/main-session.js');
-            if (!peekPendingBootstrapPrompt()) {
+            if (!peekPendingBootstrapPrompt(scopeKey)) {
                 const { autoCompactRefresh } = await import('../core/compact.js');
-                await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+                await autoCompactRefresh({
+                    workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
+                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                });
             }
         } catch {}
         broadcast('agent_retry', {
@@ -721,7 +728,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 if (!canNativeResume) {
                     try {
                         const { autoCompactRefresh } = await import('../core/compact.js');
-                        await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+                        await autoCompactRefresh({
+                    workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
+                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                });
                     } catch {}
                 }
                 insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, chatSessionId);
@@ -798,9 +808,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
                 try {
                     const { peekPendingBootstrapPrompt } = await import('../core/main-session.js');
-                    if (!peekPendingBootstrapPrompt()) {
+                    if (!peekPendingBootstrapPrompt(scopeKey)) {
                         const { autoCompactRefresh } = await import('../core/compact.js');
-                        await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+                        await autoCompactRefresh({
+                    workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
+                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                });
                     }
                 } catch {}
                 const { promise: retryP } = _spawnAgent(prompt, {

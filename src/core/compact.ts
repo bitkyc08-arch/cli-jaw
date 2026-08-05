@@ -522,7 +522,7 @@ export async function cliSwitchRefresh(opts: {
     const bootstrap = hasAnyContent ? renderBootstrapPrompt(slots) : '';
     const trace = bootstrap ? `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}` : '';
 
-    const { db, insertMessageWithTrace, clearSessionBucket } = await import('./db.js');
+    const { db, insertMessageWithTrace, clearSessionBucket, clearSessionBucketsByPrefix } = await import('./db.js');
     const { resolveSessionBucket } = await import('../agent/args.js');
     const {
         writeMainSessionRow,
@@ -542,7 +542,11 @@ export async function cliSwitchRefresh(opts: {
             setPendingBootstrapPromptStrict(bootstrap);
         }
         writeMainSessionRow(clearedRow);
-        if (targetBucket) clearSessionBucket.run(targetBucket);
+        // Switching into Codex App has to drop its scoped rows too, otherwise the
+        // next multiplex run resumes a thread from before the switch. Switching to
+        // any other CLI leaves those rows alone.
+        if (opts.toCli === 'codex-app') clearSessionBucketsByPrefix.run(targetBucket, 'codex-app:%');
+        else if (targetBucket) clearSessionBucket.run(targetBucket);
     });
     tx();
 
@@ -571,6 +575,12 @@ export async function autoCompactRefresh(opts: {
     cli: string;
     model: string;
     sessionBucket?: string | undefined;
+    /**
+     * The scope this compact belongs to. A run-owned compact only invalidates its
+     * own scope; without it the refresh falls back to the global bump, which is
+     * what an explicit reset wants and what every caller did before scopes existed.
+     */
+    scopeKey?: string | undefined;
 }) {
     const slots = harvestBootstrapSlots({ workingDir: opts.workDir, instructions: opts.instructions });
     let bootstrap = renderBootstrapPrompt(slots);
@@ -596,14 +606,17 @@ export async function autoCompactRefresh(opts: {
 
     const { insertMessageWithTrace, clearSessionBucket } = await import('./db.js');
     const { resolveSessionBucket } = await import('../agent/args.js');
-    const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
+    const {
+        bumpSessionOwnershipGeneration, bumpScopeSessionGeneration,
+    } = await import('../agent/session-persistence.js');
     const { clearBossSessionOnly, setPendingBootstrapPrompt } = await import('./main-session.js');
     const { broadcast } = await import('./bus.js');
     const bucket = opts.sessionBucket ?? resolveSessionBucket(opts.cli, opts.model);
 
     insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, getActiveChatSession());
-    setPendingBootstrapPrompt(bootstrap);
-    bumpSessionOwnershipGeneration();
+    setPendingBootstrapPrompt(bootstrap, opts.scopeKey);
+    if (opts.scopeKey) bumpScopeSessionGeneration(opts.scopeKey);
+    else bumpSessionOwnershipGeneration();
     clearBossSessionOnly();
     if (bucket) clearSessionBucket.run(bucket);
 

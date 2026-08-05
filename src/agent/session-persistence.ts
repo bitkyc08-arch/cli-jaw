@@ -1,5 +1,5 @@
 import { settings } from '../core/config.js';
-import { updateSession, upsertSessionBucket } from '../core/db.js';
+import { db, updateSession, upsertSessionBucket } from '../core/db.js';
 import { resolveSessionBucket } from './args.js';
 
 export type SessionOwnerToken = { global: number; scope: number };
@@ -87,20 +87,23 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
         return false;
     }
     if (!shouldPersistMainSession(input)) return false;
-    updateSession.run(
-        input.cli,
-        input.sessionId,
-        input.model,
-        input.permissions || settings["permissions"] || 'auto',
-        input.workingDir || settings["workingDir"] || '~',
-        input.effort,
-    );
     // Mirror into per-bucket table so codex-spark keeps a session independent from
     // plain codex (gpt-5.4 etc.) — avoids 'thread/resume failed: no rollout found'
-    // on cross-model toggles.
+    // on cross-model toggles. Both writes go together: a singleton row pointing at
+    // a thread the bucket never recorded sends the next resume to the wrong place.
     const bucket = codexAppBucket ?? resolveSessionBucket(input.cli, input.model, input.provider);
-    if (bucket && input.sessionId) {
-        upsertSessionBucket.run(bucket, input.sessionId, input.model, input.resumeKey || null, input.outputLen ?? 0);
-    }
+    db.transaction(() => {
+        updateSession.run(
+            input.cli,
+            input.sessionId,
+            input.model,
+            input.permissions || settings["permissions"] || 'auto',
+            input.workingDir || settings["workingDir"] || '~',
+            input.effort,
+        );
+        if (bucket && input.sessionId) {
+            upsertSessionBucket.run(bucket, input.sessionId, input.model, input.resumeKey || null, input.outputLen ?? 0);
+        }
+    })();
     return true;
 }

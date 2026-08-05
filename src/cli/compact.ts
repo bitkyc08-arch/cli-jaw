@@ -86,7 +86,7 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     const bootstrap = renderBootstrapPrompt(slots);
     const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
 
-    const { insertMessageWithTrace, clearSessionBucket } = await import('../core/db.js');
+    const { insertMessageWithTrace, clearSessionBucketsByPrefix } = await import('../core/db.js');
     const { resolveSessionBucket } = await import('../agent/args.js');
     const {
         bumpSessionOwnershipGeneration,
@@ -111,7 +111,11 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     setPendingBootstrapPrompt(bootstrap);
     bumpSessionOwnershipGeneration();
     clearBossSessionOnly();
-    if (bucket) clearSessionBucket.run(bucket);
+    // An explicit compact resets the conversation the user is looking at, and it
+    // cannot know which scope or effort produced the scoped rows, so it drops all
+    // of them alongside the legacy row. Leaving one behind would let the next
+    // multiplex run resume the thread the user just discarded.
+    clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
 
     return {
         ok: true,

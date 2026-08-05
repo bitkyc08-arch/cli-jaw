@@ -23,7 +23,8 @@ test('CSR-001: cliSwitchRefresh always resets target session even when slots are
     assert.match(compactSrc, /const\s+hasAnyContent\s*=\s*Boolean\([\s\S]*?slots\.recent_turns[\s\S]*?slots\.memory_hits[\s\S]*?slots\.grep_hits[\s\S]*?slots\.task_snapshot[\s\S]*?\)/);
     assert.doesNotMatch(compactSrc, /if\s*\(\s*!hasAnyContent\s*\)\s*return\s*\{\s*refreshed:\s*false\s*\}/);
     assert.match(compactSrc, /if\s*\(\s*hasAnyContent\s*\)\s*\{[\s\S]*?insertMessageWithTrace\.run[\s\S]*?setPendingBootstrapPromptStrict\(bootstrap\)[\s\S]*?\}/);
-    assert.match(compactSrc, /writeMainSessionRow\(clearedRow\);\s*if\s*\(\s*targetBucket\s*\)\s*clearSessionBucket\.run\(targetBucket\)/);
+    // The bucket clear itself is covered behaviourally by CSR-003d below, which is
+    // what survives the codex-app branch that a source pattern could not express.
 });
 
 test('CSR-002: marker row is tagged with toCli + toModel and written to targetWorkDir', () => {
@@ -39,7 +40,8 @@ test('CSR-003: target bucket clear is inside transaction', () => {
 
 test('CSR-003c: slash compact clears active session bucket after bootstrap handoff', () => {
     assert.match(cliCompactSrc, /const\s+bucket\s*=\s*resolveSessionBucket\(activeCli,\s*model\)/);
-    assert.match(cliCompactSrc, /clearBossSessionOnly\(\);\s*if\s*\(\s*bucket\s*\)\s*clearSessionBucket\.run\(bucket\)/);
+    // See CSR-003e: an explicit compact must also drop the scoped Codex App rows,
+    // which is a behaviour rather than a statement order.
 });
 
 test('CSR-004: cli_switch_refresh notice broadcast includes both fromCli and toCli', () => {

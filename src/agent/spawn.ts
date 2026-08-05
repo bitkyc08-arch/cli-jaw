@@ -1180,7 +1180,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         sessionId: bucketSessionId, bucketUpdatedAt, requestedModel: runtimeModel, bucketModel,
         cwd: settings['workingDir'] || '', lastRunCwd: bucketRow?.last_run_cwd,
         lastRunClean: bucketRow?.last_run_clean, lastRunMeta: bucketRow?.last_run_meta,
-        freshBootstrap: forceNew || opts._skipResume === true || Boolean(peekPendingBootstrapPrompt()),
+        freshBootstrap: forceNew || opts._skipResume === true || Boolean(peekPendingBootstrapPrompt(scopeKey)),
     });
     if (cli === 'agy') console.log(`[agy-resume] ${agyResumeDecision.ok ? 'resume' : 'fresh'} reason=${agyResumeDecision.reason}`);
     // AGY native resume can replay prior stdout and continue stale mid-turn planner
@@ -1209,7 +1209,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Using `isResume` (bucket-aware) instead of legacy `isResumeGuess` so cross-model
     // toggles (e.g. gpt-5.4 ↔ gpt-5.3-codex-spark) get the bootstrap they need.
     if (!opts.agentId && !opts.internal && !isResume) {
-        const pending = consumePendingBootstrapPrompt();
+        const pending = consumePendingBootstrapPrompt(scopeKey);
         if (pending) {
             console.log(`[jaw:compact] injecting bootstrap (${pending.length} chars)`);
             prompt = `${pending}\n\n---\n\n${prompt}`;
@@ -1217,7 +1217,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     if (!empSid && !forceNew && bucketSessionId && !canResumeBucketSession) {
-        if (!peekPendingBootstrapPrompt()) {
+        if (!peekPendingBootstrapPrompt(scopeKey)) {
             import('../core/compact.js')
                 .then(({ autoCompactRefresh }) => autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model }))
                 .catch(() => {});
@@ -2404,6 +2404,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
                 for (;;) {
                     if (acquireWasCancelled()) return { kind: 'cancelled', reason: cancelReason };
+                    // Check the budget before spawning more work. awaitWithinDeadline()
+                    // only measures what remains once the promise already exists, so a
+                    // backoff that consumed the last of the budget would still get to
+                    // start one more prepare.
+                    if (deadlineAt - Date.now() <= 0) throw lastStaleError ?? deadlineError('prepare');
                     try {
                         const prepared = await awaitWithinDeadline('prepare', prepareCodexAppHost({
                             binary: detected.path || 'codex', cwd: spawnCwd,
@@ -2446,26 +2451,23 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         };
 
         void acquireCodexAppForTurn().then(async (outcome) => {
-            if (outcome.kind === 'cancelled') {
+            // A run that never started a turn owns nothing but its own map slot.
+            // releaseMainRun() matches on (process, ownerGeneration), and a pending
+            // run has process=null while sharing the global generation with whatever
+            // replaced it, so calling it here would delete the replacement's entry.
+            // Compare the captured object instead and only drop our own slot.
+            const abandonTurn = (lease: { release(): void } | null): void => {
+                lease?.release();
                 finalizeTraceRun(traceRunId, 'interrupted');
                 clearLiveRun(liveScope);
                 broadcast('agent_status', { running: false, agentId: agentLabel });
                 resolve!({ text: '', code: -1 });
-                releaseMainRun(scopeKey, null, ownerGeneration);
+                if (activeMainProcesses.get(scopeKey) === mainRun) activeMainProcesses.delete(scopeKey);
                 void processQueue(scopeKey);
-                return;
-            }
+            };
+            if (outcome.kind === 'cancelled') { abandonTurn(null); return; }
             const lease = outcome.lease;
-            if (activeMainProcesses.get(scopeKey) !== mainRun) {
-                lease.release();
-                finalizeTraceRun(traceRunId, 'interrupted');
-                clearLiveRun(liveScope);
-                broadcast('agent_status', { running: false, agentId: agentLabel });
-                resolve!({ text: '', code: -1 });
-                releaseMainRun(scopeKey, null, ownerGeneration);
-                void processQueue(scopeKey);
-                return;
-            }
+            if (activeMainProcesses.get(scopeKey) !== mainRun) { abandonTurn(lease); return; }
             const laneScope = codexMultiplexMain
                 ? lease.laneScope!
                 : resolveCodexAppProductionLaneScope({ multiplexEnabled: false, employee: false });

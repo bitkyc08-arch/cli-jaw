@@ -584,6 +584,34 @@ test('cancelling a pending acquire releases its late lease and settles once with
     }
 });
 
+test('a cancelled acquire must not delete the replacement run that took its slot', async () => {
+    resetHarness();
+    setMultiplex(true);
+    harness.acquireGate = deferred<FakeLaneLease>();
+    const scopeKey = 'cancel-replacement';
+    const first = spawnAgent('first prompt', spawnOptions(scopeKey));
+    void first.promise.catch(() => {});
+    await waitFor(() => harness.laneAcquires.length === 1);
+    const abandoned = activeMainProcesses.get(scopeKey)!;
+    assert.equal(killActiveAgent(scopeKey, 'user'), true);
+
+    // The stopped run is still holding a pending acquire. A replacement claims the
+    // scope while that acquire is in flight; cleanup from the first run must not
+    // reach it. releaseMainRun() matches on (process, ownerGeneration), and both
+    // runs have process=null and the same global generation, so identity is the
+    // only thing that tells them apart.
+    const replacement: MainRunEntry = { ...abandoned, starting: false, cancelTurn: undefined };
+    activeMainProcesses.set(scopeKey, replacement);
+
+    harness.acquireGate.resolve(createLaneLease(harness.laneAcquires[0]!));
+    assert.deepEqual(await first.promise, { text: '', code: -1 });
+    await Promise.resolve();
+    assert.equal(activeMainProcesses.get(scopeKey), replacement,
+        'the abandoned run must leave the replacement registered');
+    assert.equal(harness.releases, 1, 'its late lease is still released');
+    assert.equal(harness.startPrompts.length, 0);
+});
+
 test('stale retry budget terminates through the existing failure cleanup exactly once', async () => {
     resetHarness();
     setMultiplex(true);

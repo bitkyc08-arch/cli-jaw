@@ -141,10 +141,19 @@ import { log } from './logger.js';
 const BOOTSTRAP_KEY = '__bootstrap_prompt';
 const BOOTSTRAP_SOURCE = '__system_bootstrap';
 
-function readBootstrapRow(): string | null {
+// A compact summary belongs to the conversation that produced it. While one main
+// run existed at a time a single row was enough; with several scopes in flight the
+// first spawn to look would take someone else's handoff. Scoped rows get their own
+// key and the bare key stays the default scope's, which is what existing rows are.
+function bootstrapKeyFor(scopeKey?: string | null): string {
+    return !scopeKey || scopeKey === 'default' ? BOOTSTRAP_KEY : `${BOOTSTRAP_KEY}:${scopeKey}`;
+}
+
+function readBootstrapRow(scopeKey?: string | null): string | null {
     try {
+        const key = bootstrapKeyFor(scopeKey);
         const rows = getMemory.all() as Array<{ key: string; value: string; source: string }>;
-        const row = rows.find(r => r.key === BOOTSTRAP_KEY && r.source === BOOTSTRAP_SOURCE);
+        const row = rows.find(r => r.key === key && r.source === BOOTSTRAP_SOURCE);
         return row?.value && row.value.trim() ? row.value : null;
     } catch (e) {
         console.warn('[jaw:bootstrap] readBootstrapRow failed:', (e as Error).message);
@@ -152,12 +161,13 @@ function readBootstrapRow(): string | null {
     }
 }
 
-export function setPendingBootstrapPrompt(text: string | null): void {
+export function setPendingBootstrapPrompt(text: string | null, scopeKey?: string | null): void {
     try {
+        const key = bootstrapKeyFor(scopeKey);
         if (text && text.trim()) {
-            upsertMemory.run(BOOTSTRAP_KEY, text, BOOTSTRAP_SOURCE);
+            upsertMemory.run(key, text, BOOTSTRAP_SOURCE);
         } else {
-            deleteMemory.run(BOOTSTRAP_KEY);
+            deleteMemory.run(key);
         }
     } catch (e) {
         console.warn('[jaw:bootstrap] setPendingBootstrapPrompt failed:', (e as Error).message);
@@ -166,23 +176,24 @@ export function setPendingBootstrapPrompt(text: string | null): void {
 
 // Strict variant: throws on DB failure. Use inside transactions where the caller
 // must know about persistence loss so the surrounding tx can roll back.
-export function setPendingBootstrapPromptStrict(text: string | null): void {
+export function setPendingBootstrapPromptStrict(text: string | null, scopeKey?: string | null): void {
+    const key = bootstrapKeyFor(scopeKey);
     if (text && text.trim()) {
-        upsertMemory.run(BOOTSTRAP_KEY, text, BOOTSTRAP_SOURCE);
+        upsertMemory.run(key, text, BOOTSTRAP_SOURCE);
     } else {
-        deleteMemory.run(BOOTSTRAP_KEY);
+        deleteMemory.run(key);
     }
 }
 
-export function consumePendingBootstrapPrompt(): string | null {
-    const out = readBootstrapRow();
+export function consumePendingBootstrapPrompt(scopeKey?: string | null): string | null {
+    const out = readBootstrapRow(scopeKey);
     if (out) {
-        try { deleteMemory.run(BOOTSTRAP_KEY); }
+        try { deleteMemory.run(bootstrapKeyFor(scopeKey)); }
         catch (e) { console.warn('[jaw:bootstrap] consume delete failed:', (e as Error).message); }
     }
     return out;
 }
 
-export function peekPendingBootstrapPrompt(): string | null {
-    return readBootstrapRow();
+export function peekPendingBootstrapPrompt(scopeKey?: string | null): string | null {
+    return readBootstrapRow(scopeKey);
 }

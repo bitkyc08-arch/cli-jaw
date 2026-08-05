@@ -51,7 +51,7 @@ test('SSF-005: spawn wiring — capture before mutation, frozen reuse, pipeline 
     const root = join(import.meta.dirname, '..', '..');
     const spawnSrc = readFileSync(join(root, 'src/agent/spawn.ts'), 'utf8');
     const captureIdx = spawnSrc.indexOf('const promptForSnapshot = prompt;');
-    const bootstrapIdx = spawnSrc.indexOf('consumePendingBootstrapPrompt()');
+    const bootstrapIdx = spawnSrc.indexOf('consumePendingBootstrapPrompt(');
     assert.ok(captureIdx > 0 && bootstrapIdx > 0 && captureIdx < bootstrapIdx,
         'snapshot input must be captured before the bootstrap prompt mutation');
     assert.ok(spawnSrc.includes('bucketRow.memory_snapshot'), 'resume turns must read the frozen snapshot');
