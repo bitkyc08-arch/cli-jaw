@@ -197,3 +197,31 @@ test('scaffolding refuses to write through a symlinked seed file', async () => {
     assert.equal(readFileSync(decoy, 'utf8'), 'original\n', 'the file outside the vault is untouched');
     assert.ok(existsSync(decoy));
 });
+
+// The route always writes a complete object, so it cannot show whether the wiki block is
+// in the nested-merge list. This aims at that list directly: without it a partial patch
+// REPLACES the block, silently dropping the root and the enabled flag alongside whatever
+// single field the caller meant to change.
+test('a partial settings patch preserves the wiki fields it does not mention', async () => {
+    const root = tempRoot();
+    await writeWikiConfig(normalizeWikiConfig({ enabled: true, root, promptDigest: false }));
+
+    const { applyRuntimeSettingsPatch } = await import('../../src/core/runtime-settings.ts');
+    await applyRuntimeSettingsPatch({ wiki: { promptDigest: true } });
+
+    const after = readWikiConfig();
+    assert.equal(after.promptDigest, true, 'the patched field changed');
+    assert.equal(after.enabled, true, 'and the untouched flag survived');
+    assert.equal(after.root, root, 'as did the root');
+});
+
+// "Creates nothing" has to be observed on disk, not inferred from the setting.
+test('reading the configuration never creates the vault it names', async () => {
+    const root = tempRoot();
+    await writeWikiConfig(normalizeWikiConfig({ enabled: false, root, promptDigest: false }));
+
+    const { existsSync } = await import('node:fs');
+    assert.equal(readWikiConfig().root, root);
+    assert.equal(wikiProviderStatus(readWikiConfig()), 'off');
+    assert.equal(existsSync(root), false, 'nothing was created by reading');
+});
