@@ -1,4 +1,5 @@
 import { CodexAppClient, isRecoverableResumeError } from './codex-app-client.js';
+import { resolveCodexAppLaneKey } from './args.js';
 import {
     normalizePiSettings,
     spawnPersistentPiRpc,
@@ -65,6 +66,7 @@ export interface RuntimeLease<R extends ManagedRuntime, S> {
 export interface CodexAppLease extends RuntimeLease<ManagedRuntime, string> {
     client: CodexAppClient;
     threadId: string;
+    laneScope: string;
     resumedThread: boolean;
 }
 
@@ -182,43 +184,15 @@ function replaceScopeEntries(store: EngineStore, scopeKey: string, keepKey: stri
     }
 }
 
-type CodexManagedRuntime = ManagedRuntime & { readonly client: CodexAppClient };
-
-export function resolveCodexAppProductionLaneScope(_options: {
-    multiplexEnabled: boolean;
-    employee: boolean;
-}): null {
-    return null;
-}
+type CodexManagedRuntime = ManagedRuntime & {
+    readonly client: CodexAppClient;
+    readonly laneScope: string;
+};
 
 export async function interruptCodexRuntime(
     client: CodexAppClient,
-    laneScope: string | null,
+    laneScope: string,
 ): Promise<void> {
-    if (laneScope === null) {
-        if (client.activeTurnId) {
-            await client.interruptTurn();
-            return;
-        }
-        await new Promise<void>((resolve, reject) => {
-            const cleanup = () => {
-                client.off('interrupt-failed', onFailed);
-                client.off('turn/completed', onCompleted);
-                clearTimeout(timer);
-            };
-            const onFailed = (err: Error) => { cleanup(); reject(err); };
-            const onCompleted = () => { cleanup(); resolve(); };
-            const timer = setTimeout(() => {
-                cleanup();
-                reject(new Error('interrupt latch timeout'));
-            }, INTERRUPT_LATCH_MS);
-            client.once('interrupt-failed', onFailed);
-            client.once('turn/completed', onCompleted);
-            void client.interruptTurn();
-        });
-        return;
-    }
-
     if (client.getActiveTurnId(laneScope)) {
         await client.interruptTurn(laneScope);
         return;
@@ -264,9 +238,10 @@ export async function interruptCodexRuntime(
     });
 }
 
-function codexRuntime(client: CodexAppClient, laneScope: string | null): CodexManagedRuntime {
+function codexRuntime(client: CodexAppClient, laneScope: string): CodexManagedRuntime {
     return {
         client,
+        laneScope,
         get alive() { return client.alive; },
         supportsInterrupt: true,
         close: () => client.closeGracefully(),
@@ -327,11 +302,13 @@ function makeCodexLease(
     resumedThread: boolean,
 ): CodexAppLease {
     let released = false;
+    const laneScope = (entry.runtime as CodexManagedRuntime).laneScope;
     return {
         runtime: entry.runtime,
         sessionId: threadId,
         client,
         threadId,
+        laneScope,
         reused,
         resumedThread,
         release: () => {
@@ -404,10 +381,20 @@ async function createCodexEntry(
         binary: opts.binary,
         workDir: opts.key.cwd,
         env: opts.env,
+    });
+    const laneScope = resolveCodexAppLaneKey(
+        opts.key.scopeKey,
+        opts.key.model,
+        opts.key.effort,
+        'fallback',
+    );
+    const threadOptions = {
         model: opts.key.model,
         effort: opts.key.effort,
+        cwd: opts.key.cwd,
         fastMode: opts.key.fastMode,
-    });
+        ...(opts.instructions ? { instructions: opts.instructions } : {}),
+    };
     client.spawn();
     try {
         await client.initialize();
@@ -416,27 +403,20 @@ async function createCodexEntry(
         const storedThreadId = opts.forceNew ? null : opts.storedThreadId;
         if (storedThreadId) {
             try {
-                threadId = await client.resumeThread(storedThreadId,
-                    opts.instructions ? { instructions: opts.instructions } : {});
+                threadId = await client.resumeThread(laneScope, storedThreadId, threadOptions);
                 resumedThread = true;
             } catch (err: unknown) {
                 if (!isRecoverableResumeError((err as Error).message)) throw err;
-                threadId = await client.startThread({
-                    ...(opts.instructions ? { instructions: opts.instructions } : {}),
-                    cwd: opts.key.cwd,
-                });
+                threadId = await client.startThread(laneScope, threadOptions);
             }
         } else {
-            threadId = await client.startThread({
-                ...(opts.instructions ? { instructions: opts.instructions } : {}),
-                cwd: opts.key.cwd,
-            });
+            threadId = await client.startThread(laneScope, threadOptions);
         }
         if (store.entries.get(key) !== creating) {
             await client.closeGracefully();
             throw new Error('runtime pool creation superseded');
         }
-        const runtime = codexRuntime(client, null);
+        const runtime = codexRuntime(client, laneScope);
         let ready!: ReadyEntry<ManagedRuntime, unknown>;
         const disposeExit = runtime.onExit(() => {
             if (store.entries.get(key) !== ready) return;

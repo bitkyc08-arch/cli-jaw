@@ -10,7 +10,6 @@ import type { ChildProcess } from 'node:child_process';
 import type {
     CodexAppClientOptions,
     CodexAppScopedTurnHandlers,
-    CodexAppTurnHandlers,
     CodexThreadOptions,
 } from '../../src/agent/codex-app-client.ts';
 
@@ -154,7 +153,6 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
     const realClient = await import('../../src/agent/codex-app-client.ts');
     class CapturingCodexAppClient extends realClient.CodexAppClient {
         readonly activationGeneration = ++generationSequence;
-        private readonly listenerCounts = new Map<string, number>();
 
         constructor(options: CodexAppClientOptions = {}) {
             super(options);
@@ -180,69 +178,49 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
         }
 
         override async startThread(
-            scopeOrOptions: string | Partial<CodexThreadOptions> = {},
-            scopedOptions?: CodexThreadOptions,
+            scope: string,
+            options: CodexThreadOptions,
         ): Promise<string> {
-            const scope = typeof scopeOrOptions === 'string' ? scopeOrOptions : 'legacy/default';
             const requestId = evidence.nextRequestId();
             this.capture(scope, 'thread/start', 'request', requestId);
-            const threadId = typeof scopeOrOptions === 'string'
-                ? await super.startThread(scopeOrOptions, scopedOptions!)
-                : await super.startThread(scopeOrOptions);
+            const threadId = await super.startThread(scope, options);
             this.capture(scope, 'thread/start', 'response', requestId, threadId);
             return threadId;
         }
 
         override async resumeThread(
-            scopeOrThreadId: string,
-            threadIdOrOptions: string | Partial<CodexThreadOptions> = {},
-            scopedOptions?: CodexThreadOptions,
+            scope: string,
+            requestedThreadId: string,
+            options: CodexThreadOptions,
         ): Promise<string> {
-            const scoped = typeof threadIdOrOptions === 'string';
-            const scope = scoped ? scopeOrThreadId : 'legacy/default';
-            const requestedThreadId = scoped ? threadIdOrOptions : scopeOrThreadId;
             const requestId = evidence.nextRequestId();
             this.capture(scope, 'thread/resume', 'request', requestId, requestedThreadId);
-            const threadId = scoped
-                ? await super.resumeThread(scopeOrThreadId, threadIdOrOptions, scopedOptions!)
-                : await super.resumeThread(scopeOrThreadId, threadIdOrOptions);
+            const threadId = await super.resumeThread(scope, requestedThreadId, options);
             this.capture(scope, 'thread/resume', 'response', requestId, threadId);
             return threadId;
         }
 
-        override async startTurn(scopeOrPrompt: string, scopedPrompt?: string): Promise<void> {
-            const scope = scopedPrompt === undefined ? 'legacy/default' : scopeOrPrompt;
+        override async startTurn(scope: string, prompt: string): Promise<void> {
             const requestId = evidence.nextRequestId();
             this.capture(scope, 'turn/start', 'request', requestId);
-            if (scopedPrompt === undefined) await super.startTurn(scopeOrPrompt);
-            else await super.startTurn(scopeOrPrompt, scopedPrompt);
+            await super.startTurn(scope, prompt);
             this.capture(scope, 'turn/start', 'response', requestId);
         }
 
-        override async interruptTurn(scope?: string): Promise<void> {
-            const laneScope = scope ?? 'legacy/default';
+        override async interruptTurn(scope: string): Promise<void> {
             const requestId = evidence.nextRequestId();
-            this.capture(laneScope, 'turn/interrupt', 'request', requestId,
-                this.getThreadId(laneScope) ?? undefined, this.getActiveTurnId(laneScope) ?? undefined);
-            if (scope === undefined) await super.interruptTurn();
-            else await super.interruptTurn(scope);
-            this.capture(laneScope, 'turn/interrupt', 'response', requestId);
+            this.capture(scope, 'turn/interrupt', 'request', requestId,
+                this.getThreadId(scope) ?? undefined, this.getActiveTurnId(scope) ?? undefined);
+            await super.interruptTurn(scope);
+            this.capture(scope, 'turn/interrupt', 'response', requestId);
         }
 
-        override listenTurn(handlers: CodexAppTurnHandlers): { dispose(): void };
-        override listenTurn(scope: string, handlers: CodexAppScopedTurnHandlers): { dispose(): void };
         override listenTurn(
-            scopeOrHandlers: string | CodexAppTurnHandlers,
-            scopedHandlers?: CodexAppScopedTurnHandlers,
+            scope: string,
+            handlers: CodexAppScopedTurnHandlers,
         ): { dispose(): void } {
-            const scope = typeof scopeOrHandlers === 'string' ? scopeOrHandlers : 'legacy/default';
-            const handlers = typeof scopeOrHandlers === 'string' ? scopedHandlers! : scopeOrHandlers;
-            const count = (this.listenerCounts.get(scope) ?? 0) + 1;
-            this.listenerCounts.set(scope, count);
-            const listenerRole = typeof scopeOrHandlers === 'string'
-                ? scopedHandlers!.role
-                : count === 1 ? 'lifecycle' as const : 'consumer' as const;
-            const wrapped: CodexAppTurnHandlers = {
+            const listenerRole = handlers.role;
+            const wrapped: CodexAppScopedTurnHandlers = {
                 ...handlers,
                 onNotification: (method, params, owner) => {
                     if (method === 'turn/started') {
@@ -270,9 +248,7 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
                     handlers.onStderr(text);
                 },
             };
-            return typeof scopeOrHandlers === 'string'
-                ? super.listenTurn(scopeOrHandlers, { ...wrapped, role: scopedHandlers!.role })
-                : super.listenTurn(wrapped);
+            return super.listenTurn(scope, wrapped);
         }
 
         private capture(

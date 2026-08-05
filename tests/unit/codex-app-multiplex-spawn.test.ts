@@ -16,7 +16,7 @@ function deferred<T>(): Deferred<T> {
 }
 
 type TurnHandlers = {
-    role?: 'lifecycle' | 'consumer';
+    role: 'lifecycle' | 'consumer';
     onNotification(method: string, params: Record<string, unknown>, owner?: { threadId: string; turnId: string }): void;
 };
 
@@ -26,8 +26,7 @@ const harness = {
     genericAcquires: [] as Array<Record<string, unknown>>,
     prepares: [] as Array<Record<string, unknown>>,
     laneAcquires: [] as Array<Record<string, unknown>>,
-    selectorCalls: [] as Array<{ multiplexEnabled: boolean; employee: boolean }>,
-    startPrompts: [] as Array<{ scope: string | null; prompt: string; threadId: string }>,
+    startPrompts: [] as Array<{ scope: string; prompt: string; threadId: string }>,
     releases: 0,
     prepareStale: 0,
     acquireStale: 0,
@@ -54,11 +53,8 @@ class FakeCodexAppClient extends EventEmitter {
         signalCode: null as string | null,
         killed: false,
     });
-    threadId: string | null = null;
-    activeTurnId: string | null = null;
     private readonly scopedThreads = new Map<string, string>();
     private readonly scopedTurns = new Map<string, string>();
-    private legacyHandlers: TurnHandlers | null = null;
     private readonly scopedHandlers = new Map<string, TurnHandlers>();
 
     constructor(_options: unknown = {}) {
@@ -86,30 +82,20 @@ class FakeCodexAppClient extends EventEmitter {
         return this.scopedTurns.get(scope) ?? null;
     }
 
-    async startThread(scopeOrOptions?: string | Record<string, unknown>): Promise<string> {
+    async startThread(scope: string, _options: Record<string, unknown>): Promise<string> {
         const threadId = `thread-${harness.nextThread++}`;
-        if (typeof scopeOrOptions === 'string') this.scopedThreads.set(scopeOrOptions, threadId);
-        else this.threadId = threadId;
+        this.scopedThreads.set(scope, threadId);
         return threadId;
     }
 
-    async resumeThread(scopeOrThread: string, threadOrOptions?: string | Record<string, unknown>): Promise<string> {
-        if (typeof threadOrOptions === 'string') {
-            this.scopedThreads.set(scopeOrThread, threadOrOptions);
-            return threadOrOptions;
-        }
-        this.threadId = scopeOrThread;
-        return scopeOrThread;
+    async resumeThread(scope: string, threadId: string, _options: Record<string, unknown>): Promise<string> {
+        this.scopedThreads.set(scope, threadId);
+        return threadId;
     }
 
-    listenTurn(scopeOrHandlers: string | TurnHandlers, maybeHandlers?: TurnHandlers): { dispose(): void } {
-        if (typeof scopeOrHandlers === 'string') {
-            const scope = scopeOrHandlers;
-            this.scopedHandlers.set(scope, maybeHandlers!);
-            return { dispose: () => { this.scopedHandlers.delete(scope); } };
-        }
-        this.legacyHandlers = scopeOrHandlers;
-        return { dispose: () => { this.legacyHandlers = null; } };
+    listenTurn(scope: string, handlers: TurnHandlers): { dispose(): void } {
+        this.scopedHandlers.set(scope, handlers);
+        return { dispose: () => { this.scopedHandlers.delete(scope); } };
     }
 
     listenHostNotifications(handlers: {
@@ -129,18 +115,14 @@ class FakeCodexAppClient extends EventEmitter {
         } };
     }
 
-    async startTurn(scopeOrPrompt: string, maybePrompt?: string): Promise<Record<string, never>> {
-        const scoped = maybePrompt !== undefined;
-        const scope = scoped ? scopeOrPrompt : null;
-        const prompt = scoped ? maybePrompt : scopeOrPrompt;
-        const threadId = scoped ? this.scopedThreads.get(scope!)! : this.threadId!;
+    async startTurn(scope: string, prompt: string): Promise<Record<string, never>> {
+        const threadId = this.scopedThreads.get(scope)!;
         const turnId = `turn-${harness.startPrompts.length + 1}`;
         harness.startPrompts.push({ scope, prompt, threadId });
-        if (scoped) this.scopedTurns.set(scope!, turnId);
-        else this.activeTurnId = turnId;
-        const handlers = scoped ? this.scopedHandlers.get(scope!) : this.legacyHandlers;
+        this.scopedTurns.set(scope, turnId);
+        const handlers = this.scopedHandlers.get(scope);
         const owner = { threadId, turnId };
-        if (scoped && harness.emitCompositeNotifications) {
+        if (harness.emitCompositeNotifications) {
             this.emit('host-notification', 'configWarning', { message: 'known host' });
             this.emit('host-notification', 'error', {
                 error: { message: 'ownerless host error' }, willRetry: false,
@@ -154,12 +136,11 @@ class FakeCodexAppClient extends EventEmitter {
             threadId,
             turn: { id: turnId, status: 'completed' },
         }, owner);
-        if (scoped) this.scopedTurns.delete(scope!);
-        else this.activeTurnId = null;
+        this.scopedTurns.delete(scope);
         return {};
     }
 
-    interruptTurn(): Promise<void> {
+    interruptTurn(_scope: string): Promise<void> {
         return Promise.resolve();
     }
 
@@ -250,23 +231,21 @@ test.mock.module('../../src/agent/codex-host-pool.js', {
 
 test.mock.module('../../src/agent/runtime-pool.js', {
     namedExports: {
-        resolveCodexAppProductionLaneScope: (options: { multiplexEnabled: boolean; employee: boolean }) => {
-            harness.selectorCalls.push(options);
-            return null;
-        },
         acquireCodexAppRuntime: async (options: Record<string, unknown>) => {
             harness.genericAcquires.push(options);
-            const key = options['key'] as { scopeKey: string };
+            const key = options['key'] as { scopeKey: string; model: string; effort: string };
+            const laneScope = `${key.scopeKey}:${key.model}:${key.effort}`;
             const storedThreadId = typeof options['storedThreadId'] === 'string' ? options['storedThreadId'] : null;
             const threadId = storedThreadId
                 ?? harness.genericThreads.get(key.scopeKey)
                 ?? `generic-${harness.nextThread++}`;
             harness.genericThreads.set(key.scopeKey, threadId);
             const client = new FakeCodexAppClient();
-            client.threadId = threadId;
+            client.bindScope(laneScope, threadId);
             return {
                 client,
                 threadId,
+                laneScope,
                 reused: false,
                 resumedThread: storedThreadId !== null,
                 release: () => { harness.releases += 1; },
@@ -366,7 +345,6 @@ function resetHarness(): void {
     harness.genericAcquires.length = 0;
     harness.prepares.length = 0;
     harness.laneAcquires.length = 0;
-    harness.selectorCalls.length = 0;
     harness.startPrompts.length = 0;
     harness.releases = 0;
     harness.prepareStale = 0;
@@ -449,7 +427,7 @@ test('multiplex ON, OFF, and employee select host, generic, and direct process r
     assert.equal(harness.genericAcquires.length, 0);
     assert.equal(harness.directSpawns, 0);
     assert.equal(harness.clients.length, 1);
-    assert.deepEqual(harness.selectorCalls, [], 'ON main lane scope must come only from its lease');
+    assert.equal(harness.startPrompts.at(-1)?.scope, `route-on:${model}:${effort}`);
 
     resetHarness();
     setMultiplex(false);
@@ -459,7 +437,8 @@ test('multiplex ON, OFF, and employee select host, generic, and direct process r
     assert.equal(harness.genericAcquires.length, 1);
     assert.equal(harness.directSpawns, 0);
     assert.equal(harness.clients.length, 1);
-    assert.deepEqual(harness.selectorCalls, [{ multiplexEnabled: false, employee: false }]);
+    assert.equal(harness.startPrompts.at(-1)?.scope, `route-off:${model}:${effort}`,
+        'OFF main startTurn must use the generic lease lane scope');
 
     resetHarness();
     setMultiplex(true);
@@ -474,7 +453,7 @@ test('multiplex ON, OFF, and employee select host, generic, and direct process r
     assert.equal(harness.genericAcquires.length, 0, 'employee must not enter the main generic pool');
     assert.equal(harness.directSpawns, 1);
     assert.equal(harness.clients.length, 1);
-    assert.deepEqual(harness.selectorCalls, [{ multiplexEnabled: true, employee: true }]);
+    assert.equal(harness.startPrompts.at(-1)?.scope, 'employee:employee-1');
 });
 
 test('ON production records host and unrouted diagnostics and disposes the composite subscription', async () => {

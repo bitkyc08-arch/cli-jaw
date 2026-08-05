@@ -838,7 +838,6 @@ import { CodexAppClient, isRecoverableResumeError } from './codex-app-client.js'
 import {
     acquireCodexAppRuntime,
     acquirePiRuntime,
-    resolveCodexAppProductionLaneScope,
     type PiLease,
 } from './runtime-pool.js';
 import {
@@ -2142,14 +2141,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             readonly reused: boolean;
             readonly resumedThread: boolean;
             readonly bucketKey?: string;
-            readonly laneScope?: string;
+            readonly laneScope: string;
             release(): void;
             cancel(): Promise<void>;
         };
         const runCodexAppTurn = async (
             appClient: CodexAppClient,
             lease: CodexAppTurnLeaseView | null,
-            laneScope: string | null,
+            laneScope: string,
         ): Promise<void> => {
             const child = appClient.proc;
             if (!child) throw new Error('Codex AppServer process was not created');
@@ -2224,22 +2223,29 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 } else {
                     const initResult = await appClient.initialize();
                     if (process.env["DEBUG"]) console.log('[codex-app:init]', JSON.stringify(initResult).slice(0, 200));
+                    const threadOptions = {
+                        model,
+                        effort,
+                        cwd: spawnCwd,
+                        fastMode: effectiveFastMode,
+                        instructions: sysPrompt,
+                    };
 
                     if (isResume && resumeSessionId) {
                         try {
-                            await appClient.resumeThread(resumeSessionId, { instructions: sysPrompt });
+                            await appClient.resumeThread(laneScope, resumeSessionId, threadOptions);
                             console.log(`[codex-app:session] resumeThread OK: ${resumeSessionId.slice(0, 12)}...`);
                         } catch (resumeErr: unknown) {
                             const message = (resumeErr as Error).message || '';
                             if (!isRecoverableResumeError(message)) throw resumeErr;
                             console.warn(`[codex-app:session] resumeThread FAILED (recoverable): ${message} — starting new thread`);
                             if (empSid && opts.agentId) clearEmployeeSession.run(opts.agentId);
-                            await appClient.startThread({ instructions: sysPrompt, cwd: spawnCwd });
+                            await appClient.startThread(laneScope, threadOptions);
                         }
                     } else {
-                        await appClient.startThread({ instructions: sysPrompt, cwd: spawnCwd });
+                        await appClient.startThread(laneScope, threadOptions);
                     }
-                    ctx.sessionId = appClient.threadId;
+                    ctx.sessionId = appClient.getThreadId(laneScope) ?? '';
                 }
 
                 const shouldPrependHistory = lease
@@ -2249,16 +2255,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     ? `${historyBlock}\n\n[User Message]\n${prompt}`
                     : prompt;
 
-                const startTurn = laneScope === null
-                    ? appClient.startTurn(codexAppPrompt)
-                    : appClient.startTurn(laneScope, codexAppPrompt);
+                const startTurn = appClient.startTurn(laneScope, codexAppPrompt);
                 await Promise.race([startTurn, turnDone]);
                 await turnDone;
                 turnCompleted = !turnReportedFailure;
 
                 flushCodexAppThinking();
 
-                const persistedThreadId = lease?.threadId ?? appClient.threadId;
+                const persistedThreadId = lease?.threadId ?? appClient.getThreadId(laneScope);
                 if (persistedThreadId && persistMainSession(stripUndefined({
                     persistenceOwner,
                     scopeKey,
@@ -2328,13 +2332,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         };
 
         if (opts.agentId) {
-            const employeeLaneScope = resolveCodexAppProductionLaneScope({
-                multiplexEnabled: settings["runtime"]?.codexApp?.multiplex === true,
-                employee: true,
-            });
+            const employeeLaneScope = `employee:${opts.agentId}`;
             const appClient = new CodexAppClient({
                 binary: detected.path || 'codex', workDir: spawnCwd, env: spawnEnv,
-                model, effort, fastMode: effectiveFastMode,
             });
             appClient.spawn();
             const child = appClient.proc;
@@ -2479,10 +2479,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             if (outcome.kind === 'cancelled') { abandonTurn(null); return; }
             const lease = outcome.lease;
             if (activeMainProcesses.get(scopeKey) !== mainRun) { abandonTurn(lease); return; }
-            const laneScope = codexMultiplexMain
-                ? lease.laneScope!
-                : resolveCodexAppProductionLaneScope({ multiplexEnabled: false, employee: false });
-            await runCodexAppTurn(lease.client, lease, laneScope);
+            await runCodexAppTurn(lease.client, lease, lease.laneScope);
         }).catch((err: Error) => {
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);
             clearLiveRun(liveScope);

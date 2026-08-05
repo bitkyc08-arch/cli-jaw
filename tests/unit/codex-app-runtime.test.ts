@@ -196,27 +196,6 @@ test('interrupt latch emits interrupt-failed for transport errors', async () => 
     assert.match((await failure).message, /stdin not writable/);
 });
 
-test('legacy interrupt failure reaches scoped and global channels exactly once', async () => {
-    const client = new CodexAppClient();
-    const counts = { scoped: 0, global: 0 };
-    injectRequest(client, async (method) => {
-        if (method === 'turn/interrupt') throw new Error('transport lost');
-        return {};
-    });
-    client.threadId = 'legacy-thread';
-    client.on('interrupt-failed:legacy/default', () => { counts.scoped += 1; });
-    client.once('interrupt-failed', () => { counts.global += 1; });
-
-    await client.interruptTurn();
-    client['handleLine'](JSON.stringify({
-        method: 'turn/started',
-        params: { threadId: 'legacy-thread', turn: { id: 'legacy-turn' } },
-    }));
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    assert.deepEqual(counts, { scoped: 1, global: 1 });
-});
-
 test('duplicate thread binding rejects without overwriting the first owner', async () => {
     const client = new CodexAppClient();
     injectRequest(client, async () => ({ thread: { id: 'shared-thread' } }));
@@ -808,20 +787,3 @@ for (const firstSignal of ['error', 'exit'] as const) {
         listener.dispose();
     });
 }
-
-test('legacy and scoped lane APIs cannot be mixed on one client', async () => {
-    const scoped = new CodexAppClient();
-    injectRequest(scoped, async () => ({ thread: { id: 'thread-a' } }));
-    await scoped.startThread('scope-a', laneOptions);
-    assert.throws(
-        () => scoped.listenTurn({ onNotification: () => {}, onStderr: () => {} }),
-        /Cannot mix legacy.*scoped API/,
-    );
-
-    const legacy = new CodexAppClient();
-    legacy.threadId = 'legacy-thread';
-    await assert.rejects(
-        legacy.startThread('scope-a', laneOptions),
-        /Cannot mix scoped.*legacy API/,
-    );
-});

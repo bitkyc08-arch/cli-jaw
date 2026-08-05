@@ -38,7 +38,7 @@ export interface CodexAppTurnAdapterHandlers {
 export function listenCodexAppTurnAdapter(
     client: CodexAppClient,
     lease: CodexAppTurnLeaseIdentity | null,
-    laneScope: string | null,
+    laneScope: string,
     ctx: SpawnContext,
     handlers: CodexAppTurnAdapterHandlers,
 ): { dispose(): void } {
@@ -52,12 +52,6 @@ export function listenCodexAppTurnAdapter(
         owner?: CodexAppNotificationOwner,
     ) => {
         onRawOnlyNotification(method, params);
-        if (laneScope === null) {
-            if (method === 'error' && !owner) return;
-            handlers.onEvent(method, extractFromCodexAppEvent(method, params, ctx));
-            return;
-        }
-
         const expectedThreadId = lease?.threadId ?? client.getThreadId(laneScope);
         const expectedTurnId = client.getActiveTurnId(laneScope);
         if (
@@ -82,8 +76,6 @@ export function listenCodexAppTurnAdapter(
         onError: (err: Error) => { handlers.onError?.(err); },
         onInterruptFailed: (err: Error) => { handlers.onInterruptFailed?.(err); },
     };
-    if (laneScope === null) return client.listenTurn(turnHandlers);
-
     const laneListener = client.listenTurn(laneScope, { ...turnHandlers, role: 'consumer' });
     const onDiagnosticNotification = (entry: CodexAppUnroutedNotification) => {
         handlers.onDiagnosticNotification?.(entry);
@@ -137,15 +129,6 @@ export function extractFromCodexAppLaneEvent(
     const wireThreadId = readCodexAppThreadId(params);
     const wireTurnId = readCodexAppTurnId(params);
     if (wireThreadId !== expectedThreadId || wireTurnId !== expectedTurnId) return null;
-    return normalizeCodexAppEvent(method, params, ctx);
-}
-
-/** 050-B legacy facade; the scoped spawn caller migration belongs to 050-C. */
-export function extractFromCodexAppEvent(
-    method: string,
-    params: EvRec,
-    ctx: SpawnContext,
-): CodexAppEventResult | null {
     return normalizeCodexAppEvent(method, params, ctx);
 }
 

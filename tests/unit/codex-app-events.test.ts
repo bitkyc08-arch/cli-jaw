@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    extractFromCodexAppEvent,
-    extractFromCodexAppLaneEvent,
-} from '../../src/agent/codex-app-events.ts';
+import { extractFromCodexAppLaneEvent } from '../../src/agent/codex-app-events.ts';
 
 function createCtx() {
     return {
@@ -18,11 +15,26 @@ function createCtx() {
         duration: null,
         tokens: null,
         stderrBuf: '',
+        thinkingBuf: '',
     };
 }
 
+function extractLane(
+    method: string,
+    params: Record<string, unknown>,
+    ctx: ReturnType<typeof createCtx>,
+) {
+    return extractFromCodexAppLaneEvent(
+        method,
+        { threadId: 'thread-a', turnId: 'turn-a', ...params },
+        ctx,
+        'thread-a',
+        'turn-a',
+    );
+}
+
 test('codex-app captures raw reasoning text deltas', () => {
-    const result = extractFromCodexAppEvent(
+    const result = extractLane(
         'item/reasoning/textDelta',
         { delta: 'raw reasoning chunk' },
         createCtx(),
@@ -33,7 +45,7 @@ test('codex-app captures raw reasoning text deltas', () => {
 });
 
 test('codex-app does not emit empty reasoning placeholder on item start', () => {
-    const result = extractFromCodexAppEvent(
+    const result = extractLane(
         'item/started',
         {
             item: {
@@ -50,7 +62,7 @@ test('codex-app does not emit empty reasoning placeholder on item start', () => 
 });
 
 test('codex-app reads object-shaped reasoning summaries on item start', () => {
-    const result = extractFromCodexAppEvent(
+    const result = extractLane(
         'item/started',
         {
             item: {
@@ -68,7 +80,7 @@ test('codex-app reads object-shaped reasoning summaries on item start', () => {
 });
 
 test('codex-app falls back to completed reasoning content when no deltas streamed', () => {
-    const result = extractFromCodexAppEvent(
+    const result = extractLane(
         'item/completed',
         {
             item: {
@@ -88,7 +100,7 @@ test('codex-app falls back to completed reasoning content when no deltas streame
 });
 
 test('codex-app falls back to completed object-shaped reasoning content', () => {
-    const result = extractFromCodexAppEvent(
+    const result = extractLane(
         'item/completed',
         {
             item: {
@@ -110,7 +122,7 @@ test('codex-app completed reasoning does not duplicate streamed buffer', () => {
     const ctx = createCtx();
     ctx.thinkingBuf = 'already streamed';
 
-    const result = extractFromCodexAppEvent(
+    const result = extractLane(
         'item/completed',
         {
             item: {

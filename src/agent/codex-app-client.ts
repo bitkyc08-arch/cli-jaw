@@ -10,7 +10,6 @@ import { createInterface, type Interface as ReadlineInterface } from 'readline';
 const RECOVERABLE_RESUME_RE = /not found|no rollout found|unknown thread|no such thread|invalid thread|thread.*missing/i;
 const TERMINAL_INTERRUPT_RACE_RE = /turn not active|already completed|no active turn|unknown turn/i;
 
-const LEGACY_SCOPE = 'legacy/default';
 const PENDING_NOTIFICATION_LIMIT = 128;
 const PENDING_NOTIFICATION_TTL_MS = 5_000;
 
@@ -111,7 +110,6 @@ const TERMINAL_NOTIFICATION_METHODS = new Set([
 ]);
 
 type EvRec = Record<string, unknown>;
-type ApiMode = 'unset' | 'legacy' | 'scoped';
 type LaneOperation = 'idle' | 'binding' | 'turn' | 'closing' | 'terminal';
 type UnknownNotificationPolicy = 'legacy-raw' | 'diagnostic-only';
 
@@ -127,9 +125,6 @@ export interface CodexAppClientOptions {
     binary?: string;
     workDir?: string;
     env?: NodeJS.ProcessEnv;
-    model?: string;
-    effort?: string;
-    fastMode?: boolean;
     unknownNotificationPolicy?: UnknownNotificationPolicy;
 }
 
@@ -140,8 +135,6 @@ export interface CodexThreadOptions {
     fastMode: boolean;
     instructions?: string;
 }
-
-type LegacyThreadOptions = Partial<CodexThreadOptions>;
 
 export interface CodexAppNotificationOwner {
     threadId: string;
@@ -229,9 +222,7 @@ export class CodexAppClient extends EventEmitter {
     private binary: string;
     private workDir: string;
     private spawnEnv: NodeJS.ProcessEnv;
-    private legacyOptions: CodexThreadOptions;
     private unknownNotificationPolicy: UnknownNotificationPolicy;
-    private apiMode: ApiMode = 'unset';
     private scopes = new Map<string, ScopeThreadState>();
     private threadToScope = new Map<string, string>();
     private turnToScope = new Map<string, string>();
@@ -239,10 +230,6 @@ export class CodexAppClient extends EventEmitter {
     private pendingNotifications: BufferedNotification[] = [];
     private pendingNotificationSequence = 0;
     private pendingNotificationTimer: NodeJS.Timeout | null = null;
-    private preListenerNotifications: Array<{
-        method: string; params: EvRec; owner: RoutedIdentity | undefined;
-    }> = [];
-    private legacyListenerCount = 0;
     private scopedNotificationHandoffs = new Map<string, NotificationHandoff>();
     private hostNotificationHandoff: NotificationHandoff = {
         consumers: 0,
@@ -265,36 +252,7 @@ export class CodexAppClient extends EventEmitter {
         this.binary = options.binary || 'codex';
         this.workDir = options.workDir || process.cwd();
         this.spawnEnv = options.env || process.env;
-        this.legacyOptions = {
-            model: options.model || 'gpt-5.5',
-            effort: options.effort || 'medium',
-            cwd: this.workDir,
-            fastMode: options.fastMode ?? false,
-        };
         this.unknownNotificationPolicy = options.unknownNotificationPolicy ?? 'legacy-raw';
-    }
-
-    get threadId(): string | null {
-        return this.getThreadId(LEGACY_SCOPE);
-    }
-
-    set threadId(id: string | null) {
-        this.setApiMode('legacy');
-        this.bindLegacyThreadForCompatibility(id);
-    }
-
-    get activeTurnId(): string | null {
-        return this.getActiveTurnId(LEGACY_SCOPE);
-    }
-
-    set activeTurnId(id: string | null) {
-        this.setApiMode('legacy');
-        const state = this.ensureScope(LEGACY_SCOPE, this.legacyOptions);
-        if (id) {
-            this.bindTurn(LEGACY_SCOPE, id);
-        } else {
-            this.clearActiveTurn(state);
-        }
     }
 
     get alive(): boolean {
@@ -309,20 +267,12 @@ export class CodexAppClient extends EventEmitter {
         return this.scopes.get(scope)?.activeTurnId ?? null;
     }
 
-    listenTurn(handlers: CodexAppTurnHandlers): { dispose(): void };
-    listenTurn(scope: string, handlers: CodexAppScopedTurnHandlers): { dispose(): void };
     listenTurn(
-        scopeOrHandlers: string | CodexAppTurnHandlers,
-        scopedHandlers?: CodexAppScopedTurnHandlers,
+        scope: string,
+        handlers: CodexAppScopedTurnHandlers,
     ): { dispose(): void } {
-        const legacy = typeof scopeOrHandlers !== 'string';
-        const scope = legacy ? LEGACY_SCOPE : scopeOrHandlers;
-        if (!legacy && !scopedHandlers) throw new Error(`Missing turn handlers for scope ${scope}`);
-        const handlers: CodexAppTurnHandlers = legacy ? scopeOrHandlers : scopedHandlers!;
-        this.setApiMode(legacy ? 'legacy' : 'scoped');
-
-        const handoff = legacy ? null : this.ensureScopedNotificationHandoff(scope);
-        const role = legacy ? null : scopedHandlers!.role;
+        const handoff = this.ensureScopedNotificationHandoff(scope);
+        const role = handlers.role;
         const onNotification = (
             method: string,
             params: Record<string, unknown>,
@@ -330,9 +280,6 @@ export class CodexAppClient extends EventEmitter {
         ) => {
             if (role === 'consumer' && handoff?.replaying) return;
             handlers.onNotification(method, params, owner);
-        };
-        const onHostNotification = (method: string, params: Record<string, unknown>) => {
-            handlers.onNotification(method, params);
         };
         const onStderr = (text: string) => { handlers.onStderr(text); };
         const onExit = (code: number | null, signal: string | null) => { handlers.onExit?.(code, signal); };
@@ -344,15 +291,6 @@ export class CodexAppClient extends EventEmitter {
         this.on('exit', onExit);
         this.on('error', onError);
         this.on(`interrupt-failed:${scope}`, onInterruptFailed);
-        if (legacy) {
-            this.on('host-notification', onHostNotification);
-            this.on('notification', onHostNotification);
-        }
-        // Only the transition out of "nobody is listening" drains the queue. A
-        // second concurrent listener must not receive a replay of what the first
-        // one already handled.
-        const wasIdle = legacy && this.legacyListenerCount === 0;
-        if (legacy) this.legacyListenerCount += 1;
         const scopedConsumerWasIdle = role === 'consumer' && handoff?.consumers === 0;
         if (role === 'consumer' && handoff) handoff.consumers += 1;
 
@@ -365,14 +303,6 @@ export class CodexAppClient extends EventEmitter {
             this.off('exit', onExit);
             this.off('error', onError);
             this.off(`interrupt-failed:${scope}`, onInterruptFailed);
-            if (legacy) {
-                this.off('host-notification', onHostNotification);
-                this.off('notification', onHostNotification);
-                // The pool reuses one client across turns, so the gap between
-                // disposing this listener and attaching the next is another
-                // window where notifications would otherwise reach nobody.
-                this.legacyListenerCount = Math.max(0, this.legacyListenerCount - 1);
-            }
             if (role === 'consumer' && handoff) {
                 handoff.consumers = Math.max(0, handoff.consumers - 1);
             }
@@ -388,27 +318,6 @@ export class CodexAppClient extends EventEmitter {
         // registration is complete and a disposer exists. A throwing handler
         // would otherwise leave the listener attached with no way to detach it,
         // and with queueing switched off for good.
-        if (wasIdle && this.preListenerNotifications.length > 0) {
-            const buffered = this.preListenerNotifications;
-            this.preListenerNotifications = [];
-            let delivered = 0;
-            try {
-                for (const entry of buffered) {
-                    handlers.onNotification(entry.method, entry.params, entry.owner);
-                    delivered += 1;
-                }
-            } catch (err) {
-                dispose();
-                // Only what the handler never saw goes back. Restoring the whole
-                // batch would hand the already-delivered entries to the next
-                // listener a second time. Anything that arrived while the
-                // handover ran still follows them in order.
-                this.preListenerNotifications = [
-                    ...buffered.slice(delivered), ...this.preListenerNotifications,
-                ];
-                throw err;
-            }
-        }
         if (scopedConsumerWasIdle && handoff && handoff.buffer.length > 0) {
             this.replayNotificationHandoff(handoff, handlers.onNotification, dispose);
         }
@@ -487,59 +396,20 @@ export class CodexAppClient extends EventEmitter {
         return result;
     }
 
-    async startThread(options?: LegacyThreadOptions): Promise<string>;
-    async startThread(scope: string, options: CodexThreadOptions): Promise<string>;
-    async startThread(
-        scopeOrOptions: string | LegacyThreadOptions = {},
-        scopedOptions?: CodexThreadOptions,
-    ): Promise<string> {
-        if (typeof scopeOrOptions === 'string') {
-            if (!scopedOptions) throw new Error(`Missing thread options for scope ${scopeOrOptions}`);
-            this.setApiMode('scoped');
-            return this.startThreadScoped(scopeOrOptions, scopedOptions);
-        }
-        this.setApiMode('legacy');
-        return this.startThreadScoped(LEGACY_SCOPE, this.mergeLegacyOptions(scopeOrOptions));
+    async startThread(scope: string, options: CodexThreadOptions): Promise<string> {
+        return this.startThreadScoped(scope, options);
     }
 
-    async resumeThread(threadId: string, options?: LegacyThreadOptions): Promise<string>;
-    async resumeThread(scope: string, threadId: string, options: CodexThreadOptions): Promise<string>;
-    async resumeThread(
-        scopeOrThreadId: string,
-        threadIdOrOptions: string | LegacyThreadOptions = {},
-        scopedOptions?: CodexThreadOptions,
-    ): Promise<string> {
-        if (typeof threadIdOrOptions === 'string') {
-            if (!scopedOptions) throw new Error(`Missing thread options for scope ${scopeOrThreadId}`);
-            this.setApiMode('scoped');
-            return this.resumeThreadScoped(scopeOrThreadId, threadIdOrOptions, scopedOptions);
-        }
-        this.setApiMode('legacy');
-        return this.resumeThreadScoped(
-            LEGACY_SCOPE,
-            scopeOrThreadId,
-            this.mergeLegacyOptions(threadIdOrOptions),
-        );
+    async resumeThread(scope: string, threadId: string, options: CodexThreadOptions): Promise<string> {
+        return this.resumeThreadScoped(scope, threadId, options);
     }
 
-    async startTurn(prompt: string): Promise<void>;
-    async startTurn(scope: string, prompt: string): Promise<void>;
-    async startTurn(scopeOrPrompt: string, scopedPrompt?: string): Promise<void> {
-        if (scopedPrompt !== undefined) {
-            this.setApiMode('scoped');
-            return this.startTurnScoped(scopeOrPrompt, scopedPrompt);
-        }
-        this.setApiMode('legacy');
-        return this.startTurnScoped(LEGACY_SCOPE, scopeOrPrompt);
+    async startTurn(scope: string, prompt: string): Promise<void> {
+        return this.startTurnScoped(scope, prompt);
     }
 
-    async interruptTurn(): Promise<void>;
-    async interruptTurn(scope: string): Promise<void>;
-    async interruptTurn(scope?: string): Promise<void> {
-        const scoped = scope !== undefined;
-        this.setApiMode(scoped ? 'scoped' : 'legacy');
-        const laneScope = scope ?? LEGACY_SCOPE;
-        const state = this.requireScope(laneScope);
+    async interruptTurn(scope: string): Promise<void> {
+        const state = this.requireScope(scope);
         if (!state.threadId) return;
         if (!state.activeTurnId) {
             state.pendingInterrupt = true;
@@ -549,7 +419,6 @@ export class CodexAppClient extends EventEmitter {
     }
 
     async closeScope(scope: string): Promise<void> {
-        this.setApiMode('scoped');
         const state = this.requireScope(scope);
         if (state.operation !== 'idle' || state.activeTurnId) {
             throw new Error(`Cannot close active scope ${scope}`);
@@ -830,18 +699,6 @@ export class CodexAppClient extends EventEmitter {
         this.scopes.delete(scope);
     }
 
-    private bindLegacyThreadForCompatibility(threadId: string | null): void {
-        const state = this.ensureScope(LEGACY_SCOPE, this.legacyOptions);
-        if (!threadId) {
-            this.clearScopeBinding(state);
-            state.operation = 'idle';
-            return;
-        }
-        this.clearScopeBinding(state);
-        state.operation = 'idle';
-        this.bindThread(LEGACY_SCOPE, threadId);
-    }
-
     private createScope(scope: string, options: CodexThreadOptions): ScopeThreadState {
         return {
             ...options,
@@ -852,14 +709,6 @@ export class CodexAppClient extends EventEmitter {
             operation: 'idle',
             pendingOperation: null,
         };
-    }
-
-    private ensureScope(scope: string, options: CodexThreadOptions): ScopeThreadState {
-        const current = this.scopes.get(scope);
-        if (current) return current;
-        const state = this.createScope(scope, options);
-        this.scopes.set(scope, state);
-        return state;
     }
 
     private requireScope(scope: string): ScopeThreadState {
@@ -896,24 +745,6 @@ export class CodexAppClient extends EventEmitter {
 
     private throwIfOperationFailed(operation: PendingOperation): void {
         if (operation.failed) throw operation.failed;
-    }
-
-    private setApiMode(mode: Exclude<ApiMode, 'unset'>): void {
-        if (this.apiMode === 'unset') {
-            this.apiMode = mode;
-            // Host notifications can arrive during initialize, before the first
-            // lane establishes the mode. Keep only the handoff owned by the mode
-            // that won so the other facade cannot retain payloads forever.
-            if (mode === 'scoped') {
-                this.preListenerNotifications = [];
-            } else {
-                this.hostNotificationHandoff.buffer = [];
-            }
-            return;
-        }
-        if (this.apiMode !== mode) {
-            throw new Error(`Cannot mix ${mode} Codex App API with ${this.apiMode} API`);
-        }
     }
 
     private assertReusable(): void {
@@ -958,7 +789,6 @@ export class CodexAppClient extends EventEmitter {
         }
         this.emitUnrouted(method, params, 'unknown-method');
         if (this.unknownNotificationPolicy === 'legacy-raw') {
-            this.recordPreListenerNotification(method, params, undefined);
             this.recordHostNotification(method, params);
             this.emit('notification', method, params);
         }
@@ -1167,50 +997,17 @@ export class CodexAppClient extends EventEmitter {
         params: EvRec,
         owner: RoutedIdentity,
     ): void {
-        if (scope === LEGACY_SCOPE) {
-            this.recordPreListenerNotification(method, params, owner);
-        } else {
-            this.recordScopedNotification(scope, method, params, owner);
-        }
+        this.recordScopedNotification(scope, method, params, owner);
         this.emit(`notification:${scope}`, method, params, owner);
-        if (scope === LEGACY_SCOPE && (method === 'turn/started' || method === 'turn/completed')) {
-            this.emit(method, params);
-        }
     }
 
     private emitHostNotification(method: string, params: EvRec): void {
-        this.recordPreListenerNotification(method, params, undefined);
         this.recordHostNotification(method, params);
         this.emit('host-notification', method, params);
     }
 
     private emitUnrouted(method: string, params: EvRec, reason: string): void {
         this.emit('unrouted-notification', { method, params, reason });
-    }
-
-    // The pool starts a thread and drains the replay buffer before it hands the
-    // lease back, and spawn only attaches its listener afterwards. Anything the
-    // server sent in between would otherwise be emitted to nobody and never
-    // reach the raw trace, so the legacy lane keeps a bounded copy and hands it
-    // to the first listener exactly once.
-    private recordPreListenerNotification(
-        method: string,
-        params: EvRec,
-        owner: RoutedIdentity | undefined,
-    ): void {
-        // Only the legacy facade drains this queue, so filling it in scoped mode
-        // would retain payloads nothing can ever hand over.
-        if (this.apiMode === 'scoped' || this.legacyListenerCount > 0) return;
-        if (this.preListenerNotifications.length >= PENDING_NOTIFICATION_LIMIT) {
-            const evicted = this.preListenerNotifications.shift();
-            // Report what was actually lost, not what pushed it out.
-            if (evicted) {
-                this.emit('unrouted-notification', {
-                    method: evicted.method, params: evicted.params, reason: 'pre-listener-overflow',
-                });
-            }
-        }
-        this.preListenerNotifications.push({ method, params, owner });
     }
 
     private ensureScopedNotificationHandoff(scope: string): NotificationHandoff {
@@ -1233,14 +1030,9 @@ export class CodexAppClient extends EventEmitter {
     }
 
     private recordHostNotification(method: string, params: EvRec): void {
-        if (this.apiMode === 'legacy') return;
         const handoff = this.hostNotificationHandoff;
         if (handoff.consumers > 0 && !handoff.replaying) return;
-        this.bufferHandoffNotification(
-            handoff,
-            { method, params, owner: undefined },
-            this.apiMode === 'scoped',
-        );
+        this.bufferHandoffNotification(handoff, { method, params, owner: undefined });
     }
 
     private bufferHandoffNotification(
@@ -1549,7 +1341,6 @@ export class CodexAppClient extends EventEmitter {
             const error = err as Error;
             if (isTerminalInterruptRaceError(error)) return;
             this.emit(`interrupt-failed:${state.scope}`, error);
-            if (state.scope === LEGACY_SCOPE) this.emit('interrupt-failed', error);
             throw error;
         }
     }
@@ -1592,24 +1383,11 @@ export class CodexAppClient extends EventEmitter {
         this.threadToScope.clear();
         this.turnToScope.clear();
         this.pendingNotifications = [];
-        // Nothing will ever attach to drain these once the process is gone.
-        this.preListenerNotifications = [];
         this.scopedNotificationHandoffs.clear();
         this.hostNotificationHandoff = { consumers: 0, replaying: false, buffer: [] };
         this.clearPendingTimer();
         this.scopeDisposers.clear();
-        this.legacyListenerCount = 0;
         this.removeAllListeners();
-    }
-
-    private mergeLegacyOptions(options: LegacyThreadOptions): CodexThreadOptions {
-        return {
-            model: options.model ?? this.legacyOptions.model,
-            effort: options.effort ?? this.legacyOptions.effort,
-            cwd: options.cwd ?? this.legacyOptions.cwd,
-            fastMode: options.fastMode ?? this.legacyOptions.fastMode,
-            ...(options.instructions ? { instructions: options.instructions } : {}),
-        };
     }
 
     private stringField(record: EvRec, key: string): string | null {

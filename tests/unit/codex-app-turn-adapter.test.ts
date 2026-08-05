@@ -2,14 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CodexAppClient } from '../../src/agent/codex-app-client.ts';
 import {
-    extractFromCodexAppEvent,
     listenCodexAppTurnAdapter,
     type CodexAppEventResult,
 } from '../../src/agent/codex-app-events.ts';
-import {
-    interruptCodexRuntime,
-    resolveCodexAppProductionLaneScope,
-} from '../../src/agent/runtime-pool.ts';
+import { interruptCodexRuntime } from '../../src/agent/runtime-pool.ts';
+import { resolveCodexAppLaneKey } from '../../src/agent/args.ts';
 
 type RequestHandler = (method: string, params: Record<string, unknown>) => Promise<unknown>;
 type Role = 'main' | 'employee';
@@ -42,31 +39,29 @@ type AdapterSnapshot = {
     interrupts: string[];
 };
 
-async function exerciseLegacyAdapter(options: {
-    gateEnabled: boolean;
+async function exerciseScopedAdapter(options: {
     role: Role;
-    baseline: boolean;
+    laneScope: string;
 }): Promise<AdapterSnapshot> {
     const client = new CodexAppClient();
     const threadId = `${options.role}-thread`;
     const turnId = `${options.role}-turn`;
     injectRequest(client, async (method) => {
+        if (method === 'thread/start') return { thread: { id: threadId } };
+        if (method === 'turn/start') return { turn: { id: turnId } };
         if (method === 'turn/interrupt') throw new Error(`${options.role}-interrupt-failed`);
         return {};
     });
-    client.threadId = threadId;
-    client.activeTurnId = turnId;
+    await client.startThread(options.laneScope, {
+        model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false,
+    });
+    await client.startTurn(options.laneScope, 'hello');
 
     const trace: string[] = [];
     let progress = 0;
     const normalized: AdapterSnapshot['normalized'] = [];
     const interrupts: string[] = [];
     const ctx = createCtx();
-    const laneScope = resolveCodexAppProductionLaneScope({
-        multiplexEnabled: options.gateEnabled,
-        employee: options.role === 'employee',
-    });
-    assert.equal(laneScope, null, `${options.role} gate=${options.gateEnabled} must stay on the legacy lane`);
 
     const injectNotifications = (phase: 'pre' | 'post') => {
         client['handleLine'](JSON.stringify({
@@ -93,38 +88,39 @@ async function exerciseLegacyAdapter(options: {
         onStderr: () => {},
         onInterruptFailed: (err: Error) => { interrupts.push(err.message); },
     };
-    const listener = options.baseline
-        ? client.listenTurn({
-            onNotification: (method, params) => {
-                handlers.onProgress();
-                handlers.onRawNotification(method);
-                handlers.onEvent(method, extractFromCodexAppEvent(method, params, ctx));
-            },
-            onStderr: handlers.onStderr,
-            onInterruptFailed: handlers.onInterruptFailed,
-        })
-        : listenCodexAppTurnAdapter(client, options.role === 'main' ? { threadId } : null, laneScope, ctx, handlers);
+    const listener = listenCodexAppTurnAdapter(
+        client,
+        options.role === 'main' ? { threadId } : null,
+        options.laneScope,
+        ctx,
+        handlers,
+    );
 
     injectNotifications('post');
-    await assert.rejects(client.interruptTurn(), new RegExp(`${options.role}-interrupt-failed`));
+    await assert.rejects(
+        client.interruptTurn(options.laneScope),
+        new RegExp(`${options.role}-interrupt-failed`),
+    );
     listener.dispose();
     return { trace, progress, normalized, interrupts };
 }
 
-for (const gateEnabled of [false, true]) {
-    for (const role of ['main', 'employee'] as const) {
-        test(`production ${role} gate=${gateEnabled} is behaviorally identical to the legacy adapter`, async () => {
-            const baseline = await exerciseLegacyAdapter({ gateEnabled, role, baseline: true });
-            const actual = await exerciseLegacyAdapter({ gateEnabled, role, baseline: false });
-            assert.deepEqual(actual, baseline);
-            assert.deepEqual(actual.trace, [
-                'item/agentMessage/delta', 'configWarning', 'future/raw',
-                'item/agentMessage/delta', 'configWarning', 'future/raw',
-            ], 'pre-listener handoff and post-listener delivery preserve legacy order');
-            assert.equal(actual.progress, 6);
-            assert.deepEqual(actual.interrupts, [`${role}-interrupt-failed`]);
-        });
-    }
+for (const [role, laneScope] of [
+    ['main', resolveCodexAppLaneKey('main-scope', 'gpt-5.5', 'medium', 'fallback')],
+    ['employee', 'employee:employee-1'],
+] as const) {
+    test(`production ${role} adapter uses non-null scoped handoffs`, async () => {
+        const actual = await exerciseScopedAdapter({ role, laneScope });
+        assert.deepEqual(actual.trace, [
+            'item/agentMessage/delta', 'configWarning', 'future/raw',
+            'item/agentMessage/delta', 'configWarning', 'future/raw',
+        ], 'lane and host handoffs preserve pre-listener and live delivery order');
+        assert.equal(actual.progress, 6);
+        assert.deepEqual(actual.interrupts, [`${role}-interrupt-failed`]);
+        assert.deepEqual(actual.normalized.map(({ method }) => method), [
+            'item/agentMessage/delta', 'item/agentMessage/delta',
+        ]);
+    });
 }
 
 test('scoped production adapter composes lane, host, and diagnostic subscriptions', async () => {
@@ -197,14 +193,24 @@ test('scoped production adapter composes lane, host, and diagnostic subscription
 });
 
 for (const role of ['main', 'employee'] as const) {
-    test(`legacy ${role} adapter keeps ownerless host error raw-only`, () => {
+    test(`scoped ${role} adapter keeps ownerless host error raw-only`, async () => {
         const client = new CodexAppClient();
-        client.threadId = `${role}-thread`;
-        client.activeTurnId = `${role}-turn`;
+        const laneScope = role === 'employee'
+            ? 'employee:employee-1'
+            : resolveCodexAppLaneKey('main-scope', 'gpt-5.5', 'medium', 'fallback');
+        injectRequest(client, async (method) => {
+            if (method === 'thread/start') return { thread: { id: `${role}-thread` } };
+            if (method === 'turn/start') return { turn: { id: `${role}-turn` } };
+            return {};
+        });
+        await client.startThread(laneScope, {
+            model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false,
+        });
+        await client.startTurn(laneScope, 'hello');
         const raw: string[] = [];
         const normalized: string[] = [];
         let progress = 0;
-        const listener = listenCodexAppTurnAdapter(client, null, null, createCtx(), {
+        const listener = listenCodexAppTurnAdapter(client, null, laneScope, createCtx(), {
             onProgress: () => { progress += 1; },
             onRawNotification: (method) => { raw.push(method); },
             onEvent: (method) => { normalized.push(method); },

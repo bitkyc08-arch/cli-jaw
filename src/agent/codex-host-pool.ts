@@ -213,8 +213,8 @@ async function initializeHost(host: Host): Promise<void> {
     let client: CodexAppClient | null = null;
     try {
         client = new CodexAppClient({
-            binary: host.binary, workDir: host.cwd, env: host.envSnapshot, model: host.model,
-            effort: host.effort, fastMode: host.fastMode, unknownNotificationPolicy: 'diagnostic-only',
+            binary: host.binary, workDir: host.cwd, env: host.envSnapshot,
+            unknownNotificationPolicy: 'diagnostic-only',
         });
         host.client = client; attachDeathListener(host, client); client.spawn();
         await client.initialize();

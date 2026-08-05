@@ -21,8 +21,11 @@ const fakeState: {
 
 class FakeCodexAppClient extends EventEmitter {
     proc = { exitCode: null as number | null, killed: false, pid: 40_000 + fakeState.instances.length };
-    threadId: string | null = null;
-    activeTurnId: string | null = null;
+    private readonly threadIds = new Map<string, string>();
+    private readonly activeTurnIds = new Map<string, string>();
+    startScopes: string[] = [];
+    resumeScopes: string[] = [];
+    interruptScopes: string[] = [];
     closeCount = 0;
     killCount = 0;
     interruptCount = 0;
@@ -44,22 +47,67 @@ class FakeCodexAppClient extends EventEmitter {
         if (fakeState.nextInitialize) await fakeState.nextInitialize;
     }
 
-    async startThread(): Promise<string> {
-        this.threadId = `thread-${fakeState.nextThread++}`;
-        return this.threadId;
-    }
-
-    async resumeThread(threadId: string): Promise<string> {
-        if (threadId.startsWith('missing-')) throw new Error(`no rollout found for thread id ${threadId}`);
-        this.threadId = threadId;
+    async startThread(scope: string): Promise<string> {
+        const threadId = `thread-${fakeState.nextThread++}`;
+        this.startScopes.push(scope);
+        this.threadIds.set(scope, threadId);
         return threadId;
     }
 
-    async interruptTurn(): Promise<void> {
+    async resumeThread(scope: string, threadId: string): Promise<string> {
+        if (threadId.startsWith('missing-')) throw new Error(`no rollout found for thread id ${threadId}`);
+        this.resumeScopes.push(scope);
+        this.threadIds.set(scope, threadId);
+        return threadId;
+    }
+
+    getThreadId(scope: string): string | null {
+        return this.threadIds.get(scope) ?? null;
+    }
+
+    getActiveTurnId(scope: string): string | null {
+        return this.activeTurnIds.get(scope) ?? null;
+    }
+
+    setActiveTurnId(scope: string, turnId: string | null): void {
+        if (turnId) this.activeTurnIds.set(scope, turnId);
+        else this.activeTurnIds.delete(scope);
+    }
+
+    listenTurn(scope: string, handlers: {
+        onNotification(method: string, params: Record<string, unknown>, owner?: {
+            threadId: string;
+            turnId: string | null;
+        }): void;
+        onInterruptFailed?(error: Error): void;
+    }): { dispose(): void } {
+        const notification = (
+            method: string,
+            params: Record<string, unknown>,
+            owner?: { threadId: string; turnId: string | null },
+        ) => { handlers.onNotification(method, params, owner); };
+        const interruptFailed = (error: Error) => { handlers.onInterruptFailed?.(error); };
+        this.on(`notification:${scope}`, notification);
+        this.on(`interrupt-failed:${scope}`, interruptFailed);
+        return { dispose: () => {
+            this.off(`notification:${scope}`, notification);
+            this.off(`interrupt-failed:${scope}`, interruptFailed);
+        } };
+    }
+
+    async interruptTurn(scope: string): Promise<void> {
         this.interruptCount += 1;
+        this.interruptScopes.push(scope);
         if (fakeState.interruptMode === 'reject') throw new Error('interrupt transport failed');
-        if (fakeState.interruptMode === 'completed') this.emit('turn/completed', {});
-        if (fakeState.interruptMode === 'failed') this.emit('interrupt-failed', new Error('latch send failed'));
+        if (fakeState.interruptMode === 'completed') {
+            const threadId = this.getThreadId(scope)!;
+            const turnId = this.getActiveTurnId(scope) ?? 'turn-latched';
+            this.setActiveTurnId(scope, turnId);
+            this.emit(`notification:${scope}`, 'turn/completed', {}, { threadId, turnId });
+        }
+        if (fakeState.interruptMode === 'failed') {
+            this.emit(`interrupt-failed:${scope}`, new Error('latch send failed'));
+        }
     }
 
     async closeGracefully(): Promise<void> {
@@ -162,6 +210,25 @@ test('full pool keys keep different scopes in independent entries', async () => 
     retire(second);
 });
 
+test('generic lease carries one lane scope through start, reuse, and cancel', async () => {
+    fakeState.interruptMode = 'success';
+    const scopeKey = `lane-scope-${scopeSequence++}`;
+    const expected = `${scopeKey}:gpt-test:medium`;
+    const first = await acquireCodexAppRuntime(options({ scopeKey }));
+    const client = fakeClient(first);
+    assert.equal(first.laneScope, expected);
+    assert.deepEqual(client.startScopes, [expected]);
+    client.setActiveTurnId(first.laneScope, 'turn-active');
+    await first.cancel();
+    assert.deepEqual(client.interruptScopes, [expected]);
+    first.release();
+
+    const reused = await acquireCodexAppRuntime(options({ scopeKey }));
+    assert.equal(reused.laneScope, expected);
+    assert.equal(reused.client, first.client);
+    retire(reused);
+});
+
 test('scope index replacement closes stale settings for the same scope', async () => {
     const scopeKey = `replace-${scopeSequence++}`;
     const first = await acquireCodexAppRuntime(options({ scopeKey, model: 'model-a' }));
@@ -238,6 +305,8 @@ test('dead runtime is recreated by resuming its stored thread', async () => {
     assert.notEqual(next.client, oldClient);
     assert.equal(next.threadId, threadId);
     assert.equal(next.resumedThread, true);
+    assert.equal(next.laneScope, first.laneScope);
+    assert.deepEqual(fakeClient(next).resumeScopes, [first.laneScope]);
     retire(next);
 });
 
@@ -271,9 +340,10 @@ test('interrupt-capable cancel preserves a live process', async () => {
     fakeState.interruptMode = 'success';
     const lease = await acquireCodexAppRuntime(options());
     const client = fakeClient(lease);
-    client.activeTurnId = 'turn-active';
+    client.setActiveTurnId(lease.laneScope, 'turn-active');
     await lease.cancel();
     assert.equal(client.interruptCount, 1);
+    assert.deepEqual(client.interruptScopes, [lease.laneScope]);
     assert.equal(client.killCount, 0);
     retire(lease);
 });
@@ -283,7 +353,7 @@ test('failed interrupt cancel kills, marks dead, and rejects waiters', async () 
     const scopeKey = `cancel-${scopeSequence++}`;
     const lease = await acquireCodexAppRuntime(options({ scopeKey }));
     const client = fakeClient(lease);
-    client.activeTurnId = 'turn-active';
+    client.setActiveTurnId(lease.laneScope, 'turn-active');
     const waiting = acquireCodexAppRuntime(options({ scopeKey, waitMs: 100 }));
     await lease.cancel();
     assert.equal(client.killCount, 1);
@@ -297,10 +367,10 @@ for (const mode of ['completed', 'failed'] as const) {
         fakeState.interruptMode = mode;
         const lease = await acquireCodexAppRuntime(options());
         const client = fakeClient(lease);
-        client.activeTurnId = null;
+        client.setActiveTurnId(lease.laneScope, null);
         await lease.cancel();
-        assert.equal(client.listenerCount('interrupt-failed'), 0);
-        assert.equal(client.listenerCount('turn/completed'), 0);
+        assert.equal(client.listenerCount(`interrupt-failed:${lease.laneScope}`), 0);
+        assert.equal(client.listenerCount(`notification:${lease.laneScope}`), 0);
         if (mode === 'failed') assert.equal(client.killCount, 1);
         lease.release();
         if (client.alive) client.die();
@@ -313,8 +383,8 @@ test('latch terminal race is treated as completed and leaves no listeners', asyn
     const client = fakeClient(lease);
     await lease.cancel();
     assert.equal(client.killCount, 0);
-    assert.equal(client.listenerCount('interrupt-failed'), 0);
-    assert.equal(client.listenerCount('turn/completed'), 0);
+    assert.equal(client.listenerCount(`interrupt-failed:${lease.laneScope}`), 0);
+    assert.equal(client.listenerCount(`notification:${lease.laneScope}`), 0);
     retire(lease);
 });
 
@@ -326,8 +396,8 @@ test('latch timeout removes listeners and falls back to kill', async (t) => {
     const cancelling = lease.cancel();
     t.mock.timers.tick(10_000);
     await cancelling;
-    assert.equal(client.listenerCount('interrupt-failed'), 0);
-    assert.equal(client.listenerCount('turn/completed'), 0);
+    assert.equal(client.listenerCount(`interrupt-failed:${lease.laneScope}`), 0);
+    assert.equal(client.listenerCount(`notification:${lease.laneScope}`), 0);
     assert.equal(client.killCount, 1);
     lease.release();
     t.mock.timers.reset();
