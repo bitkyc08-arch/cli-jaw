@@ -290,6 +290,18 @@ test('rebind clears old indexes and a pending interrupt latch atomically', async
         params: { threadId: 'thread-old' },
     }));
     assert.deepEqual(stale, []);
+
+    // Dropping the old thread from the reverse index is what makes it claimable
+    // again; asserting only that its notifications stop would also pass if the
+    // entry were merely pointing somewhere harmless.
+    const other = new CodexAppClient();
+    injectRequest(other, async () => ({ thread: { id: 'thread-old' } }));
+    await other.startThread('scope-a', laneOptions);
+    await other.startThread('scope-a', laneOptions);
+    await other.startThread('scope-b', laneOptions).then(
+        () => assert.fail('a live binding must still be exclusive'),
+        (err: Error) => assert.match(err.message, /already bound/),
+    );
 });
 
 // The thread stays the same across both turns here, so a guard that only
@@ -333,6 +345,42 @@ test('a delta from a finished turn does not reach the turn that replaced it', as
     }));
     assert.deepEqual(seen.at(-1), { method: 'item/agentMessage/delta', turnId: 'turn-b' },
         'the current turn still delivers');
+});
+
+// The notification stream and the response race, so a short turn can be over
+// before turn/start returns. Rebinding it at that point would make a finished
+// turn active again and every later turn would fail against it.
+test('a turn that finishes before its response is not resurrected by the late reply', async () => {
+    const client = new CodexAppClient();
+    let resolveTurn!: (result: unknown) => void;
+    const turnResponse = new Promise<unknown>((resolve) => { resolveTurn = resolve; });
+    injectRequest(client, async (method) => {
+        if (method === 'thread/start') return { thread: { id: 'thread-a' } };
+        if (method === 'turn/start') return turnResponse;
+        return {};
+    });
+
+    const seen: string[] = [];
+    client.on('notification:scope-a', (method: string) => { seen.push(method); });
+
+    await client.startThread('scope-a', laneOptions);
+    const turning = client.startTurn('scope-a', 'hello');
+
+    client['handleLine'](JSON.stringify({
+        method: 'turn/started',
+        params: { threadId: 'thread-a', turn: { id: 'turn-a' } },
+    }));
+    client['handleLine'](JSON.stringify({
+        method: 'turn/completed',
+        params: { threadId: 'thread-a', turn: { id: 'turn-a' } },
+    }));
+    resolveTurn({ turn: { id: 'turn-a' } });
+    await turning;
+
+    assert.deepEqual(seen, ['turn/started', 'turn/completed']);
+    assert.equal(client.getActiveTurnId('scope-a'), null,
+        'the completed turn must not be active again');
+    await client.closeScope('scope-a');
 });
 
 test('thread notification before start response is replayed once after binding', async () => {
@@ -643,6 +691,17 @@ test('closeScope rejects active lanes and cleans idle state, latch, listener, an
     assert.equal(idle.listenerCount('notification:scope-idle'), 0);
     assert.equal(requests.at(-1), 'thread/unsubscribe');
     listener.dispose();
+
+    // Checking the closed scope's own fields is not enough: the reverse index is
+    // what stops a thread from being claimed twice, so the proof that it was
+    // released is that another scope can now bind the same thread.
+    const reclaimed = new CodexAppClient();
+    injectRequest(reclaimed, async () => ({ thread: { id: 'thread-shared' } }));
+    await reclaimed.startThread('scope-first', laneOptions);
+    await reclaimed.closeScope('scope-first');
+    await reclaimed.startThread('scope-second', laneOptions);
+    assert.equal(reclaimed.getThreadId('scope-second'), 'thread-shared',
+        'closing a scope must release its thread for another scope to claim');
 });
 
 test('process death makes every lane terminal and rejects pending operations', async () => {
@@ -662,6 +721,16 @@ test('process death makes every lane terminal and rejects pending operations', a
     await assert.rejects(client.startThread('scope-c', laneOptions), /client is terminal/);
     assert.equal(client.getActiveTurnId('scope-a'), null);
     assert.equal(client.getActiveTurnId('scope-b'), null);
+
+    // The rejections above come from the client-wide terminal flag, so they pass
+    // even if the individual lanes were left usable. Read the lane rows to prove
+    // each one was marked, which is what stops a lane from being reused.
+    const lanes = client['scopes'] as Map<string, { operation: string }>;
+    assert.deepEqual(
+        [...lanes.values()].map((lane) => lane.operation),
+        ['terminal', 'terminal'],
+        'every lane must be marked terminal, not just the client',
+    );
 });
 
 test('legacy and scoped lane APIs cannot be mixed on one client', async () => {

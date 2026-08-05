@@ -81,3 +81,43 @@ test('alive getter delegates to current child process state', () => {
     proc.killed = true;
     assert.equal(client.alive, false);
 });
+
+// The production order is: the pool starts the thread and drains the replay
+// buffer, returns the lease, and only then does spawn attach its listener.
+// Anything the server sent in that window used to be emitted to nobody, which
+// silently dropped it from the raw trace that records every notification.
+test('legacy notifications sent before the first listener still arrive exactly once', async () => {
+    const client = new CodexAppClient();
+    let resolveStart!: (result: unknown) => void;
+    const response = new Promise<unknown>((resolve) => { resolveStart = resolve; });
+    Object.defineProperty(client, 'request', { value: async () => response });
+
+    const starting = client.startThread({});
+    client['handleLine'](JSON.stringify({
+        method: 'thread/started',
+        params: { thread: { id: 'thread-a' } },
+    }));
+    resolveStart({ thread: { id: 'thread-a' } });
+    await starting;
+
+    // A host-scoped notification lands in the same window.
+    client['handleLine'](JSON.stringify({
+        method: 'configWarning',
+        params: { message: 'stale key' },
+    }));
+
+    const seen: string[] = [];
+    client.listenTurn({
+        onNotification: (method) => { seen.push(method); },
+        onStderr: () => {},
+    });
+    assert.deepEqual(seen, ['thread/started', 'configWarning'],
+        'the pre-listener window must be handed over in order');
+
+    const second: string[] = [];
+    client.listenTurn({
+        onNotification: (method) => { second.push(method); },
+        onStderr: () => {},
+    });
+    assert.deepEqual(second, [], 'the buffer is handed over once, not to every listener');
+});
