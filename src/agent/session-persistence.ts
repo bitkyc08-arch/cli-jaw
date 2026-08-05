@@ -1,6 +1,7 @@
 import { settings } from '../core/config.js';
 import { db, updateSession, upsertSessionBucket } from '../core/db.js';
 import { resolveSessionBucket } from './args.js';
+import { currentSessionScope } from '../core/session-context.js';
 
 export type SessionOwnerToken = { global: number; scope: number };
 
@@ -46,6 +47,16 @@ export function bumpScopeSessionGeneration(scopeKey: string): number {
     const nextGeneration = (scopeGenerations.get(scopeKey) ?? 0) + 1;
     scopeGenerations.set(scopeKey, nextGeneration);
     return nextGeneration;
+}
+
+// Clearing or resetting ONE session must invalidate only that session's in-flight run.
+// The global bump is for changes that genuinely affect every run — a settings change
+// that alters how any of them would behave. Using it for a session-local reset made a
+// second session's turn fail its ownership check on the way out and silently discard
+// the conversation it had just created (073 §2.2).
+export function bumpGenerationForSessionLocalReset(): number {
+    const scope = currentSessionScope()?.scope;
+    return scope ? bumpScopeSessionGeneration(scope) : bumpSessionOwnershipGeneration();
 }
 
 export function resetSessionOwnershipGenerationForTest(): void {

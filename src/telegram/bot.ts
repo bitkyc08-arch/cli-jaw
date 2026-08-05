@@ -18,7 +18,7 @@ import {
     saveUpload, buildMediaPrompt,
     resetFallbackState,
 } from '../agent/spawn.js';
-import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
+import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
 import { getTelegramMenuCommands } from '../command-contract/policy.js';
 import { downloadTelegramFile, TELEGRAM_DOWNLOAD_LIMITS } from '../../lib/upload.js';
@@ -367,11 +367,11 @@ function makeTelegramCommandCtx() {
             });
         },
         clearSession: () => {
-            bumpSessionOwnershipGeneration();
+            bumpGenerationForSessionLocalReset();
             clearMainSessionState();
         },
         resetSession: () => {
-            bumpSessionOwnershipGeneration();
+            bumpGenerationForSessionLocalReset();
             resetSessionPreservingHistory();
         },
         resetEmployees: () => seedDefaultEmployees({ reset: true, notify: true }),

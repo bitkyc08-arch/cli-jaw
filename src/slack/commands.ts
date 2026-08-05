@@ -18,7 +18,7 @@ import { makeCommandCtx } from '../cli/command-context.js';
 import { normalizeLocale } from '../core/i18n.js';
 import { resetFallbackState } from '../agent/spawn.js';
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
-import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
+import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { slackTargetFromId } from '../messaging/slack-target.js';
@@ -37,11 +37,11 @@ function makeSlackCommandCtx() {
             return applyRuntimeSettingsPatch(patch, { resetFallbackState: () => resetFallbackState(null) });
         },
         clearSession: () => {
-            bumpSessionOwnershipGeneration();
+            bumpGenerationForSessionLocalReset();
             clearMainSessionState();
         },
         resetSession: () => {
-            bumpSessionOwnershipGeneration();
+            bumpGenerationForSessionLocalReset();
             resetSessionPreservingHistory();
         },
         resetEmployees: () => seedDefaultEmployees({ reset: true, notify: true }),

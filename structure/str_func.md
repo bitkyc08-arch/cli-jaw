@@ -109,7 +109,7 @@ cli-jaw/
 │   │   ├── memory-flush-controller.ts ← assistant 완료 후 메모리 flush lock + trigger 제어 (366L)
 │   │   ├── mcp-passthrough.ts ← MCP passthrough boundary helpers for agent runtime integration (63L)
 │   │   ├── opencode-diagnostics.ts ← OpenCode permissions/env audit + raw event 진단 헬퍼 (156L)
-│   │   ├── session-persistence.ts ← main-session persistence policy + ownership generation (119L)
+│   │   ├── session-persistence.ts ← main-session persistence policy + ownership generation (130L)
 │   │   ├── resume-classifier.ts ← stale resume signature classifier (77L)
 │   │   ├── smoke-detector.ts ← smoke response 감지 + auto-continue 판단 (148L)
 │   │   ├── tool-timeout.ts   ← tool inactivity timeout helper (33L)

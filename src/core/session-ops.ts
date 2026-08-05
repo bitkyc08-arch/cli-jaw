@@ -3,7 +3,7 @@
 // Grouped here because all three bump the session ownership generation
 // before mutating session or runtime-settings state.
 
-import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
+import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { resetFallbackState } from '../agent/spawn.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from './main-session.js';
 import { applyRuntimeSettingsPatch } from './runtime-settings.js';
@@ -32,13 +32,13 @@ export async function clearSessionState(): Promise<void> {
     } catch (e) {
         console.warn('[jaw:reset] session bucket clear failed:', (e as Error).message);
     }
-    bumpSessionOwnershipGeneration();
+    bumpGenerationForSessionLocalReset();
     clearMainSessionState();
 }
 
 /** Soft reset: new session, history preserved. */
 export function resetSessionOnly(): void {
-    bumpSessionOwnershipGeneration();
+    bumpGenerationForSessionLocalReset();
     resetSessionPreservingHistory();
 }
 

@@ -26,7 +26,12 @@ test.mock.module('../../src/agent/args.ts', {
     },
 });
 test.mock.module('../../src/agent/session-persistence.ts', {
-    namedExports: { bumpSessionOwnershipGeneration: () => { ownershipBumps += 1; } },
+    namedExports: {
+        bumpSessionOwnershipGeneration: () => { ownershipBumps += 1; },
+        // A session-local reset outside any session context falls back to the global
+        // bump, which is the case this test exercises (073 §2.2).
+        bumpGenerationForSessionLocalReset: () => { ownershipBumps += 1; },
+    },
 });
 test.mock.module('../../src/core/main-session.ts', {
     namedExports: {
