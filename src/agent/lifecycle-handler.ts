@@ -340,6 +340,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 code, cli, model, provider: effectiveProvider, resumeKey: params.resumeKey, effort: effortVal,
                 skipSessionPersist: opts._skipSessionPersist === true,
                 outputLen: params.outputLen,
+                ...(params.codexAppBucket ? { codexAppBucket: params.codexAppBucket } : {}),
             });
             console.log(`[jaw:smoke] persisted session ${smokeSessionId.slice(0, 12)}... for continuation`);
         }
@@ -415,6 +416,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         code, wasKilled, cli, model, provider: effectiveProvider, resumeKey: params.resumeKey, effort: effortVal,
         skipSessionPersist: opts._skipSessionPersist === true,
         outputLen: params.outputLen,
+        ...(params.codexAppBucket ? { codexAppBucket: params.codexAppBucket } : {}),
     })) {
         console.log(`[jaw:session] saved ${cli} session=${persistedSessionId.slice(0, 12)}...${wasKilled ? ' (post-kill)' : ''}`);
     }

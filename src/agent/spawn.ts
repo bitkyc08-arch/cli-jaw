@@ -44,7 +44,7 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions } from './spawn-env.js';
-import { buildPromptForArgs, withHistoryPrompt } from './prompt-context.js';
+import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -58,7 +58,7 @@ import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntimesByScope, runtimeForScope } from './jwc-runtime.js';
 import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
-import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
+import { appendTraceEvent, finalizeTraceRun, stampTraceTool, startTraceRun } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
     appendAgyFullText,
@@ -471,6 +471,8 @@ const CLAUDE_E_STEER_WAIT_MS = 30_000;
 const CLAUDE_E_STEER_KILL_ESCALATION_MS = 8_000;
 const DEFAULT_CODEX_APP_TURN_IDLE_MS = 300_000;
 const DEFAULT_CODEX_APP_TURN_ABS_MS = 2 * 60 * 60_000;
+const DEFAULT_CODEX_APP_ACQUIRE_WAIT_MS = 60_000;
+const CODEX_APP_ACQUIRE_RETRY_BACKOFF_MAX_MS = 250;
 
 function configuredPositiveMs(value: string | undefined, fallback: number): number {
     const parsed = Number(value);
@@ -554,7 +556,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     const hadTimer = queueCtrl.isRetryPending(scopeKey);
     const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
     clearRetryTimer(scopeKey, false);
-    clearMainLiveRunOnStop(scopeKey, reason);
+    if (!cancelledPendingMain) clearMainLiveRunOnStop(scopeKey, reason);
     const abortedInProcess = abortInProcessRuntimeOnStop(scopeKey, reason);
     // Fix A: 사용자 stop은 큐도 폐기. steer/internal kill은 큐 보존.
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
@@ -818,7 +820,7 @@ function getRecentAssistantContentsForAgyResume(workingDir?: string | null): str
         .map((msg) => String(msg.content || '').trim());
 }
 
-import { buildArgs, buildResumeArgs, formatAgyPrintTimeout, resolveAiEProvider, resolveSessionBucket } from './args.js';
+import { buildArgs, buildResumeArgs, formatAgyPrintTimeout, resolveAiEProvider, resolveScopedSessionBucket, resolveSessionBucket } from './args.js';
 export { buildArgs, buildResumeArgs, resolveAiEProvider, resolveSessionBucket };
 
 const warnedAgyCapabilityFallbacks = new Set<string>();
@@ -837,9 +839,13 @@ import {
     acquireCodexAppRuntime,
     acquirePiRuntime,
     resolveCodexAppProductionLaneScope,
-    type CodexAppLease,
     type PiLease,
 } from './runtime-pool.js';
+import {
+    acquireCodexAppLane,
+    CodexHostGenerationStaleError,
+    prepareCodexAppHost,
+} from './codex-host-pool.js';
 import { loadCatalogEfforts, resolveCatalogPath, validateModelEffort } from './codex-app-catalog.js';
 import {
     listenCodexAppTurnAdapter,
@@ -1125,6 +1131,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ? migrateLegacyClaudeValue(requestedModel)
         : requestedModel;
     const runtimeModel = cli === 'cursor' ? resolveCursorModelVariant(model, effort) : model;
+    const codexMultiplexMain = cli === 'codex-app' && mainManaged && !opts.agentId
+        && settings["runtime"]?.codexApp?.multiplex === true;
     if (mainManaged) {
         setCurrentMainMeta(scopeKey, stripUndefined({
             origin,
@@ -1152,7 +1160,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Bucket-aware resume: codex-spark is kept in its own session bucket so
     // cross-model resume (gpt-5.4 ↔ gpt-5.3-codex-spark) doesn't send a
     // mismatched session_id to the server.
-    const currentBucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);
+    const currentBucket = codexMultiplexMain
+        ? resolveScopedSessionBucket(cli, runtimeModel, effectiveProvider, scopeKey, effort, 'fallback')
+        : resolveSessionBucket(cli, runtimeModel, effectiveProvider);
     const envDefaultsCli = cli === 'ai-e' ? effectiveProvider : cli;
     const cliEnv = applyCliEnvDefaults(envDefaultsCli, opts.env);
     const spawnEnv = makeCleanEnv(cliEnv);
@@ -1272,7 +1282,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     const resumeSessionId = empSid || (isResume ? bucketSessionId : null);
-    const needsHistory = !opts._skipHistory && (!isResume || cli === 'pi');
+    const needsHistory = shouldBuildHistoryBlock({
+        skipHistory: opts._skipHistory === true,
+        isResume,
+        cli,
+        codexMultiplexMain,
+    });
     const historyBlock = needsHistory
         ? buildHistoryBlock(
             prompt,
@@ -2119,10 +2134,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
         const effectiveFastMode = cfg.fastMode ?? settings["perCli"]?.["codex"]?.fastMode ?? false;
 
-        type CodexAppTurnLeaseView = Pick<
-            CodexAppLease,
-            'threadId' | 'reused' | 'resumedThread' | 'release' | 'cancel'
-        >;
+        type CodexAppTurnLeaseView = {
+            readonly threadId: string;
+            readonly reused: boolean;
+            readonly resumedThread: boolean;
+            readonly bucketKey?: string;
+            readonly laneScope?: string;
+            release(): void;
+            cancel(): Promise<void>;
+        };
         const runCodexAppTurn = async (
             appClient: CodexAppClient,
             lease: CodexAppTurnLeaseView | null,
@@ -2212,7 +2232,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 }
 
                 const shouldPrependHistory = lease
-                    ? !lease.resumedThread
+                    ? !(lease.resumedThread || lease.reused)
                     : !(isResume && Boolean(resumeSessionId));
                 const codexAppPrompt = (shouldPrependHistory && historyBlock)
                     ? `${historyBlock}\n\n[User Message]\n${prompt}`
@@ -2240,6 +2260,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resumeKey,
                     effort: cfg.effort || '',
                     skipSessionPersist: opts._skipSessionPersist === true,
+                    ...(lease?.bucketKey ? { codexAppBucket: lease.bucketKey } : {}),
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedThreadId.slice(0, 12)}... (pre-shutdown)`);
                 }
@@ -2283,6 +2304,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 activeProcesses,
                 scopeKey,
                 chatSessionId,
+                ...(lease?.bucketKey ? { codexAppBucket: lease.bucketKey } : {}),
                 childProcess: child,
                 releaseMainRun,
                 retryState: queueCtrl.retryStateForScope(scopeKey),
@@ -2294,12 +2316,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             });
         };
 
-        const laneScope = resolveCodexAppProductionLaneScope({
-            multiplexEnabled: settings["runtime"]?.codexApp?.multiplex === true,
-            employee: Boolean(opts.agentId),
-        });
-
         if (opts.agentId) {
+            const employeeLaneScope = resolveCodexAppProductionLaneScope({
+                multiplexEnabled: settings["runtime"]?.codexApp?.multiplex === true,
+                employee: true,
+            });
             const appClient = new CodexAppClient({
                 binary: detected.path || 'codex', workDir: spawnCwd, env: spawnEnv,
                 model, effort, fastMode: effectiveFastMode,
@@ -2307,26 +2328,149 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             appClient.spawn();
             const child = appClient.proc;
             if (!child) throw new Error('Codex AppServer process was not created');
-            void runCodexAppTurn(appClient, null, laneScope);
+            void runCodexAppTurn(appClient, null, employeeLaneScope);
             return { child, promise: resultPromise };
         }
 
+        type CodexAppAcquiredLease = CodexAppTurnLeaseView & { readonly client: CodexAppClient };
+        type CodexAppAcquireOutcome =
+            | { kind: 'lease'; lease: CodexAppAcquiredLease }
+            | { kind: 'cancelled'; reason: string };
+
         mainRun!.starting = true;
-        void acquireCodexAppRuntime({
-            binary: detected.path || 'codex', env: spawnEnv,
-            route: 'legacy',
-            key: {
-                scopeKey,
-                cwd: spawnCwd, model, effort, fastMode: effectiveFastMode,
-            },
-            storedThreadId: resumeSessionId || null,
-            instructions: sysPrompt,
-            forceNew,
-        }).then(async (lease) => {
-            mainRun!.starting = false;
+        const acquireCodexAppForTurn = async (): Promise<CodexAppAcquireOutcome> => {
+            let cancelled = false;
+            let cancelReason = 'user';
+            const cancelThisAcquire = (reason: string) => {
+                cancelled = true;
+                cancelReason = reason;
+            };
+            const acquireWasCancelled = () => cancelled || activeMainProcesses.get(scopeKey) !== mainRun;
+
+            try {
+                if (!codexMultiplexMain) {
+                    const lease = await acquireCodexAppRuntime({
+                        binary: detected.path || 'codex', env: spawnEnv,
+                        route: 'legacy',
+                        key: {
+                            scopeKey,
+                            cwd: spawnCwd, model, effort, fastMode: effectiveFastMode,
+                        },
+                        storedThreadId: resumeSessionId || null,
+                        instructions: sysPrompt,
+                        forceNew,
+                    });
+                    return { kind: 'lease', lease };
+                }
+
+                mainRun!.cancelPending = cancelThisAcquire;
+                const waitMs = configuredPositiveMs(
+                    process.env["CODEX_APP_ACQUIRE_WAIT_MS"],
+                    DEFAULT_CODEX_APP_ACQUIRE_WAIT_MS,
+                );
+                const deadlineAt = Date.now() + waitMs;
+                let lastStaleError: CodexHostGenerationStaleError | null = null;
+                let staleAttempts = 0;
+
+                const deadlineError = (stage: 'prepare' | 'acquire'): Error => lastStaleError
+                    ?? new Error(`Codex App ${stage} timed out after ${waitMs}ms`);
+                const awaitWithinDeadline = async <T>(
+                    stage: 'prepare' | 'acquire',
+                    pending: Promise<T>,
+                    onLateValue?: (value: T) => void,
+                ): Promise<T> => {
+                    let deadlineWon = false;
+                    let timeout: NodeJS.Timeout | undefined;
+                    void pending.then((value) => {
+                        if (deadlineWon) onLateValue?.(value);
+                    }, () => {});
+                    const remainingMs = deadlineAt - Date.now();
+                    if (remainingMs <= 0) {
+                        deadlineWon = true;
+                        throw deadlineError(stage);
+                    }
+                    const deadline = new Promise<never>((_resolveDeadline, rejectDeadline) => {
+                        timeout = setTimeout(() => {
+                            deadlineWon = true;
+                            rejectDeadline(deadlineError(stage));
+                        }, remainingMs);
+                    });
+                    try {
+                        return await Promise.race([pending, deadline]);
+                    } finally {
+                        if (timeout) clearTimeout(timeout);
+                    }
+                };
+
+                for (;;) {
+                    if (acquireWasCancelled()) return { kind: 'cancelled', reason: cancelReason };
+                    try {
+                        const prepared = await awaitWithinDeadline('prepare', prepareCodexAppHost({
+                            binary: detected.path || 'codex', cwd: spawnCwd,
+                            fastMode: effectiveFastMode, env: spawnEnv, model, effort,
+                        }));
+                        if (acquireWasCancelled()) return { kind: 'cancelled', reason: cancelReason };
+                        const lease = await awaitWithinDeadline('acquire', acquireCodexAppLane(prepared, {
+                            scopeKey,
+                            bucketKey: currentBucket!,
+                            storedThreadId: resumeSessionId || null,
+                            instructions: sysPrompt,
+                            forceNew,
+                            waitMs: deadlineAt - Date.now(),
+                        }), (lateLease) => { lateLease.release(); });
+                        if (acquireWasCancelled()) {
+                            lease.release();
+                            return { kind: 'cancelled', reason: cancelReason };
+                        }
+                        return { kind: 'lease', lease };
+                    } catch (err: unknown) {
+                        if (!(err instanceof CodexHostGenerationStaleError)) throw err;
+                        lastStaleError = err;
+                        if (acquireWasCancelled()) return { kind: 'cancelled', reason: cancelReason };
+                        const remainingMs = deadlineAt - Date.now();
+                        if (remainingMs <= 0) throw lastStaleError;
+                        staleAttempts += 1;
+                        const backoffMs = Math.min(
+                            remainingMs,
+                            CODEX_APP_ACQUIRE_RETRY_BACKOFF_MAX_MS,
+                            25 * staleAttempts,
+                        );
+                        await new Promise<void>((done) => { setTimeout(done, backoffMs); });
+                    }
+                }
+            } finally {
+                const latest = activeMainProcesses.get(scopeKey);
+                if (latest?.cancelPending === cancelThisAcquire) delete latest.cancelPending;
+                mainRun!.starting = false;
+            }
+        };
+
+        void acquireCodexAppForTurn().then(async (outcome) => {
+            if (outcome.kind === 'cancelled') {
+                finalizeTraceRun(traceRunId, 'interrupted');
+                clearLiveRun(liveScope);
+                broadcast('agent_status', { running: false, agentId: agentLabel });
+                resolve!({ text: '', code: -1 });
+                releaseMainRun(scopeKey, null, ownerGeneration);
+                void processQueue(scopeKey);
+                return;
+            }
+            const lease = outcome.lease;
+            if (activeMainProcesses.get(scopeKey) !== mainRun) {
+                lease.release();
+                finalizeTraceRun(traceRunId, 'interrupted');
+                clearLiveRun(liveScope);
+                broadcast('agent_status', { running: false, agentId: agentLabel });
+                resolve!({ text: '', code: -1 });
+                releaseMainRun(scopeKey, null, ownerGeneration);
+                void processQueue(scopeKey);
+                return;
+            }
+            const laneScope = codexMultiplexMain
+                ? lease.laneScope!
+                : resolveCodexAppProductionLaneScope({ multiplexEnabled: false, employee: false });
             await runCodexAppTurn(lease.client, lease, laneScope);
         }).catch((err: Error) => {
-            mainRun!.starting = false;
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });

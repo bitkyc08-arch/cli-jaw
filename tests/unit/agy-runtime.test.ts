@@ -30,6 +30,7 @@ import {
     stripAgyTrailingTimeoutOutput,
 } from '../../src/agent/agy-runtime.ts';
 import { resolveSpawnOutputText } from '../../src/agent/events/helpers.ts';
+import { shouldBuildHistoryBlock } from '../../src/agent/prompt-context.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -276,7 +277,18 @@ test('AGY-RT-012: AGY resume does not trim current stdout by prior output length
 test('AGY-RT-012b: AGY uses cli-jaw history instead of native resume', () => {
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     assert.match(spawnSrc, /const providerSupportsResume\s*=\s*cli !== 'agy'/);
-    assert.match(spawnSrc, /const needsHistory\s*=\s*!opts\._skipHistory && \(!isResume \|\| cli === 'pi'\)/);
+    assert.equal(shouldBuildHistoryBlock({
+        skipHistory: false,
+        isResume: false,
+        cli: 'agy',
+        codexMultiplexMain: false,
+    }), true);
+    assert.equal(shouldBuildHistoryBlock({
+        skipHistory: true,
+        isResume: false,
+        cli: 'agy',
+        codexMultiplexMain: false,
+    }), false);
 });
 
 test('AGY-RT-012c: history injection treats prior context as read-only background', () => {

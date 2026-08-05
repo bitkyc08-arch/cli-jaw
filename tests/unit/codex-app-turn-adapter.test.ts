@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { CodexAppClient } from '../../src/agent/codex-app-client.ts';
 import {
     extractFromCodexAppEvent,
@@ -266,47 +265,4 @@ test('a stale turn is rejected even when the thread matches the lease', async ()
     }, { threadId: 'thread-a', turnId: 'turn-b' });
     assert.deepEqual(events, ['item/agentMessage/delta'], 'the current turn still reaches the consumer');
     listener.dispose();
-});
-
-// The selector returning null is only half the promise; the other half is that
-// production actually routes through it. Running spawnAgent here would mean
-// standing up the whole agent stack, so this parses the two call sites instead
-// and checks that the scope they hand the adapter is the selector's result -
-// not scopeKey, not a literal, not anything else in reach. A regex over the
-// file would match the same text in a comment, so the check walks the AST.
-test('both production call sites pass the selector result as the lane scope', async () => {
-    const ts = await import('typescript');
-    const source = await import('node:fs/promises')
-        .then((fs) => fs.readFile(resolve(import.meta.dirname, '../../src/agent/spawn.ts'), 'utf8'));
-    const sf = ts.createSourceFile('spawn.ts', source, ts.ScriptTarget.Latest, true);
-
-    let selectorBinding: string | null = null;
-    const laneArgs: string[] = [];
-    const visit = (node: import('typescript').Node): void => {
-        if (
-            ts.isVariableDeclaration(node)
-            && node.initializer
-            && ts.isCallExpression(node.initializer)
-            && ts.isIdentifier(node.initializer.expression)
-            && node.initializer.expression.text === 'resolveCodexAppProductionLaneScope'
-            && ts.isIdentifier(node.name)
-        ) {
-            selectorBinding = node.name.text;
-        }
-        if (
-            ts.isCallExpression(node)
-            && ts.isIdentifier(node.expression)
-            && node.expression.text === 'runCodexAppTurn'
-        ) {
-            const third = node.arguments[2];
-            laneArgs.push(third && ts.isIdentifier(third) ? third.text : '<not-an-identifier>');
-        }
-        ts.forEachChild(node, visit);
-    };
-    visit(sf);
-
-    assert.equal(selectorBinding, 'laneScope', 'the selector result must be bound before use');
-    assert.equal(laneArgs.length, 2, 'main and employee are the only production call sites');
-    assert.deepEqual(laneArgs, ['laneScope', 'laneScope'],
-        'every production call site passes the selector result, so C1 cannot wire a real scope by accident');
 });

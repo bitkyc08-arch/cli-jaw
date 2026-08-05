@@ -12,6 +12,16 @@ export function withHistoryPrompt(prompt: string, historyBlock: string): string 
     return `${historyBlock}\n\n${HISTORY_BOUNDARY_INSTRUCTION}\n\n---\n[Current Message]\n${body}`;
 }
 
+export function shouldBuildHistoryBlock(input: {
+    skipHistory: boolean;
+    isResume: boolean;
+    cli: string;
+    codexMultiplexMain: boolean;
+}): boolean {
+    return !input.skipHistory
+        && (input.codexMultiplexMain || !input.isResume || input.cli === 'pi');
+}
+
 function isArgvPromptRuntime(cli: string, effectiveProvider?: string | null): boolean {
     return cli === 'cursor'
         || cli === 'kiro-code'

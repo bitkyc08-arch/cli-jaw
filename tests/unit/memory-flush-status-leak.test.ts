@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { flushClaudeBuffers } from '../../src/agent/events.ts';
 import { activeProcesses, isAgentBusy } from '../../src/agent/spawn.ts';
+import { shouldBuildHistoryBlock } from '../../src/agent/prompt-context.ts';
 import { clearAllBroadcastListeners } from '../../src/core/bus.ts';
 import { subscribe } from '../../src/core/event-bus.ts';
 import type { SpawnContext } from '../../src/types/agent.ts';
@@ -29,11 +30,12 @@ test('memory-flush spawn is not main-managed and uses isolated history/session p
     );
     assert.ok(flushSrc.includes('forceNew: true'), 'memory flush must not resume main provider session');
     assert.ok(flushSrc.includes('_skipHistory: true'), 'memory flush must not receive full history twice');
-    assert.ok(
-        spawnSrc.includes('const needsHistory = !opts._skipHistory') &&
-        /const\s+historyBlock\s*=\s*needsHistory[\s\S]*?\?\s*buildHistoryBlock/.test(spawnSrc),
-        'standard history injection must honor _skipHistory',
-    );
+    assert.equal(shouldBuildHistoryBlock({
+        skipHistory: true,
+        isResume: false,
+        cli: 'codex-app',
+        codexMultiplexMain: true,
+    }), false, 'standard history injection must honor _skipHistory');
     assert.ok(
         spawnSrc.includes('needsHistoryFallback && !opts._skipHistory ? buildHistoryBlock'),
         'ACP fallback history must honor _skipHistory',
