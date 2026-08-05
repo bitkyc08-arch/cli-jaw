@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import fs, { mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { resolveScopedSessionBucket } from '../../src/agent/args.ts';
 import {
     bumpSessionOwnershipGeneration,
     getSessionOwnershipGeneration,
@@ -117,4 +120,38 @@ test('agent system uses shared persistence and resume-classifier helpers', () =>
     // shouldInvalidateResumeSession is called in lifecycle-handler.ts (unified exit handler)
     assert.ok(lifecycleSrc.includes('shouldInvalidateResumeSession('),
         'lifecycle handler should use shared resume classifier');
+});
+
+test('codex-app buckets match native and fallback lane identity', () => {
+    assert.equal(
+        resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'scope-a', 'high', 'native'),
+        'codex-app:scope-a',
+    );
+    assert.equal(
+        resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'scope-a', 'high', 'fallback'),
+        'codex-app:scope-a:gpt-5.5:high',
+    );
+    assert.equal(
+        resolveScopedSessionBucket('codex-app', 'gpt-5.5', null, 'scope-a', 'low', 'fallback'),
+        'codex-app:scope-a:gpt-5.5:low',
+    );
+    assert.equal(
+        resolveScopedSessionBucket('pi', 'default', null, 'scope-a', 'high', 'native'),
+        'pi',
+    );
+});
+
+test('legacy codex-app bucket copy is lossless and never overwrites scoped state', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cli-jaw-codex-bucket-copy-'));
+    const fixture = join(__dirname, '../fixtures/codex-session-bucket-db-child.mts');
+    try {
+        const result = spawnSync(process.execPath, ['--import', 'tsx', fixture], {
+            env: { ...process.env, CLI_JAW_HOME: home },
+            encoding: 'utf8',
+            timeout: 30_000,
+        });
+        assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join('\n'));
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
 });

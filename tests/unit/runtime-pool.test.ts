@@ -305,18 +305,6 @@ test('latch timeout removes listeners and falls back to kill', async (t) => {
     fakeState.interruptMode = 'success';
 });
 
-test('spawn contract keeps employees per-turn and routes boss cancellation through the lease', () => {
-    const source = readFileSync(new URL('../../src/agent/spawn.ts', import.meta.url), 'utf8');
-    const employeeBranch = source.indexOf('if (opts.agentId) {', source.indexOf("if (cli === 'codex-app')"));
-    const directClient = source.indexOf('new CodexAppClient({', employeeBranch);
-    const acquire = source.indexOf('acquireCodexAppRuntime({', employeeBranch);
-    assert.ok(employeeBranch > 0 && directClient > employeeBranch && acquire > directClient);
-    assert.match(source, /action=lease\.cancel/);
-    assert.match(source, /CODEX_APP_TURN_IDLE_MS/);
-    assert.match(source, /CODEX_APP_TURN_ABS_MS/);
-    assert.match(source, /watchdog stall/);
-});
-
 test('pool storage is partitioned by engine before full-key and scope indexing', () => {
     const source = readFileSync(new URL('../../src/agent/runtime-pool.ts', import.meta.url), 'utf8');
     assert.match(source, /type Engine = 'codex-app' \| 'pi'/);

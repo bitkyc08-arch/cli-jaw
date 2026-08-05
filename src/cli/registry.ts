@@ -268,7 +268,7 @@ export const CLI_KEYS = Object.keys(CLI_REGISTRY) as CliEngine[];
 const envDefaultCli = process.env['CLI_JAW_DEFAULT_CLI'];
 export const DEFAULT_CLI: CliEngine = (envDefaultCli && CLI_KEYS.includes(envDefaultCli as CliEngine))
     ? envDefaultCli as CliEngine
-    : CLI_KEYS.includes('claude') ? 'claude' : (CLI_KEYS[0] ?? 'claude');
+    : CLI_KEYS.includes('codex-app') ? 'codex-app' : (CLI_KEYS[0] ?? 'codex-app');
 
 export function buildDefaultPerCli() {
     const out: Record<string, { model: string; effort: string }> = {};

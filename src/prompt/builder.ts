@@ -6,6 +6,8 @@ import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartb
 import { expandHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { getEmployees } from '../core/db.js';
+import { getActiveChatSession, listChatSessions } from '../core/chat-sessions.js';
+import { currentSessionScope } from '../core/session-context.js';
 import { memoryFlushCounter } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
 import { buildTaskSnapshot, loadProfileSummary } from '../memory/runtime.js';
@@ -502,6 +504,20 @@ export function getBoundedLocalSearchContract(): string {
     ].join('\n');
 }
 
+function promptIdentityValue(value: unknown, fallback: string): string {
+    const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+    return (normalized || fallback).slice(0, 120);
+}
+
+function getCurrentSessionIdentityLine(): string {
+    const sessionId = currentSessionScope()?.chatSessionId ?? getActiveChatSession();
+    const session = listChatSessions().find(row => row.id === sessionId);
+    const id = promptIdentityValue(sessionId, 'default');
+    const label = promptIdentityValue(session?.label, 'unlabeled');
+    const source = promptIdentityValue(session?.source, 'local');
+    return `Session identity: id=${id}; label=${label}; source=${source}`;
+}
+
 export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string; freshSession?: boolean } = {}) {
     // A-1: file takes priority (user-editable), rendered template fallback
     const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
@@ -527,6 +543,9 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
             prompt += '\n\n---\n## Memory Status\n';
             prompt += '- indexed memory is still initializing\n';
             prompt += '- temporary fallback memory context is active\n';
+        }
+        if (settings["multiSession"]?.enabled === true) {
+            prompt += `\n\n---\n${getCurrentSessionIdentityLine()}`;
         }
     } else {
         // Phase 54-B: forDisk (AGENTS.md) — include a minimal memory block

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -67,10 +67,25 @@ async function withInactiveOpenCodexEnv<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 test('opencodex runtime port path resolves CLI_JAW_OPENCODEX_DIR lazily', async () => {
-    const src = await readFile(new URL('../../src/cli/opencodex-models.ts', import.meta.url), 'utf8');
-    assert.match(src, /function openCodexRuntimePortPath\(\): string/);
-    assert.match(src, /readFile\(openCodexRuntimePortPath\(\), 'utf8'\)/);
-    assert.doesNotMatch(src, /const OPENCODEX_RUNTIME_PORT_PATH/);
+    await withOpenCodexStub({
+        health: { status: 'ok', service: 'opencodex' },
+        models: { data: [{ id: 'lazy-env-model' }] },
+    }, async (endpoint) => {
+        const previousDir = process.env['CLI_JAW_OPENCODEX_DIR'];
+        const dir = await mkdtemp(join(tmpdir(), 'jaw-ocx-lazy-'));
+        process.env['CLI_JAW_OPENCODEX_DIR'] = dir;
+        await writeFile(join(dir, 'runtime-port.json'), JSON.stringify({ port: Number(new URL(endpoint).port) }));
+        resetOpenCodexModelCacheForTest();
+        try {
+            const result = await resolveOpenCodexCodexModelsDetailed();
+            assert.equal(result.source, 'opencodex');
+            assert.deepEqual(result.models, ['lazy-env-model']);
+        } finally {
+            if (previousDir === undefined) delete process.env['CLI_JAW_OPENCODEX_DIR'];
+            else process.env['CLI_JAW_OPENCODEX_DIR'] = previousDir;
+            resetOpenCodexModelCacheForTest();
+        }
+    });
 });
 
 // ── Per-model reasoning effort (opencodex /v1/models) ──

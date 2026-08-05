@@ -3,7 +3,7 @@
 // Interface-specific behavior is handled via the `interface` parameter.
 
 import fs from 'fs';
-import { settings, detectAllCli, APP_VERSION, deriveCdpPort } from '../core/config.js';
+import { settings, APP_VERSION, deriveCdpPort } from '../core/config.js';
 import { getSession } from '../core/db.js';
 import { t } from '../core/i18n.js';
 import { getMergedSkills, A2_PATH, regenerateB } from '../prompt/builder.js';
@@ -19,6 +19,7 @@ import {
 } from '../../lib/mcp-sync.js';
 
 import type { RemoteInterface } from '../messaging/types.js';
+import { getCachedCliStatus } from './cli-status.js';
 
 export type CommandContextInterface = 'web' | 'cli' | RemoteInterface;
 
@@ -86,7 +87,7 @@ export function makeCommandCtx(
         resetSession: deps.resetSession
             ? async () => deps.resetSession!()
             : async () => deps.clearSession(),
-        getCliStatus: () => detectAllCli(),
+        getCliStatus: () => getCachedCliStatus(),
 
         // MCP — unified across all interfaces (TG previously returned empty)
         getMcp: () => loadUnifiedMcp(),

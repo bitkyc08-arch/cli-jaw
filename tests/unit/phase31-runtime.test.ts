@@ -26,8 +26,17 @@ test('P31-001: startup migrates permissions safe -> auto', () => {
     );
 });
 
+// The literal used to be `settings.workingDir`; it now reads from the snapshot
+// taken before the merge, which is the same guarantee expressed more precisely.
+// Pin the guarantee rather than the spelling: the previous value must be
+// captured before the patch is applied, so a workingDir change is still
+// detectable afterwards.
 test('P31-002: applySettingsPatch tracks previous workingDir before merge', () => {
-    assert.ok(runtimeSettingsSrc.includes('const prevWorkingDir = settings.workingDir'));
+    assert.match(runtimeSettingsSrc, /const prevWorkingDir = prevSnapshot(\.workingDir|\[["']workingDir["']\])/);
+    const captureIndex = runtimeSettingsSrc.indexOf('const prevWorkingDir');
+    const compareIndex = runtimeSettingsSrc.indexOf('!== prevWorkingDir');
+    assert.ok(captureIndex > 0 && compareIndex > captureIndex,
+        'the previous workingDir must be captured before it is compared');
 });
 
 test('P31-003: workingDir change triggers artifact regeneration pipeline', () => {

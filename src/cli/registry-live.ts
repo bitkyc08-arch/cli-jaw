@@ -2,6 +2,8 @@ import { fetchKiroModelInventory } from '../agent/kiro-models.js';
 import { discoverJwcAuthenticatedProviders, JWC_PROVIDER_EFFORT_DEFAULTS, JWC_PROVIDER_MODEL_DEFAULTS } from '../code-mode/model-options.js';
 import { CLI_REGISTRY } from './registry.js';
 import { resolveOpenCodexCodexModelsDetailed } from './opencodex-models.js';
+import { diagnoseOpenCodexExecution, resolveOpenCodexRuntime } from './opencodex-runtime.js';
+import { readCodexRootOpenAiBaseUrl } from '../core/codex-config.js';
 
 async function fetchJwcProviders(): Promise<string[]> {
     try {
@@ -28,11 +30,16 @@ function unionEfforts(effortsByModel: Record<string, string[]>): string[] {
 export async function buildLiveCliRegistry() {
     const registry = structuredClone(CLI_REGISTRY) as Record<string, Record<string, unknown>>;
 
-    const [kiroInventory, jwcProviders, codexResult] = await Promise.all([
+    const [kiroInventory, jwcProviders, openCodexRuntime] = await Promise.all([
         fetchKiroModelInventory(),
         fetchJwcProviders(),
-        resolveOpenCodexCodexModelsDetailed(),
+        resolveOpenCodexRuntime(),
     ]);
+    const codexResult = await resolveOpenCodexCodexModelsDetailed(openCodexRuntime);
+
+    const executionCoupling = diagnoseOpenCodexExecution(readCodexRootOpenAiBaseUrl(), openCodexRuntime);
+    registry['codex'] = { ...registry['codex'], executionCoupling };
+    registry['codex-app'] = { ...registry['codex-app'], executionCoupling };
 
     const codexModels = codexResult.models;
     if (codexModels.length > 0) {

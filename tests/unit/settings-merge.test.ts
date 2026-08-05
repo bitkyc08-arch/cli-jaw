@@ -2,7 +2,7 @@
 // src/settings-merge.js 가 생성되면 통과 (server.js에서 로직 추출 예정)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeSettingsPatch } from '../../src/core/settings-merge.ts';
+import { mergeSettingsPatch, sanitizeSettingsInput } from '../../src/core/settings-merge.ts';
 
 // ─── perCli deep merge ──────────────────────────────
 
@@ -71,4 +71,40 @@ test('SM-008: telegramHub deep merge preserves callback siblings', () => {
     const current = { telegramHub: { mode: 'hub-member', hubCallbackUrl: 'http://127.0.0.1:24576' } };
     const next = mergeSettingsPatch(current, { telegramHub: { mode: 'standalone' } });
     assert.deepEqual(next.telegramHub, { mode: 'standalone', hubCallbackUrl: 'http://127.0.0.1:24576' });
+});
+
+test('SM-009: runtime.codexApp merge preserves siblings at both depths', () => {
+    const current = {
+        runtime: {
+            sibling: { keep: true },
+            codexApp: { multiplex: false, probeOwned: 'keep' },
+        },
+    };
+    const next = mergeSettingsPatch(current, { runtime: { codexApp: { multiplex: true } } });
+    assert.deepEqual(next.runtime, {
+        sibling: { keep: true },
+        codexApp: { multiplex: true, probeOwned: 'keep' },
+    });
+    assert.equal(current.runtime.codexApp.multiplex, false, 'candidate merge must not mutate current settings');
+});
+
+test('SM-010: shared sanitizer separates execution default from persistence shape', () => {
+    const absent = sanitizeSettingsInput({ cli: 'codex-app' }, 'boot');
+    assert.equal(absent.value.runtime.codexApp.multiplex, false);
+    assert.equal(absent.persistenceShape, 'absent');
+
+    const explicit = sanitizeSettingsInput({
+        runtime: { codexApp: { multiplex: false } },
+    }, 'watch');
+    assert.equal(explicit.value.runtime.codexApp.multiplex, false);
+    assert.equal(explicit.persistenceShape, 'present');
+});
+
+test('SM-011: shared sanitizer strips laneMode and classifies invalid multiplex', () => {
+    const api = sanitizeSettingsInput({
+        runtime: { codexApp: { laneMode: 'native', multiplex: 'true', keep: 1 } },
+    }, 'api');
+    assert.deepEqual(api.serverOwnedPaths, ['runtime.codexApp.laneMode']);
+    assert.deepEqual(api.invalidPaths, ['runtime.codexApp.multiplex']);
+    assert.deepEqual(api.value.runtime.codexApp, { keep: 1 });
 });

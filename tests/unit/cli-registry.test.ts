@@ -21,8 +21,8 @@ test('CLI_KEYS contains exactly 13 known entries', () => {
     assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'grok', 'jwc', 'kiro-code', 'opencode', 'pi']);
 });
 
-test('DEFAULT_CLI is claude', () => {
-    assert.equal(DEFAULT_CLI, 'claude');
+test('DEFAULT_CLI is codex-app', () => {
+    assert.equal(DEFAULT_CLI, 'codex-app');
 });
 
 test('every CLI entry has required fields', () => {
@@ -352,15 +352,15 @@ test('doctor CLI checks are driven by canonical registry keys', () => {
     assert.doesNotMatch(doctorSrc, /for \(const cli of \['claude', 'codex', 'gemini', 'opencode', 'copilot'\]\)/);
 });
 
-test('readiness default order covers existing non-JWC canonical CLIs and keeps JWC out for slice 270', () => {
-    const readinessSrc = fs.readFileSync(join(__dirname, '../../src/cli/readiness.ts'), 'utf8');
-    const order = readinessSrc.split('\n').find(line => line.includes('const DEFAULT_ORDER')) || '';
+test('readiness default order starts with codex-app, covers existing non-JWC canonical CLIs, and excludes JWC', async () => {
+    const { DEFAULT_READINESS_ORDER } = await import('../../src/cli/readiness.ts');
+    assert.equal(DEFAULT_READINESS_ORDER[0], 'codex-app');
     for (const key of CLI_KEYS) {
         if (key === 'jwc') {
-            assert.doesNotMatch(order, /'jwc'/, 'jwc remains out of DEFAULT_ORDER until slice 280 explicitly switches defaults');
+            assert.equal(DEFAULT_READINESS_ORDER.includes(key), false, 'jwc remains out until slice 280 explicitly switches defaults');
             continue;
         }
-        assert.match(order, new RegExp(`'${key}'`), `DEFAULT_ORDER must include ${key}`);
+        assert.equal(DEFAULT_READINESS_ORDER.includes(key), true, `readiness order must include ${key}`);
     }
 });
 

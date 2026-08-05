@@ -83,8 +83,98 @@ test('CSR-008: harvest reads from prev workingDir (sourceWorkDir), marker writes
     // already covered in CSR-002 for targetWorkDir
 });
 
-test('CSR-009: refresh failure rolls back settings + propagates throw', () => {
-    assert.match(runtimeSrc, /catch\s*\(\s*e[\s\S]*?\)\s*\{[\s\S]*?replaceSettings\(prevSnapshot\);\s*saveSettings\(prevSnapshot\);[\s\S]*?throw\s+e/);
+// Writes go through an injected sink rather than the real settings.json: every
+// test file in the suite shares one temp home, and two rollback tests writing
+// the same file race each other.
+test('CSR-009: refresh failure rolls back the persisted settings pair and propagates throw', async (t) => {
+    const config = await import('../../src/core/config.ts');
+    const runtime = await import('../../src/core/runtime-settings.ts');
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+
+    const baseline = structuredClone(config.settings);
+    baseline.cli = 'claude';
+    config.commitCandidate({ value: baseline, shape: 'absent' });
+
+    const writes: string[] = [];
+    await assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
+        writeSettings: (raw: string) => { writes.push(raw); },
+        cliSwitchRefresh: async () => { throw new Error('CSR-009 refresh failure'); },
+    }), /CSR-009 refresh failure/);
+    assert.deepEqual(config.settings, baseline);
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
+    assert.equal(JSON.parse(writes.at(-1)!).cli, 'claude', 'the rollback write restores the previous runtime');
+});
+
+// The messaging restart is the other post-write side effect that can fail, and
+// it rolls back through the same path. It lives here rather than beside the
+// messaging tests because these cases share process-wide settings state and the
+// database; running them in separate files let them race, and the failure was a
+// SQLite lock rather than anything either test was asserting.
+test('CSR-009b: messaging restart failure rolls back the same way', async (t) => {
+    const config = await import('../../src/core/config.ts');
+    const runtime = await import('../../src/core/runtime-settings.ts');
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+
+    const baseline = structuredClone(config.settings);
+    baseline.channel = 'telegram';
+    baseline.cli = 'claude';
+    config.commitCandidate({ value: baseline, shape: 'absent' });
+
+    const writes: string[] = [];
+    await assert.rejects(runtime.applyRuntimeSettingsPatch({ channel: 'discord', cli: 'codex-app' }, {
+        writeSettings: (raw: string) => { writes.push(raw); },
+        // Takes over the branch that would otherwise sync the main session into
+        // the database, keeping this case to the settings contract it is about.
+        cliSwitchRefresh: async () => {},
+        restartMessaging: async () => { throw new Error('CSR-009b restart failure'); },
+    }), /CSR-009b restart failure/);
+
+    assert.equal(config.settings["channel"], 'telegram', 'a failed restart must not leave the new channel active');
+    assert.equal(config.settings["cli"], 'claude');
+    assert.equal(config.getSettingsPersistenceShape(), 'absent');
+    assert.equal(JSON.parse(writes.at(-1)!).channel, 'telegram');
+});
+
+// A late failure in one request used to restore a candidate captured before a
+// second request had already persisted its own value, so the winning write
+// vanished from both memory and disk. Mutations are serialised now.
+test('CSR-009c: a late rollback cannot undo a write that landed after it started', async (t) => {
+    const config = await import('../../src/core/config.ts');
+    const runtime = await import('../../src/core/runtime-settings.ts');
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+
+    const baseline = structuredClone(config.settings);
+    baseline.cli = 'claude';
+    delete baseline.runtime;
+    config.commitCandidate({ value: baseline, shape: 'absent' });
+
+    let releaseFirst!: () => void;
+    const firstReachedSideEffect = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const writes: string[] = [];
+
+    const first = assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
+        writeSettings: (raw: string) => { writes.push(raw); },
+        cliSwitchRefresh: async () => {
+            await firstReachedSideEffect;
+            throw new Error('CSR-009c late failure');
+        },
+    }), /CSR-009c late failure/);
+
+    const second = runtime.applyRuntimeSettingsPatch({ runtime: { codexApp: { multiplex: false } } }, {
+        writeSettings: (raw: string) => { writes.push(raw); },
+    });
+
+    releaseFirst();
+    await first;
+    await second;
+
+    assert.equal(config.getSettingsPersistenceShape(), 'present',
+        'the explicit gate written by the second request must survive the first request failing');
+    assert.equal(JSON.parse(writes.at(-1)!).runtime?.codexApp?.multiplex, false,
+        'the last write must be the second request, not a stale rollback');
 });
 
 test('CSR-010: setPendingBootstrapPromptStrict exists and does NOT swallow errors', () => {

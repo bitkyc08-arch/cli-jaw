@@ -5,7 +5,8 @@ import os from 'os';
 import { join } from 'path';
 import { ok } from '../http/response.js';
 import { asyncHandler } from '../http/async-handler.js';
-import { settings, JAW_HOME, detectAllCli } from '../core/config.js';
+import { settings, JAW_HOME } from '../core/config.js';
+import { sanitizeSettingsInput } from '../core/settings-merge.js';
 import { readCodexContextWindow } from '../core/codex-config.js';
 import { regenerateB, A2_PATH, HEARTBEAT_PATH } from '../prompt/builder.js';
 import { clearTemplateCache, getTemplateDir } from '../prompt/template-loader.js';
@@ -19,6 +20,7 @@ import { fetchAgyUsage } from './quota-agy-reverse.js';
 import { fetchKiroUsage } from './quota-kiro-reverse.js';
 import { fetchOpenCodeUsage } from './quota-opencode-go-api.js';
 import { buildLiveCliRegistry } from '../cli/registry-live.js';
+import { getCachedCliStatus } from '../cli/cli-status.js';
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
@@ -33,6 +35,14 @@ import {
     redactPiSettings,
     type PiProfile,
 } from '../agent/pi-runtime.js';
+import {
+    resolveRuntimeDefaultMigration,
+    RuntimeDefaultMigrationTerminalError,
+    withRuntimeDefaultMigrationLock,
+    type RuntimeDefaultMigrationAction,
+} from '../core/runtime-settings.js';
+
+const SERVER_OWNED_SETTINGS_KEYS = ['settingsSchemaVersion', 'runtimeDefaultMigration'] as const;
 
 function redactSttSettings(input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
     if (!input) return input;
@@ -133,13 +143,62 @@ export function registerSettingsRoutes(
     });
 
     app.put('/api/settings', requireAuth, asyncHandler(async (req, res) => {
-        const result = await applySettings(req.body) as Record<string, unknown>;
+        const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+            ? req.body as Record<string, unknown>
+            : {};
+        const sanitized = sanitizeSettingsInput(body, 'api');
+        if (SERVER_OWNED_SETTINGS_KEYS.some((key) => key in body)
+            || sanitized.serverOwnedPaths.length > 0) {
+            res.status(400).json({ ok: false, error: 'server_owned_settings_field' });
+            return;
+        }
+        if (sanitized.invalidPaths.length > 0) {
+            res.status(400).json({ ok: false, error: 'invalid_settings_field' });
+            return;
+        }
+        const result = await applySettings(sanitized.value) as Record<string, unknown>;
         try {
             const keys = Object.keys(req.body || {}).filter(k => !['stt', 'jawCeo'].includes(k));
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), { keys });
         } catch { /* non-fatal */ }
         const safe = redactRuntimeSettings(result);
         ok(res, safe);
+    }));
+
+    app.post('/api/settings/runtime-default-migration', requireAuth, asyncHandler(async (req, res) => {
+        const body = req.body;
+        if (!body || typeof body !== 'object' || Array.isArray(body)
+            || Object.keys(body).length !== 1
+            || !Object.prototype.hasOwnProperty.call(body, 'action')
+            || !['accept', 'keep'].includes(body.action)) {
+            res.status(400).json({ ok: false, error: 'invalid_runtime_default_migration_action' });
+            return;
+        }
+        const action = body.action as RuntimeDefaultMigrationAction;
+        await withRuntimeDefaultMigrationLock(async () => {
+            let patch: Record<string, unknown>;
+            try {
+                patch = resolveRuntimeDefaultMigration(settings, action);
+            } catch (error) {
+                if (!(error instanceof RuntimeDefaultMigrationTerminalError)) throw error;
+                res.status(409).json({
+                    ok: false,
+                    error: 'runtime_default_migration_terminal',
+                    settings: redactRuntimeSettings(settings),
+                });
+                return;
+            }
+            const result = await applySettings(patch) as Record<string, unknown>;
+            const migration = result["runtimeDefaultMigration"] as Record<string, unknown> | undefined;
+            try {
+                getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
+                    action,
+                    migrationId: migration?.["id"],
+                    status: migration?.["state"],
+                });
+            } catch { /* non-fatal */ }
+            ok(res, redactRuntimeSettings(result));
+        });
     }));
 
     // #233 follow-up: open the OS folder chooser and apply the picked folder
@@ -318,7 +377,7 @@ export function registerSettingsRoutes(
     app.get('/api/cli-registry', asyncHandler(async (_, res) => {
         ok(res, await buildLiveCliRegistry());
     }));
-    app.get('/api/cli-status', (_, res) => res.json(detectAllCli()));
+    app.get('/api/cli-status', (_, res) => res.json(getCachedCliStatus()));
 
     app.post('/api/pi/profiles/register', requireAuth, asyncHandler(async (req, res) => {
         const profile = normalizePiProfile(req.body);

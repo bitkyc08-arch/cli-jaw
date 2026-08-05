@@ -1,7 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { CLI_REGISTRY, CODEX_EFFORT_CHOICES, CODEX_MODEL_CHOICES } from './registry.js';
+import { resolveOpenCodexRuntime, type OpenCodexRuntimeStatus } from './opencodex-runtime.js';
 
 /**
  * One model as advertised by opencodex `GET /v1/models`.
@@ -67,26 +65,6 @@ function staticResult(): OpenCodexModelsResult {
 
 function isCodexCli(cli: string): boolean {
     return cli === 'codex' || cli === 'codex-app';
-}
-
-function openCodexDir(): string {
-    return process.env['CLI_JAW_OPENCODEX_DIR'] || join(homedir(), '.opencodex');
-}
-
-function openCodexRuntimePortPath(): string {
-    return join(openCodexDir(), 'runtime-port.json');
-}
-
-async function readOpenCodexPort(): Promise<number | null> {
-    try {
-        const raw = JSON.parse(await readFile(openCodexRuntimePortPath(), 'utf8')) as Record<string, unknown>;
-        const port = raw['port'];
-        return Number.isInteger(port) && (port as number) > 0 && (port as number) <= 65535
-            ? port as number
-            : null;
-    } catch {
-        return null;
-    }
 }
 
 async function fetchJson(url: string, timeoutMs: number): Promise<unknown | null> {
@@ -197,7 +175,7 @@ export function applyCodexModelsToChoices(
     return choicesByCli;
 }
 
-export async function resolveOpenCodexCodexModelsDetailed(): Promise<OpenCodexModelsResult> {
+export async function resolveOpenCodexCodexModelsDetailed(runtimeStatus?: OpenCodexRuntimeStatus): Promise<OpenCodexModelsResult> {
     const now = Date.now();
     if (cachedOpenCodexModels && now - cachedOpenCodexModels.fetchedAt < CACHE_TTL_MS) {
         return {
@@ -207,18 +185,10 @@ export async function resolveOpenCodexCodexModelsDetailed(): Promise<OpenCodexMo
         };
     }
 
-    const port = await readOpenCodexPort();
-    if (!port) return staticResult();
+    const runtime = runtimeStatus ?? await resolveOpenCodexRuntime();
+    if (runtime.state !== 'healthy' || !runtime.baseUrl) return staticResult();
 
-    const baseUrl = `http://127.0.0.1:${port}`;
-    const health = await fetchJson(`${baseUrl}/healthz`, HEALTH_TIMEOUT_MS);
-    if (!health || typeof health !== 'object' || Array.isArray(health)
-        || (health as Record<string, unknown>)['status'] !== 'ok'
-        || (health as Record<string, unknown>)['service'] !== 'opencodex') {
-        return staticResult();
-    }
-
-    const modelsPayload = await fetchJson(`${baseUrl}/v1/models`, MODELS_TIMEOUT_MS);
+    const modelsPayload = await fetchJson(`${runtime.baseUrl}/v1/models`, MODELS_TIMEOUT_MS);
     const parsed = parseModelEntries(modelsPayload);
     const live = parsed.length > 0;
     const entries = live ? parsed : defaultCodexEntries();

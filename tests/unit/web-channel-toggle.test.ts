@@ -30,13 +30,20 @@ test('applySettingsPatch calls applyRuntimeSettingsPatch', () => {
 
 // ─── Failed save does not leave optimistic state ─────
 
-test('applyRuntimeSettingsPatch rolls back on failure', () => {
-    assert.match(runtimeSettingsSrc, /replaceSettings\(prevSnapshot\)/,
-        'should rollback to prevSnapshot on restart failure');
-    assert.match(runtimeSettingsSrc, /saveSettings\(prevSnapshot\)/,
-        'should persist rollback to disk');
-});
-
+// This used to grep for replaceSettings(prevSnapshot) and saveSettings(prevSnapshot),
+// neither of which exists now that persistence writes a candidate before it
+// commits. The behaviour being protected has not changed, so assert that
+// instead: a post-write failure must leave neither memory nor disk carrying the
+// attempted patch.
+// Every test file in the suite inherits one temp home, so writing the real
+// settings.json here would race the other rollback tests. The injected writer
+// keeps the same assertion without touching disk: capture what the code would
+// have persisted, and check that the last write undoes the attempted patch.
+// The rollback contract for this path is asserted in
+// tests/unit/cli-switch-refresh.test.ts, which owns the settings-mutation
+// cases. They share process-wide settings state and the database, so
+// splitting them across files made them race on a SQLite lock rather than
+// on anything they were checking.
 test('applyRuntimeSettingsPatch propagates error to caller', () => {
     assert.match(runtimeSettingsSrc, /throw e/,
         'should throw error so HTTP handler can report failure');

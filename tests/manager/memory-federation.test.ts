@@ -4,7 +4,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import { searchFederated } from '../../src/manager/memory/federation.ts';
+import { searchFederated, searchFederatedEnvelope } from '../../src/manager/memory/federation.ts';
+import { searchChatFederated } from '../../src/manager/memory/chat-federation.ts';
 import type { InstanceMemoryRef } from '../../src/manager/memory/types.ts';
 
 function freshTmp(): string {
@@ -57,6 +58,41 @@ function createIndexDb(dbPath: string, opts: { withSynonyms?: boolean; withTrigr
     }
 }
 
+function createChatDb(
+    dbPath: string,
+    rows: Array<{ content: string; session?: string; createdAt?: string }> = [],
+    withSessionId = true,
+): void {
+    mkdirSync(join(dbPath, '..'), { recursive: true });
+    const db = new Database(dbPath);
+    try {
+        db.exec(`CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            cli TEXT,
+            tool_log TEXT,
+            created_at TEXT NOT NULL
+            ${withSessionId ? ', session_id TEXT' : ''}
+        )`);
+        const columns = withSessionId
+            ? '(role, content, cli, tool_log, created_at, session_id)'
+            : '(role, content, cli, tool_log, created_at)';
+        const placeholders = withSessionId ? '(?, ?, ?, ?, ?, ?)' : '(?, ?, ?, ?, ?)';
+        const insert = db.prepare(`INSERT INTO messages ${columns} VALUES ${placeholders}`);
+        rows.forEach((row, index) => {
+            const values: unknown[] = [
+                'user', row.content, 'codex', null,
+                row.createdAt ?? `2026-08-05T00:00:${String(index).padStart(2, '0')}.000Z`,
+            ];
+            if (withSessionId) values.push(row.session ?? 'session-default');
+            insert.run(...values);
+        });
+    } finally {
+        db.close();
+    }
+}
+
 function makeRef(id: string, homePath: string, hasDb = true): InstanceMemoryRef {
     return {
         instanceId: id,
@@ -66,7 +102,13 @@ function makeRef(id: string, homePath: string, hasDb = true): InstanceMemoryRef 
         label: null,
         dbPath: join(homePath, 'memory', 'structured', 'index.sqlite'),
         hasDb,
+        chatDbPath: join(homePath, 'jaw.db'),
+        hasChatDb: false,
     };
+}
+
+function makeChatRef(id: string, homePath: string, hasChatDb = true): InstanceMemoryRef {
+    return { ...makeRef(id, homePath, false), hasChatDb };
 }
 
 test('federation: returns hits from full-schema instances', () => {
@@ -136,4 +178,112 @@ test('federation: corrupt db produces structured warning, does not throw', () =>
     assert.equal(result.instancesSucceeded, 0);
     assert.equal(result.warnings.length, 1);
     assert.ok(['corrupt', 'open_failed', 'query_failed'].includes(result.warnings[0]!.code));
+});
+
+test('FED-01/FED-03: enriched chat hits carry real session provenance and sessionFilter narrows', () => {
+    const home = join(freshTmp(), '.cli-jaw-4101');
+    createChatDb(join(home, 'jaw.db'), [
+        { content: 'federated needle alpha', session: 'session-a' },
+        { content: 'federated needle beta', session: 'session-b' },
+    ]);
+    const ref = makeChatRef('4101', home);
+
+    const legacy = searchChatFederated('federated needle', { instances: [ref] });
+    assert.deepEqual(Object.keys(legacy.hits[0]!).sort(), [
+        'cli', 'content', 'created_at', 'id', 'instanceId', 'instanceLabel', 'match_field', 'role',
+    ]);
+
+    const all = searchFederatedEnvelope('federated needle', { instances: [ref] });
+    assert.deepEqual(new Set(all.groups[0]!.hits.map(hit => hit.session)),
+        new Set(['session-a', 'session-b']));
+    assert.equal(all.groups[0]!.hits[0]!.provider, 'instance:4101:chat');
+
+    const narrowed = searchFederatedEnvelope('federated needle', {
+        instances: [ref],
+        sessionFilter: 'session-a',
+    });
+    assert.deepEqual(narrowed.groups[0]!.hits.map(hit => hit.session), ['session-a']);
+});
+
+test('FED-02/FED-05: old chat peer succeeds without session and reports legacy_response', () => {
+    const home = join(freshTmp(), '.cli-jaw-4102');
+    createChatDb(join(home, 'jaw.db'), [{ content: 'legacy needle row' }], false);
+    const result = searchFederatedEnvelope('legacy needle', { instances: [makeChatRef('4102', home)] });
+
+    assert.equal(result.groups[0]!.hits.length, 1);
+    assert.equal(result.groups[0]!.hits[0]!.session, undefined);
+    assert.deepEqual(result.providers, [{ id: 'instance:4102:chat', corpus: 'chat', status: 'ready' }]);
+    assert.ok(result.warnings.some(warning => warning.code === 'legacy_response' &&
+        warning.provider === 'instance:4102:chat' && warning.message.includes('4102')));
+});
+
+test('FED-04/FED-08/FED-11: healthy and open-failed peers remain distinguishable', () => {
+    const base = freshTmp();
+    const home1 = join(base, '.cli-jaw-4201');
+    const home2 = join(base, '.cli-jaw-4202');
+    const missingHome = join(base, '.cli-jaw-4203');
+    createChatDb(join(home1, 'jaw.db'), [{ content: 'fleet needle one', session: 'one' }]);
+    createChatDb(join(home2, 'jaw.db'), [{ content: 'fleet needle two', session: 'two' }]);
+    const result = searchFederatedEnvelope('fleet needle', {
+        instances: [
+            makeChatRef('4201', home1),
+            makeChatRef('4202', home2),
+            makeChatRef('4203', missingHome, true),
+        ],
+    });
+
+    assert.equal(result.groups[0]!.hits.length, 2);
+    // Inventory alone is not enough: both hits could carry the same provider id
+    // and this would still pass. Pin each hit to the peer it came from.
+    const byProvider = new Map(result.groups[0]!.hits.map(hit => [hit.provider, hit]));
+    assert.deepEqual([...byProvider.keys()].sort(), ['instance:4201:chat', 'instance:4202:chat']);
+    assert.match(byProvider.get('instance:4201:chat')!.snippet, /one/);
+    assert.match(byProvider.get('instance:4202:chat')!.snippet, /two/);
+    assert.equal(byProvider.get('instance:4201:chat')!.session, 'one');
+    assert.equal(byProvider.get('instance:4202:chat')!.session, 'two');
+    assert.deepEqual(result.providers, [
+        { id: 'instance:4201:chat', corpus: 'chat', status: 'ready' },
+        { id: 'instance:4202:chat', corpus: 'chat', status: 'ready' },
+        { id: 'instance:4203:chat', corpus: 'chat', status: 'error' },
+    ]);
+    assert.ok(result.warnings.some(warning => warning.code === 'provider_failed' &&
+        warning.provider === 'instance:4203:chat' && warning.message.includes('4203')));
+});
+
+test('FED-10: old peer with sessionFilter fails closed and names the unsupported instance', () => {
+    const home = join(freshTmp(), '.cli-jaw-4301');
+    createChatDb(join(home, 'jaw.db'), [{ content: 'closed needle row' }], false);
+    const result = searchFederatedEnvelope('closed needle', {
+        instances: [makeChatRef('4301', home)],
+        sessionFilter: 'requested-session',
+    });
+
+    assert.equal(result.groups[0]!.hits.length, 0);
+    assert.deepEqual(result.providers, [
+        { id: 'instance:4301:chat', corpus: 'chat', status: 'error' },
+    ]);
+    assert.ok(result.warnings.some(warning => warning.code === 'legacy_response' &&
+        warning.provider === 'instance:4301:chat' &&
+        warning.message.includes('4301') &&
+        warning.message.includes('session filtering unsupported')));
+});
+
+test('FED-13: a peer-local truncation keeps hasMore true when merged length equals limit', () => {
+    const base = freshTmp();
+    const fullHome = join(base, '.cli-jaw-4401');
+    const emptyHome = join(base, '.cli-jaw-4402');
+    createChatDb(join(fullHome, 'jaw.db'), Array.from({ length: 51 }, (_, index) => ({
+        content: `capacity needle ${index}`,
+        session: 'capacity-session',
+        createdAt: `2026-08-05T00:${String(index).padStart(2, '0')}:00.000Z`,
+    })));
+    createChatDb(join(emptyHome, 'jaw.db'), [{ content: 'unrelated row', session: 'empty' }]);
+
+    const result = searchFederatedEnvelope('capacity needle', {
+        instances: [makeChatRef('4401', fullHome), makeChatRef('4402', emptyHome)],
+        limit: 50,
+    });
+    assert.equal(result.groups[0]!.hits.length, 50);
+    assert.equal(result.page.hasMore, true);
+    assert.equal(result.page.nextCursor, null);
 });

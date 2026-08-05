@@ -42,19 +42,27 @@ function buildHeaderPath(stack: string[]) {
     return stack.filter(Boolean).join(' > ');
 }
 
+function sessionIdFromHeadings(headings: string[]): string {
+    const sessionHeading = headings[1] ?? '';
+    return /(?:^|\s)·\s*session:([^\s]+)\s*$/.exec(sessionHeading)?.[1] ?? '';
+}
+
+interface MemoryChunk {
+    relpath: string;
+    path: string;
+    kind: string;
+    sessionId: string;
+    source_start_line: number;
+    source_end_line: number;
+    source_hash: string;
+    content: string;
+}
+
 function chunkMarkdown(absPath: string, relpath: string, kind: string) {
     const raw = safeReadFile(absPath);
     const parsed = parseMarkdownFile(raw);
     const lines = parsed.body.split('\n');
-    const chunks: Array<{
-        relpath: string;
-        path: string;
-        kind: string;
-        source_start_line: number;
-        source_end_line: number;
-        source_hash: string;
-        content: string;
-    }> = [];
+    const chunks: MemoryChunk[] = [];
 
     const headings: string[] = [];
     let currentStart = parsed.bodyStartLine;
@@ -75,6 +83,7 @@ function chunkMarkdown(absPath: string, relpath: string, kind: string) {
             relpath,
             path: absPath,
             kind,
+            sessionId: sessionIdFromHeadings(headings),
             source_start_line: currentStart,
             source_end_line: endLine,
             source_hash: hashText(`${relpath}:${currentStart}:${body}`),
@@ -110,6 +119,7 @@ function chunkMarkdown(absPath: string, relpath: string, kind: string) {
             relpath,
             path: absPath,
             kind,
+            sessionId: '',
             source_start_line: parsed.bodyStartLine,
             source_end_line: parsed.bodyStartLine + lines.length - 1,
             source_hash: hashText(`${relpath}:${parsed.body}`),
@@ -117,6 +127,34 @@ function chunkMarkdown(absPath: string, relpath: string, kind: string) {
         });
     }
     return chunks;
+}
+
+function probeChunkColumns(db: Database.Database): Set<string> {
+    return new Set(
+        (db.prepare('PRAGMA table_info(chunks)').all() as Array<{ name: string }>).map(row => row.name),
+    );
+}
+
+function migrateSessionColumn(db: Database.Database): void {
+    if (probeChunkColumns(db).has('session_id')) return;
+    let began = false;
+    try {
+        db.exec('BEGIN IMMEDIATE');
+        began = true;
+        if (!probeChunkColumns(db).has('session_id')) {
+            db.exec("ALTER TABLE chunks ADD COLUMN session_id TEXT NOT NULL DEFAULT ''");
+        }
+        db.exec('COMMIT');
+    } catch (error) {
+        if (began && db.inTransaction) {
+            try { db.exec('ROLLBACK'); } catch { /* connection cleanup owns any remaining failure */ }
+        }
+        console.warn('[memory:index] session_id migration deferred:',
+            error instanceof Error ? error.message : String(error));
+    }
+    // The post-migration probe is authoritative. Callers probe again before
+    // preparing statements, so a failed ALTER remains fully legacy-compatible.
+    probeChunkColumns(db);
 }
 
 export function getIndexDb() {
@@ -132,6 +170,7 @@ export function getIndexDb() {
                 relpath TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 home_id TEXT NOT NULL DEFAULT '',
+                session_id TEXT NOT NULL DEFAULT '',
                 source_start_line INTEGER NOT NULL,
                 source_end_line INTEGER NOT NULL,
                 source_hash TEXT NOT NULL,
@@ -148,6 +187,7 @@ export function getIndexDb() {
                 tokenize = 'unicode61'
             );
         `);
+        migrateSessionColumn(db);
         ensureTrigramIndex(db);
         initSynonymsTable(db);
         return db;
@@ -175,7 +215,23 @@ interface ChunkRow {
     source_start_line: number;
     source_end_line: number;
     content: string;
+    sessionId?: string;
     score?: number;
+}
+
+function prepareChunkInsert(db: Database.Database, sessionAware: boolean) {
+    const statement = db.prepare(sessionAware ? `
+        INSERT INTO chunks (path, relpath, kind, home_id, session_id, source_start_line, source_end_line, source_hash, content, content_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ` : `
+        INSERT INTO chunks (path, relpath, kind, home_id, source_start_line, source_end_line, source_hash, content, content_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    return (chunk: MemoryChunk, homeId: string, contentHash: string, now: string) => sessionAware
+        ? statement.run(chunk.path, chunk.relpath, chunk.kind, homeId, chunk.sessionId,
+            chunk.source_start_line, chunk.source_end_line, chunk.source_hash, chunk.content, contentHash, now)
+        : statement.run(chunk.path, chunk.relpath, chunk.kind, homeId,
+            chunk.source_start_line, chunk.source_end_line, chunk.source_hash, chunk.content, contentHash, now);
 }
 
 function clearIndex(db: Database.Database) {
@@ -212,10 +268,7 @@ export function reindexAll(root: string) {
         clearIndex(db);
         const now = new Date().toISOString();
         const homeId = instanceId();
-        const insertChunk = db.prepare(`
-            INSERT INTO chunks (path, relpath, kind, home_id, source_start_line, source_end_line, source_hash, content, content_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+        const insertChunk = prepareChunkInsert(db, probeChunkColumns(db).has('session_id'));
         const insertFts = db.prepare('INSERT INTO chunks_fts (rowid, content, relpath, kind) VALUES (?, ?, ?, ?)');
         const insertTrigram = db.prepare('INSERT INTO chunks_trigram (chunk_id, relpath, body) VALUES (?, ?, ?)');
         let totalFiles = 0;
@@ -227,7 +280,7 @@ export function reindexAll(root: string) {
                 const kind = kindForFile(root, file);
                 for (const chunk of chunkMarkdown(file, rel, kind)) {
                     const contentHash = hashText(chunk.content);
-                    const info = insertChunk.run(chunk.path, chunk.relpath, chunk.kind, homeId, chunk.source_start_line, chunk.source_end_line, chunk.source_hash, chunk.content, contentHash, now);
+                    const info = insertChunk(chunk, homeId, contentHash, now);
                     const chunkId = Number(info.lastInsertRowid);
                     insertFts.run(chunkId, chunk.content, chunk.relpath, chunk.kind);
                     insertTrigram.run(chunkId, chunk.relpath, chunk.content);
@@ -251,14 +304,14 @@ export function reindexSingleFile(root: string, file: string) {
         db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE relpath = ?)').run(rel);
         db.prepare('DELETE FROM chunks_trigram WHERE chunk_id IN (SELECT id FROM chunks WHERE relpath = ?)').run(rel);
         db.prepare('DELETE FROM chunks WHERE relpath = ?').run(rel);
-        const insertChunk = db.prepare('INSERT INTO chunks (path, relpath, kind, home_id, source_start_line, source_end_line, source_hash, content, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        const insertChunk = prepareChunkInsert(db, probeChunkColumns(db).has('session_id'));
         const insertFts = db.prepare('INSERT INTO chunks_fts (rowid, content, relpath, kind) VALUES (?, ?, ?, ?)');
         const insertTrigram = db.prepare('INSERT INTO chunks_trigram (chunk_id, relpath, body) VALUES (?, ?, ?)');
         let count = 0;
         const tx = db.transaction(() => {
             for (const chunk of chunkMarkdown(file, rel, kind)) {
                 const contentHash = hashText(chunk.content);
-                const info = insertChunk.run(chunk.path, chunk.relpath, chunk.kind, homeId, chunk.source_start_line, chunk.source_end_line, chunk.source_hash, chunk.content, contentHash, now);
+                const info = insertChunk(chunk, homeId, contentHash, now);
                 const chunkId = Number(info.lastInsertRowid);
                 insertFts.run(chunkId, chunk.content, chunk.relpath, chunk.kind);
                 insertTrigram.run(chunkId, chunk.relpath, chunk.content);
@@ -369,7 +422,37 @@ function quoteFtsTerm(term: string): string {
     return cleaned ? `"${cleaned}"` : '';
 }
 
-function toHit(row: ChunkRow, score: number): SearchHit {
+type IndexedSearchHit = SearchHit & { sessionId?: string };
+export type ProviderMemoryHit = SearchHit & { sessionId: string };
+
+interface SearchCoreOptions {
+    maxHits: number;
+    bm25CandidateLimit: number;
+    trigramCandidateLimit: number;
+    likeCandidateLimit: number;
+    includeSession: boolean;
+    deterministicTies: boolean;
+}
+
+const LEGACY_SEARCH_OPTIONS: SearchCoreOptions = {
+    maxHits: 8,
+    bm25CandidateLimit: 16,
+    trigramCandidateLimit: 15,
+    likeCandidateLimit: 15,
+    includeSession: false,
+    deterministicTies: false,
+};
+const PROVIDER_CANDIDATE_CAP = 64;
+const PROVIDER_SEARCH_OPTIONS: SearchCoreOptions = {
+    maxHits: PROVIDER_CANDIDATE_CAP,
+    bm25CandidateLimit: PROVIDER_CANDIDATE_CAP,
+    trigramCandidateLimit: PROVIDER_CANDIDATE_CAP,
+    likeCandidateLimit: PROVIDER_CANDIDATE_CAP,
+    includeSession: true,
+    deterministicTies: true,
+};
+
+function toHit(row: ChunkRow, score: number, includeSession: boolean): IndexedSearchHit {
     return {
         path: row.path,
         relpath: row.relpath,
@@ -378,11 +461,28 @@ function toHit(row: ChunkRow, score: number): SearchHit {
         source_end_line: row.source_end_line,
         snippet: String(row.content || '').slice(0, 700),
         score,
+        ...(includeSession ? { sessionId: row.sessionId ?? '' } : {}),
     };
 }
 
-function searchBM25(db: Database.Database, groups: string[][]): SearchHit[] {
-    const hits = new Map<string, SearchHit>();
+function sessionProjection(cap: SchemaCapability, tableAlias: string, includeSession: boolean): string {
+    if (!includeSession) return '';
+    return cap.chunksColumns.has('session_id')
+        ? `${tableAlias}.session_id AS sessionId,`
+        : `'' AS sessionId,`;
+}
+
+function searchBM25(
+    db: Database.Database,
+    groups: string[][],
+    cap: SchemaCapability,
+    options: SearchCoreOptions,
+): IndexedSearchHit[] {
+    const hits = new Map<string, IndexedSearchHit>();
+    const projection = sessionProjection(cap, 'c', options.includeSession);
+    const ftsOrder = options.deterministicTies
+        ? 'ORDER BY score, c.relpath ASC, c.source_start_line ASC, c.source_end_line ASC'
+        : 'ORDER BY score';
     const fts = db.prepare(`
         SELECT
             c.path,
@@ -390,33 +490,35 @@ function searchBM25(db: Database.Database, groups: string[][]): SearchHit[] {
             c.kind,
             c.source_start_line,
             c.source_end_line,
+            ${projection}
             c.content,
             bm25(chunks_fts) AS score
         FROM chunks_fts
         JOIN chunks c ON c.id = chunks_fts.rowid
         WHERE chunks_fts MATCH ?
-        ORDER BY score
-        LIMIT 16
+        ${ftsOrder}
+        LIMIT ?
     `);
     const like = db.prepare(`
-        SELECT path, relpath, kind, source_start_line, source_end_line, content
-        FROM chunks
-        WHERE content LIKE ? ESCAPE '\\'
-        ORDER BY relpath ASC, source_start_line ASC
-        LIMIT 16
+        SELECT c.path, c.relpath, c.kind, c.source_start_line, c.source_end_line,
+            ${projection} c.content
+        FROM chunks c
+        WHERE c.content LIKE ? ESCAPE '\\'
+        ORDER BY c.relpath ASC, c.source_start_line ASC
+        LIMIT ?
     `);
     for (const group of groups) {
         const ftsQuery = group.map(quoteFtsTerm).filter(Boolean).join(' OR ');
         try {
-            for (const row of fts.all(ftsQuery) as ChunkRow[]) {
+            for (const row of fts.all(ftsQuery, options.bm25CandidateLimit) as ChunkRow[]) {
                 const key = `${row.relpath}:${row.source_start_line}:${row.source_end_line}`;
-                if (!hits.has(key)) hits.set(key, toHit(row, Number(row.score || 0)));
+                if (!hits.has(key)) hits.set(key, toHit(row, Number(row.score || 0), options.includeSession));
             }
         } catch { /* fall through to LIKE */ }
         for (const term of group) {
-            for (const row of like.all(buildLikeTerm(term)) as ChunkRow[]) {
+            for (const row of like.all(buildLikeTerm(term), options.bm25CandidateLimit) as ChunkRow[]) {
                 const key = `${row.relpath}:${row.source_start_line}:${row.source_end_line}`;
-                if (!hits.has(key)) hits.set(key, toHit(row, 999));
+                if (!hits.has(key)) hits.set(key, toHit(row, 999, options.includeSession));
             }
         }
     }
@@ -436,38 +538,58 @@ function countCJKChars(text: string): number {
     return n;
 }
 
-function searchTrigram(db: Database.Database, query: string): SearchHit[] {
+function searchTrigram(
+    db: Database.Database,
+    query: string,
+    cap: SchemaCapability,
+    options: SearchCoreOptions,
+): IndexedSearchHit[] {
     const term = String(query || '').trim();
     if (term.length < 3) return [];
     try {
+        const projection = sessionProjection(cap, 'c', options.includeSession);
+        const order = options.deterministicTies
+            ? 'ORDER BY c.relpath ASC, c.source_start_line ASC, c.source_end_line ASC' : '';
         const rows = db.prepare(`
-            SELECT c.path, c.relpath, c.kind, c.source_start_line, c.source_end_line, c.content, 0 AS score
+            SELECT c.path, c.relpath, c.kind, c.source_start_line, c.source_end_line,
+                ${projection} c.content, 0 AS score
             FROM chunks_trigram t
             JOIN chunks c ON c.id = t.chunk_id
             WHERE chunks_trigram MATCH ?
-            LIMIT 15
-        `).all(quoteFtsTerm(term)) as ChunkRow[];
-        return rows.map((row, idx) => toHit(row, idx));
+            ${order}
+            LIMIT ?
+        `).all(quoteFtsTerm(term), options.trigramCandidateLimit) as ChunkRow[];
+        return rows.map((row, idx) => toHit(row, idx, options.includeSession));
     } catch { return []; }
 }
 
-function searchLikeFallback(db: Database.Database, query: string): SearchHit[] {
+function searchLikeFallback(
+    db: Database.Database,
+    query: string,
+    cap: SchemaCapability,
+    options: SearchCoreOptions,
+): IndexedSearchHit[] {
     const term = String(query || '').trim();
     if (!term) return [];
     try {
         const escaped = term.replace(/[%_\\]/g, c => '\\' + c);
+        const projection = sessionProjection(cap, 'c', options.includeSession);
+        const order = options.deterministicTies
+            ? 'ORDER BY c.relpath ASC, c.source_start_line ASC, c.source_end_line ASC' : '';
         const rows = db.prepare(`
-            SELECT path, relpath, kind, source_start_line, source_end_line, content, 0 AS score
-            FROM chunks
-            WHERE content LIKE '%' || ? || '%' ESCAPE '\\'
-            LIMIT 15
-        `).all(escaped) as ChunkRow[];
-        return rows.map((row, idx) => toHit(row, idx));
+            SELECT c.path, c.relpath, c.kind, c.source_start_line, c.source_end_line,
+                ${projection} c.content, 0 AS score
+            FROM chunks c
+            WHERE c.content LIKE '%' || ? || '%' ESCAPE '\\'
+            ${order}
+            LIMIT ?
+        `).all(escaped, options.likeCandidateLimit) as ChunkRow[];
+        return rows.map((row, idx) => toHit(row, idx, options.includeSession));
     } catch { return []; }
 }
 
-function reciprocalRankFusion(primary: SearchHit[], secondary: SearchHit[], k = 60): SearchHit[] {
-    const scores = new Map<string, { hit: SearchHit; score: number }>();
+function reciprocalRankFusion(primary: IndexedSearchHit[], secondary: IndexedSearchHit[], k = 60): IndexedSearchHit[] {
+    const scores = new Map<string, { hit: IndexedSearchHit; score: number }>();
     for (const [listIndex, list] of [primary, secondary].entries()) {
         for (let i = 0; i < list.length; i++) {
             const hit = list[i]!;
@@ -490,10 +612,14 @@ function probeSchema(db: Database.Database): SchemaCapability {
         (db.prepare(`SELECT name FROM sqlite_master WHERE type IN ('table')`).all() as Array<{ name: string }>)
             .map(r => r.name)
     );
-    const cols = new Set<string>(
-        (db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>).map(r => r.name)
-    );
+    const cols = probeChunkColumns(db);
     return { hasSynonyms: tables.has('memory_synonyms'), hasTrigram: tables.has('chunks_trigram'), chunksColumns: cols };
+}
+
+function compareHitTies(a: IndexedSearchHit, b: IndexedSearchHit): number {
+    if (a.relpath !== b.relpath) return a.relpath < b.relpath ? -1 : 1;
+    if (a.source_start_line !== b.source_start_line) return a.source_start_line - b.source_start_line;
+    return a.source_end_line - b.source_end_line;
 }
 
 function searchIndexCore(
@@ -501,7 +627,8 @@ function searchIndexCore(
     query: string,
     expanded: string[] | undefined,
     cap: SchemaCapability,
-): { hits: SearchHit[]; degraded: string[] } {
+    options: SearchCoreOptions = LEGACY_SEARCH_OPTIONS,
+): { hits: IndexedSearchHit[]; degraded: string[] } {
     const terms = tokenizeExpandedQuery(query, expanded);
     if (!terms.length) return { hits: [], degraded: [] };
     const degraded: string[] = [];
@@ -510,17 +637,17 @@ function searchIndexCore(
     // CJK-primary path: route Korean/Japanese/Chinese queries to trigram
     if (containsCJK(query) && cap.hasTrigram) {
         if (countCJKChars(query) >= 3) {
-            const hits = searchTrigram(db, query)
+            const hits = searchTrigram(db, query, cap, options)
                 .map(hit => ({ ...hit, score: computeFinalScore(hit, baseQuery) }))
-                .sort((a, b) => a.score - b.score)
-                .slice(0, 8);
+                .sort((a, b) => a.score - b.score || (options.deterministicTies ? compareHitTies(a, b) : 0))
+                .slice(0, options.maxHits);
             return { hits, degraded };
         }
         // Short CJK (< 3 chars): LIKE fallback
-        const hits = searchLikeFallback(db, query)
+        const hits = searchLikeFallback(db, query, cap, options)
             .map(hit => ({ ...hit, score: computeFinalScore(hit, baseQuery) }))
-            .sort((a, b) => a.score - b.score)
-            .slice(0, 8);
+            .sort((a, b) => a.score - b.score || (options.deterministicTies ? compareHitTies(a, b) : 0))
+            .slice(0, options.maxHits);
         return { hits, degraded };
     }
 
@@ -528,21 +655,46 @@ function searchIndexCore(
     const groups = cap.hasSynonyms
         ? terms.map(term => expandSynonyms(db, term))
         : (degraded.push('memory_synonyms'), terms.map(t => [t]));
-    const bm25 = searchBM25(db, groups);
-    const trigram = cap.hasTrigram ? searchTrigram(db, query) : (degraded.push('chunks_trigram'), [] as SearchHit[]);
+    const bm25 = searchBM25(db, groups, cap, options);
+    const trigram = cap.hasTrigram
+        ? searchTrigram(db, query, cap, options)
+        : (degraded.push('chunks_trigram'), [] as IndexedSearchHit[]);
     const merged = reciprocalRankFusion(bm25, trigram);
     const hits = merged
         .map(hit => ({ ...hit, score: computeFinalScore(hit, baseQuery) }))
-        .sort((a, b) => a.score - b.score)
-        .slice(0, 8);
+        .sort((a, b) => a.score - b.score || (options.deterministicTies ? compareHitTies(a, b) : 0))
+        .slice(0, options.maxHits);
     return { hits, degraded };
 }
 
 export function searchIndex(query: string, expanded?: string[]): { hits: SearchHit[] } {
     const db = getIndexDb();
     try {
-        const cap: SchemaCapability = { hasSynonyms: true, hasTrigram: true, chunksColumns: new Set() };
+        const cap = probeSchema(db);
         return { hits: searchIndexCore(db, query, expanded, cap).hits };
+    } finally { db.close(); }
+}
+
+export function searchIndexForProvider(
+    query: string,
+    opts: { limit: number; offset: number },
+): { hits: ProviderMemoryHit[]; hasMore: boolean; degraded: string[] } {
+    const db = getIndexDb();
+    try {
+        const cap = probeSchema(db);
+        if (!cap.chunksColumns.has('content') || !cap.chunksColumns.has('relpath')) {
+            return { hits: [], hasMore: false, degraded: ['chunks.core'] };
+        }
+        const result = searchIndexCore(db, query, undefined, cap, PROVIDER_SEARCH_OPTIONS);
+        const offset = Math.max(0, Math.floor(opts.offset));
+        const limit = Math.max(0, Math.floor(opts.limit));
+        const selected = result.hits.slice(offset, offset + limit);
+        const hits: ProviderMemoryHit[] = selected.map(hit => ({ ...hit, sessionId: hit.sessionId ?? '' }));
+        return {
+            hits,
+            hasMore: offset + selected.length < result.hits.length,
+            degraded: result.degraded,
+        };
     } finally { db.close(); }
 }
 

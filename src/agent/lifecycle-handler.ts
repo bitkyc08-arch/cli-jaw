@@ -1,7 +1,6 @@
 // ─── Agent Lifecycle Handler (post-exit logic) ──────
 // Extracted from spawn.ts to unify ACP + CLI exit handling.
 
-import fs from 'fs';
 import type { ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, detectCli } from '../core/config.js';
@@ -384,10 +383,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         activeProcesses.delete(agentLabel);
     }
 
-    // ─── Post-flush reindex (3-C) ───
-    if (agentLabel === 'memory-flush' && code === 0) {
-        postFlushReindex();
-    }
+    // Post-flush reindex moved into memory-flush-controller's completion path
+    // (032). Firing it here raced the append: this runs before the extractor
+    // promise resolves, so it reindexed a file that did not yet contain the
+    // entry — and a generation that had already expired could still trigger it.
 
     // ─── CLI-native compact → auto session refresh (awaited to avoid race with processQueue) ───
     if (ctx.cliNativeCompactDetected && mainManaged && !opts.internal) {
@@ -1122,22 +1121,4 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     }
 
     if (mainManaged && !wasSteer) processQueue(scopeKey);
-}
-
-// ─── Post-flush reindex (3-C) ────────────────────────
-
-async function postFlushReindex(): Promise<void> {
-    try {
-        await new Promise(r => setTimeout(r, 200));
-        const { reindexIntegratedMemoryFile } = await import('../memory/indexing.js');
-        const { getMemoryFlushFilePath } = await import('../memory/runtime.js');
-        const today = new Date().toISOString().slice(0, 10);
-        const flushedFile = getMemoryFlushFilePath(today);
-        if (fs.existsSync(flushedFile)) {
-            reindexIntegratedMemoryFile(flushedFile);
-            console.log('[memory:flush] post-flush reindex done');
-        }
-    } catch (err) {
-        console.warn('[memory:flush] post-flush reindex failed:', (err as Error).message);
-    }
 }

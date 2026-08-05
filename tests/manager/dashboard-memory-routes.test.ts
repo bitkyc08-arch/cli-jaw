@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import express from 'express';
 import { createDashboardMemoryRouter } from '../../src/manager/routes/dashboard-memory.ts';
 import type { ScanItemForFederation } from '../../src/manager/memory/types.ts';
@@ -18,7 +19,13 @@ async function startServer(supplier: () => Promise<ScanItemForFederation[]>): Pr
         const server = app.listen(0, '127.0.0.1', () => {
             const addr = server.address();
             const port = typeof addr === 'object' && addr ? addr.port : 0;
-            const router = createDashboardMemoryRouter({ managerPort: port, scanSupplier: supplier });
+            const router = createDashboardMemoryRouter({
+                managerPort: port,
+                scanSupplier: supplier,
+                embeddingConfig: () => null,
+                vecStore: () => null,
+                dashboardHome: freshTmp(),
+            });
             app.use('/api/dashboard/memory', router);
             resolve({
                 port,
@@ -137,5 +144,102 @@ test('routes: /instances returns shape', async () => {
         const body = await res.json() as { ok: boolean; instances: Array<{ instanceId: string }> };
         assert.equal(body.ok, true);
         assert.ok(Array.isArray(body.instances));
+    } finally { await srv.close(); }
+});
+
+test('FED-09: /chat/search envelope is chat-only, one-page, and rejects cursor/corpus drift', async () => {
+    const srv = await startServer(async () => []);
+    try {
+        const res = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=route+needle&format=envelope`,
+        );
+        assert.equal(res.status, 200);
+        const body = await res.json() as {
+            groups: Array<{ corpus: string }>;
+            page: { nextCursor: string | null; hasMore: boolean };
+        };
+        assert.deepEqual(body.groups.map(group => group.corpus), ['chat']);
+        assert.equal(body.page.nextCursor, null);
+
+        const cursor = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=route+needle&format=envelope&cursor=next`,
+        );
+        assert.equal(cursor.status, 400);
+        assert.equal((await cursor.json() as { code: string }).code, 'invalid_query');
+
+        const corpus = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=route+needle&format=envelope&corpus=memory`,
+        );
+        assert.equal(corpus.status, 400);
+        assert.equal((await corpus.json() as { code: string }).code, 'invalid_query');
+    } finally { await srv.close(); }
+});
+
+test('FED-12: legacy search shapes and ignored corpus/cursor parameters remain unchanged', async () => {
+    const srv = await startServer(async () => []);
+    try {
+        const base = `http://127.0.0.1:${srv.port}/api/dashboard/memory`;
+        const chatPlain = await (await fetch(
+            `${base}/chat/search?q=legacy+shape&instance=999999`,
+        )).json() as Record<string, unknown>;
+        const chatIgnored = await (await fetch(
+            `${base}/chat/search?q=legacy+shape&instance=999999&corpus=memory&cursor=ignored`,
+        )).json() as Record<string, unknown>;
+        assert.deepEqual(chatIgnored, chatPlain);
+        assert.deepEqual(Object.keys(chatPlain).sort(), [
+            'hits', 'instancesQueried', 'instancesSucceeded', 'ok', 'warnings',
+        ]);
+
+        const memoryPlain = await (await fetch(
+            `${base}/search?q=legacy+shape&instance=999999&mode=fts5`,
+        )).json() as Record<string, unknown>;
+        const memoryIgnored = await (await fetch(
+            `${base}/search?q=legacy+shape&instance=999999&mode=fts5&corpus=chat&cursor=ignored`,
+        )).json() as Record<string, unknown>;
+        assert.deepEqual(memoryIgnored, memoryPlain);
+        assert.deepEqual(Object.keys(memoryPlain).sort(), [
+            'hasMore', 'hits', 'instancesQueried', 'instancesSucceeded', 'mode',
+            'offset', 'ok', 'total', 'warnings',
+        ]);
+    } finally { await srv.close(); }
+});
+
+// FED-12's zero-hit variant proves the top-level keys and the ignored
+// parameters, but a session field leaking into every hit would still pass it.
+// Serve a real chat row and compare the hit's exact key set at the route
+// boundary, which is where the regression would actually surface.
+test('FED-12b: a real default /chat/search hit carries no session field', async () => {
+    const base = freshTmp();
+    const home = join(base, '.cli-jaw-3457');
+    const dbPath = join(home, 'jaw.db');
+    mkdirSync(home, { recursive: true });
+    const db = new Database(dbPath);
+    try {
+        db.exec(`CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            cli TEXT,
+            tool_log TEXT,
+            created_at TEXT NOT NULL,
+            session_id TEXT
+        )`);
+        db.prepare(
+            "INSERT INTO messages (role, content, cli, created_at, session_id) VALUES ('user', ?, 'web', '2026-08-04T00:00:00Z', 'route-session')",
+        ).run('fed12buniquetoken row');
+    } finally { db.close(); }
+
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    try {
+        const res = await fetch(
+            `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=fed12buniquetoken`,
+        );
+        const body = await res.json() as { ok: boolean; hits: Array<Record<string, unknown>> };
+        assert.equal(body.ok, true);
+        assert.equal(body.hits.length, 1, 'the fixture row must be found');
+        assert.deepEqual(Object.keys(body.hits[0]!).sort(), [
+            'cli', 'content', 'created_at', 'id', 'instanceId', 'instanceLabel',
+            'match_field', 'role',
+        ], 'the default hit shape must not gain a session field');
     } finally { await srv.close(); }
 });

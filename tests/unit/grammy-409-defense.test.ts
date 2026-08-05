@@ -73,6 +73,9 @@ test('applyRuntimeSettingsPatch calls restartMessagingRuntime (unified restart)'
     const runtimeSettingsSrc = fs.readFileSync(
         join(dirname(fileURLToPath(import.meta.url)), '../../src/core/runtime-settings.ts'), 'utf8',
     );
-    assert.match(runtimeSettingsSrc, /await\s+restartMessagingRuntime\s*\(/,
-        'applyRuntimeSettingsPatch must await restartMessagingRuntime() for transactional settings+restart');
+    // The call is awaited through an injectable indirection so tests can drive a
+    // restart failure without mocking the whole messaging module. Match the
+    // await and the callee rather than one exact spelling of the pair.
+    assert.match(runtimeSettingsSrc, /await\s+\(opts\.restartMessaging\s*\?\?\s*restartMessagingRuntime\)\s*\(/,
+        'applyRuntimeSettingsPatch must await the messaging restart for transactional settings+restart');
 });

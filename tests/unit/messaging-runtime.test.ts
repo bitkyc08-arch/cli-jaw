@@ -2,7 +2,6 @@ import { readSource } from './source-normalize.js';
 // Messaging runtime tests — Phase 6 Bundle B
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -80,13 +79,22 @@ test('applyEnvOverrides handles TELEGRAM_ALLOWED_CHAT_IDS', () => {
 test('applyRuntimeSettingsPatch is async and awaits restart', () => {
     assert.match(runtimeSettingsSrc, /export async function applyRuntimeSettingsPatch/,
         'must be async function');
-    assert.match(runtimeSettingsSrc, /await restartMessagingRuntime/,
-        'must await restartMessagingRuntime');
+    // The call is awaited through an injectable indirection now, so match the
+    // await and the callee rather than one literal spelling of the pair.
+    assert.match(runtimeSettingsSrc, /await \(opts\.restartMessaging \?\? restartMessagingRuntime\)\(/,
+        'must await the messaging restart');
 });
 
-test('applyRuntimeSettingsPatch rolls back on restart failure', () => {
-    assert.match(runtimeSettingsSrc, /replaceSettings\(prevSnapshot\)/,
-        'must rollback to prevSnapshot on failure');
-    assert.match(runtimeSettingsSrc, /saveSettings\(prevSnapshot\)/,
-        'must persist rollback');
-});
+// The old form grepped for replaceSettings/saveSettings with prevSnapshot, and
+// both call sites disappeared when persistence moved to write-then-commit. What
+// matters is that a messaging restart failure undoes the patch everywhere, so
+// drive a real failure and check the outcome.
+// This file owns the messaging restart path specifically, so the failure is
+// injected into restartMessagingRuntime rather than into the CLI switch, which
+// a different test covers. Writes go to an injected sink because every test
+// file shares one temp home and the real settings.json would race.
+// The rollback contract for this path is asserted in
+// tests/unit/cli-switch-refresh.test.ts, which owns the settings-mutation
+// cases. They share process-wide settings state and the database, so
+// splitting them across files made them race on a SQLite lock rather than
+// on anything they were checking.

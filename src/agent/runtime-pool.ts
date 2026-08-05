@@ -183,34 +183,92 @@ function replaceScopeEntries(store: EngineStore, scopeKey: string, keepKey: stri
 
 type CodexManagedRuntime = ManagedRuntime & { readonly client: CodexAppClient };
 
-function codexRuntime(client: CodexAppClient): CodexManagedRuntime {
+export function resolveCodexAppProductionLaneScope(_options: {
+    multiplexEnabled: boolean;
+    employee: boolean;
+}): null {
+    return null;
+}
+
+export async function interruptCodexRuntime(
+    client: CodexAppClient,
+    laneScope: string | null,
+): Promise<void> {
+    if (laneScope === null) {
+        if (client.activeTurnId) {
+            await client.interruptTurn();
+            return;
+        }
+        await new Promise<void>((resolve, reject) => {
+            const cleanup = () => {
+                client.off('interrupt-failed', onFailed);
+                client.off('turn/completed', onCompleted);
+                clearTimeout(timer);
+            };
+            const onFailed = (err: Error) => { cleanup(); reject(err); };
+            const onCompleted = () => { cleanup(); resolve(); };
+            const timer = setTimeout(() => {
+                cleanup();
+                reject(new Error('interrupt latch timeout'));
+            }, INTERRUPT_LATCH_MS);
+            client.once('interrupt-failed', onFailed);
+            client.once('turn/completed', onCompleted);
+            void client.interruptTurn();
+        });
+        return;
+    }
+
+    if (client.getActiveTurnId(laneScope)) {
+        await client.interruptTurn(laneScope);
+        return;
+    }
+    const expectedThreadId = client.getThreadId(laneScope);
+    await new Promise<void>((resolve, reject) => {
+        let disposed = false;
+        let timer: NodeJS.Timeout;
+        let listener: { dispose(): void } | null = null;
+        const cleanup = () => {
+            if (disposed) return;
+            disposed = true;
+            clearTimeout(timer);
+            listener?.dispose();
+        };
+        const onFailed = (err: Error) => { cleanup(); reject(err); };
+        listener = client.listenTurn(laneScope, {
+            onNotification: (method, _params, owner) => {
+                const expectedTurnId = client.getActiveTurnId(laneScope);
+                if (
+                    method !== 'turn/completed'
+                    || !expectedThreadId
+                    || !expectedTurnId
+                    || !owner
+                    || owner.threadId !== expectedThreadId
+                    || owner.turnId !== expectedTurnId
+                ) return;
+                cleanup();
+                resolve();
+            },
+            onStderr: () => {},
+            onExit: (code, signal) => {
+                onFailed(new Error(`Codex AppServer exited (code=${code}, signal=${signal})`));
+            },
+            onError: onFailed,
+            onInterruptFailed: onFailed,
+        });
+        timer = setTimeout(() => {
+            onFailed(new Error('interrupt latch timeout'));
+        }, INTERRUPT_LATCH_MS);
+        void client.interruptTurn(laneScope).catch(onFailed);
+    });
+}
+
+function codexRuntime(client: CodexAppClient, laneScope: string | null): CodexManagedRuntime {
     return {
         client,
         get alive() { return client.alive; },
         supportsInterrupt: true,
         close: () => client.closeGracefully(),
-        interrupt: async () => {
-            if (client.activeTurnId) {
-                await client.interruptTurn();
-                return;
-            }
-            await new Promise<void>((resolve, reject) => {
-                const cleanup = () => {
-                    client.off('interrupt-failed', onFailed);
-                    client.off('turn/completed', onCompleted);
-                    clearTimeout(timer);
-                };
-                const onFailed = (err: Error) => { cleanup(); reject(err); };
-                const onCompleted = () => { cleanup(); resolve(); };
-                const timer = setTimeout(() => {
-                    cleanup();
-                    reject(new Error('interrupt latch timeout'));
-                }, INTERRUPT_LATCH_MS);
-                client.once('interrupt-failed', onFailed);
-                client.once('turn/completed', onCompleted);
-                void client.interruptTurn();
-            });
-        },
+        interrupt: () => interruptCodexRuntime(client, laneScope),
         kill: () => client.kill(),
         onExit: (cb) => {
             const listener = (code: number | null) => { cb(code); };
@@ -376,7 +434,7 @@ async function createCodexEntry(
             await client.closeGracefully();
             throw new Error('runtime pool creation superseded');
         }
-        const runtime = codexRuntime(client);
+        const runtime = codexRuntime(client, null);
         let ready!: ReadyEntry<ManagedRuntime, unknown>;
         const disposeExit = runtime.onExit(() => {
             if (store.entries.get(key) !== ready) return;

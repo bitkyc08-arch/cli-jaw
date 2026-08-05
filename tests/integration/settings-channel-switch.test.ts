@@ -47,13 +47,16 @@ test('DISCORD_TOKEN auto-switches channel when telegram disabled', () => {
 
 // ─── Failed restart rolls back settings ─────────────
 
-test('failed restart/login rolls back persisted settings', () => {
-    assert.match(runtimeSettingsSrc, /replaceSettings\(prevSnapshot\)/,
-        'should restore previous settings on restart failure');
-    assert.match(runtimeSettingsSrc, /throw e/,
-        'should propagate error to caller');
-});
-
+// The old form grepped for replaceSettings(prevSnapshot), a call that stopped
+// existing when persistence moved to write-then-commit. What it protected is
+// unchanged, so assert the outcome: a failed restart must undo the patch and
+// still surface the error. Writes go to an injected sink because the suite
+// shares one temp home across files.
+// The rollback contract for this path is asserted in
+// tests/unit/cli-switch-refresh.test.ts, which owns the settings-mutation
+// cases. They share process-wide settings state and the database, so
+// splitting them across files made them race on a SQLite lock rather than
+// on anything they were checking.
 // ─── Pipeline broadcasts include target ─────────────
 
 test('orchestrate_done broadcasts include target for queue correlation', () => {

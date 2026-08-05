@@ -46,6 +46,7 @@ import { getSecurityAuditLog } from './src/security/security-audit-log.js';
 import { SearchCoordinator } from './src/search/coordinator.js';
 import { createOffProvider, SearchProviderRegistry } from './src/search/provider.js';
 import { ChatSearchProvider } from './src/search/providers/chat.js';
+import { MemorySearchProvider } from './src/search/providers/memory.js';
 import { createDashboardBoardRouter } from './src/manager/board/routes.js';
 import { createDashboardScheduleRouter } from './src/manager/schedule/routes.js';
 import {
@@ -377,7 +378,7 @@ registerChatSessionRoutes(app, requireAuth);
 registerMessageRoutes(app);
 const searchRegistry = new SearchProviderRegistry();
 searchRegistry.register(new ChatSearchProvider(settings['search'].engine));
-searchRegistry.register(createOffProvider('memory-placeholder', 'memory'));
+searchRegistry.register(new MemorySearchProvider(settings['memory'].enabled));
 searchRegistry.register(createOffProvider('wiki-placeholder', 'wiki'));
 registerSearchRoutes(app, requireAuth, new SearchCoordinator(searchRegistry));
 registerSystemRoutes(app, { jawAuthToken: JAW_AUTH_TOKEN });
