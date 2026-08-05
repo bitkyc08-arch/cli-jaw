@@ -2197,6 +2197,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     }
                     appendTraceEvent({ runId: ctx.traceRunId, source: 'codex_app_raw', eventType: method, raw: params });
                 },
+                onDiagnosticNotification: (entry) => {
+                    appendTraceEvent({
+                        runId: ctx.traceRunId,
+                        source: 'codex_app_raw',
+                        eventType: 'unrouted-notification',
+                        raw: entry,
+                    });
+                },
                 onEvent: consumeCodexAppEvent,
                 onStderr: handleStderr,
                 onExit: (code, signal) => {

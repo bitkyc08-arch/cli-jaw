@@ -236,6 +236,7 @@ export async function interruptCodexRuntime(
         };
         const onFailed = (err: Error) => { cleanup(); reject(err); };
         listener = client.listenTurn(laneScope, {
+            role: 'lifecycle',
             onNotification: (method, _params, owner) => {
                 const expectedTurnId = client.getActiveTurnId(laneScope);
                 if (

@@ -24,6 +24,7 @@ type FakeOptions = {
     fastMode?: boolean;
 };
 type TurnHandler = {
+    role?: string;
     onNotification(method: string, params: Record<string, unknown>, owner?: {
         threadId: string; turnId: string | null;
     }): void;
@@ -45,6 +46,7 @@ class FakeCodexAppClient extends EventEmitter {
     readonly resumeCalls: Array<{ scope: string; threadId: string; options: unknown }> = [];
     readonly interruptCalls: string[] = [];
     readonly closeScopeCalls: string[] = [];
+    readonly listenRoles: Array<{ scope: string; role: string | undefined }> = [];
     proc = { exitCode: null as number | null, killed: false, pid: 50_000 + fakeState.instances.length };
     initializeCount = 0;
     closeGracefullyCount = 0;
@@ -71,6 +73,7 @@ class FakeCodexAppClient extends EventEmitter {
     getActiveTurnId(scope: string): string | null { return this.activeTurns.get(scope) ?? null; }
 
     listenTurn(scope: string, handler: TurnHandler): { dispose(): void } {
+        this.listenRoles.push({ scope, role: handler.role });
         const handlers = this.listenersByScope.get(scope) ?? new Set<TurnHandler>();
         handlers.add(handler);
         this.listenersByScope.set(scope, handlers);
@@ -553,6 +556,19 @@ test('a queued normal waiter inherits a forceNew replacement instead of reviving
     assert.equal(normal.reused, true);
     assert.equal(client.resumeCalls.length, resumesBefore, 'a superseded stored thread must not be resumed');
     normal.release(); client.die();
+});
+
+test('the pool listens as lifecycle so the run adapter still owns the handoff', async () => {
+    // The pool attaches its own listener to every lane before the run's adapter
+    // gets there. If that listener claimed to be the consumer the handoff buffer
+    // would never turn on and the adapter would miss everything sent before it
+    // attached, so the role has to say what this listener is for.
+    const model = 'listener-role';
+    const { lease, client } = await prepareFor(model, 'scope-role');
+    assert.deepEqual(client!.listenRoles, [
+        { scope: 'scope-role:listener-role:high', role: 'lifecycle' },
+    ]);
+    lease!.release(); client!.die();
 });
 
 test('host reaper waits until the last lane is gone and then closes the process', async () => {

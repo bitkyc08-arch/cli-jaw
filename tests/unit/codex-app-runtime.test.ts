@@ -434,6 +434,7 @@ test('thread notification before start response is replayed once after binding',
     injectRequest(client, async () => response);
     const seen: string[] = [];
     client.listenTurn('scope-a', {
+        role: 'consumer',
         onNotification: (method) => { seen.push(method); },
         onStderr: () => {},
     });
@@ -726,7 +727,9 @@ test('closeScope rejects active lanes and cleans idle state, latch, listener, an
     });
     await idle.startThread('scope-idle', laneOptions);
     await idle.interruptTurn('scope-idle');
-    const listener = idle.listenTurn('scope-idle', { onNotification: () => {}, onStderr: () => {} });
+    const listener = idle.listenTurn('scope-idle', {
+        role: 'consumer', onNotification: () => {}, onStderr: () => {},
+    });
     assert.equal(idle.listenerCount('notification:scope-idle'), 1);
     await idle.closeScope('scope-idle');
 
@@ -761,6 +764,7 @@ for (const firstSignal of ['error', 'exit'] as const) {
         const pending = client.startTurn('scope-a', 'hello');
         const observed: string[] = [];
         const listener = client.listenTurn('scope-a', {
+            role: 'consumer',
             onNotification: () => {},
             onStderr: () => {},
             onError: (err) => {

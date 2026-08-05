@@ -16,6 +16,7 @@ function deferred<T>(): Deferred<T> {
 }
 
 type TurnHandlers = {
+    role?: 'lifecycle' | 'consumer';
     onNotification(method: string, params: Record<string, unknown>, owner?: { threadId: string; turnId: string }): void;
 };
 
@@ -42,6 +43,8 @@ const harness = {
     finalized: [] as Array<{ runId: string | null | undefined; status: string }>,
     clearLiveRunCalls: [] as string[],
     lifecycleCalls: [] as Array<Record<string, unknown>>,
+    traceEvents: [] as Array<Record<string, unknown>>,
+    emitCompositeNotifications: false,
 };
 
 class FakeCodexAppClient extends EventEmitter {
@@ -109,6 +112,23 @@ class FakeCodexAppClient extends EventEmitter {
         return { dispose: () => { this.legacyHandlers = null; } };
     }
 
+    listenHostNotifications(handlers: {
+        onNotification(method: string, params: Record<string, unknown>): void;
+    }): { dispose(): void } {
+        const listener = (method: string, params: Record<string, unknown>) => {
+            handlers.onNotification(method, params);
+        };
+        this.on('host-notification', listener);
+        this.on('notification', listener);
+        let disposed = false;
+        return { dispose: () => {
+            if (disposed) return;
+            disposed = true;
+            this.off('host-notification', listener);
+            this.off('notification', listener);
+        } };
+    }
+
     async startTurn(scopeOrPrompt: string, maybePrompt?: string): Promise<Record<string, never>> {
         const scoped = maybePrompt !== undefined;
         const scope = scoped ? scopeOrPrompt : null;
@@ -120,6 +140,15 @@ class FakeCodexAppClient extends EventEmitter {
         else this.activeTurnId = turnId;
         const handlers = scoped ? this.scopedHandlers.get(scope!) : this.legacyHandlers;
         const owner = { threadId, turnId };
+        if (scoped && harness.emitCompositeNotifications) {
+            this.emit('host-notification', 'configWarning', { message: 'known host' });
+            this.emit('host-notification', 'error', {
+                error: { message: 'ownerless host error' }, willRetry: false,
+            });
+            this.emit('unrouted-notification', {
+                method: 'future/raw', params: { value: 1 }, reason: 'unknown-method',
+            });
+        }
         handlers?.onNotification('turn/started', { threadId, turn: { id: turnId } }, owner);
         handlers?.onNotification('turn/completed', {
             threadId,
@@ -288,7 +317,8 @@ test.mock.module('../../src/agent/live-run-state.js', {
 
 test.mock.module('../../src/trace/store.js', {
     namedExports: {
-        appendTraceEvent() {}, stampTraceTool() {}, stampTraceToolEntries() {},
+        appendTraceEvent: (entry: Record<string, unknown>) => { harness.traceEvents.push(entry); },
+        stampTraceTool() {}, stampTraceToolEntries() {},
         updateTraceToolRow() {}, getTraceEvent: () => null, linkTraceRunToMessage() {},
         startTraceRun: () => 'tr_multiplexfixture0001',
         finalizeTraceRun: (runId: string | null | undefined, status: string) => {
@@ -353,6 +383,8 @@ function resetHarness(): void {
     harness.finalized.length = 0;
     harness.clearLiveRunCalls.length = 0;
     harness.lifecycleCalls.length = 0;
+    harness.traceEvents.length = 0;
+    harness.emitCompositeNotifications = false;
     activeMainProcesses.clear();
     activeProcesses.clear();
     db.prepare('DELETE FROM session_buckets').run();
@@ -443,6 +475,37 @@ test('multiplex ON, OFF, and employee select host, generic, and direct process r
     assert.equal(harness.directSpawns, 1);
     assert.equal(harness.clients.length, 1);
     assert.deepEqual(harness.selectorCalls, [{ multiplexEnabled: true, employee: true }]);
+});
+
+test('ON production records host and unrouted diagnostics and disposes the composite subscription', async () => {
+    resetHarness();
+    setMultiplex(true);
+    harness.emitCompositeNotifications = true;
+    assert.equal((await runMain('composite-events')).code, 0);
+
+    const eventTypes = harness.traceEvents
+        .filter((entry) => entry['source'] === 'codex_app_raw')
+        .map((entry) => String(entry['eventType']));
+    assert.equal(eventTypes.filter((eventType) => eventType === 'configWarning').length, 1);
+    assert.equal(eventTypes.filter((eventType) => eventType === 'error').length, 1,
+        'ownerless host errors remain raw trace events');
+    assert.equal(eventTypes.filter((eventType) => eventType === 'unrouted-notification').length, 1);
+    assert.equal(eventTypes.includes('future/raw'), false,
+        'diagnostic-only unknowns are not delivered as raw consumer events');
+    const diagnostic = harness.traceEvents.find(
+        (entry) => entry['eventType'] === 'unrouted-notification',
+    )?.['raw'] as { method?: string; reason?: string } | undefined;
+    assert.deepEqual(diagnostic, {
+        method: 'future/raw', params: { value: 1 }, reason: 'unknown-method',
+    });
+
+    const countAfterRun = harness.traceEvents.length;
+    harness.hostClient!.emit('host-notification', 'configWarning', { message: 'after dispose' });
+    harness.hostClient!.emit('unrouted-notification', {
+        method: 'future/after', params: {}, reason: 'unknown-method',
+    });
+    assert.equal(harness.traceEvents.length, countAfterRun,
+        'the one adapter disposer removes host and diagnostic subscriptions');
 });
 
 test('optimistic history eligibility changes only multiplex main resume turns', () => {

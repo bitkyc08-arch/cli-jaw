@@ -6,6 +6,7 @@ test('listenTurn dispose removes exactly its attached listener references', () =
     const client = new CodexAppClient();
     const seen: string[] = [];
     const scope = client.listenTurn('scope-a', {
+        role: 'consumer',
         onNotification: (method) => { seen.push(`notification:${method}`); },
         onStderr: (text) => { seen.push(`stderr:${text}`); },
         onExit: (code) => { seen.push(`exit:${code}`); },
@@ -35,6 +36,7 @@ test('known host and unknown raw notifications stay off scoped lanes and reach t
     const lane: string[] = [];
     const host: string[] = [];
     const laneListener = client.listenTurn('scope-a', {
+        role: 'consumer',
         onNotification: (method) => { lane.push(method); },
         onStderr: () => {},
     });

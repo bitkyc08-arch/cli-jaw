@@ -160,8 +160,18 @@ export interface CodexAppTurnHandlers {
     onInterruptFailed?(err: Error): void;
 }
 
+export interface CodexAppScopedTurnHandlers extends CodexAppTurnHandlers {
+    role: 'lifecycle' | 'consumer';
+}
+
 export interface CodexAppHostNotificationHandlers {
     onNotification(method: string, params: Record<string, unknown>): void;
+}
+
+export interface CodexAppUnroutedNotification {
+    method: string;
+    params: Record<string, unknown>;
+    reason: string;
 }
 
 type PendingOperation = {
@@ -201,6 +211,18 @@ type RoutedIdentity = {
     turnId: string | null;
 };
 
+type HandoffNotification = {
+    method: string;
+    params: EvRec;
+    owner: RoutedIdentity | undefined;
+};
+
+type NotificationHandoff = {
+    consumers: number;
+    replaying: boolean;
+    buffer: HandoffNotification[];
+};
+
 export class CodexAppClient extends EventEmitter {
     proc: ChildProcess | null = null;
 
@@ -221,6 +243,12 @@ export class CodexAppClient extends EventEmitter {
         method: string; params: EvRec; owner: RoutedIdentity | undefined;
     }> = [];
     private legacyListenerCount = 0;
+    private scopedNotificationHandoffs = new Map<string, NotificationHandoff>();
+    private hostNotificationHandoff: NotificationHandoff = {
+        consumers: 0,
+        replaying: false,
+        buffer: [],
+    };
     private readonly pendingNotificationLimit = PENDING_NOTIFICATION_LIMIT;
     private readonly pendingNotificationTtlMs = PENDING_NOTIFICATION_TTL_MS;
     private nextId = 1;
@@ -282,22 +310,27 @@ export class CodexAppClient extends EventEmitter {
     }
 
     listenTurn(handlers: CodexAppTurnHandlers): { dispose(): void };
-    listenTurn(scope: string, handlers: CodexAppTurnHandlers): { dispose(): void };
+    listenTurn(scope: string, handlers: CodexAppScopedTurnHandlers): { dispose(): void };
     listenTurn(
         scopeOrHandlers: string | CodexAppTurnHandlers,
-        scopedHandlers?: CodexAppTurnHandlers,
+        scopedHandlers?: CodexAppScopedTurnHandlers,
     ): { dispose(): void } {
         const legacy = typeof scopeOrHandlers !== 'string';
         const scope = legacy ? LEGACY_SCOPE : scopeOrHandlers;
-        const handlers = legacy ? scopeOrHandlers : scopedHandlers;
-        if (!handlers) throw new Error(`Missing turn handlers for scope ${scope}`);
+        if (!legacy && !scopedHandlers) throw new Error(`Missing turn handlers for scope ${scope}`);
+        const handlers: CodexAppTurnHandlers = legacy ? scopeOrHandlers : scopedHandlers!;
         this.setApiMode(legacy ? 'legacy' : 'scoped');
 
+        const handoff = legacy ? null : this.ensureScopedNotificationHandoff(scope);
+        const role = legacy ? null : scopedHandlers!.role;
         const onNotification = (
             method: string,
             params: Record<string, unknown>,
             owner?: CodexAppNotificationOwner,
-        ) => { handlers.onNotification(method, params, owner); };
+        ) => {
+            if (role === 'consumer' && handoff?.replaying) return;
+            handlers.onNotification(method, params, owner);
+        };
         const onHostNotification = (method: string, params: Record<string, unknown>) => {
             handlers.onNotification(method, params);
         };
@@ -320,6 +353,8 @@ export class CodexAppClient extends EventEmitter {
         // one already handled.
         const wasIdle = legacy && this.legacyListenerCount === 0;
         if (legacy) this.legacyListenerCount += 1;
+        const scopedConsumerWasIdle = role === 'consumer' && handoff?.consumers === 0;
+        if (role === 'consumer' && handoff) handoff.consumers += 1;
 
         let disposed = false;
         const dispose = () => {
@@ -337,6 +372,9 @@ export class CodexAppClient extends EventEmitter {
                 // disposing this listener and attaching the next is another
                 // window where notifications would otherwise reach nobody.
                 this.legacyListenerCount = Math.max(0, this.legacyListenerCount - 1);
+            }
+            if (role === 'consumer' && handoff) {
+                handoff.consumers = Math.max(0, handoff.consumers - 1);
             }
             const disposers = this.scopeDisposers.get(scope);
             disposers?.delete(dispose);
@@ -371,24 +409,40 @@ export class CodexAppClient extends EventEmitter {
                 throw err;
             }
         }
+        if (scopedConsumerWasIdle && handoff && handoff.buffer.length > 0) {
+            this.replayNotificationHandoff(handoff, handlers.onNotification, dispose);
+        }
         return { dispose };
     }
 
     listenHostNotifications(handlers: CodexAppHostNotificationHandlers): { dispose(): void } {
         const listener = (method: string, params: Record<string, unknown>) => {
+            if (this.hostNotificationHandoff.replaying) return;
             handlers.onNotification(method, params);
         };
         this.on('host-notification', listener);
         this.on('notification', listener);
+        const wasIdle = this.hostNotificationHandoff.consumers === 0;
+        this.hostNotificationHandoff.consumers += 1;
         let disposed = false;
-        return {
-            dispose: () => {
-                if (disposed) return;
-                disposed = true;
-                this.off('host-notification', listener);
-                this.off('notification', listener);
-            },
+        const dispose = () => {
+            if (disposed) return;
+            disposed = true;
+            this.off('host-notification', listener);
+            this.off('notification', listener);
+            this.hostNotificationHandoff.consumers = Math.max(
+                0,
+                this.hostNotificationHandoff.consumers - 1,
+            );
         };
+        if (wasIdle && this.hostNotificationHandoff.buffer.length > 0) {
+            this.replayNotificationHandoff(
+                this.hostNotificationHandoff,
+                handlers.onNotification,
+                dispose,
+            );
+        }
+        return { dispose };
     }
 
     spawn(): void {
@@ -772,6 +826,7 @@ export class CodexAppClient extends EventEmitter {
         this.removeAllListeners(`notification:${scope}`);
         this.removeAllListeners(`interrupt-failed:${scope}`);
         this.removeBufferedForScope(scope);
+        this.scopedNotificationHandoffs.delete(scope);
         this.scopes.delete(scope);
     }
 
@@ -846,9 +901,14 @@ export class CodexAppClient extends EventEmitter {
     private setApiMode(mode: Exclude<ApiMode, 'unset'>): void {
         if (this.apiMode === 'unset') {
             this.apiMode = mode;
-            // Anything queued before the mode was known can only be handed over
-            // by the legacy facade, so a scoped client would retain it forever.
-            if (mode === 'scoped') this.preListenerNotifications = [];
+            // Host notifications can arrive during initialize, before the first
+            // lane establishes the mode. Keep only the handoff owned by the mode
+            // that won so the other facade cannot retain payloads forever.
+            if (mode === 'scoped') {
+                this.preListenerNotifications = [];
+            } else {
+                this.hostNotificationHandoff.buffer = [];
+            }
             return;
         }
         if (this.apiMode !== mode) {
@@ -899,6 +959,7 @@ export class CodexAppClient extends EventEmitter {
         this.emitUnrouted(method, params, 'unknown-method');
         if (this.unknownNotificationPolicy === 'legacy-raw') {
             this.recordPreListenerNotification(method, params, undefined);
+            this.recordHostNotification(method, params);
             this.emit('notification', method, params);
         }
     }
@@ -1106,7 +1167,11 @@ export class CodexAppClient extends EventEmitter {
         params: EvRec,
         owner: RoutedIdentity,
     ): void {
-        if (scope === LEGACY_SCOPE) this.recordPreListenerNotification(method, params, owner);
+        if (scope === LEGACY_SCOPE) {
+            this.recordPreListenerNotification(method, params, owner);
+        } else {
+            this.recordScopedNotification(scope, method, params, owner);
+        }
         this.emit(`notification:${scope}`, method, params, owner);
         if (scope === LEGACY_SCOPE && (method === 'turn/started' || method === 'turn/completed')) {
             this.emit(method, params);
@@ -1115,6 +1180,7 @@ export class CodexAppClient extends EventEmitter {
 
     private emitHostNotification(method: string, params: EvRec): void {
         this.recordPreListenerNotification(method, params, undefined);
+        this.recordHostNotification(method, params);
         this.emit('host-notification', method, params);
     }
 
@@ -1145,6 +1211,82 @@ export class CodexAppClient extends EventEmitter {
             }
         }
         this.preListenerNotifications.push({ method, params, owner });
+    }
+
+    private ensureScopedNotificationHandoff(scope: string): NotificationHandoff {
+        const current = this.scopedNotificationHandoffs.get(scope);
+        if (current) return current;
+        const handoff: NotificationHandoff = { consumers: 0, replaying: false, buffer: [] };
+        this.scopedNotificationHandoffs.set(scope, handoff);
+        return handoff;
+    }
+
+    private recordScopedNotification(
+        scope: string,
+        method: string,
+        params: EvRec,
+        owner: RoutedIdentity,
+    ): void {
+        const handoff = this.ensureScopedNotificationHandoff(scope);
+        if (handoff.consumers > 0 && !handoff.replaying) return;
+        this.bufferHandoffNotification(handoff, { method, params, owner });
+    }
+
+    private recordHostNotification(method: string, params: EvRec): void {
+        if (this.apiMode === 'legacy') return;
+        const handoff = this.hostNotificationHandoff;
+        if (handoff.consumers > 0 && !handoff.replaying) return;
+        this.bufferHandoffNotification(
+            handoff,
+            { method, params, owner: undefined },
+            this.apiMode === 'scoped',
+        );
+    }
+
+    private bufferHandoffNotification(
+        handoff: NotificationHandoff,
+        entry: HandoffNotification,
+        diagnoseOverflow = true,
+    ): void {
+        if (handoff.buffer.length >= this.pendingNotificationLimit) {
+            const evicted = handoff.buffer.shift();
+            if (evicted && diagnoseOverflow) {
+                this.emitUnrouted(evicted.method, evicted.params, 'pre-listener-overflow');
+            }
+        }
+        handoff.buffer.push(entry);
+    }
+
+    private replayNotificationHandoff(
+        handoff: NotificationHandoff,
+        deliver: CodexAppTurnHandlers['onNotification'],
+        dispose: () => void,
+    ): void {
+        handoff.replaying = true;
+        try {
+            while (handoff.buffer.length > 0) {
+                const entry = handoff.buffer.shift()!;
+                try {
+                    deliver(entry.method, entry.params, entry.owner);
+                } catch (err) {
+                    if (handoff.buffer.length >= this.pendingNotificationLimit) {
+                        const evicted = handoff.buffer.shift();
+                        if (evicted) {
+                            this.emitUnrouted(
+                                evicted.method,
+                                evicted.params,
+                                'pre-listener-overflow',
+                            );
+                        }
+                    }
+                    handoff.buffer.unshift(entry);
+                    dispose();
+                    throw err;
+                }
+            }
+        } finally {
+            handoff.replaying = false;
+        }
     }
 
     // ─── Bounded pending notification replay ─────────
@@ -1452,6 +1594,8 @@ export class CodexAppClient extends EventEmitter {
         this.pendingNotifications = [];
         // Nothing will ever attach to drain these once the process is gone.
         this.preListenerNotifications = [];
+        this.scopedNotificationHandoffs.clear();
+        this.hostNotificationHandoff = { consumers: 0, replaying: false, buffer: [] };
         this.clearPendingTimer();
         this.scopeDisposers.clear();
         this.legacyListenerCount = 0;

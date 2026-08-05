@@ -6,6 +6,7 @@ import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type {
     CodexAppClient,
     CodexAppNotificationOwner,
+    CodexAppUnroutedNotification,
 } from './codex-app-client.js';
 
 type EvRec = Record<string, unknown>;
@@ -26,6 +27,7 @@ export interface CodexAppTurnLeaseIdentity {
 export interface CodexAppTurnAdapterHandlers {
     onProgress(): void;
     onRawNotification(method: string, params: EvRec): void;
+    onDiagnosticNotification?(entry: CodexAppUnroutedNotification): void;
     onEvent(method: string, result: CodexAppEventResult | null): void;
     onStderr(text: string): void;
     onExit?(code: number | null, signal: string | null): void;
@@ -40,14 +42,18 @@ export function listenCodexAppTurnAdapter(
     ctx: SpawnContext,
     handlers: CodexAppTurnAdapterHandlers,
 ): { dispose(): void } {
+    const onRawOnlyNotification = (method: string, params: EvRec) => {
+        handlers.onProgress();
+        handlers.onRawNotification(method, params);
+    };
     const onNotification = (
         method: string,
         params: EvRec,
         owner?: CodexAppNotificationOwner,
     ) => {
-        handlers.onProgress();
-        handlers.onRawNotification(method, params);
+        onRawOnlyNotification(method, params);
         if (laneScope === null) {
+            if (method === 'error' && !owner) return;
             handlers.onEvent(method, extractFromCodexAppEvent(method, params, ctx));
             return;
         }
@@ -76,9 +82,32 @@ export function listenCodexAppTurnAdapter(
         onError: (err: Error) => { handlers.onError?.(err); },
         onInterruptFailed: (err: Error) => { handlers.onInterruptFailed?.(err); },
     };
-    return laneScope === null
-        ? client.listenTurn(turnHandlers)
-        : client.listenTurn(laneScope, turnHandlers);
+    if (laneScope === null) return client.listenTurn(turnHandlers);
+
+    const laneListener = client.listenTurn(laneScope, { ...turnHandlers, role: 'consumer' });
+    const onDiagnosticNotification = (entry: CodexAppUnroutedNotification) => {
+        handlers.onDiagnosticNotification?.(entry);
+    };
+    client.on('unrouted-notification', onDiagnosticNotification);
+    let hostListener: { dispose(): void };
+    try {
+        hostListener = client.listenHostNotifications({ onNotification: onRawOnlyNotification });
+    } catch (err) {
+        client.off('unrouted-notification', onDiagnosticNotification);
+        laneListener.dispose();
+        throw err;
+    }
+
+    let disposed = false;
+    return {
+        dispose: () => {
+            if (disposed) return;
+            disposed = true;
+            laneListener.dispose();
+            hostListener.dispose();
+            client.off('unrouted-notification', onDiagnosticNotification);
+        },
+    };
 }
 
 function f(obj: EvRec, key: string): unknown { return obj[key]; }

@@ -9,6 +9,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import type {
     CodexAppClientOptions,
+    CodexAppScopedTurnHandlers,
     CodexAppTurnHandlers,
     CodexThreadOptions,
 } from '../../src/agent/codex-app-client.ts';
@@ -229,16 +230,18 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
         }
 
         override listenTurn(handlers: CodexAppTurnHandlers): { dispose(): void };
-        override listenTurn(scope: string, handlers: CodexAppTurnHandlers): { dispose(): void };
+        override listenTurn(scope: string, handlers: CodexAppScopedTurnHandlers): { dispose(): void };
         override listenTurn(
             scopeOrHandlers: string | CodexAppTurnHandlers,
-            scopedHandlers?: CodexAppTurnHandlers,
+            scopedHandlers?: CodexAppScopedTurnHandlers,
         ): { dispose(): void } {
             const scope = typeof scopeOrHandlers === 'string' ? scopeOrHandlers : 'legacy/default';
             const handlers = typeof scopeOrHandlers === 'string' ? scopedHandlers! : scopeOrHandlers;
             const count = (this.listenerCounts.get(scope) ?? 0) + 1;
             this.listenerCounts.set(scope, count);
-            const listenerRole = count === 1 ? 'lifecycle' as const : 'consumer' as const;
+            const listenerRole = typeof scopeOrHandlers === 'string'
+                ? scopedHandlers!.role
+                : count === 1 ? 'lifecycle' as const : 'consumer' as const;
             const wrapped: CodexAppTurnHandlers = {
                 ...handlers,
                 onNotification: (method, params, owner) => {
@@ -268,7 +271,7 @@ test('real codex-app multiplex keeps two scoped turns isolated across cancel and
                 },
             };
             return typeof scopeOrHandlers === 'string'
-                ? super.listenTurn(scopeOrHandlers, wrapped)
+                ? super.listenTurn(scopeOrHandlers, { ...wrapped, role: scopedHandlers!.role })
                 : super.listenTurn(wrapped);
         }
 

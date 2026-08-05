@@ -127,6 +127,100 @@ for (const gateEnabled of [false, true]) {
     }
 }
 
+test('scoped production adapter composes lane, host, and diagnostic subscriptions', async () => {
+    const client = new CodexAppClient({ unknownNotificationPolicy: 'diagnostic-only' });
+    injectRequest(client, async (method) => {
+        if (method === 'thread/start') return { thread: { id: 'thread-a' } };
+        if (method === 'turn/start') return { turn: { id: 'turn-a' } };
+        return {};
+    });
+    await client.startThread('scope-a', {
+        model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false,
+    });
+    await client.startTurn('scope-a', 'hello');
+    client['handleLine'](JSON.stringify({
+        method: 'item/agentMessage/delta',
+        params: { threadId: 'thread-a', turnId: 'turn-a', delta: 'before-listener' },
+    }));
+    client['handleLine'](JSON.stringify({
+        method: 'configWarning', params: { message: 'before-listener-host' },
+    }));
+
+    const ctx = createCtx();
+    const raw: string[] = [];
+    const normalized: string[] = [];
+    const diagnostics: string[] = [];
+    let progress = 0;
+    const listener = listenCodexAppTurnAdapter(
+        client,
+        { threadId: 'thread-a' },
+        'scope-a',
+        ctx,
+        {
+            onProgress: () => { progress += 1; },
+            onRawNotification: (method) => { raw.push(method); },
+            onDiagnosticNotification: (entry) => {
+                diagnostics.push(`${entry.reason}:${entry.method}`);
+            },
+            onEvent: (method) => { normalized.push(method); },
+            onStderr: () => {},
+        },
+    );
+
+    client['handleLine'](JSON.stringify({
+        method: 'error', params: { error: { message: 'host failed' }, willRetry: false },
+    }));
+    client['handleLine'](JSON.stringify({
+        method: 'future/raw', params: { value: 1 },
+    }));
+
+    assert.deepEqual(raw, ['item/agentMessage/delta', 'configWarning', 'error'],
+        'known host notifications and host errors reach raw trace exactly once');
+    assert.equal(progress, 3);
+    assert.deepEqual(normalized, ['item/agentMessage/delta'],
+        'host notifications never enter the lane normalizer');
+    assert.equal(ctx.sessionId, null, 'host notifications cannot mutate turn context');
+    assert.deepEqual(diagnostics, ['unknown-method:future/raw'],
+        'diagnostic-only unknowns use the diagnostic subscription, not the raw consumer');
+
+    listener.dispose();
+    listener.dispose();
+    for (const event of [
+        'notification:scope-a', 'host-notification', 'notification', 'unrouted-notification',
+    ]) {
+        assert.equal(client.listenerCount(event), 0, `${event} listener leaked`);
+    }
+    client['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'after' } }));
+    client['handleLine'](JSON.stringify({ method: 'future/after', params: {} }));
+    assert.deepEqual(raw, ['item/agentMessage/delta', 'configWarning', 'error']);
+    assert.deepEqual(diagnostics, ['unknown-method:future/raw']);
+});
+
+for (const role of ['main', 'employee'] as const) {
+    test(`legacy ${role} adapter keeps ownerless host error raw-only`, () => {
+        const client = new CodexAppClient();
+        client.threadId = `${role}-thread`;
+        client.activeTurnId = `${role}-turn`;
+        const raw: string[] = [];
+        const normalized: string[] = [];
+        let progress = 0;
+        const listener = listenCodexAppTurnAdapter(client, null, null, createCtx(), {
+            onProgress: () => { progress += 1; },
+            onRawNotification: (method) => { raw.push(method); },
+            onEvent: (method) => { normalized.push(method); },
+            onStderr: () => {},
+        });
+
+        client['handleLine'](JSON.stringify({
+            method: 'error', params: { error: { message: `${role} host failed` }, willRetry: false },
+        }));
+        assert.deepEqual(raw, ['error']);
+        assert.equal(progress, 1);
+        assert.deepEqual(normalized, [], 'an ownerless host error cannot fail one arbitrary turn');
+        listener.dispose();
+    });
+}
+
 test('scoped interrupt helper filters by method and current lane owner before completing', async () => {
     const client = new CodexAppClient();
     injectRequest(client, async (method) => {
@@ -139,6 +233,11 @@ test('scoped interrupt helper filters by method and current lane owner before co
 
     let settled = false;
     const interrupting = interruptCodexRuntime(client, 'scope-a').then(() => { settled = true; });
+    // The latch is the pool's own business, not the run's. Registering it as a
+    // consumer would satisfy the scope's handoff and let the adapter that
+    // attaches later miss everything sent while the interrupt was in flight.
+    assert.equal(client['scopedNotificationHandoffs'].get('scope-a')?.consumers ?? 0, 0,
+        'the interrupt latch must not claim the scope consumer slot');
     client['handleLine'](JSON.stringify({
         method: 'turn/started',
         params: { threadId: 'thread-a', turn: { id: 'turn-a' } },

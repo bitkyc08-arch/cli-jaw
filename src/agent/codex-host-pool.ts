@@ -156,6 +156,7 @@ function createLane(host: Host, meta: TokenMeta, scopeKey: string, waiters: Wait
     adoptWaiters(lane, waiters);
     const client = meta.client;
     lane.listener = client.listenTurn(laneScope, {
+        role: 'lifecycle',
         onNotification: (method) => {
             if (method !== 'turn/completed' || (lane.state !== 'closing' && lane.state !== 'poisoned')) return;
             queueMicrotask(() => scheduleLaneClose(host, lane));
