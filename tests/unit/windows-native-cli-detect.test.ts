@@ -65,12 +65,15 @@ test('a directory is not spawnable even with an executable extension', () => {
     assert.equal(isSpawnableCliFile(dirShim, 'win32').ok, false);
 });
 
-test('an extension outside the launchable allowlist is not spawnable', () => {
+test('an extension outside PATHEXT is not spawnable', () => {
     const dir = fixtureDir();
     const pyTool = path.join(dir, 'codex.py');
     fs.writeFileSync(pyTool, 'print(1)\n');
-    // Even if .PY is in PATHEXT, ComSpec cannot launch it.
-    assert.equal(isSpawnableCliFile(pyTool, 'win32').ok, false);
+    // Not in PATHEXT: cmd.exe has no association to resolve, so it cannot run.
+    assert.equal(isSpawnableCliFile(pyTool, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD' }).ok, false);
+    // In PATHEXT: the ComSpec route can launch it, so refusing to detect it
+    // would be a regression against pre-detection behavior.
+    assert.equal(isSpawnableCliFile(pyTool, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.PY' }).ok, true);
 });
 
 test('mixed-case extensions and paths with spaces are handled', () => {
@@ -124,19 +127,60 @@ test('a broken .exe does not shadow a working .cmd shim', () => {
     ]);
 });
 
-test('windows candidates rank .exe over .cmd over .ps1 over the extensionless shim', () => {
+test('windows candidates rank .exe over .cmd over .ps1 over the extensionless shim within one directory', () => {
+    // npm writes all of these side by side in the SAME directory, which is the
+    // case extension rank exists for.
     const ordered = prioritizeCliCandidates('codex', [
         'C:\\Users\\j\\AppData\\Roaming\\npm\\codex',
         'C:\\Users\\j\\AppData\\Roaming\\npm\\codex.ps1',
         'C:\\Users\\j\\AppData\\Roaming\\npm\\codex.cmd',
-        'C:\\tools\\codex.exe',
+        'C:\\Users\\j\\AppData\\Roaming\\npm\\codex.exe',
     ], os.homedir(), 'win32');
 
     assert.deepEqual(ordered, [
-        'C:\\tools\\codex.exe',
+        'C:\\Users\\j\\AppData\\Roaming\\npm\\codex.exe',
         'C:\\Users\\j\\AppData\\Roaming\\npm\\codex.cmd',
         'C:\\Users\\j\\AppData\\Roaming\\npm\\codex.ps1',
         'C:\\Users\\j\\AppData\\Roaming\\npm\\codex',
+    ]);
+});
+
+test('extension rank never reorders candidates across PATH directories', () => {
+    // Regression: the comparator used to sort by extension before PATH order,
+    // so a fallback .exe later in PATH silently beat the .cmd the user put
+    // first. `where.exe` order is the user's explicit preference.
+    const preferred = 'C:\\preferred\\gemini.cmd';
+    const fallback = 'C:\\fallback\\gemini.exe';
+
+    assert.deepEqual(
+        prioritizeCliCandidates('gemini', [preferred, fallback], os.homedir(), 'win32'),
+        [preferred, fallback],
+        'the first PATH directory must win even when a later one holds a .exe',
+    );
+
+    // ...and the preference is genuinely positional, not a bias toward .cmd:
+    // flip the PATH order and the .exe directory wins instead.
+    assert.deepEqual(
+        prioritizeCliCandidates('gemini', [fallback, preferred], os.homedir(), 'win32'),
+        [fallback, preferred],
+    );
+});
+
+test('directory grouping is case-insensitive and survives POSIX hosts', () => {
+    // Windows paths are case-insensitive, and these tests usually run on macOS
+    // where path.dirname() would return "." for every C:\ path — collapsing
+    // every candidate into one bucket and hiding the bug this guards.
+    const ordered = prioritizeCliCandidates('gemini', [
+        'C:\\Preferred\\gemini.cmd',
+        'C:\\PREFERRED\\gemini.exe',
+        'C:\\fallback\\gemini.exe',
+    ], os.homedir(), 'win32');
+
+    assert.deepEqual(ordered, [
+        // same directory despite the casing difference, so extension orders them
+        'C:\\PREFERRED\\gemini.exe',
+        'C:\\Preferred\\gemini.cmd',
+        'C:\\fallback\\gemini.exe',
     ]);
 });
 
@@ -229,7 +273,7 @@ test('extension rank still applies within one provenance bucket on Windows', () 
     );
 });
 
-test('a CLI outside the bun-deprioritized set ranks purely by extension', () => {
+test('a CLI outside the bun-deprioritized set ranks by extension within one directory', () => {
     const shim = path.join(HOME, '.bun', 'bin', 'gemini');
     const cmd = path.join(HOME, '.bun', 'bin', 'gemini.cmd');
 
@@ -237,4 +281,22 @@ test('a CLI outside the bun-deprioritized set ranks purely by extension', () => 
         prioritizeCliCandidates('gemini', [shim, cmd], HOME, 'win32'),
         [cmd, shim],
     );
+});
+
+test('a PATHEXT-associated script stays detectable', () => {
+    // Regression guard: narrowing acceptance to .com/.exe/.bat/.cmd would make
+    // a CLI installed as an associated script report missing, even though
+    // spawn.ts runs every non-.exe win32 path through ComSpec, which resolves
+    // PATHEXT associations.
+    const dir = fixtureDir();
+    const wsf = path.join(dir, 'codex.wsf');
+    fs.writeFileSync(wsf, '<job/>\n');
+
+    assert.equal(isSpawnableCliFile(wsf, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.WSF' }).ok, true);
+    // Not in PATHEXT means not launchable.
+    assert.equal(isSpawnableCliFile(wsf, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD' }).ok, false);
+    // .ps1 stays rejected regardless: ComSpec cannot run it.
+    const ps1 = path.join(dir, 'codex.ps1');
+    fs.writeFileSync(ps1, 'Write-Host 1\n');
+    assert.equal(isSpawnableCliFile(ps1, 'win32', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.PS1' }).ok, false);
 });

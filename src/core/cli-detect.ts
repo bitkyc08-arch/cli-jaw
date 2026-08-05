@@ -44,10 +44,9 @@ const BUN_DEPRIO_CLIS = new Set(['claude', 'codex', 'copilot', 'opencode']);
  * Extensions the Windows spawn path can actually launch: a bare .exe/.com
  * directly, and .cmd/.bat through ComSpec.
  *
- * Deliberately NOT the full PATHEXT list. src/agent/spawn.ts sets
- * `shell: true` for any non-.exe path on win32, which is the documented-safe
- * route for batch files and nothing else — cmd.exe cannot run a .ps1, and a
- * custom PATHEXT entry only works if a file association happens to exist.
+ * This is the set that needs no file association to work. Extensions that are
+ * only launchable through a PATHEXT association are handled separately in
+ * `isSpawnableCliFile` — see the note there.
  */
 const WINDOWS_SPAWNABLE_EXTENSIONS = ['.COM', '.EXE', '.BAT', '.CMD'];
 
@@ -77,6 +76,18 @@ function windowsExtensionRank(candidate: string, env: NodeJS.ProcessEnv = proces
     if (upper.endsWith('.PS1')) return 2;
     // Other PATHEXT entries rank below the launchable set but above unknowns.
     return hasExtension(candidate, windowsPathExt(env)) ? 3 : 4;
+}
+
+/**
+ * Case-folded directory of a Windows candidate.
+ *
+ * `path.win32` is mandatory here: on macOS/Linux the POSIX `path.dirname`
+ * returns `.` for every `C:\...\tool.exe`, which would collapse all candidates
+ * into one bucket and silently defeat the PATH-order key below — while any
+ * test written with Windows-style fixtures still passed.
+ */
+function windowsCandidateDir(candidate: string): string {
+    return path.win32.dirname(candidate).toUpperCase();
 }
 
 function normalizedPath(filePath: string): string {
@@ -163,19 +174,33 @@ export function prioritizeCliCandidates(
     env: NodeJS.ProcessEnv = process.env,
 ): string[] {
     if (platform === 'win32') {
-        // Provenance stays the PRIMARY key and extension is only a tiebreak
-        // within a bucket. Bun installs to %USERPROFILE%\.bun\bin on Windows
-        // too, so ranking by extension alone would let a stale bun shim shadow
-        // a working npm/native install — worse than on POSIX, because a bun
-        // .exe would outrank every npm .cmd.
+        // Provenance stays the PRIMARY key: bun installs to
+        // %USERPROFILE%\.bun\bin on Windows too, so ranking by extension alone
+        // would let a stale bun shim shadow a working npm/native install —
+        // worse than on POSIX, because a bun .exe would outrank every npm .cmd.
+        //
+        // Directory order is the SECOND key, ahead of extension. `where.exe`
+        // returns candidates in PATH order, and that order is the user's
+        // explicit preference. Extension rank must only order shim siblings
+        // that share a directory — npm's tool / tool.cmd / tool.ps1 triple,
+        // which is the case it was written for. Letting it cross directories
+        // silently inverted PATH precedence, promoting a fallback .exe over
+        // the .cmd the user put first.
+        const dirOrder = new Map<string, number>();
+        for (const candidate of candidates) {
+            const dir = windowsCandidateDir(candidate);
+            if (!dirOrder.has(dir)) dirOrder.set(dir, dirOrder.size);
+        }
         return candidates
             .map((candidate, index) => ({
                 candidate,
                 index,
                 provenance: candidateProvenanceBucket(cliName, candidate, homeDir),
+                dir: dirOrder.get(windowsCandidateDir(candidate)) ?? dirOrder.size,
                 extension: windowsExtensionRank(candidate, env),
             }))
             .sort((a, b) => (a.provenance - b.provenance)
+                || (a.dir - b.dir)
                 || (a.extension - b.extension)
                 || (a.index - b.index))
             .map((entry) => entry.candidate);
@@ -213,7 +238,11 @@ function hasKnownExecutableMagic(head: Buffer, platform: NodeJS.Platform = proce
     ].includes(magic);
 }
 
-export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform = process.platform): { ok: boolean; reason?: string } {
+export function isSpawnableCliFile(
+    filePath: string,
+    platform: NodeJS.Platform = process.platform,
+    env: NodeJS.ProcessEnv = process.env,
+): { ok: boolean; reason?: string } {
     if (platform === 'win32') {
         try {
             if (!fs.statSync(filePath).isFile()) return { ok: false, reason: 'not a regular file' };
@@ -244,6 +273,15 @@ export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform =
         if (filePath.toUpperCase().endsWith('.PS1')) {
             return { ok: false, reason: 'powershell shim is not spawnable via ComSpec' };
         }
+        // Anything else listed in the effective PATHEXT is launchable through
+        // the same ComSpec route: spawn.ts sets `shell: true` for every
+        // non-.exe path on win32, and cmd.exe resolves PATHEXT associations.
+        // Rejecting these would be a REGRESSION — before this detection work,
+        // every `where.exe` hit was accepted, so a CLI installed as an
+        // associated script would newly report missing. .PS1 stays excluded
+        // above because cmd.exe genuinely cannot run it, and the extensionless
+        // npm shim is a POSIX sh script, not a PATHEXT entry.
+        if (hasExtension(filePath, windowsPathExt(env))) return { ok: true };
         return { ok: false, reason: 'no windows-executable extension' };
     }
 
@@ -269,10 +307,11 @@ export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform =
 export function selectSpawnableCliPath(
     candidates: string[],
     platform: NodeJS.Platform = process.platform,
+    env: NodeJS.ProcessEnv = process.env,
 ): CliDetection {
     const rejected: RejectedCliCandidate[] = [];
     for (const candidate of candidates) {
-        const check = isSpawnableCliFile(candidate, platform);
+        const check = isSpawnableCliFile(candidate, platform, env);
         if (check.ok) {
             return {
                 available: true,
