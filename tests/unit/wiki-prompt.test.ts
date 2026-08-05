@@ -334,3 +334,34 @@ test('legitimate zero-width characters survive sentinel neutralisation', async (
     const block = buildDigestPromptBlock(on(root));
     assert.ok(block.includes(family), 'the emoji is unchanged');
 });
+
+// A named pipe in place of the digest blocks the open until a writer appears, which
+// stalls prompt construction indefinitely — a hang rather than a leak, but the prompt
+// path is the wrong place to wait on anything. Removing the non-blocking flag does not
+// fail this test so much as never finish it, which is the failure mode in miniature.
+test('a named pipe in place of the digest is refused immediately', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const root = await readyVault();
+    const digest = join(root, DIGEST_RELATIVE_PATH);
+    rmSync(digest);
+    execFileSync('mkfifo', [digest]);
+
+    const started = Date.now();
+    const load = loadDigestFileForTest(root, digest);
+    const elapsed = Date.now() - started;
+
+    assert.equal(load.ok, false, 'a pipe is not a digest');
+    assert.ok(elapsed < 2000, `the open must not block (took ${elapsed}ms)`);
+});
+
+// The size is checked twice for a reason: a file can grow between the descriptor's stat
+// and the read, so the read length is what makes the limit real.
+test('a digest that grows past the limit is still refused', async () => {
+    const { appendFileSync } = await import('node:fs');
+    const root = await readyVault('a'.repeat(MAX_DIGEST_BYTES - 10));
+    appendFileSync(join(root, DIGEST_RELATIVE_PATH), 'b'.repeat(100));
+
+    const load = loadDigestFileForTest(root, join(root, DIGEST_RELATIVE_PATH));
+    assert.equal(load.ok, false);
+    assert.equal(load.ok === false && load.reason, 'compiled_digest_too_large');
+});

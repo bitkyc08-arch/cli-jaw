@@ -64,12 +64,12 @@ function escapeFence(text: string): string {
 function readDigestFile(root: string, path: string): DigestLoad {
     let fd: number | undefined;
     try {
-        // Two guards that overlap on purpose. O_NOFOLLOW rejects a symlink at the final
-        // component, and the regular-file check below rejects what it cannot be. Removing
-        // either one alone still refuses a link pointing outside the vault; removing both
-        // reads that file straight into the system prompt, which is why neither is
-        // redundant even though a single mutation of one looks harmless.
-        fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+        // Three flags, each for a different attack. O_NOFOLLOW rejects a symlink at the
+        // final component. O_NONBLOCK stops a FIFO from hanging the open itself — without
+        // it a named pipe in place of the digest blocks until a writer appears, which
+        // stalls prompt construction indefinitely. The regular-file check below then
+        // rejects whatever a pipe or device would have been.
+        fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
         const stat = fstatSync(fd);
         if (!stat.isFile()) return { ok: false, reason: 'compiled_digest_not_a_file' };
         // A hardlink defeats every path-based check by construction: the file genuinely
