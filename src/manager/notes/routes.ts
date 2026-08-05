@@ -8,7 +8,7 @@ import { requireNotesAuth, notesCorsPreflight, getAuthStatus } from './auth.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import type { DashboardPutNoteRequest } from '../types.js';
 import { NOTE_ASSET_JSON_LIMIT, NotesAssetStore } from './assets.js';
-import { type NotePathError, notePathError } from './path-guards.js';
+import { type NotePathError, notePathError } from '../../notes/path-guards.js';
 import { saveRemoteNoteAsset } from './remote-assets.js';
 import { NotesStore } from './store.js';
 import { NotesTrash } from './trash.js';
@@ -18,7 +18,7 @@ import { NoteGitManager } from './git.js';
 import { PluginManager } from './plugins.js';
 import { NotesVaultIndex } from './vault-index.js';
 import { detectNotesCapabilities } from './capabilities.js';
-import { searchNotes } from './search.js';
+import { searchNotes } from '../../notes/search.js';
 
 export type DashboardNotesRouterOptions = {
     managerPort: number;

@@ -9,7 +9,7 @@ import {
     assertNotSymlink,
     assertRealPathInside,
     resolveNotePath,
-} from '../../src/manager/notes/path-guards.js';
+} from '../../src/notes/path-guards.js';
 
 function tmpRoot(): string {
     return mkdtempSync(join(tmpdir(), 'jaw-notes-path-test-'));

@@ -27,8 +27,8 @@ import {
     notePathError,
     parentRelPath,
     resolveNotePath,
-} from './path-guards.js';
-import { hasReservedNoteSegment } from './constants.js';
+} from '../../notes/path-guards.js';
+import { hasReservedNoteSegment } from '../../notes/constants.js';
 
 export type NotesStoreFs = {
     existsSync: typeof existsSync;

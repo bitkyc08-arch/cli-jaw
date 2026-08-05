@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync 
 import * as fsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MAX_NOTE_BYTES } from '../../src/manager/notes/path-guards.js';
+import { MAX_NOTE_BYTES } from '../../src/notes/path-guards.js';
 import { NotesStore, type NotesStoreFs } from '../../src/manager/notes/store.js';
 
 function tmpRoot(): string {

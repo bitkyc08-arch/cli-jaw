@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { NotesStore } from '../../src/manager/notes/store.ts';
-import { MAX_NOTE_BYTES } from '../../src/manager/notes/path-guards.ts';
+import { MAX_NOTE_BYTES } from '../../src/notes/path-guards.ts';
 
 function makeTempRoot(): string {
     const root = mkdtempSync(join(tmpdir(), 'notes-tmpl-test-'));

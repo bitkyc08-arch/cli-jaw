@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
-import { NOTE_FILE_EXT } from './path-guards.js';
-import { hasReservedNoteSegment } from './constants.js';
+import { NOTE_FILE_EXT } from '../../notes/path-guards.js';
+import { hasReservedNoteSegment } from '../../notes/constants.js';
 import type { NoteLinkRef, NoteMetadata } from '../types.js';
 
 type ResolverIndex = {

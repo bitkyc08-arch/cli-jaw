@@ -5,7 +5,7 @@ import { visit } from 'unist-util-visit';
 import { posix } from 'node:path';
 import type { Link, Root, Text } from 'mdast';
 import type { NoteLinkRef } from '../types.js';
-import { NOTE_FILE_EXT } from './path-guards.js';
+import { NOTE_FILE_EXT } from '../../notes/path-guards.js';
 
 const markdownProcessor = unified()
     .use(remarkParse)

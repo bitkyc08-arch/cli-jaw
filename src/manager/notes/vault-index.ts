@@ -13,8 +13,8 @@ import {
     NOTE_FILE_EXT,
     isPathInside,
     resolveNotePath,
-} from './path-guards.js';
-import { hasReservedNoteSegment } from './constants.js';
+} from '../../notes/path-guards.js';
+import { hasReservedNoteSegment } from '../../notes/constants.js';
 import { parseLeadingFrontmatter, normalizeFrontmatter } from './frontmatter.js';
 import { extractWikiLinks } from './wiki-links.js';
 import { resolveWikiLinks } from './link-resolver.js';

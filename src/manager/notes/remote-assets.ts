@@ -1,6 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { notePathError } from './path-guards.js';
+import { notePathError } from '../../notes/path-guards.js';
 import { MAX_NOTE_ASSET_BYTES, NotesAssetStore } from './assets.js';
 
 const ALLOWED_REMOTE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);

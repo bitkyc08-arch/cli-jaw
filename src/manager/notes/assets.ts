@@ -19,7 +19,7 @@ import {
     isPathInside,
     notePathError,
     resolveNotePath,
-} from './path-guards.js';
+} from '../../notes/path-guards.js';
 
 export const NOTES_ASSET_ROOT = '.assets';
 export const MAX_NOTE_ASSET_BYTES = 5 * 1024 * 1024;

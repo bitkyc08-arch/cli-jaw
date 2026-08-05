@@ -11,7 +11,7 @@ import {
     encodeTrashPath,
     notePathError,
     resolveNotePath,
-} from './path-guards.js';
+} from '../../notes/path-guards.js';
 import { moveToSystemTrash } from './system-trash.js';
 
 export type TrashDestination = 'os-trash' | 'dashboard-trash';

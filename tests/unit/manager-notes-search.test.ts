@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { spawn } from 'node:child_process';
-import { buildRipgrepArgs, resolveRipgrepCommand, searchNotes } from '../../src/manager/notes/search.js';
+import { buildRipgrepArgs, resolveRipgrepCommand, searchNotes } from '../../src/notes/search.js';
 
 type FakeSpawnOptions = {
     stdout?: string[];
