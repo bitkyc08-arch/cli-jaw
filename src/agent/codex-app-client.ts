@@ -220,7 +220,7 @@ export class CodexAppClient extends EventEmitter {
     private preListenerNotifications: Array<{
         method: string; params: EvRec; owner: RoutedIdentity | undefined;
     }> = [];
-    private legacyListenerAttached = false;
+    private legacyListenerCount = 0;
     private readonly pendingNotificationLimit = PENDING_NOTIFICATION_LIMIT;
     private readonly pendingNotificationTtlMs = PENDING_NOTIFICATION_TTL_MS;
     private nextId = 1;
@@ -315,12 +315,18 @@ export class CodexAppClient extends EventEmitter {
             this.on('host-notification', onHostNotification);
             this.on('notification', onHostNotification);
         }
-        if (legacy && !this.legacyListenerAttached) {
-            this.legacyListenerAttached = true;
-            const buffered = this.preListenerNotifications;
-            this.preListenerNotifications = [];
-            for (const entry of buffered) {
-                handlers.onNotification(entry.method, entry.params, entry.owner);
+        if (legacy) {
+            // Only the transition out of "nobody is listening" drains the queue.
+            // A second concurrent listener must not receive a replay of what the
+            // first one already handled.
+            const wasIdle = this.legacyListenerCount === 0;
+            this.legacyListenerCount += 1;
+            if (wasIdle && this.preListenerNotifications.length > 0) {
+                const buffered = this.preListenerNotifications;
+                this.preListenerNotifications = [];
+                for (const entry of buffered) {
+                    handlers.onNotification(entry.method, entry.params, entry.owner);
+                }
             }
         }
 
@@ -336,6 +342,10 @@ export class CodexAppClient extends EventEmitter {
             if (legacy) {
                 this.off('host-notification', onHostNotification);
                 this.off('notification', onHostNotification);
+                // The pool reuses one client across turns, so the gap between
+                // disposing this listener and attaching the next is another
+                // window where notifications would otherwise reach nobody.
+                this.legacyListenerCount = Math.max(0, this.legacyListenerCount - 1);
             }
             const disposers = this.scopeDisposers.get(scope);
             disposers?.delete(dispose);
@@ -644,7 +654,11 @@ export class CodexAppClient extends EventEmitter {
             if (!state.activeTurnId) this.bindTurn(scope, turnId);
             this.throwIfOperationFailed(operation);
         } catch (err) {
-            if (!this.terminal) {
+            // A terminal notification can end this turn and let the next one
+            // start before this request settles. Cleaning up unconditionally
+            // would then tear down a turn that is already running, so only the
+            // operation still owned by the lane may touch its state.
+            if (!this.terminal && state.pendingOperation === operation) {
                 this.clearActiveTurn(state);
                 state.operation = 'idle';
             }
@@ -868,6 +882,7 @@ export class CodexAppClient extends EventEmitter {
         }
         this.emitUnrouted(method, params, 'unknown-method');
         if (this.unknownNotificationPolicy === 'legacy-raw') {
+            this.recordPreListenerNotification(method, params, undefined);
             this.emit('notification', method, params);
         }
     }
@@ -1075,7 +1090,7 @@ export class CodexAppClient extends EventEmitter {
         params: EvRec,
         owner: RoutedIdentity,
     ): void {
-        this.recordPreListenerNotification(scope, method, params, owner);
+        if (scope === LEGACY_SCOPE) this.recordPreListenerNotification(method, params, owner);
         this.emit(`notification:${scope}`, method, params, owner);
         if (scope === LEGACY_SCOPE && (method === 'turn/started' || method === 'turn/completed')) {
             this.emit(method, params);
@@ -1083,14 +1098,11 @@ export class CodexAppClient extends EventEmitter {
     }
 
     private emitHostNotification(method: string, params: EvRec): void {
-        this.recordPreListenerNotification(LEGACY_SCOPE, method, params, undefined);
+        this.recordPreListenerNotification(method, params, undefined);
         this.emit('host-notification', method, params);
     }
 
     private emitUnrouted(method: string, params: EvRec, reason: string): void {
-        if (this.unknownNotificationPolicy === 'legacy-raw') {
-            this.recordPreListenerNotification(LEGACY_SCOPE, method, params, undefined);
-        }
         this.emit('unrouted-notification', { method, params, reason });
     }
 
@@ -1100,14 +1112,18 @@ export class CodexAppClient extends EventEmitter {
     // reach the raw trace, so the legacy lane keeps a bounded copy and hands it
     // to the first listener exactly once.
     private recordPreListenerNotification(
-        scope: string,
         method: string,
         params: EvRec,
         owner: RoutedIdentity | undefined,
     ): void {
-        if (scope !== LEGACY_SCOPE || this.legacyListenerAttached) return;
+        // Only the legacy facade drains this queue, so filling it in scoped mode
+        // would retain payloads nothing can ever hand over.
+        if (this.apiMode === 'scoped' || this.legacyListenerCount > 0) return;
         if (this.preListenerNotifications.length >= PENDING_NOTIFICATION_LIMIT) {
             this.preListenerNotifications.shift();
+            this.emit('unrouted-notification', {
+                method, params, reason: 'pre-listener-overflow',
+            });
         }
         this.preListenerNotifications.push({ method, params, owner });
     }
@@ -1394,6 +1410,8 @@ export class CodexAppClient extends EventEmitter {
         this.threadToScope.clear();
         this.turnToScope.clear();
         this.pendingNotifications = [];
+        // Nothing will ever attach to drain these once the process is gone.
+        this.preListenerNotifications = [];
         this.clearPendingTimer();
     }
 
