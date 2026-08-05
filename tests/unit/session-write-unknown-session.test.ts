@@ -239,3 +239,38 @@ test('a targeted slash command with the channel gate off acts on the default ses
     assert.equal(inDefault.n, 1, 'the compact acted on the default session');
     assert.equal(inActive.n, 0, 'the active local session was left alone');
 });
+
+// 073 §2.2a — the reset route used to ignore which session asked, so it fell back to the
+// instance-wide behaviour: every scope's ownership generation bumped and buckets cleared
+// that it did not own. Its own clear sibling right above it already resolved the session.
+test('reset refuses a session that no longer exists instead of resetting another one', async () => {
+    settings.multiSession.enabled = true;
+    const active = createChatSession('unknown-sess-reset');
+    setActiveChatSession(active.id);
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/session/reset', { sessionId: 'gone-session' });
+        assert.equal(response.status, 404);
+        assert.equal((await response.json()).error, 'unknown_session');
+    });
+});
+
+test('reset acts on the session named in the request, not the active one', async () => {
+    settings.multiSession.enabled = true;
+    const active = createChatSession('unknown-sess-reset-active');
+    const target = createChatSession('unknown-sess-reset-target');
+    setActiveChatSession(active.id);
+
+    const cleared: Array<string | undefined> = [];
+    addBroadcastListener((event, payload) => {
+        if (event === 'clear') cleared.push((payload as { sessionId?: string }).sessionId);
+    });
+
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/session/reset', { sessionId: target.id });
+        assert.equal(response.status, 200, await response.text());
+    });
+
+    assert.deepEqual(cleared, [target.id],
+        'the tab that asked is the one that loses its history');
+});

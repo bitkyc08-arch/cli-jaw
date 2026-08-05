@@ -16,7 +16,9 @@ export async function clearSessionState(): Promise<void> {
     // the compact below falls back to the global ownership bump and the narrowing done at
     // the end of this function never matters — a reset in one tab still discards the turn
     // another tab has in flight (073 §2.2a).
-    const scopeKey = currentSessionScope()?.scope;
+    const sessionScope = currentSessionScope();
+    const scopeKey = sessionScope?.scope;
+    const chatSessionId = sessionScope?.chatSessionId;
     try {
         const { autoCompactRefresh } = await import('./compact.js');
         await autoCompactRefresh({
@@ -25,6 +27,7 @@ export async function clearSessionState(): Promise<void> {
             cli: settings["cli"] || 'claude',
             model: settings["model"] || '',
             ...(scopeKey ? { scopeKey } : {}),
+            ...(chatSessionId ? { chatSessionId } : {}),
         });
     } catch {} // best-effort: compact failure must not block session reset
     try {
@@ -33,19 +36,39 @@ export async function clearSessionState(): Promise<void> {
         // resume reads session_buckets, not the main session row), even when
         // autoCompactRefresh() threw before reaching its own bucket clear.
         const { clearSessionBucket, clearSessionBucketsByPrefix } = await import('./db.js');
-        const { resolveScopedSessionBucket } = await import('../agent/args.js');
+        const { resolveSessionBucket } = await import('../agent/args.js');
         const cli = settings["cli"] || 'claude';
         const model = settings["model"] || '';
-        const codexAppMultiplex = settings["runtime"]?.codexApp?.multiplex === true;
-        const bucket = resolveScopedSessionBucket(
-            cli, model, null, scopeKey || 'default', '', 'fallback', codexAppMultiplex,
-        );
-        // Since 073 §2.1 every scope owns its bucket, so a reset clears its own. Only a
-        // reset with no session behind it is an instance-wide one, and only that may take
-        // the codex-app lane rows with it — those are keyed by scope, and wiping them all
-        // would cut lanes belonging to sessions that never asked for a reset.
-        if (scopeKey && scopeKey !== 'default') clearSessionBucket.run(bucket);
-        else clearSessionBucketsByPrefix.run(bucket, 'codex-app:%');
+        // A reset with a session behind it belongs to that session even when the session
+        // is the default one. Treating `default` as "no session" would let a reset of the
+        // default chat clear the Slack and local scopes' lanes, which is the same
+        // cross-session damage 073 exists to stop. Only an absent scope is instance-wide.
+        const isInstanceWide = scopeKey === undefined;
+        const scope = scopeKey ?? 'default';
+        const base = resolveSessionBucket(cli, model);
+        if (isInstanceWide) {
+            clearSessionBucketsByPrefix.run(base, 'codex-app:%');
+        } else {
+            // Since 073 §2.1 every scope owns its bucket. The prefix form is needed
+            // because codex-app folds lane mode and effort into its key and this path
+            // knows neither, so an exact key built with those blank would match no row.
+            // The scope has to be a whole segment of the pattern: `codex-app:local:a%`
+            // would also delete `local:abc`, a different session's rows.
+            const scoped = `${base}:${scope}`;
+            clearSessionBucketsByPrefix.run(scoped, `${scoped}:%`);
+            // The default scope also owns the bare legacy name, which is what a session
+            // created before 073 has been resuming from all along.
+            if (scope === 'default') clearSessionBucket.run(base);
+        }
+        // The stored rows are half of it: an idle lane holds its thread in memory and,
+        // with nothing left to contradict it, the next turn resumes the conversation this
+        // reset just discarded.
+        try {
+            const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
+            invalidateCodexAppLanesForScope(isInstanceWide ? null : scope);
+        } catch (e) {
+            console.warn('[jaw:reset] lane invalidation failed:', (e as Error).message);
+        }
     } catch (e) {
         console.warn('[jaw:reset] session bucket clear failed:', (e as Error).message);
     }

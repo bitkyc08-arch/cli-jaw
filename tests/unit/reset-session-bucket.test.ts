@@ -5,9 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const clearedBucketGroups: Array<[string, string]> = [];
-const clearedBuckets: string[] = [];
 let ownershipBumps = 0;
 let mainStateClears = 0;
+const invalidatedLaneScopes: Array<string | null> = [];
 
 test.mock.module('../../src/core/compact.ts', {
     namedExports: {
@@ -19,15 +19,16 @@ test.mock.module('../../src/core/db.ts', {
         clearSessionBucketsByPrefix: {
             run: (bucket: string, pattern: string) => { clearedBucketGroups.push([bucket, pattern]); },
         },
-        clearSessionBucket: {
-            run: (bucket: string) => { clearedBuckets.push(bucket); },
-        },
+    },
+});
+test.mock.module('../../src/agent/codex-host-pool.ts', {
+    namedExports: {
+        invalidateCodexAppLanesForScope: (scope: string | null) => { invalidatedLaneScopes.push(scope); return 0; },
     },
 });
 test.mock.module('../../src/agent/args.ts', {
     namedExports: {
-        resolveScopedSessionBucket: (cli: string | null | undefined, _m: unknown, _p: unknown, scope: string) =>
-            (scope === 'default' ? (cli || '') : `${cli || ''}:${scope}`),
+        resolveSessionBucket: (cli: string | null | undefined) => cli || '',
     },
 });
 test.mock.module('../../src/agent/session-persistence.ts', {
@@ -61,17 +62,22 @@ test('RESET-BUCKET-01: reset clears the session bucket even when compaction fail
         'active legacy and codex-app scoped buckets must be cleared despite compact failure');
     assert.equal(ownershipBumps, 1);
     assert.equal(mainStateClears, 1);
+    assert.deepEqual(invalidatedLaneScopes, [null],
+        'an instance-wide reset drops every lane, since its stored rows just went with it');
 });
 
 // 073 §2.2a — the same reset issued from inside a session must stay inside it. Wiping the
 // codex-app prefix there would cut lanes belonging to sessions that never asked for one.
-test('RESET-BUCKET-02: a scoped reset clears only its own bucket', async () => {
+// The prefix form is still used, but anchored on this scope: codex-app folds lane mode and
+// effort into its key, so an exact key built without them would match no row at all.
+test('RESET-BUCKET-02: a scoped reset clears its own bucket family and no other', async () => {
     clearedBucketGroups.length = 0;
-    clearedBuckets.length = 0;
+    invalidatedLaneScopes.length = 0;
     const { clearSessionState } = await import('../../src/core/session-ops.ts');
     const { withSessionScope } = await import('../../src/core/session-context.ts');
     await withSessionScope({ scope: 'local:b', chatSessionId: 'b' }, () => clearSessionState());
-    assert.deepEqual(clearedBuckets, ['agy:local:b']);
-    assert.deepEqual(clearedBucketGroups, [],
+    assert.deepEqual(clearedBucketGroups, [['agy:local:b', 'agy:local:b:%']],
         'a scoped reset must not take the whole codex-app lane family with it');
+    assert.deepEqual(invalidatedLaneScopes, ['local:b'],
+        'only this scope loses its in-memory lanes');
 });
