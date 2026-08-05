@@ -395,13 +395,47 @@ export function freshInstallSchemaFields(): {
     multiSession: typeof DEFAULT_SETTINGS.multiSession;
     multiSessionDefaultMigration: MultiSessionDefaultMigration | null;
 } {
-    const defaults = createDefaultSettings();
+    // Same question as the loader asks, answered the same way: `init` running against a
+    // home that already has a database is re-initialising, not installing.
+    const defaults = settingsForHomeWithoutSettingsFile();
     return {
         settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
         multiSession: defaults.multiSession,
-        // No marker: there is no prior state to migrate from and nothing to ask about.
-        multiSessionDefaultMigration: null,
+        // Null only for a home with no history — there is nothing to migrate from and
+        // nothing to ask about. An established home carries the pending marker instead.
+        multiSessionDefaultMigration: defaults.multiSessionDefaultMigration,
     };
+}
+
+// Things this home only has once it has been used. A settings file can be deleted, lost
+// to a failed write, or restored from a backup that omitted it — none of which makes the
+// install new. These do not come back on their own.
+const ESTABLISHED_HOME_ARTIFACTS = [DB_PATH, MIGRATION_MARKER, PROMPTS_DIR, UPLOADS_DIR];
+
+/**
+ * An absent settings file is not proof of a new install, and the difference decides
+ * whether sessions start on. Getting it wrong turns a feature on for someone who was
+ * never asked, which is the one outcome the whole migration exists to prevent — so the
+ * question is answered from the home directory rather than from one file in it.
+ */
+export function isEstablishedHome(): boolean {
+    return ESTABLISHED_HOME_ARTIFACTS.some(path => fs.existsSync(path));
+}
+
+/**
+ * What a home with no readable settings should start with. A home that has been used
+ * before gets the previous meaning plus a pending marker, so it is asked like any other
+ * upgrade; only a home with no history at all gets the new defaults.
+ */
+export function settingsForHomeWithoutSettingsFile(): ReturnType<typeof createDefaultSettings> {
+    const next = createDefaultSettings();
+    if (!isEstablishedHome()) return next;
+    next.multiSession = { ...next.multiSession, ...LEGACY_MULTI_SESSION_BASELINE };
+    next.multiSessionDefaultMigration = {
+        id: MULTI_SESSION_DEFAULT_MIGRATION_ID,
+        state: 'pending',
+    };
+    return next;
 }
 
 export function normalizeModelForCli(cli: string, model: unknown): unknown {
@@ -862,7 +896,10 @@ export function loadSettings() {
     } catch (error) {
         const err = error as NodeJS.ErrnoException;
         if (err?.code === 'ENOENT') {
-            const next = createDefaultSettings();
+            // ENOENT means no settings file, not necessarily no install. A home that has
+            // a database or an uploads directory has been used, so it is treated as an
+            // upgrade and asked rather than switched on.
+            const next = settingsForHomeWithoutSettingsFile();
             next.cli = pickFirstReadyCli();
             applyEnvOverrides(next);
             persistAndCommit({ value: next, shape: 'absent' });

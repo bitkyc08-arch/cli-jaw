@@ -2,7 +2,8 @@ import '../setup/isolated-home.ts';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { JAW_HOME, SETTINGS_PATH, loadSettings, migrateSettings } from '../../src/core/config.ts';
+import { join } from 'node:path';
+import { DB_PATH, JAW_HOME, SETTINGS_PATH, loadSettings, migrateSettings } from '../../src/core/config.ts';
 
 // 110 — turning sessions on by default must not turn them on for anyone who did not ask.
 // Every case here is a document shape a real install can be in, and the thing being
@@ -117,6 +118,12 @@ test('ON-28: a current-schema document with no marker fails closed', () => {
 // ask about, and that has to survive the first save.
 test('ON-29: a fresh install starts on and stays on across a restart', () => {
     try { fs.unlinkSync(SETTINGS_PATH); } catch { /* expected */ }
+    for (const artifact of [DB_PATH, join(JAW_HOME, '.migrated-v1')]) {
+        try { fs.rmSync(artifact, { recursive: true }); } catch { /* not there */ }
+    }
+    for (const dir of ['prompts', 'uploads']) {
+        try { fs.rmSync(join(JAW_HOME, dir), { recursive: true }); } catch { /* not there */ }
+    }
     const first = load();
     assert.equal(first["multiSession"].enabled, true);
     assert.equal(first["multiSession"].maxConcurrent, 2);
@@ -125,6 +132,22 @@ test('ON-29: a fresh install starts on and stays on across a restart', () => {
     const second = load();
     assert.equal(second["multiSession"].enabled, true);
     assert.equal(second["multiSession"].maxConcurrent, 2);
+});
+
+// The case the final audit found: an install whose settings file was deleted, lost to a
+// failed write, or restored from a backup that omitted it. ENOENT looks identical to a
+// new install from inside loadSettings, but this user has been running cli-jaw for months
+// and was never asked. The home itself is the evidence.
+test('a home that has been used before is not treated as a new install', () => {
+    try { fs.unlinkSync(SETTINGS_PATH); } catch { /* expected */ }
+    fs.mkdirSync(JAW_HOME, { recursive: true });
+    fs.writeFileSync(DB_PATH, '', 'utf8');
+
+    const s = load();
+
+    assert.equal(s["multiSession"].enabled, false, 'an existing user must be asked, not switched on');
+    assert.equal(s["multiSession"].maxConcurrent, 1);
+    assert.equal(s["multiSessionDefaultMigration"].state, 'pending');
 });
 
 // ON-08 — a document we could not read stands in for an unknown prior state, so it gets
