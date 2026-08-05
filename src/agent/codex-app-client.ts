@@ -353,13 +353,21 @@ export class CodexAppClient extends EventEmitter {
         if (wasIdle && this.preListenerNotifications.length > 0) {
             const buffered = this.preListenerNotifications;
             this.preListenerNotifications = [];
+            let delivered = 0;
             try {
                 for (const entry of buffered) {
                     handlers.onNotification(entry.method, entry.params, entry.owner);
+                    delivered += 1;
                 }
             } catch (err) {
                 dispose();
-                this.preListenerNotifications = buffered;
+                // Only what the handler never saw goes back. Restoring the whole
+                // batch would hand the already-delivered entries to the next
+                // listener a second time. Anything that arrived while the
+                // handover ran still follows them in order.
+                this.preListenerNotifications = [
+                    ...buffered.slice(delivered), ...this.preListenerNotifications,
+                ];
                 throw err;
             }
         }

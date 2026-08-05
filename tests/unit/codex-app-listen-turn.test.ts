@@ -193,3 +193,70 @@ test('a throwing replay handler leaves no half-registered listener behind', () =
     assert.deepEqual(seen, ['configWarning'],
         'the queue survives so the next listener still receives it');
 });
+
+// Restoring the whole batch after a partial handover would deliver the entries
+// the handler already accepted a second time.
+test('a partial replay failure only restores what was not delivered', () => {
+    const client = new CodexAppClient();
+    client['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'a' } }));
+    client['handleLine'](JSON.stringify({ method: 'deprecationNotice', params: { message: 'b' } }));
+
+    const first: string[] = [];
+    assert.throws(() => client.listenTurn({
+        onNotification: (method) => {
+            first.push(method);
+            if (method === 'deprecationNotice') throw new Error('second one failed');
+        },
+        onStderr: () => {},
+    }), /second one failed/);
+    assert.deepEqual(first, ['configWarning', 'deprecationNotice']);
+
+    const second: string[] = [];
+    client.listenTurn({
+        onNotification: (method) => { second.push(method); },
+        onStderr: () => {},
+    });
+    assert.deepEqual(second, ['deprecationNotice'],
+        'the accepted entry must not be delivered twice');
+});
+
+// Only the legacy facade can drain this queue, so a client that turns out to be
+// scoped would hold whatever was recorded before its mode was known.
+test('confirming scoped mode drops the queue legacy would have drained', async () => {
+    const scoped = new CodexAppClient();
+    scoped['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'a' } }));
+    assert.equal(scoped['preListenerNotifications'].length, 1);
+    Object.defineProperty(scoped, 'request', {
+        value: async () => ({ thread: { id: 'thread-a' } }),
+    });
+    await scoped.startThread('scope-a', { model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false });
+    assert.equal(scoped['preListenerNotifications'].length, 0,
+        'a scoped client must not retain what it can never hand over');
+
+    const legacy = new CodexAppClient();
+    legacy['handleLine'](JSON.stringify({ method: 'configWarning', params: { message: 'a' } }));
+    Object.defineProperty(legacy, 'request', {
+        value: async () => ({ thread: { id: 'thread-a' } }),
+    });
+    await legacy.startThread({});
+    assert.equal(legacy['preListenerNotifications'].length, 1,
+        'the legacy path keeps it for the listener that will arrive');
+});
+
+// The diagnostic exists to name what was lost, so reporting the notification
+// that pushed it out tells the reader the wrong thing.
+test('a pre-listener overflow reports the entry it evicted', () => {
+    const client = new CodexAppClient();
+    const evicted: string[] = [];
+    client.on('unrouted-notification', (entry: { params: Record<string, unknown>; reason: string }) => {
+        if (entry.reason === 'pre-listener-overflow') evicted.push(String(entry.params['message']));
+    });
+    for (let i = 0; i < 129; i += 1) {
+        client['handleLine'](JSON.stringify({
+            method: 'configWarning',
+            params: { message: `warn-${i}` },
+        }));
+    }
+    assert.deepEqual(evicted, ['warn-0'], 'the oldest entry is the one that was lost');
+    assert.equal(client['preListenerNotifications'].length, 128);
+});
