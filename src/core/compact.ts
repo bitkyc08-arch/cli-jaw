@@ -636,7 +636,7 @@ export async function autoCompactRefresh(opts: {
     const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
 
     const { insertMessageWithTrace, clearSessionBucket } = await import('./db.js');
-    const { resolveScopedSessionBucket } = await import('../agent/args.js');
+    const { aiEProviderForBucket, resolveScopedSessionBucket } = await import('../agent/args.js');
     const {
         bumpSessionOwnershipGeneration, bumpScopeSessionGeneration,
     } = await import('../agent/session-persistence.js');
@@ -652,7 +652,12 @@ export async function autoCompactRefresh(opts: {
     // it has never used, which reads as the conversation having disappeared.
     const codexAppMultiplex = settings["runtime"]?.codexApp?.multiplex === true;
     const bucket = opts.sessionBucket
-        ?? resolveScopedSessionBucket(opts.cli, opts.model, null, scopeKey, '', 'fallback', codexAppMultiplex);
+        // ai-e keys its bucket by provider; a null here re-derives one from the model name
+        // and can clear a bucket the conversation never used.
+        ?? resolveScopedSessionBucket(
+            opts.cli, opts.model, aiEProviderForBucket(opts.cli, opts.model, settings),
+            scopeKey, '', 'fallback', codexAppMultiplex,
+        );
     const ownsSingletonRow = scopeKey === 'default';
 
     insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, chatSessionId);

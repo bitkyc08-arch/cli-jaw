@@ -193,6 +193,10 @@ export function spawnWithKiroSnapshot<T>(args: {
     spawn: () => T;
     dataPath?: string;
 }): { child: T; kiroConversationIdsBefore: Set<string> | null; kiroSpawnStartedAt: number } {
+    // Timestamp first, then snapshot, then spawn. The store fallback accepts rows updated
+    // after this mark, so it is a lower bound on "since this run began". Reading it after
+    // the snapshot would move it forward by however long the snapshot took, and any row a
+    // neighbouring run touched inside that gap would start qualifying.
     const takeSnapshot = args.kiroPlainText && args.isFreshMainRun;
     const kiroSpawnStartedAt = args.kiroPlainText ? Date.now() - 1000 : 0;
     const kiroConversationIdsBefore = takeSnapshot

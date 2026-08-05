@@ -92,7 +92,7 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
 
     const { insertMessageWithTrace, clearSessionBucket, clearSessionBucketsByPrefix } = await import('../core/db.js');
-    const { resolveAiEProvider, resolveSessionBucket } = await import('../agent/args.js');
+    const { aiEProviderForBucket, resolveSessionBucket } = await import('../agent/args.js');
     const {
         clearBossSessionOnly,
         setPendingBootstrapPrompt,
@@ -112,16 +112,10 @@ export async function compactHandler(args: string[], ctx: CliCommandContext): Pr
     // arrange when a non-default scope had no bucket of its own.
     //
     const isCodexApp = activeCli === 'codex-app';
-    // ai-e keys its bucket by provider, and passing null here would make the bucket infer
-    // one from the model name instead. When the configured provider and that inference
-    // disagree, the clear lands on a bucket the conversation never used. Same precedence
-    // as the spawn path, so both name the same row.
-    const aiEProvider = activeCli === 'ai-e'
-        ? resolveAiEProvider(
-            settings?.perCli?.['ai-e']?.provider ?? settings?.activeOverrides?.['ai-e']?.provider,
-            model,
-        )
-        : null;
+    // ai-e keys its bucket by provider, and a null here would make the bucket infer one
+    // from the model name instead. When the configured provider and that inference
+    // disagree, the clear lands on a bucket the conversation never used.
+    const aiEProvider = aiEProviderForBucket(activeCli, model, settings);
     const base = resolveSessionBucket(activeCli, model, aiEProvider);
     // Always the scoped form, including the default scope. Letting default resolve to the
     // bare name looks harmless until the prefix clear below runs: `claude` plus `claude:%`

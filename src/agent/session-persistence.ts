@@ -111,9 +111,20 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
     // which is the default session's row. Silently writing another session's vendor id
     // there is the worst outcome available, so a non-default scope scopes the fallback
     // itself. Two pre-shutdown saves reached this state before it was caught by review.
-    const scopedFallback = bucket && (input.scopeKey || 'default') !== 'default' && !input.scopedBucket && !codexAppBucket
-        ? `${bucket}:${input.scopeKey}`
-        : bucket;
+    //
+    // This shape matches what the read path builds for every runtime except one: a
+    // codex-app run multiplexing on a FALLBACK lane folds model and effort into its key,
+    // which is not knowable here. That combination would write a row nothing looks up, so
+    // it is reported rather than left to look like a successful save.
+    const usedFallback = Boolean(bucket) && !input.scopedBucket && !codexAppBucket;
+    const isScoped = (input.scopeKey || 'default') !== 'default';
+    if (usedFallback && input.cli === 'codex-app') {
+        console.warn(
+            `[jaw:session] codex-app save reached the bucket fallback (scope=${input.scopeKey || 'default'}); `
+            + 'a multiplexed fallback lane needs its lease bucket or the next resume will not find this thread',
+        );
+    }
+    const scopedFallback = usedFallback && isScoped ? `${bucket}:${input.scopeKey}` : bucket;
     // The bucket is per scope now, but the singleton `session` row is still one row for
     // the instance. Only the default scope owns it; a second session writing there would
     // point the next default resume at a thread that belongs to someone else (073 §2.1).

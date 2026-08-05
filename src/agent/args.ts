@@ -58,6 +58,29 @@ export function resolveAiEProvider(explicitProvider: string | null | undefined, 
     return 'claude';
 }
 
+/**
+ * The provider a bucket key must be built from, read from settings the same way the spawn
+ * path reads it: `perCli` first, then `activeOverrides`, then inference from the model.
+ *
+ * This exists because compact and reset each resolved it separately and one of them passed
+ * null, so a configured provider that disagreed with the model name sent those commands to
+ * a bucket the conversation had never used. Three copies of a precedence rule is two too
+ * many; callers that name a bucket ask here.
+ */
+export function aiEProviderForBucket(
+    cli: string | null | undefined,
+    model: string | null | undefined,
+    currentSettings: {
+        perCli?: Record<string, { provider?: string } | undefined> | undefined;
+        activeOverrides?: Record<string, { provider?: string } | undefined> | undefined;
+    } | null | undefined,
+): string | null {
+    if (cli !== 'ai-e') return null;
+    const perCli = currentSettings?.perCli?.['ai-e']?.provider;
+    const override = currentSettings?.activeOverrides?.['ai-e']?.provider;
+    return resolveAiEProvider(perCli ?? override, model);
+}
+
 const KIRO_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 
 function kiroEffortArgs(effort: string): string[] {

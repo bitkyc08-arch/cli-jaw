@@ -437,29 +437,57 @@ test('a snapshot taken before the spawn keeps a concurrent run out of the diff',
 
 // Asserting the ordering by reading spawn.ts would break on the next refactor without
 // meaning anything. Instead the snapshot and the spawn are one helper, so the ordering is
-// a property of the code rather than a rule someone has to remember. Here a fake spawn
-// writes a row the way a concurrent process would, and the snapshot must predate it.
+// a property of the code rather than a rule someone has to remember. The fake child here
+// writes to the store the way a real one does, so reversing the helper to snapshot after
+// the spawn puts that row inside the snapshot and this test fails.
 test('the spawn helper snapshots before it starts the child', () => {
     const { dataPath, cwd } = seedKiroStore([
         ['already-running', '', Date.parse('2026-05-30T11:00:00.000Z')],
     ]);
 
-    const appeared: string[] = [];
     const { kiroConversationIdsBefore } = spawnWithKiroSnapshot({
         kiroPlainText: true,
         isFreshMainRun: true,
         cwd,
         dataPath,
         spawn: () => {
-            // Whatever runs after the snapshot must not be inside it.
-            appeared.push('child-started');
+            const store = new Database(dataPath);
+            store.prepare(
+                'INSERT INTO conversations_v2 (key, conversation_id, value, created_at, updated_at) VALUES (?,?,?,?,?)',
+            ).run(cwd, 'written-by-the-child', '{}', 0, Date.parse('2026-05-30T12:00:00.000Z'));
+            store.close();
             return 'child' as unknown as never;
         },
     });
 
     assert.deepEqual([...(kiroConversationIdsBefore ?? [])], ['already-running'],
-        'the snapshot sees the store as it was before this run existed');
-    assert.deepEqual(appeared, ['child-started'], 'and the child did start');
+        'the snapshot must not contain a row that only exists because the child ran');
+
+    // And the diff that snapshot feeds still names the child's own conversation.
+    const resolved = resolveKiroSpawnIdentity(cwd, kiroConversationIdsBefore ?? new Set(), 0, dataPath);
+    assert.equal(resolved.kind, 'exact');
+    assert.equal(resolved.kind === 'exact' && resolved.id, 'written-by-the-child');
+});
+
+// The store fallback accepts rows updated after this timestamp, so it is a lower bound on
+// "since this run began". Reading it after the snapshot would push it forward by however
+// long the snapshot took, and every row a neighbour touched in that gap would qualify.
+test('the kiro timestamp is taken before the snapshot, not after it', () => {
+    const { dataPath, cwd } = seedKiroStore([['already-running', '', 0]]);
+    let snapshotObservedAt = 0;
+    const { kiroSpawnStartedAt } = spawnWithKiroSnapshot({
+        kiroPlainText: true,
+        isFreshMainRun: true,
+        cwd,
+        dataPath,
+        spawn: () => {
+            snapshotObservedAt = Date.now();
+            return 'child' as unknown as never;
+        },
+    });
+    assert.ok(kiroSpawnStartedAt > 0, 'a kiro run gets a timestamp');
+    assert.ok(kiroSpawnStartedAt <= snapshotObservedAt,
+        'the timestamp cannot postdate the work that follows it');
 });
 
 test('the spawn helper takes no snapshot when kiro is not the runtime', () => {

@@ -36,7 +36,7 @@ export async function clearSessionState(): Promise<void> {
         // resume reads session_buckets, not the main session row), even when
         // autoCompactRefresh() threw before reaching its own bucket clear.
         const { clearSessionBucket, clearSessionBucketsByPrefix } = await import('./db.js');
-        const { resolveSessionBucket } = await import('../agent/args.js');
+        const { aiEProviderForBucket, resolveSessionBucket } = await import('../agent/args.js');
         const cli = settings["cli"] || 'claude';
         const model = settings["model"] || '';
         // A reset with a session behind it belongs to that session even when the session
@@ -45,7 +45,9 @@ export async function clearSessionState(): Promise<void> {
         // cross-session damage 073 exists to stop. Only an absent scope is instance-wide.
         const isInstanceWide = scopeKey === undefined;
         const scope = scopeKey ?? 'default';
-        const base = resolveSessionBucket(cli, model);
+        // ai-e keys its bucket by provider; without it the name is re-derived from the
+        // model and a reset can clear a bucket the conversation never used.
+        const base = resolveSessionBucket(cli, model, aiEProviderForBucket(cli, model, settings));
         if (isInstanceWide) {
             clearSessionBucketsByPrefix.run(base, 'codex-app:');
         } else {
