@@ -267,15 +267,16 @@ test('generation death synchronously rejects waiters and makes an unused token s
     const waiting = pool.acquireCodexAppLane(waitingToken, {
         scopeKey: 'scope-death', bucketKey: bucket('scope-death', model),
     });
+    const waitingAssertion = assert.rejects(waiting, pool.CodexHostGenerationStaleError);
     const client = lease.client as unknown as FakeCodexAppClient;
     client.die();
-    await assert.rejects(waiting, pool.CodexHostGenerationStaleError);
     assert.throws(() => pool.acquireCodexAppLane(staleToken, {
         scopeKey: 'other', bucketKey: bucket('other', model),
     }), pool.CodexHostGenerationStaleError);
     assert.deepEqual(pool.codexAppHostPoolStats(), {
         hosts: 0, creatingHosts: 0, lanes: 0, busyLanes: 0, closing: false,
     });
+    await waitingAssertion;
 });
 
 test('same-lane busy waiters acquire in FIFO order one head at a time', async () => {
@@ -490,6 +491,70 @@ test('cancel uses only laneScope and interrupt failure poisons the lane and reje
     client!.die();
 });
 
+test('a waiter that times out after being transferred does not stall the rest of the queue', async () => {
+    const model = 'transfer-timeout';
+    const { lease, client } = await prepareFor(model, 'scope-transfer');
+    lease!.release();
+    const gate = deferred();
+    client!.closeScopeGate = gate;
+    await tick(15 * 60_000);
+    const headToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const expiredToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const tailToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const head = pool.acquireCodexAppLane(headToken, {
+        scopeKey: 'scope-transfer', bucketKey: bucket('scope-transfer', model), waitMs: 5_000,
+    });
+    const expired = pool.acquireCodexAppLane(expiredToken, {
+        scopeKey: 'scope-transfer', bucketKey: bucket('scope-transfer', model), waitMs: 100,
+    });
+    const expiredAssertion = assert.rejects(expired, /timed out/);
+    let tailSettled = false;
+    const tail = pool.acquireCodexAppLane(tailToken, {
+        scopeKey: 'scope-transfer', bucketKey: bucket('scope-transfer', model), waitMs: 5_000,
+    }).then((value) => { tailSettled = true; return value; });
+    await flush();
+    gate.resolve(); client!.closeScopeGate = null;
+    await flush();
+    const headLease = await head;
+    await tick(100);
+    await expiredAssertion;
+    assert.equal(tailSettled, false);
+    headLease.release();
+    await flush();
+    assert.equal(tailSettled, true, 'the transferred timeout must not strand the queue behind a dead handoff');
+    const tailLease = await tail;
+    tailLease.release(); client!.die();
+});
+
+test('a queued normal waiter inherits a forceNew replacement instead of reviving the stored thread', async () => {
+    const model = 'force-new-epoch';
+    const seedToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const seeded = await pool.acquireCodexAppLane(seedToken, {
+        scopeKey: 'scope-force', bucketKey: bucket('scope-force', model), storedThreadId: 'stored-force',
+    });
+    const client = seeded.client as unknown as FakeCodexAppClient;
+    assert.equal(seeded.threadId, 'stored-force');
+    const forceToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const normalToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
+    const forcePromise = pool.acquireCodexAppLane(forceToken, {
+        scopeKey: 'scope-force', bucketKey: bucket('scope-force', model), forceNew: true,
+    });
+    const normalPromise = pool.acquireCodexAppLane(normalToken, {
+        scopeKey: 'scope-force', bucketKey: bucket('scope-force', model), storedThreadId: 'stored-force',
+    });
+    await flush();
+    seeded.release();
+    const forced = await forcePromise;
+    assert.notEqual(forced.threadId, 'stored-force');
+    const resumesBefore = client.resumeCalls.length;
+    forced.release();
+    const normal = await normalPromise;
+    assert.equal(normal.threadId, forced.threadId);
+    assert.equal(normal.reused, true);
+    assert.equal(client.resumeCalls.length, resumesBefore, 'a superseded stored thread must not be resumed');
+    normal.release(); client.die();
+});
+
 test('host reaper waits until the last lane is gone and then closes the process', async () => {
     const model = 'host-reap';
     const { lease, client } = await prepareFor(model, 'scope-host-reap');
@@ -504,11 +569,18 @@ test('host reaper waits until the last lane is gone and then closes the process'
 
 test('shutdown is deadline-bound, rejects waiters, and memoizes the first deadline and reserve', async () => {
     const model = 'shutdown';
+    const reaped = await prepareFor('shutdown-reaped', 'scope-reaped');
+    const reapedClient = reaped.client!;
+    reaped.lease!.release();
     const { lease, client } = await prepareFor(model, 'scope-shutdown');
     client!.setActive(lease!.laneScope);
     lease!.release();
     await tick(15 * 60_000);
     assert.equal(client!.closeScopeCalls.length, 1);
+    assert.equal(reapedClient.closeScopeCalls.length, 1);
+    reapedClient.closeGracefullyGate = deferred();
+    await tick(15 * 60_000);
+    assert.equal(reapedClient.closeGracefullyCount, 1, 'the reaper must have started its graceful close');
     const waitingToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
     const unusedToken = await pool.prepareCodexAppHost(prepareOptions({ model }));
     const waiting = pool.acquireCodexAppLane(waitingToken, {
@@ -533,11 +605,14 @@ test('shutdown is deadline-bound, rejects waiters, and memoizes the first deadli
     await assert.rejects(creating, pool.CodexHostPoolClosingError);
     await tick(799);
     assert.equal(client!.killCount, 0);
+    assert.equal(reapedClient.killCount, 0);
     await tick(1);
     assert.equal(client!.killCount, 1, 'reserve must leave 200ms for the caller tail');
+    assert.equal(reapedClient.killCount, 1, 'shutdown must own a host the reaper is still closing');
     await tick(200);
     await first;
     assert.equal(client!.closeScopeCalls.length, 1, 'shutdown must not retry a scoped close RPC');
+    assert.equal(reapedClient.closeGracefullyCount, 1, 'shutdown must not re-issue a pending graceful close');
     initializeGate.resolve();
     await flush();
     assert.deepEqual(pool.codexAppHostPoolStats(), {
