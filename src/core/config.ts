@@ -273,6 +273,14 @@ function createDefaultSettings() {
             midRunPolicy: 'steer' as const,
             channels: { telegram: false, discord: false, slack: true },
         },
+        // Opt-in Markdown vault (devlog 040). Default OFF and nothing is created on
+        // disk until it is explicitly enabled, so a user who never turns it on sees no
+        // new directory and no change in behaviour.
+        wiki: {
+            enabled: false,
+            root: '~/jaw-wiki',
+            promptDigest: false,
+        },
         memory: {
             enabled: true,
             flushEvery: 10,
@@ -672,6 +680,7 @@ export function loadSettings() {
                 ...(raw.multiSession || {}),
                 channels: { ...defaults.multiSession.channels, ...(raw.multiSession?.channels || {}) },
             },
+            wiki: { ...defaults.wiki, ...(raw.wiki || {}) },
         }, sourceVersion);
         // #64 safety: auto-correct stale workingDir (e.g. copied instance)
         // but allow valid paths to persist (dynamic project targeting)

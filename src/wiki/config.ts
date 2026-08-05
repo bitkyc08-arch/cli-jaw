@@ -1,0 +1,109 @@
+// ─── Opt-in wiki vault configuration (devlog 040 §3) ──
+// The vault is off by default and lives entirely in settings.json under three keys.
+// There is no separate wiki.json: the existing settings path already owns the 0600
+// write and chmod boundary, and a second config file would be a second thing to keep
+// in sync.
+
+import { accessSync, constants as fsConstants, lstatSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, parse, resolve } from 'node:path';
+import { settings } from '../core/config.js';
+import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
+import type { ProviderStatus } from '../search/contract.js';
+
+export interface WikiConfig {
+    enabled: boolean;
+    root: string;
+    promptDigest: boolean;
+}
+
+export const DEFAULT_WIKI_CONFIG: WikiConfig = {
+    enabled: false,
+    root: '~/jaw-wiki',
+    promptDigest: false,
+};
+
+// The directories and files a usable vault must have. Both the scaffold and the
+// readiness check read this list, so a vault can never be "ready" with a layout the
+// scaffold does not produce.
+export const WIKI_REQUIRED_DIRS = [
+    'entities',
+    'entities/people',
+    'entities/projects',
+    'entities/systems',
+    'concepts',
+    'syntheses',
+    'sources',
+    'reports',
+    '_attachments',
+] as const;
+
+export const WIKI_REQUIRED_FILES = [
+    'WIKI.md',
+    'index.md',
+    'inbox.md',
+    'syntheses/compiled-digest.md',
+] as const;
+
+export function normalizeWikiConfig(input: Partial<WikiConfig>): WikiConfig {
+    const rawRoot = String(input.root ?? DEFAULT_WIKI_CONFIG.root).trim();
+    if (!rawRoot) throw new Error('invalid settings.wiki.root: empty');
+    const expanded = rawRoot.replace(/^~(?=$|\/)/, homedir());
+    // Reject before resolving. resolve() turns '.', '..' and any relative path into an
+    // absolute one, so checking isAbsolute() afterwards always passes and an empty or
+    // relative root would be scaffolded relative to the process working directory.
+    if (!isAbsolute(expanded)) {
+        throw new Error(`invalid settings.wiki.root: must be absolute (${rawRoot})`);
+    }
+    const root = resolve(expanded);
+    // A filesystem root would make every containment check meaningless and scatter a
+    // scaffold across the whole disk.
+    if (root === parse(root).root) {
+        throw new Error(`invalid settings.wiki.root: refusing the filesystem root`);
+    }
+    return {
+        root,
+        enabled: input.enabled === true,
+        promptDigest: input.promptDigest === true,
+    };
+}
+
+// Reads the live settings binding rather than loadSettings(): that function is a boot and
+// recovery operation — it rereads disk, migrates, can rewrite the file and replace the
+// global object — and calling it on every config read would run all of that repeatedly.
+export function readWikiConfig(): WikiConfig {
+    const raw = settings["wiki"] as Partial<WikiConfig> | undefined;
+    return normalizeWikiConfig({ ...DEFAULT_WIKI_CONFIG, ...raw });
+}
+
+// Writes go through the same serialized runtime-settings path every other settings
+// mutation uses, so a wiki change cannot race a concurrent settings write.
+export async function writeWikiConfig(next: WikiConfig): Promise<WikiConfig> {
+    const normalized = normalizeWikiConfig(next);
+    await applyRuntimeSettingsPatch({ wiki: normalized });
+    return normalized;
+}
+
+// A disabled vault reports 'off' even when its files are all present on disk: the
+// setting is the source of truth, not the directory. That is what makes disabling a
+// non-destructive operation — the files stay, the provider stops answering.
+export function wikiProviderStatus(config: WikiConfig): ProviderStatus {
+    if (!config.enabled) return 'off';
+    try {
+        for (const dir of ['', ...WIKI_REQUIRED_DIRS]) {
+            const path = dir ? join(config.root, dir) : config.root;
+            if (!lstatSync(path).isDirectory()) return 'error';
+            accessSync(path, fsConstants.R_OK);
+        }
+        for (const file of WIKI_REQUIRED_FILES) {
+            const path = join(config.root, file);
+            if (!lstatSync(path).isFile()) return 'error';
+            accessSync(path, fsConstants.R_OK);
+        }
+        return 'ready';
+    } catch {
+        // A vault that was renamed, deleted, or made unreadable is an error rather than
+        // an absence: the user asked for it to be on.
+        return 'error';
+    }
+}

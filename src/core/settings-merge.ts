@@ -102,8 +102,10 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
         delete remaining["activeOverrides"];
     }
 
-    // Deep merge nested objects (heartbeat, telegram, telegramHub, memory, stt, jawCeo, pi, tui, network)
-    for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'slack', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network']) {
+    // Deep merge nested objects. A key missing from this list is REPLACED wholesale by a
+    // partial patch, so `{wiki:{promptDigest:true}}` would silently drop the root and the
+    // enabled flag along with it.
+    for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'slack', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network', 'wiki']) {
         if (remaining[key] && typeof remaining[key] === 'object') {
             result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];
