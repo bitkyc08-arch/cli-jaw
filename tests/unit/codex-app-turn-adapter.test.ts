@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import { CodexAppClient } from '../../src/agent/codex-app-client.ts';
 import {
     extractFromCodexAppEvent,
@@ -190,4 +191,122 @@ test('scoped turn adapter derives expected identity from lease and lane state, n
     assert.deepEqual(events, [], 'a self-consistent but foreign owner cannot reach the normalizer consumer');
     assert.equal(ctx.sessionId, null, 'foreign owner metadata cannot mutate lane context');
     listener.dispose();
+});
+
+// Getting both ids wrong at once passes even if only one of them is checked, so
+// each authority is broken on its own here: the thread comes from the lease and
+// the turn from the lane's active state, and neither may be taken from the
+// notification being validated.
+test('a foreign thread is rejected even when the turn matches the lane', async () => {
+    const client = new CodexAppClient();
+    injectRequest(client, async (method) => {
+        if (method === 'thread/start') return { thread: { id: 'thread-a' } };
+        if (method === 'turn/start') return { turn: { id: 'turn-a' } };
+        return {};
+    });
+    await client.startThread('scope-a', {
+        model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false,
+    });
+    await client.startTurn('scope-a', 'hello');
+    const ctx = createCtx();
+    const events: string[] = [];
+    const listener = listenCodexAppTurnAdapter(client, { threadId: 'thread-a' }, 'scope-a', ctx, {
+        onProgress: () => {},
+        onRawNotification: () => {},
+        onEvent: (method) => { events.push(method); },
+        onStderr: () => {},
+    });
+
+    // turn-a is genuinely this lane's active turn; only the thread is foreign.
+    client.emit('notification:scope-a', 'turn/started', {
+        threadId: 'thread-b', turn: { id: 'turn-a' },
+    }, { threadId: 'thread-b', turnId: 'turn-a' });
+
+    assert.deepEqual(events, [], 'the lease thread is the authority, not the notification');
+    assert.equal(ctx.sessionId, null);
+    listener.dispose();
+});
+
+test('a stale turn is rejected even when the thread matches the lease', async () => {
+    const client = new CodexAppClient();
+    let nextTurn = 'turn-a';
+    injectRequest(client, async (method) => {
+        if (method === 'thread/start') return { thread: { id: 'thread-a' } };
+        if (method === 'turn/start') return { turn: { id: nextTurn } };
+        return {};
+    });
+    await client.startThread('scope-a', {
+        model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false,
+    });
+    await client.startTurn('scope-a', 'first');
+    client['handleLine'](JSON.stringify({
+        method: 'turn/completed',
+        params: { threadId: 'thread-a', turn: { id: 'turn-a', status: 'completed' } },
+    }));
+    nextTurn = 'turn-b';
+    await client.startTurn('scope-a', 'second');
+
+    const ctx = createCtx();
+    const events: string[] = [];
+    const listener = listenCodexAppTurnAdapter(client, { threadId: 'thread-a' }, 'scope-a', ctx, {
+        onProgress: () => {},
+        onRawNotification: () => {},
+        onEvent: (method) => { events.push(method); },
+        onStderr: () => {},
+    });
+
+    // thread-a is correct; turn-a finished and is no longer the lane's turn.
+    client.emit('notification:scope-a', 'item/agentMessage/delta', {
+        threadId: 'thread-a', turnId: 'turn-a', delta: 'late',
+    }, { threadId: 'thread-a', turnId: 'turn-a' });
+    assert.deepEqual(events, [], 'the lane active turn is the authority, not the notification');
+
+    client.emit('notification:scope-a', 'item/agentMessage/delta', {
+        threadId: 'thread-a', turnId: 'turn-b', delta: 'live',
+    }, { threadId: 'thread-a', turnId: 'turn-b' });
+    assert.deepEqual(events, ['item/agentMessage/delta'], 'the current turn still reaches the consumer');
+    listener.dispose();
+});
+
+// The selector returning null is only half the promise; the other half is that
+// production actually routes through it. Running spawnAgent here would mean
+// standing up the whole agent stack, so this parses the two call sites instead
+// and checks that the scope they hand the adapter is the selector's result -
+// not scopeKey, not a literal, not anything else in reach. A regex over the
+// file would match the same text in a comment, so the check walks the AST.
+test('both production call sites pass the selector result as the lane scope', async () => {
+    const ts = await import('typescript');
+    const source = await import('node:fs/promises')
+        .then((fs) => fs.readFile(resolve(import.meta.dirname, '../../src/agent/spawn.ts'), 'utf8'));
+    const sf = ts.createSourceFile('spawn.ts', source, ts.ScriptTarget.Latest, true);
+
+    let selectorBinding: string | null = null;
+    const laneArgs: string[] = [];
+    const visit = (node: import('typescript').Node): void => {
+        if (
+            ts.isVariableDeclaration(node)
+            && node.initializer
+            && ts.isCallExpression(node.initializer)
+            && ts.isIdentifier(node.initializer.expression)
+            && node.initializer.expression.text === 'resolveCodexAppProductionLaneScope'
+            && ts.isIdentifier(node.name)
+        ) {
+            selectorBinding = node.name.text;
+        }
+        if (
+            ts.isCallExpression(node)
+            && ts.isIdentifier(node.expression)
+            && node.expression.text === 'runCodexAppTurn'
+        ) {
+            const third = node.arguments[2];
+            laneArgs.push(third && ts.isIdentifier(third) ? third.text : '<not-an-identifier>');
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(sf);
+
+    assert.equal(selectorBinding, 'laneScope', 'the selector result must be bound before use');
+    assert.equal(laneArgs.length, 2, 'main and employee are the only production call sites');
+    assert.deepEqual(laneArgs, ['laneScope', 'laneScope'],
+        'every production call site passes the selector result, so C1 cannot wire a real scope by accident');
 });
