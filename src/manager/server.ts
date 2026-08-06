@@ -46,6 +46,7 @@ import { RemindersStore } from './reminders/store.js';
 import { startRemindersScheduler } from './reminders/scheduler.js';
 import { createDashboardConnectorRouter } from './connector/routes.js';
 import { createDashboardMemoryRouter } from './routes/dashboard-memory.js';
+import { createDashboardWikiRouter } from './notes/wiki-routes.js';
 import { createDashboardGitRouter } from './routes/dashboard-git.js';
 import { createDashboardTelegramHubRouter } from './routes/telegram-hub.js';
 import { startHubBot } from './telegram-hub/hub-bot.js';
@@ -312,6 +313,16 @@ app.use('/api/dashboard/memory', createDashboardMemoryRouter({
     embeddingConfig: () => loadEmbeddingConfig(),
     vecStore: () => getVecStore(loadEmbeddingConfig()),
     dashboardHome,
+}));
+
+// Reaching an instance's vault needs an auth boundary the generic /i proxy cannot give,
+// because that proxy dials loopback and an instance trusts loopback before it reads a
+// token (041-C §2.2b).
+app.use('/api/dashboard/wiki', createDashboardWikiRouter({
+    managerPort: port,
+    settingsPath: SETTINGS_PATH,
+    range: { from: scanFrom, count: scanCount },
+    scanSupplier: cachedFullScan,
 }));
 
 // Embedding auto-sync: debounced incremental sync on memory saves
