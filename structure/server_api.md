@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 246개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 245개다.
+> 현재 라이브 surface는 총 247개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 246개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -108,6 +108,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `GET` | `/api/search` | 통합 검색 — `corpus=chat\|memory\|wiki\|all`, 세션 횡단 기본 + `sessionFilter`, cursor 페이지네이션 (031) |
 | `GET` | `/api/wiki/status` | 위키 상태 — enabled/root/promptDigest/provider. 기본 OFF, 디스크를 만들지 않는다 (040) |
 | `POST` | `/api/wiki/enable` | 위키 활성화 — scaffold 후 provider ready 확인이 끝나야 설정을 기록한다 (040) |
+| `GET` | `/api/wiki/entities` | 위키 entity 인덱스 (읽기 전용) — disabled면 디스크를 만지지 않고, root가 옮겨졌으면 부분 결과 대신 error다 (041) |
 | `POST` | `/api/wiki/configure` | 위키 설정 변경 — 비활성화는 vault와 Git history를 보존한다 (040) |
 
 ---
@@ -148,7 +149,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 246개 route handler 기준이다. 이 중 API 엔드포인트는 245개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 247개 route handler 기준이다. 이 중 API 엔드포인트는 246개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
