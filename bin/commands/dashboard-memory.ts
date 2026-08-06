@@ -1,25 +1,12 @@
 import { parseArgs } from 'node:util';
-import { DASHBOARD_DEFAULT_PORT } from '../../src/manager/constants.js';
+import { callDashboard as callDashboardApi, DASHBOARD_DEFAULT_PORT } from './_shared/dashboard-client.js';
+import { formatFederatedResult } from './_shared/search-format.js';
 
-function dashboardPort(): number {
-    const fromEnv = Number(process.env["DASHBOARD_PORT"]);
-    return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : Number(DASHBOARD_DEFAULT_PORT);
-}
+const MEMORY_BASE_PATH = '/api/dashboard/memory';
+const LABEL = 'dashboard memory';
 
 async function callDashboard<T>(path: string): Promise<T> {
-    const port = dashboardPort();
-    const url = `http://127.0.0.1:${port}/api/dashboard/memory${path}`;
-    let res: Response;
-    try {
-        res = await fetch(url, { headers: { host: `127.0.0.1:${port}` } });
-    } catch (err) {
-        throw new Error(`dashboard memory unreachable at :${port} — run \`jaw dashboard serve\` first. (${(err as Error).message})`);
-    }
-    if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`dashboard memory ${path} → ${res.status}: ${body.slice(0, 200)}`);
-    }
-    return res.json() as Promise<T>;
+    return callDashboardApi<T>({ basePath: MEMORY_BASE_PATH, path, label: LABEL });
 }
 
 interface FederatedHitResponse {
@@ -39,18 +26,13 @@ interface SearchResponse {
 }
 
 function formatSearchResult(data: SearchResponse): string {
-    const lines: string[] = [];
-    lines.push(`# ${data.hits.length} hits across ${data.instancesSucceeded}/${data.instancesQueried} instances`);
-    for (const hit of data.hits) {
+    return formatFederatedResult(data, hit => {
         const label = hit.instanceLabel ? ` (${hit.instanceLabel})` : '';
-        lines.push(`\n[${hit.instanceId}${label}] ${hit.relpath}:${hit.source_start_line}`);
-        lines.push(hit.snippet || (hit.content || '').slice(0, 200));
-    }
-    if (data.warnings.length) {
-        lines.push(`\n--- warnings ---`);
-        for (const w of data.warnings) lines.push(`[${w.instanceId}] ${w.code}: ${w.message}`);
-    }
-    return lines.join('\n');
+        return [
+            `\n[${hit.instanceId}${label}] ${hit.relpath}:${hit.source_start_line}`,
+            hit.snippet || (hit.content || '').slice(0, 200),
+        ];
+    });
 }
 
 function printHelp(): void {
@@ -170,23 +152,7 @@ export async function handleMemory(argvFromSwitch: string[]): Promise<void> {
 }
 
 async function postDashboard<T>(path: string, body: unknown): Promise<T> {
-    const port = dashboardPort();
-    const url = `http://127.0.0.1:${port}/api/dashboard/memory${path}`;
-    let res: Response;
-    try {
-        res = await fetch(url, {
-            method: 'POST',
-            headers: { host: `127.0.0.1:${port}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-    } catch (err) {
-        throw new Error(`dashboard memory unreachable at :${port} — run \`jaw dashboard serve\` first. (${(err as Error).message})`);
-    }
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`dashboard memory ${path} → ${res.status}: ${text.slice(0, 200)}`);
-    }
-    return res.json() as Promise<T>;
+    return callDashboardApi<T>({ basePath: MEMORY_BASE_PATH, path, label: LABEL, body });
 }
 
 async function handleEmbedConfig(args: string[]): Promise<void> {

@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { getServerUrl, JAW_HOME, loadSettings } from '../../src/core/config.js';
 import { getCliAuthToken, authHeaders } from '../../src/cli/api-auth.js';
 import { asArray, asRecord, fieldString, type JsonRecord } from '../_http-client.js';
+import { renderLocalChatHit } from './_shared/search-format.js';
 
 loadSettings();
 const SERVER = getServerUrl();
@@ -48,8 +49,11 @@ try {
                         const chatData = (Array.isArray(chatBody) ? chatBody : Array.isArray(chatBody['data']) ? chatBody['data'] : []) as Array<Record<string, unknown>>;
                         if (chatData.length > 0) {
                             console.log('\n[chat history — last 7 days]');
+                            // Heading and indent belong to this command; the body line is
+                            // the same one `chat search` prints, so the two stop disagreeing
+                            // about how much of a message they show.
                             for (const m of chatData) {
-                                console.log(`  [${m['created_at']}] (${m['role']}) ${String(m['content'] || '').slice(0, 200)}`);
+                                console.log(`  ${renderLocalChatHit(m)}`);
                             }
                         }
                     }

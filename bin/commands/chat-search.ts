@@ -5,6 +5,7 @@
 import { parseArgs } from 'node:util';
 import { getServerUrl, loadSettings } from '../../src/core/config.js';
 import { getCliAuthToken, authHeaders } from '../../src/cli/api-auth.js';
+import { renderLocalChatHit } from './_shared/search-format.js';
 
 loadSettings();
 const SERVER = getServerUrl();
@@ -53,13 +54,14 @@ try {
         process.exit(0);
     }
     for (const match of data) {
-        const content = String(match['content'] || '').slice(0, 300);
-        console.log(`[${match['created_at']}] (${match['role']}) ${content}`);
+        console.log(renderLocalChatHit(match));
         const ctx = match['context'] as Array<Record<string, unknown>> | undefined;
         if (ctx && Array.isArray(ctx)) {
             for (const c of ctx) {
                 const prefix = c['id'] === match['id'] ? '>> ' : '   ';
-                console.log(`${prefix}[${c['created_at']}] (${c['role']}) ${String(c['content'] || '').slice(0, 200)}`);
+                // Context lines stay tighter than the hit itself: they are there for
+                // orientation, not for reading.
+                console.log(`${prefix}${renderLocalChatHit(c, 200)}`);
             }
         }
         console.log('---');

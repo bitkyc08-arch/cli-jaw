@@ -1,25 +1,15 @@
 import { parseArgs } from 'node:util';
-import { DASHBOARD_DEFAULT_PORT } from '../../src/manager/constants.js';
+import { callDashboard as callDashboardApi, DASHBOARD_DEFAULT_PORT } from './_shared/dashboard-client.js';
+import { CHAT_BODY_LIMIT, formatFederatedResult } from './_shared/search-format.js';
 
-function dashboardPort(): number {
-    const fromEnv = Number(process.env["DASHBOARD_PORT"]);
-    return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : Number(DASHBOARD_DEFAULT_PORT);
-}
+// Chat federation is mounted under the memory router, so this surface is deliberately
+// the memory base path with a /chat suffix rather than a route of its own. Exported so a
+// test can hold it to that rather than reading this file for a substring.
+export const CHAT_BASE_PATH = '/api/dashboard/memory';
+const LABEL = 'dashboard chat';
 
 async function callDashboard<T>(path: string): Promise<T> {
-    const port = dashboardPort();
-    const url = `http://127.0.0.1:${port}/api/dashboard/memory${path}`;
-    let res: Response;
-    try {
-        res = await fetch(url, { headers: { host: `127.0.0.1:${port}` } });
-    } catch (err) {
-        throw new Error(`dashboard unreachable at :${port} — run \`jaw dashboard serve\` first. (${(err as Error).message})`);
-    }
-    if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`dashboard chat ${path} → ${res.status}: ${body.slice(0, 200)}`);
-    }
-    return res.json() as Promise<T>;
+    return callDashboardApi<T>({ basePath: CHAT_BASE_PATH, path, label: LABEL });
 }
 
 interface ChatHitResponse {
@@ -41,19 +31,14 @@ interface ChatSearchResponse {
 }
 
 function formatChatResult(data: ChatSearchResponse): string {
-    const lines: string[] = [];
-    lines.push(`# ${data.hits.length} hits across ${data.instancesSucceeded}/${data.instancesQueried} instances`);
-    for (const hit of data.hits) {
+    return formatFederatedResult(data, hit => {
         const label = hit.instanceLabel ? ` (${hit.instanceLabel})` : '';
         const field = hit.match_field === 'tool_log' ? ' [tool_log]' : '';
-        lines.push(`\n[${hit.instanceId}${label}] ${hit.created_at} (${hit.role})${field}`);
-        lines.push(hit.content.slice(0, 300));
-    }
-    if (data.warnings.length) {
-        lines.push(`\n--- warnings ---`);
-        for (const w of data.warnings) lines.push(`[${w.instanceId}] ${w.code}: ${w.message}`);
-    }
-    return lines.join('\n');
+        return [
+            `\n[${hit.instanceId}${label}] ${hit.created_at} (${hit.role})${field}`,
+            hit.content.slice(0, CHAT_BODY_LIMIT),
+        ];
+    });
 }
 
 function printHelp(): void {

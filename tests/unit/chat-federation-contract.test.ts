@@ -27,10 +27,38 @@ describe('L2 chat federation contract', () => {
         assert.match(routeSrc, /searchChatFederated/);
     });
 
-    test('CLI command handles search subcommand', () => {
-        assert.match(cliSrc, /export async function handleDashboardChat/);
-        assert.match(cliSrc, /case 'search'/);
-        assert.match(cliSrc, /\/chat\/search/);
+    // Behavioural rather than a source scan: what matters is the URL this command ends up
+    // calling, and reading the file for a substring stops proving that the moment the
+    // string moves. The chat CLI is mounted under the memory router, so a base path that
+    // looks tidier would 404.
+    test('CLI command reaches the federation route through the memory surface', async () => {
+        const { callDashboard } = await import('../../bin/commands/_shared/dashboard-client.ts');
+        const seen: string[] = [];
+        const spy = (async (url: string) => {
+            seen.push(String(url));
+            return new Response('{"hits":[]}', { status: 200 });
+        }) as unknown as typeof fetch;
+
+        await callDashboard({
+            basePath: '/api/dashboard/memory',
+            path: '/chat/search?q=x',
+            label: 'dashboard chat',
+            fetchImpl: spy,
+        });
+
+        assert.match(seen[0]!, /\/api\/dashboard\/memory\/chat\/search/);
+    });
+
+    test('CLI command exposes the search subcommand', async () => {
+        const mod = await import('../../bin/commands/dashboard-chat.ts');
+        assert.equal(typeof mod.handleDashboardChat, 'function');
+    });
+
+    // The surface the command actually uses, not a string in its source. Chat federation
+    // lives under the memory router; pointing this at a route of its own would 404.
+    test('CLI command keeps the memory base path', async () => {
+        const mod = await import('../../bin/commands/dashboard-chat.ts');
+        assert.equal(mod.CHAT_BASE_PATH, '/api/dashboard/memory');
     });
 
     test('dashboard.ts routes chat subcommand', () => {
