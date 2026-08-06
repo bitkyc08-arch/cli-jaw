@@ -19,6 +19,7 @@ import { buildMediaPromptMany } from '../agent/spawn.js';
 import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope } from './socket.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
+import { isThreadParticipated, markThreadParticipated } from './thread-tracker.js';
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
@@ -64,6 +65,10 @@ function gateConfig() {
         allowBots: Boolean(sc.allowBots),
         mentionOnly: sc.mentionOnly !== false,
         channelIds: Array.isArray(sc.channelIds) ? sc.channelIds as string[] : [],
+        // Thread continuation defaults ON (threadRequireMention=false):
+        // once mentioned, a thread keeps flowing without re-mention.
+        threadRequireMention: sc.threadRequireMention === true,
+        isParticipatedThread: isThreadParticipated,
     };
 }
 
@@ -116,7 +121,12 @@ async function slackOrchestrate(
                         await progress.finish().catch(() => { });
                     }),
                 ));
-                await sendSlackText(token, target, text);
+                const sendResult = await sendSlackText(token, target, text);
+                // A successful reply into a thread makes that thread ours —
+                // future replies there need no mention (marking point b).
+                if (sendResult.ok && target.threadId) {
+                    markThreadParticipated(target.targetId, target.threadId);
+                }
                 await relaySlackImages(token, target, text);
                 log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
             } catch (err: unknown) {
@@ -146,7 +156,10 @@ async function slackOrchestrate(
                 if (disposed) return;
                 dispose();
                 const text = String(data["text"]);
-                await sendSlackText(token, target, text);
+                const queuedSendResult = await sendSlackText(token, target, text);
+                if (queuedSendResult.ok && target.threadId) {
+                    markThreadParticipated(target.targetId, target.threadId);
+                }
                 await relaySlackImages(token, target, text);
             }
         };
@@ -233,6 +246,11 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     if (!decision.process) {
         log.info(`[slack:in] skipped (${decision.reason})`);
         return;
+    }
+    if (event.type === 'app_mention' && event.channel) {
+        // A mention inside a thread marks that thread; a top-level mention
+        // marks the thread this message would parent (marking point a).
+        markThreadParticipated(event.channel, event.thread_ts || event.ts || '');
     }
 
     const target = buildSlackTarget(event);

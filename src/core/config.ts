@@ -281,6 +281,9 @@ function createDefaultSettings() {
             // Slack bots typically live in shared team channels, where
             // answering every message is antisocial. DMs bypass this gate.
             mentionOnly: true,
+            // But a thread the bot participates in keeps flowing without
+            // re-mention (true = strict, mention required even in threads).
+            threadRequireMention: false,
             replyInThread: true,
             inboundDownloadConcurrency: 6,
         },

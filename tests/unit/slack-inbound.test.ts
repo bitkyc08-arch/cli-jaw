@@ -478,6 +478,8 @@ const baseConfig = (over: Partial<SlackGateConfig> = {}): SlackGateConfig => ({
     allowBots: false,
     mentionOnly: true,
     channelIds: [],
+    threadRequireMention: false,
+    isParticipatedThread: () => false,
     ...over,
 });
 
