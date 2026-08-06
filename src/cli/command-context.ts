@@ -39,13 +39,21 @@ export type CommandContextDeps = {
 // Remote interface에서 허용하는 settings patch 키
 const REMOTE_ALLOWED_SETTINGS_KEYS = new Set([
     'fallbackOrder',  // /fallback
-    'cli',            // /cli
-    'perCli',         // /model
     'showReasoning',  // /thought
     'memory',         // /flush
     'telegram',       // /forward (telegram)
     'discord',        // /forward (discord)
     'slack',          // /forward (slack)
+]);
+
+// Runtime selection is shared by the whole instance and the instance web owns it
+// (devlog 074). A remote channel changing it would move every other session's model
+// too, so these keys are refused there with an answer that says where to go instead
+// of the generic "unsupported" line.
+const RUNTIME_SELECTION_SETTINGS_KEYS = new Set([
+    'cli',              // /cli
+    'perCli',           // /model, /effort
+    'activeOverrides',  // /model, /effort
 ]);
 
 export type CliCommandContext = ReturnType<typeof makeCommandCtx>;
@@ -69,6 +77,9 @@ export function makeCommandCtx(
                     && keys.every(k => REMOTE_ALLOWED_SETTINGS_KEYS.has(k));
                 if (allAllowed) {
                     return deps.applySettings(patch);
+                }
+                if (keys.some(k => RUNTIME_SELECTION_SETTINGS_KEYS.has(k))) {
+                    return { ok: false, text: t('cmd.runtimeSelectionInstanceWide', {}, locale) };
                 }
                 const msgKey = iface === 'discord' ? 'dc.settingsUnsupported'
                     : iface === 'slack' ? 'sl.settingsUnsupported'

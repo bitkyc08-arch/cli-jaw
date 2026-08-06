@@ -150,6 +150,8 @@
     "ws.disconnected": "连接已断开 — 正在重连...",
     "tg.settingsUnsupported": "Telegram 不支持修改设置。",
     "dc.settingsUnsupported": "Discord 不支持修改设置。",
+    "sl.settingsUnsupported": "Slack 不支持修改设置。",
+    "cmd.runtimeSelectionInstanceWide": "CLI 与模型选择由本实例的所有会话共用。请在实例网页设置中修改。",
     "tg.promptUnsupported": "（Telegram 不支持）",
     "tg.queued": "已加入队列（第 {count} 个）",
     "tg.imageCaption": "[📷 图片] {caption}",

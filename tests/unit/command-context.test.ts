@@ -4,9 +4,14 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { makeCommandCtx } from '../../src/cli/command-context.ts';
+import { loadLocales } from '../../src/core/i18n.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// t() reads a dictionary the server fills at boot; without this the refusal
+// assertions would pass against raw key strings and prove nothing.
+loadLocales(join(__dirname, '../../public/locales'));
 
 const ctxSrc = fs.readFileSync(join(__dirname, '../../src/cli/command-context.ts'), 'utf8');
 // web ctx factory lives in cli/web-command-ctx.ts since the Phase 2 extraction (devlog 260609, 20).
@@ -29,15 +34,23 @@ test('CC-002: getMcp returns real loadUnifiedMcp, not empty object', () => {
 
 // ─── CC-003: Remote settings restriction is in makeCommandCtx ───
 
-test('CC-003: remote interface restricts settings via allowlist', () => {
-    assert.ok(
-        ctxSrc.includes("iface === 'telegram'") || ctxSrc.includes("iface === 'discord'"),
-        'makeCommandCtx checks for remote interfaces',
-    );
-    assert.ok(
-        ctxSrc.includes('tg.settingsUnsupported') || ctxSrc.includes('dc.settingsUnsupported'),
-        'returns unsupported message for disallowed patches',
-    );
+// Behavioural, not a source scan: the old version matched strings in this file, so it
+// broke on refactors without ever exercising the gate it claimed to guard.
+test('CC-003: remote interface restricts settings via allowlist', async () => {
+    const calls: Record<string, any>[] = [];
+    const remote = makeCommandCtx('telegram', 'ko', {
+        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const refused = await remote.updateSettings({ permissions: 'auto' }) as { ok?: boolean; text?: string };
+    assert.equal(refused?.ok, false, 'a key outside the allowlist is refused');
+    assert.deepEqual(calls, [], 'and never reaches applySettings');
+    assert.ok(refused?.text && !refused.text.includes('settingsUnsupported'),
+        'the refusal is translated, not a raw key');
+
+    const allowed = await remote.updateSettings({ memory: { enabled: true } }) as { ok?: boolean };
+    assert.equal(allowed?.ok, true, 'an allowlisted key still passes');
+    assert.deepEqual(calls, [{ memory: { enabled: true } }]);
     assert.ok(
         ctxSrc.includes('REMOTE_ALLOWED_SETTINGS_KEYS'),
         'uses Set-based allowlist for remote settings',
@@ -167,26 +180,72 @@ test('CC-011: clearSession delegates to dependency callback', async () => {
 
 // ─── Phase 00: telegram settings allowlist expansion ───
 
-test('CC-012: telegram allows cli settings patch', async () => {
+// The CLI and model belong to the whole instance and the instance web owns them
+// (devlog 074). These two used to assert the opposite: that a remote channel could
+// change them. Letting a Slack channel pick the model moved it for every other
+// session too, which is the drift this reverses.
+
+test('CC-012: telegram refuses a cli settings patch and names where to change it', async () => {
     const calls: Record<string, any>[] = [];
     const ctx = makeCommandCtx('telegram', 'ko', {
         applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
         clearSession: () => undefined,
     });
-    const result = await ctx.updateSettings({ cli: 'codex' });
+    const result = await ctx.updateSettings({ cli: 'codex' }) as { ok?: boolean; text?: string };
+    assert.equal(result?.ok, false);
+    assert.deepEqual(calls, [], 'the patch never reaches applySettings');
+    assert.ok(
+        result?.text && result.text.length > 0 && !result.text.includes('cmd.runtimeSelectionInstanceWide'),
+        'the refusal is a translated sentence, not the raw key',
+    );
+    assert.notEqual(result?.text, 'Telegram에서 설정 변경은 지원하지 않습니다.',
+        'runtime selection gets its own answer, not the generic unsupported line');
+});
+
+test('CC-013: telegram refuses a perCli settings patch', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const result = await ctx.updateSettings({ perCli: { claude: { model: 'claude-4-opus' } } }) as { ok?: boolean };
+    assert.equal(result?.ok, false);
+    assert.deepEqual(calls, [], 'the patch never reaches applySettings');
+});
+
+test('CC-013b: slack and discord refuse runtime selection the same way', async () => {
+    for (const iface of ['slack', 'discord'] as const) {
+        const calls: Record<string, any>[] = [];
+        const ctx = makeCommandCtx(iface, 'ko', {
+            applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+            clearSession: () => undefined,
+        });
+        const result = await ctx.updateSettings({ cli: 'codex' }) as { ok?: boolean };
+        assert.equal(result?.ok, false, `${iface} refuses`);
+        assert.deepEqual(calls, [], `${iface} does not reach applySettings`);
+    }
+});
+
+test('CC-013c: the instance web still changes runtime selection', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('web', 'ko', {
+        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const result = await ctx.updateSettings({ cli: 'codex' }) as { ok?: boolean };
     assert.equal(result?.ok, true);
     assert.deepEqual(calls, [{ cli: 'codex' }]);
 });
 
-test('CC-013: telegram allows perCli settings patch', async () => {
-    const calls: Record<string, any>[] = [];
+test('CC-013d: a remote refusal for some other key keeps the generic answer', async () => {
     const ctx = makeCommandCtx('telegram', 'ko', {
-        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        applySettings: async () => ({ ok: true }),
         clearSession: () => undefined,
     });
-    const result = await ctx.updateSettings({ perCli: { claude: { model: 'claude-4-opus' } } });
-    assert.equal(result?.ok, true);
-    assert.deepEqual(calls, [{ perCli: { claude: { model: 'claude-4-opus' } } }]);
+    const runtime = await ctx.updateSettings({ cli: 'codex' }) as { text?: string };
+    const other = await ctx.updateSettings({ permissions: 'auto' }) as { text?: string };
+    assert.notEqual(runtime?.text, other?.text,
+        'the runtime-selection answer is distinct from the generic unsupported line');
 });
 
 test('CC-014: telegram allows memory settings patch', async () => {

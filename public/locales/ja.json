@@ -150,6 +150,8 @@
     "ws.disconnected": "接続が切れました — 再接続中...",
     "tg.settingsUnsupported": "Telegram では設定変更に対応していません。",
     "dc.settingsUnsupported": "Discord では設定変更に対応していません。",
+    "sl.settingsUnsupported": "Slack では設定変更に対応していません。",
+    "cmd.runtimeSelectionInstanceWide": "CLI とモデルの選択はこのインスタンスの全セッションで共有されます。インスタンスのウェブ設定から変更してください。",
     "tg.promptUnsupported": "（Telegram では未対応）",
     "tg.queued": "キューに追加しました（#{count}）",
     "tg.imageCaption": "[📷 画像] {caption}",
