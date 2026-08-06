@@ -121,6 +121,31 @@ export function readWikiConfig(): WikiConfig {
     return normalizeWikiConfig({ ...DEFAULT_WIKI_CONFIG, ...raw });
 }
 
+// Reading the config normalizes the root, and normalizing resolves it on disk. A caller
+// that only wants to know whether the vault is on would touch the filesystem to find out,
+// which makes "a disabled vault is never read" impossible to keep. These two answer from
+// the settings object alone.
+
+/** True when the vault is switched on, decided without touching the filesystem. */
+export function isWikiEnabled(): boolean {
+    return (settings["wiki"] as Partial<WikiConfig> | undefined)?.enabled === true;
+}
+
+/**
+ * The root exactly as the setting spells it, cleaned up lexically and never resolved.
+ *
+ * A scan anchors itself by comparing this against the resolved root: if they differ, the
+ * directory the setting names is now a link to somewhere else. That comparison only means
+ * something while this side stays off the disk — one realpath call here and it becomes a
+ * value compared with itself, which is how the check silently passes on a swapped vault.
+ */
+export function storedWikiRoot(): string {
+    const raw = (settings["wiki"] as Partial<WikiConfig> | undefined)?.root;
+    const text = String(raw ?? DEFAULT_WIKI_CONFIG.root).trim();
+    // Same lexical steps normalizeWikiConfig takes, stopping short of the realpath call.
+    return resolve(text.replace(/^~(?=$|\/)/, homedir()));
+}
+
 // The enable route validates the root before it scaffolds, but the generic settings API
 // and the settings-file watcher can both write this block without going near that route.
 // Enforcing the rule where the config is CONSUMED is what makes it hold whatever path

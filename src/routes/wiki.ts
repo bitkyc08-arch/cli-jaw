@@ -15,6 +15,7 @@ import {
     type WikiConfig,
 } from '../wiki/config.js';
 import { scaffoldWikiVault } from '../wiki/scaffold.js';
+import { buildEntityIndex } from '../wiki/entities.js';
 
 export type WikiRouteDeps = {
     // Injected so core keeps no dependency on manager configuration. These are the
@@ -54,6 +55,23 @@ export function registerWikiRoutes(
                 reason: (error as Error).message,
             });
         }
+    });
+
+    // Read-only. The index is built per request rather than cached: a stale answer about
+    // which files are in the vault is worse than a slow one, and the scan is bounded.
+    app.get('/api/wiki/entities', requireAuth, (_req, res) => {
+        const index = buildEntityIndex();
+        // Same three states status reports, decided the same way, so the two surfaces
+        // cannot disagree about whether the vault is usable.
+        ok(res, {
+            status: index.status,
+            entities: index.entities,
+            ontologyWarnings: index.ontologyWarnings,
+            parseWarnings: index.parseWarnings,
+            skipped: index.skipped,
+            truncated: index.truncated,
+            ...(index.error ? { error: index.error } : {}),
+        });
     });
 
     app.post('/api/wiki/enable', requireAuth, async (req, res) => {

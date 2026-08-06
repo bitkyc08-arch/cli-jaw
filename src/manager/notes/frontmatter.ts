@@ -1,12 +1,12 @@
-import { parseDocument } from 'yaml';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import type { NoteIndexWarning } from '../types.js';
+// The parser moved to core so the wiki scanner can reach it; core cannot import from
+// manager, and two parsers over the same frontmatter would be two answers to one
+// question. Re-exported here so existing callers keep their import site.
+import { parseLeadingFrontmatter, type ParsedNoteFrontmatter } from '../../notes/frontmatter.js';
 
-export type ParsedNoteFrontmatter = {
-    data: Record<string, unknown>;
-    bodyStartOffset: number;
-    error?: string;
-};
+export { parseLeadingFrontmatter };
+export type { ParsedNoteFrontmatter };
 
 export type NormalizedFrontmatter = {
     title?: string;
@@ -15,59 +15,6 @@ export type NormalizedFrontmatter = {
     created?: string;
     warnings: NoteIndexWarning[];
 };
-
-function lineEnd(source: string, start: number): number {
-    const next = source.indexOf('\n', start);
-    return next === -1 ? source.length : next;
-}
-
-function nextLineStart(source: string, end: number): number {
-    return end < source.length && source[end] === '\n' ? end + 1 : end;
-}
-
-function lineText(source: string, start: number, end: number): string {
-    const text = source.slice(start, end);
-    return text.endsWith('\r') ? text.slice(0, -1) : text;
-}
-
-export function parseLeadingFrontmatter(source: string): ParsedNoteFrontmatter {
-    const start = source.startsWith('\ufeff') ? 1 : 0;
-    const firstEnd = lineEnd(source, start);
-    if (lineText(source, start, firstEnd) !== '---') {
-        return { data: {}, bodyStartOffset: 0 };
-    }
-
-    const contentStart = nextLineStart(source, firstEnd);
-    let cursor = contentStart;
-    while (cursor < source.length) {
-        const end = lineEnd(source, cursor);
-        if (lineText(source, cursor, end) === '---') {
-            const yamlSource = source.slice(contentStart, cursor);
-            const bodyStartOffset = nextLineStart(source, end);
-            try {
-                const document = parseDocument(yamlSource, { prettyErrors: false });
-                const firstError = document.errors[0];
-                if (firstError) {
-                    return { data: {}, bodyStartOffset, error: firstError.message };
-                }
-                const value = document.toJS() as unknown;
-                if (!value || typeof value !== 'object' || Array.isArray(value)) {
-                    return { data: {}, bodyStartOffset };
-                }
-                return { data: value as Record<string, unknown>, bodyStartOffset };
-            } catch (error) {
-                return {
-                    data: {},
-                    bodyStartOffset,
-                    error: error instanceof Error ? error.message : 'frontmatter parse failed',
-                };
-            }
-        }
-        cursor = nextLineStart(source, end);
-    }
-
-    return { data: {}, bodyStartOffset: 0 };
-}
 
 function pushWarning(
     warnings: NoteIndexWarning[],
