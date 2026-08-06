@@ -204,6 +204,8 @@
     "cli.noReadyCli": "인증된 CLI가 없습니다 — 위에서 하나 이상의 CLI를 설치하고 인증해 주세요.",
     "chat.cmd.fail": "커맨드 실행 실패: {msg}",
     "chat.file.sent": "[사용자가 파일을 보냈습니다: {path}]\n이 파일을 Read 도구로 읽고 분석해주세요.",
+    "chat.file.sentImage": "[사용자가 이미지를 보냈습니다: {path}]\n이 이미지를 분석해주세요.",
+    "chat.file.sentVideo": "[사용자가 동영상을 보냈습니다: {path}]\n이 동영상 파일을 확인해주세요.",
     "chat.file.sentWithMsg": "\n\n사용자 메시지: {text}",
     "chat.file.uploadFail": "파일 업로드 실패: {msg}",
     "chat.requestFail": "요청 실패 ({status})",

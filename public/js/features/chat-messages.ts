@@ -74,7 +74,9 @@ export function formatUserPrompt(text: string): string {
         const userMsg = userMsgMatch ? ' ' + userMsgMatch[1].trim() : '';
         return `📎 [${count} files]${userMsg}`;
     }
-    const fileMatch = text.match(/^\[(?:사용자가 파일을 보냈습니다|사용자가 이미지를 보냈습니다|사용자가 동영상을 보냈습니다|User sent a file|User sent an image|User sent a video): ([^\]]+)\]/);
+    // ja/zh 변형이 빠지면 해당 로케일 사용자는 인라인 미리보기를 잃고 원문이
+    // 그대로 노출된다. zh 는 전각 콜론(：)을 쓰므로 구분자를 일반화한다.
+    const fileMatch = text.match(/^\[(?:사용자가 파일을 보냈습니다|사용자가 이미지를 보냈습니다|사용자가 동영상을 보냈습니다|User sent a file|User sent an image|User sent a video|ユーザーがファイルを送信しました|ユーザーが画像を送信しました|ユーザーが動画を送信しました|用户发送了文件|用户发送了图片|用户发送了视频)[:：]\s*([^\]]+)\]/);
     if (fileMatch) {
         const fullPath = fileMatch[1];
         const fileName = fullPath.split('/').pop() || fullPath;

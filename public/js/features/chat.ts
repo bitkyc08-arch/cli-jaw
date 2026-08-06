@@ -17,6 +17,7 @@ import { isChatNearBottom, markFollowingBottom, reconcileChatBottomAfterLayout }
 import { copyText } from './copy-text.js';
 import { isLocalPreviewRelayOrigin, previewParentOrigin } from '../preview-parent-origin.js';
 import { canSendFromCurrentView, showReadOnlySwitchAffordance, withCurrentSessionBody } from './session-hub.js';
+import { mediaKindFromPath, type MediaKind } from '../../../lib/media-kind.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -51,13 +52,25 @@ function getCommandTimeoutMs(text: string): number {
     return /^\/compact(?:\s|$)/i.test(String(text || '').trim()) ? 5 * 60 * 1000 : 10_000;
 }
 
+// 첨부 프롬프트는 파일 종류를 유지해야 한다. 고정 "파일" 문구만 쓰면 이미지를
+// 올려도 에이전트가 Read 도구로 열려다 실패한다 (devlog 260806_slack_multifile_ingest/001 §4 D2).
+const ATTACHMENT_KEY: Record<MediaKind, string> = {
+    image: 'chat.file.sentImage',
+    video: 'chat.file.sentVideo',
+    file: 'chat.file.sent',
+};
+
+function attachmentLine(path: string): string {
+    return t(ATTACHMENT_KEY[mediaKindFromPath(path)], { path });
+}
+
 function buildAttachmentPrompt(paths: string[], text = ''): string {
-    const prompt = paths.map(p => t('chat.file.sent', { path: p })).join('\n');
+    const prompt = paths.map(attachmentLine).join('\n');
     return text ? `${prompt}${t('chat.file.sentWithMsg', { text })}` : prompt;
 }
 
 function buildSlashCommandAttachmentText(text: string, paths: string[]): string {
-    const fileContext = paths.map(p => t('chat.file.sent', { path: p })).join('\n');
+    const fileContext = paths.map(attachmentLine).join('\n');
     return fileContext ? `${text}\n\n${fileContext}` : text;
 }
 
@@ -608,7 +621,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
         // Step 3: Build combined prompt and send via /api/message
         const promptParts: string[] = [];
         for (const p of filePaths) {
-            promptParts.push(t('chat.file.sent', { path: p }));
+            promptParts.push(attachmentLine(p));
         }
         promptParts.push(`🎤 ${sttResult.text}`);
         if (pendingText) promptParts.push(pendingText);

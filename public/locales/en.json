@@ -204,6 +204,8 @@
     "cli.noReadyCli": "No authenticated CLI available — install and authenticate at least one CLI above to get started.",
     "chat.cmd.fail": "Command execution failed: {msg}",
     "chat.file.sent": "[User sent a file: {path}]\nPlease read and analyze this file.",
+    "chat.file.sentImage": "[User sent an image: {path}]\nPlease analyze this image.",
+    "chat.file.sentVideo": "[User sent a video: {path}]\nPlease check this video file.",
     "chat.file.sentWithMsg": "\n\nUser message: {text}",
     "chat.file.uploadFail": "File upload failed: {msg}",
     "chat.requestFail": "Request failed ({status})",

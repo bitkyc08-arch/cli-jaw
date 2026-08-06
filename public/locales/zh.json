@@ -202,6 +202,8 @@
     "cli.noReadyCli": "没有已认证的 CLI。请先在上方安装并认证至少一个 CLI。",
     "chat.cmd.fail": "命令执行失败：{msg}",
     "chat.file.sent": "[用户发送了文件：{path}]\n请读取并分析这个文件。",
+    "chat.file.sentImage": "[用户发送了图片：{path}]\n请分析这张图片。",
+    "chat.file.sentVideo": "[用户发送了视频：{path}]\n请查看这个视频文件。",
     "chat.file.sentWithMsg": "\n\n用户消息：{text}",
     "chat.file.uploadFail": "文件上传失败：{msg}",
     "chat.requestFail": "请求失败（{status}）",

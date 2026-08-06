@@ -9,6 +9,7 @@ import https from 'node:https';
 import type { IncomingMessage } from 'node:http';
 import { join, extname, basename } from 'path';
 import { detectMimeFromBuffer, MIME_TO_EXT } from './mime-detect.js';
+import { mediaKindFromPath, type MediaKind } from './media-kind.js';
 import { redactChannelSecrets } from '../src/messaging/redact.js';
 
 export const TELEGRAM_DOWNLOAD_TIMEOUT_MS = 30_000;
@@ -68,13 +69,19 @@ export function saveUpload(uploadsDir: string, buffer: Buffer, originalName: str
  * @param {string} [caption] - Optional user message
  * @returns {string} Prompt string
  */
+const captionSuffix = (caption?: string) => caption ? `\n\n사용자 메시지: ${caption}` : '';
+
+const KIND_LABEL: Record<MediaKind, string> = {
+    image: '이미지',
+    video: '동영상',
+    file: '파일',
+};
+
 export function buildMediaPrompt(filePath: string, caption?: string) {
-    const ext = extname(filePath).toLowerCase();
-    const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext);
-    const isVideo = ['.mp4', '.webm', '.mov', '.ogg'].includes(ext);
-    if (isImage) return `[사용자가 이미지를 보냈습니다: ${filePath}]\n이 이미지를 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
-    if (isVideo) return `[사용자가 동영상을 보냈습니다: ${filePath}]\n이 동영상 파일을 확인해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
-    return `[사용자가 파일을 보냈습니다: ${filePath}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+    const kind = mediaKindFromPath(filePath);
+    if (kind === 'image') return `[사용자가 이미지를 보냈습니다: ${filePath}]\n이 이미지를 분석해주세요.${captionSuffix(caption)}`;
+    if (kind === 'video') return `[사용자가 동영상을 보냈습니다: ${filePath}]\n이 동영상 파일을 확인해주세요.${captionSuffix(caption)}`;
+    return `[사용자가 파일을 보냈습니다: ${filePath}]\n이 파일을 Read 도구로 읽고 분석해주세요.${captionSuffix(caption)}`;
 }
 
 export function buildMediaPromptMany(filePaths: string[], caption?: string) {
@@ -86,8 +93,20 @@ export function buildMediaPromptMany(filePaths: string[], caption?: string) {
         return buildMediaPrompt(normalized[0]!, caption);
     }
 
-    const fileList = normalized.map((filePath, index) => `${index + 1}. ${filePath}`).join('\n');
-    return `[사용자가 파일 ${normalized.length}개를 보냈습니다]\n${fileList}\n\n이 파일들을 모두 Read 도구로 읽고 비교 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+    // 2개 이상일 때 종류 판정을 잃으면 이미지가 "Read 도구로 읽어라"로 내려가
+    // 에이전트가 PNG를 텍스트로 열려다 실패한다 (실증: devlog 001 §3).
+    const kinds = normalized.map(mediaKindFromPath);
+    const fileList = normalized
+        .map((filePath, index) => `${index + 1}. [${KIND_LABEL[kinds[index]!]}] ${filePath}`)
+        .join('\n');
+    const hasImage = kinds.includes('image');
+    const hasVideo = kinds.includes('video');
+    const instruction = hasImage
+        ? '이미지는 직접 보고 분석하고, 나머지 파일은 Read 도구로 읽어서 함께 분석해주세요.'
+        : hasVideo
+            ? '동영상 파일을 확인하고, 나머지 파일은 Read 도구로 읽어서 함께 분석해주세요.'
+            : '이 파일들을 모두 Read 도구로 읽고 비교 분석해주세요.';
+    return `[사용자가 파일 ${normalized.length}개를 보냈습니다]\n${fileList}\n\n${instruction}${captionSuffix(caption)}`;
 }
 
 function assertTelegramDownloadSize(bytes: number | undefined, maxBytes: number | undefined, label: string): void {

@@ -202,6 +202,8 @@
     "cli.noReadyCli": "認証済み CLI がありません。開始するには、上の一覧から少なくとも 1 つの CLI をインストールして認証してください。",
     "chat.cmd.fail": "コマンド実行に失敗しました: {msg}",
     "chat.file.sent": "[ユーザーがファイルを送信しました: {path}]\nこのファイルを読み取って分析してください。",
+    "chat.file.sentImage": "[ユーザーが画像を送信しました: {path}]\nこの画像を分析してください。",
+    "chat.file.sentVideo": "[ユーザーが動画を送信しました: {path}]\nこの動画ファイルを確認してください。",
     "chat.file.sentWithMsg": "\n\nユーザーメッセージ: {text}",
     "chat.file.uploadFail": "ファイルのアップロードに失敗しました: {msg}",
     "chat.requestFail": "リクエストに失敗しました（{status}）",

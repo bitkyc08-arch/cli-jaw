@@ -14,6 +14,40 @@ test('dashboard activity title removes upload and user-message prefixes', () => 
     assert.equal(title, 'active model name should update in the sidebar');
 });
 
+test('dashboard activity title removes image and video upload prefixes', () => {
+    // 회귀 근거: 이미지/동영상 변형을 모르면 업로드 절대경로가 그대로 제목이 된다
+    // (devlog 260806_slack_multifile_ingest/010 D-5).
+    assert.equal(
+        cleanDashboardActivityTitle([
+            '[사용자가 이미지를 보냈습니다: /Users/jun/.cli-jaw/uploads/x_Screenshot.png]',
+            '이 이미지를 분석해주세요.',
+            '',
+            '사용자 메시지: 이 화면 왜 이래',
+        ].join('\n')),
+        '이 이미지를 분석해주세요.',
+    );
+    assert.equal(
+        cleanDashboardActivityTitle([
+            '[사용자가 동영상을 보냈습니다: /Users/jun/.cli-jaw/uploads/x_clip.mp4]',
+            '사용자 메시지: 여기 버벅임 보이지',
+        ].join('\n')),
+        '여기 버벅임 보이지',
+    );
+});
+
+test('dashboard activity title skips multi-file header and numbered entries', () => {
+    assert.equal(
+        cleanDashboardActivityTitle([
+            '[사용자가 파일 2개를 보냈습니다]',
+            '1. [이미지] /Users/jun/.cli-jaw/uploads/a.png',
+            '2. [이미지] /Users/jun/.cli-jaw/uploads/b.png',
+            '',
+            '사용자 메시지: 두 화면 비교해줘',
+        ].join('\n')),
+        '두 화면 비교해줘',
+    );
+});
+
 test('dashboard activity title strips simple markdown wrappers', () => {
     assert.equal(
         cleanDashboardActivityTitle('## **Fix dashboard preview refresh**'),

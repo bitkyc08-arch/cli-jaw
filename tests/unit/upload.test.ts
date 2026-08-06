@@ -63,9 +63,34 @@ test('UP-006: buildMediaPromptMany falls back to single-file prompt for one path
 test('UP-007: buildMediaPromptMany includes all file paths for multi-file input', () => {
     const prompt = buildMediaPromptMany(['/tmp/a.pdf', '/tmp/b.pdf'], 'compare');
     assert.match(prompt, /파일 2개/);
-    assert.match(prompt, /1\. \/tmp\/a\.pdf/);
-    assert.match(prompt, /2\. \/tmp\/b\.pdf/);
+    // 각 항목에 종류 라벨이 붙는다 (devlog 260806_slack_multifile_ingest/010 D-7).
+    assert.match(prompt, /1\. \[파일\] \/tmp\/a\.pdf/);
+    assert.match(prompt, /2\. \[파일\] \/tmp\/b\.pdf/);
     assert.match(prompt, /사용자 메시지: compare/);
+});
+
+test('UP-007a: multi-image prompt keeps image semantics', () => {
+    // 회귀 근거: 2개 이상일 때 종류 판정을 잃어 에이전트가 PNG를 Read로 열려다
+    // 실패했다 (프로덕션 jaw.db id=218).
+    const prompt = buildMediaPromptMany(['/tmp/a.png', '/tmp/b.png'], '봐줘');
+    assert.match(prompt, /이미지/);
+    assert.match(prompt, /직접 보고/);
+    assert.ok(prompt.includes('/tmp/a.png') && prompt.includes('/tmp/b.png'));
+    assert.match(prompt, /사용자 메시지: 봐줘/);
+});
+
+test('UP-007b: mixed kinds label every entry', () => {
+    const prompt = buildMediaPromptMany(['/tmp/a.png', '/tmp/b.pdf']);
+    assert.match(prompt, /1\. \[이미지\] \/tmp\/a\.png/);
+    assert.match(prompt, /2\. \[파일\] \/tmp\/b\.pdf/);
+    assert.match(prompt, /이미지는 직접 보고 분석/);
+});
+
+test('UP-007c: video-only multi prompt uses the video instruction', () => {
+    const prompt = buildMediaPromptMany(['/tmp/a.mp4', '/tmp/b.pdf']);
+    assert.match(prompt, /1\. \[동영상\] \/tmp\/a\.mp4/);
+    assert.match(prompt, /동영상 파일을 확인하고/);
+    assert.doesNotMatch(prompt, /직접 보고/);
 });
 
 test('UP-008: Telegram download limits match inbound media ceilings', () => {
