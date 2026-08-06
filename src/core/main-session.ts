@@ -80,8 +80,25 @@ export function buildClearedSessionRow(
     };
 }
 
-export function writeMainSessionRow(row: MainSessionRow): void {
+/**
+ * The `session` row is a single row for the whole instance, and the instance web owns
+ * what it holds (074). Callers that speak for the instance — a settings change, a CLI
+ * switch — write it unconditionally. Callers acting for one session pass false when
+ * that session is not the default one, so clearing a Slack thread cannot rewrite the
+ * CLI and model every other session reads.
+ *
+ * The decision is the caller's rather than this function's: it is also on the path of
+ * instance-wide writes, and refusing there would stop a second browser tab from
+ * updating the mirror after a legitimate change.
+ */
+export function writeMainSessionRow(row: MainSessionRow, ownsSingletonRow = true): void {
+    if (!ownsSingletonRow) return;
     updateSession.run(row.cli, row.sessionId, row.model, row.permissions, row.workingDir, row.effort);
+}
+
+/** True when the caller's session is the one that owns the shared row. */
+function currentSessionOwnsSingletonRow(): boolean {
+    return getActiveChatSession() === 'default';
 }
 
 export function syncMainSessionToSettings(prevCli: string | null = null): MainSessionRow {
@@ -95,23 +112,25 @@ export function syncMainSessionToSettings(prevCli: string | null = null): MainSe
 }
 
 // Atomic: delete messages + update session in one transaction
-const clearMainTx = db.transaction((row: MainSessionRow) => {
+const clearMainTx = db.transaction((row: MainSessionRow, ownsSingletonRow: boolean) => {
     if (row.workingDir && row.workingDir !== '~') {
         clearMessagesScoped.run(row.workingDir, getActiveChatSession());
     } else {
         clearMessages.run(getActiveChatSession());
     }
-    writeMainSessionRow(row);
+    writeMainSessionRow(row, ownsSingletonRow);
 });
 
 export function clearMainSessionState(): MainSessionRow {
     const session = getSession() as MainSessionRecord;
     const row = buildClearedSessionRow(settings, session);
+    // History is this session's to delete; the shared runtime selection is not.
+    const ownsSingletonRow = currentSessionOwnsSingletonRow();
     // Capture the session BEFORE the transaction so the notice names exactly the history
     // that was deleted. Without a scope on it, a scoped tab drops the event and keeps
     // showing messages that no longer exist — including the tab whose history this was.
     const clearedSessionId = getActiveChatSession();
-    clearMainTx(row);
+    clearMainTx(row, ownsSingletonRow);
     broadcast('clear', {
         scope: scopeForChatSession(clearedSessionId, getChatSessionRemoteKey(clearedSessionId) ?? undefined),
         sessionId: clearedSessionId,
@@ -131,7 +150,7 @@ export function clearBossSessionOnly(): MainSessionRow {
 export function resetSessionPreservingHistory(): MainSessionRow {
     const session = getSession() as MainSessionRecord;
     const row = buildClearedSessionRow(settings, session);
-    writeMainSessionRow(row);
+    writeMainSessionRow(row, currentSessionOwnsSingletonRow());
     const resetSessionId = getActiveChatSession();
     broadcast('session_reset', {
         cli: row.cli,

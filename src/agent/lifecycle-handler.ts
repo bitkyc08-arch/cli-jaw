@@ -700,6 +700,14 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             if (empSid && opts.agentId) {
                 clearEmployeeSession.run(opts.agentId);
                 console.log(`[jaw:session] invalidated stale employee resume — ${cli} agent=${opts.agentId}`);
+            } else if ((scopeKey || 'default') !== 'default') {
+                // The singleton session row belongs to the default scope (074 §2.3 G2).
+                // A remote session's dead resume must still drop its own bucket, or the
+                // next turn resumes a thread that no longer exists, but it does not get
+                // to rewrite the CLI and model every other session reads.
+                const bucket = runBucket;
+                if (bucket) clearSessionBucket.run(bucket);
+                console.log(`[jaw:session] invalidated stale resume — ${cli}/${bucket} bucket cleared (scope ${scopeKey})`);
             } else {
                 updateSession.run(cli, null, model, settings["permissions"], settings["workingDir"], effortVal);
                 const bucket = runBucket;
