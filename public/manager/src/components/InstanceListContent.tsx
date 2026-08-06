@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { EmptyNavigator } from './EmptyNavigator';
 import { InstanceGroups } from './InstanceGroups';
 import type {
@@ -24,6 +25,10 @@ type InstanceListContentProps = {
     showInlineLabelEditor: boolean;
     showSidebarRuntimeLine: boolean;
     showSelectedRowActions: boolean;
+    activeSessionCount?: number;
+    activeSessionsOpen?: boolean;
+    onToggleActiveSessions?: (port: number) => void;
+    renderActiveSessionList?: (port: number) => ReactNode;
     profiles: DashboardProfile[];
     getLabel: (instance: DashboardInstance) => string;
     formatUptime: (seconds: number | null) => string;
@@ -65,6 +70,10 @@ export function InstanceListContent(props: InstanceListContentProps) {
                     showInlineLabelEditor={props.showInlineLabelEditor}
                     showSidebarRuntimeLine={props.showSidebarRuntimeLine}
                     showSelectedRowActions={props.showSelectedRowActions}
+                    {...(props.activeSessionCount !== undefined ? { activeSessionCount: props.activeSessionCount } : {})}
+                    {...(props.activeSessionsOpen !== undefined ? { activeSessionsOpen: props.activeSessionsOpen } : {})}
+                    {...(props.onToggleActiveSessions ? { onToggleActiveSessions: props.onToggleActiveSessions } : {})}
+                    {...(props.renderActiveSessionList ? { renderActiveSessionList: props.renderActiveSessionList } : {})}
                     profiles={props.profiles}
                     getLabel={props.getLabel}
                     formatUptime={props.formatUptime}

@@ -302,6 +302,82 @@ h2 { font-size: 13px; }
 .quick-btn.action-open { text-decoration: none; color: var(--text-secondary); }
 .quick-btn.action-open:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle)); }
 .quick-btn:disabled, .quick-btn.is-disabled { opacity: 0.35; pointer-events: none; }
+.quick-btn.action-sessions[aria-expanded="true"] {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+}
+
+/* ─── Active-row session disclosure (devlog 260806 D2) ─── */
+.instance-session-list {
+    display: grid;
+    gap: 2px;
+    margin: -2px 0 8px;
+    padding: 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--row-bg);
+    animation: session-list-in 0.12s ease;
+}
+@keyframes session-list-in {
+    from { opacity: 0; transform: translateY(-2px); }
+    to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .instance-session-list { animation: none; }
+}
+.instance-session-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.instance-session-row:hover:not(:disabled) { background: var(--row-bg-hover); color: var(--text-primary); }
+.instance-session-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.instance-session-row:disabled { cursor: default; opacity: 0.6; }
+.instance-session-row.is-active {
+    color: var(--text-primary);
+    box-shadow: inset 3px 0 0 var(--accent);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.instance-session-title {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.session-source-badge {
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    font-size: 10px;
+    color: var(--text-tertiary, var(--text-secondary));
+    text-transform: lowercase;
+}
+.instance-session-meta {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-tertiary, var(--text-secondary));
+    font-variant-numeric: tabular-nums;
+}
+.instance-session-error, .instance-session-empty {
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.instance-session-error { color: var(--status-error); }
 .instance-row-title { min-width: 0; display: grid; gap: 3px; }
 .instance-row-title-line {
     min-width: 0;

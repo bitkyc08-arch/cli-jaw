@@ -3,6 +3,7 @@ import { fetchInstances, fetchInstanceStatus, runLifecycleAction } from './api';
 import { pollUntilSettled } from './lifecycle-poll';
 import { InstanceDetailPanel } from './components/InstanceDetailPanel';
 import { InstanceListContent } from './components/InstanceListContent';
+import { InstanceSessionList, fetchChatSessions } from './components/InstanceSessionList';
 import { ProfileChip } from './components/ProfileChip';
 import { AppChrome } from './AppChrome';
 import { type HelpTopicId } from './help/helpContent';
@@ -128,6 +129,22 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
     usePreviewSttLifecycle(jawCeoBridge.voice);
     usePreviewShortcutMessages({ enabled: view.dashboardShortcutsEnabled, keymap: view.dashboardShortcutKeymap, onAction: runManagerShortcut });
     const activePreviewPort = view.activeDetailTab === 'preview' && view.sidebarMode === 'instances' ? (selectedInstance?.port ?? null) : null;
+    // Session disclosure on the Active row (devlog 260806 D2): count fetched
+    // once per selected instance to decide chevron visibility; the list itself
+    // is fetched lazily by InstanceSessionList only while open.
+    const [activeSessionCount, setActiveSessionCount] = useState(0);
+    const [sessionsOpen, setSessionsOpen] = useState(false);
+    const activeSessionPort = selectedInstance?.ok ? selectedInstance.port : null;
+    useEffect(() => {
+        setSessionsOpen(false);
+        setActiveSessionCount(0);
+        if (activeSessionPort == null) return;
+        let cancelled = false;
+        fetchChatSessions(activeSessionPort)
+            .then(result => { if (!cancelled) setActiveSessionCount(result.sessions.length); })
+            .catch(() => { /* offline or pre-session build: chevron simply stays hidden */ });
+        return () => { cancelled = true; };
+    }, [activeSessionPort]);
     const activityEvents = useMemo(() => {
         return [...managerEvents.events, ...messageActivity.events];
     }, [managerEvents.events, messageActivity.events]);
@@ -259,6 +276,20 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         if (!canLeaveDirtySettings()) return;
         setSettingsDirty(false); activityUnread.markPortSeen(instance.port); view.setSelectedPort(instance.port); view.setDrawerOpen(false);
         void saveUi({ selectedPort: instance.port });
+    }
+    // Row-click-only select (devlog 260806 D3): re-clicking the already
+    // selected (Active) row routes to the instance Settings tab. Kept out of
+    // handleSelectInstance so CommandPalette / keyboard cycling keep their
+    // meaning (audit High#1). Destination IS settings, so the dirty guard is
+    // bypassed and settingsDirty survives, mirroring handleTabChange's
+    // to-settings exemption (audit Med#3).
+    function handleRowSelectInstance(instance: DashboardInstance): void {
+        if (view.selectedPort === instance.port) {
+            view.setActiveDetailTab('settings');
+            void saveUi({ selectedPort: instance.port, selectedTab: 'settings' });
+            return;
+        }
+        handleSelectInstance(instance);
     }
 
     function handleTabChange(tab: DashboardDetailTab): void {
@@ -476,7 +507,10 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             busyPorts={messageActivity.busyPorts} showLatestActivityTitles={view.showLatestActivityTitles}
             showInlineLabelEditor={view.showInlineLabelEditor} showSidebarRuntimeLine={view.showSidebarRuntimeLine}
             showSelectedRowActions={view.showSelectedRowActions} profiles={profiles} getLabel={instanceLabel}
-            formatUptime={formatUptime} onSelect={handleSelectInstance} onPreview={handlePreview}
+            activeSessionCount={activeSessionCount} activeSessionsOpen={sessionsOpen}
+            onToggleActiveSessions={() => setSessionsOpen(open => !open)}
+            renderActiveSessionList={(port) => <InstanceSessionList port={port} open={sessionsOpen} />}
+            formatUptime={formatUptime} onSelect={handleRowSelectInstance} onPreview={handlePreview}
             onMarkActivitySeen={activityUnread.markPortSeen} onInstanceLabelSave={labelEditor.saveInstanceLabel}
             onLifecycle={(action, instance) => void handleLifecycle(action, instance)} />
     );

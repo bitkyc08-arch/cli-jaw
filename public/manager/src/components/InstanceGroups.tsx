@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { InstanceRow } from './InstanceRow';
 import type {
     DashboardInstance,
@@ -20,6 +21,11 @@ type InstanceGroupsProps = {
     showInlineLabelEditor?: boolean;
     showSidebarRuntimeLine?: boolean;
     showSelectedRowActions?: boolean;
+    /** Session disclosure for the Active row (devlog 260806 D2). */
+    activeSessionCount?: number;
+    activeSessionsOpen?: boolean;
+    onToggleActiveSessions?: (port: number) => void;
+    renderActiveSessionList?: (port: number) => ReactNode;
     getLabel: (instance: DashboardInstance) => string;
     formatUptime: (seconds: number | null) => string;
     onSelect: (instance: DashboardInstance) => void;
@@ -91,6 +97,9 @@ function renderInstanceRow(
             {...(props.showInlineLabelEditor !== undefined ? { showInlineLabelEditor: props.showInlineLabelEditor } : {})}
             {...(props.showSidebarRuntimeLine !== undefined ? { showRuntimeLine: props.showSidebarRuntimeLine } : {})}
             {...(props.showSelectedRowActions !== undefined ? { showSelectedActions: props.showSelectedRowActions } : {})}
+            {...(priority === 'active' && props.activeSessionCount !== undefined ? { sessionCount: props.activeSessionCount } : {})}
+            {...(priority === 'active' && props.activeSessionsOpen !== undefined ? { sessionsOpen: props.activeSessionsOpen } : {})}
+            {...(priority === 'active' && props.onToggleActiveSessions ? { onToggleSessions: props.onToggleActiveSessions } : {})}
             priority={priority}
             label={props.getLabel(instance)}
             uptime={props.formatUptime(instance.uptime)}
@@ -120,6 +129,7 @@ function renderRows(
                 instance.profileId ? profileMap.get(instance.profileId) : undefined,
                 group.id === 'active' ? 'active' : 'normal',
             ))}
+            {group.id === 'active' && group.instances[0] ? props.renderActiveSessionList?.(group.instances[0].port) : null}
         </section>
     ));
 }

@@ -19,6 +19,10 @@ type InstanceRowProps = {
     showInlineLabelEditor?: boolean;
     showRuntimeLine?: boolean;
     showSelectedActions?: boolean;
+    /** Session disclosure (Active row only; devlog 260806 D2). */
+    sessionCount?: number;
+    sessionsOpen?: boolean;
+    onToggleSessions?: (port: number) => void;
     onSelect: (instance: DashboardInstance) => void;
     onPreview: (instance: DashboardInstance) => void;
     onMarkActivitySeen: (port: number) => void;
@@ -49,6 +53,13 @@ const OpenIcon = () => (
         <path d="M6.5 3.5H4a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1V9.5" />
         <path d="M9.5 2.5h4v4" />
         <path d="M13.5 2.5 8 8" />
+    </svg>
+);
+
+const ChevronIcon = ({ open }: { open: boolean }) => (
+    <svg viewBox="0 0 16 16" width="12" height="12" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+        style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.12s' }}>
+        <path d="M3.5 6l4.5 4.5L12.5 6" />
     </svg>
 );
 
@@ -106,6 +117,25 @@ export function InstanceRow(props: InstanceRowProps) {
                         {transitionLabel && <span><em className="instance-row-transition">{transitionLabel}</em></span>}
                     </div>
                     <div className="instance-row-quick" onClick={stopAction}>
+                        {props.priority === 'active' && (props.sessionCount ?? 0) >= 2 && props.onToggleSessions ? (
+                            // Same nested-interactive debt as the stop/open
+                            // controls beside it (audit Med#2): aria-expanded +
+                            // label only, no aria-controls, restructure tracked
+                            // as a follow-up unit.
+                            <button
+                                type="button"
+                                className="quick-btn action-sessions"
+                                aria-expanded={props.sessionsOpen === true}
+                                aria-label={`Sessions (${props.sessionCount})`}
+                                title={`Sessions (${props.sessionCount})`}
+                                onClick={(event) => {
+                                    stopAction(event);
+                                    props.onToggleSessions?.(props.instance.port);
+                                }}
+                            >
+                                <ChevronIcon open={props.sessionsOpen === true} />
+                            </button>
+                        ) : null}
                         <button
                             type="button"
                             className="quick-btn action-stop"
@@ -140,10 +170,10 @@ export function InstanceRow(props: InstanceRowProps) {
                     </div>
                 </div>
                 <div className="instance-row-meta">
-                    {props.showLatestActivityTitle !== false && props.latestActivityTitle && <span className="instance-row-activity-title">{props.latestActivityTitle}</span>}
+                    {props.priority !== 'active' && props.showLatestActivityTitle !== false && props.latestActivityTitle && <span className="instance-row-activity-title">{props.latestActivityTitle}</span>}
                     {props.showRuntimeLine !== false && <span className="instance-row-runtime">{props.instance.currentCli || 'cli n/a'} / {props.instance.currentModel || 'model n/a'}</span>}
-                    <span className="instance-row-version">v{props.instance.version || 'n/a'} · {props.uptime}</span>
-                    <span className="instance-row-reason">{new Date(props.instance.lastCheckedAt).toLocaleTimeString()} · {reason}</span>
+                    {props.priority !== 'active' && <span className="instance-row-version">v{props.instance.version || 'n/a'} · {props.uptime}</span>}
+                    {props.priority !== 'active' && <span className="instance-row-reason">{new Date(props.instance.lastCheckedAt).toLocaleTimeString()} · {reason}</span>}
                 </div>
             </button>
             {props.showInlineLabelEditor !== false && editing ? (
