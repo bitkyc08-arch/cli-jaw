@@ -86,7 +86,7 @@ import {
     type AgyBootstrapEnvelope,
 } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
-import { appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
+import { appendAssistantRawText, appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import {
     captureKiroSessionIdAfterExit,
     finalizeKiroFullText,
@@ -2115,7 +2115,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
     if (parsed.text) {
                 flushCodexAppThinking();
-                const segment = appendAssistantTextSegment(ctx, parsed.text);
+                // codex-app streams item/agentMessage/delta at TOKEN granularity;
+                // the segment formatter would inject "\n- " between unjoined
+                // tokens ("이"+"지만" → "이\n- 지만"). Raw-append like the plain
+                // `claude` text_delta path (events/index.ts) instead.
+                const segment = appendAssistantRawText(ctx, parsed.text);
                 if (segment) {
                     broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
                     lastVisibleBroadcastTs = Date.now();
