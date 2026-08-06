@@ -7,6 +7,7 @@ import {
     MANAGED_INSTANCE_PORT_COUNT,
     MANAGED_INSTANCE_PORT_FROM,
 } from './constants.js';
+import { internalFetch } from './internal-fetch.js';
 import { deriveDashboardInstanceId, normalizeSettingsMetadata } from './metadata.js';
 import { deriveProfiles } from './profiles.js';
 import {
@@ -116,7 +117,7 @@ export async function scanPort(port: number, fetchImpl: FetchLike, timeoutMs: nu
 export async function scanSinglePort(port: number, options: DashboardScanOptions = {}): Promise<DashboardInstance> {
     const checkedAt = new Date().toISOString();
     const timeoutMs = parsePositivePort(options.timeoutMs, DASHBOARD_SCAN_TIMEOUT_MS);
-    const fetchImpl = options.fetchImpl || fetch;
+    const fetchImpl = options.fetchImpl || internalFetch;
     return scanPort(port, fetchImpl, timeoutMs, checkedAt);
 }
 
@@ -124,7 +125,7 @@ export async function scanDashboardInstances(options: DashboardScanOptions = {})
     const { from, count, to } = scanRange(options);
     const checkedAt = new Date().toISOString();
     const timeoutMs = parsePositivePort(options.timeoutMs, DASHBOARD_SCAN_TIMEOUT_MS);
-    const fetchImpl = options.fetchImpl || fetch;
+    const fetchImpl = options.fetchImpl || internalFetch;
     const managerPort = parsePositivePort(options.managerPort, Number(DASHBOARD_DEFAULT_PORT));
     assertRangeDoesNotContainPort(toPortRange(from, count), managerPort, 'scan range');
     const ports = Array.from({ length: count }, (_, index) => from + index);
@@ -155,7 +156,7 @@ export async function scanDashboardInstances(options: DashboardScanOptions = {})
 export async function scanPeerDashboards(managerPort: number, options: { fetchImpl?: FetchLike; timeoutMs?: number } = {}): Promise<DashboardInstance[]> {
     const checkedAt = new Date().toISOString();
     const timeoutMs = options.timeoutMs || DASHBOARD_SCAN_TIMEOUT_MS;
-    const fetchImpl = options.fetchImpl || fetch;
+    const fetchImpl = options.fetchImpl || internalFetch;
     const dashDefault = Number(DASHBOARD_DEFAULT_PORT);
     const ports = [dashDefault];
     for (let p = DASHBOARD_FALLBACK_PORT_START; p <= DASHBOARD_FALLBACK_PORT_END; p++) {

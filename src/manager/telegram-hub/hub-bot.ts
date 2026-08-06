@@ -15,6 +15,7 @@ import { downloadTelegramFile, buildMediaPrompt, TELEGRAM_DOWNLOAD_LIMITS } from
 import { saveUpload } from '../../agent/spawn.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../../messaging/redact.js';
 import { sendWithRetryPolicy } from '../../messaging/retry.js';
+import { internalFetch } from '../internal-fetch.js';
 
 let hubBot: Bot | null = null;
 let hubToken: string | null = null;
@@ -208,7 +209,7 @@ export async function reconcileHubBotWithConfig(): Promise<void> {
 /** Quick health check: returns true if the instance responds to /api/dashboard/health. */
 export async function isInstanceAlive(port: number): Promise<boolean> {
     try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/dashboard/health`, {
+        const res = await internalFetch(`http://127.0.0.1:${port}/api/dashboard/health`, {
             signal: AbortSignal.timeout(2_000),
         });
         return res.ok;
@@ -220,7 +221,7 @@ export async function isInstanceAlive(port: number): Promise<boolean> {
 async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, peerKind: 'group' | 'direct', overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
     const target = { channel: 'telegram', targetKind: 'channel', peerKind, targetId: chatId, threadId };
     try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/message`, {
+        const res = await internalFetch(`http://127.0.0.1:${port}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(stripUndefined({ prompt, target, overrides })),
@@ -399,7 +400,7 @@ export function createHubBot(token: string): Bot {
         // Forward callback data to the instance for elicitation processing.
         const data = ctx.callbackQuery.data ?? '';
         try {
-            const res = await fetch(`http://127.0.0.1:${route.port}/api/elicitation/callback`, {
+            const res = await internalFetch(`http://127.0.0.1:${route.port}/api/elicitation/callback`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({

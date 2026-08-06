@@ -10,6 +10,7 @@
  */
 
 import { MANAGED_INSTANCE_HOST, DASHBOARD_SCAN_TIMEOUT_MS } from './constants.js';
+import { internalFetch } from './internal-fetch.js';
 import type { FetchLike } from './types.js';
 
 export type InstanceLogLevel = 'info' | 'warn' | 'error';
@@ -79,7 +80,7 @@ function pickLinesArray(payload: unknown): unknown[] | null {
 }
 
 export async function fetchInstanceLogs(port: number, options: InstanceLogOptions = {}): Promise<InstanceLogSnapshot> {
-    const fetchImpl = options.fetchImpl || fetch;
+    const fetchImpl = options.fetchImpl || internalFetch;
     const timeoutMs = options.timeoutMs && options.timeoutMs > 0
         ? options.timeoutMs
         : DASHBOARD_SCAN_TIMEOUT_MS;

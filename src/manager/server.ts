@@ -28,6 +28,7 @@ import {
 import { createHealthHistory, type HealthEvent } from './health-history.js';
 import { createObservability } from './observability.js';
 import { fetchInstanceLogs } from './logs.js';
+import { internalFetch } from './internal-fetch.js';
 import {
     createDashboardNotesRouter,
 } from './notes/routes.js';
@@ -400,7 +401,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         if (cached !== undefined) {
             data = cached;
         } else {
-            const response = await fetch(`http://127.0.0.1:${targetPort}/api/messages/latest?includeContent=1`);
+            const response = await internalFetch(`http://127.0.0.1:${targetPort}/api/messages/latest?includeContent=1`);
             if (!response.ok) return null;
             const body = await response.json() as { ok?: boolean; data?: WorkerLatestData };
             data = body.data ?? null;
@@ -409,7 +410,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         const latestId = latest?.id ? Number(latest.id) : null;
         const directText = latest && typeof latest.text === 'string' ? latest.text : String(latest?.content || '');
         const fallbackText = latestId && !directText.trim()
-            ? await fetchWorkerAssistantTextById(fetch, targetPort, latestId).catch(() => '')
+            ? await fetchWorkerAssistantTextById(internalFetch, targetPort, latestId).catch(() => '')
             : '';
         return {
             latestAssistant: latest && latestId ? {
@@ -427,7 +428,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         };
     },
     sendWorkerMessage: async ({ port: targetPort, prompt }) => {
-        const response = await fetch(`http://127.0.0.1:${targetPort}/api/message`, {
+        const response = await internalFetch(`http://127.0.0.1:${targetPort}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             // external: relayed from the manager, not the worker's own chat
@@ -606,7 +607,7 @@ app.post('/api/dashboard/instances/:port/message', async (req, res) => {
         return;
     }
     try {
-        const response = await fetch(`http://127.0.0.1:${portValue}/api/message`, {
+        const response = await internalFetch(`http://127.0.0.1:${portValue}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             // external: dashboard relay — see sendWorkerMessage above.
@@ -629,7 +630,7 @@ app.post('/api/dashboard/instances/:port/project/pick', async (req, res) => {
         return;
     }
     try {
-        const response = await fetch(`http://127.0.0.1:${portValue}/api/project/pick`, {
+        const response = await internalFetch(`http://127.0.0.1:${portValue}/api/project/pick`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: '{}',

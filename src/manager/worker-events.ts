@@ -10,6 +10,7 @@
 // the stream is live. Cache misses fall back to the caller's HTTP path.
 
 import { subscribe as subscribeBus, publish } from '../core/event-bus.js';
+import { internalFetch } from './internal-fetch.js';
 import {
     subscribeToWorker,
     type EventSourceCtor,
@@ -138,7 +139,7 @@ export function startWorkerEventBridge(deps: WorkerEventBridgeDeps = {}): void {
     if (state) return;
     const s: BridgeState = {
         deps: {
-            fetchImpl: deps.fetchImpl ?? (fetch as unknown as MinimalFetch),
+            fetchImpl: deps.fetchImpl ?? internalFetch,
             debounceMs: deps.debounceMs ?? PREFETCH_DEBOUNCE_MS,
             ...(deps.EventSourceImpl ? { EventSourceImpl: deps.EventSourceImpl } : {}),
         },
