@@ -13,6 +13,7 @@
 // wrongly marked session-owned disappears.
 
 import type { BusEvent } from './event-bus.js';
+import { DELIVERY_KEY_GLOBAL, DELIVERY_KEY_NONE, isPublicSseTopic } from './event-bus.js';
 
 // Instance-wide events. Every tab needs these regardless of which session's async
 // context happened to publish them.
@@ -76,4 +77,27 @@ export function shouldDeliverToScope(entry: BusEvent, scopeFilter: string | unde
     }
     if (isInstanceWideEvent(entry.event)) return true;
     return entry.data["scope"] === scopeFilter;
+}
+
+/**
+ * The delivery class of an event, for the replay-gap watermarks in the bus.
+ *
+ * It answers the same questions as delivery, in the same order, because a gap check that
+ * classified events differently from the filter would report losses that never happened
+ * and miss ones that did. The route drops non-public topics before it looks at scope, so
+ * that comes first here too: an event no subscriber can see costs nobody anything when it
+ * ages out.
+ */
+export function deliveryKeyForEntry(entry: BusEvent): string {
+    if (!isPublicSseTopic(entry.topic)) return DELIVERY_KEY_NONE;
+    if (entry.event === 'system_notice') {
+        // A compact suggestion belongs to the session that raised it; every other notice
+        // is for the whole instance.
+        return isSessionOwnedNotice(entry.data)
+            ? String(entry.data["scope"])
+            : DELIVERY_KEY_GLOBAL;
+    }
+    if (isInstanceWideEvent(entry.event)) return DELIVERY_KEY_GLOBAL;
+    const scope = entry.data["scope"];
+    return typeof scope === 'string' && scope ? scope : DELIVERY_KEY_GLOBAL;
 }

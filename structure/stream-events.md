@@ -55,6 +55,15 @@ SSE behavior:
 | Listener cap | `MAX_SSE_LISTENERS = 256`, overflow returns `503 { error: "SSE_CAPACITY" }` |
 | Heartbeat | `data: {"topic":"system","event":"ping"}` every 15 seconds; no `id`, so it does not advance replay cursors |
 | Replay gap | `data: {"topic":"system","event":"replay_gap"}` |
+
+> Replay gap은 **evict된 것으로만** 판정한다 (075). ring은 모든 scope가 공유하므로 남아 있는
+> entry의 id 간격은 다른 scope의 번호일 뿐 증거가 아니다. bus는 evict마다 delivery class별
+> 워터마크(`NONE`은 기록 안 함 / `GLOBAL` / `<scope>` / 전체용 `ALL`)를 갱신하고,
+> `hasReplayGap(lastId, scopeFilter?)`이 그것만 본다. 분류는 `deliveryKeyForEntry`
+> (`src/core/event-scope.ts`)가 delivery 규칙과 같은 순서로 정하며,
+> `registerEventsRoutes()` 진입부에서 bus에 주입된다 — core와 manager 양쪽이 그 함수를 부른다.
+> 워터마크는 지우지 않는다: 오래된 커서로 재접속하는 탭이 언제든 있고, 항목 하나를 버리는 비용이
+> gap을 놓치는 비용보다 크다.
 | Client fallback | `public/js/event-channel.ts` fires unavailable once when SSE errors before first open, then `public/js/ws.ts` uses legacy WebSocket fallback |
 | Transient drop UX | `public/js/ws.ts` waits `CHANNEL_DOWN_TOAST_GRACE_MS = 8000` before showing a disconnected system message; fast SSE reconnects stay silent |
 

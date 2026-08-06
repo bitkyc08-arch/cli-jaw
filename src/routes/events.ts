@@ -5,9 +5,9 @@
 import type { Router, Request, Response, RequestHandler } from 'express';
 import {
     subscribe, replaySince, hasReplayGap, currentSeq,
-    MAX_SSE_LISTENERS, isPublicSseTopic, type BusEvent,
+    MAX_SSE_LISTENERS, isPublicSseTopic, setDeliveryKeyResolver, type BusEvent,
 } from '../core/event-bus.js';
-import { shouldDeliverToScope } from '../core/event-scope.js';
+import { deliveryKeyForEntry, shouldDeliverToScope } from '../core/event-scope.js';
 
 const HEARTBEAT_MS = 15_000;
 let activeConnections = 0;
@@ -52,6 +52,10 @@ function parseLastEventId(req: Request): number {
 }
 
 export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): void {
+    // Both the core server and the manager call this, so every process that serves SSE
+    // teaches the bus how deliveries are classified before it can evict anything.
+    setDeliveryKeyResolver(deliveryKeyForEntry);
+
     app.get('/api/events', requireAuth, (req: Request, res: Response) => {
         const scopeFilter = typeof req.query['scope'] === 'string' ? req.query['scope'] : undefined;
         if (activeConnections >= MAX_SSE_LISTENERS) {
@@ -78,7 +82,7 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
         // manager_stream_hidden_state_audit 07 F-W2).
         const lastId = parseLastEventId(req);
         if (lastId > 0) {
-            if (lastId > currentSeq() || hasReplayGap(lastId)) {
+            if (lastId > currentSeq() || hasReplayGap(lastId, scopeFilter)) {
                 replayGapCount++;
                 res.write(`data: ${JSON.stringify({ topic: 'system', event: 'replay_gap' })}\n\n`);
             }
