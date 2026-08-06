@@ -332,14 +332,16 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 | Telegram/Discord 허용 패치 | 설명 |
 | --- | --- |
 | `{ fallbackOrder: [...] }` | fallback order 변경 |
-| `{ cli: '...' }` | active CLI 변경 |
-| `{ perCli: { ... } }` | per-CLI model/effort patch |
 | `{ memory: { ... } }` | memory 설정 patch |
 | `{ telegram: { ... } }` | Telegram channel setting patch |
 | `{ discord: { ... } }` | Discord channel setting patch |
 
-- `telegram` / `discord` 인터페이스는 위 whitelist만 허용한다
-- 허용되지 않은 패치는 `tg.settingsUnsupported` 또는 `dc.settingsUnsupported`로 거절된다
+- `telegram` / `discord` / `slack` 인터페이스는 위 whitelist만 허용한다
+- 허용되지 않은 패치는 `tg.` / `dc.` / `sl.settingsUnsupported`로 거절된다
+- **런타임 선택(`cli`, `perCli`, `activeOverrides`)은 원격에서 변경할 수 없다** (devlog 074).
+  한 인스턴스의 모든 세션이 하나의 CLI·모델을 공유하므로, 원격 채널에서 바꾸면 인스턴스 웹과
+  다른 모든 세션의 선택이 함께 움직인다. 소유자는 인스턴스 웹(`PUT /api/settings`)이고,
+  거절 문구 `cmd.runtimeSelectionInstanceWide`가 어디서 바꿔야 하는지 안내한다
 - 실제 merge는 `core/settings-merge.ts` + `core/runtime-settings.ts`가 담당한다
 
 ---
