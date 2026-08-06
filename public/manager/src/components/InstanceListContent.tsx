@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { EmptyNavigator } from './EmptyNavigator';
 import { InstanceGroups } from './InstanceGroups';
+import { InstanceSessionList } from './InstanceSessionList';
+import { useActiveSessionDisclosure } from '../hooks/useActiveSessionDisclosure';
 import type {
     DashboardInstance,
     DashboardLifecycleAction,
@@ -25,10 +27,9 @@ type InstanceListContentProps = {
     showInlineLabelEditor: boolean;
     showSidebarRuntimeLine: boolean;
     showSelectedRowActions: boolean;
-    activeSessionCount?: number;
-    activeSessionsOpen?: boolean;
-    onToggleActiveSessions?: (port: number) => void;
-    renderActiveSessionList?: (port: number) => ReactNode;
+    /** Re-clicking the already selected (Active) row routes here instead of
+     *  onSelect — palette/keyboard selection keeps its meaning (260806 D3). */
+    onRouteToSettings?: (port: number) => void;
     profiles: DashboardProfile[];
     getLabel: (instance: DashboardInstance) => string;
     formatUptime: (seconds: number | null) => string;
@@ -40,11 +41,24 @@ type InstanceListContentProps = {
 };
 
 export function InstanceListContent(props: InstanceListContentProps) {
+    // Session disclosure state lives with the list it decorates (260806 D2);
+    // App.tsx stays inside its 500-line dashboard budget.
+    const { activeSessionCount, sessionsOpen, setSessionsOpen } =
+        useActiveSessionDisclosure(props.selectedInstance?.ok ? props.selectedInstance.port : null);
     const showEmpty = !props.error && !props.loading && props.instances.length === 0
         && !props.instances.some(instance => instance.hidden);
     const visibleInstances = props.selectedInstance && !props.filtered.some(instance => instance.port === props.selectedInstance?.port)
         ? [props.selectedInstance, ...props.filtered]
         : props.filtered;
+    const handleSelect = (instance: DashboardInstance): void => {
+        if (props.onRouteToSettings && props.selectedInstance?.port === instance.port) {
+            props.onRouteToSettings(instance.port);
+            return;
+        }
+        props.onSelect(instance);
+    };
+    const renderActiveSessionList = (port: number): ReactNode =>
+        <InstanceSessionList port={port} open={sessionsOpen} />;
 
     return (
         <>
@@ -70,14 +84,14 @@ export function InstanceListContent(props: InstanceListContentProps) {
                     showInlineLabelEditor={props.showInlineLabelEditor}
                     showSidebarRuntimeLine={props.showSidebarRuntimeLine}
                     showSelectedRowActions={props.showSelectedRowActions}
-                    {...(props.activeSessionCount !== undefined ? { activeSessionCount: props.activeSessionCount } : {})}
-                    {...(props.activeSessionsOpen !== undefined ? { activeSessionsOpen: props.activeSessionsOpen } : {})}
-                    {...(props.onToggleActiveSessions ? { onToggleActiveSessions: props.onToggleActiveSessions } : {})}
-                    {...(props.renderActiveSessionList ? { renderActiveSessionList: props.renderActiveSessionList } : {})}
+                    activeSessionCount={activeSessionCount}
+                    activeSessionsOpen={sessionsOpen}
+                    onToggleActiveSessions={() => setSessionsOpen(open => !open)}
+                    renderActiveSessionList={renderActiveSessionList}
                     profiles={props.profiles}
                     getLabel={props.getLabel}
                     formatUptime={props.formatUptime}
-                    onSelect={props.onSelect}
+                    onSelect={handleSelect}
                     onPreview={props.onPreview}
                     onMarkActivitySeen={props.onMarkActivitySeen}
                     onInstanceLabelSave={props.onInstanceLabelSave}

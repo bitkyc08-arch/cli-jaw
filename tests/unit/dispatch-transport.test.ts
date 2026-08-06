@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dispatchSrc = readFileSync(join(__dirname, '../../bin/commands/dispatch.ts'), 'utf8');
 const serverSrc = readFileSync(join(__dirname, '../../server.ts'), 'utf8');
+const rateLimitSrc = readFileSync(join(__dirname, '../../src/core/rate-limit.ts'), 'utf8');
 const pipelineSrc = readFileSync(join(__dirname, '../../src/orchestrator/pipeline.ts'), 'utf8');
 const replayNoticeSrc = readFileSync(join(__dirname, '../../src/orchestrator/worker-replay-notice.ts'), 'utf8');
 const configSrc = readFileSync(join(__dirname, '../../src/core/config.ts'), 'utf8');
@@ -36,11 +37,13 @@ test('DTH-002: poll fetches retry transient failures before DispatchPollError', 
 test('DTH-003: server keep-alive outlives pollers and worker polls skip the rate limiter', () => {
     assert.ok(serverSrc.includes('server.keepAliveTimeout = 65_000'), 'keepAlive must exceed poll intervals');
     assert.ok(serverSrc.includes('server.headersTimeout = 66_000'), 'headersTimeout must exceed keepAliveTimeout');
-    assert.ok(serverSrc.includes("req.path.startsWith('/api/orchestrate/worker/')"),
+    // The exemptions moved into the extracted limiter factory (260806 rate-limit
+    // hardening); behavioral proof lives in tests/unit/rate-limit-http.test.ts.
+    assert.ok(rateLimitSrc.includes('/api/orchestrate/worker/'),
         'bounded 2s dispatch polling must not consume the shared localhost bucket');
-    assert.ok(serverSrc.includes("req.path.startsWith('/api/orchestrate/worker-progress')"),
+    assert.ok(rateLimitSrc.includes('/api/orchestrate/worker-progress'),
         'progress polls share the exemption');
-    assert.ok(!serverSrc.includes("req.path.startsWith('/api/orchestrate/worker')) return next()"),
+    assert.ok(!rateLimitSrc.includes("startsWith('/api/orchestrate/worker')"),
         'the workers LIST endpoint must stay rate-limited (review #3)');
 });
 
