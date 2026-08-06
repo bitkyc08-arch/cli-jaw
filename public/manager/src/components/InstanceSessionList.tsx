@@ -1,43 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { MouseEvent } from 'react';
+import {
+    getSessionSnapshot,
+    loadSessions,
+    retrySessions,
+    subscribeSessions,
+    switchSession,
+} from '../lib/session-store';
+import type { ChatSessionSummary } from '../lib/session-store';
+
+export type { ChatSessionSummary } from '../lib/session-store';
 
 // Inline session disclosure under the Active instance row (devlog
 // 260806_manager_active_session_disclosure). Lazy: fetches only while open.
 // Fields other than id/seq/label/message_count are absent when the instance
 // runs with multiSession off, so everything renders with fallbacks.
-export type ChatSessionSummary = {
-    id: string;
-    seq: number;
-    label: string | null;
-    remoteKey?: string | null;
-    source?: string;
-    message_count: number;
-    lastActivityAt?: string | null;
-};
-
-type SessionsPayload = { sessions?: ChatSessionSummary[]; active?: string };
-
-export async function fetchChatSessions(port: number): Promise<{ sessions: ChatSessionSummary[]; activeId: string | null }> {
-    const res = await fetch(`/i/${port}/api/chat-sessions`);
-    if (!res.ok) throw new Error(`sessions fetch failed: ${res.status}`);
-    const body = await res.json() as { ok?: boolean; data?: SessionsPayload };
-    const data = body.data || {};
-    return {
-        sessions: Array.isArray(data.sessions) ? data.sessions : [],
-        // `active` is always the active session ID string ('default' fallback);
-        // per-row highlight is computed as session.id === activeId.
-        activeId: typeof data.active === 'string' ? data.active : null,
-    };
-}
-
-export async function switchChatSession(port: number, seq: number): Promise<void> {
-    const res = await fetch(`/i/${port}/api/chat-sessions/${seq}/switch`, { method: 'POST' });
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error || `switch failed: ${res.status}`);
-    }
-}
-
 /** "jaw:slack:channel:C0BM..:thread:1785.." → "slack C0BM.. · thread" */
 function summarizeRemoteKey(remoteKey: string): string {
     const parts = remoteKey.split(':');
@@ -75,48 +52,55 @@ type InstanceSessionListProps = {
 };
 
 export function InstanceSessionList(props: InstanceSessionListProps) {
-    const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
-    const [activeId, setActiveId] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [switching, setSwitching] = useState<number | null>(null);
+    const subscribe = useCallback(
+        (callback: () => void) => subscribeSessions(props.port, callback),
+        [props.port],
+    );
+    const snapshot = useSyncExternalStore(subscribe, () => getSessionSnapshot(props.port));
 
     useEffect(() => {
         if (!props.open) return;
-        let cancelled = false;
-        fetchChatSessions(props.port)
-            .then(result => {
-                if (cancelled) return;
-                setSessions(result.sessions);
-                setActiveId(result.activeId);
-                setError(null);
-            })
-            .catch(err => { if (!cancelled) setError((err as Error).message); });
-        return () => { cancelled = true; };
+        void loadSessions(props.port).catch(() => { /* snapshot exposes the error */ });
     }, [props.open, props.port]);
 
     if (!props.open) return null;
 
     async function handleSwitch(event: MouseEvent, session: ChatSessionSummary): Promise<void> {
         event.stopPropagation();
-        if (session.id === activeId || switching != null) return;
-        setSwitching(session.seq);
-        setError(null);
+        if (session.id === snapshot.data?.activeId || snapshot.switching) return;
         try {
-            await switchChatSession(props.port, session.seq);
-            const result = await fetchChatSessions(props.port);
-            setSessions(result.sessions);
-            setActiveId(result.activeId);
+            await switchSession(props.port, session.seq);
             props.onSessionSwitched?.();
-        } catch (err) {
-            setError((err as Error).message);
-        } finally {
-            setSwitching(null);
-        }
+        } catch { /* snapshot exposes the error */ }
     }
+
+    const retry = (event: MouseEvent): void => {
+        event.stopPropagation();
+        void retrySessions(props.port).catch(() => { /* snapshot exposes the error */ });
+    };
+
+    if (snapshot.error?.kind === 'load') {
+        return (
+            <div className="instance-session-list" role="list" aria-label="Chat sessions">
+                <div className="instance-session-error">
+                    <span>{snapshot.error.message}</span>
+                    <button type="button" className="instance-session-retry" onClick={retry}>Retry</button>
+                </div>
+            </div>
+        );
+    }
+
+    const sessions = snapshot.data?.sessions ?? [];
+    const activeId = snapshot.data?.activeId ?? null;
 
     return (
         <div className="instance-session-list" role="list" aria-label="Chat sessions">
-            {error && <div className="instance-session-error">{error}</div>}
+            {snapshot.error?.kind === 'switch' && (
+                <div className="instance-session-error">
+                    <span>{snapshot.error.message}</span>
+                    <button type="button" className="instance-session-retry" onClick={retry}>Retry</button>
+                </div>
+            )}
             {sessions.map(session => {
                 const isActive = session.id === activeId;
                 const when = relativeTime(session.lastActivityAt);
@@ -126,7 +110,7 @@ export function InstanceSessionList(props: InstanceSessionListProps) {
                         type="button"
                         role="listitem"
                         className={`instance-session-row${isActive ? ' is-active' : ''}`}
-                        disabled={switching != null}
+                        disabled={snapshot.switching}
                         aria-current={isActive || undefined}
                         onClick={(event) => void handleSwitch(event, session)}
                     >
@@ -135,14 +119,14 @@ export function InstanceSessionList(props: InstanceSessionListProps) {
                             {session.source && <span className="session-source-badge">{session.source}</span>}
                         </span>
                         <span className="instance-session-meta">
-                            {switching === session.seq
+                            {snapshot.switching
                                 ? 'switching…'
                                 : `${session.message_count} msg${when ? ` · ${when}` : ''}`}
                         </span>
                     </button>
                 );
             })}
-            {sessions.length === 0 && !error && <div className="instance-session-empty">Loading sessions…</div>}
+            {sessions.length === 0 && <div className="instance-session-empty">Loading sessions…</div>}
         </div>
     );
 }

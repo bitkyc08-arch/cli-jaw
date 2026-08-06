@@ -377,7 +377,28 @@ h2 { font-size: 13px; }
     font-size: 11px;
     color: var(--text-secondary);
 }
-.instance-session-error { color: var(--status-error); }
+.instance-session-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--status-error);
+}
+.instance-session-retry {
+    flex: 0 0 auto;
+    padding: 2px 7px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 5px;
+    background: var(--row-bg);
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+}
+.instance-session-retry:hover {
+    color: var(--text-primary);
+    background: var(--surface-raised);
+}
+.instance-session-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .instance-row-title { min-width: 0; display: grid; gap: 3px; }
 .instance-row-title-line {
     min-width: 0;
