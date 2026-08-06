@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { extractFromCodexAppLaneEvent } from '../../src/agent/codex-app-events.ts';
+import { appendAssistantRawText } from '../../src/agent/events/helpers.ts';
+import type { SpawnContext } from '../../src/types/agent.ts';
 
 function createCtx() {
     return {
@@ -32,6 +35,28 @@ function extractLane(
         'turn-a',
     );
 }
+
+test('codex-app agent message deltas append raw without markdown bullets', () => {
+    const ctx = createCtx() as unknown as SpawnContext;
+    for (const delta of ['이', '지만, 실제 트', '리']) {
+        const result = extractLane('item/agentMessage/delta', { delta }, ctx as unknown as ReturnType<typeof createCtx>);
+        assert.equal(appendAssistantRawText(ctx, result?.text || ''), delta);
+    }
+
+    // Token deltas must accumulate verbatim — the segment formatter would have
+    // produced '이\n- 지만, 실제 트\n- 리'.
+    assert.equal(ctx.fullText, '이지만, 실제 트리');
+    // Completed agentMessage returns null: streamed deltas are the only text
+    // source, so raw-append cannot double-count.
+    assert.equal(extractLane('item/completed', {
+        item: { type: 'agentMessage', id: 'msg_1' },
+    }, ctx as unknown as ReturnType<typeof createCtx>), null);
+    // The codex-app notification path in spawn.ts must use the raw appender.
+    assert.match(
+        readFileSync('src/agent/spawn.ts', 'utf8'),
+        /flushCodexAppThinking\(\);[\s\S]{0,400}?appendAssistantRawText\(ctx, parsed\.text\)/,
+    );
+});
 
 test('codex-app captures raw reasoning text deltas', () => {
     const result = extractLane(
