@@ -11,7 +11,8 @@
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
-import { settings, saveSettings, loadSettings } from '../../src/core/config.js';
+import { settings, saveSettings, loadSettings, getServerUrl } from '../../src/core/config.js';
+import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { slackApi } from '../../src/slack/api.js';
 import { slackManifestYaml } from '../../src/slack/manifest.js';
 import { notifyRunningServer, type HotReload } from '../../src/slack/hot-notify.js';
@@ -41,6 +42,9 @@ if (shouldShowHelp(process.argv)) printAndExit(`
                           Pipe it: jaw slack manifest | pbcopy
     setup                 Guided setup: prints the manifest, validates the two
                           tokens live, writes settings, hot-reloads the server.
+    history <channel>     Read recent channel messages (or one thread) through
+                          the running server. Flags: --thread <ts>, --limit N,
+                          --json. The token never leaves the server process.
 
   Setup flags:
     --bot-token <t>       Bot token (xoxb-...). REQUIRED.
@@ -83,7 +87,7 @@ if (shouldShowHelp(process.argv)) printAndExit(`
 
 const sub = process.argv[3] || 'setup';
 
-const { values } = parseArgs({
+const { values, positionals } = parseArgs({
     args: process.argv.slice(4),
     options: {
         'bot-token': { type: 'string' },
@@ -93,15 +97,25 @@ const { values } = parseArgs({
         'non-interactive': { type: 'boolean', default: false },
         'skip-validate': { type: 'boolean', default: false },
         'no-notify': { type: 'boolean', default: false },
+        // `history` subcommand flags. Sharing one parseArgs across
+        // subcommands requires the union of options; allowPositionals
+        // admits the <channel> argument (audit finding 1 — the strict
+        // default would throw before the subcommand dispatch below).
+        'thread': { type: 'string' },
+        'limit': { type: 'string' },
+        'json': { type: 'boolean', default: false },
     },
+    allowPositionals: true,
 });
 
 if (sub === 'manifest') {
     process.stdout.write(slackManifestYaml());
 } else if (sub === 'setup') {
     await runSetup();
+} else if (sub === 'history') {
+    await runHistory();
 } else {
-    console.error(`  ❌ Unknown slack subcommand "${sub}". Expected: manifest | setup`);
+    console.error(`  ❌ Unknown slack subcommand "${sub}". Expected: manifest | setup | history`);
     process.exitCode = 1;
 }
 
@@ -252,5 +266,40 @@ ${serverLine}
 `);
     } finally {
         rl?.close();
+    }
+}
+
+async function runHistory(): Promise<void> {
+    // Server-mediated on purpose: the CLI process never touches the bot
+    // token — the running server owns credentials and the lookup route.
+    loadSettings();
+    const channel = (positionals[0] || '').trim();
+    if (!channel) {
+        console.error('Usage: jaw slack history <channel> [--thread <ts>] [--limit N] [--json]');
+        process.exitCode = 1;
+        return;
+    }
+    const base = getServerUrl();
+    await getCliAuthToken();
+    const params = new URLSearchParams({ channel });
+    if (values['thread']) params.set('thread_ts', String(values['thread']));
+    if (values['limit']) params.set('limit', String(values['limit']));
+    if (!values['json']) params.set('format', 'text');
+    try {
+        const res = await cliFetch(`${base}/api/slack/history?${params}`);
+        const body = await res.json() as Record<string, unknown>;
+        if (!res.ok || body['ok'] !== true) {
+            console.error(String(body['error'] || `Failed: ${res.status}`));
+            process.exitCode = 1;
+            return;
+        }
+        if (values['json']) {
+            console.log(JSON.stringify({ messages: body['messages'], hasMore: body['hasMore'] }, null, 2));
+        } else {
+            console.log(String(body['text'] || '(no messages)'));
+        }
+    } catch {
+        console.error('Server not running. Start with: jaw serve');
+        process.exitCode = 1;
     }
 }

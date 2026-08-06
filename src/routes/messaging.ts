@@ -16,6 +16,9 @@ import { decodeFilenameSafe } from '../security/decode.js';
 import { sendChannelOutput, normalizeChannelSendRequest, validateExplicitChatId } from '../messaging/send.js';
 import { validateChannelCredentials } from '../messaging/channel-validate.js';
 import { sendResultHttpStatus } from '../messaging/send-result.js';
+import { getSlackSendClient } from '../slack/send-only-client.js';
+import { getSlackSelfUserId } from '../slack/bot.js';
+import { fetchSlackHistory, fetchSlackReplies, formatHistoryForAgent } from '../slack/history.js';
 import { settings } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -295,5 +298,40 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             log.error('[slack:send]', logErrorText(e));
             res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
         }
+    });
+
+    // Dynamic Slack lookup for the agent: a channel window or one thread.
+    // GET /api/slack/history?channel=C..[&thread_ts=..][&limit=..][&format=text]
+    // Read-only and loopback-friendly (requireAuth bypasses localhost), so the
+    // running agent can pull conversation context it was not mentioned into.
+    app.get('/api/slack/history', requireAuth, async (req, res) => {
+        const client = getSlackSendClient();
+        if (!client.token) {
+            // `!token` does not narrow the union (an empty string would land
+            // here too), so default the status for the type system's sake.
+            res.status(client.status ?? 503).json({ ok: false, error: client.reason ?? 'slack_unavailable' });
+            return;
+        }
+        const channel = String(req.query['channel'] || '').trim();
+        if (!channel) {
+            res.status(400).json({ ok: false, error: 'channel_required' });
+            return;
+        }
+        const threadTs = String(req.query['thread_ts'] || '').trim();
+        const limit = Number(req.query['limit']) || undefined;
+        const result = threadTs
+            ? await fetchSlackReplies(client.token, channel, threadTs, { ...(limit ? { limit } : {}) })
+            : await fetchSlackHistory(client.token, channel, { ...(limit ? { limit } : {}) });
+        if (!result.ok) {
+            // describeSlackError prose only (missing_scope names the scope);
+            // never the raw upstream payload.
+            res.status(502).json({ ok: false, error: result.error });
+            return;
+        }
+        if (String(req.query['format'] || '') === 'text') {
+            res.json({ ok: true, text: formatHistoryForAgent(result.messages, getSlackSelfUserId()) });
+            return;
+        }
+        res.json({ ok: true, messages: result.messages, hasMore: result.hasMore });
     });
 }

@@ -780,6 +780,9 @@ function buildSlackStatus() {
         channelIdsConfigured,
         channelConsistent,
         runtimeReady: status === 'ok' && channelConsistent,
+        // C/G/D conversations only — mpim:history is not in the manifest, so
+        // MPIM lookups surface missing_scope at call time (260806 unit).
+        historyLookup: botTokenPresent,
         socketModeNote: 'app-level token (xapp-) is required for inbound events; a bot token alone is outbound-only',
         degradedReasons,
     };

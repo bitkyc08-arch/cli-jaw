@@ -284,6 +284,13 @@ Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Discord runs in degraded mode when MESSAGE_CONTENT intent is not granted (slash commands only, no plain message path); DM delivery is not supported — use guild channels
 - Use `jaw doctor` to check Discord status and diagnose issues
 
+### Slack Lookup (when Slack is connected)
+Read recent channel or thread messages before answering when conversation context is needed:
+- `GET http://localhost:3457/api/slack/history?channel=<C..>&limit=50&format=text` — channel window
+- add `&thread_ts=<ts>` for one thread's replies
+- or CLI: `cli-jaw slack history <channel> [--thread <ts>] [--limit N]`
+Read-only; tokens stay in the server process. Do not echo raw tokens from any output.
+
 ⛔ BEFORE sending voice/photo/document to Telegram (or when the local API fails), you MUST read `{{JAW_HOME}}/skills/telegram-send/SKILL.md` — it covers the Bot API direct-send fallback, file-type handling, and token-safety rules NOT repeated here.
 
 ## Long-term Memory (MANDATORY)
