@@ -27,6 +27,7 @@ import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
 import { admitSlackRun, enqueueSlackIngress, resetSlackIngress, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
+import { recoverSlackAttachments } from './attachment-recovery.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -258,7 +259,24 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     setLatestSeenTarget('slack', target);
 
     const text = resolveEventText(event, selfUserId);
-    const hasFiles = Boolean(event.files?.length);
+    let hasFiles = Boolean(event.files?.length);
+    // app_mention 봉투에는 files 가 없고, 첨부를 가진 message 사본은 위
+    // shouldProcessSlackEvent 에서 mention_via_app_mention 으로 드롭된다.
+    // 그래서 멘션과 함께 올린 파일은 여기서 되찾지 않으면 영영 사라진다.
+    if (!hasFiles && event.type === 'app_mention' && event.channel && event.ts) {
+        const recoverToken = getSlackSendClient().token;
+        if (recoverToken) {
+            const recovered = await recoverSlackAttachments(
+                recoverToken, event.channel, event.ts,
+                event.thread_ts ? { threadTs: event.thread_ts } : {},
+            );
+            if (recovered.length) {
+                event.files = recovered;
+                hasFiles = true;
+                log.info(`[slack:recover] ${event.channel} ts=${event.ts}: ${recovered.length} attachment(s)`);
+            }
+        }
+    }
     if (!text && !hasFiles) return;
     if (text) log.info(`[slack:in] ${event.channel}: ${redactOutboundText(text).slice(0, 80)}`);
 

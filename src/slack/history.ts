@@ -7,6 +7,7 @@
 // internal customer-built apps keep Tier 3, so limit=50 defaults are safe).
 
 import { slackApi, describeSlackError, isRetryableSlackError, type SlackFetch } from './api.js';
+import type { SlackFileEvent } from './events.js';
 import { redactChannelSecrets } from '../messaging/redact.js';
 
 export type SlackHistoryMessage = {
@@ -17,6 +18,8 @@ export type SlackHistoryMessage = {
     text: string;
     replyCount?: number;
     subtype?: string;
+    /** app_mention 첨부 복구가 소비한다 (attachment-recovery.ts). */
+    files?: SlackFileEvent[];
 };
 
 export type SlackHistoryResult =
@@ -29,6 +32,7 @@ export const SLACK_HISTORY_MAX_LIMIT = 200;
 type RawMessage = {
     ts?: string; thread_ts?: string; user?: string; bot_id?: string;
     text?: string; reply_count?: number; subtype?: string;
+    files?: SlackFileEvent[];
 };
 type RawHistoryData = { messages?: RawMessage[]; has_more?: boolean };
 
@@ -49,6 +53,7 @@ function normalize(raw: RawMessage[]): SlackHistoryMessage[] {
             text: typeof m.text === 'string' ? m.text : '',
             ...(typeof m.reply_count === 'number' ? { replyCount: m.reply_count } : {}),
             ...(m.subtype ? { subtype: m.subtype } : {}),
+            ...(Array.isArray(m.files) && m.files.length ? { files: m.files } : {}),
         });
     }
     return out;
@@ -85,17 +90,29 @@ async function callWithRetry(
     };
 }
 
-/** Channel window: conversations.history (newest first, as Slack returns). */
+/**
+ * Channel window: conversations.history (newest first, as Slack returns).
+ *
+ * `oldest`/`latest` are EXCLUSIVE bounds: a message whose ts equals either
+ * bound is omitted unless `inclusive` is set. Fetching one known message
+ * therefore needs `{ oldest: ts, inclusive: true, limit: 1 }` — passing
+ * oldest===latest without `inclusive` returns an empty list, which silently
+ * turns any ts-addressed lookup into a no-op.
+ * https://docs.slack.dev/reference/methods/conversations.history/
+ */
 export function fetchSlackHistory(
     token: string,
     channel: string,
-    opts: { limit?: number; oldest?: string; latest?: string; fetchImpl?: SlackFetch } = {},
+    opts: { limit?: number; oldest?: string; latest?: string; inclusive?: boolean; fetchImpl?: SlackFetch } = {},
 ): Promise<SlackHistoryResult> {
     return callWithRetry(token, 'conversations.history', {
         channel,
         limit: clampLimit(opts.limit),
         ...(opts.oldest ? { oldest: opts.oldest } : {}),
         ...(opts.latest ? { latest: opts.latest } : {}),
+        // Slack ignores `inclusive` when neither bound is present; send it only
+        // when it can actually take effect.
+        ...(opts.inclusive && (opts.oldest || opts.latest) ? { inclusive: true } : {}),
     }, opts.fetchImpl);
 }
 
