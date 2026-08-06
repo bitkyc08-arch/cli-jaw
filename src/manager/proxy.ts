@@ -137,6 +137,7 @@ export function rewriteUpstreamRequestHeaders(
     targetPort: number,
 ): http.OutgoingHttpHeaders {
     const next: http.OutgoingHttpHeaders = { ...headers };
+    delete next['x-jaw-internal']; // Proxied traffic must not impersonate the manager.
     next.host = `${MANAGED_INSTANCE_HOST}:${targetPort}`;
     if (headers.origin) {
         next.origin = Array.isArray(headers.origin)

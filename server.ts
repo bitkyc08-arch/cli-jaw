@@ -65,6 +65,7 @@ import { errorHandler } from './src/http/error-middleware.js';
 
 import { isAllowedHost, isAllowedOrigin, isPrivateIP } from './src/security/network-acl.js';
 import { initBossToken } from './src/core/boss-auth.js';
+import { createRateLimiter, createRateLimitMiddleware } from './src/core/rate-limit.js';
 import * as browser from './src/browser/index.js';
 
 import { ensureMemoryRuntimeReady, hasSoulFile } from './src/memory/runtime.js';
@@ -303,48 +304,16 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
     next();
 }
 
-// ─── Rate Limiting (in-memory, API only, 120/min) ─────────────
-const rateLimitMap = new Map();
-const rateLimitSweepInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [ip, w] of rateLimitMap) {
-        if (now - w.start > 120_000) rateLimitMap.delete(ip);
-    }
-}, 600_000);
+// ─── Rate Limiting (in-memory, API only) ─────────────
+const rateLimiter = createRateLimiter();
+const rateLimitSweepInterval = setInterval(() => rateLimiter.sweep(), 600_000);
 rateLimitSweepInterval.unref();
-app.use((req, res, next) => {
-    // Do not throttle HTML/CSS/JS/image/favicon requests.
-    // A single page load can fan out into many static asset requests and
-    // self-trigger 429s before the UI even boots.
-    if (!req.path.startsWith('/api/')) return next();
-    // SSE reconnects must never be locked out by burst traffic from the same
-    // IP (all localhost clients — manager polling, CLI, agent — share one
-    // bucket). A 429 here extends a drop past the toast grace and the UI
-    // reads as "disconnected" while the server is healthy.
-    if (req.path === '/api/events') return next();
-    // Dispatch pollers (jaw dispatch / worker watch) poll two endpoints every
-    // 2s — bounded internal traffic that shares the localhost bucket with the
-    // manager scan and the browser. A 429 mid-poll aborts a worker watch for
-    // no protective gain (260613 doc 60). Exact poll prefixes only — the
-    // workers LIST endpoint stays limited (adversarial review #3).
-    if (req.path.startsWith('/api/orchestrate/worker-runs')
-        || req.path.startsWith('/api/orchestrate/worker/')
-        || req.path.startsWith('/api/orchestrate/worker-progress')) return next();
-    const ip = req.ip;
-    const now = Date.now();
-    const window = rateLimitMap.get(ip) || { count: 0, start: now, logged: false };
-    if (now - window.start > 60_000) { window.count = 0; window.start = now; window.logged = false; }
-    window.count++;
-    rateLimitMap.set(ip, window);
-    if (window.count > 120) {
-        if (!window.logged) {
-            window.logged = true;
-            console.warn(`[rate-limit] ${ip} exceeded 120 req/min (first blocked: ${req.method} ${req.path})`);
-        }
-        return res.status(429).json({ error: 'rate_limit' });
-    }
-    next();
-});
+app.use(createRateLimitMiddleware({
+    authToken: JAW_AUTH_TOKEN,
+    lanAllowed,
+    isPrivateIp: isPrivateIP,
+    limiter: rateLimiter,
+}));
 
 app.use(express.json({ limit: '1mb' }));
 

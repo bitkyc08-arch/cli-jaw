@@ -5,7 +5,10 @@ import { join } from 'node:path';
 
 const projectRoot = join(import.meta.dirname, '../..');
 const routeSrc = readFileSync(join(projectRoot, 'src/routes/orchestrate.ts'), 'utf8');
-const serverSrc = readFileSync(join(projectRoot, 'server.ts'), 'utf8');
+// The rate-limit exemption moved from an inline server.ts middleware into the
+// extracted factory (260806 rate-limit hardening); the behavioral proof lives
+// in tests/unit/rate-limit-http.test.ts (exempt paths don't consume budget).
+const rateLimitSrc = readFileSync(join(projectRoot, 'src/core/rate-limit.ts'), 'utf8');
 const storeSrc = readFileSync(join(projectRoot, 'src/orchestrator/worker-run-store.ts'), 'utf8');
 
 test('orchestrate routes expose worker-runs safe metadata, events, and bounded output endpoints', () => {
@@ -29,5 +32,5 @@ test('worker-runs metadata store redacts output file and keeps raw text behind o
 });
 
 test('worker-runs routes are exempt from localhost poll rate limiting', () => {
-    assert.match(serverSrc, /req\.path\.startsWith\('\/api\/orchestrate\/worker-runs'\)/);
+    assert.match(rateLimitSrc, /\/api\/orchestrate\/worker-runs/);
 });
