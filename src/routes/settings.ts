@@ -5,7 +5,7 @@ import os from 'os';
 import { join } from 'path';
 import { ok } from '../http/response.js';
 import { asyncHandler } from '../http/async-handler.js';
-import { settings, JAW_HOME } from '../core/config.js';
+import { settings, JAW_HOME, isSettingsPersistenceBlocked } from '../core/config.js';
 import { sanitizeSettingsInput } from '../core/settings-merge.js';
 import { readCodexContextWindow } from '../core/codex-config.js';
 import { regenerateB, A2_PATH, HEARTBEAT_PATH } from '../prompt/builder.js';
@@ -151,6 +151,13 @@ export function registerSettingsRoutes(
     });
 
     app.put('/api/settings', requireAuth, asyncHandler(async (req, res) => {
+        // Boot could not read settings.json (corrupt/future-schema file). Accepting a
+        // write here would either not stick or — worse — clobber the user's real file
+        // with defaults, so it is refused loudly instead of silently dropped.
+        if (isSettingsPersistenceBlocked()) {
+            res.status(503).json({ ok: false, error: 'settings_persistence_blocked' });
+            return;
+        }
         const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
             ? req.body as Record<string, unknown>
             : {};

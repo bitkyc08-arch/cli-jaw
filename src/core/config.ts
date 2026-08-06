@@ -765,6 +765,20 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+// ─── Clobber-protection latch (260806) ───────────────
+// When settings.json existed but could not be read at boot (corrupt JSON, an
+// unsupported/future schema version, a permission error), the in-memory state is
+// defaults — and any later save (messaging.latestSeen, a UI write) would flush those
+// defaults over the user's real file, tokens included. That actually happened: a v2
+// packaged app read a v3 file and wiped a Slack config. While latched, saves commit
+// to memory only and the file on disk is left exactly as it was.
+let settingsPersistenceBlockedReason: string | null = null;
+let settingsPersistenceBlockedWarned = false;
+
+export function isSettingsPersistenceBlocked(): boolean {
+    return settingsPersistenceBlockedReason !== null;
+}
+
 /**
  * A v3 document was written by this schema, and this schema always writes both the
  * multiSession block and its migration marker. If either is missing or malformed, the
@@ -792,6 +806,11 @@ function assertCurrentSchemaSessionShape(raw: Record<string, any>): void {
 }
 
 export function loadSettings() {
+    // A fresh load is a fresh verdict: a successful parse (or a genuinely absent
+    // file) below re-enables persistence; only the unreadable-existing-file catch
+    // re-arms the latch.
+    settingsPersistenceBlockedReason = null;
+    settingsPersistenceBlockedWarned = false;
     try {
         let raw: any = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -953,6 +972,10 @@ export function loadSettings() {
 
         console.warn(`[jaw:settings] failed to load ${SETTINGS_PATH}: ${err?.message || String(error)}`);
         if (fs.existsSync(SETTINGS_PATH)) {
+            // The file is real and we could not read it, so what is in memory now is
+            // NOT the user's settings. Latch persistence so no later save clobbers
+            // the file; the backup below is a copy, not a license to overwrite.
+            settingsPersistenceBlockedReason = err?.message || String(error);
             let backupTimestamp = Date.now();
             let backupPath = `${SETTINGS_PATH}.corrupt-${backupTimestamp}.bak`;
             while (fs.existsSync(backupPath)) {
@@ -1006,6 +1029,16 @@ export function persistAndCommit(
     candidate: SettingsStateCandidate,
     write: SettingsWrite = writeSettingsRaw,
 ): void {
+    if (settingsPersistenceBlockedReason !== null) {
+        // Memory-only: the file on disk holds the user's real settings in a shape
+        // this binary could not read, and writing would destroy them.
+        if (!settingsPersistenceBlockedWarned) {
+            settingsPersistenceBlockedWarned = true;
+            console.warn(`[jaw:settings] persistence disabled: settings.json was unreadable at boot (${settingsPersistenceBlockedReason}); refusing to overwrite it`);
+        }
+        commitCandidate(candidate);
+        return;
+    }
     const raw = serializeSettingsForSave(candidate);
     write(raw);
     lastSavedSettingsRaw = raw;
