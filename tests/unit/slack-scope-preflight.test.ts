@@ -59,6 +59,7 @@ test('/api/channels/validate preserves missingCapabilities in its success JSON',
         post(path: string, ...handlers: Array<(...args: unknown[]) => unknown>) {
             routes.set(path, handlers.at(-1)!);
         },
+        get() { /* registerMessagingRoutes also mounts GET /api/slack/history */ },
     } as unknown as Express;
     registerMessagingRoutes(app, ((_req: unknown, _res: unknown, next: () => void) => next()) as never);
     const originalFetch = globalThis.fetch;
