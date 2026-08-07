@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import { createHash } from 'crypto';
 import { join } from 'path';
-import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile, deriveCdpPort } from '../core/config.js';
+import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile, deriveCdpPort, DEFAULT_PORT } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { getEmployees } from '../core/db.js';
@@ -152,8 +152,13 @@ const KNOWN_A1_SOURCE_HASHES = new Set([
 // ─── Migration Helpers ───────────────────────────────
 
 function normalizeRenderedContent(content: string): string {
+    // Server-URL replacement must precede the bare CDP-number replacement so
+    // that `127.0.0.1:<port>` is captured as a unit before `<cdpPort>` can
+    // collide with it when the two values happen to share a substring.
+    const serverPort = String(process.env["PORT"] || settings["port"] || DEFAULT_PORT);
     return content
         .replaceAll(JAW_HOME, '{{JAW_HOME}}')
+        .replaceAll(`127.0.0.1:${serverPort}`, '127.0.0.1:{{SERVER_PORT}}')
         .replaceAll(String(deriveCdpPort()), '{{CDP_PORT}}');
 }
 
@@ -256,7 +261,11 @@ export function getMergedSkills() {
 function getTemplateVars(): Record<string, string> {
     // DIAGRAM_CAPABILITIES/REFERENCES vars removed (#prompt-cache): the A-1
     // diagram section now defers that detail to the skill's MUST-READ body.
-    return { JAW_HOME, CDP_PORT: String(deriveCdpPort()) };
+    return {
+        JAW_HOME,
+        CDP_PORT: String(deriveCdpPort()),
+        SERVER_PORT: String(process.env["PORT"] || settings["port"] || DEFAULT_PORT),
+    };
 }
 
 /** Render A1 system prompt from template */
