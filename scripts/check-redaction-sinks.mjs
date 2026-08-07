@@ -83,6 +83,7 @@ const ALLOWLIST = [
     { contains: '이 토픽은 인스턴스에 연결되지', why: 'fixed string' },
     { contains: 'ctx.answerCallbackQuery(ack', why: 'ack is masked where it is built' },
     { contains: 'ctx.reply(syncText)', why: 'syncText is masked where it is built' },
+    { contains: "persist failed:", why: "a Node.js Error.message from fs write, not a credential" },
     { contains: 'await ctx.reply(syncText)', why: 'syncText is masked where it is built' },
     { contains: 'Chat ID: <code>', why: 'a chat id the user just asked for' },
 ];
