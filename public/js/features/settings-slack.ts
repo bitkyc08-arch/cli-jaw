@@ -2,11 +2,13 @@
 import { apiJson } from '../api.js';
 import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import { hasSlackBotTokenPrefix, hasSlackAppTokenPrefix } from './channel-setup-rules.js';
+import { t } from './i18n.js';
 import type { SettingsData } from './settings-types.js';
 
 // One-time inline token-prefix validation. Errors appear below each field on
 // blur and clear live once the token prefix is corrected.
 let setupGuideBound = false;
+let slackResetting = false;
 
 export function initSlackSetupGuide(): void {
     if (setupGuideBound) return;
@@ -14,6 +16,56 @@ export function initSlackSetupGuide(): void {
 
     bindPrefixValidation('slBotToken', 'slack-bot-token-error', hasSlackBotTokenPrefix);
     bindPrefixValidation('slAppToken', 'slack-app-token-error', hasSlackAppTokenPrefix);
+    document.getElementById('slack-reset-connection')?.addEventListener('click', () => {
+        void resetSlackConnection();
+    });
+}
+
+export async function resetSlackConnection(): Promise<void> {
+    if (slackResetting) return;
+    const botToken = document.getElementById('slBotToken') as HTMLInputElement | null;
+    const appToken = document.getElementById('slAppToken') as HTMLInputElement | null;
+    if (!botToken?.value.trim() && !appToken?.value.trim()) {
+        window.alert(t('settings.slack.resetEmpty'));
+        return;
+    }
+    if (!window.confirm(t('settings.slack.resetConfirm'))) return;
+
+    const resetButton = document.getElementById('slack-reset-connection') as HTMLButtonElement | null;
+    slackResetting = true;
+    if (resetButton) resetButton.disabled = true;
+    try {
+        const updated = await apiJson<SettingsData>('/api/settings', 'PUT', {
+            slack: {
+                enabled: false,
+                botToken: '',
+                appToken: '',
+                teamId: '',
+                channelIds: [],
+                attachPort: '',
+            },
+        });
+        if (!updated) {
+            window.alert(t('settings.slack.resetFailed'));
+            return;
+        }
+
+        for (const id of ['slBotToken', 'slAppToken', 'slTeamId', 'slChannelIds', 'slAttachPort']) {
+            const input = document.getElementById(id) as HTMLInputElement | null;
+            if (!input) continue;
+            input.value = '';
+            input.classList.remove('input-error');
+        }
+        for (const id of ['slack-bot-token-error', 'slack-app-token-error']) {
+            const error = document.getElementById(id);
+            if (error) error.style.display = 'none';
+        }
+        document.getElementById('slOff')?.classList.add('active');
+        document.getElementById('slOn')?.classList.remove('active');
+    } finally {
+        slackResetting = false;
+        if (resetButton) resetButton.disabled = false;
+    }
 }
 
 function bindPrefixValidation(inputId: string, errorId: string, valid: (v: string) => boolean): void {

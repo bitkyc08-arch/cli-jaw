@@ -271,6 +271,7 @@
     flex: 0 0 auto;
     padding: 3px 8px;
     font-size: 10px;
+    white-space: nowrap;
 }
 
 .onboarding-box {

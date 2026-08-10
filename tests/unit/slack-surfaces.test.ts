@@ -72,6 +72,23 @@ test('the slack section keeps only the two token fields above advanced settings'
     assert.ok(!slackBlock.includes('id="slack-open-apps"'), 'obsolete app-page button remains');
     assert.match(slackBlock, /<label for="slBotToken"[^>]*>봇 토큰<\/label>/);
     assert.match(slackBlock, /<label for="slAppToken"[^>]*>수신용 앱 토큰 \(선택\)<\/label>/);
+    assert.ok(slackBlock.includes('id="slack-reset-connection"'), 'connection reset button missing');
+});
+
+test('the Slack reset control is bound and translated in every locale', () => {
+    const module = read('public/js/features/settings-slack.ts');
+    assert.match(module, /getElementById\('slack-reset-connection'\)[\s\S]{0,160}resetSlackConnection\(\)/);
+    for (const locale of ['en', 'ja', 'ko', 'zh']) {
+        const dict = JSON.parse(read(`public/locales/${locale}.json`)) as Record<string, string>;
+        for (const key of [
+            'settings.slack.resetConnection',
+            'settings.slack.resetConfirm',
+            'settings.slack.resetEmpty',
+            'settings.slack.resetFailed',
+        ]) {
+            assert.ok(dict[key], `${locale}.json missing ${key}`);
+        }
+    }
 });
 
 test('non-credential fields are demoted to a collapsed advanced section', () => {
