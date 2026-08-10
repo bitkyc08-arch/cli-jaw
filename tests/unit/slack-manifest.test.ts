@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from 'yaml';
 
-import { SLACK_APP_MANIFEST, slackManifestYaml } from '../../src/slack/manifest.js';
+import {
+    SLACK_APP_MANIFEST,
+    createSlackAppManifest,
+    slackManifestJson,
+    slackManifestYaml,
+} from '../../src/slack/manifest.js';
 
 // The manifest is the single source of truth the runbook displays; these
 // pins exist so a scope/event edit here can never silently desync from what
@@ -51,12 +56,32 @@ test('socket mode and the DM composer surface stay enabled', () => {
 
 test('slash command starter set exists in the shared catalog shape', () => {
     const commands = SLACK_APP_MANIFEST.features.slash_commands.map(c => c.command);
-    for (const cmd of ['/status', '/model', '/cli', '/clear', '/help']) {
+    for (const cmd of ['/model', '/cli', '/clear', '/help']) {
         assert.ok(commands.includes(cmd), `starter slash command ${cmd} missing`);
     }
+    assert.ok(!commands.includes('/status'), 'Slack reserves /status, so the generated manifest must omit it');
     // Socket Mode delivers the payload directly; escaping would double it.
     for (const c of SLACK_APP_MANIFEST.features.slash_commands) {
         assert.equal(c.should_escape, false);
+        if ('usage_hint' in c) assert.notEqual(c.usage_hint, '', `${c.command} must omit an empty usage_hint`);
+    }
+});
+
+test('custom app name is applied to both the app and bot display names', () => {
+    const manifest = createSlackAppManifest('demo');
+    assert.equal(manifest.display_information.name, 'demo');
+    assert.equal(manifest.features.bot_user.display_name, 'demo');
+
+    const parsed = JSON.parse(slackManifestJson('demo'));
+    assert.deepEqual(parsed, manifest);
+});
+
+test('app name validation enforces the shared Slack app and bot name format', () => {
+    for (const value of ['', '   ', 'bad\nname', 'x'.repeat(36), 'demo app', 'Demo', '데모']) {
+        assert.throws(() => createSlackAppManifest(value), /Slack app name/);
+    }
+    for (const value of ['demo', 'demo-app', 'demo_app', 'demo.app']) {
+        assert.doesNotThrow(() => createSlackAppManifest(value));
     }
 });
 

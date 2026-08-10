@@ -254,7 +254,7 @@ cli-jaw/
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (69L)
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (44L)
-│   │   ├── manifest.ts       ← Slack 앱 매니페스트 single source (`jaw slack manifest`/`setup`이 사용, runbook YAML의 생성 원본) (90L)
+│   │   ├── manifest.ts       ← Slack 앱 매니페스트 single source (`jaw slack manifest`/`setup`이 사용, runbook YAML의 생성 원본) (110L)
 │   │   ├── hot-notify.ts     ← CLI 설정 변경 후 실행 중 서버 hot-reload 통지 (loopback PUT /api/settings → transport 재시작, version skew 감지) (35L)
 │   │   ├── progress.ts       ← 실행 중 진행상황 릴레이 ("정보 수집 중…" placeholder → agent_tool 이벤트로 chat.update rate-limited 편집 → 답변 시 chat.delete) (120L) ✨
 │   │   └── register.ts       ← lazy transport 등록 (inbound + send) (16L)
