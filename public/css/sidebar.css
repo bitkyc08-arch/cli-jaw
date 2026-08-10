@@ -226,6 +226,14 @@
     background: color-mix(in oklch, var(--accent) 10%, var(--bg));
 }
 
+.perm-btn:disabled {
+    border-color: var(--border);
+    background: none;
+    color: var(--text-dim);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .channel-transport-status .transport-status-block + .transport-status-block {
     margin-top: 10px;
 }
@@ -402,6 +410,16 @@
 .onboarding-hint {
     font-size: 10px;
     color: var(--text-dim);
+}
+
+.onboarding-manifest-status {
+    align-self: center;
+    font-size: 10px;
+    color: var(--accent);
+}
+
+.onboarding-manifest-status.is-error {
+    color: var(--error, #e5534b);
 }
 
 .onboarding-scopes {

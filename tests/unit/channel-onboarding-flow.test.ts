@@ -12,7 +12,10 @@ import {
     canAdvance,
     createFlow,
     goBack,
+    markSlackIssuerOpened,
+    markSlackManifestGenerated,
     markSaved,
+    resetSlackSetup,
     setField,
     settingsPatch,
     validationPayload,
@@ -25,9 +28,29 @@ function atCredentials(channel: 'telegram' | 'discord' | 'slack', draft: Record<
 
 test('the flow is four steps and starts at the guide', () => {
     assert.equal(TOTAL_STEPS, 4);
-    const flow = createFlow('slack');
+    const flow = createFlow('telegram');
     assert.equal(flow.step, 1);
     assert.equal(blockerForStep(flow), null, 'the guide step never blocks');
+});
+
+test('Slack guide unlocks in manifest then issuer order and resets after an app-name edit', () => {
+    let flow = createFlow('slack');
+    assert.equal(flow.slackSetupStage, 'manifest');
+    assert.equal(canAdvance(flow), false);
+    assert.equal(advance(flow).error, 'slack_setup_required');
+
+    flow = markSlackManifestGenerated(flow);
+    assert.equal(flow.slackSetupStage, 'issuer');
+    assert.equal(canAdvance(flow), false);
+
+    flow = markSlackIssuerOpened(flow);
+    assert.equal(flow.slackSetupStage, 'ready');
+    assert.equal(canAdvance(flow), true);
+    assert.equal(advance(flow).step, 2);
+
+    flow = resetSlackSetup(flow);
+    assert.equal(flow.slackSetupStage, 'manifest');
+    assert.equal(canAdvance({ ...flow, step: 1 }), false);
 });
 
 test('step 2 refuses to advance without the required credential', () => {

@@ -17,7 +17,10 @@ import {
     createFlow,
     fieldsFor,
     goBack,
+    markSlackIssuerOpened,
+    markSlackManifestGenerated,
     markSaved,
+    resetSlackSetup,
     setField,
     settingsPatch,
     validationPayload,
@@ -25,6 +28,7 @@ import {
     type OnboardChannel,
 } from './channel-onboarding-flow.js';
 import { maybeRequestNotificationPermission } from './notifications.js';
+import { copyText } from './copy-text.js';
 
 export type { OnboardChannel };
 
@@ -32,6 +36,7 @@ let overlay: HTMLDivElement | null = null;
 let flow: FlowState | null = null;
 let validating = false;
 let saving = false;
+let slackAppName = 'cli-jaw';
 /**
  * Bumped whenever the wizard is (re)opened. An in-flight validation compares
  * it on return: switching to another channel — or reopening the same one —
@@ -85,6 +90,7 @@ export function openChannelOnboarding(channel: OnboardChannel): void {
         draft[field.key] = readSettingsInput(field.settingsId);
     }
     flow = createFlow(channel, draft);
+    if (channel === 'slack') slackAppName = 'cli-jaw';
     validating = false;
     saving = false;
     flowGeneration += 1;
@@ -117,11 +123,30 @@ function ensureOverlay(): void {
 
 function stepBody(state: FlowState): string {
     if (state.step === 1) {
-        return `
-            <p class="onboarding-guide">${escapeHtml(t(`onboarding.guide.${state.channel}`))}</p>
-            ${state.channel === 'slack' ? `<p class="onboarding-guide">${escapeHtml(t('onboarding.slackExistingApp'))}</p>` : ''}
+        const slackStage = state.slackSetupStage;
+        const slackManifestBuilder = state.channel === 'slack' ? `
+            <div class="onboarding-field">
+                <label for="onboard-slack-app-name">${escapeHtml(t('onboarding.slackAppName'))}</label>
+                <input id="onboard-slack-app-name" data-onboard-app-name="1" class="input-sm"
+                    type="text" maxlength="35" pattern="[a-z0-9._-]+" autocomplete="off"
+                    autocapitalize="none" spellcheck="false"
+                    aria-describedby="onboard-slack-app-name-hint onboard-slack-manifest-status"
+                    value="${escapeHtml(slackAppName)}">
+                <span class="onboarding-hint" id="onboard-slack-app-name-hint">${escapeHtml(t('onboarding.slackAppNameHint'))}</span>
+            </div>
             <div class="onboarding-actions">
-                <button type="button" class="perm-btn" data-onboard-issuer="1">
+                <button type="button" class="perm-btn ${slackStage === 'manifest' ? 'active' : ''}" data-onboard-generate-manifest="1">
+                    ${escapeHtml(t('onboarding.slackGenerateManifest'))}
+                </button>
+                <span class="onboarding-manifest-status" id="onboard-slack-manifest-status"
+                    data-onboard-manifest-status="1" role="status" aria-live="polite"></span>
+            </div>` : '';
+        return `
+            ${slackManifestBuilder}
+            <p class="onboarding-guide">${escapeHtml(t(`onboarding.guide.${state.channel}`))}</p>
+            <div class="onboarding-actions">
+                <button type="button" class="perm-btn ${state.channel === 'slack' && slackStage === 'issuer' ? 'active' : ''}"
+                    data-onboard-issuer="1" ${state.channel === 'slack' && slackStage === 'manifest' ? 'disabled' : ''}>
                     ${escapeHtml(t('onboarding.openIssuer'))}
                 </button>
             </div>`;
@@ -140,9 +165,7 @@ function stepBody(state: FlowState): string {
                 <span class="onboarding-hint">${escapeHtml(t(`onboarding.hint.${state.channel}.${field.key}`))}</span>
             </div>`;
         }).join('');
-        return `${fields}${state.channel === 'slack'
-            ? `<p class="onboarding-guide">${escapeHtml(t('onboarding.slackExistingApp'))}</p>`
-            : ''}`;
+        return fields;
     }
     if (state.step === 3) {
         const status = validating
@@ -171,7 +194,8 @@ function footer(state: FlowState): string {
         : '';
     const primary = state.step === TOTAL_STEPS
         ? `<button type="button" class="perm-btn active" data-onboard-save="1">${escapeHtml(t('onboarding.save'))}</button>`
-        : `<button type="button" class="perm-btn ${canAdvance(state) ? 'active' : ''}" data-onboard-next="1">${escapeHtml(t('onboarding.next'))}</button>`;
+        : `<button type="button" class="perm-btn ${canAdvance(state) ? 'active' : ''}" data-onboard-next="1"
+            ${state.channel === 'slack' && state.step === 1 && !canAdvance(state) ? 'disabled' : ''}>${escapeHtml(t('onboarding.next'))}</button>`;
     return `${back}${primary}`;
 }
 
@@ -210,7 +234,29 @@ function render(): void {
 
     overlay.querySelectorAll('[data-onboard-close]').forEach(el => el.addEventListener('click', close));
     overlay.querySelector('[data-onboard-issuer]')?.addEventListener('click', () => {
-        if (flow) window.open(ISSUER_URLS[flow.channel], '_blank', 'noopener');
+        if (!flow) return;
+        window.open(ISSUER_URLS[flow.channel], '_blank', 'noopener');
+        if (flow.channel === 'slack') {
+            flow = markSlackIssuerOpened(flow);
+            syncSlackStepActions();
+        }
+    });
+    overlay.querySelector('[data-onboard-generate-manifest]')?.addEventListener('click', () => {
+        void runSlackManifestGeneration();
+    });
+    overlay.querySelector('[data-onboard-app-name]')?.addEventListener('input', (ev) => {
+        slackAppName = (ev.currentTarget as HTMLInputElement).value;
+        if (flow?.channel === 'slack') flow = resetSlackSetup(flow);
+        const status = overlay?.querySelector<HTMLElement>('[data-onboard-manifest-status]');
+        status?.classList.remove('is-error');
+        if (status) status.textContent = '';
+        syncSlackStepActions();
+    });
+    overlay.querySelector('[data-onboard-app-name]')?.addEventListener('keydown', (ev) => {
+        const keyEvent = ev as KeyboardEvent;
+        if (keyEvent.key !== 'Enter' || keyEvent.shiftKey || keyEvent.isComposing) return;
+        keyEvent.preventDefault();
+        void runSlackManifestGeneration();
     });
     overlay.querySelector('[data-onboard-back]')?.addEventListener('click', () => {
         if (!flow) return;
@@ -246,6 +292,20 @@ function render(): void {
     focusFirstEmptyField();
 }
 
+function syncSlackStepActions(): void {
+    if (!overlay || flow?.channel !== 'slack' || flow.step !== 1) return;
+    const stage = flow.slackSetupStage;
+    const manifest = overlay.querySelector<HTMLButtonElement>('[data-onboard-generate-manifest]');
+    const issuer = overlay.querySelector<HTMLButtonElement>('[data-onboard-issuer]');
+    const next = overlay.querySelector<HTMLButtonElement>('[data-onboard-next]');
+
+    manifest?.classList.toggle('active', stage === 'manifest');
+    issuer?.classList.toggle('active', stage === 'issuer');
+    if (issuer) issuer.disabled = stage === 'manifest';
+    next?.classList.toggle('active', stage === 'ready');
+    if (next) next.disabled = stage !== 'ready';
+}
+
 /** Whatever the current step's primary button does — Enter mirrors it. */
 function primaryAction(): void {
     if (!flow) return;
@@ -262,13 +322,56 @@ function primaryAction(): void {
  * is also what a freshly opened step-2 should focus.
  */
 function focusFirstEmptyField(): void {
-    const inputs = [...(overlay?.querySelectorAll('[data-onboard-field]') ?? [])] as HTMLInputElement[];
+    const inputs = [...(overlay?.querySelectorAll('[data-onboard-app-name], [data-onboard-field]') ?? [])] as HTMLInputElement[];
     if (!inputs.length) return;
     const target = inputs.find(input => !input.value.trim()) ?? inputs[0];
     target?.focus();
     // Caret at the end so an existing value can be corrected, not overwritten.
     const end = target?.value.length ?? 0;
     target?.setSelectionRange?.(end, end);
+}
+
+async function runSlackManifestGeneration(): Promise<void> {
+    if (!overlay || flow?.channel !== 'slack') return;
+    const generation = flowGeneration;
+    const input = overlay.querySelector<HTMLInputElement>('[data-onboard-app-name]');
+    const button = overlay.querySelector<HTMLButtonElement>('[data-onboard-generate-manifest]');
+    const status = overlay.querySelector<HTMLElement>('[data-onboard-manifest-status]');
+    if (!input || !button || !status) return;
+
+    const appName = input.value.trim();
+    slackAppName = appName;
+    if (!appName || Array.from(appName).length > 35 || !/^[a-z0-9._-]+$/.test(appName)) {
+        status.classList.add('is-error');
+        status.textContent = t('onboarding.slackAppNameError');
+        input.focus();
+        return;
+    }
+
+    status.classList.remove('is-error');
+    status.textContent = '';
+    button.disabled = true;
+    button.textContent = t('onboarding.slackManifestGenerating');
+
+    try {
+        const data = await api<{ json?: string }>(`/api/slack/manifest?name=${encodeURIComponent(appName)}`);
+        if (generation !== flowGeneration || flow?.channel !== 'slack' || slackAppName.trim() !== appName) return;
+        const json = data?.json || '';
+        if (!json) throw new Error('empty manifest');
+        const copied = await copyText(json);
+        if (!copied.ok) throw new Error(copied.error || 'copy failed');
+        if (generation !== flowGeneration || flow?.channel !== 'slack' || slackAppName.trim() !== appName) return;
+        flow = markSlackManifestGenerated(flow);
+        status.textContent = t('onboarding.slackManifestReady');
+        syncSlackStepActions();
+    } catch {
+        status.classList.add('is-error');
+        status.textContent = t('onboarding.slackManifestError');
+    } finally {
+        button.disabled = false;
+        button.textContent = t('onboarding.slackGenerateManifest');
+        syncSlackStepActions();
+    }
 }
 
 function captureInputs(): void {

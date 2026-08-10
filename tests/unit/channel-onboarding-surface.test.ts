@@ -96,6 +96,53 @@ test('step 1 offers a real link to the issuing page for every channel', () => {
         assert.ok(flowMod.includes(url), `missing issuer URL ${url}`);
     }
     assert.match(mod, /data-onboard-issuer/, 'no issuer button in step 1');
+    assert.match(mod, /window\.open\(ISSUER_URLS\[flow\.channel\], '_blank', 'noopener'\)/, 'issuer button must open the issuing page in a new window');
+});
+
+test('Slack step 1 generates and copies a named JSON manifest before setup', () => {
+    const mod = read('public/js/features/channel-onboarding.ts');
+    assert.match(mod, /data-onboard-app-name/, 'no Slack app-name input');
+    assert.match(mod, /data-onboard-generate-manifest/, 'no manifest generation button');
+    assert.match(mod, /data-onboard-manifest-status="1"/, 'no manifest generation status target');
+    assert.match(mod, /slackAppName = 'cli-jaw'/, 'Slack app name must default to cli-jaw');
+    assert.match(mod, /\/api\/slack\/manifest\?name=/, 'the app name is not sent to the canonical manifest route');
+    assert.match(mod, /copyText\(json\)/, 'the JSON manifest must use the shared clipboard bridge');
+    assert.doesNotMatch(mod, /postPreviewOpenBrowser/, 'Slack setup must not route through Manager Browser');
+
+    const generationStart = mod.indexOf('async function runSlackManifestGeneration');
+    const generationEnd = mod.indexOf('function captureInputs', generationStart);
+    const generation = mod.slice(generationStart, generationEnd);
+    assert.doesNotMatch(generation, /window\.open/, 'manifest generation must not open a browser window');
+    assert.match(mod, /markSlackManifestGenerated\(flow\)/, 'copy success must unlock the issuer action');
+    assert.match(mod, /markSlackIssuerOpened\(flow\)/, 'opening the issuer must unlock the next step');
+    assert.match(mod, /resetSlackSetup\(flow\)/, 'editing the app name must reset Slack setup progress');
+    assert.match(mod, /data-onboard-issuer="1"[^>]*disabled/, 'the issuer button must begin disabled');
+    assert.match(mod, /data-onboard-next="1"[^>]*disabled/, 'the Slack next button must be truly disabled before issuer open');
+
+    const css = read('public/css/sidebar.css');
+    assert.match(css, /\.perm-btn:disabled/, 'disabled onboarding actions need an explicit visual state');
+
+    const builder = mod.indexOf('data-onboard-generate-manifest');
+    const guide = mod.indexOf("t(`onboarding.guide.${state.channel}`)");
+    assert.ok(builder >= 0 && guide > builder, 'the existing Slack guide must remain below the new builder');
+
+    for (const locale of ['en', 'ja', 'ko', 'zh']) {
+        const dict = JSON.parse(read(`public/locales/${locale}.json`)) as Record<string, string>;
+        for (const key of [
+            'onboarding.slackAppName',
+            'onboarding.slackAppNameHint',
+            'onboarding.slackGenerateManifest',
+            'onboarding.slackManifestGenerating',
+            'onboarding.slackManifestReady',
+            'onboarding.slackManifestError',
+            'onboarding.slackAppNameError',
+        ]) {
+            assert.ok(dict[key], `${locale}.json missing ${key}`);
+        }
+    }
+    const ko = JSON.parse(read('public/locales/ko.json')) as Record<string, string>;
+    assert.equal(ko['onboarding.slackManifestReady'], '복사되었습니다');
+    assert.ok(!('onboarding.slackExistingApp' in ko), 'obsolete existing-app guidance must be removed');
 });
 
 test('notification permission is requested from the save gesture, once', () => {
