@@ -84,7 +84,7 @@ export const SLACK_APP_MANIFEST = {
     },
 } as const;
 
-/** Serialize the manifest for pasting into Slack's "From an app manifest" flow. */
+/** Serialize the manifest for pasting into Slack's "From a manifest" flow. */
 export function slackManifestYaml(): string {
     return stringify(SLACK_APP_MANIFEST);
 }

@@ -148,7 +148,7 @@ async function runSetup(): Promise<void> {
 
   Step 1 — create the app
     Open  https://api.slack.com/apps?new_app=1
-    Choose "From an app manifest", pick your workspace, paste this:
+    Choose "From a manifest", pick your workspace, paste this:
 `);
         console.log(slackManifestYaml().split('\n').map(l => `    ${l}`).join('\n'));
 
