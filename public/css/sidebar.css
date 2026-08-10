@@ -238,58 +238,6 @@
     margin-top: 10px;
 }
 
-/* Slack guided setup card: 3 steps above the collapsed advanced section. */
-.slack-setup-card {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin: 8px 0;
-    padding: 10px;
-    border: 1px solid color-mix(in oklch, var(--accent) 35%, var(--border));
-    border-radius: 6px;
-    background: color-mix(in oklch, var(--accent) 4%, var(--bg));
-}
-
-.slack-setup-step {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-}
-
-.slack-step-num {
-    flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-size: 11px;
-    line-height: 18px;
-    text-align: center;
-}
-
-.slack-step-body {
-    flex: 1;
-    min-width: 0;
-}
-
-.slack-step-title {
-    font-size: 12px;
-    color: var(--text);
-    margin-bottom: 2px;
-}
-
-.slack-step-desc {
-    font-size: 11px;
-    color: var(--text-dim);
-    margin: 2px 0 6px;
-}
-
-.slack-step-actions {
-    display: flex;
-    gap: 6px;
-}
-
 .slack-field-error {
     font-size: 11px;
     color: var(--error, #e5534b);

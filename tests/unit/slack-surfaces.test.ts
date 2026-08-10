@@ -61,21 +61,17 @@ test('both slack token inputs are password fields', () => {
     }
 });
 
-// ─── Guided setup card (260803 UX redesign) ─────────
+// ─── Primary Slack credentials ──────────────────────
 
-test('the slack section has a 3-step setup guide card with the exact Slack click path', () => {
+test('the slack section keeps only the two token fields above advanced settings', () => {
     const html = read('public/index.html');
-    assert.ok(html.includes('class="slack-setup-card"'), 'guide card missing');
-    assert.ok((html.match(/class="slack-setup-step"/g) || []).length === 3, 'expected 3 steps');
-    assert.ok(html.includes('id="slack-copy-manifest"'), 'manifest copy button missing');
-    assert.ok(html.includes('id="slack-open-apps"'), 'open-apps button missing');
-    // The screenshot-confirmed confusion: Your Apps shows only "Create an
-    // App" — the guide must name the exact path from there.
-    assert.ok(html.includes('From a manifest'), 'exact Slack click path missing');
-    // Each token step must name WHERE the token is issued — a bare "paste
-    // the token" sends users hunting through the Slack app settings.
-    assert.ok(html.includes('OAuth &amp; Permissions'), 'bot token source page missing');
-    assert.ok(html.includes('App-Level Tokens'), 'app token source page missing');
+    const slackBlock = html.slice(html.indexOf('id="channelSlackSettings"'), html.indexOf('<!-- MCP Servers -->'));
+    assert.ok(!slackBlock.includes('class="slack-setup-card"'), 'obsolete guide card remains');
+    assert.ok(!slackBlock.includes('class="slack-setup-step"'), 'obsolete guide steps remain');
+    assert.ok(!slackBlock.includes('id="slack-copy-manifest"'), 'obsolete manifest button remains');
+    assert.ok(!slackBlock.includes('id="slack-open-apps"'), 'obsolete app-page button remains');
+    assert.match(slackBlock, /<label for="slBotToken"[^>]*>봇 토큰<\/label>/);
+    assert.match(slackBlock, /<label for="slAppToken"[^>]*>수신용 앱 토큰 \(선택\)<\/label>/);
 });
 
 test('non-credential fields are demoted to a collapsed advanced section', () => {
@@ -86,15 +82,16 @@ test('non-credential fields are demoted to a collapsed advanced section', () => 
         assert.ok(html.indexOf(`id="${id}"`) > detailsIdx, `#${id} should live inside the advanced section`);
     }
     // Only the two credential inputs stay top-level.
-    const cardIdx = html.indexOf('class="slack-setup-card"');
-    assert.ok(html.indexOf('id="slBotToken"') > cardIdx && html.indexOf('id="slBotToken"') < detailsIdx);
-    assert.ok(html.indexOf('id="slAppToken"') > cardIdx && html.indexOf('id="slAppToken"') < detailsIdx);
+    const sectionIdx = html.indexOf('id="channelSlackSettings"');
+    assert.ok(html.indexOf('id="slBotToken"') > sectionIdx && html.indexOf('id="slBotToken"') < detailsIdx);
+    assert.ok(html.indexOf('id="slAppToken"') > sectionIdx && html.indexOf('id="slAppToken"') < detailsIdx);
 });
 
-test('guide bindings and prefix validation are wired from settings-slack.ts', () => {
+test('token prefix validation is wired from settings-slack.ts', () => {
     const module = read('public/js/features/settings-slack.ts');
     assert.match(module, /initSlackSetupGuide/);
-    assert.ok(module.includes("getElementById('slack-copy-manifest')"));
+    assert.ok(!module.includes("getElementById('slack-copy-manifest')"));
+    assert.ok(!module.includes("getElementById('slack-open-apps')"));
     assert.ok(module.includes("bindPrefixValidation('slBotToken'"));
     assert.ok(module.includes("bindPrefixValidation('slAppToken'"));
     const main = read('public/js/main.ts');
