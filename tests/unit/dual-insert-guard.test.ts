@@ -4,13 +4,16 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readSource } from './source-normalize.js';
+import { orchestrate } from '../../src/orchestrator/pipeline.ts';
+import { resetState } from '../../src/orchestrator/state-machine.ts';
+import { createQueueController } from '../../src/agent/spawn/queue.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const srcRoot = join(__dirname, '../../src');
 
 const gatewaySrc = readSource(join(srcRoot, 'orchestrator/gateway.ts'), 'utf8');
-const pipelineSrc = readSource(join(srcRoot, 'orchestrator/pipeline.ts'), 'utf8');
 const spawnSrc = readSource(join(srcRoot, 'agent/spawn.ts'), 'utf8');
 const queueSrc = readSource(join(srcRoot, 'agent/spawn/queue.ts'), 'utf8');
 const botSrc = readSource(join(srcRoot, 'telegram/bot.ts'), 'utf8');
@@ -54,33 +57,39 @@ test('DI-003: gateway reset path passes _skipInsert: true to orchestrateReset', 
 
 // ─── DI-004: pipeline PABCD spawnAgent propagates _skipInsert ───
 
-test('DI-004: pipeline PABCD path propagates _skipInsert to spawnAgent', () => {
-    // Locate the concrete main-agent invocation block.
-    // Research refactor may wrap spawnAgent behind runSpawnAgent for test injection.
-    const runSpawnIdx = pipelineSrc.indexOf('const { promise } = runSpawnAgent(prompt');
-    const directSpawnIdx = pipelineSrc.indexOf('const { promise } = spawnAgent(prompt');
-    const spawnStart = runSpawnIdx >= 0 ? runSpawnIdx : directSpawnIdx;
-    assert.ok(spawnStart > 0, 'main agent invocation must exist');
-    const pabcdBlock = pipelineSrc.slice(spawnStart, spawnStart + 300);
-    assert.ok(
-        pabcdBlock.includes('_skipInsert: !!meta._skipInsert'),
-        'pabcd main-agent invocation must propagate _skipInsert from meta',
-    );
+test('DI-004: pipeline PABCD path propagates _skipInsert to spawnAgent', async () => {
+    resetState('default');
+    let captured: Record<string, unknown> | undefined;
+    await orchestrate('dual-insert guard', {
+        origin: 'test',
+        _skipClear: true,
+        _skipReplayDrain: true,
+        _skipInsert: true,
+        _spawnAgent: (_prompt: string, opts: Record<string, unknown>) => {
+            captured = opts;
+            return { child: null, promise: Promise.resolve({ text: 'ok', code: 0 }) };
+        },
+    });
+    assert.equal(captured?._skipInsert, true);
+    resetState('default');
 });
 
 // ─── DI-005: pipeline PABCD has _skipInsert in spawn call ───
 
-test('DI-005: pipeline PABCD spawn includes _skipInsert', () => {
-    // Verify the main-agent invocation includes _skipInsert
-    const runSpawnIdx = pipelineSrc.indexOf('runSpawnAgent(prompt');
-    const directSpawnIdx = pipelineSrc.indexOf('spawnAgent(prompt');
-    const spawnIdx = runSpawnIdx >= 0 ? runSpawnIdx : directSpawnIdx;
-    assert.ok(spawnIdx > 0, 'main-agent invocation must exist');
-    const spawnBlock = pipelineSrc.slice(spawnIdx, spawnIdx + 200);
-    assert.ok(
-        spawnBlock.includes('_skipInsert'),
-        'main-agent invocation must include _skipInsert option',
-    );
+test('DI-005: pipeline PABCD spawn defaults _skipInsert to false', async () => {
+    resetState('default');
+    let captured: Record<string, unknown> | undefined;
+    await orchestrate('dual-insert default guard', {
+        origin: 'test',
+        _skipClear: true,
+        _skipReplayDrain: true,
+        _spawnAgent: (_prompt: string, opts: Record<string, unknown>) => {
+            captured = opts;
+            return { child: null, promise: Promise.resolve({ text: 'ok', code: 0 }) };
+        },
+    });
+    assert.equal(captured?._skipInsert, false);
+    resetState('default');
 });
 
 // ─── DI-006: bot.ts tgOrchestrate → orchestrateAndCollect with _skipInsert ───
@@ -96,14 +105,37 @@ test('DI-006: tgOrchestrate passes _skipInsert: true to orchestrateAndCollect', 
 
 // ─── DI-007: spawn.ts processQueue → orchestrate with _skipInsert ───
 
-test('DI-007: processQueue passes _skipInsert: true to orchestrate calls', () => {
-    const pqStart = queueSrc.indexOf('async function processQueue');
-    const pqEnd = queueSrc.indexOf('function purgeQueueOnStop', pqStart);
-    const pqBlock = queueSrc.slice(pqStart, pqEnd > 0 ? pqEnd : pqStart + 5000);
-    // All 3 orchestrate calls in processQueue must have _skipInsert
-    assert.ok(pqBlock.includes("orchestrateReset({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })"), 'processQueue orchestrateReset');
-    assert.ok(pqBlock.includes("orchestrateContinue({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })"), 'processQueue orchestrateContinue');
-    assert.ok(pqBlock.includes("orchestrate(combined, { origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })"), 'processQueue orchestrate');
+test('DI-007: processQueue passes _skipInsert: true to every orchestrate path', async () => {
+    for (const intent of ['normal', 'continue', 'reset'] as const) {
+        let busy = true;
+        let captured: Record<string, unknown> | undefined;
+        const controller = createQueueController({
+            migrateQueuedMessagesV1ToV2() {},
+            isSpawnBusy: () => busy,
+            hasBlockingWorkers: () => false,
+            hasPendingWorkerReplays: () => false,
+            insertMessage: { run() {} },
+            getActiveChatSession: () => 'default',
+            insertQueuedMessage: { run() {} },
+            deleteQueuedMessage: { run() {} },
+            listQueuedMessages: { all: () => [] },
+            broadcast() {},
+            importPipeline: async () => ({
+                orchestrate: async (_prompt: string, meta: Record<string, unknown>) => { captured = meta; },
+                orchestrateContinue: async (meta: Record<string, unknown>) => { captured = meta; },
+                orchestrateReset: async (meta: Record<string, unknown>) => { captured = meta; },
+                isContinueIntent: () => intent === 'continue',
+                isResetIntent: () => intent === 'reset',
+                drainPendingReplays: async () => {},
+            }),
+            getWorkingDir: () => null,
+            isMultiSessionEnabled: () => false,
+        }, new SessionLanes(() => 1));
+        controller.enqueueMessage(`dual-insert ${intent}`, 'web');
+        busy = false;
+        await controller.processQueue('default');
+        assert.equal(captured?._skipInsert, true, `${intent} path`);
+    }
 });
 
 // ─── DI-008: spawn.ts steerAgent → orchestrate with _skipInsert ───
@@ -111,10 +143,12 @@ test('DI-007: processQueue passes _skipInsert: true to orchestrate calls', () =>
 test('DI-008: steerAgent passes _skipInsert: true to orchestrate calls', () => {
     const steerStart = spawnSrc.indexOf('export async function steerAgent');
     const steerEnd = spawnSrc.indexOf('// ─── Helpers', steerStart);
-    const steerBlock = spawnSrc.slice(steerStart, steerEnd > 0 ? steerEnd : steerStart + 800);
-    assert.ok(steerBlock.includes("orchestrateReset({ origin, _skipInsert: true })"), 'steerAgent orchestrateReset');
-    assert.ok(steerBlock.includes("orchestrateContinue({ origin, _skipInsert: true })"), 'steerAgent orchestrateContinue');
-    assert.ok(steerBlock.includes("orchestrate(newPrompt, { origin, _skipInsert: true })"), 'steerAgent orchestrate');
+    const steerBlock = spawnSrc.slice(steerStart, steerEnd > 0 ? steerEnd : steerStart + 5000);
+    assert.equal(
+        steerBlock.match(/_skipInsert:\s*true/g)?.length,
+        3,
+        'reset, continue, and normal steer paths must all suppress duplicate inserts',
+    );
 });
 
 // ─── DI-009: processQueue retains its own insertMessage (existing behavior) ───

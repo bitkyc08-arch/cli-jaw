@@ -42,7 +42,7 @@ test('EG-001: spawnAgent calls detectCli() before any spawn', () => {
 test('EG-002: standard CLI branch has child.on(\'error\') listener', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
     assert.ok(stdBranchIdx > 0, 'Standard CLI branch comment should exist');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 2400);
+    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 7000);
 
     assert.ok(
         block.includes("child.on('error'"),
@@ -73,17 +73,17 @@ test('EG-003: ACP branch has acp.on(\'error\') listener', () => {
 
 // ─── EG-004: Windows shell:true for .cmd shim resolution ───
 
-test('EG-004: standard CLI spawn uses shell:true on win32', () => {
+test('EG-004: standard CLI spawn uses shell:true for Windows shims', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 1200);
+    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 2500);
 
     assert.ok(
-        block.includes("process.platform === 'win32'"),
-        'should conditionally check for win32',
+        block.includes("process.platform === 'win32'") && block.includes("!spawnCommand.toLowerCase().endsWith('.exe')"),
+        'should use a shell only for non-executable Windows shims',
     );
     assert.ok(
-        block.includes('shell: true'),
-        'should set shell: true on Windows',
+        block.includes('windowsSpawnUsesShell ? { shell: true } : {}'),
+        'should apply shell:true only when the Windows shim guard passes',
     );
 });
 
@@ -220,7 +220,7 @@ test('EG-009: quota-copilot keychain lookup is darwin-only', () => {
 test('EG-010: preflight failure returns child: null', () => {
     const preflightIdx = spawnSrc.indexOf('formatCliUnavailableMessage(cli, detected)');
     assert.ok(preflightIdx > 0, 'preflight block should exist');
-    const pfBlock = spawnSrc.slice(preflightIdx, preflightIdx + 500);
+    const pfBlock = spawnSrc.slice(preflightIdx, preflightIdx + 1200);
     assert.ok(
         pfBlock.includes('child: null'),
         'preflight should return { child: null } to avoid caller crashes',

@@ -21,16 +21,13 @@ test('worker classification: dispatch route marks non-done worker results as fai
 });
 
 test('worker classification: replay contract only runs for done workers', () => {
-    // In patch3, replay drain is separate from worker execution.
-    // The replay drain calls the scoped claim and list worker-result contracts.
-    // only returns done workers (checked in worker-registry).
     assert.ok(
-        pipelineSrc.includes('claimWorkerReplay(pr.agentId)'),
-        'replay should be gated behind claimWorkerReplay',
+        pipelineSrc.includes('claimWorkerReplay(pr.agentId, scopeKey)'),
+        'replay should claim the completed worker result within its owning scope',
     );
     assert.ok(
-        pipelineSrc.includes('listPendingWorkerResults'),
-        'replay drain should use listPendingWorkerResults which filters done workers',
+        pipelineSrc.includes('listPendingWorkerResults(scopeKey)'),
+        'replay drain should list only pending results from its owning scope',
     );
 });
 
