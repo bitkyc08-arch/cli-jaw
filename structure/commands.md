@@ -95,6 +95,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `provider` | `bin/commands/provider.ts` | provider registry/config helper root command |
 | `chat` | `bin/commands/chat.ts` | `process.argv.slice(3)`를 TUI로 전달. 기본/`--raw`/`--simple` 모드. TUI transport는 `bin/commands/tui/channel.ts`에서 SSE-first inbound(`GET /api/events`) + legacy WS fallback(pre-X-01 server only)을 제공하고, outbound는 REST `POST /api/message` / `POST /api/stop`을 사용 |
 | `chat search` | `bin/commands/chat-search.ts` | `<query> [--days N] [--recent N] [--context N] [--limit N]`; 채팅 메시지 히스토리 검색 |
+| `ask` | `bin/commands/ask.ts` | `"<prompt>" \| -` (stdin), `[--json] [--timeout <sec>] [--port <port>]`; TTY 없이 프롬프트 하나를 보내고 답을 받는다. `GET /api/events`를 **먼저** 구독한 뒤 `POST /api/message`를 보내고 `request_settled`에서 자기 requestId를 기다린다 — 순서를 바꾸면 빠른 응답을 놓친다(SSE는 커서 없는 신규 구독자에게 재생하지 않음). 종료코드: 0 완료/steered, 1 실패, 2 usage, 124 timeout. 서버가 바쁠 때는 `steered`(진행 중 턴에 주입됨, 별도 답변 없음)로 정직하게 끝낸다 (#276) |
 | `employee` | `bin/commands/employee.ts` | `list [--port 3457] [--json]`, `reset [--port 3457]`, `sessions-reset [--port 3457]`; `help`/`--help`/`-h` |
 | `reset` | `bin/commands/reset.ts` | `[--yes] [--port 3457]`; `confirm`도 확인값으로 허용 |
 | `mcp` | `bin/commands/mcp.ts` | `install <package> [--pypi\|--npm]`, `sync`, `reset [--force]`, `list` |

@@ -410,7 +410,7 @@ cli-jaw/
 │       ├── Cargo.toml        ← Rust package/dependency/test profile
 │       └── src/              ← main.rs(467L) + args/child/hook/protocol/transcript/config/terminal/cleanup/normalize/sanitize
 ├── bin/
-│   ├── cli-jaw.ts            ← 28개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (340L)
+│   ├── cli-jaw.ts            ← 28개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (348L)
 │   ├── _http-client.ts       ← shared HTTP client helper (35L) ✨
 │   ├── star-prompt.ts        ← `gh` 기반 GitHub star 1회 프롬프트 (169L)
 │   ├── interactive-confirm.ts ← 방향키/`y`/`n`/Enter 인라인 Yes-No 선택기, raw mode 없으면 타이핑 폴백 (128L)
