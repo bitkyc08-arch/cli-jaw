@@ -161,6 +161,9 @@ function runDetached(
             ...meta.eventScope,
             error: true,
         });
+        // The pipeline rejected before reaching its own settle site, so this is
+        // the last chance to answer the caller instead of leaking the entry.
+        settleOnce(meta.requestId, 'failed', { error: msg });
     });
 }
 
@@ -217,6 +220,11 @@ export function submitMessage(
     const prior = recentSubmissions.get(key);
     if (prior && now - prior.ts < DEDUP_WINDOW_MS) {
         console.log(`[gateway:dedup] suppressed duplicate (${now - prior.ts}ms window) origin=${meta.origin}`);
+        // This submission was admitted above but will never run. Settle it under
+        // its OWN id: returning the prior id as if it were this caller's is not
+        // enough, because that request may already have settled and this caller
+        // would then wait for an event that has come and gone.
+        settleOnce(requestId, 'dropped', { reason: 'duplicate', mergedInto: prior.requestId });
         return { action: 'rejected', reason: 'duplicate', requestId: prior.requestId };
     }
     gcRecentSubmissions(now);
@@ -224,7 +232,10 @@ export function submitMessage(
 
     // ── continue intent (only when IDLE) ──
     if (getState(scope) === 'IDLE' && isContinueIntent(trimmed)) {
-        if (isAgentBusy(scope)) return { action: 'rejected', reason: 'busy' };
+        if (isAgentBusy(scope)) {
+            settleOnce(requestId, 'dropped', { reason: 'busy' });
+            return { action: 'rejected', reason: 'busy', requestId };
+        }
         insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, chatSessionId);
         broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
         if (!meta.skipOrchestrate) {

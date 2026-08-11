@@ -68,8 +68,15 @@ test('SM-005: continue intent when busy → rejected/busy', () => {
         gatewaySrc.indexOf('// ── reset'),
     );
     assert.ok(
-        continueBlock.includes("if (isAgentBusy(scope)) return { action: 'rejected', reason: 'busy' }"),
+        /if \(isAgentBusy\(scope\)\) \{/.test(continueBlock)
+        && /action: 'rejected', reason: 'busy'/.test(continueBlock),
         'continue intent rejects when busy (429 retry-aware)',
+    );
+    // The rejection must also settle its own admitted requestId, or the entry
+    // leaks and the caller never hears back (#276 settle contract).
+    assert.ok(
+        /settleOnce\(requestId, 'dropped', \{ reason: 'busy' \}\)/.test(continueBlock),
+        'a busy rejection must settle the request it already admitted',
     );
 });
 

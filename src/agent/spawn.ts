@@ -8,6 +8,10 @@ import { spawn, type ChildProcess } from 'child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { broadcast } from '../core/bus.js';
 import { publish as ssePublish } from '../core/event-bus.js';
+// Static: the registry depends only on the bus, so there is no cycle, and a
+// dynamic import here would add an avoidable async failure point on a path that
+// exists precisely to guarantee the caller hears something.
+import { settleOnce } from '../orchestrator/request-registry.js';
 import { settings, UPLOADS_DIR, detectCli, getProjectDirs } from '../core/config.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -564,6 +568,10 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
     if (reason === 'api' || reason === 'user') {
         queueCtrl.purgeQueueOnStop(scopeKey, reason);
+        // The queue purge answers everything still waiting, but the run that was
+        // actually executing has its own id. Without this a user stop leaves that
+        // caller hanging, or worse the pipeline later reports it as `completed`.
+        settleOnce(run?.meta?.requestId, 'cancelled', { reason });
         clearWorkerSlotsOnStop(scopeKey, reason);
     }
     if (run?.cancelTurn && (getActiveMainCli(scopeKey) === 'codex-app' || getActiveMainCli(scopeKey) === 'pi')) {
@@ -692,7 +700,6 @@ export async function steerAgent(
         // A steer injects into the turn already running; no new completion
         // event will ever carry this id. Settling here is what stops a caller
         // from waiting for an answer that structurally cannot arrive.
-        const { settleOnce } = await import('../orchestrator/request-registry.js');
         settleOnce(meta?.requestId, 'steered');
         return;
     }
@@ -712,7 +719,6 @@ export async function steerAgent(
     task.catch(async (err: Error) => {
         console.error('[steer:orchestrate]', err.message);
         broadcast('orchestrate_done', stripUndefined({ text: `[error] ${err.message}`, error: true, origin, requestId: meta?.requestId }));
-        const { settleOnce } = await import('../orchestrator/request-registry.js');
         settleOnce(meta?.requestId, 'failed', { error: err.message });
     });
 }

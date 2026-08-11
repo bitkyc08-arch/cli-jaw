@@ -82,6 +82,11 @@ export function settleOnce(
     const entry = pending.get(requestId);
     if (!entry) return false;
     pending.delete(requestId);
+    // `text` duplicates what orchestrate_done already carried, but a machine
+    // caller correlating on requestId would otherwise have to join two events
+    // to get its answer. Scope is stamped so the SSE route's per-session filter
+    // applies exactly as it does to orchestrate_done — this is not a wider
+    // audience for the same content.
     broadcast('request_settled', {
         requestId,
         outcome,
@@ -111,6 +116,36 @@ export function settleAllPending(outcome: SettleOutcome, reason: string, scope?:
  */
 export function pendingRequestIds(): string[] {
     return [...pending.keys()];
+}
+
+/**
+ * Defense in depth, not a substitute for closing terminal paths.
+ *
+ * Every settlement site is meant to be exhaustive, but this Map lives for the
+ * process lifetime and a single missed path would grow it without bound. So an
+ * entry older than the cutoff is settled as `dropped` — the caller hears a
+ * definite (if unhelpful) answer instead of hanging forever, and the entry is
+ * released. Silently evicting without broadcasting would recreate the hang this
+ * registry exists to remove.
+ *
+ * Default cutoff is deliberately generous: a legitimately long agent turn must
+ * never be swept out from under a waiting caller.
+ */
+export function sweepStaleRequests(maxAgeMs = 60 * 60_000, now = Date.now()): number {
+    const stale = [...pending.values()].filter((entry) => now - entry.admittedAt > maxAgeMs);
+    for (const entry of stale) {
+        settleOnce(entry.requestId, 'dropped', { reason: 'stale-no-terminal-event' });
+    }
+    if (stale.length > 0) {
+        console.warn(`[request-registry] swept ${stale.length} stale request(s) — a settlement path is missing`);
+    }
+    return stale.length;
+}
+
+/** Diagnostic: how many requests are outstanding and how old the oldest is. */
+export function pendingRequestStats(now = Date.now()): { pending: number; oldestAgeMs: number } {
+    const ages = [...pending.values()].map((entry) => now - entry.admittedAt);
+    return { pending: ages.length, oldestAgeMs: ages.length ? Math.max(...ages) : 0 };
 }
 
 /** @internal test helper. */

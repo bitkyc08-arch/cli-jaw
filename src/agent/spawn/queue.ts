@@ -490,6 +490,9 @@ export function createQueueController(
                     const msg = (err as Error).message;
                     console.error('[queue:orchestrate]', msg);
                     deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, ...(eventScope || {}) });
+                    // The pipeline threw before reaching its own settle site, so
+                    // this is the last place that can answer the caller.
+                    settleOnce(requestId, 'failed', { error: msg });
                 }
             });
         } catch (setupErr) {
@@ -499,6 +502,9 @@ export function createQueueController(
             } else {
                 deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget,
                     ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
+                // Re-queued items settle on their eventual run; these do not get
+                // another chance, so answer the caller here.
+                settleOnce(requestId, 'failed', { error: `setup failed: ${(setupErr as Error).message}` });
             }
         } finally {
             for (const runItem of runItems) scheduledItemIds.delete(runItem.id);
