@@ -19,6 +19,34 @@ import { sendResultHttpStatus } from '../messaging/send-result.js';
 import { getSlackSendClient } from '../slack/send-only-client.js';
 import { getSlackSelfUserId } from '../slack/bot.js';
 import { fetchSlackHistory, fetchSlackReplies, formatHistoryForAgent } from '../slack/history.js';
+import { resolveSlackIdentities } from '../slack/identity.js';
+import type { SlackHistoryMessage } from '../slack/history.js';
+
+/**
+ * Best-effort author names for a history window. Every failure path yields an
+ * empty map, which renders exactly as the pre-existing mention syntax.
+ */
+async function resolveHistoryNames(
+    token: string, messages: readonly SlackHistoryMessage[],
+): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    const refs = new Map<string, { userId?: string; botId?: string }>();
+    for (const message of messages) {
+        if (message.user && !refs.has(message.user)) refs.set(message.user, { userId: message.user });
+        else if (message.botId && !refs.has(message.botId)) refs.set(message.botId, { botId: message.botId });
+    }
+    if (!refs.size) return names;
+    try {
+        const teamId = String(settings["slack"]?.teamId || 'unknown');
+        const batch = await resolveSlackIdentities(token, [...refs.values()], { teamId });
+        for (const [id, identity] of batch.identities) {
+            if (identity.resolved) names.set(id, identity.name);
+        }
+    } catch {
+        // Identity is decoration; a history read must never fail because of it.
+    }
+    return names;
+}
 import { settings } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -329,7 +357,10 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             return;
         }
         if (String(req.query['format'] || '') === 'text') {
-            res.json({ ok: true, text: formatHistoryForAgent(result.messages, getSlackSelfUserId()) });
+            // Names are a best-effort garnish: if resolution is unavailable the map
+            // is empty and the rendering falls back to raw mention syntax.
+            const names = await resolveHistoryNames(client.token, result.messages);
+            res.json({ ok: true, text: formatHistoryForAgent(result.messages, getSlackSelfUserId(), names) });
             return;
         }
         res.json({ ok: true, messages: result.messages, hasMore: result.hasMore });

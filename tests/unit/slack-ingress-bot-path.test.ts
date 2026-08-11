@@ -75,9 +75,14 @@ async function settle(turns = 5): Promise<void> {
 
 /** Wait until `events` contains the expected entry, or fail loudly. */
 async function waitFor(predicate: () => boolean, label: string): Promise<void> {
-    for (let i = 0; i < 50; i += 1) {
+    // setTimeout, not setImmediate: the inbound path now has a real-time bounded
+    // step (sender-identity resolution races a deadline before admission), and a
+    // setImmediate spin drains microtasks without ever advancing the clock, so it
+    // would time out no matter how correct the code is. Budget comfortably exceeds
+    // that deadline.
+    for (let i = 0; i < 200; i += 1) {
         if (predicate()) return;
-        await new Promise(resolve => setImmediate(resolve));
+        await new Promise(resolve => setTimeout(resolve, 5));
     }
     assert.fail(`timed out waiting for ${label}; saw ${JSON.stringify(events)}`);
 }

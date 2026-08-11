@@ -671,10 +671,17 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
             },
         },
     });
-    await new Promise(resolve => setTimeout(resolve, 20));
+    // The inbound path resolves sender identity before admission, bounded by a
+    // real-time deadline. This test does not mock users.info, so it always waits
+    // out that deadline; poll past it instead of assuming a fixed 20ms.
+    for (let i = 0; i < 200 && calls.length === 0; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
 
     assert.equal(calls.length, 1, `submitMessage called ${calls.length} times`);
-    assert.equal(calls[0]!.prompt, 'run the thing');
+    // Identity resolution fails here (no users.info mock), so the sender degrades
+    // to a raw id and the prompt body is unchanged apart from that context line.
+    assert.ok(calls[0]!.prompt.endsWith('run the thing'), calls[0]!.prompt);
     assert.equal(calls[0]!.meta['origin'], 'slack');
     const target = calls[0]!.meta['target'] as { channel?: string; targetId?: string; threadId?: string };
     assert.equal(target.channel, 'slack');

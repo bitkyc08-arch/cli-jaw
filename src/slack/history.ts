@@ -141,14 +141,22 @@ const FORMAT_CHAR_CAP = 6000;
 export function formatHistoryForAgent(
     messages: SlackHistoryMessage[],
     selfUserId?: string | null,
+    names?: ReadonlyMap<string, string>,
 ): string {
     const chronological = [...messages].sort((a, b) => Number(a.ts) - Number(b.ts));
     const lines: string[] = [];
     for (const m of chronological) {
         const when = new Date(Number(m.ts) * 1000).toISOString().slice(0, 16).replace('T', ' ');
+        // A resolved name never replaces the id — the agent still needs the id for
+        // any follow-up API call, so both are shown.
+        const resolvedName = m.user ? names?.get(m.user) : m.botId ? names?.get(m.botId) : undefined;
         const who = m.user
-            ? (m.user === selfUserId ? 'bot(self)' : `<@${m.user}>`)
-            : (m.botId ? `bot:${m.botId}` : 'unknown');
+            ? (m.user === selfUserId
+                ? 'bot(self)'
+                : resolvedName ? `${resolvedName} (${m.user})` : `<@${m.user}>`)
+            : (m.botId
+                ? (resolvedName ? `${resolvedName} (bot:${m.botId})` : `bot:${m.botId}`)
+                : 'unknown');
         const suffix = m.replyCount ? ` [${m.replyCount} replies]` : '';
         lines.push(`[${when}] ${who}: ${m.text}${suffix}`);
     }
