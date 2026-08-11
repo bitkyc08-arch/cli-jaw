@@ -18,10 +18,17 @@ cp -R src/prompt/templates/. "$STAGING/src/prompt/templates/"
 cp -R prompts/. "$STAGING/prompts/"
 cp -R src/browser/adaptive-fetch/vendor/. "$STAGING/src/browser/adaptive-fetch/vendor/"
 
-# jawcode TUI bundle + Bun shim + native addon (macOS only)
+# bun-shim.mjs is a COMMITTED source asset, unlike the jawcode bundles below
+# which are generated and gitignored. jawcode-render.ts imports the shim
+# unconditionally, so gating its copy on a generated artifact made every clean
+# build (CI, release, any fresh checkout) publish a dist that cannot load its
+# own renderer — `jaw chat --raw` then died with ERR_MODULE_NOT_FOUND (#275).
+mkdir -p "$STAGING/src/lib/tui"
+cp src/lib/tui/bun-shim.mjs "$STAGING/src/lib/tui/"
+
+# jawcode TUI bundle + native addon (macOS only)
 if [ -f src/lib/tui/jawcode-tui-bundle.mjs ]; then
-    mkdir -p "$STAGING/src/lib/tui" "$STAGING/src/lib/native"
-    cp src/lib/tui/bun-shim.mjs "$STAGING/src/lib/tui/"
+    mkdir -p "$STAGING/src/lib/native"
     cp src/lib/tui/jawcode-tui-bundle.mjs "$STAGING/src/lib/tui/"
     [ -f src/lib/tui/jawcode-interactive-bundle.mjs ] && cp src/lib/tui/jawcode-interactive-bundle.mjs "$STAGING/src/lib/tui/"
     NATIVE_TAG="$(node -p '`${process.platform}-${process.arch}`')"

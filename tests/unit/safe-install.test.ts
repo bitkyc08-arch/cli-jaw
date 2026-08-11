@@ -264,7 +264,9 @@ test('SAF-004e: Claude CLI install uses the official native installer', () => {
     assert.ok(postinstallSrc.includes('https://claude.ai/install.ps1'), 'win32 Claude branch should use the official installer URL');
     assert.ok(cliBlock.includes('CLAUDE_NATIVE_INSTALL_URL'), 'Claude install command should route through the native installer URL');
     assert.ok(cliBlock.includes('CLAUDE_NATIVE_INSTALL_PS_URL'), 'Windows Claude install command should route through the native installer URL');
-    assert.ok(cliBlock.includes('execFileSync'), 'Windows Claude install should avoid cmd.exe nested quote parsing');
+    // runTool() is the shell-free execFileSync wrapper introduced for #274; the
+    // property being asserted is unchanged (no cmd.exe nested quote parsing).
+    assert.ok(cliBlock.includes('runTool('), 'Windows Claude install should avoid cmd.exe nested quote parsing');
     assert.ok(cliBlock.includes('findClaudeNativeBinary'), 'postinstall should verify the native Claude binary location');
     assert.ok(cliBlock.includes('findExistingClaudeBinary'), 'postinstall should check existing Claude before installing');
     assert.ok(cliBlock.includes('isSpawnableCliFile'), 'postinstall should avoid accepting broken Unix Claude shims as existing installs');
@@ -295,9 +297,9 @@ test('SAF-004e1b: Claude runnable check is explicit for Windows and Unix', () =>
         postinstallSrc.indexOf('function isRunnableClaudeBinary'),
     );
     assert.ok(checkBlock.includes("process.platform === 'win32'"), 'Windows must use its own version-check branch');
-    assert.ok(checkBlock.includes("execFileSync('powershell'"), 'Windows check should use PowerShell for .cmd/.exe paths');
+    assert.ok(checkBlock.includes("runTool('powershell'"), 'Windows check should use PowerShell for .cmd/.exe paths');
     assert.ok(checkBlock.includes("'& $args[0] --version'"), 'PowerShell should invoke the detected Claude path safely');
-    assert.ok(checkBlock.includes("execFileSync(binaryPath, ['--version']"), 'macOS/Linux should run the detected binary directly');
+    assert.ok(checkBlock.includes("runTool(binaryPath, ['--version']"), 'macOS/Linux should run the detected binary directly');
 });
 
 test('SAF-004e1c: Windows native Claude detection accepts LOCALAPPDATA install roots', () => {

@@ -4,7 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateChannelCredentials } from '../../src/messaging/channel-validate.ts';
-import { REQUIRED_SLACK_BOT_SCOPES, SLACK_CAPABILITY_SCOPES } from '../../src/messaging/channel-validate.ts';
+import {
+    REQUIRED_SLACK_BOT_SCOPES,
+    SLACK_CAPABILITY_SCOPES,
+    missingSlackCapabilityScopes,
+} from '../../src/messaging/channel-validate.ts';
 
 type Route = { ok?: boolean; json?: unknown };
 
@@ -81,8 +85,13 @@ test('slack validation succeeds without files:read but reports the capability ga
     const { fn } = fakeFetch({
         'auth.test': { json: { ok: true, user: 'cli-jaw', team_id: 'T1' } },
     }, REQUIRED_SLACK_BOT_SCOPES);
+    // Assert the behavior, not a frozen list: capability scopes grow as features
+    // land (identity and roster added theirs), and a literal snapshot would break
+    // on every addition while proving nothing about the non-blocking contract.
+    const expected = missingSlackCapabilityScopes(REQUIRED_SLACK_BOT_SCOPES.join(','));
+    assert.ok(expected.includes('files:read'), 'files:read must still be a capability gap here');
     assert.deepEqual(await validateChannelCredentials({ channel: 'slack', botToken: 'xoxb-1' }, fn),
-        { ok: true, identity: 'cli-jaw', teamId: 'T1', missingCapabilities: ['files:read'] });
+        { ok: true, identity: 'cli-jaw', teamId: 'T1', missingCapabilities: expected });
 });
 
 test('a missing core scope still fails validation even when files:read is granted', async () => {

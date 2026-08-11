@@ -20,6 +20,7 @@ import { channelGateOn, resolveOrcScope } from './scope.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey, normalizedThreadId, type SessionScope } from '../messaging/session-key.js';
 import { sessionLanes } from './session-lanes.js';
+import { admitRequest, settleOnce } from './request-registry.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
@@ -160,6 +161,9 @@ function runDetached(
             ...meta.eventScope,
             error: true,
         });
+        // The pipeline rejected before reaching its own settle site, so this is
+        // the last chance to answer the caller instead of leaking the entry.
+        settleOnce(meta.requestId, 'failed', { error: msg });
     });
 }
 
@@ -198,6 +202,11 @@ export function submitMessage(
         }))))
         : 'default';
     const sessionScope: SessionScope = { scope, chatSessionId };
+
+    // Admit the request the moment its id exists. Every exit below then settles
+    // through settleOnce(), so a caller holding this id always hears exactly one
+    // terminal event — including on paths that never emit orchestrate_done.
+    admitRequest(requestId, scope);
     // OFF-mode byte-compat: only expose resolved identity when multi-session is on —
     // /api/message spreads SubmitResult into the HTTP response (routes/command.ts).
     const sessionContext = multiSessionEnabled
@@ -211,6 +220,11 @@ export function submitMessage(
     const prior = recentSubmissions.get(key);
     if (prior && now - prior.ts < DEDUP_WINDOW_MS) {
         console.log(`[gateway:dedup] suppressed duplicate (${now - prior.ts}ms window) origin=${meta.origin}`);
+        // This submission was admitted above but will never run. Settle it under
+        // its OWN id: returning the prior id as if it were this caller's is not
+        // enough, because that request may already have settled and this caller
+        // would then wait for an event that has come and gone.
+        settleOnce(requestId, 'dropped', { reason: 'duplicate', mergedInto: prior.requestId });
         return { action: 'rejected', reason: 'duplicate', requestId: prior.requestId };
     }
     gcRecentSubmissions(now);
@@ -218,7 +232,10 @@ export function submitMessage(
 
     // ── continue intent (only when IDLE) ──
     if (getState(scope) === 'IDLE' && isContinueIntent(trimmed)) {
-        if (isAgentBusy(scope)) return { action: 'rejected', reason: 'busy' };
+        if (isAgentBusy(scope)) {
+            settleOnce(requestId, 'dropped', { reason: 'busy' });
+            return { action: 'rejected', reason: 'busy', requestId };
+        }
         insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, chatSessionId);
         broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined, ...(eventScope || {}) }));
         if (!meta.skipOrchestrate) {
@@ -232,6 +249,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
+        else settleOnce(requestId, 'skipped', { reason: 'skipOrchestrate' });
         return { action: 'started', disposition: 'new_run', noPendingContinue: true, requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
@@ -250,6 +268,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
+        else settleOnce(requestId, 'skipped', { reason: 'skipOrchestrate' });
         return { action: 'started', disposition: 'new_run', requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
@@ -289,5 +308,6 @@ export function submitMessage(
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );
     }
+    else settleOnce(requestId, 'skipped', { reason: 'skipOrchestrate' });
     return { action: 'started', disposition: 'new_run', requestId, ...(sessionContext ? { sessionContext } : {}) };
 }

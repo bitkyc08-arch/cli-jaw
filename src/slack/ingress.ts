@@ -14,6 +14,48 @@ let activeDownloads = 0;
 let generation = 0;
 let resetting = false;
 
+/**
+ * Message-level dedupe, keyed by the STABLE event identity (team, channel, ts).
+ *
+ * This is a different layer from the socket's envelope dedupe: that one absorbs a
+ * redelivery of the same envelope, this one absorbs two different envelopes that
+ * describe the same Slack message. It has to exist because `dedupKey` downstream
+ * hashes the prompt body (`gateway.ts`), and sender identity can resolve on one
+ * delivery and degrade on the next — different prefixes, split key, message run
+ * twice.
+ *
+ * Placement matters as much as existence: this must be recorded only AFTER the
+ * gate accepts an event. Slack sends a `message` copy and an `app_mention` copy of
+ * the same mention sharing one `ts`, and the gate drops the `message` copy. If the
+ * dropped copy arrived first and claimed the key, it would suppress the canonical
+ * `app_mention` and the mention would be ignored entirely.
+ */
+const EVENT_DEDUP_TTL_MS = 10 * 60 * 1000;
+const seenEvents = new Map<string, number>();
+
+export function slackEventKey(teamId: string, channel: string, ts: string): string {
+    return `${teamId || 'unknown'}:${channel}:${ts}`;
+}
+
+/** true = already handled; the caller should drop this delivery. */
+export function claimSlackEvent(key: string): boolean {
+    const now = Date.now();
+    const seenAt = seenEvents.get(key);
+    if (seenAt !== undefined && seenAt > now) return true;
+    // Lazy sweep of expired keys only — no timer, so the loop can still exit.
+    if (seenEvents.size > 500) {
+        for (const [candidate, expiry] of seenEvents) {
+            if (expiry <= now) seenEvents.delete(candidate);
+        }
+    }
+    seenEvents.set(key, now + EVENT_DEDUP_TTL_MS);
+    return false;
+}
+
+export function resetSlackEventDedup(): void {
+    seenEvents.clear();
+}
+
 function downloadLimit(): number {
     const value = Number(settings["slack"]?.inboundDownloadConcurrency ?? 6);
     return Number.isInteger(value) && value >= 1 && value <= 32 ? value : 6;
@@ -146,6 +188,8 @@ export async function resetSlackIngress(): Promise<void> {
     controllers.clear();
     tracked.clear();
     ingressTails.clear();
+    // A dead generation's keys must not suppress the next lifecycle's messages.
+    resetSlackEventDedup();
     resetting = false;
 }
 

@@ -14,8 +14,17 @@ import { runQueueCommand } from './queue-command.js';
 
 export async function runSimpleMode(ctx: TuiContext): Promise<void> {
     const { ws } = ctx;
-    console.log(`\n  cli-jaw v${APP_VERSION} \u00B7 ${ctx.label} \u00B7 :${ctx.values.port}\n`);
-    const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: `${ctx.label} > ` });
+    // `--simple --raw` still lands here (a piped --raw goes to raw-pipe-mode
+    // instead). Suppress the human chrome so the combination does not emit a
+    // banner and prompt around machine output.
+    if (!ctx.isRaw) {
+        console.log(`\n  cli-jaw v${APP_VERSION} \u00B7 ${ctx.label} \u00B7 :${ctx.values.port}\n`);
+    }
+    const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        prompt: ctx.isRaw ? '' : `${ctx.label} > `,
+    });
     let streaming = false;
 
     async function handleSlashCommand(parsed: ParsedSlashCommand) {

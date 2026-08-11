@@ -21,6 +21,32 @@ import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
+import { buildSenderPrompt, resolveSlackIdentity } from './identity.js';
+
+/**
+ * Attribute an agent-running slash command to its invoker.
+ *
+ * Trust order matches the resolver contract: resolve `user_id` first, and only
+ * fall back to the payload's `user_name` once resolution degrades. Passing
+ * `user_name` in as an inline hint would invert that and let the payload name
+ * win without verification.
+ */
+async function attributeSlashPrompt(
+    payload: Record<string, unknown>, prompt: string,
+): Promise<string> {
+    const userId = typeof payload['user_id'] === 'string' ? payload['user_id'] : '';
+    if (!userId || settings['slack']?.senderIdentity === false) return prompt;
+    const token = getSlackSendClient().token;
+    if (!token) return prompt;
+    const teamId = typeof payload['team_id'] === 'string' && payload['team_id']
+        ? payload['team_id']
+        : String(settings['slack']?.teamId || 'unknown');
+    const inlineName = typeof payload['user_name'] === 'string' ? payload['user_name'] : undefined;
+    const identity = await resolveSlackIdentity(token, {
+        userId, ...(inlineName ? { inlineName } : {}),
+    }, { teamId }).catch(() => null);
+    return identity ? buildSenderPrompt(identity, prompt) : prompt;
+}
 import { slackTargetFromId } from '../messaging/slack-target.js';
 import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-key.js';
 import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
@@ -100,7 +126,10 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
 
         // /steer returns a prompt to run rather than text to print.
         if (result?.steerPrompt) {
-            const steerPrompt = result.steerPrompt;
+            // Only the agent-running slash path gets sender attribution. Plain
+            // admin commands (/status, /model) print straight back to the user and
+            // never become an agent prompt, so decorating them would be noise.
+            const steerPrompt = await attributeSlashPrompt(payload, result.steerPrompt);
             if (result.text) await sendSlackText(token, target, result.text);
             const { orchestrateAndCollect } = await import('../orchestrator/collect.js');
             const reply = String(await withSessionScope(sessionScope, () => orchestrateAndCollect(steerPrompt, {

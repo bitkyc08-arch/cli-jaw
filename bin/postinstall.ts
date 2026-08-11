@@ -28,6 +28,46 @@ import os from 'os';
 import { execFileSync } from 'child_process';
 import { ensureSharedHomeSkillsLinks, initMcpConfig, copyDefaultSkills, propagateSkillsToInstances, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
 import { resolveHomePath } from '../src/core/path-expand.js';
+import { launchSpec } from '../src/core/exec-name.js';
+
+// ─── External-process seam (#274) ────────────────────
+// Every external spawn in this file goes through runTool(), which resolves the
+// Windows launch spec before handing off — both the shim name (npm -> npm.cmd)
+// and the cmd.exe wrapper a .cmd script needs, since Node refuses to execFile
+// a batch file directly. Resolution deliberately lives in production code
+// rather than in the injected adapter: a fake that replaced the whole runner
+// would only ever observe the pre-resolution command, which is exactly the
+// logic a #274 regression test needs to see.
+//
+// Failure semantics are unchanged — callers here use `throw` for control flow
+// (brew upgrade falling back to install, presence probes), so runTool throws
+// like execFileSync does instead of returning a result object.
+type ExecFileAdapter = (file: string, args: string[], opts: Record<string, unknown>) => string | Buffer;
+
+let execFileAdapter: ExecFileAdapter = execFileSync as unknown as ExecFileAdapter;
+let toolPlatform: NodeJS.Platform = process.platform;
+
+/** Test seam. Returns a restore function. Not for production use. */
+export function __setToolEnvironment(
+    adapter: ExecFileAdapter,
+    platform: NodeJS.Platform = process.platform,
+): () => void {
+    const prevAdapter = execFileAdapter;
+    const prevPlatform = toolPlatform;
+    execFileAdapter = adapter;
+    toolPlatform = platform;
+    return () => { execFileAdapter = prevAdapter; toolPlatform = prevPlatform; };
+}
+
+// Mirrors execFileSync's own typing: with `encoding` set the caller gets a
+// string, otherwise a Buffer. Without this the callers that .trim() the output
+// would have to cast at every site.
+function runTool(command: string, args: string[], opts: { encoding: string } & Record<string, unknown>): string;
+function runTool(command: string, args: string[], opts?: Record<string, unknown>): Buffer;
+function runTool(command: string, args: string[], opts: Record<string, unknown> = {}): string | Buffer {
+    const spec = launchSpec(command, args, toolPlatform);
+    return execFileAdapter(spec.file, spec.args, opts);
+}
 import { buildServicePath } from '../src/core/runtime-path.js';
 import { classifyClaudeInstall } from '../src/core/claude-install.js';
 import {
@@ -134,7 +174,7 @@ export function removeJawHomeClaudeInstructionFile(baseDir = jawHome): ClaudeIns
 
 function findBinaryPath(name: string): string | null {
     try {
-        const out = execFileSync(PATH_LOOKUP_CMD, [name], {
+        const out = runTool(PATH_LOOKUP_CMD, [name], {
             encoding: 'utf8',
             stdio: 'pipe',
             timeout: 5000,
@@ -166,7 +206,7 @@ export function isPathEntryPresent(pathValue: string | null | undefined, dir: st
 
 function readNpmGlobalPrefix(): string | null {
     try {
-        return execFileSync('npm', ['prefix', '-g'], {
+        return runTool('npm', ['prefix', '-g'], {
             encoding: 'utf8',
             stdio: 'pipe',
             timeout: 5000,
@@ -190,7 +230,7 @@ if (-not ($entries -contains $dir)) {
 }
 `;
     try {
-        execFileSync(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script, dir], {
+        runTool(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script, dir], {
             stdio: 'pipe',
             timeout: 10000,
             env: postinstallExecEnv(),
@@ -288,7 +328,7 @@ async function maybeReregisterLaunchd() {
         return;
     }
     try {
-        execFileSync(jawBin, ['launchd'], { stdio: 'inherit', timeout: 30000, env: postinstallExecEnv() });
+        runTool(jawBin, ['launchd'], { stdio: 'inherit', timeout: 30000, env: postinstallExecEnv() });
     } catch (e: unknown) {
         console.warn(`[jaw:init] ⚠️  launchd 재등록 실패 — 수동: jaw launchd`);
         const message = errString(e);
@@ -349,7 +389,7 @@ function shouldMigrateLegacyHome(env: NodeJS.ProcessEnv = process.env): boolean 
 
 function npmPrefixGlobal(): string | null {
     try {
-        return execFileSync('npm', ['prefix', '-g'], {
+        return runTool('npm', ['prefix', '-g'], {
             encoding: 'utf8',
             stdio: 'pipe',
             timeout: 3000,
@@ -419,18 +459,19 @@ function buildInstallCmd(mgr: PkgMgr, pkg: string, brewFormula?: string): string
     }
 }
 
-function runInstallCmd(mgr: PkgMgr, pkg: string, env: NodeJS.ProcessEnv, brewFormula?: string): void {
+/** Exported for #274 coverage: the install path must resolve npm.cmd on win32. */
+export function runInstallCmd(mgr: PkgMgr, pkg: string, env: NodeJS.ProcessEnv, brewFormula?: string): void {
     const timeout = 180000;
     if (mgr === 'brew') {
         try {
-            execFileSync('brew', ['upgrade', brewFormula || pkg], { stdio: 'pipe', timeout, env });
+            runTool('brew', ['upgrade', brewFormula || pkg], { stdio: 'pipe', timeout, env });
         } catch {
-            execFileSync('brew', ['install', brewFormula || pkg], { stdio: 'pipe', timeout, env });
+            runTool('brew', ['install', brewFormula || pkg], { stdio: 'pipe', timeout, env });
         }
     } else if (mgr === 'bun') {
-        execFileSync('bun', ['install', '-g', `${pkg}@latest`], { stdio: 'pipe', timeout, env });
+        runTool('bun', ['install', '-g', `${pkg}@latest`], { stdio: 'pipe', timeout, env });
     } else {
-        execFileSync('npm', ['i', '-g', `${pkg}@latest`], { stdio: 'pipe', timeout, env });
+        runTool('npm', ['i', '-g', `${pkg}@latest`], { stdio: 'pipe', timeout, env });
     }
 }
 
@@ -444,7 +485,7 @@ function buildClaudeNativeInstallCmd(): string {
 function runClaudeNativeInstall(_cmd: string): void {
     const env = postinstallExecEnv();
     if (process.platform === 'win32') {
-        execFileSync('powershell', [
+        runTool('powershell', [
             '-NoProfile',
             '-ExecutionPolicy',
             'Bypass',
@@ -459,10 +500,10 @@ function runClaudeNativeInstall(_cmd: string): void {
     }
     const tmpScript = path.join(os.tmpdir(), `claude-install-${Date.now()}.sh`);
     try {
-        execFileSync('curl', ['-fsSL', '-o', tmpScript, CLAUDE_NATIVE_INSTALL_URL], {
+        runTool('curl', ['-fsSL', '-o', tmpScript, CLAUDE_NATIVE_INSTALL_URL], {
             stdio: 'pipe', timeout: 30000, env,
         });
-        execFileSync('bash', [tmpScript], {
+        runTool('bash', [tmpScript], {
             stdio: 'pipe', timeout: 180000, env,
         });
     } finally {
@@ -478,12 +519,12 @@ function runGrokNativeInstall(): void {
     const env = postinstallExecEnv();
     const tmpScript = path.join(os.tmpdir(), `grok-install-${Date.now()}.sh`);
     try {
-        execFileSync('curl', ['-fsSL', '-o', tmpScript, XAI_GROK_NATIVE_INSTALL_URL], {
+        runTool('curl', ['-fsSL', '-o', tmpScript, XAI_GROK_NATIVE_INSTALL_URL], {
             stdio: 'pipe',
             timeout: 30000,
             env,
         });
-        execFileSync('bash', [tmpScript], {
+        runTool('bash', [tmpScript], {
             stdio: 'pipe',
             timeout: 180000,
             env,
@@ -595,7 +636,7 @@ function runCliVersionCheck(binaryPath: string): void {
         env: postinstallExecEnv(),
     };
     if (process.platform === 'win32') {
-        execFileSync('powershell', [
+        runTool('powershell', [
             '-NoProfile',
             '-ExecutionPolicy',
             'Bypass',
@@ -605,7 +646,7 @@ function runCliVersionCheck(binaryPath: string): void {
         ], common);
         return;
     }
-    execFileSync(binaryPath, ['--version'], common);
+    runTool(binaryPath, ['--version'], common);
 }
 
 function isRunnableCliBinary(name: string, binaryPath: string): boolean {
@@ -663,14 +704,14 @@ function isInstalledVia(mgr: PkgMgr, pkg: string, brewFormula?: string): boolean
     try {
         switch (mgr) {
             case 'npm':
-                execFileSync('npm', ['ls', '-g', pkg, '--depth=0'], { stdio: 'pipe', timeout: 5000, env: postinstallExecEnv() });
+                runTool('npm', ['ls', '-g', pkg, '--depth=0'], { stdio: 'pipe', timeout: 5000, env: postinstallExecEnv() });
                 return true;
             case 'bun': {
                 const bunGlobal = path.join(home, '.bun', 'install', 'global', 'node_modules', pkg.split('/').pop()!);
                 return fs.existsSync(bunGlobal);
             }
             case 'brew':
-                execFileSync('brew', ['list', '--formula', brewFormula || pkg], { stdio: 'pipe', timeout: 5000, env: postinstallExecEnv() });
+                runTool('brew', ['list', '--formula', brewFormula || pkg], { stdio: 'pipe', timeout: 5000, env: postinstallExecEnv() });
                 return true;
         }
     } catch { return false; }
@@ -703,9 +744,9 @@ function deduplicateCliTool(bin: string, pkg: string, brew?: string, preferredAc
         console.log(`[jaw:init] 🧹 ${bin}: removing duplicate from ${mgr} (active: ${active})`);
         try {
             const env = postinstallExecEnv();
-            if (mgr === 'npm') execFileSync('npm', ['uninstall', '-g', pkg], { stdio: 'pipe', timeout: 30000, env });
-            else if (mgr === 'bun') execFileSync('bun', ['remove', '-g', pkg], { stdio: 'pipe', timeout: 30000, env });
-            else execFileSync('brew', ['uninstall', brew || pkg], { stdio: 'pipe', timeout: 30000, env });
+            if (mgr === 'npm') runTool('npm', ['uninstall', '-g', pkg], { stdio: 'pipe', timeout: 30000, env });
+            else if (mgr === 'bun') runTool('bun', ['remove', '-g', pkg], { stdio: 'pipe', timeout: 30000, env });
+            else runTool('brew', ['uninstall', brew || pkg], { stdio: 'pipe', timeout: 30000, env });
             console.log(`[jaw:init]    removed ${pkg} from ${mgr}`);
         } catch {
             console.warn(`[jaw:init]    ⚠️  failed to remove ${pkg} from ${mgr} — remove manually: ${buildUninstallCmd(mgr, pkg, brew)}`);
@@ -807,7 +848,7 @@ export async function installMcpServers(opts: InstallOpts = {}) {
             }
 
             console.log(`[jaw:init] 📦 npm i -g ${pkg} ...`);
-            execFileSync('npm', ['i', '-g', pkg], { stdio: 'pipe', timeout: 120000, env: postinstallExecEnv() });
+            runTool('npm', ['i', '-g', pkg], { stdio: 'pipe', timeout: 120000, env: postinstallExecEnv() });
 
             const binPath = findBinaryPath(bin) || bin;
             console.log(`[jaw:init] ✅ ${bin} → ${binPath}`);
@@ -847,16 +888,16 @@ const SKILL_DEPS = [
 
 function runSkillDepInstall(install: (typeof SKILL_DEPS)[number]['install'], env: NodeJS.ProcessEnv): void {
     if ('pkg' in install) {
-        execFileSync('npm', ['i', '-g', install.pkg], { stdio: 'pipe', timeout: 120000, env });
+        runTool('npm', ['i', '-g', install.pkg], { stdio: 'pipe', timeout: 120000, env });
         return;
     }
     const tmpScript = path.join(os.tmpdir(), `jaw-dep-${Date.now()}.sh`);
     try {
-        execFileSync('curl', ['-fsSL', '-o', tmpScript, install.url], { stdio: 'pipe', timeout: 30000, env });
+        runTool('curl', ['-fsSL', '-o', tmpScript, install.url], { stdio: 'pipe', timeout: 30000, env });
         if (install.shell === 'powershell') {
-            execFileSync('powershell', ['-ExecutionPolicy', 'ByPass', '-File', tmpScript], { stdio: 'pipe', timeout: 120000, env });
+            runTool('powershell', ['-ExecutionPolicy', 'ByPass', '-File', tmpScript], { stdio: 'pipe', timeout: 120000, env });
         } else {
-            execFileSync(install.shell, [tmpScript], { stdio: 'pipe', timeout: 120000, env });
+            runTool(install.shell, [tmpScript], { stdio: 'pipe', timeout: 120000, env });
         }
     } finally {
         try { fs.unlinkSync(tmpScript); } catch {} // best-effort: temp script cleanup
@@ -868,7 +909,7 @@ export async function installSkillDeps(opts: InstallOpts = {}) {
     for (const dep of SKILL_DEPS) {
         const [checkBin, checkArgs] = dep.check;
         try {
-            execFileSync(checkBin, checkArgs, { stdio: 'pipe', timeout: 10000, env: postinstallExecEnv() });
+            runTool(checkBin, checkArgs, { stdio: 'pipe', timeout: 10000, env: postinstallExecEnv() });
             console.log(`[jaw:init] ⏭️  ${dep.name} (already installed)`);
         } catch {
             if (opts.dryRun) { console.log(`  [dry-run] would install ${dep.name} (${dep.why})`); continue; }
@@ -880,8 +921,16 @@ export async function installSkillDeps(opts: InstallOpts = {}) {
             try {
                 runSkillDepInstall(dep.install, postinstallExecEnv());
                 console.log(`[jaw:init] ✅ ${dep.name} installed`);
-            } catch {
-                console.error(`[jaw:init] ⚠️  ${dep.name}: auto-install failed — install manually`);
+            } catch (err) {
+                // #274: the bare "auto-install failed" swallowed the real cause,
+                // so a Windows uv failure could not be diagnosed at all. Surface
+                // the underlying error and the manual command.
+                const reason = err instanceof Error ? err.message : String(err);
+                const manual = 'pkg' in dep.install
+                    ? `npm i -g ${dep.install.pkg}`
+                    : `see ${dep.install.url}`;
+                console.error(`[jaw:init] ⚠️  ${dep.name}: auto-install failed — ${reason}`);
+                console.error(`[jaw:init]    install manually: ${manual}`);
             }
         }
     }

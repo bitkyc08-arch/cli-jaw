@@ -7,6 +7,7 @@ import { stripUndefined } from '../../core/strip-undefined.js';
 import { withSessionScope } from '../../core/session-context.js';
 import { sessionLanes, type SessionLanes } from '../../orchestrator/session-lanes.js';
 import { scopeForChatSession } from '../../orchestrator/scope.js';
+import { settleOnce } from '../../orchestrator/request-registry.js';
 
 type QueueItem = {
     schemaVersion?: 2;
@@ -319,6 +320,7 @@ export function createQueueController(
         const idx = messageQueue.findIndex(item => item.id === id);
         if (idx === -1) return { removed: null, pending: messageQueue.length };
         const [removed] = messageQueue.splice(idx, 1);
+        settleOnce(removed?.requestId, 'dropped', { reason: 'deleted' });
         scheduledItemIds.delete(id);
         try { deps.deleteQueuedMessage.run(id); } catch (err) {
             console.warn(`[queue] DB delete failed for ${id}:`, (err as Error).message);
@@ -409,6 +411,9 @@ export function createQueueController(
         await lanes.runDetachedTurn(itemScope, async () => {
             const liveIndex = messageQueue.findIndex(candidate => candidate.id === item!.id);
             if (liveIndex === -1) {
+                // Deleted after scheduling: nothing will run, so settle it here
+                // rather than leaving the submitter waiting forever.
+                settleOnce(item!.requestId, 'dropped', { reason: 'removed-before-run', scope: itemScope });
                 scheduledItemIds.delete(item!.id);
                 drainingScopes.delete(itemScope);
                 queueMicrotask(() => { void processQueue(itemScope); });
@@ -423,6 +428,14 @@ export function createQueueController(
                 if (runIds.has(messageQueue[index]!.id)) messageQueue.splice(index, 1);
             }
             for (const runItem of runItems) scheduledItemIds.delete(runItem.id);
+            // A collect run merges N requests but carries only the first id
+            // forward, so the other N-1 callers would otherwise never hear back.
+            for (const merged of collectedItems) {
+                settleOnce(merged.requestId, 'merged', {
+                    scope: itemScope,
+                    ...(item!.requestId ? { mergedInto: item!.requestId } : {}),
+                });
+            }
         const groupKey = groupQueueKey(item.source, item.target);
         const combined = runItems.map(candidate => candidate.prompt).join('\n\n');
         const source = item.source;
@@ -477,6 +490,9 @@ export function createQueueController(
                     const msg = (err as Error).message;
                     console.error('[queue:orchestrate]', msg);
                     deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, ...(eventScope || {}) });
+                    // The pipeline threw before reaching its own settle site, so
+                    // this is the last place that can answer the caller.
+                    settleOnce(requestId, 'failed', { error: msg });
                 }
             });
         } catch (setupErr) {
@@ -486,6 +502,9 @@ export function createQueueController(
             } else {
                 deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget,
                     ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
+                // Re-queued items settle on their eventual run; these do not get
+                // another chance, so answer the caller here.
+                settleOnce(requestId, 'failed', { error: `setup failed: ${(setupErr as Error).message}` });
             }
         } finally {
             for (const runItem of runItems) scheduledItemIds.delete(runItem.id);
@@ -499,6 +518,7 @@ export function createQueueController(
         const scope = scopeKey === null ? null : normalizeScope(scopeKey);
         const droppedItems = messageQueue.filter(item => scope === null || normalizeScope(item.scope) === scope);
         if (droppedItems.length === 0) return;
+        for (const item of droppedItems) settleOnce(item.requestId, 'cancelled', { reason });
         const droppedIds = new Set(droppedItems.map(item => item.id));
         const scopes = new Set(droppedItems.map(item => item.scope));
         for (let index = messageQueue.length - 1; index >= 0; index--) {

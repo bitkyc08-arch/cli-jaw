@@ -12,6 +12,7 @@ import { addBroadcastListener, removeBroadcastListener, type BroadcastListener }
 import { submitMessage } from '../orchestrator/gateway.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
+import { isContinueIntent } from '../orchestrator/parser.js';
 import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
 import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-target.js';
 import type { RemoteTarget } from '../messaging/types.js';
@@ -26,8 +27,10 @@ import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
-import { admitSlackRun, enqueueSlackIngress, resetSlackIngress, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
+import { admitSlackRun, claimSlackEvent, enqueueSlackIngress, resetSlackIngress, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
+import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
+import { resetSlackIdentityCache } from './identity.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -204,6 +207,12 @@ export async function processSlackMessageEvent(
     const files = event.files || [];
     let prompt = text;
     let displayText = text;
+    // Start identity resolution alongside the downloads. Running them in series
+    // would add a round trip to every attachment message.
+    const identityPromise = resolveSenderIdentity(event, { signal });
+    // Several paths below return before awaiting it (all files failed, ingress
+    // reset). Absorb now so an early exit cannot leave a floating rejection.
+    void identityPromise.catch(() => undefined);
     if (files.length) {
         const token = getSlackSendClient().token;
         if (!token) return;
@@ -223,6 +232,15 @@ export async function processSlackMessageEvent(
             : `[📎 ${saved.length} files] ${text}`.trim();
     }
     if (!prompt || signal.aborted) return;
+    const identity = await identityPromise;
+    // The gateway reads continue intent from the prompt body itself
+    // (gateway.ts:234). A sender line in front of "계속" stops it being a
+    // continuation, so control text travels undecorated. Reset is already
+    // intercepted upstream and never reaches here.
+    if (!isContinueIntent(prompt)) {
+        prompt = buildSenderPrompt(identity, prompt);
+        displayText = buildSenderDisplay(identity, displayText);
+    }
     await slackOrchestrate(target, prompt, displayText, signal);
 }
 
@@ -247,6 +265,22 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     if (!decision.process) {
         log.info(`[slack:in] skipped (${decision.reason})`);
         return;
+    }
+    // Message-level dedupe goes HERE — after the gate, before identity resolution.
+    // After the gate, because Slack delivers a `message` copy and an `app_mention`
+    // copy of one mention under the same ts; the gate drops the former, and letting
+    // a dropped copy claim the key would suppress the canonical one and swallow the
+    // mention. Before resolution, because the downstream dedupKey hashes the prompt
+    // body, so a sender name that resolves on one delivery and degrades on the next
+    // would split the key and run the same message twice.
+    if (event.channel && event.ts) {
+        const eventKey = slackEventKey(
+            String(settings["slack"]?.teamId || ''), event.channel, event.ts,
+        );
+        if (claimSlackEvent(eventKey)) {
+            log.info('[slack:in] skipped (duplicate_event)');
+            return;
+        }
     }
     if (event.type === 'app_mention' && event.channel) {
         // A mention inside a thread marks that thread; a top-level mention
@@ -386,6 +420,9 @@ export async function shutdownSlack(): Promise<void> {
  */
 async function disposeSlackRuntime(): Promise<void> {
     await resetSlackIngress();
+    // Identity is cached per (team, id). A re-init can authenticate against a
+    // different workspace, so the cache must not outlive the runtime that filled it.
+    resetSlackIdentityCache();
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;

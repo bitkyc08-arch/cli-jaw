@@ -99,8 +99,19 @@ let ws: ChatChannel;
 try {
     ws = await connectChannel(values.port as string);
 } catch {
-    console.error(`\n  ${c.red}x${c.reset} Cannot connect to ${apiUrl}/api/events or ${wsUrl}`);
-    console.error(`  Run ${c.cyan}cli-jaw serve${c.reset} first\n`);
+    // A piped --raw caller is a program parsing this stream, so the failure has
+    // to be machine-readable too — ANSI-decorated prose would just be noise it
+    // cannot act on (#275).
+    if (values.raw && !process.stdin.isTTY) {
+        console.error(JSON.stringify({
+            type: 'error',
+            error: `cannot connect to ${apiUrl}`,
+            hint: 'run `cli-jaw serve` first',
+        }));
+    } else {
+        console.error(`\n  ${c.red}x${c.reset} Cannot connect to ${apiUrl}/api/events or ${wsUrl}`);
+        console.error(`  Run ${c.cyan}cli-jaw serve${c.reset} first\n`);
+    }
     process.exit(1);
 }
 
@@ -224,8 +235,30 @@ if (values.verbose) {
 }
 
 // ─── Mode branch ─────────────────────────────
-if (values.simple) {
+// `--raw` is documented as "JSON protocol mode (for UI integration)" and issue
+// #275 scripts it as `echo '{...}' | jaw chat --raw`. A pipe has no TTY, so the
+// rich branch below would call setRawMode() and die with
+// `process.stdin.setRawMode is not a function`. Piped --raw gets a dedicated
+// NDJSON protocol mode: verbatim frames out, no banner, no ANSI, and an exit
+// that waits for the turn to finish instead of quitting at EOF.
+// A --raw session on a real TTY keeps its existing interactive behavior.
+const rawPiped = ctx.isRaw && !process.stdin.isTTY;
+
+if (rawPiped) {
+    const { runRawPipeMode } = await import('./tui/raw-pipe-mode.js');
+    await runRawPipeMode(ctx);
+} else if (values.simple) {
     await runSimpleMode(ctx);
+} else if (!process.stdin.isTTY) {
+    // Every remaining path puts stdin in raw mode. The display mode is chosen
+    // from stdout, so a piped stdin on a real terminal still lands here, and
+    // setRawMode() on a pipe throws. Fail with direction instead.
+    console.error('jaw chat needs an interactive stdin.');
+    console.error('Non-interactive alternatives: jaw chat --raw, jaw chat --simple');
+    // The channel opened at startup keeps the event loop alive, so setting
+    // exitCode alone would hang here forever instead of failing fast.
+    try { ws.close(); } catch { /* already closed */ }
+    process.exit(2);
 } else {
     if (!ctx.isRaw) await initHighlight();   // interactive rich TUI only; --simple & --raw untouched
     // Initialize jawcode TUI components (async, once)

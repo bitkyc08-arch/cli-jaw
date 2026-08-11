@@ -39,7 +39,17 @@ export const REQUIRED_SLACK_BOT_SCOPES = [
     'commands',
 ] as const;
 
-export const SLACK_CAPABILITY_SCOPES = ['files:read'] as const;
+/**
+ * Optional scopes. Absence disables a feature but never blocks text messaging,
+ * which is why the identity/roster scopes live here rather than in the required
+ * list: promoting them would mark every existing install as broken, when in fact
+ * sender names simply fall back to raw ids until the app is reinstalled.
+ */
+export const SLACK_CAPABILITY_SCOPES = [
+    'files:read',
+    'users:read', 'team:read',
+    'channels:read', 'groups:read', 'im:read', 'mpim:read',
+] as const;
 
 /** Scopes required but not granted, in required-list order. */
 export function missingSlackScopes(grantedHeader: string | null | undefined): string[] {

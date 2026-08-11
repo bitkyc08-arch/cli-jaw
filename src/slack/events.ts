@@ -15,6 +15,15 @@ export type SlackFileEvent = {
     url_private_download?: string;
 };
 
+export type SlackBotProfile = {
+    id?: string;
+    app_id?: string;
+    user_id?: string;
+    name?: string;
+    team_id?: string;
+    deleted?: boolean;
+};
+
 export type SlackMessageEvent = {
     type?: string;
     subtype?: string;
@@ -22,6 +31,10 @@ export type SlackMessageEvent = {
     channel_type?: string;
     user?: string;
     bot_id?: string;
+    /** Modern granular-permission apps identify themselves here. */
+    bot_profile?: SlackBotProfile;
+    /** Slack says a present `username` overrides the bot's default name. */
+    username?: string;
     text?: string;
     ts?: string;
     thread_ts?: string;
@@ -109,7 +122,10 @@ export function shouldProcessSlackEvent(
     if (config.selfUserId && event.user === config.selfUserId) {
         return { process: false, reason: 'self_message' };
     }
-    if (event.bot_id && !config.allowBots) {
+    // `bot_id` alone is not the whole bot signal: a granular-permission app can
+    // send `bot_profile` without it, and that payload used to walk straight past
+    // allowBots:false into an agent run (audit 002 §R2-6).
+    if ((event.bot_id || event.bot_profile) && !config.allowBots) {
         return { process: false, reason: 'bot_message' };
     }
     if (!event.channel) {

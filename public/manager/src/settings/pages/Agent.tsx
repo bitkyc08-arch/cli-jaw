@@ -57,7 +57,8 @@ type AgentSnapshot = AgentSettingsSnapshot & {
 type CliStatusInfo = {
     available: boolean | null;
     capabilityReady: boolean | null;
-    probeState: 'checking' | 'fresh' | 'stale';
+    probeState: 'checking' | 'fresh' | 'stale' | 'failing';
+    probeError?: string;
 };
 
 export function conflictSettingsFromError(error: unknown): AgentSnapshot | null {
@@ -332,6 +333,14 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
             ) : null}
             {cliStatus[draft.cli]?.probeState === 'checking' ? (
                 <div className="settings-inline-notice" role="status" aria-live="polite">상태 확인 중</div>
+            ) : null}
+            {cliStatus[draft.cli]?.probeState === 'failing' ? (
+                // Without this the panel stays silent while every probe errors,
+                // which is the state #277 reported as an endless "stale".
+                <div className="settings-inline-notice" role="alert">
+                    상태 확인 실패 (재시도 중)
+                    {cliStatus[draft.cli]?.probeError ? `: ${cliStatus[draft.cli]!.probeError}` : ''}
+                </div>
             ) : null}
             <RuntimeHeader
                 cli={draft.cli}

@@ -41,7 +41,12 @@ test('an absent header means "cannot check", not "everything missing"', () => {
 
 test('files:read is a non-blocking capability while core gaps still fail', async () => {
     const coreOnly = REQUIRED_SLACK_BOT_SCOPES.join(',');
-    assert.deepEqual(missingSlackCapabilityScopes(coreOnly), ['files:read']);
+    // Assert the property, not a frozen list: capability scopes grow (identity and
+    // roster added theirs), and a literal snapshot would fail on every addition
+    // while proving nothing about the non-blocking behavior under test.
+    const missingCapabilities = missingSlackCapabilityScopes(coreOnly);
+    assert.deepEqual(missingCapabilities, [...SLACK_CAPABILITY_SCOPES]);
+    assert.ok(missingCapabilities.includes('files:read'));
     const fetchImpl = (async () => ({
         ok: true,
         headers: { get: () => coreOnly },
@@ -49,7 +54,7 @@ test('files:read is a non-blocking capability while core gaps still fail', async
     } as unknown as Response)) as typeof fetch;
     assert.deepEqual(
         await validateChannelCredentials({ channel: 'slack', botToken: 'xoxb-1' }, fetchImpl),
-        { ok: true, identity: 'cli-jaw', teamId: 'T1', missingCapabilities: ['files:read'] },
+        { ok: true, identity: 'cli-jaw', teamId: 'T1', missingCapabilities },
     );
 });
 
@@ -81,7 +86,9 @@ test('/api/channels/validate preserves missingCapabilities in its success JSON',
         ok: true,
         identity: 'cli-jaw',
         teamId: 'T1',
-        missingCapabilities: ['files:read'],
+        // The route must pass the gap through untouched, whatever the capability
+        // list currently holds — not a frozen snapshot of it.
+        missingCapabilities: [...SLACK_CAPABILITY_SCOPES],
     });
 });
 

@@ -76,6 +76,14 @@ export function createSlackAppManifest(appName: string = DEFAULT_SLACK_APP_NAME)
                     // the same bot token only after Slack-host and SSRF validation.
                     'files:read',
                     'files:write',
+                    // Sender identity and rosters. Existing installs do not get
+                    // these automatically; without them names degrade to raw ids.
+                    'users:read',
+                    'team:read',
+                    'channels:read',
+                    'groups:read',
+                    'im:read',
+                    'mpim:read',
                     'commands',
                 ],
             },

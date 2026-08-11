@@ -26,7 +26,7 @@ import { fetchAgyUsage } from './quota-agy-reverse.js';
 import { fetchKiroUsage } from './quota-kiro-reverse.js';
 import { fetchOpenCodeUsage } from './quota-opencode-go-api.js';
 import { buildLiveCliRegistry } from '../cli/registry-live.js';
-import { getCachedCliStatus } from '../cli/cli-status.js';
+import { getCachedCliStatus, getCachedCliStatusForced } from '../cli/cli-status.js';
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
@@ -493,7 +493,14 @@ export function registerSettingsRoutes(
     app.get('/api/cli-registry', asyncHandler(async (_, res) => {
         ok(res, await buildLiveCliRegistry());
     }));
-    app.get('/api/cli-status', (_, res) => res.json(getCachedCliStatus()));
+    // `?force=1` skips the failure backoff. Retries are demand-driven with no
+    // timer, so without this a user who fixed the underlying problem would keep
+    // seeing the stale failure until the backoff expired, even after an
+    // explicit refresh (#277).
+    app.get('/api/cli-status', (req, res) => {
+        const force = req.query['force'] === '1' || req.query['force'] === 'true';
+        res.json(force ? getCachedCliStatusForced() : getCachedCliStatus());
+    });
 
     app.post('/api/pi/profiles/register', requireAuth, asyncHandler(async (req, res) => {
         const profile = normalizePiProfile(req.body);

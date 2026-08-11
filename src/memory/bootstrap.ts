@@ -25,6 +25,7 @@ import {
     withMigrationLock,
 } from './shared.js';
 import { reindexAll, reindexSingleFile } from './indexing.js';
+import { launchSpec } from '../core/exec-name.js';
 
 function slug(value: string) {
     return value
@@ -370,7 +371,13 @@ export function syncKvShadowImport() {
 }
 
 function tryExec(bin: string, args: string[]): string {
-    try { return execFileSync(bin, args, { timeout: 3000, encoding: 'utf8' }).trim(); }
+    // launchSpec: on Windows npm is npm.cmd, and a .cmd cannot be execFile'd
+    // directly — it needs the cmd.exe wrapper. Without this the probe reported
+    // "no npm" on a host where npm works (#274).
+    try {
+        const spec = launchSpec(bin, args);
+        return execFileSync(spec.file, spec.args, { timeout: 3000, encoding: 'utf8' }).trim();
+    }
     catch { return ''; }
 }
 
@@ -393,6 +400,8 @@ export function scanSystemProfile(): string {
     lines.push('');
     lines.push('## Runtime');
     lines.push(`- node: ${process.version}`);
+    // tryExec resolves the Windows launch spec itself, so the bare name is
+    // correct here.
     const npmVer = tryExec('npm', ['--version']);
     if (npmVer) lines.push(`- npm: ${npmVer}`);
     const bunVer = tryExec('bun', ['--version']);

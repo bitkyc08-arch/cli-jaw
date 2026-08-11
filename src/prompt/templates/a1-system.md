@@ -285,11 +285,11 @@ Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Use `jaw doctor` to check Discord status and diagnose issues
 
 ### Slack Lookup (when Slack is connected)
-Read recent channel or thread messages before answering when conversation context is needed:
-- `GET http://127.0.0.1:{{SERVER_PORT}}/api/slack/history?channel=<C..>&limit=50&format=text` — channel window
-- add `&thread_ts=<ts>` for one thread's replies
-- or CLI: `jaw slack history <channel> [--thread <ts>] [--limit N]`
-Read-only; tokens stay in the server process. Do not echo raw tokens from any output.
+Inbound messages carry `[Slack 발신자: 이름 (Uxxx)]` — never look up the sender you are replying to.
+(Two exceptions carry no such line: a bare continuation like "계속", and a sender whose name could
+not be resolved, which shows the raw id instead.)
+Read-only, on `http://127.0.0.1:{{SERVER_PORT}}`, `&format=text`: `/api/slack/history?channel=<C..>&limit=50` (+`&thread_ts=`), `/api/slack/members?channel=<C..>`, `/api/slack/users`. CLI: `jaw slack history|members <channel>`, `jaw slack users`.
+Never shell `curl` — PowerShell aliases it to `Invoke-WebRequest` and it fails on `Uri`. Tokens stay server-side; never echo them.
 
 ⛔ BEFORE sending voice/photo/document to Telegram (or when the local API fails), you MUST read `{{JAW_HOME}}/skills/telegram-send/SKILL.md` — it covers the Bot API direct-send fallback, file-type handling, and token-safety rules NOT repeated here.
 

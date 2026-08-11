@@ -51,6 +51,10 @@ if (shouldShowHelp(process.argv)) printAndExit(`
     history <channel>     Read recent channel messages (or one thread) through
                           the running server. Flags: --thread <ts>, --limit N,
                           --json. The token never leaves the server process.
+    members <channel>     List who is in a conversation, with resolved names.
+                          Flags: --limit N, --json
+    users                 List workspace users. Flags: --limit N, --json,
+                          --include-bots, --include-deleted
 
   Setup flags:
     --bot-token <t>       Bot token (xoxb-...). REQUIRED.
@@ -110,6 +114,8 @@ const { values, positionals } = parseArgs({
         'thread': { type: 'string' },
         'limit': { type: 'string' },
         'json': { type: 'boolean', default: false },
+        'include-bots': { type: 'boolean', default: false },
+        'include-deleted': { type: 'boolean', default: false },
     },
     allowPositionals: true,
 });
@@ -120,8 +126,12 @@ if (sub === 'manifest') {
     await runSetup();
 } else if (sub === 'history') {
     await runHistory();
+} else if (sub === 'members') {
+    await runRoster('members');
+} else if (sub === 'users') {
+    await runRoster('users');
 } else {
-    console.error(`  ❌ Unknown slack subcommand "${sub}". Expected: manifest | setup | history`);
+    console.error(`  ❌ Unknown slack subcommand "${sub}". Expected: manifest | setup | history | members | users`);
     process.exitCode = 1;
 }
 
@@ -157,6 +167,11 @@ async function runSetup(): Promise<void> {
   the app-level token (xapp-) is created only in the app settings UI, and the
   PKCE localhost flow bans bot scopes. So: paste a manifest, paste two tokens,
   and this wizard validates them live.
+
+  Already installed from an older manifest? Sender names and member lookups need
+  scopes an existing install does not have. Reinstall to pick them up:
+    api.slack.com/apps -> your app -> OAuth & Permissions -> Reinstall to Workspace
+  Until then senders show as raw ids and messaging is unaffected.
 
   Step 1 — create the app
     Open  https://api.slack.com/apps?new_app=1
@@ -278,6 +293,47 @@ ${serverLine}
 `);
     } finally {
         rl?.close();
+    }
+}
+
+/**
+ * Roster reads. Server-mediated like `history`: the CLI process never touches
+ * the bot token — the running server owns credentials and the lookup routes.
+ */
+async function runRoster(kind: 'members' | 'users'): Promise<void> {
+    loadSettings();
+    const channel = (positionals[0] || '').trim();
+    if (kind === 'members' && !channel) {
+        console.error('Usage: jaw slack members <channel> [--limit N] [--json]');
+        process.exitCode = 1;
+        return;
+    }
+    const params = new URLSearchParams();
+    if (kind === 'members') params.set('channel', channel);
+    if (values['limit']) params.set('limit', String(values['limit']));
+    if (values['include-bots']) params.set('include_bots', '1');
+    if (values['include-deleted']) params.set('include_deleted', '1');
+    if (!values['json']) params.set('format', 'text');
+    const base = getServerUrl();
+    await getCliAuthToken();
+    try {
+        const res = await cliFetch(`${base}/api/slack/${kind}?${params}`);
+        const body = await res.json() as Record<string, unknown>;
+        if (!res.ok || body['ok'] !== true) {
+            console.error(String(body['error'] || `Failed: ${res.status}`));
+            process.exitCode = 1;
+            return;
+        }
+        if (values['json']) {
+            console.log(JSON.stringify({
+                members: body['members'], hasMore: body['hasMore'], partial: body['partial'],
+            }, null, 2));
+        } else {
+            console.log(String(body['text'] || '(no members)'));
+        }
+    } catch {
+        console.error('Server not running. Start with: jaw serve');
+        process.exitCode = 1;
     }
 }
 

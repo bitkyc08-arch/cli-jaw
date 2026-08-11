@@ -25,15 +25,28 @@ export async function initJawcodeTui(): Promise<void> {
     _initialized = true;
 }
 
-function isOptionalJawcodeTuiLoadError(err: unknown): boolean {
-    const maybeError = err as { code?: unknown; message?: unknown };
+/**
+ * Exported for testing: this classifier decides whether a failed TUI asset load
+ * degrades gracefully or crashes the process, and it is pure. Issue #275 was
+ * partly caused by it silently never matching on Windows, which no environment
+ * -dependent test could have caught.
+ */
+export function isOptionalJawcodeTuiLoadError(err: unknown): boolean {
+    // `throw null` / `throw undefined` are legal, and this runs inside a catch
+    // that must never itself throw — a crash here would replace a recoverable
+    // asset problem with an unrelated TypeError.
+    const maybeError = (err ?? {}) as { code?: unknown; message?: unknown };
     const code = typeof maybeError.code === 'string' ? maybeError.code : '';
     const message = typeof maybeError.message === 'string' ? maybeError.message : String(err);
     if (message.includes('pi_natives')) return true;
     if (code !== 'ERR_MODULE_NOT_FOUND') return false;
-    return message.includes('/lib/tui/bun-shim.mjs')
-        || message.includes('/lib/tui/jawcode-tui-bundle.mjs')
-        || message.includes('/lib/tui/jawcode-interactive-bundle.mjs');
+    // Windows ERR_MODULE_NOT_FOUND messages carry backslash paths, so matching
+    // forward-slash literals never fired there: the optional-asset fallback
+    // silently became a hard crash instead of a graceful degrade (#275).
+    const normalized = message.replace(/\\/g, '/');
+    return normalized.includes('/lib/tui/bun-shim.mjs')
+        || normalized.includes('/lib/tui/jawcode-tui-bundle.mjs')
+        || normalized.includes('/lib/tui/jawcode-interactive-bundle.mjs');
 }
 
 export async function tryInitJawcodeTui(): Promise<boolean> {

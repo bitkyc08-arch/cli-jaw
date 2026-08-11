@@ -125,6 +125,7 @@ SSE behavior:
 | `worker_run_progress` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, tools, toolCount }` | `orchestrator/worker-run-store.ts`; sanitized tool progress snapshot; no raw output |
 | `worker_run_attention` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, attention }` | `orchestrator/worker-run-store.ts`; safe attention metadata |
 | `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, completedAt, safeSummary? }` | `orchestrator/worker-run-store.ts`; completion event; raw output path/content excluded |
+| `request_settled` | `{ requestId, outcome, scope, text?, error?, mergedInto?, reason? }` | `orchestrator/request-registry.ts`; topic은 `system`(이미 public allowlist). 요청 하나당 정확히 하나 발생하며, `settleOnce()`가 멱등이라 중복이 구조적으로 불가능하다. `outcome`은 `completed｜steered｜merged｜failed｜cancelled｜dropped｜skipped`. `orchestrate_done`을 대체하지 않고 추가된다 — steer 성공처럼 완료 이벤트 자체가 없는 경로를 커버하기 위한 것이다 (#276) |
 
 ### Direct topic `publish()` events
 

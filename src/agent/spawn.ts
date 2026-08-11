@@ -8,6 +8,10 @@ import { spawn, type ChildProcess } from 'child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { broadcast } from '../core/bus.js';
 import { publish as ssePublish } from '../core/event-bus.js';
+// Static: the registry depends only on the bus, so there is no cycle, and a
+// dynamic import here would add an avoidable async failure point on a path that
+// exists precisely to guarantee the caller hears something.
+import { settleOnce } from '../orchestrator/request-registry.js';
 import { settings, UPLOADS_DIR, detectCli, getProjectDirs } from '../core/config.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -564,6 +568,10 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
     if (reason === 'api' || reason === 'user') {
         queueCtrl.purgeQueueOnStop(scopeKey, reason);
+        // The queue purge answers everything still waiting, but the run that was
+        // actually executing has its own id. Without this a user stop leaves that
+        // caller hanging, or worse the pipeline later reports it as `completed`.
+        settleOnce(run?.meta?.requestId, 'cancelled', { reason });
         clearWorkerSlotsOnStop(scopeKey, reason);
     }
     if (run?.cancelTurn && (getActiveMainCli(scopeKey) === 'codex-app' || getActiveMainCli(scopeKey) === 'pi')) {
@@ -689,6 +697,10 @@ export async function steerAgent(
         broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
         broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget }));
         await runtime.steer(settings["workingDir"] || process.cwd(), newPrompt);
+        // A steer injects into the turn already running; no new completion
+        // event will ever carry this id. Settling here is what stops a caller
+        // from waiting for an answer that structurally cannot arrive.
+        settleOnce(meta?.requestId, 'steered');
         return;
     }
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
@@ -696,17 +708,18 @@ export async function steerAgent(
     if (wasRunning) await waitForProcessEnd(scopeKey, steerWaitMs);
     insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
     broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-    broadcast('steer_started', { prompt: newPrompt, origin: source || 'web', scope: scopeKey });
+    broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, requestId: meta?.requestId }));
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
     const task = isResetIntent(newPrompt)
-        ? orchestrateReset({ origin, scope: scopeKey, chatSessionId, _skipInsert: true })
+        ? orchestrateReset(stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }))
         : isContinueIntent(newPrompt)
-            ? orchestrateContinue({ origin, scope: scopeKey, chatSessionId, _skipInsert: true })
-            : orchestrate(newPrompt, { origin, scope: scopeKey, chatSessionId, _skipInsert: true });
-    task.catch((err: Error) => {
+            ? orchestrateContinue(stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }))
+            : orchestrate(newPrompt, stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }));
+    task.catch(async (err: Error) => {
         console.error('[steer:orchestrate]', err.message);
-        broadcast('orchestrate_done', { text: `[error] ${err.message}`, error: true, origin });
+        broadcast('orchestrate_done', stripUndefined({ text: `[error] ${err.message}`, error: true, origin, requestId: meta?.requestId }));
+        settleOnce(meta?.requestId, 'failed', { error: err.message });
     });
 }
 

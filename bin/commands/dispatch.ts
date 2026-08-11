@@ -63,7 +63,17 @@ if (process.env["JAW_EMPLOYEE_MODE"] === '1') {
 const bossToken = process.env["JAW_BOSS_TOKEN"] || '';
 if (!bossToken) {
     console.error('❌ JAW_BOSS_TOKEN missing. This session is not authorized to dispatch employees.');
-    console.error('   Employees cannot dispatch. If you are the boss, ensure cli-jaw serve is running and this process inherited its env.');
+    // The old wording told users to "ensure this process inherited its env",
+    // which cannot work: the boss token is generated inside the running serve
+    // process and never written to disk, so a separately opened shell has
+    // nothing to inherit from. Saying so plainly beats sending people to look
+    // for a file that does not exist (#276).
+    console.error('   The boss token lives only in the serve process\'s memory — it is never written to disk,');
+    console.error('   so a separately opened shell cannot inherit it. $JAW_HOME/token is the API bearer');
+    console.error('   token, not this capability.');
+    console.error('');
+    console.error('   To dispatch: run this from the agent session that serve spawned.');
+    console.error('   To send an ordinary prompt instead: jaw ask "<text>"');
     process.exit(2);
 }
 
@@ -124,10 +134,14 @@ if (agentsFile) {
     batchAgentsRaw = r.content;
 }
 
-if (isBatch) {
+// `batchRun:` lets each exit below break out instead of calling process.exit().
+// Tearing the process down while the fetch transport is still closing is the
+// likely source of the libuv UV_HANDLE_CLOSING assertion in #276.
+if (isBatch) batchRun: {
     if (!batchAgentsRaw) {
         console.error('Usage: jaw dispatch --batch (--agents \'[{"agent":"Name","task":"..."}]\' | --agents-file <path>)');
-        process.exit(1);
+        process.exitCode = 1;
+        break batchRun;
     }
     let batchAgents: BatchAgentRequest[];
     try {
@@ -135,7 +149,8 @@ if (isBatch) {
         if (!Array.isArray(batchAgents) || batchAgents.length === 0) throw new Error('empty');
     } catch {
         console.error('❌ --agents must be a non-empty JSON array');
-        process.exit(1);
+        process.exitCode = 1;
+        break batchRun;
     }
     const BASE = getServerUrl();
     await getCliAuthToken();
@@ -152,27 +167,37 @@ if (isBatch) {
         const { body, nonJsonError } = await readJsonResponse<BatchDispatchBody>(res, 'batch dispatch endpoint');
         if (nonJsonError || !body.ok) {
             printNonOkResponse(body, res.status);
-            process.exit(1);
+            // Every exit below this point runs while the fetch transport is
+            // still closing, so they set exitCode and return instead of tearing
+            // the process down mid-teardown (#276 libuv assertion).
+            process.exitCode = 1;
+            break batchRun;
         }
         if (res.status === 202) {
             const workers = body.workers || [];
             const allAccepted = workers.length > 0 && workers.every(w => w.accepted);
             if (json) {
                 console.log(JSON.stringify(body));
-                process.exit(allAccepted ? 0 : 1);
+                process.exitCode = allAccepted ? 0 : 1;
+                break batchRun;
             }
             printBatchAsyncWorkers(workers);
-            process.exit(allAccepted ? 0 : 1);
+            process.exitCode = allAccepted ? 0 : 1;
+            break batchRun;
         }
         if (json) {
             console.log(JSON.stringify(body));
-            process.exit((body.results || []).every(r => r.ok) ? 0 : 1);
+            process.exitCode = (body.results || []).every(r => r.ok) ? 0 : 1;
+            break batchRun;
         }
-        if (quiet) process.exit((body.results || []).every(r => r.ok) ? 0 : 1);
-        process.exit(printBatchDispatchSummary(body.results || []));
+        if (quiet) {
+            process.exitCode = (body.results || []).every(r => r.ok) ? 0 : 1;
+            break batchRun;
+        }
+        process.exitCode = printBatchDispatchSummary(body.results || []);
     } catch (e: unknown) {
         console.error(`❌ Error: ${errString(e)}`);
-        process.exit(1);
+        process.exitCode = 1;
     }
 }
 
@@ -477,6 +502,10 @@ function printPollErrorWithRecovery(e: DispatchPollError): void {
 }
 
 await getCliAuthToken(PORT);
+// Labeled block so the paths below can stop work with `break` instead of
+// process.exit(). This module is top level, so `return` is not available and
+// an early exit here would kill the process mid-teardown (#276).
+dispatchRun: {
 try {
     if (!json && !quiet) console.log(`🚀 Dispatching to ${targetName}...`);
 
@@ -558,23 +587,32 @@ try {
         const polled = liveProgress ? await pollAndPrintWorker(pollAgentId, targetName, pollRunId) : await pollWorkerResult(pollAgentId, targetName, pollRunId);
         if (json) printJsonResult(polled);
         else printDispatchResult(targetName, polled, liveProgress ? { skipProcess: true } : {});
-        process.exit(dispatchExitCode(polled));
+        // Exit AFTER the response body has been read. process.exit() here would tear
+        // the process down while the pooled HTTP socket is still closing — the
+        // strongest candidate for the libuv UV_HANDLE_CLOSING assertion in #276.
+        // Setting exitCode lets the transport drain and still yields the same status.
+        process.exitCode = dispatchExitCode(polled);
+        break dispatchRun;
     }
     if (!res.ok) {
         if (res.status === 409) {
             const pollAgentId = body?.worker?.agentId || body?.existing?.agentId || (agent ? await resolveAgentId(agent) : null);
-            if (!pollAgentId) { printNonOkResponse(body, res.status); process.exit(1); }
+            // exitCode + return, not process.exit(): killing the process while
+            // the fetch transport is still closing is the likely source of the
+            // libuv UV_HANDLE_CLOSING assertion reported in #276.
+            if (!pollAgentId) { printNonOkResponse(body, res.status); process.exitCode = 1; break dispatchRun; }
             const pollRunId = body?.worker?.runId || body?.existing?.runId;
             if (isAsync) {
                 // Do not fall into the 10-minute poll on --async: report the
                 // in-flight worker and exit non-zero so the caller can decide.
-                if (json) { printJsonResult(body); process.exit(1); }
+                if (json) { printJsonResult(body); process.exitCode = 1; break dispatchRun; }
                 console.error(`⏳ ${targetName} is already running (agentId: ${pollAgentId}${pollRunId ? `, runId: ${pollRunId}` : ''})`);
                 if (pollRunId) {
                     console.error(`  status: cli-jaw worker status ${pollRunId}`);
                     console.error(`  output: cli-jaw worker read ${pollRunId} --tail 80`);
                 }
-                process.exit(1);
+                process.exitCode = 1;
+                break dispatchRun;
             }
             if (!json && !quiet) {
                 console.error(`⏳ ${targetName} is already running (agentId: ${pollAgentId}${pollRunId ? `, runId: ${pollRunId}` : ''}), polling worker result...`);
@@ -583,19 +621,22 @@ try {
             const polled = liveProgress ? await pollAndPrintWorker(pollAgentId, targetName, pollRunId) : await pollWorkerResult(pollAgentId, targetName, pollRunId);
             if (json) printJsonResult(polled);
             else printDispatchResult(targetName, polled, liveProgress ? { skipProcess: true } : {});
-            process.exit(dispatchExitCode(polled));
+            process.exitCode = dispatchExitCode(polled);
+            break dispatchRun;
         }
         printNonOkResponse(body, res.status);
-        process.exit(1);
+        process.exitCode = 1;
+        break dispatchRun;
     }
     if (json) printJsonResult(body);
     else printDispatchResult(targetName, body);
-    process.exit(dispatchExitCode(body));
+    process.exitCode = dispatchExitCode(body);
 } catch (e: unknown) {
     if (e instanceof DispatchPollError) {
         printPollErrorWithRecovery(e);
     } else {
         printFetchErrorWithRecovery(errString(e));
     }
-    process.exit(1);
+    process.exitCode = 1;
+}
 }

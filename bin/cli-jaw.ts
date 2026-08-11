@@ -41,7 +41,7 @@ const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
 if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
     const _homeVal = process.argv[_homeIdx + 1]!;
     // Guard: if the "value" looks like a known subcommand, user forgot the path
-    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'design', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc', 'provider', 'slack'];
+    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'ask', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'design', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc', 'provider', 'slack'];
     if (_knownCmds.includes(_homeVal)) {
         console.error(`  ❌ --home requires a path argument (got subcommand '${_homeVal}')`);
         console.error(`  Usage: jaw --home <path> ${_homeVal}`);
@@ -242,6 +242,9 @@ switch (command) {
     case 'provider':
         await import('./commands/provider.js');
         break;
+    case 'ask':
+        await import('./commands/ask.js');
+        break;
     case 'chat':
         if (process.argv[3] === 'search') {
             await import('./commands/chat-search.js');
@@ -249,6 +252,11 @@ switch (command) {
             await maybePromptForStarOnLaunch();
             await import('./commands/chat.js');
         }
+        break;
+    case 'ask':
+        // Non-interactive prompt path for headless hosts (#276). No TTY, no
+        // star prompt — a script is on the other end.
+        await import('./commands/ask.js');
         break;
     case 'employee':
         await import('./commands/employee.js');

@@ -671,14 +671,57 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
             },
         },
     });
-    await new Promise(resolve => setTimeout(resolve, 20));
+    // The inbound path resolves sender identity before admission, bounded by a
+    // real-time deadline. This test does not mock users.info, so it always waits
+    // out that deadline; poll past it instead of assuming a fixed 20ms.
+    for (let i = 0; i < 200 && calls.length === 0; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
 
     assert.equal(calls.length, 1, `submitMessage called ${calls.length} times`);
-    assert.equal(calls[0]!.prompt, 'run the thing');
+    // Identity resolution fails here (no users.info mock), so the sender degrades
+    // to a raw id and the prompt body is unchanged apart from that context line.
+    assert.ok(calls[0]!.prompt.endsWith('run the thing'), calls[0]!.prompt);
     assert.equal(calls[0]!.meta['origin'], 'slack');
     const target = calls[0]!.meta['target'] as { channel?: string; targetId?: string; threadId?: string };
     assert.equal(target.channel, 'slack');
     assert.equal(target.targetId, 'D1');
     // A top-level message becomes the parent of a new thread.
     assert.equal(target.threadId, '1735.0001');
+
+    // ── same mock, second claim: duplicate-delivery dedup ──
+    // Slack sends a `message` copy AND an `app_mention` copy for one mention,
+    // sharing a ts. The gate drops the message copy, so event dedup has to claim
+    // the key AFTER the gate. Claiming earlier would let the discarded copy take
+    // the key and suppress the canonical mention, and the mention would vanish
+    // entirely (0 runs) — worse than the duplicate it was meant to stop.
+    const { resetSlackEventDedup } = await import('../../src/slack/ingress.ts');
+    resetSlackEventDedup();
+    const runsBefore = calls.length;
+    const SHARED_TS = '1799.5150';
+    const mentionEvent = {
+        type: 'app_mention', channel: 'C9', user: 'U9',
+        text: '<@UBOT> do the thing', ts: SHARED_TS,
+    };
+
+    // Reverse order on purpose: the copy that gets REJECTED arrives first.
+    await handleSlackEnvelope({
+        envelope_id: 'E1', type: 'events_api',
+        payload: {
+            event: {
+                type: 'message', channel: 'C9', channel_type: 'channel',
+                user: 'U9', text: '<@UBOT> do the thing', ts: SHARED_TS,
+            },
+        },
+    });
+    await handleSlackEnvelope({ envelope_id: 'E2', type: 'events_api', payload: { event: mentionEvent } });
+    for (let i = 0; i < 200 && calls.length === runsBefore; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(calls.length - runsBefore, 1, 'the canonical mention must still run exactly once');
+
+    // A Slack redelivery of the same ts must be absorbed.
+    await handleSlackEnvelope({ envelope_id: 'E3', type: 'events_api', payload: { event: mentionEvent } });
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(calls.length - runsBefore, 1, 'a redelivery of the same ts must not run again');
 });

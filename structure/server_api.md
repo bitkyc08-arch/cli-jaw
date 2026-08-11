@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 248개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 247개다.
+> 현재 라이브 surface는 총 250개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 249개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -140,7 +140,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Memory Runtime / KV / Files | `GET /api/memory/status` `POST /api/memory/reindex` `POST /api/memory/bootstrap` `GET /api/memory/files` `GET /api/memory` `POST /api/memory` `DELETE /api/memory/:key` `GET /api/memory-files` `GET /api/memory-file` `GET /api/memory-files/:filename` `DELETE /api/memory-file` `DELETE /api/memory-files/:filename` `PUT /api/memory-files/settings` |
 | Jaw Memory | `GET /api/jaw-memory/search` `GET /api/jaw-memory/read` `POST /api/jaw-memory/save` `GET /api/jaw-memory/context` `GET /api/jaw-memory/list` `POST /api/jaw-memory/init` `POST /api/jaw-memory/reflect` `POST /api/jaw-memory/flush` `GET /api/jaw-memory/soul` `POST /api/jaw-memory/soul/activate` `POST /api/jaw-memory/soul` `POST /api/soul/bootstrap` |
 | Jaw CEO | `GET /api/jaw-ceo/state` `POST /api/jaw-ceo/message` `POST /api/jaw-ceo/query` `POST /api/jaw-ceo/docs/edit` `GET /api/jaw-ceo/settings` `PUT /api/jaw-ceo/settings` `POST /api/jaw-ceo/events/ingest` `POST /api/jaw-ceo/events/refresh` `GET /api/jaw-ceo/pending` `POST /api/jaw-ceo/pending/:completionKey/continue` `POST /api/jaw-ceo/pending/:completionKey/summarize` `POST /api/jaw-ceo/pending/:completionKey/ack` `POST /api/jaw-ceo/pending/:completionKey/dismiss` `POST /api/jaw-ceo/watch` `GET /api/jaw-ceo/audit` `POST /api/jaw-ceo/voice/connect` `POST /api/jaw-ceo/voice/:sessionId/close` `POST /api/jaw-ceo/confirmations` `POST /api/jaw-ceo/confirmations/:confirmationId/confirm` `POST /api/jaw-ceo/confirmations/:confirmationId/cancel` |
-| Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channels/validate` `POST /api/channel/send` `POST /api/discord/send` `POST /api/slack/send` `GET /api/slack/history` |
+| Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channels/validate` `POST /api/channel/send` `POST /api/discord/send` `POST /api/slack/send` `GET /api/slack/history` `GET /api/slack/members` `GET /api/slack/users` |
 | Wiki | `GET /api/wiki/status` `GET /api/wiki/entities` `POST /api/wiki/enable` `POST /api/wiki/configure` |
 | Avatar | `GET /api/avatar` `POST /api/avatar/:target/upload` `DELETE /api/avatar/:target/image` `GET /api/avatar/:target/image` |
 | Traces | `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
@@ -150,7 +150,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 248개 route handler 기준이다. 이 중 API 엔드포인트는 247개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 250개 route handler 기준이다. 이 중 API 엔드포인트는 249개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
@@ -253,6 +253,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - Slack 연결 환경변수(`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_TEAM_ID`, `SLACK_CHANNEL_IDS`)가 하나라도 있으면 연결 설정은 environment-managed 단일 소스다. `GET /api/settings`는 `slackEnvironmentVariables`에 변수 이름만 싣고 연결값은 redaction한다. generic `PUT`의 `slack.enabled|botToken|appToken|teamId|channelIds|attachPort`와 `POST /api/settings/slack/reset`은 `409 slack_connection_managed_by_environment`로 거부한다. 동작 설정(`forwardAll`, `allowBots`, `mentionOnly`, `replyInThread`)은 계속 저장할 수 있으며, 직렬화는 환경변수 관리 연결 필드를 제거해 비밀값이 `settings.json`으로 복사되지 않게 한다.
 - `runtime.codexApp.multiplex`는 사용자 소유 boolean gate이며 실행 기본값은 `false`다. raw settings에 키가 없으면 `GET /api/settings`의 실행 snapshot은 `false`를 제공하지만 다음 저장에서도 키와 그 결과 비는 `codexApp`/`runtime` container를 만들지 않는다. explicit `false`/`true`는 보존한다. generic `PUT /api/settings`에서 문자열·숫자·`null`은 `400 invalid_settings_field`, host probe 소유인 `runtime.codexApp.laneMode`는 값과 무관하게 기존 호환 오류 `400 server_owned_settings_field`로 거부한다.
 - `GET /api/cli-status`는 cold에서 nullable `probeState:"checking"`, stale에서 즉시 이전 snapshot을 반환한다. binary/PATH, auth, capability detection은 request event loop가 아니라 finite-lifetime child worker에서 수행된다.
+- probe가 실패하면 `probeState:"failing"` + `probeError`/`probeFailures`/`nextRetryAt`을 실어 보낸다. `failing`은 "포기"가 아니라 "계속 실패 중, 사유는 이것"이며 캐시는 재시도를 이어간다 (첫 재시도 즉시, 이후 지수 백오프 최대 5분). 실패 기록은 남아 있는 snapshot보다 우선한다 — 그래야 동작하는 것처럼 보이는 stale 응답으로 실패를 감추지 않는다 (#277).
+- `GET /api/cli-status?force=1`은 백오프 창을 건너뛴다. 재시도는 타이머가 아니라 요청 시점에 일어나므로, 원인을 고친 사용자가 새로고침을 눌러도 백오프가 끝날 때까지 낡은 실패를 계속 보게 되는 것을 막는다.
 - 응답은 legacy Web UI header의 compact git status 전용이다: branch/hash, tracked modified count, untracked count.
 - project root가 없거나, home 밖 경로거나, git repository가 아니거나, git 호출이 실패하면 mutation 없이 `{ available:false, reason }` 형태로 조용히 숨길 수 있는 payload를 반환한다.
 - status count는 `git status --porcelain=v1 -z --untracked-files=all` 기반이며 ignored entry는 표시하지 않는다.

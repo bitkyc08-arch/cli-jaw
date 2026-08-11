@@ -559,6 +559,8 @@ jaw dashboard                     # launch manager dashboard
 jaw serve                         # start server (http://localhost:3457)
 jaw chat                          # terminal chat UI
 jaw chat search "query"           # search chat history
+jaw ask "question"                # one prompt, one answer — no TTY needed
+echo "question" | jaw ask -       # same, reading the prompt from stdin
 jaw doctor                        # installation and runtime diagnostics
 jaw slack setup                   # guided Slack app setup (manifest + token validation)
 

@@ -5,6 +5,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { JAW_HOME } from '../core/config.js';
 import { clampPendingLine } from './spawn/line-buffer.js';
 import { probeOpenCodexEndpointModels } from '../cli/opencodex-models.js';
+import { launchSpec } from '../core/exec-name.js';
 
 export type PiProfileMode = 'basic' | 'openai' | 'anthropic' | 'vertex';
 export type PiApiKind = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-vertex';
@@ -239,7 +240,10 @@ export function ensurePiRuntimeConfig(piInput: unknown, profileId: string, effor
 
 function commandWorks(command: string, args: string[], timeout = 3000, env: NodeJS.ProcessEnv = process.env): boolean {
     try {
-        const result = spawnSync(command, args, { stdio: 'ignore', timeout, env });
+        // Windows npm is npm.cmd, which spawnSync cannot launch without the
+        // cmd.exe wrapper — the probe failed on a healthy host (#274).
+        const spec = launchSpec(command, args, process.platform, env);
+        const result = spawnSync(spec.file, spec.args, { stdio: 'ignore', timeout, env });
         return result.status === 0;
     } catch {
         return false;
@@ -251,6 +255,9 @@ export function resolvePiCommand(env: NodeJS.ProcessEnv = process.env): PiComman
     if (explicit) return { command: explicit, baseArgs: [], source: 'env' };
     if (commandWorks('pi', ['--version'], 3000, env)) return { command: 'pi', baseArgs: [], source: 'path' };
     return {
+        // The bare name is correct here: every spawn of a PiCommand routes
+        // through launchSpec(), which handles the Windows npm.cmd + cmd.exe
+        // resolution at the actual launch site (#274).
         command: 'npm',
         baseArgs: ['exec', '--yes', '--package', PI_PACKAGE, 'pi', '--'],
         source: 'npm-exec',
@@ -258,7 +265,8 @@ export function resolvePiCommand(env: NodeJS.ProcessEnv = process.env): PiComman
 }
 
 function resolvePiCommandIdentity(command: PiCommand, env: NodeJS.ProcessEnv = process.env): string {
-    const result = spawnSync(command.command, [...command.baseArgs, '--version'], {
+    const spec = launchSpec(command.command, [...command.baseArgs, '--version'], process.platform, env);
+    const result = spawnSync(spec.file, spec.args, {
         encoding: 'utf8',
         env,
         timeout: 15_000,
