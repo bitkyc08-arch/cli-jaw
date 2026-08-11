@@ -31,9 +31,13 @@ function isOptionalJawcodeTuiLoadError(err: unknown): boolean {
     const message = typeof maybeError.message === 'string' ? maybeError.message : String(err);
     if (message.includes('pi_natives')) return true;
     if (code !== 'ERR_MODULE_NOT_FOUND') return false;
-    return message.includes('/lib/tui/bun-shim.mjs')
-        || message.includes('/lib/tui/jawcode-tui-bundle.mjs')
-        || message.includes('/lib/tui/jawcode-interactive-bundle.mjs');
+    // Windows ERR_MODULE_NOT_FOUND messages carry backslash paths, so matching
+    // forward-slash literals never fired there: the optional-asset fallback
+    // silently became a hard crash instead of a graceful degrade (#275).
+    const normalized = message.replace(/\\/g, '/');
+    return normalized.includes('/lib/tui/bun-shim.mjs')
+        || normalized.includes('/lib/tui/jawcode-tui-bundle.mjs')
+        || normalized.includes('/lib/tui/jawcode-interactive-bundle.mjs');
 }
 
 export async function tryInitJawcodeTui(): Promise<boolean> {
