@@ -149,6 +149,53 @@ test('backoff is 0 first, then exponential, and capped', () => {
     assert.equal(cliStatusBackoffMs(99), 5 * 60_000);
 });
 
+test('a forced read bypasses the backoff window', async () => {
+    // Retries are demand-driven with no timer, so a user who fixes the problem
+    // would otherwise wait out the full backoff even after hitting Refresh.
+    let now = 1_000;
+    let calls = 0;
+    const cache = createCliStatusCacheForTest({
+        now: () => now,
+        refresh: () => { calls += 1; return Promise.reject(new Error('boom')); },
+    });
+
+    cache.getSnapshot(); await nextTurn();   // failure 1 -> immediate retry allowed
+    now += 1;
+    cache.getSnapshot(); await nextTurn();   // failure 2 -> backoff begins
+    const backedOff = calls;
+
+    now += 1;
+    cache.getSnapshot(); await nextTurn();
+    assert.equal(calls, backedOff, 'a normal read inside the window must not respawn');
+
+    cache.getSnapshot(true); await nextTurn();
+    assert.equal(calls, backedOff + 1, 'a forced read must probe immediately');
+});
+
+test('a clock rollback cannot resurrect a stale success over a recorded failure', async () => {
+    let now = 100_000;
+    let shouldFail = false;
+    const cache = createCliStatusCacheForTest({
+        now: () => now,
+        refresh: () => (shouldFail
+            ? Promise.reject(new Error('probe died'))
+            : Promise.resolve(completedSnapshot())),
+    });
+
+    cache.getSnapshot(); await nextTurn();
+    assert.equal(cache.getSnapshot()[firstCli]!.probeState, 'fresh');
+
+    shouldFail = true;
+    now += 31_000;
+    cache.getSnapshot(); await nextTurn();
+    assert.equal(cache.getSnapshot()[firstCli]!.probeState, 'failing');
+
+    // Date.now() is not monotonic. A correction that moves the clock backwards
+    // must not make the last success look fresh again.
+    now -= 31_000;
+    assert.equal(cache.getSnapshot()[firstCli]!.probeState, 'failing');
+});
+
 test('the CLI formatter never prints a green check while probes are failing', () => {
     // A preserved snapshot still carries available:true, so without an explicit
     // branch `jaw /version` style output would report the runtime as ready.

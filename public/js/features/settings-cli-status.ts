@@ -340,7 +340,10 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
         }
 
         let authHint = '';
-        if (!checking && (!info.available || dotClass === 'warn')) {
+        // A failing probe means we know nothing current about this runtime, so
+        // offering install/auth remediation would send the user to fix the
+        // wrong thing entirely (#277).
+        if (!checking && !probeFailing && (!info.available || dotClass === 'warn')) {
             const hint = AUTH_HINTS[name];
             if (hint) {
                 const isNotInstalled = !info.available;
@@ -410,7 +413,9 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
 
         const probeLine = checking
             ? '<div role="status" aria-live="polite" style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px">상태 확인 중</div>'
-            : capabilityFailed
+            : probeFailing
+                ? `<div role="alert" style="font-size:10px;color:var(--warning);margin:2px 0 0 16px">상태 확인 실패 · 재시도 중${info.probeError ? ` · ${escapeHtml(info.probeError)}` : ''}</div>`
+                : capabilityFailed
                 ? `<div role="status" style="font-size:10px;color:var(--error);margin:2px 0 0 16px">설치됨, app-server 사용 불가${info.reason ? ` · ${escapeHtml(info.reason)}` : ''}</div>`
                 : probeDescription === 'stale'
                     ? '<div role="status" style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px">이전 상태 표시 중 · 새로 확인 중</div>'
@@ -434,12 +439,16 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
     if (el) el.innerHTML = html;
 
     const allEntries = Object.entries(cliStatus);
+    // While probes are failing we cannot tell ready from unready, so the
+    // "no ready CLI" alarm would be exactly the false alarm #277 reports —
+    // the runtime worked the whole time.
+    const anyProbeFailing = allEntries.some(([, info]) => describeCliProbe(info) === 'probe-failing');
     const hasReadyCli = allEntries.some(([name, info]) => {
         if (describeCliProbe(info) !== 'ready') return false;
         const q = quota?.[name];
         return !q || q.authenticated !== false;
     });
-    if (!hasReadyCli && allEntries.length > 0 && el) {
+    if (!hasReadyCli && !anyProbeFailing && allEntries.length > 0 && el) {
         el.insertAdjacentHTML('afterbegin',
             `<div style="padding:8px 10px;margin-bottom:8px;background:var(--warning-dim);border:1px solid var(--warning);border-radius:6px;font-size:11px;color:var(--warning)">
                 ${ICONS.warning} ${t('cli.noReadyCli')}

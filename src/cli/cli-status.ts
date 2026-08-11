@@ -120,19 +120,27 @@ export class CliStatusCache {
         this.staleTtlMs = options.staleTtlMs ?? STALE_TTL_MS;
     }
 
-    getSnapshot(): CliStatusSnapshot {
+    /**
+     * @param force Skip the failure backoff window. Retries are demand-driven —
+     *   there is no timer — so a user who fixes the underlying problem would
+     *   otherwise wait out the full backoff even after hitting Refresh (#277).
+     */
+    getSnapshot(force = false): CliStatusSnapshot {
         const now = this.now();
         const age = this.lastSuccessfulProbeAt == null
             ? Number.POSITIVE_INFINITY
             : now - this.lastSuccessfulProbeAt;
 
-        if (this.lastSuccessfulSnapshot && age <= this.freshTtlMs) {
+        // A recorded failure outranks a fresh-looking snapshot: Date.now() is
+        // not monotonic, so a clock rollback could otherwise resurrect a stale
+        // success and contradict the failure we just observed.
+        if (!this.failure && this.lastSuccessfulSnapshot && age <= this.freshTtlMs) {
             return snapshotWithState(this.lastSuccessfulSnapshot, 'fresh');
         }
 
         // Honour the backoff window: a probe that keeps failing must not respawn
         // a worker on every single read.
-        if (!this.failure || now >= this.failure.nextRetryAt) this.startRefresh();
+        if (force || !this.failure || now >= this.failure.nextRetryAt) this.startRefresh();
 
         // A recorded failure outranks the decaying snapshot. Reporting `stale`
         // while every probe errors is what made #277 undiagnosable.
@@ -179,6 +187,11 @@ const defaultCliStatusCache = new CliStatusCache();
 
 export function getCachedCliStatus(): CliStatusSnapshot {
     return defaultCliStatusCache.getSnapshot();
+}
+
+/** Bypass the failure backoff — used by an explicit user-triggered refresh. */
+export function getCachedCliStatusForced(): CliStatusSnapshot {
+    return defaultCliStatusCache.getSnapshot(true);
 }
 
 /** @internal exported for deterministic cache tests. */
