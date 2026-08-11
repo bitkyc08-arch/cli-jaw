@@ -23,7 +23,8 @@ test('SI-001: killActiveAgent sets killReason to the given reason', () => {
 
 test('SI-002: killActiveAgent defaults reason to "user"', () => {
     assert.ok(
-        /export function killActiveAgent\(reason\s*=\s*['"]user['"]\)/.test(spawnSrc),
+        /export function killActiveAgent\(scopeKeyOrReason\s*=\s*['"]user['"],\s*scopedReason\?:\s*string\)/.test(spawnSrc)
+            && spawnSrc.includes('const reason = scopedReason ?? scopeKeyOrReason'),
         'killActiveAgent default reason should be "user"',
     );
 });
@@ -138,8 +139,8 @@ test('steerAgent calls killActiveAgent with "steer" reason', () => {
     assert.ok(steerFnMatch, 'steerAgent function should exist');
     const steerBody = steerFnMatch[0];
     assert.ok(
-        steerBody.includes("killActiveAgent('steer')"),
-        'steerAgent should call killActiveAgent with "steer" reason',
+        steerBody.includes("killActiveAgent(scopeKey, 'steer')"),
+        'steerAgent should call killActiveAgent for its scope with "steer" reason',
     );
     assert.ok(
         steerBody.includes('waitForProcessEnd'),

@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createQueueController } from '../../src/agent/spawn/queue.ts';
+import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -72,15 +74,41 @@ test('QP-001: queue policy is documented as "fair"', () => {
     );
 });
 
-test('QP-002: batch tail goes after remaining (fair ordering)', () => {
-    const queueBlock = queueSrc.slice(
-        queueSrc.indexOf('if (batch.length > 1)'),
-        queueSrc.indexOf('const combined = batch[0]'),
-    );
-    assert.ok(
-        queueBlock.includes('...remaining, ...batch.slice(1)'),
-        'remaining should come before batch tail in push',
-    );
+test('QP-002: queued messages retain fair FIFO ordering', async () => {
+    let busy = true;
+    const runs: string[] = [];
+    const controller = createQueueController({
+        migrateQueuedMessagesV1ToV2() {},
+        isSpawnBusy: () => busy,
+        hasBlockingWorkers: () => false,
+        hasPendingWorkerReplays: () => false,
+        insertMessage: { run() {} },
+        getActiveChatSession: () => 'default',
+        insertQueuedMessage: { run() {} },
+        deleteQueuedMessage: { run() {} },
+        listQueuedMessages: { all: () => [] },
+        broadcast() {},
+        importPipeline: async () => ({
+            orchestrate: async (prompt: string) => { runs.push(prompt); },
+            orchestrateContinue: async () => {},
+            orchestrateReset: async () => {},
+            isContinueIntent: () => false,
+            isResetIntent: () => false,
+            drainPendingReplays: async () => {},
+        }),
+        getWorkingDir: () => null,
+        isMultiSessionEnabled: () => false,
+    }, new SessionLanes(() => 1));
+
+    controller.enqueueMessage('first', 'web');
+    controller.enqueueMessage('other-chat', 'telegram');
+    controller.enqueueMessage('same-chat-tail', 'web');
+    busy = false;
+    await controller.processQueue('default');
+    for (let i = 0; i < 20 && (controller.messageQueue.length > 0 || controller.isQueueBusy(null)); i++) {
+        await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    assert.deepEqual(runs, ['first', 'other-chat', 'same-chat-tail']);
 });
 
 // ─── RC: orchestrateContinue PABCD-aware ─────────────

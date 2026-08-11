@@ -13,7 +13,10 @@ test('reset: orchestrateReset does NOT kill the main agent (preserves conversati
     const resetBlock = pipelineSrc.slice(resetStart, resetStart + 900);
     assert.ok(!resetBlock.includes("killActiveAgent"), 'reset must NOT kill the main agent');
     assert.ok(!resetBlock.includes("messageQueue.length = 0"), 'reset must NOT empty the message queue');
-    assert.ok(resetBlock.includes('clearAllWorkers()'), 'reset should still clear worker registry');
+    assert.ok(
+        resetBlock.includes('clearWorkersForScope(scope)'),
+        'reset should clear only the worker registry entries owned by the reset scope',
+    );
 });
 
 test('reset: orchestrateReset terminates each live worker before cancel/clear', () => {
