@@ -42,6 +42,7 @@ type SlackBlock = {
 type SlackSnapshot = {
     channel?: ActiveChannel;
     slack?: SlackBlock;
+    slackEnvironmentVariables?: string[];
     [key: string]: unknown;
 };
 
@@ -117,6 +118,10 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     }, [state]);
 
     const originalChannel = state.kind === 'ready' ? state.data.channel : undefined;
+    const environmentVariables = state.kind === 'ready' && Array.isArray(state.data.slackEnvironmentVariables)
+        ? state.data.slackEnvironmentVariables
+        : [];
+    const environmentManaged = environmentVariables.length > 0;
 
     const onSave = useCallback(async () => {
         const bundle = dirty.saveBundle();
@@ -157,7 +162,9 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     // Surface the outbound-only state on THIS page rather than changing the
     // shared status chips, which are frozen for cross-channel changes.
     const outboundOnly = Boolean(original.enabled) && Boolean(original.botToken) && !original.appToken;
-    const slackHint = outboundOnly
+    const slackHint = environmentManaged
+        ? `Connection settings are read-only because they are managed by environment variables: ${environmentVariables.join(', ')}.`
+        : outboundOnly
         ? 'Currently OUTBOUND-ONLY: the app-level token (xapp-) is missing, so no inbound Slack events can arrive.'
         : 'Slack needs TWO tokens: a bot token (xoxb-) for the Web API and an app-level token (xapp-) for Socket Mode.';
 
@@ -189,6 +196,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     id="sl-enabled"
                     label="Slack enabled"
                     value={enabled}
+                    disabled={environmentManaged}
                     onChange={(next) => {
                         setEnabled(next);
                         setEntry('slack.enabled', {
@@ -204,6 +212,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     value={botToken}
                     placeholder={maskOf(original.botToken)}
                     error={botTokenError}
+                    disabled={environmentManaged}
                     onChange={(next) => {
                         setBotToken(next);
                         if (next.length === 0) {
@@ -223,6 +232,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     value={appToken}
                     placeholder={maskOf(original.appToken)}
                     error={appTokenError}
+                    disabled={environmentManaged}
                     onChange={(next) => {
                         setAppToken(next);
                         if (next.length === 0) {
@@ -241,6 +251,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     label="Team ID"
                     value={teamId}
                     placeholder="T01234567 (optional)"
+                    disabled={environmentManaged}
                     onChange={(next) => {
                         setTeamId(next);
                         setEntry('slack.teamId', {
@@ -256,6 +267,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     value={channelIds}
                     placeholder="C01234567"
                     error={channelIdsError}
+                    disabled={environmentManaged}
                     onChange={(next) => {
                         setChannelIds(next);
                         setEntry('slack.channelIds', {

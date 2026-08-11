@@ -244,6 +244,17 @@
     margin-top: 3px;
 }
 
+.settings-managed-notice {
+    margin-bottom: 8px;
+    padding: 7px 8px;
+    border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--border));
+    border-radius: 6px;
+    color: var(--text-dim);
+    background: color-mix(in oklch, var(--accent) 7%, var(--bg));
+    font-size: 11px;
+    line-height: 1.4;
+}
+
 .input-sm.input-error {
     border-color: var(--error, #e5534b);
 }

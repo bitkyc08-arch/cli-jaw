@@ -82,6 +82,7 @@ export interface SettingsData {
     telegram?: TelegramConfig;
     discord?: DiscordConfig;
     slack?: SlackConfig;
+    slackEnvironmentVariables?: string[];
     channel?: 'telegram' | 'discord' | 'slack';
     fallbackOrder?: string[];
     memory?: { cli?: string };

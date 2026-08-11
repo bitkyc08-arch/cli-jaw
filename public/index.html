@@ -566,7 +566,7 @@
                 <h4 class="section-title-row">
                     <span><span data-provider="slack"></span> Slack</span>
                     <span class="section-title-actions">
-                        <button class="perm-btn onboard-trigger" type="button" data-onboard-channel="slack"
+                        <button id="slack-onboarding-trigger" class="perm-btn onboard-trigger" type="button" data-onboard-channel="slack"
                             data-i18n="onboarding.open">설정 마법사</button>
                         <button id="slack-reset-connection" class="perm-btn onboard-trigger" type="button"
                             data-i18n="settings.slack.resetConnection">연결 초기화</button>
@@ -574,6 +574,7 @@
                             data-i18n-aria="help.slack.aria" aria-label="Slack 도움말">?</button>
                     </span>
                 </h4>
+                <div id="slack-environment-managed" class="settings-managed-notice" role="status" style="display:none"></div>
                 <div class="settings-row">
                     <label data-i18n="label.enabled">활성화</label>
                     <div>
