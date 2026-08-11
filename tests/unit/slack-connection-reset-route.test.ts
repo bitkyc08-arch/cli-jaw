@@ -16,7 +16,7 @@ const slackEnvironmentVariables = [
 for (const key of slackEnvironmentVariables) delete process.env[key];
 
 mock.module('../../src/security/security-audit-log.ts', {
-    exports: {
+    namedExports: {
         getSecurityAuditLog: () => ({ append: () => undefined }),
     },
 });
