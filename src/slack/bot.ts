@@ -28,6 +28,7 @@ import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
 import { admitSlackRun, enqueueSlackIngress, resetSlackIngress, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
+import { resetSlackIdentityCache } from './identity.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -386,6 +387,9 @@ export async function shutdownSlack(): Promise<void> {
  */
 async function disposeSlackRuntime(): Promise<void> {
     await resetSlackIngress();
+    // Identity is cached per (team, id). A re-init can authenticate against a
+    // different workspace, so the cache must not outlive the runtime that filled it.
+    resetSlackIdentityCache();
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;

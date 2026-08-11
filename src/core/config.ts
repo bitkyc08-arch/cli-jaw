@@ -286,6 +286,10 @@ function createDefaultSettings() {
             threadRequireMention: false,
             replyInThread: true,
             inboundDownloadConcurrency: 6,
+            // Tell the agent WHO sent an inbound message. Off = raw ids only,
+            // and no human name reaches prompts, DB rows, or broadcasts.
+            senderIdentity: true,
+            identityCacheTtlMs: 21600000,
         },
         messaging: {
             latestSeen: { telegram: null, discord: null, slack: null },
@@ -601,6 +605,11 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
             replyInThread: true,
             inboundDownloadConcurrency: 6,
         };
+    }
+    // Sender identity migration — added 260811, absent from all prior files.
+    if (s["slack"].senderIdentity === undefined) s["slack"].senderIdentity = true;
+    if (!Number.isFinite(s["slack"].identityCacheTtlMs) || s["slack"].identityCacheTtlMs <= 0) {
+        s["slack"].identityCacheTtlMs = 21600000;
     }
     if (!Number.isInteger(s["slack"].inboundDownloadConcurrency)
         || s["slack"].inboundDownloadConcurrency < 1

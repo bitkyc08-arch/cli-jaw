@@ -255,6 +255,11 @@ async function invalidateSendOnlyClientsIfNeeded(
         tasks.push(import('../slack/send-only-client.js').then(({ invalidateSlackSendClient }) => {
             invalidateSlackSendClient();
         }));
+        // A token/workspace change invalidates resolved names too — they are
+        // cached per (team, id) and a stale entry would mislabel a sender.
+        tasks.push(import('../slack/identity.js').then(({ resetSlackIdentityCache }) => {
+            resetSlackIdentityCache();
+        }));
     }
     await Promise.all(tasks);
 }
