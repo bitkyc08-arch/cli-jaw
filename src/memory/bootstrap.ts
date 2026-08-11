@@ -25,6 +25,7 @@ import {
     withMigrationLock,
 } from './shared.js';
 import { reindexAll, reindexSingleFile } from './indexing.js';
+import { execName } from '../core/exec-name.js';
 
 function slug(value: string) {
     return value
@@ -393,7 +394,9 @@ export function scanSystemProfile(): string {
     lines.push('');
     lines.push('## Runtime');
     lines.push(`- node: ${process.version}`);
-    const npmVer = tryExec('npm', ['--version']);
+    // execName: bare 'npm' is not launchable on Windows, where it ships as
+    // npm.cmd — the probe silently reported "no npm" on a healthy host (#274).
+    const npmVer = tryExec(execName('npm'), ['--version']);
     if (npmVer) lines.push(`- npm: ${npmVer}`);
     const bunVer = tryExec('bun', ['--version']);
     if (bunVer) lines.push(`- bun: ${bunVer}`);

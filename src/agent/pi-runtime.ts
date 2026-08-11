@@ -5,6 +5,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { JAW_HOME } from '../core/config.js';
 import { clampPendingLine } from './spawn/line-buffer.js';
 import { probeOpenCodexEndpointModels } from '../cli/opencodex-models.js';
+import { execName } from '../core/exec-name.js';
 
 export type PiProfileMode = 'basic' | 'openai' | 'anthropic' | 'vertex';
 export type PiApiKind = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-vertex';
@@ -251,7 +252,10 @@ export function resolvePiCommand(env: NodeJS.ProcessEnv = process.env): PiComman
     if (explicit) return { command: explicit, baseArgs: [], source: 'env' };
     if (commandWorks('pi', ['--version'], 3000, env)) return { command: 'pi', baseArgs: [], source: 'path' };
     return {
-        command: 'npm',
+        // Windows ships npm as npm.cmd, which execFileSync cannot launch by the
+        // bare name — the fallback resolved to a command that always ENOENTs
+        // there (#274).
+        command: execName('npm'),
         baseArgs: ['exec', '--yes', '--package', PI_PACKAGE, 'pi', '--'],
         source: 'npm-exec',
     };
