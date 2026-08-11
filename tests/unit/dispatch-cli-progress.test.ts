@@ -43,8 +43,12 @@ test('dispatch batch output delegates to safe summary helper instead of printing
 
     assert.match(src, /printBatchDispatchSummary/);
     assert.match(batchBlock, /if \(!json && !quiet\) console\.log\(`🚀 Batch dispatching/);
-    assert.match(batchBlock, /if \(json\) \{\s*console\.log\(JSON\.stringify\(body\)\);[\s\S]*?process\.exit\(\(body\.results \|\| \[\]\)\.every\(r => r\.ok\) \? 0 : 1\);[\s\S]*?\}/);
-    assert.match(batchBlock, /if \(quiet\) process\.exit\(\(body\.results \|\| \[\]\)\.every\(r => r\.ok\) \? 0 : 1\)/);
+    // These exits moved from process.exit() to process.exitCode + break so the
+    // fetch transport can drain before the process ends (#276 libuv assertion).
+    // The property under test is unchanged: JSON mode prints the body and the
+    // status reflects whether every result succeeded.
+    assert.match(batchBlock, /if \(json\) \{\s*console\.log\(JSON\.stringify\(body\)\);[\s\S]*?process\.exitCode = \(body\.results \|\| \[\]\)\.every\(r => r\.ok\) \? 0 : 1;[\s\S]*?\}/);
+    assert.match(batchBlock, /if \(quiet\) \{\s*process\.exitCode = \(body\.results \|\| \[\]\)\.every\(r => r\.ok\) \? 0 : 1;/);
     assert.doesNotMatch(batchBlock, /r\.text/);
     assert.doesNotMatch(helper, /console\.log\(result\.text/);
     assert.match(helper, /worker read/);
