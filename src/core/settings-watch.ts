@@ -11,7 +11,7 @@ import path from 'node:path';
 import {
     SETTINGS_PATH, settings, replaceSettings, migrateSettings,
     normalizeProjectDirs, getLastSavedSettingsRaw,
-    SLACK_CONNECTION_SETTING_KEYS, slackEnvironmentManagedPatchPaths,
+    slackEnvironmentManagedPatchPaths, slackEnvironmentManagedSettingKeys,
 } from './config.js';
 import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
@@ -92,7 +92,7 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
     const environmentManagedSlackPaths = slackEnvironmentManagedPatchPaths(externalPatch);
     if (environmentManagedSlackPaths.length > 0) {
         const slack = { ...(externalPatch["slack"] as Record<string, unknown>) };
-        for (const key of SLACK_CONNECTION_SETTING_KEYS) delete slack[key];
+        for (const key of slackEnvironmentManagedSettingKeys()) delete slack[key];
         externalPatch["slack"] = slack;
         console.warn(`[settings-watch] ignored environment-managed settings fields: ${environmentManagedSlackPaths.join(', ')}`);
     }

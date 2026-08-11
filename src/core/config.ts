@@ -688,21 +688,45 @@ export const SLACK_CONNECTION_SETTING_KEYS = [
     'attachPort',
 ] as const;
 
+type SlackConnectionSettingKey = typeof SLACK_CONNECTION_SETTING_KEYS[number];
+
+const SLACK_ENV_SETTING_OWNERSHIP: Record<
+    typeof SLACK_CONNECTION_ENV_KEYS[number],
+    readonly SlackConnectionSettingKey[]
+> = {
+    SLACK_BOT_TOKEN: ['enabled', 'botToken'],
+    SLACK_APP_TOKEN: ['appToken'],
+    SLACK_TEAM_ID: ['teamId'],
+    SLACK_CHANNEL_IDS: ['channelIds'],
+};
+
 export function configuredSlackEnvironmentVariables(
     env: NodeJS.ProcessEnv = process.env,
 ): string[] {
     return SLACK_CONNECTION_ENV_KEYS.filter((key) => Boolean(env[key]));
 }
 
+export function slackEnvironmentManagedSettingKeys(
+    env: NodeJS.ProcessEnv = process.env,
+): SlackConnectionSettingKey[] {
+    const managed = new Set<SlackConnectionSettingKey>();
+    for (const envKey of SLACK_CONNECTION_ENV_KEYS) {
+        if (!env[envKey]) continue;
+        for (const settingKey of SLACK_ENV_SETTING_OWNERSHIP[envKey]) managed.add(settingKey);
+    }
+    return [...managed];
+}
+
 export function slackEnvironmentManagedPatchPaths(
     patch: Record<string, unknown>,
     env: NodeJS.ProcessEnv = process.env,
 ): string[] {
-    if (configuredSlackEnvironmentVariables(env).length === 0) return [];
+    const managed = new Set(slackEnvironmentManagedSettingKeys(env));
+    if (managed.size === 0) return [];
     const slack = patch["slack"];
     if (!slack || typeof slack !== 'object' || Array.isArray(slack)) return [];
     return SLACK_CONNECTION_SETTING_KEYS
-        .filter((key) => Object.prototype.hasOwnProperty.call(slack, key))
+        .filter((key) => managed.has(key) && Object.prototype.hasOwnProperty.call(slack, key))
         .map((key) => `slack.${key}`);
 }
 
@@ -715,23 +739,16 @@ function clearPersistedSlackConnectionForEnvironment(
     input: Record<string, any>,
     env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-    if (configuredSlackEnvironmentVariables(env).length === 0) return false;
+    const managed = slackEnvironmentManagedSettingKeys(env);
+    if (managed.length === 0) return false;
     const slack = input["slack"] || {};
-    const changed = slack.enabled !== false
-        || Boolean(slack.botToken)
-        || Boolean(slack.appToken)
-        || Boolean(slack.teamId)
-        || (Array.isArray(slack.channelIds) && slack.channelIds.length > 0)
-        || Boolean(slack.attachPort);
-    input["slack"] = {
-        ...slack,
-        enabled: false,
-        botToken: '',
-        appToken: '',
-        teamId: '',
-        channelIds: [],
-        attachPort: '',
-    };
+    const changed = managed.some((key) => {
+        if (key === 'enabled') return slack.enabled !== false;
+        if (key === 'channelIds') return Array.isArray(slack.channelIds) && slack.channelIds.length > 0;
+        return Boolean(slack[key]);
+    });
+    for (const key of managed) delete slack[key];
+    input["slack"] = slack;
     return changed;
 }
 
@@ -1079,8 +1096,8 @@ let lastSavedSettingsRaw: string | null = null;
 
 export function serializeSettingsForSave(candidate: SettingsStateCandidate): string {
     const value = structuredClone(candidate.value);
-    if (configuredSlackEnvironmentVariables().length > 0 && value["slack"] && typeof value["slack"] === 'object') {
-        for (const key of SLACK_CONNECTION_SETTING_KEYS) delete value["slack"][key];
+    if (value["slack"] && typeof value["slack"] === 'object') {
+        for (const key of slackEnvironmentManagedSettingKeys()) delete value["slack"][key];
     }
     const runtime = value["runtime"];
     if (candidate.shape === 'absent' && runtime?.codexApp?.multiplex === false) {

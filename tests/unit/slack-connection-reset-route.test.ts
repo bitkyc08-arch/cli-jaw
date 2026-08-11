@@ -144,9 +144,12 @@ test('refused environment-managed reset remains explicit after settings reload',
     assert.equal(reloaded.slack.botToken, 'xoxb-environment-token');
     config.saveSettings({ ...reloaded, locale: 'en' });
     const persisted = JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8')) as Record<string, any>;
-    for (const key of ['enabled', 'botToken', 'appToken', 'teamId', 'channelIds', 'attachPort']) {
-        assert.equal(key in persisted.slack, false, `${key} leaked into settings.json`);
-    }
+    assert.equal('enabled' in persisted.slack, false);
+    assert.equal('botToken' in persisted.slack, false);
+    assert.equal(persisted.slack.appToken, 'xapp-persisted-token');
+    assert.equal(persisted.slack.teamId, '');
+    assert.deepEqual(persisted.slack.channelIds, []);
+    assert.equal(persisted.slack.attachPort || '', '');
     assert.equal(JSON.stringify(persisted).includes('xoxb-environment-token'), false);
 });
 
@@ -193,4 +196,61 @@ test('shared runtime settings boundary rejects environment-managed Slack connect
         runtimeSettings.applyRuntimeSettingsPatch({ slack: { enabled: false } }),
         /slack_connection_managed_by_environment/,
     );
+});
+
+test('metadata-only Slack environment overrides preserve file-backed credentials', () => {
+    config.saveSettings({
+        ...config.settings,
+        slack: {
+            ...config.settings['slack'],
+            enabled: true,
+            botToken: 'xoxb-file-token',
+            appToken: 'xapp-file-token',
+            teamId: 'T-FILE',
+            channelIds: ['C-FILE'],
+            attachPort: '3999',
+        },
+    });
+    process.env['SLACK_TEAM_ID'] = 'T-ENV';
+    process.env['SLACK_CHANNEL_IDS'] = 'C-ENV';
+
+    const reloaded = config.loadSettings() as Record<string, any>;
+    assert.equal(reloaded.slack.enabled, true);
+    assert.equal(reloaded.slack.botToken, 'xoxb-file-token');
+    assert.equal(reloaded.slack.appToken, 'xapp-file-token');
+    assert.equal(reloaded.slack.teamId, 'T-ENV');
+    assert.deepEqual(reloaded.slack.channelIds, ['C-ENV']);
+    assert.equal(reloaded.slack.attachPort, '3999');
+
+    const persisted = JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8')) as Record<string, any>;
+    assert.equal(persisted.slack.botToken, 'xoxb-file-token');
+    assert.equal(persisted.slack.appToken, 'xapp-file-token');
+    assert.equal(persisted.slack.attachPort, '3999');
+    assert.equal('teamId' in persisted.slack, false);
+    assert.equal('channelIds' in persisted.slack, false);
+    assert.equal(JSON.stringify(persisted).includes('T-ENV'), false);
+    assert.equal(JSON.stringify(persisted).includes('C-ENV'), false);
+});
+
+test('generic settings writes reject only fields owned by configured Slack environment variables', async () => {
+    process.env['SLACK_TEAM_ID'] = 'T-ENV';
+    const patches: Record<string, unknown>[] = [];
+    const put = registerRouteApp(
+        allowAuth,
+        async (patch) => { patches.push(patch); return patch; },
+        'PUT',
+        '/api/settings',
+    );
+
+    const unrelated = await routeRequest(put, {
+        slack: { enabled: true, botToken: 'xoxb-file-token', appToken: 'xapp-file-token', attachPort: '3999' },
+    });
+    assert.equal(unrelated.status, 200);
+    assert.equal(patches.length, 1);
+
+    const owned = await routeRequest(put, { slack: { teamId: 'T-FILE' } });
+    assert.equal(owned.status, 409);
+    assert.deepEqual(owned.json.environmentVariables, ['SLACK_TEAM_ID']);
+    assert.deepEqual(owned.json.managedPaths, ['slack.teamId']);
+    assert.equal(patches.length, 1);
 });
