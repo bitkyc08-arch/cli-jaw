@@ -64,6 +64,21 @@ export const SLACK_APP_MANIFEST = {
             // the same bot token only after Slack-host and SSRF validation.
             'files:read',
             'files:write',
+            // Sender identity and rosters:
+            //   users:read    -> users.info / users.list / bots.info
+            //   team:read     -> team.info (workspace name)
+            //   channels:read -> conversations.members in a public channel
+            //   groups:read   -> ... in a private channel
+            //   im:read       -> ... in a DM
+            //   mpim:read     -> ... in a group DM
+            // Existing installs do not get these automatically; without them
+            // names degrade to raw ids and messaging is unaffected.
+            'users:read',
+            'team:read',
+            'channels:read',
+            'groups:read',
+            'im:read',
+            'mpim:read',
                 'commands',
             ],
         },

@@ -19,6 +19,8 @@ import {
     slackIdentityCacheStats,
     resetSlackIdentityCache,
 } from '../../src/slack/identity.ts';
+import { resolveSenderIdentity } from '../../src/slack/identity.ts';
+import { settings } from '../../src/core/config.ts';
 
 const TOKEN = 'xoxb-not-a-real-token-000';
 const TEAM = 'T0TEST';
@@ -64,15 +66,17 @@ test('empty display_name falls through to profile.real_name', () => {
 });
 
 test('a Korean name is never replaced by its normalized variant', () => {
-    // Slack builds *_normalized by stripping non-Latin characters, so preferring
-    // them would erase exactly the names this feature exists to surface.
+    // Slack builds *_normalized by stripping non-Latin characters. The trap is a
+    // NON-EMPTY normalized value competing with the real one: if precedence were
+    // wrong, this returns the Latin remnant instead of the Korean name.
     const name = pickSlackUserName({
         profile: {
-            display_name: '김병준',
-            display_name_normalized: '',
+            display_name: '',
             real_name: '김병준',
-            real_name_normalized: '',
+            display_name_normalized: 'kim',
+            real_name_normalized: 'kim',
         },
+        name: 'kimbj',
     }, 'U1');
     assert.equal(name, '김병준');
 });
@@ -103,9 +107,17 @@ test('sanitize strips bidi/format control characters', () => {
     assert.ok(!out.includes('\u202E') && !out.includes('\u200B'));
 });
 
-test('sanitize caps the name length', () => {
+test('sanitize caps the name length inclusive of the ellipsis', () => {
     const out = sanitizeIdentityName('A'.repeat(200), 'U1');
-    assert.ok(out.length <= 65, `expected a capped name, got ${out.length}`);
+    assert.equal([...out].length, 64, `the marker must fit inside the cap, got ${out}`);
+});
+
+test('sanitize truncates on code points, not UTF-16 units', () => {
+    // The emoji must straddle the cut. Index-based slicing would split its
+    // surrogate pair and emit a lone surrogate; code-point slicing drops it whole.
+    const out = sanitizeIdentityName(`${'A'.repeat(63)}😀tail`, 'U1');
+    assert.ok(!/[\uD800-\uDFFF]/.test(out), `lone surrogate in ${JSON.stringify(out)}`);
+    assert.equal(out, `${'A'.repeat(63)}…`);
 });
 
 test('sanitize falls back to the id when nothing survives', () => {
@@ -261,15 +273,34 @@ test('one caller aborting does not cancel the other waiter', async () => {
     assert.equal(second.name, 'Jun', 'the other waiter must still be served');
 });
 
-test('an already-aborted signal returns immediately without resolving', async () => {
+test('an already-aborted signal returns without dispatching a request', async () => {
     resetSlackIdentityCache();
     const controller = new AbortController();
     controller.abort();
-    const { impl } = makeFetch([userOk()]);
+    const { impl, calls } = makeFetch([userOk()]);
     const identity = await resolveSlackIdentity(
         TOKEN, { userId: 'U1' }, { teamId: TEAM, fetchImpl: impl, signal: controller.signal },
     );
     assert.equal(identity.resolved, false);
+    assert.equal(calls.length, 0, 'an aborted caller must not cost a round trip');
+});
+
+test('a cached name expires once its TTL passes', async () => {
+    resetSlackIdentityCache();
+    const { impl, calls } = makeFetch([userOk(), { ok: true, user: { id: 'U1', profile: { display_name: 'Later' } } }]);
+    const slack = (globalThis as Record<string, any>);
+    const first = await resolveSlackIdentity(TOKEN, { userId: 'U1' }, { teamId: TEAM, fetchImpl: impl });
+    assert.equal(first.name, 'Jun');
+    const realNow = Date.now;
+    try {
+        const jump = realNow() + 7 * 60 * 60 * 1000;
+        slack['Date'].now = () => jump;
+        const second = await resolveSlackIdentity(TOKEN, { userId: 'U1' }, { teamId: TEAM, fetchImpl: impl });
+        assert.equal(second.name, 'Later');
+        assert.equal(calls.length, 2, 'an expired entry must be re-fetched');
+    } finally {
+        slack['Date'].now = realNow;
+    }
 });
 
 test('primeSlackIdentityCache warms lookups so later reads cost nothing', async () => {
@@ -379,6 +410,22 @@ test('resetting clears every cache partition', async () => {
     resetSlackIdentityCache();
     const stats = slackIdentityCacheStats();
     assert.deepEqual(stats, { users: 0, bots: 0, negative: 0 });
+});
+
+test('senderIdentity:false leaves the message completely untouched', async () => {
+    // Off must mean off. Returning a degraded identity here would still stamp
+    // "[Slack 발신자: U1 (이름 미해석)]" onto every message.
+    resetSlackIdentityCache();
+    const slack = (settings as Record<string, any>)['slack'] ??= {};
+    const previous = slack.senderIdentity;
+    slack.senderIdentity = false;
+    try {
+        const identity = await resolveSenderIdentity({ user: 'U1', text: 'hi' });
+        assert.equal(buildSenderPrompt(identity, 'hi'), 'hi');
+        assert.equal(buildSenderDisplay(identity, 'hi'), 'hi');
+    } finally {
+        slack.senderIdentity = previous;
+    }
 });
 
 // ── generation safety: a reset must actually win ─────

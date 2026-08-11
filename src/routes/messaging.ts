@@ -19,27 +19,32 @@ import { sendResultHttpStatus } from '../messaging/send-result.js';
 import { getSlackSendClient } from '../slack/send-only-client.js';
 import { getSlackSelfUserId } from '../slack/bot.js';
 import { fetchSlackHistory, fetchSlackReplies, formatHistoryForAgent } from '../slack/history.js';
-import { resolveSlackIdentities } from '../slack/identity.js';
+import { getCachedSlackIdentities } from '../slack/identity.js';
+import { fetchSlackChannelMembers, fetchSlackWorkspaceUsers, formatRosterForAgent } from '../slack/roster.js';
 import type { SlackHistoryMessage } from '../slack/history.js';
 
 /**
  * Best-effort author names for a history window. Every failure path yields an
  * empty map, which renders exactly as the pre-existing mention syntax.
+ *
+ * Cache-first by design: a 200-message window of unseen users must not turn into
+ * a burst of users.info calls, and two concurrent history reads would each pace
+ * themselves independently. Only names already resolved (by inbound traffic or a
+ * roster read) are used here; unknown ids simply render as before.
  */
 async function resolveHistoryNames(
-    token: string, messages: readonly SlackHistoryMessage[],
+    _token: string, messages: readonly SlackHistoryMessage[],
 ): Promise<Map<string, string>> {
     const names = new Map<string, string>();
-    const refs = new Map<string, { userId?: string; botId?: string }>();
+    const ids = new Set<string>();
     for (const message of messages) {
-        if (message.user && !refs.has(message.user)) refs.set(message.user, { userId: message.user });
-        else if (message.botId && !refs.has(message.botId)) refs.set(message.botId, { botId: message.botId });
+        if (message.user) ids.add(message.user);
+        else if (message.botId) ids.add(message.botId);
     }
-    if (!refs.size) return names;
+    if (!ids.size) return names;
     try {
         const teamId = String(settings["slack"]?.teamId || 'unknown');
-        const batch = await resolveSlackIdentities(token, [...refs.values()], { teamId });
-        for (const [id, identity] of batch.identities) {
+        for (const [id, identity] of getCachedSlackIdentities(teamId, [...ids])) {
             if (identity.resolved) names.set(id, identity.name);
         }
     } catch {
@@ -364,5 +369,63 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             return;
         }
         res.json({ ok: true, messages: result.messages, hasMore: result.hasMore });
+    });
+
+    // Who is in this conversation? Same contract shape as /api/slack/history:
+    // read-only, loopback-friendly, prose errors only.
+    // GET /api/slack/members?channel=C..[&limit=N][&format=text]
+    app.get('/api/slack/members', requireAuth, async (req, res) => {
+        const client = getSlackSendClient();
+        if (!client.token) {
+            res.status(client.status ?? 503).json({ ok: false, error: client.reason ?? 'slack_unavailable' });
+            return;
+        }
+        const channel = String(req.query['channel'] || '').trim();
+        if (!channel) {
+            res.status(400).json({ ok: false, error: 'channel_required' });
+            return;
+        }
+        const limit = Number(req.query['limit']) || undefined;
+        const result = await fetchSlackChannelMembers(client.token, channel, {
+            teamId: String(settings["slack"]?.teamId || 'unknown'),
+            ...(limit ? { limit } : {}),
+        });
+        if (!result.ok) {
+            res.status(502).json({ ok: false, error: result.error });
+            return;
+        }
+        if (String(req.query['format'] || '') === 'text') {
+            res.json({ ok: true, text: formatRosterForAgent(result, { channel }) });
+            return;
+        }
+        res.json({ ok: true, members: result.members, hasMore: result.hasMore, partial: result.partial });
+    });
+
+    // GET /api/slack/users[?limit=N][&include_bots=1][&include_deleted=1][&format=text]
+    app.get('/api/slack/users', requireAuth, async (req, res) => {
+        const client = getSlackSendClient();
+        if (!client.token) {
+            res.status(client.status ?? 503).json({ ok: false, error: client.reason ?? 'slack_unavailable' });
+            return;
+        }
+        const limit = Number(req.query['limit']) || undefined;
+        const result = await fetchSlackWorkspaceUsers(client.token, {
+            teamId: String(settings["slack"]?.teamId || 'unknown'),
+            ...(limit ? { limit } : {}),
+            ...(req.query['include_bots'] ? { includeBots: true } : {}),
+            ...(req.query['include_deleted'] ? { includeDeleted: true } : {}),
+        });
+        if (!result.ok) {
+            res.status(502).json({ ok: false, error: result.error });
+            return;
+        }
+        if (String(req.query['format'] || '') === 'text') {
+            res.json({ ok: true, text: formatRosterForAgent(result) });
+            return;
+        }
+        res.json({
+            ok: true, members: result.members, hasMore: result.hasMore,
+            partial: result.partial, ...(result.teamName ? { teamName: result.teamName } : {}),
+        });
     });
 }

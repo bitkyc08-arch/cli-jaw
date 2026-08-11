@@ -895,7 +895,7 @@
     "onboarding.guide.discord": "discord.com/developers/applications 에서 New Application → Bot → Reset Token 으로 토큰을 만들고, Privileged Gateway Intents 의 MESSAGE CONTENT INTENT 를 켜세요. 서버 ID는 Discord 설정에서 개발자 모드를 켠 뒤 서버 우클릭 → ID 복사로 얻습니다.",
     "onboarding.guide.slack": "api.slack.com/apps 에서 Create an App → From an app manifest 로 앱을 만든 뒤, OAuth & Permissions → Install to Workspace 에서 봇 토큰(xoxb-), Basic Information → App-Level Tokens 에서 앱 토큰(xapp-, connections:write)을 발급받으세요.",
     "onboarding.slackExistingApp": "기존 앱은 OAuth & Permissions에서 files:read를 추가한 뒤 Reinstall to Workspace를 실행하세요.",
-    "onboarding.warning.missingCapabilities": "선택 기능 권한({capabilities})이 없어 첨부파일 수신은 꺼져 있습니다. 권한을 추가하고 앱을 재설치하세요. 텍스트 메시지는 계속 사용할 수 있습니다.",
+    "onboarding.warning.missingCapabilities": "선택 권한({capabilities})이 없어 해당 기능만 꺼져 있습니다. 권한을 추가하고 앱을 재설치하세요. 텍스트 메시지는 계속 사용할 수 있습니다.",
     "onboarding.token.botToken": "봇 토큰",
     "onboarding.token.appToken": "앱 레벨 토큰",
     "onboarding.token.guildId": "서버 ID",

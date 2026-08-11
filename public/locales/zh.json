@@ -884,7 +884,7 @@
     "onboarding.guide.discord": "At discord.com/developers/applications choose New Application, then Bot, then Reset Token. Enable MESSAGE CONTENT INTENT under Privileged Gateway Intents. Get the server ID by enabling Developer Mode in Discord, then right-click the server and copy its ID.",
     "onboarding.guide.slack": "At api.slack.com/apps use Create an App, From an app manifest. Then get the bot token (xoxb-) from OAuth & Permissions, Install to Workspace, and the app-level token (xapp-, connections:write) from Basic Information, App-Level Tokens.",
     "onboarding.slackExistingApp": "对于现有应用，请在 OAuth & Permissions 中添加 files:read，然后选择 Reinstall to Workspace。",
-    "onboarding.warning.missingCapabilities": "缺少可选权限 {capabilities}，因此无法接收附件。请添加权限并重新安装应用。文本消息仍可使用。",
+    "onboarding.warning.missingCapabilities": "缺少可选权限 {capabilities}，相应功能已关闭。请添加权限并重新安装应用。文本消息仍可使用。",
     "onboarding.token.botToken": "机器人令牌",
     "onboarding.token.appToken": "应用级令牌",
     "onboarding.token.guildId": "服务器 ID",

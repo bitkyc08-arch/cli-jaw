@@ -895,7 +895,7 @@
     "onboarding.guide.discord": "At discord.com/developers/applications choose New Application, then Bot, then Reset Token. Enable MESSAGE CONTENT INTENT under Privileged Gateway Intents. Get the server ID by enabling Developer Mode in Discord, then right-click the server and copy its ID.",
     "onboarding.guide.slack": "At api.slack.com/apps use Create an App, From an app manifest. Then get the bot token (xoxb-) from OAuth & Permissions, Install to Workspace, and the app-level token (xapp-, connections:write) from Basic Information, App-Level Tokens.",
     "onboarding.slackExistingApp": "For an existing app, add files:read under OAuth & Permissions, then choose Reinstall to Workspace.",
-    "onboarding.warning.missingCapabilities": "Optional capability {capabilities} is missing, so inbound attachments are disabled. Add it and reinstall the app. Text messages still work.",
+    "onboarding.warning.missingCapabilities": "Optional scopes {capabilities} are missing, so the features they cover are turned off. Add them and reinstall the app. Text messages still work.",
     "onboarding.token.botToken": "Bot token",
     "onboarding.token.appToken": "App-level token",
     "onboarding.token.guildId": "Server ID",

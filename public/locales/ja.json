@@ -884,7 +884,7 @@
     "onboarding.guide.discord": "At discord.com/developers/applications choose New Application, then Bot, then Reset Token. Enable MESSAGE CONTENT INTENT under Privileged Gateway Intents. Get the server ID by enabling Developer Mode in Discord, then right-click the server and copy its ID.",
     "onboarding.guide.slack": "At api.slack.com/apps use Create an App, From an app manifest. Then get the bot token (xoxb-) from OAuth & Permissions, Install to Workspace, and the app-level token (xapp-, connections:write) from Basic Information, App-Level Tokens.",
     "onboarding.slackExistingApp": "既存アプリでは OAuth & Permissions に files:read を追加し、Reinstall to Workspace を実行してください。",
-    "onboarding.warning.missingCapabilities": "任意機能の権限 {capabilities} がないため、添付ファイル受信は無効です。権限を追加してアプリを再インストールしてください。テキストは引き続き利用できます。",
+    "onboarding.warning.missingCapabilities": "任意の権限 {capabilities} がないため、その機能のみ無効です。権限を追加してアプリを再インストールしてください。テキストは引き続き利用できます。",
     "onboarding.token.botToken": "ボットトークン",
     "onboarding.token.appToken": "アプリレベルトークン",
     "onboarding.token.guildId": "サーバー ID",
