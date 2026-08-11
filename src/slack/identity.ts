@@ -73,6 +73,13 @@ const MAX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CACHE_CAP = 1000;
 const NAME_MAX = 64;
 const LOOKUP_TIMEOUT_MS = 5000;
+/**
+ * Inbound-only deadline. Admission WAITS on identity, so a slow users.info would
+ * hold the user's message hostage behind a network round trip. Past this the
+ * message goes through with the raw id and the lookup keeps running to warm the
+ * cache for the next message. The 5s transport timeout still bounds the request.
+ */
+const INBOUND_IDENTITY_DEADLINE_MS = 400;
 
 /** Negative-cache windows. Permanent-ish failures sit longer than transient ones. */
 const NEGATIVE_TTL_TRANSIENT_MS = 60 * 1000;
@@ -474,9 +481,28 @@ export async function resolveSenderIdentity(
     }
     const token = getSlackSendClient().token;
     if (!token) return degraded(id, ref.botId && !ref.userId ? 'bot' : 'user', ref.inlineName);
-    return resolveSlackIdentity(token, ref, {
+    const lookup = resolveSlackIdentity(token, ref, {
         teamId: currentTeamId(),
         ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    // Never let naming a sender delay delivering their message. The in-flight
+    // request continues after the deadline and populates the cache, so the very
+    // next message from this person is named.
+    const fallback = degraded(id, ref.botId && !ref.userId ? 'bot' : 'user', ref.inlineName);
+    return raceDeadline(lookup, INBOUND_IDENTITY_DEADLINE_MS, fallback);
+}
+
+function raceDeadline(
+    work: Promise<SlackIdentity>, ms: number, fallback: SlackIdentity,
+): Promise<SlackIdentity> {
+    return new Promise<SlackIdentity>(resolve => {
+        // unref so a pending deadline can never hold the process open.
+        const timer = setTimeout(() => resolve(fallback), ms);
+        timer.unref?.();
+        void work.then(
+            value => { clearTimeout(timer); resolve(value); },
+            () => { clearTimeout(timer); resolve(fallback); },
+        );
     });
 }
 
