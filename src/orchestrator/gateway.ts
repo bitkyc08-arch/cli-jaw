@@ -20,6 +20,7 @@ import { channelGateOn, resolveOrcScope } from './scope.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey, normalizedThreadId, type SessionScope } from '../messaging/session-key.js';
 import { sessionLanes } from './session-lanes.js';
+import { admitRequest, settleOnce } from './request-registry.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
@@ -198,6 +199,11 @@ export function submitMessage(
         }))))
         : 'default';
     const sessionScope: SessionScope = { scope, chatSessionId };
+
+    // Admit the request the moment its id exists. Every exit below then settles
+    // through settleOnce(), so a caller holding this id always hears exactly one
+    // terminal event — including on paths that never emit orchestrate_done.
+    admitRequest(requestId, scope);
     // OFF-mode byte-compat: only expose resolved identity when multi-session is on —
     // /api/message spreads SubmitResult into the HTTP response (routes/command.ts).
     const sessionContext = multiSessionEnabled
@@ -232,6 +238,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
+        else settleOnce(requestId, 'skipped', { reason: 'skipOrchestrate' });
         return { action: 'started', disposition: 'new_run', noPendingContinue: true, requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
@@ -250,6 +257,7 @@ export function submitMessage(
                 { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
             );
         }
+        else settleOnce(requestId, 'skipped', { reason: 'skipOrchestrate' });
         return { action: 'started', disposition: 'new_run', requestId, ...(sessionContext ? { sessionContext } : {}) };
     }
 
@@ -289,5 +297,6 @@ export function submitMessage(
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },
         );
     }
+    else settleOnce(requestId, 'skipped', { reason: 'skipOrchestrate' });
     return { action: 'started', disposition: 'new_run', requestId, ...(sessionContext ? { sessionContext } : {}) };
 }

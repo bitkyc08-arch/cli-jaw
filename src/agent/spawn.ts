@@ -689,6 +689,11 @@ export async function steerAgent(
         broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
         broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget }));
         await runtime.steer(settings["workingDir"] || process.cwd(), newPrompt);
+        // A steer injects into the turn already running; no new completion
+        // event will ever carry this id. Settling here is what stops a caller
+        // from waiting for an answer that structurally cannot arrive.
+        const { settleOnce } = await import('../orchestrator/request-registry.js');
+        settleOnce(meta?.requestId, 'steered');
         return;
     }
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
@@ -696,17 +701,19 @@ export async function steerAgent(
     if (wasRunning) await waitForProcessEnd(scopeKey, steerWaitMs);
     insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
     broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-    broadcast('steer_started', { prompt: newPrompt, origin: source || 'web', scope: scopeKey });
+    broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, requestId: meta?.requestId }));
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
     const task = isResetIntent(newPrompt)
-        ? orchestrateReset({ origin, scope: scopeKey, chatSessionId, _skipInsert: true })
+        ? orchestrateReset(stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }))
         : isContinueIntent(newPrompt)
-            ? orchestrateContinue({ origin, scope: scopeKey, chatSessionId, _skipInsert: true })
-            : orchestrate(newPrompt, { origin, scope: scopeKey, chatSessionId, _skipInsert: true });
-    task.catch((err: Error) => {
+            ? orchestrateContinue(stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }))
+            : orchestrate(newPrompt, stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }));
+    task.catch(async (err: Error) => {
         console.error('[steer:orchestrate]', err.message);
-        broadcast('orchestrate_done', { text: `[error] ${err.message}`, error: true, origin });
+        broadcast('orchestrate_done', stripUndefined({ text: `[error] ${err.message}`, error: true, origin, requestId: meta?.requestId }));
+        const { settleOnce } = await import('../orchestrator/request-registry.js');
+        settleOnce(meta?.requestId, 'failed', { error: err.message });
     });
 }
 

@@ -46,6 +46,7 @@ import {
 } from '../shared/elicitation-spec.js';
 import { resolveOrcScope } from './scope.js';
 import { sessionLanes } from './session-lanes.js';
+import { settleOnce } from './request-registry.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -309,6 +310,7 @@ export async function orchestrate(
             replyViaTarget,
             ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
+        settleOnce(requestId, 'completed', { scope });
         return;
     }
     const planningTask = numericResolution?.resolved || pickPlanningTask(userText, prompt, ctx);
@@ -647,6 +649,7 @@ export async function orchestrate(
         ...(typeof result['agyCheckpointSeen'] === 'boolean' ? { agyCheckpointSeen: result['agyCheckpointSeen'] } : {}),
         ...(elicitationSpecs.length > 0 ? { elicitationSpecs } : {}),
     });
+    settleOnce(requestId, 'completed', { scope, text: result["text"] || '' });
 }
 
 // ─── Continue ───────────────────────────────────────
@@ -683,6 +686,7 @@ export async function orchestrateContinue(
         replyViaTarget,
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
+    settleOnce(requestId, 'completed', { scope, text: 'No pending work to continue.' });
 }
 
 // ─── Reset ──────────────────────────────────────────
@@ -725,6 +729,7 @@ export async function orchestrateReset(
             replyViaTarget,
             ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
+        settleOnce(requestId, 'completed', { scope, text: 'Reset complete.' });
         return;
     }
     updateWorklogStatus(latest.path, 'reset', 0);
@@ -738,4 +743,5 @@ export async function orchestrateReset(
         replyViaTarget,
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
+    settleOnce(requestId, 'completed', { scope, text: 'Reset complete.' });
 }

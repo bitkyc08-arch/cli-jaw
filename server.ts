@@ -91,6 +91,7 @@ import { killAllAgents } from './src/agent/spawn.js';
 import { resetAllStaleStates } from './src/orchestrator/state-machine.js';
 
 import { submitMessage } from './src/orchestrator/gateway.js';
+import { settleAllPending } from './src/orchestrator/request-registry.js';
 
 import { applySettingsPatch } from './src/core/session-ops.js';
 import { makeWebCommandCtx } from './src/cli/web-command-ctx.js';
@@ -461,6 +462,13 @@ const shutdown = async (sig: string) => {
     clearInterval(rateLimitSweepInterval);
     try { stopAllBgTasks(); } catch { /* non-fatal */ }
     killAllAgents('shutdown');
+    // Tell anyone still waiting that their request died with the process. The
+    // registry lives in memory, so an unannounced shutdown would leave every
+    // in-flight caller hanging until its own timeout.
+    try {
+        const dropped = settleAllPending('dropped', 'server-shutdown');
+        if (dropped > 0) console.log(`[jaw:shutdown] settled ${dropped} in-flight request(s) as dropped`);
+    } catch { /* non-fatal */ }
 
     // No longer resetting orc_state on shutdown — 24h staleness filter handles cleanup on startup.
     // Active PABCD sessions should survive graceful restarts.
