@@ -380,3 +380,80 @@ test('resetting clears every cache partition', async () => {
     const stats = slackIdentityCacheStats();
     assert.deepEqual(stats, { users: 0, bots: 0, negative: 0 });
 });
+
+// ── generation safety: a reset must actually win ─────
+
+test('a lookup issued before a reset cannot re-latch missing_scope afterwards', async () => {
+    // Reviewer-reproduced race: a request under the OLD token completes after a
+    // workspace/token switch and re-locks the capability, so the first lookup on
+    // the NEW token degraded without ever calling Slack.
+    resetSlackIdentityCache();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const stale = (async () => {
+        await gate;
+        return {
+            ok: true, status: 200,
+            text: async () => JSON.stringify({ ok: false, error: 'missing_scope', needed: 'users:read' }),
+        } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const inFlight = resolveSlackIdentity(TOKEN, { userId: 'U1' }, { teamId: 'T_OLD', fetchImpl: stale });
+    resetSlackIdentityCache();          // token/workspace changed underneath it
+    release!();
+    await inFlight;                      // the stale result lands after the reset
+
+    const { impl, calls } = makeFetch([userOk()]);
+    const after = await resolveSlackIdentity(TOKEN, { userId: 'U1' }, { teamId: 'T_NEW', fetchImpl: impl });
+    assert.equal(calls.length, 1, 'the new token must still be allowed to call Slack');
+    assert.equal(after.resolved, true);
+});
+
+test('a lookup issued before a reset cannot seed the new cache', async () => {
+    resetSlackIdentityCache();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const stale = (async () => {
+        await gate;
+        return {
+            ok: true, status: 200,
+            text: async () => JSON.stringify(userOk({ profile: { display_name: 'StaleWorkspaceName' } })),
+        } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const inFlight = resolveSlackIdentity(TOKEN, { userId: 'U1' }, { teamId: TEAM, fetchImpl: stale });
+    resetSlackIdentityCache();
+    release!();
+    await inFlight;
+
+    assert.equal(slackIdentityCacheStats().users, 0, 'a superseded result must not repopulate the cache');
+});
+
+test('only one probe is admitted when the capability lock lapses', async () => {
+    // Letting every concurrent caller through on expiry would restore exactly the
+    // per-message API storm the lock exists to prevent.
+    resetSlackIdentityCache();
+    const { impl, calls } = makeFetch([{ ok: false, error: 'missing_scope' }]);
+    await resolveSlackIdentity(TOKEN, { userId: 'U1' }, { teamId: TEAM, fetchImpl: impl });
+    assert.equal(calls.length, 1);
+
+    // Simulate the 30-minute lock lapsing, then fire several lookups at once.
+    const { setCapabilityLockForTest } = await import('../../src/slack/identity.ts');
+    setCapabilityLockForTest(Date.now() - 1);
+    await Promise.all(['U2', 'U3', 'U4', 'U5'].map(userId =>
+        resolveSlackIdentity(TOKEN, { userId }, { teamId: TEAM, fetchImpl: impl })));
+    assert.equal(calls.length, 2, 'exactly one re-probe, not one per caller');
+});
+
+test('the negative cache evicts by expiry, not by insertion accident', async () => {
+    // trimTo used to read `expiresAt` off a bare timestamp, so the sort compared
+    // undefined and eviction order was arbitrary.
+    resetSlackIdentityCache();
+    const { impl } = makeFetch([{ ok: false, error: 'user_not_found' }]);
+    await resolveSlackIdentity(TOKEN, { userId: 'UGONE' }, { teamId: TEAM, fetchImpl: impl });
+    assert.equal(slackIdentityCacheStats().negative, 1);
+
+    const { impl: impl2, calls: calls2 } = makeFetch([userOk()]);
+    await resolveSlackIdentity(TOKEN, { userId: 'UGONE' }, { teamId: TEAM, fetchImpl: impl2 });
+    assert.equal(calls2.length, 0, 'the negative entry still suppresses the repeat lookup');
+});
