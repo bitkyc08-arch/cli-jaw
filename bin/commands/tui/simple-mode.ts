@@ -14,8 +14,20 @@ import { runQueueCommand } from './queue-command.js';
 
 export async function runSimpleMode(ctx: TuiContext): Promise<void> {
     const { ws } = ctx;
-    console.log(`\n  cli-jaw v${APP_VERSION} \u00B7 ${ctx.label} \u00B7 :${ctx.values.port}\n`);
-    const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: `${ctx.label} > ` });
+    // --raw is a machine protocol (issue #275 pipes JSON into it), so it gets
+    // no human banner and no prompt string — either would corrupt the stream
+    // its caller is parsing.
+    if (!ctx.isRaw) {
+        console.log(`\n  cli-jaw v${APP_VERSION} \u00B7 ${ctx.label} \u00B7 :${ctx.values.port}\n`);
+    }
+    const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        ...(ctx.isRaw ? {} : { prompt: `${ctx.label} > ` }),
+    });
+    // readline defaults to '> ' when no prompt is given, which would still leak
+    // into the machine stream. Silence it explicitly for --raw.
+    if (ctx.isRaw) rl.setPrompt('');
     let streaming = false;
 
     async function handleSlashCommand(parsed: ParsedSlashCommand) {

@@ -25,8 +25,17 @@ export async function initJawcodeTui(): Promise<void> {
     _initialized = true;
 }
 
-function isOptionalJawcodeTuiLoadError(err: unknown): boolean {
-    const maybeError = err as { code?: unknown; message?: unknown };
+/**
+ * Exported for testing: this classifier decides whether a failed TUI asset load
+ * degrades gracefully or crashes the process, and it is pure. Issue #275 was
+ * partly caused by it silently never matching on Windows, which no environment
+ * -dependent test could have caught.
+ */
+export function isOptionalJawcodeTuiLoadError(err: unknown): boolean {
+    // `throw null` / `throw undefined` are legal, and this runs inside a catch
+    // that must never itself throw — a crash here would replace a recoverable
+    // asset problem with an unrelated TypeError.
+    const maybeError = (err ?? {}) as { code?: unknown; message?: unknown };
     const code = typeof maybeError.code === 'string' ? maybeError.code : '';
     const message = typeof maybeError.message === 'string' ? maybeError.message : String(err);
     if (message.includes('pi_natives')) return true;

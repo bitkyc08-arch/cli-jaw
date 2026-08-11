@@ -224,8 +224,23 @@ if (values.verbose) {
 }
 
 // ─── Mode branch ─────────────────────────────
-if (values.simple) {
+// `--raw` is documented as "JSON protocol mode (for UI integration)" and issue
+// #275 scripts it as `echo '{...}' | jaw chat --raw`. A pipe has no TTY, so the
+// rich branch below would call setRawMode() on a non-TTY stdin and die with
+// `process.stdin.setRawMode is not a function`. Route piped --raw through the
+// readline path, which reads lines and never touches terminal modes.
+// A --raw session on a real TTY keeps its existing interactive behavior.
+const rawPiped = ctx.isRaw && !process.stdin.isTTY;
+
+if (values.simple || rawPiped) {
     await runSimpleMode(ctx);
+} else if (!process.stdin.isTTY) {
+    // Every remaining path puts stdin in raw mode. The display mode is chosen
+    // from stdout, so a piped stdin on a real terminal still lands here, and
+    // setRawMode() on a pipe throws. Fail with direction instead.
+    console.error('jaw chat needs an interactive stdin.');
+    console.error('Non-interactive alternatives: jaw chat --raw, jaw chat --simple');
+    process.exitCode = 2;
 } else {
     if (!ctx.isRaw) await initHighlight();   // interactive rich TUI only; --simple & --raw untouched
     // Initialize jawcode TUI components (async, once)
