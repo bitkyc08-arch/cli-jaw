@@ -7,7 +7,7 @@ import {
     settings, persistAndCommit, snapshotSettingsState, migrateSettings, normalizeProjectDirs,
     RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
     MULTI_SESSION_DEFAULT_MIGRATION_ID, type MultiSessionDefaultMigration,
-    type SettingsStateCandidate, type SettingsWrite,
+    type SettingsStateCandidate, type SettingsWrite, slackEnvironmentManagedPatchPaths,
 } from './config.js';
 import { broadcast } from './bus.js';
 import { syncMainSessionToSettings } from './main-session.js';
@@ -319,6 +319,9 @@ async function applyRuntimeSettingsPatchSerialised(
             throw new Error('invalid_settings_field');
         }
         const patch = sanitized.value;
+        if (slackEnvironmentManagedPatchPaths(patch).length > 0) {
+            throw new Error('slack_connection_managed_by_environment');
+        }
         const merged = mergeSettingsPatch(prevSnapshot, patch);
         if ('projectDirs' in patch) {
             merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);

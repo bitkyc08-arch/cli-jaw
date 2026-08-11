@@ -663,6 +663,69 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     return s;
 }
 
+export const SLACK_CONNECTION_ENV_KEYS = [
+    'SLACK_BOT_TOKEN',
+    'SLACK_APP_TOKEN',
+    'SLACK_TEAM_ID',
+    'SLACK_CHANNEL_IDS',
+] as const;
+
+export const SLACK_CONNECTION_SETTING_KEYS = [
+    'enabled',
+    'botToken',
+    'appToken',
+    'teamId',
+    'channelIds',
+    'attachPort',
+] as const;
+
+export function configuredSlackEnvironmentVariables(
+    env: NodeJS.ProcessEnv = process.env,
+): string[] {
+    return SLACK_CONNECTION_ENV_KEYS.filter((key) => Boolean(env[key]));
+}
+
+export function slackEnvironmentManagedPatchPaths(
+    patch: Record<string, unknown>,
+    env: NodeJS.ProcessEnv = process.env,
+): string[] {
+    if (configuredSlackEnvironmentVariables(env).length === 0) return [];
+    const slack = patch["slack"];
+    if (!slack || typeof slack !== 'object' || Array.isArray(slack)) return [];
+    return SLACK_CONNECTION_SETTING_KEYS
+        .filter((key) => Object.prototype.hasOwnProperty.call(slack, key))
+        .map((key) => `slack.${key}`);
+}
+
+/**
+ * Environment-managed Slack connections have a single source of truth. Clear
+ * persisted connection fields before applying the runtime-only environment
+ * overlay; behavior fields such as forwardAll and mentionOnly stay editable.
+ */
+function clearPersistedSlackConnectionForEnvironment(
+    input: Record<string, any>,
+    env: NodeJS.ProcessEnv = process.env,
+): boolean {
+    if (configuredSlackEnvironmentVariables(env).length === 0) return false;
+    const slack = input["slack"] || {};
+    const changed = slack.enabled !== false
+        || Boolean(slack.botToken)
+        || Boolean(slack.appToken)
+        || Boolean(slack.teamId)
+        || (Array.isArray(slack.channelIds) && slack.channelIds.length > 0)
+        || Boolean(slack.attachPort);
+    input["slack"] = {
+        ...slack,
+        enabled: false,
+        botToken: '',
+        appToken: '',
+        teamId: '',
+        channelIds: [],
+        attachPort: '',
+    };
+    return changed;
+}
+
 /** Apply environment variable overrides to a settings object */
 function applyEnvOverrides(s: Record<string, any>) {
     if (process.env["TELEGRAM_TOKEN"]) {
@@ -924,6 +987,11 @@ export function loadSettings() {
             needsSave = true;
         }
 
+        // A previous runtime could have copied its effective environment token
+        // into settings.json during an unrelated save. Environment mode is
+        // intentionally exclusive, so remove all persisted connection fields.
+        if (clearPersistedSlackConnectionForEnvironment(merged)) needsSave = true;
+
         const candidate = { value: merged, shape: nextShape } satisfies SettingsStateCandidate;
         if (needsSave) persistAndCommit(candidate);
         else commitCandidate(candidate);
@@ -1002,6 +1070,9 @@ let lastSavedSettingsRaw: string | null = null;
 
 export function serializeSettingsForSave(candidate: SettingsStateCandidate): string {
     const value = structuredClone(candidate.value);
+    if (configuredSlackEnvironmentVariables().length > 0 && value["slack"] && typeof value["slack"] === 'object') {
+        for (const key of SLACK_CONNECTION_SETTING_KEYS) delete value["slack"][key];
+    }
     const runtime = value["runtime"];
     if (candidate.shape === 'absent' && runtime?.codexApp?.multiplex === false) {
         delete runtime.codexApp.multiplex;

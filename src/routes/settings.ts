@@ -3,9 +3,15 @@ import type { AuthMiddleware } from './types.js';
 import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
-import { ok } from '../http/response.js';
+import { fail, ok } from '../http/response.js';
 import { asyncHandler } from '../http/async-handler.js';
-import { settings, JAW_HOME, isSettingsPersistenceBlocked } from '../core/config.js';
+import {
+    settings,
+    JAW_HOME,
+    isSettingsPersistenceBlocked,
+    configuredSlackEnvironmentVariables,
+    slackEnvironmentManagedPatchPaths,
+} from '../core/config.js';
 import { sanitizeSettingsInput } from '../core/settings-merge.js';
 import { readCodexContextWindow } from '../core/codex-config.js';
 import { regenerateB, A2_PATH, HEARTBEAT_PATH } from '../prompt/builder.js';
@@ -50,6 +56,7 @@ const SERVER_OWNED_SETTINGS_KEYS = [
     'settingsSchemaVersion',
     'runtimeDefaultMigration',
     'multiSessionDefaultMigration',
+    'slackEnvironmentVariables',
 ] as const;
 
 function redactSttSettings(input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
@@ -83,7 +90,13 @@ function redactJawCeoSettings(input: Record<string, unknown> | undefined): Recor
 }
 
 function redactRuntimeSettings<T extends Record<string, unknown>>(input: T): T {
-    const safe = { ...input } as T & { stt?: Record<string, unknown>; jawCeo?: Record<string, unknown>; pi?: Record<string, unknown> };
+    const safe = { ...input } as T & {
+        stt?: Record<string, unknown>;
+        jawCeo?: Record<string, unknown>;
+        pi?: Record<string, unknown>;
+        slack?: Record<string, unknown>;
+        slackEnvironmentVariables?: string[];
+    };
     const stt = redactSttSettings(safe.stt);
     const jawCeo = redactJawCeoSettings(safe.jawCeo);
     const pi = redactPiSettings(safe.pi);
@@ -93,6 +106,18 @@ function redactRuntimeSettings<T extends Record<string, unknown>>(input: T): T {
     else delete safe.jawCeo;
     if (pi) safe.pi = pi;
     else delete safe.pi;
+    const slackEnvironmentVariables = configuredSlackEnvironmentVariables();
+    safe.slackEnvironmentVariables = slackEnvironmentVariables;
+    if (slackEnvironmentVariables.length > 0 && safe.slack) {
+        safe.slack = {
+            ...safe.slack,
+            botToken: '',
+            appToken: '',
+            teamId: '',
+            channelIds: [],
+            attachPort: '',
+        };
+    }
     return safe as T;
 }
 
@@ -161,6 +186,14 @@ export function registerSettingsRoutes(
         const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
             ? req.body as Record<string, unknown>
             : {};
+        const environmentManagedPaths = slackEnvironmentManagedPatchPaths(body);
+        if (environmentManagedPaths.length > 0) {
+            fail(res, 409, 'slack_connection_managed_by_environment', {
+                environmentVariables: configuredSlackEnvironmentVariables(),
+                managedPaths: environmentManagedPaths,
+            });
+            return;
+        }
         const sanitized = sanitizeSettingsInput(body, 'api');
         if (SERVER_OWNED_SETTINGS_KEYS.some((key) => key in body)
             || sanitized.serverOwnedPaths.length > 0) {
@@ -178,6 +211,35 @@ export function registerSettingsRoutes(
         } catch { /* non-fatal */ }
         const safe = redactRuntimeSettings(result);
         ok(res, safe);
+    }));
+
+    app.post('/api/settings/slack/reset', requireAuth, asyncHandler(async (req, res) => {
+        if (isSettingsPersistenceBlocked()) {
+            fail(res, 503, 'settings_persistence_blocked');
+            return;
+        }
+        const environmentVariables = configuredSlackEnvironmentVariables();
+        if (environmentVariables.length > 0) {
+            fail(res, 409, 'slack_connection_managed_by_environment', { environmentVariables });
+            return;
+        }
+        const result = await applySettings({
+            slack: {
+                enabled: false,
+                botToken: '',
+                appToken: '',
+                teamId: '',
+                channelIds: [],
+                attachPort: '',
+            },
+        }) as Record<string, unknown>;
+        try {
+            getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
+                keys: ['slack'],
+                action: 'reset_connection',
+            });
+        } catch { /* non-fatal */ }
+        ok(res, redactRuntimeSettings(result));
     }));
 
     app.post('/api/settings/runtime-default-migration', requireAuth, asyncHandler(async (req, res) => {
