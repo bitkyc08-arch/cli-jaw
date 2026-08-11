@@ -17,6 +17,18 @@ function injectRequest(client: CodexAppClient, handler: RequestHandler): void {
     Object.defineProperty(client, 'request', { value: handler });
 }
 
+async function settleWithin<T>(pending: Promise<T>, timeoutMs = 1_000): Promise<T> {
+    let timer!: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`test operation did not settle within ${timeoutMs}ms`)), timeoutMs);
+    });
+    try {
+        return await Promise.race([pending, timeout]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 test('validateModelEffort fails open without a catalog', () => {
     assert.deepEqual(
         validateModelEffort('gpt-5.5', 'high', new Map()),
@@ -662,7 +674,7 @@ test('non-terminal TTL expiry drops with diagnostics before replay', async () =>
         method: 'item/agentMessage/delta',
         params: { threadId: 'thread-a', turnId: 'turn-a', delta: 'expired' },
     }));
-    await expired;
+    await settleWithin(expired);
     resolveTurn({ turn: { id: 'turn-a' } });
     await starting;
     assert.deepEqual(seen, []);
@@ -685,7 +697,7 @@ test('terminal TTL expiry explicitly fails the pending turn operation', async ()
             error: { message: 'expires' },
         },
     }));
-    await assert.rejects(starting, /ttl-terminal-expired/);
+    await assert.rejects(settleWithin(starting), /ttl-terminal-expired/);
 });
 
 test('closeScope rejects active lanes and cleans idle state, latch, listener, and index', async () => {
