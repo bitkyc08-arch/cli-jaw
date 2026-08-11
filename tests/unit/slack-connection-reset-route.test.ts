@@ -1,0 +1,196 @@
+import test, { afterEach, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Express } from 'express';
+
+const home = process.env['CLI_JAW_HOME'];
+assert.ok(home, 'tests/setup/test-home.ts must provide CLI_JAW_HOME');
+
+const slackEnvironmentVariables = [
+    'SLACK_BOT_TOKEN',
+    'SLACK_APP_TOKEN',
+    'SLACK_TEAM_ID',
+    'SLACK_CHANNEL_IDS',
+] as const;
+for (const key of slackEnvironmentVariables) delete process.env[key];
+
+mock.module('../../src/security/security-audit-log.ts', {
+    exports: {
+        getSecurityAuditLog: () => ({ append: () => undefined }),
+    },
+});
+
+const { registerSettingsRoutes } = await import('../../src/routes/settings.ts');
+const config = await import('../../src/core/config.ts');
+const runtimeSettings = await import('../../src/core/runtime-settings.ts');
+
+afterEach(() => {
+    for (const key of slackEnvironmentVariables) delete process.env[key];
+    config.loadSettings();
+});
+
+type RouteHandler = (req: any, res: any, next: (error?: unknown) => void) => void;
+
+const allowAuth: RouteHandler = (_req, _res, next): void => next();
+const denyAuth: RouteHandler = (_req, res): void => {
+    res.status(401).json({ ok: false, error: 'unauthorized' });
+};
+
+function registerRouteApp(
+    auth: RouteHandler,
+    applySettings: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>,
+    method: 'GET' | 'PUT' | 'POST' = 'POST',
+    path = '/api/settings/slack/reset',
+) {
+    const routes = new Map<string, RouteHandler[]>();
+    const register = (verb: string) => (routePath: string, ...handlers: RouteHandler[]): void => {
+        routes.set(`${verb} ${routePath}`, handlers);
+    };
+    const app = { get: register('GET'), put: register('PUT'), post: register('POST') } as unknown as Express;
+    registerSettingsRoutes(app, auth as never, applySettings, process.cwd());
+    const route = routes.get(`${method} ${path}`);
+    assert.ok(route, `${method} ${path} was not registered`);
+    return route;
+}
+
+async function routeRequest(handlers: RouteHandler[], body: Record<string, unknown> = {}) {
+    return await new Promise<{ status: number; json: Record<string, any> }>((resolve, reject) => {
+        let status = 200;
+        const response = {
+            status(code: number) { status = code; return response; },
+            json(body: Record<string, any>) { resolve({ status, json: body }); },
+        };
+        const request = { body, ip: 'local', query: {}, params: {} };
+        const run = (index: number): void => {
+            const handler = handlers[index];
+            if (!handler) return reject(new Error('route completed without a response'));
+            handler(request, response, (error?: unknown) => {
+                if (error) reject(error);
+                else run(index + 1);
+            });
+        };
+        run(0);
+    });
+}
+
+test('Slack reset route is authenticated', async () => {
+    let applies = 0;
+    const route = registerRouteApp(denyAuth, async () => { applies += 1; return {}; });
+    const result = await routeRequest(route);
+    assert.equal(result.status, 401);
+    assert.equal(applies, 0);
+});
+
+test('Slack reset route clears every persisted connection field', async () => {
+    const patches: Record<string, unknown>[] = [];
+    const route = registerRouteApp(allowAuth, async (patch) => {
+        patches.push(patch);
+        return patch;
+    });
+    const { status, json } = await routeRequest(route);
+    assert.equal(status, 200);
+    assert.deepEqual(patches, [{
+        slack: {
+            enabled: false,
+            botToken: '',
+            appToken: '',
+            teamId: '',
+            channelIds: [],
+            attachPort: '',
+        },
+    }]);
+    assert.equal(json.ok, true);
+    assert.equal(json.data.slack.enabled, false);
+});
+
+test('Slack reset route rejects mixed environment-managed settings without exposing values', async () => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-secret-value';
+    process.env['SLACK_CHANNEL_IDS'] = 'C-SECRET';
+    let applies = 0;
+    const route = registerRouteApp(allowAuth, async () => { applies += 1; return {}; });
+    const { status, json } = await routeRequest(route);
+    assert.equal(status, 409);
+    assert.equal(json.error, 'slack_connection_managed_by_environment');
+    assert.deepEqual(json.environmentVariables, ['SLACK_BOT_TOKEN', 'SLACK_CHANNEL_IDS']);
+    assert.equal(JSON.stringify(json).includes('xoxb-secret-value'), false);
+    assert.equal(JSON.stringify(json).includes('C-SECRET'), false);
+    assert.equal(applies, 0);
+});
+
+test('refused environment-managed reset remains explicit after settings reload', async () => {
+    config.saveSettings({
+        ...config.settings,
+        slack: {
+            ...config.settings['slack'],
+            enabled: true,
+            botToken: 'xoxb-persisted-token',
+            appToken: 'xapp-persisted-token',
+        },
+    });
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-environment-token';
+    const before = config.loadSettings() as Record<string, any>;
+    assert.equal(before.slack.botToken, 'xoxb-environment-token');
+
+    let applies = 0;
+    const route = registerRouteApp(allowAuth, async () => { applies += 1; return {}; });
+    const { status, json } = await routeRequest(route);
+    assert.equal(status, 409);
+    assert.deepEqual(json.environmentVariables, ['SLACK_BOT_TOKEN']);
+    assert.equal(applies, 0);
+
+    const reloaded = config.loadSettings() as Record<string, any>;
+    assert.equal(reloaded.slack.enabled, true);
+    assert.equal(reloaded.slack.botToken, 'xoxb-environment-token');
+    config.saveSettings({ ...reloaded, locale: 'en' });
+    const persisted = JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8')) as Record<string, any>;
+    for (const key of ['enabled', 'botToken', 'appToken', 'teamId', 'channelIds', 'attachPort']) {
+        assert.equal(key in persisted.slack, false, `${key} leaked into settings.json`);
+    }
+    assert.equal(JSON.stringify(persisted).includes('xoxb-environment-token'), false);
+});
+
+test('settings API rejects environment-managed connection writes but allows behavior settings', async () => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-secret-value';
+    const patches: Record<string, unknown>[] = [];
+    const put = registerRouteApp(
+        allowAuth,
+        async (patch) => { patches.push(patch); return patch; },
+        'PUT',
+        '/api/settings',
+    );
+
+    const rejected = await routeRequest(put, { slack: { botToken: 'xoxb-ui-token', enabled: false } });
+    assert.equal(rejected.status, 409);
+    assert.deepEqual(rejected.json.managedPaths, ['slack.enabled', 'slack.botToken']);
+    assert.equal(JSON.stringify(rejected.json).includes('xoxb-secret-value'), false);
+    assert.equal(patches.length, 0);
+
+    const allowed = await routeRequest(put, { slack: { forwardAll: false, mentionOnly: true } });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(patches, [{ slack: { forwardAll: false, mentionOnly: true } }]);
+});
+
+test('settings GET reports environment provenance without returning Slack values', async () => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-secret-value';
+    process.env['SLACK_TEAM_ID'] = 'T-SECRET';
+    config.loadSettings();
+    const get = registerRouteApp(allowAuth, async () => ({}), 'GET', '/api/settings');
+    const { status, json } = await routeRequest(get);
+
+    assert.equal(status, 200);
+    assert.deepEqual(json.data.slackEnvironmentVariables, ['SLACK_BOT_TOKEN', 'SLACK_TEAM_ID']);
+    assert.equal(json.data.slack.enabled, true);
+    assert.equal(json.data.slack.botToken, '');
+    assert.equal(json.data.slack.teamId, '');
+    assert.equal(JSON.stringify(json).includes('xoxb-secret-value'), false);
+    assert.equal(JSON.stringify(json).includes('T-SECRET'), false);
+});
+
+test('shared runtime settings boundary rejects environment-managed Slack connection writes', async () => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-secret-value';
+    await assert.rejects(
+        runtimeSettings.applyRuntimeSettingsPatch({ slack: { enabled: false } }),
+        /slack_connection_managed_by_environment/,
+    );
+});

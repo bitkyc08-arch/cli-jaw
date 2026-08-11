@@ -168,3 +168,38 @@ test('SWA-009: laneMode is stripped while a valid multiplex sibling is applied',
         assert.equal(getSettingsPersistenceShape(), 'present');
     }
 }));
+
+test('SWA-010: external reload cannot replace an environment-managed Slack connection', () => withCapturedBroadcasts(() => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-environment-token';
+    try {
+        replaceSettings({
+            ...settings,
+            slack: {
+                ...settings["slack"],
+                enabled: true,
+                botToken: 'xoxb-environment-token',
+                appToken: '',
+                forwardAll: true,
+            },
+        }, getSettingsPersistenceShape());
+        const reloaded = reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({
+                slack: {
+                    enabled: false,
+                    botToken: 'xoxb-file-token',
+                    appToken: 'xapp-file-token',
+                    forwardAll: false,
+                },
+            }),
+            lastSavedRaw: null,
+        });
+
+        assert.equal(reloaded, true);
+        assert.equal(settings["slack"].enabled, true);
+        assert.equal(settings["slack"].botToken, 'xoxb-environment-token');
+        assert.equal(settings["slack"].appToken || '', '');
+        assert.equal(settings["slack"].forwardAll, false);
+    } finally {
+        delete process.env['SLACK_BOT_TOKEN'];
+    }
+}));

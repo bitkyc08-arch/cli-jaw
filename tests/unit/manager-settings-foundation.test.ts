@@ -171,6 +171,7 @@ test('Advanced Export/Import strips only schema-owned fields for round-trip PUT'
         workingDir: '/work',
         settingsSchemaVersion: 2,
         runtimeDefaultMigration: { id: 'codex-app-default-v2', state: 'pending' },
+        slackEnvironmentVariables: ['SLACK_BOT_TOKEN'],
         nested: { keep: true },
     };
     assert.deepEqual(stripServerOwnedSettingsFields(serverDocument), {

@@ -85,10 +85,24 @@ test('the Slack reset control is bound and translated in every locale', () => {
             'settings.slack.resetConfirm',
             'settings.slack.resetEmpty',
             'settings.slack.resetFailed',
+            'settings.slack.resetManagedByEnvironment',
+            'settings.slack.managedByEnvironment',
         ]) {
             assert.ok(dict[key], `${locale}.json missing ${key}`);
         }
     }
+});
+
+test('environment-managed Slack connection controls have a read-only UI surface', () => {
+    const html = read('public/index.html');
+    assert.ok(html.includes('id="slack-environment-managed"'));
+    assert.ok(html.includes('id="slack-onboarding-trigger"'));
+    const classic = read('public/js/features/settings-slack.ts');
+    assert.match(classic, /slackEnvironmentVariables/);
+    assert.match(classic, /input\.disabled = environmentManaged/);
+    const manager = read('public/manager/src/settings/pages/ChannelsSlack.tsx');
+    assert.match(manager, /slackEnvironmentVariables\?: string\[\]/);
+    assert.match(manager, /disabled=\{environmentManaged\}/);
 });
 
 test('non-credential fields are demoted to a collapsed advanced section', () => {
