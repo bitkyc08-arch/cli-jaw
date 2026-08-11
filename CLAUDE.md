@@ -37,6 +37,7 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 - Claude E is the registry key `claude-e`; runtime telemetry uses `agent:claude-e:*`. Some persisted helper/session internals still use the historical `claude-i` bucket for compatibility.
 - Gemini full-access runs use `--skip-trust --approval-mode yolo` on both fresh and resume sessions.
 - `/api/channel/send` is the canonical outbound Telegram/Discord/Slack delivery endpoint.
+- Slack connection environment variables are an exclusive runtime-only source: `GET /api/settings` reports `slackEnvironmentVariables` while redacting their values, connection-field `PUT`s and `POST /api/settings/slack/reset` return `409`, CLI setup paths refuse mixed file credentials, and persistence strips those connection fields so environment secrets never enter `settings.json`.
 - Heartbeat schedules support `{ kind: "every", minutes }` and `{ kind: "cron", cron, timeZone? }`.
 - Tool logs are capped by `src/shared/tool-log-sanitize.ts` before SSE/WebSocket, `agent_done`, and orchestration snapshot delivery. Web UI delivery is SSE-first through `GET /api/events`, with WebSocket as the legacy fallback dispatcher.
 - Employee worker progress is query-first via `jaw worker status [agent]`, watchable via `jaw worker watch [agent]` or `jaw dispatch --watch`, memory-only for current plus previous completed run, and safe-summary only with thinking detail hidden.

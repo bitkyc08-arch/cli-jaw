@@ -524,6 +524,8 @@ Socket Mode bot with the same shared command catalog — mentions, DMs, slash co
 
 Why not OAuth one-click? Slack issues the app-level token (`xapp-`, required for Socket Mode) only from the app settings UI, and the PKCE localhost flow bans bot scopes — a browser click cannot configure a self-hosted Socket Mode bot. The wizard is the shortest honest path.
 
+For Docker/Kubernetes deployments, any `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_TEAM_ID`, or `SLACK_CHANNEL_IDS` makes the Slack connection environment-managed. Connection fields become read-only in Settings, environment values are never copied into `settings.json`, and changing or clearing the connection requires removing the variables and restarting cli-jaw. Delivery preferences such as mention/thread/forwarding behavior remain editable.
+
 </details>
 
 ### Voice & STT
