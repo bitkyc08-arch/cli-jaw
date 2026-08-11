@@ -198,6 +198,18 @@ function createLaneLease(options: Record<string, unknown>): FakeLaneLease {
     };
 }
 
+// This fixture exercises only the Codex App routing layer. Make CLI detection
+// deterministic so CI does not require a real `codex` binary on PATH; otherwise
+// spawnAgent exits at its preflight guard before any of the mocked pool/client
+// behavior can run.
+const realConfig = await import('../../src/core/config.ts');
+test.mock.module('../../src/core/config.js', {
+    namedExports: {
+        ...realConfig,
+        detectCli: () => ({ available: true, path: null }),
+    },
+});
+
 test.mock.module('../../src/agent/codex-app-client.js', {
     namedExports: {
         CodexAppClient: FakeCodexAppClient,
