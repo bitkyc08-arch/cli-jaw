@@ -63,11 +63,19 @@ export interface CliStatusInfo {
     authenticated: boolean | null;
     path: string | null;
     source: string;
-    probeState: 'checking' | 'fresh' | 'stale';
+    probeState: 'checking' | 'fresh' | 'stale' | 'failing';
     reason?: string;
+    /** Underlying probe error, present only while `failing`. */
+    probeError?: string;
+    probeFailures?: number;
+    nextRetryAt?: number;
 }
-export function describeCliProbe(info: CliStatusInfo): 'checking' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
+export function describeCliProbe(info: CliStatusInfo): 'checking' | 'probe-failing' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
     if (info.probeState === 'checking') return 'checking';
+    // Ahead of every other branch: while probes keep failing we know nothing
+    // current about the runtime, so a preserved snapshot must not be rendered
+    // as ready or merely stale (#277).
+    if (info.probeState === 'failing') return 'probe-failing';
     if (info.binaryInstalled === true && info.capabilityReady === false) return 'capability-failed';
     if (info.probeState === 'stale') return 'stale';
     return info.available === true && info.capabilityReady !== false ? 'ready' : 'unavailable';

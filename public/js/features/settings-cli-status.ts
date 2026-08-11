@@ -308,11 +308,16 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
         if (SIDEBAR_HIDDEN_CLIS.has(name)) continue;
         const probeDescription = describeCliProbe(info);
         const checking = probeDescription === 'checking';
+        const probeFailing = probeDescription === 'probe-failing';
         const capabilityFailed = probeDescription === 'capability-failed';
-        const q = checking ? undefined : quota?.[name];
+        const q = checking || probeFailing ? undefined : quota?.[name];
         let dotClass: string;
         if (checking) {
             dotClass = 'checking';
+        } else if (probeFailing) {
+            // A preserved snapshot would otherwise render green while every
+            // probe is erroring — the dashboard lie #277 reports.
+            dotClass = 'warn';
         } else if (!info.available || capabilityFailed) {
             dotClass = 'missing';
         } else if (!q || q.error) {
