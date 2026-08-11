@@ -158,8 +158,34 @@ test('the CLI formatter never prints a green check while probes are failing', ()
         probeState: 'failing',
         path: '/bin/codex',
         probeError: 'worker timeout',
-    } as never);
+    });
     assert.ok(!line.includes('✅'), `must not claim ready: ${line}`);
     assert.match(line, /probe failing/);
     assert.match(line, /worker timeout/);
+});
+
+test('/version does not collapse failing into fresh', async () => {
+    // handlers.ts narrows probeState before formatting. Its original allowlist
+    // was checking|stale with everything else mapped to fresh, which would have
+    // printed a green check for a failing probe and silently undone this fix.
+    const { versionHandler } = await import('../../src/cli/handlers.ts');
+    const result = await versionHandler([], {
+        version: '0.0.0-test',
+        getCliStatus: () => Promise.resolve({
+            'codex-app': {
+                available: true,
+                capabilityReady: true,
+                probeState: 'failing',
+                probeError: 'spawn worker ENOENT',
+                path: '/bin/codex',
+            },
+        }),
+    } as never);
+
+    assert.ok(result.text, 'version output should exist');
+    const codexLine = result.text!.split('\n').find((l) => l.startsWith('codex-app:'));
+    assert.ok(codexLine, 'codex-app line should be present');
+    assert.ok(!codexLine!.includes('✅'), `must not claim ready: ${codexLine}`);
+    assert.match(codexLine!, /probe failing/);
+    assert.match(codexLine!, /spawn worker ENOENT/);
 });

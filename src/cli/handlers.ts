@@ -427,6 +427,7 @@ export async function versionHandler(_args: string[], ctx: CliCommandContext): P
         capabilityReady?: boolean | null;
         probeState?: string;
         path?: string | null;
+        probeError?: string;
     }> | null;
     const lines = [`cli-jaw v${(ctx as { version?: string }).version || 'unknown'}`];
     if (status && typeof status === 'object') {
@@ -436,8 +437,16 @@ export async function versionHandler(_args: string[], ctx: CliCommandContext): P
             lines.push(formatCliStatusLine(key, {
                 available: entry.available ?? null,
                 capabilityReady: entry.capabilityReady ?? null,
-                probeState: entry.probeState === 'checking' || entry.probeState === 'stale' ? entry.probeState : 'fresh',
+                // `failing` must survive this narrowing. Collapsing it to
+                // `fresh` would print a green check for a runtime whose probe
+                // keeps erroring — the same false-positive #277 is about.
+                probeState: entry.probeState === 'checking'
+                    || entry.probeState === 'stale'
+                    || entry.probeState === 'failing'
+                    ? entry.probeState
+                    : 'fresh',
                 path: entry.path ?? null,
+                ...(entry.probeError ? { probeError: entry.probeError } : {}),
             }));
         }
     }

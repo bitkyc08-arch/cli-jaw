@@ -30,12 +30,15 @@ export interface CliStatusRow {
 
 export type CliStatusSnapshot = Record<string, CliStatusRow>;
 
-export function formatCliStatusLine(cli: string, row: Pick<CliStatusRow, 'available' | 'capabilityReady' | 'probeState' | 'path'>): string {
+export function formatCliStatusLine(
+    cli: string,
+    row: Pick<CliStatusRow, 'available' | 'capabilityReady' | 'probeState' | 'path'> & { probeError?: string },
+): string {
     if (row.probeState === 'checking') return `${cli}: checking`;
     // Without this branch a stale-but-successful snapshot kept printing a green
     // check while every probe was failing — the same false-positive #277 is about.
     if (row.probeState === 'failing') {
-        const why = (row as CliStatusRow).probeError;
+        const why = row.probeError;
         return `${cli}: ⚠️ probe failing${why ? ` (${why})` : ''}`;
     }
     const ready = row.available === true && row.capabilityReady !== false;
