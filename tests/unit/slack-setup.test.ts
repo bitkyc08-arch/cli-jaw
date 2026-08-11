@@ -17,16 +17,23 @@ const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
 
 type RunResult = { status: number; output: string; home: string };
 
-function runSlack(args: string[], seedSettings?: Record<string, unknown>): RunResult {
+function runSlack(
+    args: string[],
+    seedSettings?: Record<string, unknown>,
+    extraEnv: Record<string, string> = {},
+): RunResult {
     const home = mkdtempSync(join(homedir(), '.cljaw-test-'));
     if (seedSettings) {
         writeFileSync(join(home, 'settings.json'), JSON.stringify(seedSettings, null, 2));
     }
+    const env = { ...process.env };
+    for (const key of ['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN', 'SLACK_TEAM_ID', 'SLACK_CHANNEL_IDS']) delete env[key];
+    Object.assign(env, extraEnv, { CLI_JAW_HOME: home });
     const result = spawnSync(
         process.execPath,
         ['--import', 'tsx', cliEntry, 'slack', ...args],
         {
-            env: { ...process.env, CLI_JAW_HOME: home },
+            env,
             encoding: 'utf8',
             timeout: 30_000,
             stdio: ['ignore', 'pipe', 'pipe'],
@@ -121,6 +128,18 @@ test('setup without an app token writes outbound-only with a warning', (t) => {
     const s = readSettings(home);
     assert.equal(s.slack.enabled, true);
     assert.equal(s.slack.appToken, '');
+});
+
+test('setup refuses to mix file credentials with an environment-managed connection', (t) => {
+    const { status, output, home } = runSlack([
+        'setup', '--non-interactive', '--skip-validate', '--no-notify', '--bot-token', 'xoxb-file-token',
+    ], undefined, { SLACK_BOT_TOKEN: 'xoxb-environment-token' });
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    assert.equal(status, 1);
+    assert.match(output, /managed by environment variables/i);
+    const persisted = JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8')) as Record<string, any>;
+    assert.equal('botToken' in (persisted.slack || {}), false);
+    assert.equal(JSON.stringify(persisted).includes('xoxb-environment-token'), false);
 });
 
 test('failed validation aborts before writing settings', (t) => {

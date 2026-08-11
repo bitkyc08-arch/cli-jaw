@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 
 const { registerSystemRoutes } = await import('../../src/routes/system.ts');
 
-test('GET /api/slack/manifest returns the manifest yaml', () => {
+test('GET /api/slack/manifest returns YAML and JSON with the requested app name', () => {
     const handlers = new Map<string, (req: unknown, res: unknown) => void>();
     const app = {
         get: (path: string, handler: (req: unknown, res: unknown) => void) => { handlers.set(path, handler); },
@@ -17,11 +17,59 @@ test('GET /api/slack/manifest returns the manifest yaml', () => {
     const handler = handlers.get('/api/slack/manifest');
     assert.ok(handler, 'route not registered');
 
-    let payload: { ok?: boolean; data?: { yaml?: string } } | null = null;
-    handler({}, { json: (body: unknown) => { payload = body as typeof payload; } });
+    let payload: { ok?: boolean; data?: { yaml?: string; json?: string } } | null = null;
+    handler({ query: { name: 'demo' } }, { json: (body: unknown) => { payload = body as typeof payload; } });
 
     assert.equal(payload?.ok, true);
     const manifest = parse(payload?.data?.yaml || '');
+    const jsonManifest = JSON.parse(payload?.data?.json || '{}');
+    assert.equal(manifest.display_information.name, 'demo');
+    assert.equal(manifest.features.bot_user.display_name, 'demo');
+    assert.equal(jsonManifest.display_information.name, 'demo');
+    assert.equal(jsonManifest.features.bot_user.display_name, 'demo');
     assert.equal(manifest.settings.socket_mode_enabled, true);
     assert.ok(manifest.oauth_config.scopes.bot.includes('chat:write'));
+});
+
+test('GET /api/slack/manifest rejects an invalid app name', () => {
+    const handlers = new Map<string, (req: unknown, res: unknown) => void>();
+    const app = {
+        get: (path: string, handler: (req: unknown, res: unknown) => void) => { handlers.set(path, handler); },
+    };
+    registerSystemRoutes(app as never, { jawAuthToken: 'test-token' });
+
+    const handler = handlers.get('/api/slack/manifest');
+    assert.ok(handler, 'route not registered');
+
+    let status = 200;
+    let payload: { ok?: boolean; error?: string } | null = null;
+    const res = {
+        status: (code: number) => { status = code; return res; },
+        json: (body: unknown) => { payload = body as typeof payload; },
+    };
+    handler({ query: { name: 'x'.repeat(36) } }, res);
+
+    assert.equal(status, 400);
+    assert.equal(payload?.ok, false);
+    assert.equal(payload?.error, 'invalid_slack_app_name');
+});
+
+test('GET /api/slack/manifest rejects repeated name parameters', () => {
+    const handlers = new Map<string, (req: unknown, res: unknown) => void>();
+    const app = {
+        get: (path: string, handler: (req: unknown, res: unknown) => void) => { handlers.set(path, handler); },
+    };
+    registerSystemRoutes(app as never, { jawAuthToken: 'test-token' });
+
+    const handler = handlers.get('/api/slack/manifest');
+    assert.ok(handler, 'route not registered');
+
+    let status = 200;
+    const res = {
+        status: (code: number) => { status = code; return res; },
+        json: (_body: unknown) => undefined,
+    };
+    handler({ query: { name: ['first', 'second'] } }, res);
+
+    assert.equal(status, 400);
 });

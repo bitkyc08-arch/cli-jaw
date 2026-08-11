@@ -11,7 +11,13 @@
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
-import { settings, saveSettings, loadSettings, getServerUrl } from '../../src/core/config.js';
+import {
+    settings,
+    saveSettings,
+    loadSettings,
+    getServerUrl,
+    configuredSlackEnvironmentVariables,
+} from '../../src/core/config.js';
 import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { slackApi } from '../../src/slack/api.js';
 import { slackManifestYaml } from '../../src/slack/manifest.js';
@@ -135,6 +141,12 @@ async function runSetup(): Promise<void> {
     // (worker/task/memory/dispatch/…) does this. Without it the wizard would
     // "preserve" defaults over the user's real slack.mentionOnly etc.
     loadSettings();
+    const environmentVariables = configuredSlackEnvironmentVariables();
+    if (environmentVariables.length > 0) {
+        console.error(`  ❌ Slack connection settings are managed by environment variables (${environmentVariables.join(', ')}). Remove them and restart before running jaw slack setup.`);
+        process.exitCode = 1;
+        return;
+    }
     const nonInteractive = !!values['non-interactive'];
     const skipValidate = !!values['skip-validate'];
 
@@ -163,7 +175,7 @@ async function runSetup(): Promise<void> {
 
   Step 1 — create the app
     Open  https://api.slack.com/apps?new_app=1
-    Choose "From an app manifest", pick your workspace, paste this:
+    Choose "From a manifest", pick your workspace, paste this:
 `);
         console.log(slackManifestYaml().split('\n').map(l => `    ${l}`).join('\n'));
 

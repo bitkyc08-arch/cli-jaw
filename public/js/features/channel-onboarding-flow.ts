@@ -40,12 +40,13 @@ export const CHANNEL_FIELDS: Record<OnboardChannel, readonly FieldDef[]> = {
 export const ISSUER_URLS: Record<OnboardChannel, string> = {
     telegram: 'https://t.me/BotFather',
     discord: 'https://discord.com/developers/applications',
-    slack: 'https://api.slack.com/apps',
+    slack: 'https://api.slack.com/apps?new_app=1',
 };
 
 export const TOTAL_STEPS = 4;
 /** 1 = 안내, 2 = 자격 증명 입력, 3 = 연결 검증, 4 = 저장 완료. */
 export type StepIndex = 1 | 2 | 3 | 4;
+export type SlackSetupStage = 'manifest' | 'issuer' | 'ready';
 
 export type Draft = Record<string, string>;
 
@@ -53,6 +54,8 @@ export type FlowState = {
     channel: OnboardChannel;
     step: StepIndex;
     draft: Draft;
+    /** Step-1 handoff: copy manifest, open Slack, then permit token entry. */
+    slackSetupStage: SlackSetupStage;
     /** Set once step 3 passes; cleared whenever a credential changes. */
     validatedIdentity: string | null;
     validatedTeamId: string;
@@ -70,6 +73,7 @@ export function createFlow(channel: OnboardChannel, draft: Draft = {}): FlowStat
         channel,
         step: 1,
         draft: { ...draft },
+        slackSetupStage: 'manifest',
         validatedIdentity: null,
         validatedTeamId: '',
         error: null,
@@ -104,7 +108,11 @@ export function checkCredentials(channel: OnboardChannel, draft: Draft): string 
 
 /** Why the given step cannot be left yet, or null when it may advance. */
 export function blockerForStep(state: FlowState): string | null {
-    if (state.step === 1) return null;
+    if (state.step === 1) {
+        return state.channel === 'slack' && state.slackSetupStage !== 'ready'
+            ? 'slack_setup_required'
+            : null;
+    }
     if (state.step === 2) return checkCredentials(state.channel, state.draft);
     if (state.step === 3) return state.validatedIdentity ? null : 'validation_required';
     return null;
@@ -126,6 +134,21 @@ export function advance(state: FlowState): FlowState {
 export function goBack(state: FlowState): FlowState {
     if (state.step <= 1) return state;
     return { ...state, step: (state.step - 1) as StepIndex, error: null };
+}
+
+export function markSlackManifestGenerated(state: FlowState): FlowState {
+    if (state.channel !== 'slack') return state;
+    return { ...state, slackSetupStage: 'issuer', error: null };
+}
+
+export function markSlackIssuerOpened(state: FlowState): FlowState {
+    if (state.channel !== 'slack' || state.slackSetupStage === 'manifest') return state;
+    return { ...state, slackSetupStage: 'ready', error: null };
+}
+
+export function resetSlackSetup(state: FlowState): FlowState {
+    if (state.channel !== 'slack') return state;
+    return { ...state, slackSetupStage: 'manifest', error: null };
 }
 
 /**

@@ -4,14 +4,18 @@
 // re-derived here, so it arrives as a factory dep.
 
 import type { Router } from 'express';
-import { ok } from '../http/response.js';
+import { fail, ok } from '../http/response.js';
 import { APP_VERSION, settings } from '../core/config.js';
 import { drainLogRing } from '../core/logger.js';
 import { getSession } from '../core/db.js';
 import { buildChannelHealthSnapshot } from '../messaging/channel-health.js';
 import { getCliModelAndEffort } from '../core/main-session.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
-import { slackManifestYaml } from '../slack/manifest.js';
+import {
+    DEFAULT_SLACK_APP_NAME,
+    slackManifestJson,
+    slackManifestYaml,
+} from '../slack/manifest.js';
 
 function getRuntimeSnapshot() {
     const cli = settings["cli"] || null;
@@ -37,7 +41,26 @@ export function registerSystemRoutes(app: Router, deps: { jawAuthToken: string }
     // Canonical Slack app manifest for the settings-page copy button. No
     // secrets — scopes and event names only, same exposure class as
     // /api/health, so it stays unauthenticated like its neighbors.
-    app.get('/api/slack/manifest', (_req, res) => ok(res, { yaml: slackManifestYaml() }));
+    app.get('/api/slack/manifest', (req, res) => {
+        const rawName = req.query['name'];
+        if (rawName !== undefined && typeof rawName !== 'string') {
+            fail(res, 400, 'invalid_slack_app_name');
+            return;
+        }
+        const appName = rawName ?? DEFAULT_SLACK_APP_NAME;
+        try {
+            ok(res, {
+                yaml: slackManifestYaml(appName),
+                json: slackManifestJson(appName),
+            });
+        } catch (error) {
+            if (error instanceof RangeError) {
+                fail(res, 400, 'invalid_slack_app_name');
+                return;
+            }
+            throw error;
+        }
+    });
 
     app.get('/api/session', (_, res) => ok(res, getSession(), getSession() as Record<string, unknown> | undefined));
 

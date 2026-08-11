@@ -11,6 +11,7 @@ import path from 'node:path';
 import {
     SETTINGS_PATH, settings, replaceSettings, migrateSettings,
     normalizeProjectDirs, getLastSavedSettingsRaw,
+    slackEnvironmentManagedPatchPaths, slackEnvironmentManagedSettingKeys,
 } from './config.js';
 import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
@@ -20,6 +21,7 @@ const SERVER_OWNED_SETTINGS_KEYS = [
     'settingsSchemaVersion',
     'runtimeDefaultMigration',
     'multiSessionDefaultMigration',
+    'slackEnvironmentVariables',
 ] as const;
 
 export type SettingsWatchOptions = {
@@ -87,6 +89,13 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
         console.warn(`[settings-watch] ignored invalid settings fields: ${sanitized.invalidPaths.join(', ')}`);
     }
     const externalPatch = { ...sanitized.value };
+    const environmentManagedSlackPaths = slackEnvironmentManagedPatchPaths(externalPatch);
+    if (environmentManagedSlackPaths.length > 0) {
+        const slack = { ...(externalPatch["slack"] as Record<string, unknown>) };
+        for (const key of slackEnvironmentManagedSettingKeys()) delete slack[key];
+        externalPatch["slack"] = slack;
+        console.warn(`[settings-watch] ignored environment-managed settings fields: ${environmentManagedSlackPaths.join(', ')}`);
+    }
     const ignoredKeys = SERVER_OWNED_SETTINGS_KEYS.filter((key) => key in externalPatch);
     for (const key of ignoredKeys) delete externalPatch[key];
     if (ignoredKeys.length > 0) {

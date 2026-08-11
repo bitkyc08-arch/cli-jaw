@@ -566,12 +566,15 @@
                 <h4 class="section-title-row">
                     <span><span data-provider="slack"></span> Slack</span>
                     <span class="section-title-actions">
-                        <button class="perm-btn onboard-trigger" type="button" data-onboard-channel="slack"
+                        <button id="slack-onboarding-trigger" class="perm-btn onboard-trigger" type="button" data-onboard-channel="slack"
                             data-i18n="onboarding.open">설정 마법사</button>
+                        <button id="slack-reset-connection" class="perm-btn onboard-trigger" type="button"
+                            data-i18n="settings.slack.resetConnection">연결 초기화</button>
                         <button class="help-trigger" type="button" data-help-topic="slack"
                             data-i18n-aria="help.slack.aria" aria-label="Slack 도움말">?</button>
                     </span>
                 </h4>
+                <div id="slack-environment-managed" class="settings-managed-notice" role="status" style="display:none"></div>
                 <div class="settings-row">
                     <label data-i18n="label.enabled">활성화</label>
                     <div>
@@ -579,37 +582,15 @@
                         <button id="slOn" class="perm-btn" data-i18n="btn.on">켬</button>
                     </div>
                 </div>
-                <div class="slack-setup-card">
-                    <div class="slack-setup-step">
-                        <span class="slack-step-num">1</span>
-                        <div class="slack-step-body">
-                            <div class="slack-step-title" data-i18n="settings.slack.guide.step1Title">Slack 앱 만들기</div>
-                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step1Desc">Create an App → From an app manifest → 워크스페이스 선택 → 붙여넣기 (기존 앱은 files:read 추가)</div>
-                            <div class="slack-step-actions">
-                                <button id="slack-copy-manifest" class="perm-btn" type="button" data-i18n="settings.slack.guide.copyManifest">매니페스트 복사</button>
-                                <button id="slack-open-apps" class="perm-btn" type="button" data-i18n="settings.slack.guide.openApps">앱 페이지 열기</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="slack-setup-step">
-                        <span class="slack-step-num">2</span>
-                        <div class="slack-step-body">
-                            <div class="slack-step-title" data-i18n="settings.slack.guide.step2Title">봇 토큰 붙여넣기</div>
-                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step2Desc">앱 설정 → OAuth &amp; Permissions → files:read 확인 → Reinstall to Workspace → Bot User OAuth Token 복사</div>
-                            <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
-                            <div class="slack-field-error" id="slack-bot-token-error" style="display:none" data-i18n="settings.slack.guide.botTokenError">xoxb-로 시작하는 봇 토큰이어야 합니다</div>
-                        </div>
-                    </div>
-                    <div class="slack-setup-step">
-                        <span class="slack-step-num">3</span>
-                        <div class="slack-step-body">
-                            <div class="slack-step-title" data-i18n="settings.slack.guide.step3Title">수신용 앱 토큰 (선택)</div>
-                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step3Location">앱 설정 → Basic Information → App-Level Tokens → Generate Token (connections:write)</div>
-                            <input type="password" id="slAppToken" placeholder="xapp-... (Socket Mode)" class="input-sm">
-                            <div class="slack-field-error" id="slack-app-token-error" style="display:none" data-i18n="settings.slack.guide.appTokenError">xapp-로 시작하는 앱 레벨 토큰이어야 합니다</div>
-                            <div class="slack-step-desc" data-i18n="settings.slack.guide.step3Desc">비워두면 전송 전용(outbound-only)으로 동작합니다</div>
-                        </div>
-                    </div>
+                <div class="settings-row sub-row">
+                    <label for="slBotToken" data-i18n="label.botToken">봇 토큰</label>
+                    <input type="password" id="slBotToken" placeholder="xoxb-..." class="input-sm">
+                    <div class="slack-field-error" id="slack-bot-token-error" style="display:none" data-i18n="settings.slack.guide.botTokenError">xoxb-로 시작하는 봇 토큰이어야 합니다</div>
+                </div>
+                <div class="settings-row sub-row">
+                    <label for="slAppToken" data-i18n="settings.slack.guide.step3Title">수신용 앱 토큰 (선택)</label>
+                    <input type="password" id="slAppToken" placeholder="xapp-... (Socket Mode)" class="input-sm">
+                    <div class="slack-field-error" id="slack-app-token-error" style="display:none" data-i18n="settings.slack.guide.appTokenError">xapp-로 시작하는 앱 레벨 토큰이어야 합니다</div>
                 </div>
                 <details class="slack-advanced">
                     <summary data-i18n="settings.slack.advanced">고급 설정</summary>

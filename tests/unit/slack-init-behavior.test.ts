@@ -18,33 +18,29 @@ const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
 
 type RunResult = { status: number; output: string; settings: Record<string, unknown> | null };
 
-function runInit(args: string[]): RunResult {
+function runInit(args: string[], extraEnv: Record<string, string> = {}): RunResult {
     const home = mkdtempSync(join(homedir(), '.cljaw-test-'));
     try {
         // spawnSync, not execFileSync: the latter returns ONLY stdout on a
         // successful run, which silently drops every console.warn — including
         // the outbound-only warning this suite has to assert.
+        const env = { ...process.env };
+        for (const key of ['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN', 'SLACK_TEAM_ID', 'SLACK_CHANNEL_IDS']) delete env[key];
+        Object.assign(env, extraEnv, {
+            CLI_JAW_HOME: home,
+            CLI_JAW_SKIP_CLI_TOOLS: '1',
+            CLI_JAW_SKIP_SKILL_DEPS: '1',
+            CLI_JAW_SKIP_MCP_SERVERS: '1',
+            CLI_JAW_SKIP_CLAUDE: '1',
+        });
         const result = spawnSync(
             process.execPath,
             ['--import', 'tsx', cliEntry, 'init', '--non-interactive', '--working-dir', '/tmp', '--cli', 'claude', ...args],
             {
-                env: {
-                    ...process.env,
-                    CLI_JAW_HOME: home,
-                    // What this suite asserts is the settings file init writes.
-                    // Installing tools is a different concern, and on a clean
-                    // runner it is a slow one: with neither `uv` nor
-                    // `playwright-core` present, each of these six subprocesses
-                    // went to the network, and the CI step hit its three-minute
-                    // limit before a single assertion in this file printed.
-                    // On a developer machine the deps are already installed, so
-                    // the same suite finished in eight seconds and the hazard
-                    // was invisible.
-                    CLI_JAW_SKIP_CLI_TOOLS: '1',
-                    CLI_JAW_SKIP_SKILL_DEPS: '1',
-                    CLI_JAW_SKIP_MCP_SERVERS: '1',
-                    CLI_JAW_SKIP_CLAUDE: '1',
-                },
+                // What this suite asserts is the settings file init writes.
+                // Installing tools is a different concern, and on a clean
+                // runner it is a slow one, so the env assembled above skips it.
+                env,
                 encoding: 'utf8',
                 // Bounded well under the CI step limit: a run that needs longer
                 // than this is stuck, and failing it here reports which case
@@ -138,6 +134,33 @@ test('slack setup does not disturb the other channels', () => {
     const telegram = settings['telegram'] as Record<string, unknown>;
     assert.equal(telegram['token'], '123:abc', 'telegram settings were clobbered');
     assert.equal((settings['slack'] as Record<string, unknown>)['enabled'], true);
+});
+
+test('environment-managed Slack init stores no connection credentials', () => {
+    const { status, settings } = runInit([
+        '--channel', 'slack',
+    ], {
+        SLACK_BOT_TOKEN: 'xoxb-environment-token',
+        SLACK_APP_TOKEN: 'xapp-environment-token',
+    });
+    assert.equal(status, 0);
+    assert.ok(settings);
+    assert.equal(settings['channel'], 'slack');
+    const slack = settings['slack'] as Record<string, unknown>;
+    for (const key of ['enabled', 'botToken', 'appToken', 'teamId', 'channelIds', 'attachPort']) {
+        assert.equal(key in slack, false, `${key} should not be persisted`);
+    }
+    assert.equal(JSON.stringify(settings).includes('xoxb-environment-token'), false);
+});
+
+test('environment-managed Slack init rejects mixed credential flags', () => {
+    const { status, settings, output } = runInit([
+        '--channel', 'slack',
+        '--slack-bot-token', 'xoxb-file-token',
+    ], { SLACK_BOT_TOKEN: 'xoxb-environment-token' });
+    assert.notEqual(status, 0);
+    assert.equal(settings, null);
+    assert.match(output, /managed by environment variables/i);
 });
 
 test('the interactive channel prompts are gated identically for all three channels', () => {

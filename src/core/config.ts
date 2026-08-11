@@ -672,6 +672,86 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     return s;
 }
 
+export const SLACK_CONNECTION_ENV_KEYS = [
+    'SLACK_BOT_TOKEN',
+    'SLACK_APP_TOKEN',
+    'SLACK_TEAM_ID',
+    'SLACK_CHANNEL_IDS',
+] as const;
+
+export const SLACK_CONNECTION_SETTING_KEYS = [
+    'enabled',
+    'botToken',
+    'appToken',
+    'teamId',
+    'channelIds',
+    'attachPort',
+] as const;
+
+type SlackConnectionSettingKey = typeof SLACK_CONNECTION_SETTING_KEYS[number];
+
+const SLACK_ENV_SETTING_OWNERSHIP: Record<
+    typeof SLACK_CONNECTION_ENV_KEYS[number],
+    readonly SlackConnectionSettingKey[]
+> = {
+    SLACK_BOT_TOKEN: ['enabled', 'botToken'],
+    SLACK_APP_TOKEN: ['appToken'],
+    SLACK_TEAM_ID: ['teamId'],
+    SLACK_CHANNEL_IDS: ['channelIds'],
+};
+
+export function configuredSlackEnvironmentVariables(
+    env: NodeJS.ProcessEnv = process.env,
+): string[] {
+    return SLACK_CONNECTION_ENV_KEYS.filter((key) => Boolean(env[key]));
+}
+
+export function slackEnvironmentManagedSettingKeys(
+    env: NodeJS.ProcessEnv = process.env,
+): SlackConnectionSettingKey[] {
+    const managed = new Set<SlackConnectionSettingKey>();
+    for (const envKey of SLACK_CONNECTION_ENV_KEYS) {
+        if (!env[envKey]) continue;
+        for (const settingKey of SLACK_ENV_SETTING_OWNERSHIP[envKey]) managed.add(settingKey);
+    }
+    return [...managed];
+}
+
+export function slackEnvironmentManagedPatchPaths(
+    patch: Record<string, unknown>,
+    env: NodeJS.ProcessEnv = process.env,
+): string[] {
+    const managed = new Set(slackEnvironmentManagedSettingKeys(env));
+    if (managed.size === 0) return [];
+    const slack = patch["slack"];
+    if (!slack || typeof slack !== 'object' || Array.isArray(slack)) return [];
+    return SLACK_CONNECTION_SETTING_KEYS
+        .filter((key) => managed.has(key) && Object.prototype.hasOwnProperty.call(slack, key))
+        .map((key) => `slack.${key}`);
+}
+
+/**
+ * Environment-managed Slack connections have a single source of truth. Clear
+ * persisted connection fields before applying the runtime-only environment
+ * overlay; behavior fields such as forwardAll and mentionOnly stay editable.
+ */
+function clearPersistedSlackConnectionForEnvironment(
+    input: Record<string, any>,
+    env: NodeJS.ProcessEnv = process.env,
+): boolean {
+    const managed = slackEnvironmentManagedSettingKeys(env);
+    if (managed.length === 0) return false;
+    const slack = input["slack"] || {};
+    const changed = managed.some((key) => {
+        if (key === 'enabled') return slack.enabled !== false;
+        if (key === 'channelIds') return Array.isArray(slack.channelIds) && slack.channelIds.length > 0;
+        return Boolean(slack[key]);
+    });
+    for (const key of managed) delete slack[key];
+    input["slack"] = slack;
+    return changed;
+}
+
 /** Apply environment variable overrides to a settings object */
 function applyEnvOverrides(s: Record<string, any>) {
     if (process.env["TELEGRAM_TOKEN"]) {
@@ -933,6 +1013,11 @@ export function loadSettings() {
             needsSave = true;
         }
 
+        // A previous runtime could have copied its effective environment token
+        // into settings.json during an unrelated save. Environment mode is
+        // intentionally exclusive, so remove all persisted connection fields.
+        if (clearPersistedSlackConnectionForEnvironment(merged)) needsSave = true;
+
         const candidate = { value: merged, shape: nextShape } satisfies SettingsStateCandidate;
         if (needsSave) persistAndCommit(candidate);
         else commitCandidate(candidate);
@@ -1011,6 +1096,9 @@ let lastSavedSettingsRaw: string | null = null;
 
 export function serializeSettingsForSave(candidate: SettingsStateCandidate): string {
     const value = structuredClone(candidate.value);
+    if (value["slack"] && typeof value["slack"] === 'object') {
+        for (const key of slackEnvironmentManagedSettingKeys()) delete value["slack"][key];
+    }
     const runtime = value["runtime"];
     if (candidate.shape === 'absent' && runtime?.codexApp?.multiplex === false) {
         delete runtime.codexApp.multiplex;

@@ -8,7 +8,13 @@ import fs from 'node:fs';
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { JAW_HOME, SETTINGS_PATH, freshInstallSchemaFields } from '../../src/core/config.js';
+import {
+    JAW_HOME,
+    SETTINGS_PATH,
+    freshInstallSchemaFields,
+    configuredSlackEnvironmentVariables,
+    SLACK_CONNECTION_SETTING_KEYS,
+} from '../../src/core/config.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 
 const CLI_CHOICES = CLI_KEYS.join(', ');
@@ -125,6 +131,18 @@ if (channelFlag && channelFlag !== 'telegram' && channelFlag !== 'discord' && ch
     console.error(`  ❌ Invalid --channel "${channelFlag}". Must be "telegram", "discord", or "slack".`);
     process.exit(1);
 }
+const slackEnvironmentVariables = configuredSlackEnvironmentVariables();
+const slackEnvironmentManaged = slackEnvironmentVariables.length > 0;
+const slackCredentialFlags = [
+    'slack-bot-token',
+    'slack-app-token',
+    'slack-team-id',
+    'slack-channel-ids',
+] as const;
+if (slackEnvironmentManaged && slackCredentialFlags.some((key) => values[key] !== undefined)) {
+    console.error(`  ❌ Slack connection settings are managed by environment variables (${slackEnvironmentVariables.join(', ')}). Remove them before passing Slack credential flags.`);
+    process.exit(1);
+}
 
 // Telegram
 let tgEnabled = false, tgToken = '', tgChatIds: number[] = [];
@@ -168,7 +186,11 @@ if (values['non-interactive']) {
 
 // Slack
 let slEnabled = false, slBotToken = '', slAppToken = '', slTeamId = '', slChannelIds: string[] = [];
-if (values['non-interactive']) {
+if (slackEnvironmentManaged) {
+    if (!values['non-interactive']) {
+        console.log(`  Slack connection settings are managed by environment variables (${slackEnvironmentVariables.join(', ')}); skipping credential prompts.`);
+    }
+} else if (values['non-interactive']) {
     if (values['slack-bot-token']) {
         slBotToken = values['slack-bot-token'] as string;
         slAppToken = String(values['slack-app-token'] || '');
@@ -199,7 +221,7 @@ if (channelFlag === 'discord' && !dcEnabled) {
 }
 
 // Validate: --channel slack requires at least the bot token
-if (channelFlag === 'slack' && !slEnabled) {
+if (channelFlag === 'slack' && !slEnabled && !process.env['SLACK_BOT_TOKEN']) {
     console.error('  ❌ --channel slack requires --slack-bot-token.');
     process.exit(1);
 }
@@ -285,7 +307,17 @@ if (dcEnabled || values.force) {
         allowBots: false,
     };
 }
-if (slEnabled || values.force) {
+if (slackEnvironmentManaged) {
+    const persistedSlack = { ...(settings.slack || {}) } as Record<string, unknown>;
+    for (const key of SLACK_CONNECTION_SETTING_KEYS) delete persistedSlack[key];
+    merged.slack = {
+        forwardAll: true,
+        allowBots: false,
+        mentionOnly: true,
+        replyInThread: true,
+        ...persistedSlack,
+    };
+} else if (slEnabled || values.force) {
     merged.slack = {
         enabled: slEnabled,
         botToken: slBotToken,

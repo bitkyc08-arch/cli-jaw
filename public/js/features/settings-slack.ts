@@ -1,42 +1,113 @@
 // ── Slack Settings ──
-import { api, apiJson } from '../api.js';
+import { API_BASE, api, apiJson, getAuthToken } from '../api.js';
 import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import { hasSlackBotTokenPrefix, hasSlackAppTokenPrefix } from './channel-setup-rules.js';
 import { t } from './i18n.js';
+import { refreshTransportStatusRow } from './transport-status-row.js';
 import type { SettingsData } from './settings-types.js';
 
-// ── Guided setup card ──
-// One-time bindings for the Slack setup card in settings: manifest copy,
-// app-page shortcut, and inline token-prefix validation (error below the
-// field, cleared once the value looks right — form-patterns on-blur timing).
+// One-time inline token-prefix validation. Errors appear below each field on
+// blur and clear live once the token prefix is corrected.
 let setupGuideBound = false;
+let slackResetting = false;
+let slackEnvironmentVariables: string[] = [];
+
+type SlackResetResponse = {
+    ok?: boolean;
+    error?: string;
+    environmentVariables?: string[];
+};
+
+async function requestSlackConnectionReset(): Promise<SlackResetResponse | null> {
+    try {
+        const token = await getAuthToken();
+        const response = await fetch(`${API_BASE}/api/settings/slack/reset`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        return await response.json().catch(() => null) as SlackResetResponse | null;
+    } catch {
+        // The write may have committed even if its response was lost. The
+        // authoritative GET below decides whether the reset actually landed.
+        return null;
+    }
+}
+
+function slackConnectionIsCleared(snapshot: SettingsData | null): boolean {
+    const slack = snapshot?.slack;
+    return !slack?.enabled
+        && !slack?.botToken
+        && !slack?.appToken
+        && !slack?.teamId
+        && !(slack?.channelIds?.length)
+        && !slack?.attachPort;
+}
+
+function slackEnvironmentMessage(): string {
+    return t('settings.slack.resetManagedByEnvironment', {
+        variables: slackEnvironmentVariables.join(', ') || 'SLACK_*',
+    });
+}
 
 export function initSlackSetupGuide(): void {
     if (setupGuideBound) return;
     setupGuideBound = true;
 
-    document.getElementById('slack-copy-manifest')?.addEventListener('click', async (ev) => {
-        const btn = ev.currentTarget as HTMLButtonElement;
-        try {
-            const json = await api<{ yaml?: string }>('/api/slack/manifest');
-            const yaml = json?.yaml || '';
-            if (!yaml) throw new Error('empty manifest');
-            await navigator.clipboard.writeText(yaml);
-            const original = btn.textContent || '';
-            btn.textContent = t('settings.slack.guide.copyManifestDone');
-            setTimeout(() => { btn.textContent = original; }, 2000);
-        } catch {
-            btn.textContent = t('settings.slack.guide.copyManifestFail');
-            setTimeout(() => { btn.textContent = t('settings.slack.guide.copyManifest'); }, 2500);
-        }
-    });
-
-    document.getElementById('slack-open-apps')?.addEventListener('click', () => {
-        window.open('https://api.slack.com/apps?new_app=1', '_blank', 'noopener');
-    });
-
     bindPrefixValidation('slBotToken', 'slack-bot-token-error', hasSlackBotTokenPrefix);
     bindPrefixValidation('slAppToken', 'slack-app-token-error', hasSlackAppTokenPrefix);
+    document.getElementById('slack-reset-connection')?.addEventListener('click', () => {
+        void resetSlackConnection();
+    });
+}
+
+export async function resetSlackConnection(): Promise<void> {
+    if (slackResetting) return;
+    if (slackEnvironmentVariables.length > 0) {
+        window.alert(slackEnvironmentMessage());
+        return;
+    }
+    const botToken = document.getElementById('slBotToken') as HTMLInputElement | null;
+    const appToken = document.getElementById('slAppToken') as HTMLInputElement | null;
+    if (!botToken?.value.trim() && !appToken?.value.trim()) {
+        window.alert(t('settings.slack.resetEmpty'));
+        return;
+    }
+    if (!window.confirm(t('settings.slack.resetConfirm'))) return;
+
+    const resetButton = document.getElementById('slack-reset-connection') as HTMLButtonElement | null;
+    slackResetting = true;
+    if (resetButton) resetButton.disabled = true;
+    try {
+        const result = await requestSlackConnectionReset();
+        const authoritative = await api<SettingsData>('/api/settings');
+        if (authoritative) loadSlackSettings(authoritative);
+        await refreshTransportStatusRow();
+
+        if (result?.error === 'slack_connection_managed_by_environment') {
+            const variables = Array.isArray(result.environmentVariables)
+                ? result.environmentVariables.join(', ')
+                : 'SLACK_*';
+            window.alert(t('settings.slack.resetManagedByEnvironment', { variables }));
+            return;
+        }
+        if (!slackConnectionIsCleared(authoritative)) {
+            window.alert(t('settings.slack.resetFailed'));
+            return;
+        }
+
+        for (const id of ['slBotToken', 'slAppToken', 'slTeamId', 'slChannelIds', 'slAttachPort']) {
+            document.getElementById(id)?.classList.remove('input-error');
+        }
+        for (const id of ['slack-bot-token-error', 'slack-app-token-error']) {
+            const error = document.getElementById(id);
+            if (error) error.style.display = 'none';
+        }
+        document.getElementById('slOff')?.classList.add('active');
+        document.getElementById('slOn')?.classList.remove('active');
+    } finally {
+        slackResetting = false;
+        if (resetButton) resetButton.disabled = slackEnvironmentVariables.length > 0;
+    }
 }
 
 function bindPrefixValidation(inputId: string, errorId: string, valid: (v: string) => boolean): void {
@@ -57,6 +128,10 @@ function bindPrefixValidation(inputId: string, errorId: string, valid: (v: strin
 }
 
 export async function saveSlackSettings(): Promise<void> {
+    if (slackEnvironmentVariables.length > 0) {
+        window.alert(slackEnvironmentMessage());
+        return;
+    }
     const botToken = (document.getElementById('slBotToken') as HTMLInputElement)?.value.trim() || '';
     const appToken = (document.getElementById('slAppToken') as HTMLInputElement)?.value.trim() || '';
     const teamId = (document.getElementById('slTeamId') as HTMLInputElement)?.value.trim() || '';
@@ -69,6 +144,10 @@ export async function saveSlackSettings(): Promise<void> {
 }
 
 export async function setSlack(enabled: boolean): Promise<void> {
+    if (slackEnvironmentVariables.length > 0) {
+        window.alert(slackEnvironmentMessage());
+        return;
+    }
     document.getElementById('slOn')?.classList.toggle('active', enabled);
     document.getElementById('slOff')?.classList.toggle('active', !enabled);
     await apiJson('/api/settings', 'PUT', { slack: { enabled } });
@@ -102,18 +181,37 @@ export async function setSlackReplyInThread(enabled: boolean): Promise<void> {
 export function loadSlackSettings(s: SettingsData): void {
     if (!s.slack) return;
     const sc = s.slack;
+    slackEnvironmentVariables = Array.isArray(s.slackEnvironmentVariables)
+        ? s.slackEnvironmentVariables
+        : [];
+    const environmentManaged = slackEnvironmentVariables.length > 0;
+    const notice = document.getElementById('slack-environment-managed');
+    if (notice) {
+        notice.style.display = environmentManaged ? '' : 'none';
+        notice.textContent = environmentManaged
+            ? t('settings.slack.managedByEnvironment', { variables: slackEnvironmentVariables.join(', ') })
+            : '';
+    }
+    for (const id of ['slBotToken', 'slAppToken', 'slTeamId', 'slChannelIds', 'slAttachPort']) {
+        const input = document.getElementById(id) as HTMLInputElement | null;
+        if (input) input.disabled = environmentManaged;
+    }
+    for (const id of ['slOff', 'slOn', 'slack-reset-connection', 'slack-onboarding-trigger']) {
+        const button = document.getElementById(id) as HTMLButtonElement | null;
+        if (button) button.disabled = environmentManaged;
+    }
     document.getElementById('slOn')?.classList.toggle('active', !!sc.enabled);
     document.getElementById('slOff')?.classList.toggle('active', !sc.enabled);
     const botToken = document.getElementById('slBotToken') as HTMLInputElement | null;
-    if (sc.botToken && botToken) botToken.value = sc.botToken;
+    if (botToken) botToken.value = environmentManaged ? '' : sc.botToken || '';
     const appToken = document.getElementById('slAppToken') as HTMLInputElement | null;
-    if (sc.appToken && appToken) appToken.value = sc.appToken;
+    if (appToken) appToken.value = environmentManaged ? '' : sc.appToken || '';
     const teamId = document.getElementById('slTeamId') as HTMLInputElement | null;
-    if (sc.teamId && teamId) teamId.value = sc.teamId;
+    if (teamId) teamId.value = environmentManaged ? '' : sc.teamId || '';
     const channelIds = document.getElementById('slChannelIds') as HTMLInputElement | null;
-    if (sc.channelIds?.length && channelIds) channelIds.value = sc.channelIds.join(', ');
+    if (channelIds) channelIds.value = environmentManaged ? '' : sc.channelIds?.join(', ') || '';
     const attachPort = document.getElementById('slAttachPort') as HTMLInputElement | null;
-    if (attachPort) attachPort.value = sc.attachPort || '';
+    if (attachPort) attachPort.value = environmentManaged ? '' : sc.attachPort || '';
     const fwdOn = sc.forwardAll !== false;
     document.getElementById('slForwardOn')?.classList.toggle('active', fwdOn);
     document.getElementById('slForwardOff')?.classList.toggle('active', !fwdOn);

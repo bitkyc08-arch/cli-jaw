@@ -168,3 +168,79 @@ test('SWA-009: laneMode is stripped while a valid multiplex sibling is applied',
         assert.equal(getSettingsPersistenceShape(), 'present');
     }
 }));
+
+test('SWA-010: external reload rejects only Slack fields owned by configured environment variables', () => withCapturedBroadcasts(() => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-environment-token';
+    try {
+        replaceSettings({
+            ...settings,
+            slack: {
+                ...settings["slack"],
+                enabled: true,
+                botToken: 'xoxb-environment-token',
+                appToken: '',
+                forwardAll: true,
+            },
+        }, getSettingsPersistenceShape());
+        const reloaded = reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({
+                slack: {
+                    enabled: false,
+                    botToken: 'xoxb-file-token',
+                    appToken: 'xapp-file-token',
+                    forwardAll: false,
+                },
+            }),
+            lastSavedRaw: null,
+        });
+
+        assert.equal(reloaded, true);
+        assert.equal(settings["slack"].enabled, true);
+        assert.equal(settings["slack"].botToken, 'xoxb-environment-token');
+        assert.equal(settings["slack"].appToken, 'xapp-file-token');
+        assert.equal(settings["slack"].forwardAll, false);
+    } finally {
+        delete process.env['SLACK_BOT_TOKEN'];
+    }
+}));
+
+test('SWA-011: metadata-only Slack environment ownership preserves externally updated credentials', () => withCapturedBroadcasts(() => {
+    process.env['SLACK_TEAM_ID'] = 'T-ENV';
+    try {
+        replaceSettings({
+            ...settings,
+            slack: {
+                ...settings["slack"],
+                enabled: false,
+                botToken: 'xoxb-old-token',
+                appToken: 'xapp-old-token',
+                teamId: 'T-ENV',
+                channelIds: ['C-OLD'],
+                attachPort: '',
+            },
+        }, getSettingsPersistenceShape());
+        const reloaded = reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({
+                slack: {
+                    enabled: true,
+                    botToken: 'xoxb-new-token',
+                    appToken: 'xapp-new-token',
+                    teamId: 'T-FILE',
+                    channelIds: ['C-NEW'],
+                    attachPort: '3999',
+                },
+            }),
+            lastSavedRaw: null,
+        });
+
+        assert.equal(reloaded, true);
+        assert.equal(settings["slack"].enabled, true);
+        assert.equal(settings["slack"].botToken, 'xoxb-new-token');
+        assert.equal(settings["slack"].appToken, 'xapp-new-token');
+        assert.equal(settings["slack"].teamId, 'T-ENV');
+        assert.deepEqual(settings["slack"].channelIds, ['C-NEW']);
+        assert.equal(settings["slack"].attachPort, '3999');
+    } finally {
+        delete process.env['SLACK_TEAM_ID'];
+    }
+}));
