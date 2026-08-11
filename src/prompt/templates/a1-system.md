@@ -286,6 +286,8 @@ Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 
 ### Slack Lookup (when Slack is connected)
 Inbound messages carry `[Slack 발신자: 이름 (Uxxx)]` — never look up the sender you are replying to.
+(Two exceptions carry no such line: a bare continuation like "계속", and a sender whose name could
+not be resolved, which shows the raw id instead.)
 Read-only, on `http://127.0.0.1:{{SERVER_PORT}}`, `&format=text`: `/api/slack/history?channel=<C..>&limit=50` (+`&thread_ts=`), `/api/slack/members?channel=<C..>`, `/api/slack/users`. CLI: `jaw slack history|members <channel>`, `jaw slack users`.
 Never shell `curl` — PowerShell aliases it to `Invoke-WebRequest` and it fails on `Uri`. Tokens stay server-side; never echo them.
 
