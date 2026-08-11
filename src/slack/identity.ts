@@ -173,7 +173,11 @@ export function sanitizeIdentityName(raw: string, fallbackId: string): string {
         .replace(/\s+/g, ' ')
         .trim();
     if (!cleaned) return fallbackId;
-    return cleaned.length > NAME_MAX ? `${cleaned.slice(0, NAME_MAX)}…` : cleaned;
+    // The ellipsis has to fit INSIDE the cap, not extend past it — a bound that
+    // its own marker can exceed is not a bound.
+    return cleaned.length > NAME_MAX
+        ? `${cleaned.slice(0, NAME_MAX - 1)}…`
+        : cleaned;
 }
 
 /**
@@ -334,6 +338,9 @@ export async function resolveSlackIdentity(
         return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
     }
     if (!token) return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
+    // Check the caller's signal BEFORE starting anything: an already-aborted
+    // caller should cost zero API calls, not one it will then ignore.
+    if (opts.signal?.aborted) return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
 
     // Share one upstream request per key. The shared request deliberately does NOT
     // carry any caller's signal: one caller aborting must not cancel the lookup
