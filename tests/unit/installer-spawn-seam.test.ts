@@ -25,8 +25,10 @@ test('#274: npm install on win32 spawns npm.cmd, never bare npm', () => {
         restore();
     }
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.file, 'npm.cmd');
-    assert.deepEqual(calls[0]!.args, ['i', '-g', 'some-package@latest']);
+    // Not just the renamed shim: a .cmd needs the cmd.exe wrapper, because
+    // Node will not execFile a batch script directly.
+    assert.match(calls[0]!.file, /cmd\.exe$/);
+    assert.deepEqual(calls[0]!.args, ['/d', '/s', '/c', 'npm.cmd', 'i', '-g', 'some-package@latest']);
 });
 
 test('npm install on posix still spawns bare npm', () => {
@@ -72,7 +74,7 @@ test('the seam restores the previous adapter', () => {
     second.restore();
     try {
         runInstallCmd('npm', 'pkg', {});
-        assert.equal(first.calls[0]!.file, 'npm.cmd', 'inner restore must return to the outer win32 seam');
+        assert.match(first.calls[0]!.file, /cmd\.exe$/, 'inner restore must return to the outer win32 seam');
     } finally {
         first.restore();
     }

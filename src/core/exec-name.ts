@@ -1,18 +1,23 @@
 /**
- * Windows executable-name resolution for child-process spawns.
+ * Windows child-process launch resolution.
  *
- * Windows resolves a bare name on PATH only when it carries a launchable
- * extension, and npm ships as `npm.cmd` there. `execFileSync('npm', ...)`
- * therefore fails with a bare ENOENT on a machine where npm is installed and
- * working — issue #274, confirmed on the reporting host:
+ * Two separate Windows facts have to be handled together, and handling only
+ * the first is what made the initial #274 fix incomplete:
  *
- *     spawnSync('npm', ['--version'])                 -> ENOENT
- *     spawnSync('npm', ['--version'], {shell:true})   -> 11.17.0
+ * 1. A bare name resolves on PATH only with a launchable extension. npm ships
+ *    as `npm.cmd`, so `execFileSync('npm', ...)` fails with a bare ENOENT on a
+ *    machine where npm is installed and working. Confirmed on the reporting
+ *    host: `spawnSync('npm',['--version'])` -> ENOENT, with `shell:true` ->
+ *    11.17.0.
+ * 2. A `.cmd`/`.bat` file is a script interpreted by cmd.exe, not an
+ *    executable image. Since the CVE-2024-27980 hardening, Node refuses to run
+ *    one through `execFile`/`spawn` without a shell. So renaming `npm` to
+ *    `npm.cmd` and still calling execFileSync just trades ENOENT for EINVAL.
  *
- * Naming the concrete file is preferred over `shell: true`: it avoids the
- * argument-escaping hazard Node warns about (DEP0190), and it matches the
- * convention already proven in `bin/commands/provider.ts` and
- * `bin/commands/jwc.ts`.
+ * The launch spec below therefore routes batch scripts through
+ * `%ComSpec% /d /s /c`, which is the documented non-shell-injection way to run
+ * one: arguments stay a real argv array, so there is no shell-metacharacter
+ * exposure and no DEP0190 argument-concatenation warning.
  */
 
 /**
@@ -27,4 +32,36 @@ const WINDOWS_CMD_SHIMS = new Set(['npm']);
 export function execName(command: string, platform: NodeJS.Platform = process.platform): string {
     if (platform !== 'win32') return command;
     return WINDOWS_CMD_SHIMS.has(command) ? `${command}.cmd` : command;
+}
+
+export interface LaunchSpec {
+    /** The file to hand to execFile/spawn. */
+    file: string;
+    /** The full argv, including any cmd.exe preamble. */
+    args: string[];
+}
+
+const BATCH_EXTENSIONS = /\.(cmd|bat)$/i;
+
+/**
+ * Resolve a command + args into something the platform can actually launch.
+ * On POSIX this is the identity. On win32 it maps shim names and wraps batch
+ * scripts in `cmd.exe /d /s /c`:
+ *   /d  skip AutoRun registry commands
+ *   /s  keep the remaining arguments intact
+ *   /c  run and exit
+ */
+export function launchSpec(
+    command: string,
+    args: string[] = [],
+    platform: NodeJS.Platform = process.platform,
+    env: NodeJS.ProcessEnv = process.env,
+): LaunchSpec {
+    if (platform !== 'win32') return { file: command, args };
+    const resolved = execName(command, platform);
+    if (!BATCH_EXTENSIONS.test(resolved)) return { file: resolved, args };
+    return {
+        file: env['ComSpec'] || env['COMSPEC'] || 'cmd.exe',
+        args: ['/d', '/s', '/c', resolved, ...args],
+    };
 }

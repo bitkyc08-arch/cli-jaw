@@ -28,14 +28,16 @@ import os from 'os';
 import { execFileSync } from 'child_process';
 import { ensureSharedHomeSkillsLinks, initMcpConfig, copyDefaultSkills, propagateSkillsToInstances, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
 import { resolveHomePath } from '../src/core/path-expand.js';
-import { execName } from '../src/core/exec-name.js';
+import { launchSpec } from '../src/core/exec-name.js';
 
 // ─── External-process seam (#274) ────────────────────
 // Every external spawn in this file goes through runTool(), which resolves the
-// Windows shim name before handing off. Resolution deliberately lives in
-// production code rather than in the injected adapter: a fake that replaced the
-// whole runner would only ever observe the pre-resolution name, which is
-// exactly the logic a #274 regression test needs to see.
+// Windows launch spec before handing off — both the shim name (npm -> npm.cmd)
+// and the cmd.exe wrapper a .cmd script needs, since Node refuses to execFile
+// a batch file directly. Resolution deliberately lives in production code
+// rather than in the injected adapter: a fake that replaced the whole runner
+// would only ever observe the pre-resolution command, which is exactly the
+// logic a #274 regression test needs to see.
 //
 // Failure semantics are unchanged — callers here use `throw` for control flow
 // (brew upgrade falling back to install, presence probes), so runTool throws
@@ -63,7 +65,8 @@ export function __setToolEnvironment(
 function runTool(command: string, args: string[], opts: { encoding: string } & Record<string, unknown>): string;
 function runTool(command: string, args: string[], opts?: Record<string, unknown>): Buffer;
 function runTool(command: string, args: string[], opts: Record<string, unknown> = {}): string | Buffer {
-    return execFileAdapter(execName(command, toolPlatform), args, opts);
+    const spec = launchSpec(command, args, toolPlatform);
+    return execFileAdapter(spec.file, spec.args, opts);
 }
 import { buildServicePath } from '../src/core/runtime-path.js';
 import { classifyClaudeInstall } from '../src/core/claude-install.js';
@@ -918,8 +921,16 @@ export async function installSkillDeps(opts: InstallOpts = {}) {
             try {
                 runSkillDepInstall(dep.install, postinstallExecEnv());
                 console.log(`[jaw:init] ✅ ${dep.name} installed`);
-            } catch {
-                console.error(`[jaw:init] ⚠️  ${dep.name}: auto-install failed — install manually`);
+            } catch (err) {
+                // #274: the bare "auto-install failed" swallowed the real cause,
+                // so a Windows uv failure could not be diagnosed at all. Surface
+                // the underlying error and the manual command.
+                const reason = err instanceof Error ? err.message : String(err);
+                const manual = 'pkg' in dep.install
+                    ? `npm i -g ${dep.install.pkg}`
+                    : `see ${dep.install.url}`;
+                console.error(`[jaw:init] ⚠️  ${dep.name}: auto-install failed — ${reason}`);
+                console.error(`[jaw:init]    install manually: ${manual}`);
             }
         }
     }
