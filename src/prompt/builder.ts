@@ -10,8 +10,7 @@ import { getActiveChatSession, listChatSessions } from '../core/chat-sessions.js
 import { currentSessionScope } from '../core/session-context.js';
 import { memoryFlushCounter } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
-import { buildTaskSnapshot, loadProfileSummary } from '../memory/runtime.js';
-import { readSoul } from '../memory/identity.js';
+import { buildTaskSnapshot, hasSoulFile, loadProfileSummary, loadSoulSummary } from '../memory/runtime.js';
 import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 import { findStaticEmployee } from '../core/employees.js';
@@ -28,13 +27,11 @@ const promptCache = new Map();
 /**
  * Character budget for soul.md inside generated AGENTS.md (#300).
  *
- * Sized between its neighbours in that block — profile 600, snapshot 1500 —
- * because identity is the part a session most needs to carry, but AGENTS.md is
- * read on every turn so an unbounded file would tax the context window forever.
- * readSoul() itself is unbounded; the bound belongs here, at the disk-prompt
- * boundary, not in the API surface that also serves it.
+ * Large enough to retain the reported 3.4 KB production soul, including safety
+ * rules near its tail, while still bounding a file that AGENTS.md injects on
+ * every turn. loadSoulSummary() adds an explicit marker when this is exceeded.
  */
-const SOUL_DISK_BUDGET = 1200;
+const SOUL_DISK_BUDGET = 6000;
 
 function getRepoBundledSkillPath(...parts: string[]): string {
     return join(process.cwd(), ...parts);
@@ -531,6 +528,41 @@ function promptIdentityValue(value: unknown, fallback: string): string {
     return (normalized || fallback).slice(0, 120);
 }
 
+function resolveDiskWorkingDir(): string {
+    return expandHomePath(settings["workingDir"] || JAW_HOME, os.homedir());
+}
+
+function diskPromptPath(value: string): string {
+    return `\`${value.replaceAll('`', '\\`')}\``;
+}
+
+function renderA2ForDisk(a2: string, workingDir: string): string {
+    return a2.replace(
+        /(## Working Directory\r?\n)- ~\/\.cli-jaw(?=\r?\n|$)/,
+        (_match, heading: string) => `${heading}- ${diskPromptPath(workingDir)}`,
+    );
+}
+
+function loadDiskSoul(): string {
+    try {
+        if (!hasSoulFile()) return '';
+        const soul = loadSoulSummary(SOUL_DISK_BUDGET);
+        if (!soul) {
+            log.warn('[memory] disk soul exists but has no injectable content');
+            return '';
+        }
+        if (soul.endsWith('\n...(truncated)')) {
+            log.warn(`[memory] disk soul truncated to ${SOUL_DISK_BUDGET} chars`);
+        } else {
+            log.info(`[memory] disk soul loaded: ${soul.length} chars`);
+        }
+        return soul;
+    } catch (error) {
+        log.warn('[memory] disk soul load failed:', (error as Error).message);
+        return '';
+    }
+}
+
 function getCurrentSessionIdentityLine(): string {
     const sessionId = currentSessionScope()?.chatSessionId ?? getActiveChatSession();
     const session = listChatSessions().find(row => row.id === sessionId);
@@ -541,13 +573,15 @@ function getCurrentSessionIdentityLine(): string {
 }
 
 export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string; freshSession?: boolean } = {}) {
+    const forDisk = opts.forDisk === true;
+    const diskWorkingDir = forDisk ? resolveDiskWorkingDir() : '';
     // A-1: file takes priority (user-editable), rendered template fallback
     const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
-    const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
+    const rawA2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
+    const a2 = forDisk ? renderA2ForDisk(rawA2, diskWorkingDir) : rawA2;
     let prompt = `${a1}\n\n${a2}`;
     // Project root is now injected per-message in spawn.ts (user prompt wrapper)
     const currentPrompt = String(opts.currentPrompt || '').trim();
-    const forDisk = opts.forDisk === true;
 
     // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
     // No dynamic injection needed — Bot-First policy with curl examples included
@@ -573,25 +607,24 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
         // Phase 54-B: forDisk (AGENTS.md) — include a minimal memory block
         // so Codex/OpenCode sessions have soul, profile, and snapshot context.
         prompt = appendLegacyMemoryContext(prompt);
+        prompt += '\n\n---\n## Resolved Instance Context\n';
+        prompt += `- JAW_HOME: ${diskPromptPath(JAW_HOME)}\n`;
+        prompt += `- Working directory: ${diskPromptPath(diskWorkingDir)}\n`;
+        prompt += '- These resolved instance paths override placeholder paths in older/custom prompt files.\n';
+        const soul = loadDiskSoul();
         try {
-            // #300: this block promised soul context and never read it, so a
-            // codex-app session ran on shipped defaults while the host had a
-            // configured identity on disk. readSoul() returns '' when the file
-            // is absent, so an unconfigured host is unchanged.
-            //
-            // Bounded like its neighbours: readSoul() is unbounded, and AGENTS.md
-            // is prepended to every turn, so an unbounded identity file would tax
-            // the context window on every request.
-            const soul = readSoul().trim().slice(0, SOUL_DISK_BUDGET);
             const profile = loadProfileSummary(600);
             const snapshot = buildTaskSnapshot('current session context', 1500);
             if (soul || profile || snapshot) {
-                prompt += '\n\n---\n## Core Memory\n';
-                if (soul) prompt += soul + '\n';
-                if (profile) prompt += profile + '\n';
+                prompt += '\n\n---\n## Disk Memory Context\n';
+                if (soul) prompt += `\n## Soul & Identity\n${soul}\n`;
+                if (profile) prompt += `\n## Profile Context\n${profile}\n`;
                 if (snapshot) prompt += '\n' + snapshot;
             }
-        } catch { /* memory not ready for disk generation */ }
+        } catch (error) {
+            log.warn('[memory] disk profile/snapshot load failed:', (error as Error).message);
+            if (soul) prompt += `\n\n---\n## Disk Memory Context\n\n## Soul & Identity\n${soul}\n`;
+        }
     }
 
     try {

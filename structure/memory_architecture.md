@@ -9,7 +9,7 @@ aliases: [CLI-JAW Memory Architecture, advanced memory runtime, memory architect
 # Memory Architecture — 통합 메모리 시스템
 
 > 최종 갱신: 2026-06-03
-> 소스: `src/memory/runtime.ts` 375L (사실상 facade), `src/memory/shared.ts` 265L, `src/memory/bootstrap.ts` 524L, `src/memory/indexing.ts` 569L, `src/memory/keyword-expand.ts` 98L, `src/memory/synonyms.ts` 60L, `src/memory/reflect.ts` 379L, `src/memory/identity.ts` 86L, `src/memory/injection.ts` 69L, `src/memory/memory.ts` 154L, `src/memory/worklog.ts` 200L, `src/memory/heartbeat.ts` 209L, `src/memory/heartbeat-schedule.ts` 410L, `src/memory/advanced.ts` 1L (re-export shim), `src/agent/memory-flush-controller.ts` 185L, `src/agent/spawn.ts` 2011L, `src/prompt/builder.ts` 806L, `src/orchestrator/pipeline.ts` 538L, `src/routes/memory.ts`, `src/routes/jaw-memory.ts`, `src/cli/command-context.ts`, `src/cli/handlers-runtime.ts`
+> 소스: `src/memory/runtime.ts` 375L (사실상 facade), `src/memory/shared.ts` 265L, `src/memory/bootstrap.ts` 524L, `src/memory/indexing.ts` 569L, `src/memory/keyword-expand.ts` 98L, `src/memory/synonyms.ts` 60L, `src/memory/reflect.ts` 379L, `src/memory/identity.ts` 86L, `src/memory/injection.ts` 69L, `src/memory/memory.ts` 154L, `src/memory/worklog.ts` 200L, `src/memory/heartbeat.ts` 209L, `src/memory/heartbeat-schedule.ts` 410L, `src/memory/advanced.ts` 1L (re-export shim), `src/agent/memory-flush-controller.ts` 185L, `src/agent/spawn.ts` 2011L, `src/prompt/builder.ts` 1040L, `src/orchestrator/pipeline.ts` 538L, `src/routes/memory.ts`, `src/routes/jaw-memory.ts`, `src/cli/command-context.ts`, `src/cli/handlers-runtime.ts`
 > 임베딩: `src/manager/memory/embedding/` — `provider.ts`, `vec-store.ts`, `sync.ts`, `state-machine.ts`, `hybrid-search.ts`, `index.ts` + `src/manager/routes/dashboard-memory.ts`
 
 ---
@@ -23,7 +23,7 @@ graph TD
     DB -->|"assistant 응답 저장 후"| FLUSH["🧠 Memory Flush"]
     FLUSH --> LIVE["📁 ~/.cli-jaw/memory/structured/episodes/live/YYYY-MM-DD.md"]
     INDEX["🔎 index.sqlite"] -->|"ready"| ADV["📄 Advanced Memory Prompt"]
-    ADV -->|"profile.md + task snapshot"| SYSPROMPT["📄 System Prompt"]
+    ADV -->|"profile.md + soul.md + task snapshot"| SYSPROMPT["📄 System Prompt"]
     LEGACY["📝 ~/.cli-jaw/memory/MEMORY.md"] -->|"fallback / forDisk"| LEGACYPROMPT["📄 Legacy Prompt Context"]
     HB --> PROMPT["📨 사용자 프롬프트 앞에 붙임"]
     LEGACYPROMPT --> SYSPROMPT
@@ -162,7 +162,7 @@ Prefers ES Module only, no CommonJS.
 - 각 섹션은 첫 줄만 bullet로 넣는다.
 - 파일 순서는 최신 파일 우선, 섹션도 역순이다.
 - 즉, raw conversation dump가 아니라 섹션 머리말 중심의 요약 주입이다.
-- `forDisk: true` 경로는 legacy fallback을 먼저 조립한 뒤, 준비된 경우 advanced `profile.md` 요약(600자)과 `buildTaskSnapshot('current session context', 1500)` 결과를 `## Core Memory` 아래에 추가한다. 즉 `B.md`/workspace `AGENTS.md`는 런타임 boss prompt와 동일하지는 않지만, 더 이상 legacy-only 스냅샷은 아니다.
+- `forDisk: true` 경로는 legacy fallback을 먼저 조립한 뒤, `shared/soul.md`를 인덱스 상태와 무관하게 최대 6000자로 읽고, 준비된 경우 advanced `profile.md` 요약(600자)과 `buildTaskSnapshot('current session context', 1500)` 결과를 `## Disk Memory Context` 아래에 추가한다. 6000자 초과, 빈 파일, 읽기 실패는 warning 로그로 드러난다. disk prompt에는 실제 `JAW_HOME`과 `settings.workingDir`도 함께 기록된다. 즉 `B.md`/workspace `AGENTS.md`는 런타임 boss prompt와 동일하지는 않지만, 더 이상 legacy-only 스냅샷은 아니다.
 
 ### 3-E: Core Memory
 
@@ -257,7 +257,7 @@ Prefers ES Module only, no CommonJS.
 |---|---|---|---|---|
 | **역할** | 최근 대화 원문 전달 | assistant 응답을 structured episode 로 요약 저장 | indexed memory + profile + task snapshot 주입 | legacy session memory + core fallback | 핵심 기억 상시 주입 |
 | **타이밍** | 새 세션만 | assistant 응답 저장 직후 | advanced index ready일 때 매번 | advanced 미준비 또는 forDisk base | 매번 |
-| **크기 제한** | 8000자 | 최근 메시지 4개 미만이면 스킵 | 800 / 2800 | 10000 / 1500 | 1500자 |
+| **크기 제한** | 8000자 | 최근 메시지 4개 미만이면 스킵 | runtime profile 800 / soul 1000 / snapshot 2800; disk soul 6000 / profile 600 / snapshot 1500 | 10000 / 1500 | 1500자 |
 | **저장소** | `messages` DB | `memory/structured/episodes/live` | `memory/structured` | `~/.claude/projects/{hash}/memory` + `~/.cli-jaw/memory/MEMORY.md` | `MEMORY.md` |
 | **코드** | `spawn.ts` | `memory-flush-controller.ts` + `spawn.ts` | `builder.ts` + `injection.ts` + `runtime.ts` | `builder.ts` | `builder.ts` |
 | **resume 시** | ❌ 스킵 | ✅ 정상 동작 | ✅ 정상 동작 | ✅ 정상 동작 | ✅ 정상 동작 |

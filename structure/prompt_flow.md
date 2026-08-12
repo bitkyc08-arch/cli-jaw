@@ -8,7 +8,7 @@ aliases: [Prompt Injection Flow, CLI-JAW prompt flow, prompt pipeline]
 
 # 프롬프트 삽입 흐름 — Prompt Injection Flow
 
-> cli-jaw의 프롬프트 조립 + 주입 전체 흐름. 현재 기준 소스는 `src/prompt/builder.ts` 806L, `src/memory/injection.ts`, `src/agent/spawn.ts` 2011L, `src/prompt/templates/*` (a1-system 388L, a2-default 25L, orchestration 120L, employee 73L, control-system 56L, worker-context 11L, skills 24L, heartbeat-jobs 4L, heartbeat-default 4L, vision-click 3L).
+> cli-jaw의 프롬프트 조립 + 주입 전체 흐름. 현재 기준 소스는 `src/prompt/builder.ts` 1040L, `src/memory/injection.ts`, `src/agent/spawn.ts` 2011L, `src/prompt/templates/*` (a1-system 388L, a2-default 25L, orchestration 120L, employee 73L, control-system 56L, worker-context 11L, skills 24L, heartbeat-jobs 4L, heartbeat-default 4L, vision-click 3L).
 
 ---
 
@@ -98,7 +98,7 @@ graph TD
 메모리는 두 갈래다.
 
 - `forDisk: false`: `buildMemoryInjection()` 우선
-- `forDisk: true`: legacy fallback + 준비된 advanced profile/task snapshot의 축약 disk block
+- `forDisk: true`: legacy fallback + bounded soul(최대 6000자) + 준비된 advanced profile/task snapshot의 축약 disk block + resolved instance paths
 
 #### Advanced path
 
@@ -140,7 +140,9 @@ advanced index가 아직 준비되지 않았거나 `forDisk: true`인 경우 `ap
 - 코어 메모리 길이 제한: 1500자
 - 세션 메모리 길이 예산: 10000자
 
-`forDisk: true`는 그 뒤에 `loadProfileSummary(600)`과 `buildTaskSnapshot('current session context', 1500)` 결과를 `## Core Memory` 아래에 덧붙인다. 따라서 `B.md`와 workspace `AGENTS.md`는 "disk 캐시용 축약 memory snapshot"이며, 런타임 boss prompt의 advanced `profile + soul + task snapshot`과 완전히 동일하지 않다.
+`forDisk: true`는 그 뒤에 인덱스 준비 여부와 무관하게 `loadSoulSummary(6000)`을 읽고, `loadProfileSummary(600)`과 `buildTaskSnapshot('current session context', 1500)`을 `## Disk Memory Context` 아래에 덧붙인다. soul이 6000자를 넘으면 명시적 truncation marker와 warning 로그를 남기며, 파일이 있는데 읽거나 주입할 수 없는 경우도 warning으로 드러낸다. 따라서 `B.md`와 workspace `AGENTS.md`는 "disk 캐시용 축약 memory snapshot"이며, 런타임 boss prompt의 advanced `profile + soul + task snapshot`과 완전히 동일하지 않다.
+
+같은 disk 경로는 `## Resolved Instance Context`에 실제 `JAW_HOME`과 `settings.workingDir`을 기록한다. stock A2의 `## Working Directory\n- ~/.cli-jaw` placeholder는 실제 working directory로 바꾸되, 다른 custom A2 내용은 보존한다.
 
 ### Orchestration
 
@@ -266,6 +268,7 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 
 - session invalidation은 더 이상 하지 않는다
 - AGENTS.md는 content hash가 바뀔 때만 fresh write 되며 resume continuity는 유지한다
+- AGENTS.md에는 bounded `Soul & Identity`와 resolved `JAW_HOME`/working directory가 포함된다. soul truncation/읽기 실패는 로그에 남아 silent omission이 되지 않는다
 - employee spawn은 별도 tmp cwd를 만들어 boss AGENTS.md와 격리한다
 
 ---

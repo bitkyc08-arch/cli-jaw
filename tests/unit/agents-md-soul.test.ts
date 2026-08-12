@@ -28,7 +28,8 @@ test('AGENTS.md carries soul.md, not just profile and snapshot', () => {
     writeSoul(SOUL_BODY);
     const prompt = getSystemPrompt({ forDisk: true });
 
-    assert.match(prompt, /## Core Memory/, 'the disk prompt should still emit the Core Memory block');
+    assert.match(prompt, /## Disk Memory Context/, 'the disk prompt should emit its bounded memory block');
+    assert.match(prompt, /## Soul & Identity/, 'soul content should be explicitly labelled');
     assert.ok(
         prompt.includes(SOUL_BODY),
         'soul.md content must reach the generated AGENTS.md — this is the whole of #300',
@@ -49,14 +50,14 @@ test('an oversized soul is bounded rather than pasted whole', () => {
     // AGENTS.md is read on every turn, so an unbounded identity file would tax
     // the context window forever. readSoul() itself is unbounded by design — the
     // API surface serves it in full — so the budget lives at this boundary.
-    const huge = 'X'.repeat(5000);
+    const huge = 'X'.repeat(7000);
     writeSoul(huge);
     const prompt = getSystemPrompt({ forDisk: true });
 
     const run = prompt.match(/X{50,}/)?.[0] ?? '';
     assert.ok(run.length > 0, 'the oversized soul should still appear');
     assert.ok(
-        run.length <= 1200,
+        run.length <= 6000,
         `soul must be truncated to the disk budget, saw ${run.length} chars`,
     );
 });
