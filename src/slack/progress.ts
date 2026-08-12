@@ -10,6 +10,7 @@
 //     bursty tool events would otherwise burn the budget and get throttled.
 //   - Best-effort. A failed status post/edit must never break the answer path.
 import { slackApi, describeSlackError, type SlackFetch } from './api.js';
+import { startDraftStream, type DraftStreamOptions, type DraftTransport } from '../messaging/draft-stream.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { toMrkdwn } from './format.js';
 
@@ -17,7 +18,6 @@ import { toMrkdwn } from './format.js';
 const EDIT_INTERVAL_MS = 1200;
 /** Status text is a one-liner; long tool details would spam the channel. */
 const MAX_STATUS_LEN = 140;
-
 export type SlackProgressHandle = {
     /** Update the status line (rate-limited, best-effort). */
     update(text: string): void;
@@ -26,7 +26,6 @@ export type SlackProgressHandle = {
     /** The posted message ts, or null when the placeholder never landed. */
     ts(): string | null;
 };
-
 export function truncateStatus(text: string): string {
     const line = text.replace(/\s+/g, ' ').trim();
     return line.length <= MAX_STATUS_LEN ? line : `${line.slice(0, MAX_STATUS_LEN - 1)}…`;
@@ -48,73 +47,74 @@ export async function startSlackProgress(
     token: string,
     target: RemoteTarget,
     initialText: string,
-    options: { fetchImpl?: SlackFetch } = {},
+    options: {
+        fetchImpl?: SlackFetch;
+        draftClock?: Pick<DraftStreamOptions, 'now' | 'setTimer' | 'clearTimer'>;
+    } = {},
 ): Promise<SlackProgressHandle> {
     const fetchOpts = options.fetchImpl ? { fetchImpl: options.fetchImpl } : {};
-    let messageTs: string | null = null;
-    let done = false;
-    let lastSentAt = 0;
-    let pendingText: string | null = null;
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const post = await slackApi<{ ts?: string }>(
-        token,
-        'chat.postMessage',
+    const transport: DraftTransport = {
+        async post(text) {
+            const result = await slackApi<{ ts?: string }>(
+                token,
+                'chat.postMessage',
+                {
+                    channel: target.targetId,
+                    text,
+                    ...(target.threadId ? { thread_ts: target.threadId } : {}),
+                },
+                fetchOpts,
+            );
+            return result.ok && result.data?.ts ? result.data.ts : null;
+        },
+        async edit(ts, text) {
+            const result = await slackApi(
+                token, 'chat.update',
+                { channel: target.targetId, ts, text },
+                fetchOpts,
+            );
+            if (!result.ok) {
+                throw Object.assign(new Error(result.error || 'chat_update_failed'), {
+                    slackData: result.data,
+                });
+            }
+        },
+        async remove(ts) {
+            const result = await slackApi(
+                token, 'chat.delete',
+                { channel: target.targetId, ts },
+                fetchOpts,
+            );
+            if (!result.ok) {
+                throw Object.assign(new Error(result.error || 'chat_delete_failed'), {
+                    slackData: result.data,
+                });
+            }
+        },
+    };
+    const stream = await startDraftStream(
+        transport,
+        toMrkdwn(truncateStatus(initialText)),
         {
-            channel: target.targetId,
-            text: toMrkdwn(truncateStatus(initialText)),
-            ...(target.threadId ? { thread_ts: target.threadId } : {}),
+            minEditIntervalMs: EDIT_INTERVAL_MS,
+            maxChars: MAX_STATUS_LEN,
+            ...options.draftClock,
+            onError(operation, error) {
+                const typed = error as Error & { slackData?: Record<string, unknown> };
+                describeSlackError(typed.message || `${operation}_failed`, typed.slackData);
+            },
         },
-        fetchOpts,
     );
-    if (post.ok && post.data?.ts) messageTs = post.data.ts;
-
-    const flush = async (): Promise<void> => {
-        if (done || !messageTs || pendingText === null) return;
-        const text = pendingText;
-        pendingText = null;
-        lastSentAt = Date.now();
-        await slackApi(
-            token,
-            'chat.update',
-            { channel: target.targetId, ts: messageTs, text: toMrkdwn(text) },
-            fetchOpts,
-        ).catch(() => ({ ok: false, error: 'update_failed' }));
-    };
-
-    const schedule = (): void => {
-        if (done || flushTimer || pendingText === null) return;
-        const wait = Math.max(0, EDIT_INTERVAL_MS - (Date.now() - lastSentAt));
-        flushTimer = setTimeout(() => {
-            flushTimer = null;
-            void flush().finally(() => { if (pendingText !== null) schedule(); });
-        }, wait);
-        // A pending edit must never hold the process open.
-        (flushTimer as { unref?: () => void }).unref?.();
-    };
-
     return {
-        update(text: string) {
-            if (done || !messageTs) return;
+        update(text: string): void {
             const next = truncateStatus(text);
-            if (!next) return;
-            pendingText = next;
-            schedule();
+            if (next) stream.update(toMrkdwn(next));
         },
-        async finish() {
-            done = true;
-            pendingText = null;
-            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-            if (!messageTs) return;
-            const ts = messageTs;
-            messageTs = null;
+        async finish(): Promise<void> {
             // The answer arrives as its own message, so the status placeholder
             // is deleted rather than left as a stale "working…" line.
-            const result = await slackApi(
-                token, 'chat.delete', { channel: target.targetId, ts }, fetchOpts,
-            );
-            if (!result.ok) describeSlackError(result.error || 'chat_delete_failed', result.data);
+            await stream.discard();
         },
-        ts() { return messageTs; },
+        ts(): string | null { return stream.handle(); },
     };
 }
