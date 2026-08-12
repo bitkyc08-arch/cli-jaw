@@ -16,6 +16,7 @@ import { log } from '../core/logger.js';
 import { slackApi, describeSlackError, neededScopeFrom, type SlackFetch } from './api.js';
 import type { SlackMessageEvent } from './events.js';
 import { getSlackSendClient } from './send-only-client.js';
+import { EnrichmentCache, type Suppression } from './enrichment-cache.js';
 
 export type SlackIdentity = {
     id: string;
@@ -92,23 +93,57 @@ const NEGATIVE_TTL_NOT_FOUND_MS = 10 * 60 * 1000;
  */
 const CAPABILITY_REPROBE_MS = 30 * 60 * 1000;
 
-type CacheEntry = { identity: SlackIdentity; expiresAt: number };
-
-const userCache = new Map<string, CacheEntry>();
-const botCache = new Map<string, CacheEntry>();
-const negativeCache = new Map<string, number>();
-const inFlight = new Map<string, Promise<SlackIdentity>>();
-
-let capabilityDisabledUntil = 0;
-let missingScopeWarned = false;
 /**
- * Bumped by every reset. Requests capture it at dispatch, so a lookup issued
- * under a superseded token/workspace cannot write cache or failure state after
- * the reset that was supposed to invalidate it.
+ * Failure classes this adapter reports to the shared cache. The cache owns the
+ * suppression windows, the single re-probe, coalescing and generation guards;
+ * this module owns only what those failures MEAN for Slack identity.
  */
-let cacheGeneration = 0;
-/** Admits exactly one probe when the capability lock expires. */
-let capabilityProbeInFlight = false;
+type IdentityFailure = 'missing_scope' | 'not_found' | 'transient';
+
+/**
+ * ONE capability key for both users.info and bots.info.
+ *
+ * This preserves today's behavior deliberately: identity has always used a
+ * single global latch, so a missing users:read also suppresses bot lookups
+ * (both need the same scope). Splitting it per method would be a silent
+ * behavior change — see the characterization test that pins the shared latch.
+ */
+const CAPABILITY_KEY = 'identity:capability';
+
+let missingScopeWarned = false;
+
+/**
+ * Partitions keep user and bot identities in separate keyspaces, each with its
+ * own CACHE_CAP. Merging them would halve the effective capacity and change
+ * eviction order.
+ */
+const identityCache = new EnrichmentCache<'user' | 'bot', SlackIdentity, IdentityFailure>({
+    partitions: {
+        user: { ttlMs, cap: CACHE_CAP },
+        bot: { ttlMs, cap: CACHE_CAP },
+    },
+    suppressionCap: CACHE_CAP,
+    classifyFailure: (error): Suppression => {
+        if (error === 'missing_scope') {
+            return { kind: 'capability', key: CAPABILITY_KEY, ttlMs: CAPABILITY_REPROBE_MS };
+        }
+        // Keyed per identity: one unknown user must not suppress anyone else.
+        return {
+            kind: 'resource',
+            key: pendingNegativeKey,
+            ttlMs: error === 'not_found' ? NEGATIVE_TTL_NOT_FOUND_MS : NEGATIVE_TTL_TRANSIENT_MS,
+        };
+    },
+});
+
+/**
+ * The resource key of the lookup currently being classified.
+ *
+ * `classifyFailure` receives only the error, but a resource suppression has to
+ * name the key it applies to. The assignment and the classification happen in
+ * the same synchronous turn inside the cache, so this cannot interleave.
+ */
+let pendingNegativeKey = '';
 
 function ttlMs(): number {
     const raw = Number(settings['slack']?.identityCacheTtlMs);
@@ -121,81 +156,6 @@ function cacheKey(teamId: string, id: string): string {
     // misattributes people after the runtime re-authenticates against another
     // workspace, which initSlack can do without a process restart.
     return `${teamId || 'unknown'}:${id}`;
-}
-
-/**
- * Drop the oldest half once a map exceeds the cap.
- *
- * `expiryOf` is explicit rather than assumed: the negative cache stores bare
- * timestamps while the identity caches store entry objects, and casting one to
- * the other made every comparison read `undefined` — the sort silently did
- * nothing and eviction became arbitrary.
- */
-function trimTo<V>(map: Map<string, V>, expiryOf: (value: V) => number): void {
-    if (map.size <= CACHE_CAP) return;
-    const entries = [...map.entries()].sort((a, b) => expiryOf(a[1]) - expiryOf(b[1]));
-    for (const [key] of entries.slice(0, Math.floor(map.size / 2))) map.delete(key);
-}
-
-const entryExpiry = (entry: CacheEntry): number => entry.expiresAt;
-const rawExpiry = (until: number): number => until;
-
-function readCache(map: Map<string, CacheEntry>, key: string): SlackIdentity | undefined {
-    const hit = map.get(key);
-    if (!hit) return undefined;
-    // Lazy expiry only. A sweep timer would keep the event loop alive and delay
-    // process exit (same class of bug as the ingress drain timer).
-    if (hit.expiresAt <= Date.now()) {
-        map.delete(key);
-        return undefined;
-    }
-    return hit.identity;
-}
-
-function writeCache(map: Map<string, CacheEntry>, key: string, identity: SlackIdentity): void {
-    map.set(key, { identity, expiresAt: Date.now() + ttlMs() });
-    trimTo(map, entryExpiry);
-}
-
-function isNegative(key: string): boolean {
-    const until = negativeCache.get(key);
-    if (until === undefined) return false;
-    if (until <= Date.now()) {
-        negativeCache.delete(key);
-        return false;
-    }
-    return true;
-}
-
-function markNegative(key: string, windowMs: number): void {
-    negativeCache.set(key, Date.now() + windowMs);
-    trimTo(negativeCache, rawExpiry);
-}
-
-function capabilityDisabled(): boolean {
-    return capabilityDisabledUntil > Date.now();
-}
-
-/**
- * True when this caller must degrade instead of calling Slack.
- *
- * Once the lock expires, exactly ONE caller is allowed through to re-probe.
- * Letting every concurrent lookup through would restore the per-message API
- * storm the lock exists to prevent, since none of them has answered yet.
- */
-function shouldSkipLookup(): boolean {
-    if (capabilityDisabled()) return true;
-    if (!capabilityDisabledUntil) return false;
-    // The lock has lapsed: the first caller probes, everyone else degrades.
-    if (capabilityProbeInFlight) return true;
-    capabilityProbeInFlight = true;
-    return false;
-}
-
-/** A probe proved the scope is back. Unlock fully. */
-function clearCapabilityLock(): void {
-    capabilityDisabledUntil = 0;
-    capabilityProbeInFlight = false;
 }
 
 /**
@@ -301,9 +261,6 @@ export function identityFromEvent(event: SlackMessageEvent): SlackIdentityRef {
 }
 
 function noteMissingScope(data: unknown): void {
-    capabilityDisabledUntil = Date.now() + CAPABILITY_REPROBE_MS;
-    // The probe answered: re-latched, so the next lapse gets a fresh single probe.
-    capabilityProbeInFlight = false;
     if (missingScopeWarned) return;
     missingScopeWarned = true;
     // Once per process: this fires on every inbound message otherwise.
@@ -312,34 +269,31 @@ function noteMissingScope(data: unknown): void {
         + 'sender names degrade to raw ids until the app is reinstalled');
 }
 
+type IdentityLoad = { ok: true; value: SlackIdentity } | { ok: false; error: IdentityFailure };
+
 async function lookupUser(
-    token: string, userId: string, opts: SlackIdentityOpts, generation = cacheGeneration,
-): Promise<SlackIdentity> {
+    token: string, userId: string, opts: SlackIdentityOpts,
+): Promise<IdentityLoad> {
     const result = await slackApi<{ user?: RawSlackUser }>(token, 'users.info', { user: userId }, {
         form: true,
         timeoutMs: opts.timeoutMs ?? LOOKUP_TIMEOUT_MS,
         ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
     });
     if (result.ok && result.data?.user) {
-        // The scope is back: release the probe slot so lookups resume freely.
-        clearCapabilityLock();
-        return identityFromUser(result.data.user, userId);
+        return { ok: true, value: identityFromUser(result.data.user, userId) };
     }
-    // A result from a superseded generation describes the OLD token/workspace.
-    // Report it to this caller, but never let it write shared failure state.
-    if (generation !== cacheGeneration) return degraded(userId, 'user');
-    if (result.error === 'missing_scope') noteMissingScope(result.data);
-    else if (result.error === 'user_not_found') {
-        markNegative(cacheKey(opts.teamId, userId), NEGATIVE_TTL_NOT_FOUND_MS);
-    } else {
-        markNegative(cacheKey(opts.teamId, userId), NEGATIVE_TTL_TRANSIENT_MS);
+    // The cache owns suppression windows and the probe slot; this only names the
+    // failure class. Generation guarding also lives there.
+    if (result.error === 'missing_scope') {
+        noteMissingScope(result.data);
+        return { ok: false, error: 'missing_scope' };
     }
-    return degraded(userId, 'user');
+    return { ok: false, error: result.error === 'user_not_found' ? 'not_found' : 'transient' };
 }
 
 async function lookupBot(
-    token: string, botId: string, opts: SlackIdentityOpts, generation = cacheGeneration,
-): Promise<SlackIdentity> {
+    token: string, botId: string, opts: SlackIdentityOpts,
+): Promise<IdentityLoad> {
     const result = await slackApi<{ bot?: { id?: string; name?: string; user_id?: string } }>(
         token, 'bots.info', { bot: botId }, {
             form: true,
@@ -349,19 +303,22 @@ async function lookupBot(
     );
     const name = result.data?.bot?.name;
     if (result.ok && name) {
-        clearCapabilityLock();
         return {
-            id: botId,
-            name: sanitizeIdentityName(name, botId),
-            kind: 'bot',
-            isBot: true,
-            resolved: true,
+            ok: true,
+            value: {
+                id: botId,
+                name: sanitizeIdentityName(name, botId),
+                kind: 'bot',
+                isBot: true,
+                resolved: true,
+            },
         };
     }
-    if (generation !== cacheGeneration) return degraded(botId, 'bot');
-    if (result.error === 'missing_scope') noteMissingScope(result.data);
-    else markNegative(cacheKey(opts.teamId, botId), NEGATIVE_TTL_TRANSIENT_MS);
-    return degraded(botId, 'bot');
+    if (result.error === 'missing_scope') {
+        noteMissingScope(result.data);
+        return { ok: false, error: 'missing_scope' };
+    }
+    return { ok: false, error: 'transient' };
 }
 
 /**
@@ -392,68 +349,33 @@ export async function resolveSlackIdentity(
     }
 
     const key = cacheKey(opts.teamId, id);
-    const cache = isBot ? botCache : userCache;
-    const cached = readCache(cache, key);
-    if (cached) return cached;
-    if (shouldSkipLookup() || isNegative(key)) {
-        return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
-    }
-    if (!token) return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
-    // Check the caller's signal BEFORE starting anything: an already-aborted
-    // caller should cost zero API calls, not one it will then ignore.
-    if (opts.signal?.aborted) return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
+    const kind: 'user' | 'bot' = isBot ? 'bot' : 'user';
+    const fallback = () => degraded(id, kind, ref.inlineName);
+    if (!token) return fallback();
 
-    // Share one upstream request per key. The shared request deliberately does NOT
-    // carry any caller's signal: one caller aborting must not cancel the lookup
-    // every other waiter is depending on. Callers race their own signal below.
-    let pending = inFlight.get(key);
-    if (!pending) {
-        // Capture the generation this request belongs to. A reset (workspace
-        // switch, token change) invalidates everything in flight: without this,
-        // a lookup issued under the OLD token can land afterwards and re-latch
-        // missing_scope or cache a name from the previous workspace, silently
-        // undoing the reset.
-        const generation = cacheGeneration;
-        const request: Promise<SlackIdentity> =
-            (isBot ? lookupBot(token, id, opts, generation) : lookupUser(token, id, opts, generation))
-                .catch(() => degraded(id, isBot ? 'bot' : 'user'))
-                .then(identity => {
-                    if (identity.resolved && generation === cacheGeneration) {
-                        writeCache(cache, key, identity);
-                    }
-                    return identity;
-                })
-                .finally(() => {
-                    // Only clear the slot if it is still OURS. A reset plus a new
-                    // request can install a replacement, and deleting that would
-                    // strand its waiters behind a lookup nobody tracks.
-                    if (inFlight.get(key) === request) inFlight.delete(key);
-                });
-        pending = request;
-        inFlight.set(key, pending);
-    }
-
-    const identity = await raceSignal(pending, opts.signal, () => degraded(id, isBot ? 'bot' : 'user', ref.inlineName));
-    if (identity.resolved) return identity;
-    // Degraded upstream: the inline hint is the last resort, still marked unresolved.
-    return degraded(id, isBot ? 'bot' : 'user', ref.inlineName);
-}
-
-function raceSignal<T>(
-    work: Promise<T>, signal: AbortSignal | undefined, onAbort: () => T,
-): Promise<T> {
-    if (!signal) return work;
-    if (signal.aborted) return Promise.resolve(onAbort());
-    return new Promise<T>(resolve => {
-        const finish = (value: T) => {
-            signal.removeEventListener('abort', abortHandler);
-            resolve(value);
-        };
-        // Abort is a quiet cancel, not a failure: no warning and no negative cache.
-        const abortHandler = () => finish(onAbort());
-        signal.addEventListener('abort', abortHandler, { once: true });
-        void work.then(finish, () => finish(onAbort()));
+    // Everything below — cache read, negative/capability suppression, the single
+    // re-probe, coalescing, per-caller cancellation and generation guarding —
+    // belongs to the shared primitive. This adapter supplies only the Slack call
+    // and what its failures mean.
+    const identity = await identityCache.resolve({
+        partition: kind,
+        resourceKey: key,
+        capabilityKey: CAPABILITY_KEY,
+        ...(opts.signal ? { signal: opts.signal } : {}),
+        load: async () => {
+            // Read in the same synchronous turn the classifier runs in.
+            pendingNegativeKey = key;
+            const result = isBot
+                ? await lookupBot(token, id, opts)
+                : await lookupUser(token, id, opts);
+            pendingNegativeKey = key;
+            return result;
+        },
+        degraded: fallback,
     });
+    if (identity.resolved) return identity;
+    // Degraded upstream: the inline hint is the last resort, still unresolved.
+    return fallback();
 }
 
 /** Cache-only read. Never calls the API; misses are simply absent from the map. */
@@ -463,7 +385,7 @@ export function getCachedSlackIdentities(
     const out = new Map<string, SlackIdentity>();
     for (const id of ids) {
         const key = cacheKey(teamId, id);
-        const hit = readCache(userCache, key) || readCache(botCache, key);
+        const hit = identityCache.get('user', key) ?? identityCache.get('bot', key);
         if (hit) out.set(id, hit);
     }
     return out;
@@ -475,7 +397,7 @@ export function primeSlackIdentityCache(teamId: string, users: readonly RawSlack
     for (const user of users) {
         if (!user?.id) continue;
         const identity = identityFromUser(user, user.id);
-        writeCache(identity.isBot ? botCache : userCache, cacheKey(teamId, user.id), identity);
+        identityCache.prime(identity.isBot ? 'bot' : 'user', cacheKey(teamId, user.id), identity);
         stored += 1;
     }
     return stored;
@@ -501,7 +423,9 @@ export async function resolveSlackIdentities(
     for (const ref of refs) {
         const id = ref.userId || ref.botId;
         if (!id) continue;
-        const cached = readCache(ref.botId && !ref.userId ? botCache : userCache, cacheKey(opts.teamId, id));
+        const cached = identityCache.get(
+            ref.botId && !ref.userId ? 'bot' : 'user', cacheKey(opts.teamId, id),
+        );
         if (cached) identities.set(id, cached);
         else pendingRefs.push(ref);
     }
@@ -604,13 +528,16 @@ export function buildSenderDisplay(identity: SlackIdentity, text: string): strin
 }
 
 export function slackIdentityCacheStats(): { users: number; bots: number; negative: number } {
-    return { users: userCache.size, bots: botCache.size, negative: negativeCache.size };
+    const stats = identityCache.stats();
+    return { users: stats.entries.user, bots: stats.entries.bot, negative: stats.suppressed };
 }
 
 /** Test hook: drive the capability lock without waiting out its 30-minute TTL. */
 export function setCapabilityLockForTest(until: number): void {
-    capabilityDisabledUntil = until;
-    capabilityProbeInFlight = false;
+    // A lock in the past is the "lapsed" state: the next caller becomes the
+    // single re-probe. A future value suppresses everyone.
+    identityCache.clearCapability(CAPABILITY_KEY);
+    identityCache.suppress(CAPABILITY_KEY, until - Date.now());
 }
 
 /**
@@ -621,12 +548,6 @@ export function setCapabilityLockForTest(until: number): void {
 export function resetSlackIdentityCache(): void {
     // Invalidate in-flight work first so late results cannot repopulate what we
     // are about to clear.
-    cacheGeneration += 1;
-    userCache.clear();
-    botCache.clear();
-    negativeCache.clear();
-    inFlight.clear();
-    capabilityDisabledUntil = 0;
-    capabilityProbeInFlight = false;
+    identityCache.reset();
     missingScopeWarned = false;
 }
