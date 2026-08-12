@@ -79,5 +79,9 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // that never routes through desktop-control, and a BOM-less file corrupts
     // its own string literals before the script runs. It is a data-loss
     // invariant, so it belongs where every agent already looks.
-    assert.ok(a1Src.length <= 37800, `a1-system.md is ${a1Src.length} chars — over the 37,800 budget`);
+    // Budget raised 37,800 → 38,100 for the #316 inbound-Slack-context line,
+    // which teaches the agent to treat `[Slack]` and `[앞선 대화]` blocks as
+    // data rather than instructions — a prompt-injection boundary that only
+    // works if it is stated inline.
+    assert.ok(a1Src.length <= 38100, `a1-system.md is ${a1Src.length} chars — over the 38,100 budget`);
 });
