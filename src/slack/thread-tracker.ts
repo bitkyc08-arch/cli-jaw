@@ -80,6 +80,73 @@ export function isThreadParticipated(channel: string, threadTs: string): boolean
     return load().has(threadKey(channel, threadTs));
 }
 
+// ─── Prefetch claims ────────────────────────────────
+// "Have I already injected this thread's earlier messages?" is a DIFFERENT
+// question from "may I reply in this thread?", and answering both from the
+// participation set is what made the first-entry check unusable: app_mention
+// marks participation before the ingress task even runs (bot.ts), so the check
+// was a dead branch, while DM and listen-all channels mark only after a
+// successful reply, so the same check raced.
+//
+// Deliberately in memory, not on disk: after a restart the agent session is gone
+// too, so re-injecting the thread's history is the RIGHT behavior. Persisting
+// the claim would leave a context-less session permanently without context.
+
+/** key -> the token of the claim currently holding it. */
+const prefetchClaimed = new Map<string, number>();
+const PREFETCH_CLAIM_CAP = 500;
+let prefetchToken = 0;
+
+/**
+ * Claim the one-time prefetch for a thread.
+ *
+ * Returns a token on success and 0 when the thread is already claimed.
+ * Synchronous test-and-set: the caller runs it before any `await`, so two
+ * envelopes arriving in the same tick cannot both win.
+ *
+ * The token exists because releasing is asynchronous. Without it a late
+ * release from an abandoned attempt would delete whichever claim happened to
+ * hold the key by then — the classic ABA: A claims, A times out and releases,
+ * B claims, A's straggler releases B's claim, and the thread gets prefetched
+ * twice.
+ */
+export function claimThreadPrefetch(channel: string, threadTs: string): number {
+    if (!channel || !threadTs) return 0;
+    const key = threadKey(channel, threadTs);
+    if (prefetchClaimed.has(key)) return 0;
+    if (prefetchClaimed.size >= PREFETCH_CLAIM_CAP) {
+        // Oldest half by insertion order — a claim is never refreshed, so
+        // insertion order IS recency here.
+        for (const [stale] of [...prefetchClaimed].slice(0, Math.floor(PREFETCH_CLAIM_CAP / 2))) {
+            prefetchClaimed.delete(stale);
+        }
+    }
+    const token = ++prefetchToken;
+    prefetchClaimed.set(key, token);
+    return token;
+}
+
+/**
+ * Give a claim back when no history was actually injected.
+ *
+ * Without this a failed or skipped first attempt would silently consume the
+ * thread's only chance: every later message would see the thread as already
+ * prefetched and the agent would never receive the earlier conversation.
+ *
+ * Only the CURRENT owner may release. A stale token is a no-op.
+ */
+export function releaseThreadPrefetch(channel: string, threadTs: string, token: number): void {
+    if (!channel || !threadTs || !token) return;
+    const key = threadKey(channel, threadTs);
+    if (prefetchClaimed.get(key) !== token) return;
+    prefetchClaimed.delete(key);
+}
+
+export function resetThreadPrefetchClaims(): void {
+    prefetchClaimed.clear();
+    prefetchToken = 0;
+}
+
 /** Test hook: point the store at a temp file and drop the cache. */
 export function resetThreadTrackerForTest(filePath?: string): void {
     threads = null;

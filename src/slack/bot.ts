@@ -20,7 +20,10 @@ import { buildMediaPromptMany } from '../agent/spawn.js';
 import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope } from './socket.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
-import { isThreadParticipated, markThreadParticipated } from './thread-tracker.js';
+import {
+    isThreadParticipated, markThreadParticipated,
+    claimThreadPrefetch, releaseThreadPrefetch, resetThreadPrefetchClaims,
+} from './thread-tracker.js';
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
@@ -30,7 +33,9 @@ import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.
 import { admitSlackRun, claimSlackEvent, enqueueSlackIngress, resetSlackIngress, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
 import { resolveConversationInfo, resolveThreadInfo } from './conversation.js';
-import { buildSlackContextBlock, applySlackContext, ROSTER_PREVIEW } from './context.js';
+import { buildSlackContextBlock, applySlackContext, buildThreadPreamble, ROSTER_PREVIEW } from './context.js';
+import { formatHistoryForAgent } from './history.js';
+import { cachedNameMap } from './conversation.js';
 import { fetchSlackChannelMembers } from './roster.js';
 import type { SlackIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
@@ -208,6 +213,31 @@ export async function processSlackMessageEvent(
     target: RemoteTarget,
     text: string,
     signal: AbortSignal,
+    opts: { prefetchToken?: number } = {},
+): Promise<void> {
+    // The claim was taken synchronously in handleSlackEnvelope, before this task
+    // was queued. Every path out of here that did NOT inject history has to give
+    // it back, or one skipped attempt silences the thread for the whole runtime.
+    // The paths are many (empty prompt, all attachments failed, abort, continue
+    // intent, config off, lookup failure, deadline), so the release is a finally
+    // rather than a return-by-return audit.
+    let prefetchCommitted = false;
+    try {
+        await runSlackMessageEvent(event, target, text, signal, opts, () => { prefetchCommitted = true; });
+    } finally {
+        if (opts.prefetchToken && !prefetchCommitted) {
+            releaseThreadPrefetch(event.channel || '', event.thread_ts || '', opts.prefetchToken);
+        }
+    }
+}
+
+async function runSlackMessageEvent(
+    event: SlackMessageEvent,
+    target: RemoteTarget,
+    text: string,
+    signal: AbortSignal,
+    opts: { prefetchToken?: number },
+    commitPrefetch: () => void,
 ): Promise<void> {
     const files = event.files || [];
     let prompt = text;
@@ -243,7 +273,7 @@ export async function processSlackMessageEvent(
     // continuation, so control text travels undecorated. Reset is already
     // intercepted upstream and never reaches here.
     if (!isContinueIntent(prompt)) {
-        const block = await buildInboundContextBlock(event, identity, signal);
+        const block = await buildInboundContextBlock(event, identity, signal, opts, commitPrefetch);
         // An empty block lands EXACTLY on the previous behavior: config off and
         // total lookup failure must be indistinguishable from before this
         // feature existed.
@@ -269,9 +299,13 @@ const INBOUND_CONTEXT_DEADLINE_MS = 700;
 
 async function buildInboundContextBlock(
     event: SlackMessageEvent, identity: SlackIdentity, signal: AbortSignal,
+    opts: { prefetchToken?: number } = {},
+    commitPrefetch: () => void = () => { },
 ): Promise<string> {
+    const channel = event.channel || '';
+    // The caller's finally releases an uncommitted claim, so early returns here
+    // need no cleanup of their own.
     if (settings["slack"]?.conversationContext === false) return '';
-    const channel = event.channel;
     if (!channel) return '';
     const token = getSlackSendClient().token;
     if (!token) return '';
@@ -288,13 +322,32 @@ async function buildInboundContextBlock(
                 : Promise.resolve(undefined),
         ]);
         const roster = await resolveRosterContext(token, channel, teamId, conversation.kind, signal);
-        return buildSlackContextBlock({
+        const block = buildSlackContextBlock({
             identity,
             conversation,
             ...(thread ? { thread } : {}),
             ...(roster ? { roster } : {}),
             selfUserId,
         });
+        // First entry into a thread already in progress: give the agent what was
+        // said before it was pulled in. Once only — later messages ride the
+        // agent session, and re-injecting would waste tokens and Tier 3 budget.
+        if (!opts.prefetchToken || !thread?.resolved || !thread.messages?.length) return block;
+        // The current message is already the prompt body; repeating it here
+        // would show the agent its own input twice.
+        const prior = thread.messages.filter(message => message.ts !== event.ts);
+        if (!prior.length) return block;
+        const authorIds = prior
+            .map(message => message.user || message.botId || '')
+            .filter(Boolean);
+        const preamble = buildThreadPreamble(
+            formatHistoryForAgent(prior, selfUserId, cachedNameMap(teamId, authorIds)),
+            thread.replyCount,
+        );
+        if (!preamble) return block;
+        // History is actually going into the prompt: the claim is spent.
+        commitPrefetch();
+        return block ? `${block}\n${preamble}` : preamble;
     })();
 
     return raceContextDeadline(work, INBOUND_CONTEXT_DEADLINE_MS);
@@ -373,7 +426,23 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
         // A mention inside a thread marks that thread; a top-level mention
         // marks the thread this message would parent (marking point a).
         markThreadParticipated(event.channel, event.thread_ts || event.ts || '');
+        if (!event.thread_ts && event.ts) {
+            // A thread WE start needs no history: the parent mention and our
+            // reply are already the session's own context. Spend the claim now
+            // so the first follow-up does not re-inject what the agent said.
+            claimThreadPrefetch(event.channel, event.ts);
+        }
     }
+    // Claim the one-time thread prefetch HERE, synchronously, before the ingress
+    // task is queued. Asking inside the queue task instead would be a dead
+    // branch for app_mention (the mark above already ran) and a race for
+    // DM/listen-all channels (they are marked only after a successful reply,
+    // which is not awaited). On the accepted message-event path no `await` runs
+    // between this function's entry and this line, so the test-and-set is atomic
+    // against a second envelope in the same tick.
+    const prefetchToken = event.thread_ts
+        ? claimThreadPrefetch(event.channel || '', event.thread_ts)
+        : 0;
 
     const target = buildSlackTarget(event);
     setLastActiveTarget('slack', target);
@@ -413,7 +482,7 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     }
 
     enqueueSlackIngress(slackIngressLaneKey(target), signal =>
-        processSlackMessageEvent(event, target, text, signal));
+        processSlackMessageEvent(event, target, text, signal, { prefetchToken }));
 }
 
 // ─── Init / Shutdown ────────────────────────────────
@@ -513,6 +582,9 @@ async function disposeSlackRuntime(): Promise<void> {
     // Same reasoning for channel names and thread participants: a workspace
     // switch would otherwise attribute the previous team's conversations.
     resetSlackConversationCache();
+    // Prefetch claims are per-runtime: a fresh runtime has no agent session, so
+    // the next message in a thread should get its history again.
+    resetThreadPrefetchClaims();
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;

@@ -208,5 +208,32 @@ export function applySlackContext(block: string, text: string): string {
     return block ? `${block}\n${text}` : text;
 }
 
+/**
+ * Bound on the injected thread history, DELIMITERS INCLUDED.
+ *
+ * The context block has its own 1200-point cap; this is the separate budget for
+ * the earlier conversation, so the worst-case prompt overhead is statable
+ * (~3300 points total) rather than "whatever 50 messages happen to weigh".
+ */
+export const PREAMBLE_TOTAL_CAP = 2100;
+
+/**
+ * Render the thread's earlier messages, injected once when the agent first
+ * enters a thread already in progress.
+ *
+ * Without this the agent is answering mid-conversation with no idea what was
+ * said before it was pulled in — the same position as a person handed a phone
+ * halfway through a call.
+ */
+export function buildThreadPreamble(rendered: string, replyCount: number): string {
+    const body = rendered.trim();
+    if (!body) return '';
+    const label = replyCount > 0 ? `앞선 대화 ${replyCount}개` : '앞선 대화';
+    // Budget the delimiters first so the TOTAL is bounded, not just the body.
+    const framing = `[${label}]\n\n[/앞선 대화]`;
+    const room = Math.max(PREAMBLE_TOTAL_CAP - [...framing].length, 0);
+    return `[${label}]\n${capPoints(body, room)}\n[/앞선 대화]`;
+}
+
 /** Exported for tests that assert the note survives every input size. */
 export const SLACK_TRUST_NOTE = TRUST_NOTE;

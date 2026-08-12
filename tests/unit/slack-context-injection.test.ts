@@ -43,6 +43,8 @@ mock.module('../../src/slack/forwarder.ts', {
 // surface, and the prompt text it produces is precisely what this suite checks.
 let conversationCalls = 0;
 let threadCalls = 0;
+let threadMessages: Array<Record<string, unknown>> = [];
+let threadResolves = true;
 mock.module('../../src/slack/conversation.ts', {
     namedExports: {
         resolveConversationInfo: async () => {
@@ -52,14 +54,17 @@ mock.module('../../src/slack/conversation.ts', {
         resolveThreadInfo: async () => {
             threadCalls += 1;
             return {
-                threadTs: '1754983201.123456', replyCount: 12, resolved: true,
+                threadTs: '1754983201.123456', replyCount: 12, resolved: threadResolves,
                 participants: [
                     { id: 'U04XYZ', name: '김병준', isBot: false },
                     { id: 'U07ABC', name: '이수진', isBot: false },
                 ],
+                messages: threadMessages,
             };
         },
         resetSlackConversationCache: () => { },
+        // bot.ts resolves participant names through this on the prefetch path.
+        cachedNameMap: () => new Map<string, string>(),
     },
 });
 
@@ -67,11 +72,16 @@ const { processSlackMessageEvent } = await import('../../src/slack/bot.ts');
 const { slackTargetFromId } = await import('../../src/messaging/slack-target.ts');
 const { primeSlackIdentityCache, resetSlackIdentityCache } =
     await import('../../src/slack/identity.ts');
+const { claimThreadPrefetch, resetThreadPrefetchClaims } =
+    await import('../../src/slack/thread-tracker.ts');
 
 function reset(): void {
     submitted.length = 0;
     conversationCalls = 0;
     threadCalls = 0;
+    threadMessages = [];
+    threadResolves = true;
+    resetThreadPrefetchClaims();
     const slack = settings['slack'] as Record<string, unknown>;
     slack['conversationContext'] = true;
     slack['channelRoster'] = false;
@@ -156,4 +166,89 @@ test('a top-level message carries the channel but no thread clause', async () =>
     assert.ok(prompt.includes('C0A1B2C3'));
     assert.ok(!prompt.includes('스레드'));
     assert.equal(threadCalls, 0, 'no thread lookup without a thread');
+});
+
+// ─── first-entry prefetch ───────────────────────────
+
+const priorMessages = [
+    { ts: '1754983201.123456', user: 'U07ABC', text: 'staging is red' },
+    { ts: '1754983250.000200', user: 'U11AAA', text: 'looking now' },
+];
+
+test('the first entry into a live thread injects what was said before', async () => {
+    reset();
+    threadMessages = [...priorMessages, { ts: '1754983300.000100', user: 'U04XYZ', text: 'deploy status?' }];
+    const token = claimThreadPrefetch('C0A1B2C3', '1754983201.123456');
+    const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
+    await processSlackMessageEvent(
+        threadedEvent, target, 'deploy status?', new AbortController().signal,
+        { prefetchToken: token },
+    );
+    const prompt = submitted[0]?.prompt ?? '';
+    assert.ok(prompt.includes('앞선 대화'), 'the preamble must be present');
+    assert.ok(prompt.includes('staging is red'), 'and carry the earlier messages');
+    // The current message is the prompt body; it must not also be in the history.
+    const preamble = prompt.slice(0, prompt.indexOf('[/앞선 대화]'));
+    assert.ok(!preamble.includes('1754983300.000100'), 'the current message is excluded');
+});
+
+test('a message with no claim gets no preamble', async () => {
+    reset();
+    threadMessages = [...priorMessages];
+    const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
+    await processSlackMessageEvent(
+        threadedEvent, target, 'deploy status?', new AbortController().signal,
+        { prefetchToken: 0 },
+    );
+    assert.ok(!(submitted[0]?.prompt ?? '').includes('앞선 대화'));
+});
+
+test('an unusable prefetch releases its claim so a later message can retry', async () => {
+    reset();
+    // The thread resolves but carries nothing before the current message.
+    threadMessages = [{ ts: '1754983300.000100', user: 'U04XYZ', text: 'deploy status?' }];
+    const token = claimThreadPrefetch('C0A1B2C3', '1754983201.123456');
+    const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
+    await processSlackMessageEvent(
+        threadedEvent, target, 'deploy status?', new AbortController().signal,
+        { prefetchToken: token },
+    );
+    assert.ok(!(submitted[0]?.prompt ?? '').includes('앞선 대화'));
+    // Nothing was injected, so the thread must still be claimable.
+    assert.ok(
+        claimThreadPrefetch('C0A1B2C3', '1754983201.123456') > 0,
+        'a spent-but-unused claim would silence the thread for the whole runtime',
+    );
+});
+
+test('a committed prefetch keeps its claim', async () => {
+    reset();
+    threadMessages = [...priorMessages];
+    const token = claimThreadPrefetch('C0A1B2C3', '1754983201.123456');
+    const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
+    await processSlackMessageEvent(
+        threadedEvent, target, 'deploy status?', new AbortController().signal,
+        { prefetchToken: token },
+    );
+    assert.ok((submitted[0]?.prompt ?? '').includes('앞선 대화'));
+    assert.equal(
+        claimThreadPrefetch('C0A1B2C3', '1754983201.123456'), 0,
+        'history was injected, so the thread must not be prefetched again',
+    );
+});
+
+test('a continuation releases its claim untouched', async () => {
+    reset();
+    threadMessages = [...priorMessages];
+    const token = claimThreadPrefetch('C0A1B2C3', '1754983201.123456');
+    const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
+    await processSlackMessageEvent(
+        { ...threadedEvent, text: '/continue' }, target, '/continue',
+        new AbortController().signal, { prefetchToken: token },
+    );
+    assert.equal(submitted[0]?.prompt, '/continue');
+    assert.ok(
+        claimThreadPrefetch('C0A1B2C3', '1754983201.123456') > 0,
+        'a continuation never reaches the context builder, so its claim must return',
+    );
 });

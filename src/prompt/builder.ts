@@ -11,6 +11,7 @@ import { currentSessionScope } from '../core/session-context.js';
 import { memoryFlushCounter } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
 import { buildTaskSnapshot, hasSoulFile, loadProfileSummary, loadSoulSummary } from '../memory/runtime.js';
+import { readHostToolchain, renderHostToolchainSection } from '../memory/host-toolchain.js';
 import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 import { findStaticEmployee } from '../core/employees.js';
@@ -729,6 +730,16 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
         } catch (error) {
             log.warn('[memory] disk profile/snapshot load failed:', (error as Error).message);
             if (soul) prompt += `\n\n---\n## Disk Memory Context\n\n## Soul & Identity\n${soul}\n`;
+        }
+
+        // #299: the toolchain record written at startup. Deliberately not
+        // routed through the profile summary, which truncates at 600 chars and
+        // would cut the very paths this section exists to publish.
+        try {
+            const toolchain = renderHostToolchainSection(readHostToolchain());
+            if (toolchain) prompt += `\n\n---\n${toolchain}\n`;
+        } catch (error) {
+            log.warn('[toolchain] disk section skipped:', (error as Error).message);
         }
     }
 
