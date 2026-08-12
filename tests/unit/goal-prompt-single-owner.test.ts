@@ -5,6 +5,12 @@
 //   PABCD transition guide   → builder '## PABCD Orchestration Guide' + dev-pabcd skill
 // Plan: devlog/_fin/260610_prompt_injection_redesign/10_goal_pabcd_prompt_slim_plan.md
 
+// Isolation MUST be the first import: tests/run.mts gives every file its own
+// process but ONE shared CLI_JAW_HOME, so the eight files that call setGoal race
+// on a single goal/active.json and setGoal's already-active guard fires on a
+// sibling's goal (#288). ESM evaluates this module's side effects before the
+// later imports, so the override lands before src/core/config.ts binds JAW_HOME.
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
