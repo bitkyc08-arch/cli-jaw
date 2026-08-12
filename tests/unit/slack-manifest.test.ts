@@ -99,12 +99,13 @@ test('app name validation enforces only the Slack app name length contract', () 
     }
 });
 
-test('unicode lowercase expansion stays within the Slack bot display-name limit', () => {
+test('case folding that expands length still fits the bot name contract', () => {
     const input = 'İ'.repeat(35);
     const manifest = createSlackAppManifest(input);
     const botName = manifest.features.bot_user.display_name;
     assert.equal(Array.from(manifest.display_information.name).length, 35);
     assert.equal(Array.from(botName).length, 69);
+    assert.match(botName, /^[a-z0-9._-]+$/);
     assert.ok(Array.from(botName).length <= 80);
 });
 
