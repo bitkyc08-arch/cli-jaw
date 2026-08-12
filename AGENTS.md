@@ -153,6 +153,27 @@ OfficeCLI is NOT bundled with cli-jaw postinstall. It is installed on-demand whe
   `officecli view <file> stats` (Total Cells > 0). Use `--input`, not `--commands '<json>'`:
   PowerShell strips the inner quotes and the parser error then blames the JSON (#296).
 
+### Windows shell hazards (agent-authored scripts)
+
+Three failures that all look like something else. None is a bug in a fixed cli-jaw
+code path — they bite whatever the agent writes at runtime, so they belong here
+rather than in a module.
+
+- **Write `.ps1` files with a UTF-8 BOM.** Windows PowerShell 5.1 reads a BOM-less
+  file as the ANSI code page — CP949 on a Korean host — so every non-ASCII string
+  literal is corrupted *before* the script runs. It either dies with a parser error
+  or, worse, runs with silently mangled data. Prepend `\uFEFF`, or use
+  `Set-Content -Encoding UTF8`. PowerShell 7+ defaults to UTF-8 and does not need
+  it, but the shipped Windows shell is 5.1 (#302).
+- **Probe for tools with the right shell's verb.** `command -v` is not a PowerShell
+  builtin or cmdlet: it prints nothing, sets no exit code, and raises no error, so a
+  working install reads as missing. Use `Get-Command <tool> -ErrorAction
+  SilentlyContinue`, or `<tool> --version` portably (#298).
+- **Pass JSON to a CLI through a file, not an inline argument.** PowerShell strips
+  the inner double quotes from `--commands '<json>'` before the process sees them,
+  and the resulting parser error blames the JSON, which was fine. Use
+  `--input <file>` (#296).
+
 ```bash
 officecli create file.docx                                          # create blank
 officecli view file.docx text                                       # view content
