@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SettingsPageProps, DirtyEntry } from '../types';
+import {
+    CLI_STATUS_POLL_HORIZON_MS,
+    planCliStatusPoll,
+} from '../cli-status-polling';
 import {
     PageError,
     PageLoading,
@@ -59,6 +63,8 @@ type CliStatusInfo = {
     capabilityReady: boolean | null;
     probeState: 'checking' | 'fresh' | 'stale' | 'failing';
     probeError?: string;
+    /** Server backoff deadline; used to time re-reads while `failing`. */
+    nextRetryAt?: number;
 };
 
 export function conflictSettingsFromError(error: unknown): AgentSnapshot | null {
@@ -123,9 +129,24 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         }
     }, [client]);
 
-    const loadCliStatus = useCallback(async () => {
-        try { setCliStatus(await client.get<Record<string, CliStatusInfo>>('/api/cli-status')); }
-        catch { setCliStatus({}); }
+    // Generation ref, same convention as Browser.tsx: clearing a timer does not
+    // stop a request that is already in flight, and that response would
+    // otherwise setState after unmount or after the user switched CLI.
+    const cliStatusGenRef = useRef(0);
+    const cliStatusRef = useRef<Record<string, CliStatusInfo>>({});
+    const [cliStatusExhausted, setCliStatusExhausted] = useState(false);
+
+    const loadCliStatus = useCallback(async (gen?: number) => {
+        try {
+            const next = await client.get<Record<string, CliStatusInfo>>('/api/cli-status');
+            if (gen !== undefined && gen !== cliStatusGenRef.current) return;
+            cliStatusRef.current = next;
+            setCliStatus(next);
+        } catch {
+            if (gen !== undefined && gen !== cliStatusGenRef.current) return;
+            cliStatusRef.current = {};
+            setCliStatus({});
+        }
     }, [client]);
 
     const loadFlush = useCallback(async () => {
@@ -164,6 +185,57 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         void loadFlush();
         void loadEmployees();
     }, [loadCliMeta, loadCliStatus, loadEmployees, loadFlush]);
+
+    // #312: the server never pushes — CliStatusCache is demand-driven and has
+    // no timer — so a probe still running at mount would leave the notice up
+    // forever unless we ask again. Bounded by a wall-clock horizon AND a
+    // request cap, neither of which resets on server responses.
+    useEffect(() => {
+        if (!draft.cli) return;
+        const gen = cliStatusGenRef.current + 1;
+        cliStatusGenRef.current = gen;
+        setCliStatusExhausted(false);
+
+        const deadline = Date.now() + CLI_STATUS_POLL_HORIZON_MS;
+        let attempts = 0;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const tick = () => {
+            if (gen !== cliStatusGenRef.current) return;
+            const plan = planCliStatusPoll({
+                snapshot: cliStatusRef.current,
+                cli: draft.cli,
+                attempts,
+                now: Date.now(),
+                deadline,
+            });
+            if (plan.kind === 'stop') return;
+            if (plan.kind === 'exhausted') {
+                setCliStatusExhausted(true);
+                return;
+            }
+            timer = setTimeout(() => {
+                if (gen !== cliStatusGenRef.current) return;
+                // Only a real request consumes the cap; waiting out a server
+                // backoff must not burn attempts.
+                attempts += 1;
+                void loadCliStatus(gen).then(() => {
+                    if (gen === cliStatusGenRef.current) tick();
+                });
+            }, plan.delayMs);
+        };
+        tick();
+
+        return () => {
+            // Poison in-flight responses for this generation, then stop the timer.
+            cliStatusGenRef.current = gen + 1;
+            if (timer !== undefined) clearTimeout(timer);
+        };
+        // NOTE: cliStatus is deliberately NOT a dependency. Re-running this
+        // effect on every response would reset the deadline and the attempt
+        // counter, making both bounds unbounded in practice. The latest
+        // snapshot is read through a ref instead.
+    }, [draft.cli, loadCliStatus]);
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
@@ -331,8 +403,15 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     {sessionMigrationError ? <span className="settings-field-error" role="alert">{sessionMigrationError}</span> : null}
                 </div>
             ) : null}
-            {cliStatus[draft.cli]?.probeState === 'checking' ? (
+            {cliStatus[draft.cli]?.probeState === 'checking' && !cliStatusExhausted ? (
                 <div className="settings-inline-notice" role="status" aria-live="polite">상태 확인 중</div>
+            ) : null}
+            {cliStatusExhausted ? (
+                // Without this, a poll that runs out while the snapshot still
+                // says `checking` would leave the exact notice #312 reported.
+                <div className="settings-inline-notice" role="alert">
+                    상태 확인이 끝나지 않았습니다. 새로고침하거나 잠시 후 다시 확인하세요.
+                </div>
             ) : null}
             {cliStatus[draft.cli]?.probeState === 'failing' ? (
                 // Without this the panel stays silent while every probe errors,
