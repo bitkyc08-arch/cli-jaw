@@ -109,6 +109,67 @@ wsl.exe -d Ubuntu -- bash -lc "jaw dashboard"
 </details>
 
 <details>
+<summary><b>Native Windows (PowerShell beta)</b> — detached server logs</summary>
+
+`jaw serve` writes to the stdout and stderr streams it inherits. It does not
+create or open `serve.out.log`, and native Windows does not have a registered
+`jaw service` logging backend. PowerShell's
+`Start-Process -RedirectStandardOutput/-RedirectStandardError` creates or
+truncates its target files on every launch.
+
+Run the redirection inside a child PowerShell process instead. This example
+appends operator-owned logs under `<JAW_HOME>\logs`:
+
+```powershell
+$jawHome = 'C:\jaw\worker-a'
+$port = 3458
+$logDir = Join-Path $jawHome 'logs'
+$outLog = Join-Path $logDir 'serve.out.log'
+$errLog = Join-Path $logDir 'serve.err.log'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+$jaw = (Get-Command jaw.cmd -ErrorAction Stop).Source
+$childCommand = "& '$jaw' --home '$jawHome' serve --port $port --no-open 1>> '$outLog' 2>> '$errLog'"
+$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCommand))
+Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $encoded -WindowStyle Hidden | Out-Null
+```
+
+Read each stream from a PowerShell terminal:
+
+```powershell
+Get-Content -LiteralPath $outLog -Tail 100 -Wait
+Get-Content -LiteralPath $errLog -Tail 100 -Wait
+```
+
+Lifecycle commands are home-scoped and verify `<JAW_HOME>\jaw.pid.json`
+before signalling:
+
+```powershell
+& $jaw --home $jawHome service stop --port $port
+& $jaw --home $jawHome service restart --port $port
+```
+
+A standalone `service restart` safely relaunches the instance detached, but
+cannot recreate the operator's file redirection. To preserve file capture,
+`stop`, optionally rotate the closed logs, and run the launch block again:
+
+```powershell
+& $jaw --home $jawHome service stop --port $port
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+foreach ($path in @($outLog, $errLog)) {
+    if (Test-Path -LiteralPath $path) {
+        Move-Item -LiteralPath $path -Destination "$path.$stamp"
+    }
+}
+# Run the Start-Process launch block above again.
+```
+
+Do not use `Get-Process node | Stop-Process`; it can terminate unrelated
+cli-jaw instances and AI runtime processes.
+
+</details>
+
+<details>
 <summary><b>Fresh-machine evidence</b> — maintainer release check</summary>
 
 Run this on a clean VM before publishing installer changes. It writes environment snapshots, installer logs, the exact collector/installer/verifier scripts that ran, their SHA-256 hashes, verifier logs, and new-shell PATH probes into `~/cli-jaw-fresh-install-evidence-*`.
