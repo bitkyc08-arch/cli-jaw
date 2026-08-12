@@ -25,6 +25,7 @@ import { buildTaskSnapshot } from '../memory/runtime.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
 import { currentSessionScope } from '../core/session-context.js';
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
+import { prependRemoteConversationContext } from '../prompt/conversation-context.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, extractOutputChunk, logEventSummary, flushClaudeBuffers, flushOpenCodeBuffers } from './events.js';
 import { detectSmokeResponse } from './smoke-detector.js';
 import { saveUpload as _saveUpload, buildMediaPrompt, buildMediaPromptMany, type SaveUploadOptions } from '../../lib/upload.js';
@@ -1292,7 +1293,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const memoryNudge = (!opts._isSmokeContinuation && !opts._isGoalContinuation)
             ? '\n(need history? L1: cli-jaw chat/memory search/context | L2: cli-jaw dashboard memory search, cli-jaw dashboard chat search)'
             : '';
-        prompt = `${ts}\n${projLine}${prompt}${memoryNudge}`;
+        const promptWithConversation = prependRemoteConversationContext(prompt, opts.target);
+        prompt = `${ts}\n${projLine}${promptWithConversation}${memoryNudge}`;
     }
 
     const resumeSessionId = empSid || (isResume ? bucketSessionId : null);
