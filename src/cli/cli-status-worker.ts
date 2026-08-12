@@ -73,7 +73,8 @@ function isSnapshot(value: unknown): value is CliStatusSnapshot {
             && (typeof record['authenticated'] === 'boolean' || record['authenticated'] === null)
             && (typeof record['path'] === 'string' || record['path'] === null)
             && typeof record['source'] === 'string'
-            && ['checking', 'fresh', 'stale'].includes(String(record['probeState']));
+            && typeof record['checkedCapability'] === 'string'
+            && ['checking', 'fresh', 'stale', 'unknown'].includes(String(record['probeState']));
     });
 }
 
@@ -290,12 +291,33 @@ async function inStage<T>(stage: string, cli: string | null, run: () => Promise<
     }
 }
 
-export async function collectCliStatus(): Promise<CliStatusSnapshot> {
+export interface CliStatusCollectionDeps {
+    detectAll?: () => Record<string, { available?: boolean; path?: string | null; scanError?: string }>;
+}
+
+export async function collectCliStatus(deps: CliStatusCollectionDeps = {}): Promise<CliStatusSnapshot> {
     const detected = await inStage('detect', null, () =>
-        detectAllCli() as Record<string, { available?: boolean; path?: string | null }>);
+        (deps.detectAll ?? detectAllCli)());
     const rows = await Promise.all(Object.entries(detected).map(async ([cli, info]) => {
         const binaryInstalled = Boolean(info.available);
         const path = typeof info.path === 'string' ? info.path : null;
+        const checkedCapability = cli === 'codex-app' && binaryInstalled && path
+            ? 'app-server-probe'
+            : 'spawn-probe';
+        if (info.scanError) {
+            const row: CliStatusRow = {
+                available: null,
+                binaryInstalled: null,
+                capabilityReady: null,
+                authenticated: null,
+                path,
+                source: 'probe-unavailable',
+                checkedCapability,
+                probeState: 'unknown',
+                probeError: info.scanError,
+            };
+            return [cli, row] as const;
+        }
         let capability: CapabilityResult = { ready: binaryInstalled };
         if (cli === 'codex-app' && binaryInstalled && path) {
             capability = await inStage('capability', cli, () => probeCodexApp(path));
@@ -310,6 +332,7 @@ export async function collectCliStatus(): Promise<CliStatusSnapshot> {
             authenticated: auth.authenticated,
             path,
             source: auth.source,
+            checkedCapability,
             probeState: 'fresh',
             ...(capability.reason ? { reason: capability.reason } : {}),
         };

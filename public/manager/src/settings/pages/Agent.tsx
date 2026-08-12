@@ -61,7 +61,8 @@ type AgentSnapshot = AgentSettingsSnapshot & {
 type CliStatusInfo = {
     available: boolean | null;
     capabilityReady: boolean | null;
-    probeState: 'checking' | 'fresh' | 'stale' | 'failing';
+    checkedCapability: string;
+    probeState: 'checking' | 'fresh' | 'stale' | 'failing' | 'unknown';
     probeError?: string;
     /** Server backoff deadline; used to time re-reads while `failing`. */
     nextRetryAt?: number;

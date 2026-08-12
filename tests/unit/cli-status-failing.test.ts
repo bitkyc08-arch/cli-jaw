@@ -22,6 +22,7 @@ function completedSnapshot(source = 'fixture'): CliStatusSnapshot {
         authenticated: true,
         path: `/bin/${cli}`,
         source,
+        checkedCapability: 'spawn-probe',
         probeState: 'fresh' as const,
     }]));
 }

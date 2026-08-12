@@ -63,15 +63,17 @@ export interface CliStatusInfo {
     authenticated: boolean | null;
     path: string | null;
     source: string;
-    probeState: 'checking' | 'fresh' | 'stale' | 'failing';
+    checkedCapability: string;
+    probeState: 'checking' | 'fresh' | 'stale' | 'failing' | 'unknown';
     reason?: string;
-    /** Underlying probe error, present only while `failing`. */
+    /** Underlying probe error, present while `failing` or `unknown`. */
     probeError?: string;
     probeFailures?: number;
     nextRetryAt?: number;
 }
-export function describeCliProbe(info: CliStatusInfo): 'checking' | 'probe-failing' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
+export function describeCliProbe(info: CliStatusInfo): 'checking' | 'unknown' | 'probe-failing' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
     if (info.probeState === 'checking') return 'checking';
+    if (info.probeState === 'unknown') return 'unknown';
     // Ahead of every other branch: while probes keep failing we know nothing
     // current about the runtime, so a preserved snapshot must not be rendered
     // as ready or merely stale (#277).

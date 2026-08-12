@@ -9,7 +9,7 @@ import { runCliStatusWorker } from './cli-status-worker.js';
  * answered "not ready" for a runtime that demonstrably worked, with no reason
  * attached.
  */
-export type CliStatusProbeState = 'checking' | 'fresh' | 'stale' | 'failing';
+export type CliStatusProbeState = 'checking' | 'fresh' | 'stale' | 'failing' | 'unknown';
 
 export interface CliStatusRow {
     available: boolean | null;
@@ -18,9 +18,11 @@ export interface CliStatusRow {
     authenticated: boolean | null;
     path: string | null;
     source: string;
+    /** Concrete capability exercised by this row's worker probe. */
+    checkedCapability: string;
     probeState: CliStatusProbeState;
     reason?: string;
-    /** Underlying probe error. Present only while `probeState` is `failing`. */
+    /** Underlying probe error. Present while `probeState` is `failing` or `unknown`. */
     probeError?: string;
     /** Consecutive probe failures. Present only while `failing`. */
     probeFailures?: number;
@@ -35,6 +37,9 @@ export function formatCliStatusLine(
     row: Pick<CliStatusRow, 'available' | 'capabilityReady' | 'probeState' | 'path'> & { probeError?: string },
 ): string {
     if (row.probeState === 'checking') return `${cli}: checking`;
+    if (row.probeState === 'unknown') {
+        return `${cli}: ⚠️ probe unavailable${row.probeError ? ` (${row.probeError})` : ''}`;
+    }
     // Without this branch a stale-but-successful snapshot kept printing a green
     // check while every probe was failing — the same false-positive #277 is about.
     if (row.probeState === 'failing') {
@@ -82,6 +87,7 @@ function coldSnapshot(): CliStatusSnapshot {
         authenticated: null,
         path: null,
         source: 'pending-probe',
+        checkedCapability: 'spawn-probe',
         probeState: 'checking' as const,
     }])) as CliStatusSnapshot;
 }
@@ -89,7 +95,9 @@ function coldSnapshot(): CliStatusSnapshot {
 function snapshotWithState(snapshot: CliStatusSnapshot, probeState: CliStatusProbeState): CliStatusSnapshot {
     return Object.fromEntries(Object.entries(snapshot).map(([cli, row]) => [cli, {
         ...row,
-        probeState,
+        // A row whose concrete capability could not run carries current proof
+        // of uncertainty. Cache freshness must not rewrite that into success.
+        probeState: row.probeState === 'unknown' ? 'unknown' : probeState,
     }])) as CliStatusSnapshot;
 }
 

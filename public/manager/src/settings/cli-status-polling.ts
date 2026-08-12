@@ -6,7 +6,7 @@
 // somebody reads it again. The UI has to be that somebody — but bounded, since
 // a read can fork a worker that runs real CLI probes.
 
-export type CliStatusProbeState = 'checking' | 'fresh' | 'stale' | 'failing';
+export type CliStatusProbeState = 'checking' | 'fresh' | 'stale' | 'failing' | 'unknown';
 
 export type PollableCliStatus = {
     probeState?: CliStatusProbeState;
