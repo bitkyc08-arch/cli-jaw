@@ -42,6 +42,7 @@ import type { SlackIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
 import { resetSlackIdentityCache } from './identity.js';
 import { resetSlackConversationCache } from './conversation.js';
+import { createSlackSocketIngress, handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -65,8 +66,10 @@ let lifecycleGeneration = 0;
  * Slack permanently off just because its start request landed mid-teardown.
  */
 let initRequestPending = false;
+let slackApprovalIngress: DispatchApprovalTransport | null = null;
 
 export function getSlackSelfUserId(): string | null { return selfUserId; }
+export function setSlackSelfUserIdForTest(value: string | null): void { selfUserId = value; }
 export function getSlackConnectionState(): string {
     return socketClient?.getState() ?? 'disconnected';
 }
@@ -409,7 +412,7 @@ function raceContextDeadline(work: Promise<string>, ms: number): Promise<string>
 
 // ─── Envelope routing ───────────────────────────────
 
-export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void> {
+export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTransport = slackApprovalIngress): Promise<void> {
     if (envelope.type === 'slash_commands') {
         await handleSlackSlashCommand(envelope.payload || {});
         return;
@@ -423,6 +426,12 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     const payload = envelope.payload as { event?: SlackMessageEvent } | undefined;
     const event = payload?.event;
     if (!event) return;
+
+    const approval = handleApprovalCommand(approvalTransport, {
+        ...event,
+        __jawSelf: Boolean(event.user && event.user === getSlackSelfUserId()),
+    }, String(event.text || ''));
+    if (approval.handled) return;
 
     const decision = shouldProcessSlackEvent(event, gateConfig(), envelope.type);
     if (!decision.process) {
@@ -577,8 +586,9 @@ export async function initSlack(): Promise<void> {
 
         const client = new SlackSocketClient({
             appToken: sc.appToken,
-            onEnvelope: handleSlackEnvelope,
+            onEnvelope: envelope => handleSlackEnvelope(envelope, slackApprovalIngress),
         });
+        slackApprovalIngress = createSlackSocketIngress();
         socketClient = client;
         await client.start();
         if (generation !== lifecycleGeneration) {

@@ -52,6 +52,11 @@ import { validateDispatchTask } from '../workflows/employee-boundary.js';
 import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbox.js';
 import { recordDispatch } from '../goal-run/controller.js';
 import { log } from '../core/logger.js';
+import { dispatchApprovalStore, formatDispatchApprovalMessage, type DispatchApprovalRecord } from '../core/dispatch-approval.js';
+import { getSlackSendClient, resolveSlackDmChannel, sendSlackText } from '../slack/send-only-client.js';
+import { sendTelegramText } from '../telegram/bot.js';
+import { getDiscordSendClient, sendDiscordDm } from '../discord/send-only-client.js';
+import { getBossToken } from '../core/boss-auth.js';
 
 function getRuntimeSnapshot(scopeKey: string) {
     return {
@@ -148,6 +153,70 @@ async function resolveDispatchTarget(
 }
 
 export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddleware): void {
+    async function deliverApproval(record: DispatchApprovalRecord): Promise<void> {
+        const message = formatDispatchApprovalMessage(record);
+        const operators = settings["dispatchApproval"]?.operators || {};
+        const deliveries: Promise<unknown>[] = [];
+        const slack = getSlackSendClient();
+        if (slack.token) for (const userId of operators.slack || []) deliveries.push((async () => {
+            const dm = await resolveSlackDmChannel(slack.token!, String(userId));
+            if (!dm.ok || !dm.channelId) throw new Error(dm.error || 'slack_dm_failed');
+            const sent = await sendSlackText(slack.token!, { channel: 'slack', targetKind: 'channel', targetId: dm.channelId, peerKind: 'direct' }, message);
+            if (!sent.ok) throw new Error(sent.error || 'slack_dm_failed');
+            return sent;
+        })());
+        for (const userId of operators.telegram || []) deliveries.push(sendTelegramText(String(userId), message));
+        const discord = getDiscordSendClient();
+        if (discord.token) for (const userId of operators.discord || []) deliveries.push((async () => {
+            const sent = await sendDiscordDm(discord.token!, String(userId), message);
+            if (!sent.ok) throw new Error(sent.error);
+            return sent;
+        })());
+        if (deliveries.length === 0) throw new Error('dispatch_approval_no_operator_delivery');
+        const results = await Promise.allSettled(deliveries);
+        if (!results.some(result => result.status === 'fulfilled')) throw new Error('dispatch_approval_delivery_failed');
+    }
+
+    app.post('/api/orchestrate/dispatch/pending', requireAuth, async (req, res) => {
+        if (String(req.headers['x-jaw-employee-mode'] || '') === '1' || process.env["JAW_EMPLOYEE_MODE"] === '1') {
+            return fail(res, 403, 'Employee sessions cannot submit dispatch approval.');
+        }
+        const body = req.body || {};
+        const task = requestText(body.task);
+        const targetName = requestText(body.agent || body.virtual);
+        if (!task || !targetName || Boolean(body.agent) === Boolean(body.virtual)) return fail(res, 400, 'Specify task and exactly one dispatch target.');
+        const dispatchCtx = getCtx(resolveOrcScope({ origin: 'web', workingDir: settings["workingDir"] || null }));
+        const internalBody = { ...body, wait: false };
+        const record = dispatchApprovalStore.create({
+            target: { kind: body.virtual ? 'virtual' : 'agent', name: targetName },
+            projectRoot: resolveDispatchProjectRoot(dispatchCtx),
+            task,
+            mutable: body.mutable === true,
+            scope: requestText(body.scope) || null,
+            fanOutCap: 1,
+            ttlSeconds: settings["dispatchApproval"]?.ttlSeconds,
+            employeeMarker: String(req.headers['x-jaw-employee-mode'] || '') === '1',
+            onApproved: async () => {
+                const response = await fetch(`http://127.0.0.1:${settings["port"]}/api/orchestrate/dispatch`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jaw-Boss-Token': getBossToken() }, body: JSON.stringify(internalBody),
+                });
+                const outcome = await response.json();
+                if (!response.ok) throw new Error(String(outcome?.error || `dispatch_failed_${response.status}`));
+                return outcome;
+            },
+        });
+        try { await deliverApproval(record); } catch (error) {
+            dispatchApprovalStore.cancel(record.jti, record.digest);
+            return fail(res, 503, error instanceof Error ? error.message : String(error));
+        }
+        res.status(202).json({ ok: true, jti: record.jti, digest: record.digest, expiresAt: record.expiresAt });
+    });
+
+    app.get('/api/orchestrate/dispatch/pending/:jti', requireAuth, (req, res) => {
+        const record = dispatchApprovalStore.get(String(req.params['jti']));
+        if (!record) return fail(res, 404, 'Pending dispatch not found.');
+        res.json({ ok: true, jti: record.jti, digest: record.digest, status: record.status, expiresAt: record.expiresAt, outcome: record.outcome, error: record.error });
+    });
     app.post('/api/orchestrate/reset', requireAuth, async (req, res) => {
         try {
             const all = req.query["all"] === 'true' || req.body?.all === true;

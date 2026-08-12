@@ -13,6 +13,7 @@ import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '.
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
+import { createDiscordGatewayIngress, handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
@@ -41,6 +42,7 @@ let forwarderHandler: BroadcastListener | null = null;
 let dcInitLock = false;
 let gatewaySupervisor: DiscordGatewaySupervisor | null = null;
 let lastGatewayEventCode: string | null = null;
+let discordApprovalIngress: DispatchApprovalTransport | null = null;
 
 interface DiscordGenerationResources {
     client: Client;
@@ -240,7 +242,7 @@ async function installDiscordGeneration(
     client: Client,
 ): Promise<void> {
     const messageHandler = (msg: Message): void => {
-        void handleDiscordMessage(client, msg).catch((error) => {
+        void handleDiscordMessage(client, msg, discordApprovalIngress).catch((error) => {
             log.error('[discord:message]', logErrorText(error));
         });
     };
@@ -293,7 +295,13 @@ async function retireDiscordGeneration(port: DiscordGatewayClientPort): Promise<
     if (discordClient === resources.client) discordClient = null;
 }
 
-async function handleDiscordMessage(client: Client, msg: Message): Promise<void> {
+export async function handleDiscordMessage(client: Client, msg: Message, transport = discordApprovalIngress): Promise<void> {
+    const approval = handleApprovalCommand(transport, {
+        ...msg,
+        author: msg.author,
+        __jawSelf: msg.author.id === client.user?.id,
+    }, msg.content || '');
+    if (approval.handled) return;
     if (msg.author.id === client.user?.id) return; // never process own messages
     if (msg.author.bot && !settings["discord"].allowBots) return;
     if (settings["discord"].channelIds?.length) {
@@ -412,6 +420,7 @@ export async function initDiscord() {
         onSnapshot: observeGatewaySnapshot,
     });
     gatewaySupervisor = supervisor;
+    discordApprovalIngress = createDiscordGatewayIngress();
     await supervisor.start();
     } finally { dcInitLock = false; }
 }

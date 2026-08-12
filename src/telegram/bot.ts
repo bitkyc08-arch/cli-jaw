@@ -59,6 +59,7 @@ import {
 } from './elicitation-buttons.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { sendWithRetryPolicy } from '../messaging/retry.js';
+import { createTelegramPollingIngress, handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -78,6 +79,19 @@ const telegramFinalDeliveryFailures = new Set<number>();
  * the is_bot flag, which is why those are two separate checks.
  */
 let botUserId: number | null = null;
+export function setTelegramBotUserIdForTest(value: number | null): void { botUserId = value; }
+let telegramApprovalIngress: DispatchApprovalTransport | null = null;
+
+export function handleTelegramUpdate(update: Record<string, any>, transport = telegramApprovalIngress): boolean {
+    const message = update['message'];
+    const text = typeof message?.text === 'string' ? message.text : '';
+    const fromId = message?.from?.id;
+    const approval = handleApprovalCommand(transport, {
+        ...update,
+        __jawSelf: isSelfEcho({ fromId, isBot: message?.from?.is_bot, botUserId, allowBots: settings["telegram"]?.allowBots }),
+    }, text);
+    return approval.handled;
+}
 
 /**
  * Whether an update should be dropped as our own output or another bot's.
@@ -893,6 +907,7 @@ async function _initTelegramInner() {
         store: telegramUpdateOffsets,
         handleUpdateThroughFinalDelivery: async (update) => {
             try {
+                if (handleTelegramUpdate(update as unknown as Record<string, any>, telegramApprovalIngress)) return;
                 await bot.handleUpdate(update);
                 if (telegramFinalDeliveryFailures.has(update.update_id)) {
                     throw new Error('telegram_final_delivery_failed');
@@ -908,6 +923,7 @@ async function _initTelegramInner() {
         },
     });
     telegramPoller = poller;
+    telegramApprovalIngress = createTelegramPollingIngress();
     poller.start().catch((err: unknown) => {
         const telegramError = err as { error_code?: number; message?: string };
         const is409 = telegramError.error_code === 409 || telegramError.message?.includes('409');

@@ -254,6 +254,10 @@ function createDefaultSettings() {
             target: 'all',
         },
         channel: 'telegram' as const,
+        dispatchApproval: {
+            operators: { slack: [] as string[], telegram: [] as number[], discord: [] as string[] },
+            ttlSeconds: 120,
+        },
         telegram: {
             enabled: false,
             token: '',
@@ -989,6 +993,11 @@ export function loadSettings() {
             telegram: { ...defaults.telegram, ...(raw.telegram || {}) },
             discord: { ...defaults.discord, ...(raw.discord || {}) },
             slack: { ...defaults.slack, ...(raw.slack || {}) },
+            dispatchApproval: {
+                ...defaults.dispatchApproval,
+                ...(raw.dispatchApproval || {}),
+                operators: { ...defaults.dispatchApproval.operators, ...(raw.dispatchApproval?.operators || {}) },
+            },
             memory: { ...defaults.memory, ...(raw.memory || {}) },
             search: {
                 ...defaults.search,

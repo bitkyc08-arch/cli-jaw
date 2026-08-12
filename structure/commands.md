@@ -184,6 +184,8 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
 
 ### `jaw dispatch`
 
+- serve가 spawn한 boss 세션처럼 `JAW_BOSS_TOKEN`이 있는 경우 기존 boss-guarded dispatch를 그대로 사용한다. 일반 터미널에서는 pending을 제출하고 Slack/Telegram/Discord allowlist 운영자의 `approve <jti> <digest>` 또는 `cancel <jti> <digest>` 응답을 기다린다.
+- CLI는 API bearer 인증으로 제출/상태 조회만 하며 boss token이나 승인 bearer를 받지 않는다. 승인 digest는 target, project root, task digest, mutable scope, fan-out cap, 해당 서버 부팅 audience에 묶이고 기본 120초 뒤 만료된다.
 - Named employees use `jaw dispatch --agent "Backend" --task "..."`.
 - Ephemeral virtual employees use `jaw dispatch --virtual "security" --task "..."` or `--virtual "Reviewer" --role "Review rollback gaps" --task "..."`.
 - Virtual employees are synthetic dispatch rows only; they do not appear in `jaw employee list` and do not write durable `employee_sessions`.
