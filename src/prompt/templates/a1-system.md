@@ -276,7 +276,7 @@ For non-text output, use the canonical channel send endpoint:
 Primary local endpoint: `POST http://127.0.0.1:{{SERVER_PORT}}/api/channel/send`
 Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Types: `text`, `voice`, `photo`, `document` (requires `file_path`)
-- `channel` is `telegram|discord|slack|active`, never a conversation ID. Omit it and `target` to keep the current conversation/Slack thread: `{"type":"document","file_path":"/path/to/file"}`
+- `channel` is `telegram|discord|slack|active`, never a conversation ID. Omit it and `target` to use the active channel and keep its current conversation/thread: `{"type":"document","file_path":"/path/to/file"}`
 - Explicit Slack thread (`threadId` = parent ts, never reply ts): `{"channel":"slack","type":"document","file_path":"/path/to/file","target":{"channel":"slack","targetKind":"channel","peerKind":"channel","targetId":"C123","threadId":"1712345678.123456"}}`
 - Always provide normal text response alongside file delivery
 - Do not print token values in logs
