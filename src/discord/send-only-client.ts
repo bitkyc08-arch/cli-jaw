@@ -4,13 +4,24 @@ import { settings } from '../core/config.js';
 import { chunkDiscordMessage } from './forwarder.js';
 import { validateDiscordFileSize } from './discord-file.js';
 import { redactOutboundText } from '../messaging/redact.js';
+import {
+    DiscordRestScheduler,
+    type DiscordRestResult,
+} from './rest-scheduler.js';
+import {
+    discordDeliveryError,
+    type DeliveryFailure,
+} from '../messaging/delivery-outcome.js';
 
 export type DiscordSendClientResult =
     | { token: string; reason?: never; status?: never }
     | { token: null; reason: string; status: 400 | 503 };
 
+let cachedScheduler: { token: string; scheduler: DiscordRestScheduler } | null = null;
+
 export function invalidateDiscordSendClient(): void {
-    // no-op: token is read fresh from settings each call
+    cachedScheduler?.scheduler.close();
+    cachedScheduler = null;
 }
 
 export function getDiscordSendClient(): DiscordSendClientResult {
@@ -25,41 +36,47 @@ export function getDiscordSendClient(): DiscordSendClientResult {
     return { token };
 }
 
-/** A Discord REST call that has not answered in ten seconds is not going to. */
-const REST_TIMEOUT_MS = 10_000;
+export type DiscordRestSendResult =
+    | { ok: true; failure?: never; error?: never; status?: never }
+    | { ok: false; failure: DeliveryFailure; error: string; status?: number };
 
-async function discordRestJson(token: string, path: string, init: RequestInit): Promise<{ ok: boolean; error?: string; status?: number }> {
-    try {
-        const response = await fetch(`https://discord.com/api/v10${path}`, {
-            ...init,
-            headers: {
-                Authorization: `Bot ${token}`,
-                ...(init.headers || {}),
-            },
-            // Without a deadline a stalled socket holds the send path open
-            // indefinitely. AbortSignal cancels the request rather than just
-            // abandoning the promise, which Promise.race would not do.
-            signal: AbortSignal.timeout(REST_TIMEOUT_MS),
-        });
-        if (!response.ok) {
-            const body = await response.text().catch(() => '');
-            return { ok: false, error: body || response.statusText, status: response.status };
-        }
-        return { ok: true };
-    } catch (error) {
-        return { ok: false, error: (error as Error).message, status: 502 };
-    }
+function schedulerFor(token: string): DiscordRestScheduler {
+    if (cachedScheduler?.token === token) return cachedScheduler.scheduler;
+    cachedScheduler?.scheduler.close();
+    const scheduler = new DiscordRestScheduler({ token });
+    cachedScheduler = { token, scheduler };
+    return scheduler;
 }
 
-export async function sendDiscordTextRest(token: string, channelId: string, text: string): Promise<{ ok: boolean; error?: string; status?: number }> {
+function sendResult<T>(result: DiscordRestResult<T>): DiscordRestSendResult {
+    if (result.ok) return { ok: true };
+    return {
+        ok: false,
+        failure: result.failure,
+        error: result.failure.message,
+        ...('status' in result && result.status !== undefined ? { status: result.status } : {}),
+    };
+}
+
+export async function sendDiscordTextRest(
+    token: string,
+    channelId: string,
+    text: string,
+): Promise<DiscordRestSendResult> {
     const chunks = chunkDiscordMessage(text);
     for (const chunk of chunks) {
-        const result = await discordRestJson(token, `/channels/${encodeURIComponent(channelId)}/messages`, {
+        const result = await schedulerFor(token).schedule({
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: chunk }),
+            path: `/channels/${encodeURIComponent(channelId)}/messages`,
+            routeKey: 'POST:/channels/:channel/messages',
+            majorKey: channelId,
+            makeInit: () => ({
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: chunk }),
+            }),
+            parse: async () => undefined,
         });
-        if (!result.ok) return result;
+        if (!result.ok) return sendResult(result);
     }
     return { ok: true };
 }
@@ -69,28 +86,41 @@ export async function sendDiscordFileRest(
     channelId: string,
     filePath: string,
     caption?: string,
-): Promise<{ ok: boolean; error?: string; status?: number }> {
+): Promise<DiscordRestSendResult> {
     try {
         const buffer = await readFile(filePath);
         validateDiscordFileSize(filePath, buffer.length);
-        const form = new FormData();
-        form.append('files[0]', new Blob([buffer]), basename(filePath));
-        if (caption?.trim()) {
-            form.append('payload_json', JSON.stringify({ content: redactOutboundText(caption.trim()) }));
-        }
-        const response = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
+        const safeCaption = caption?.trim() ? redactOutboundText(caption.trim()) : '';
+        const result = await schedulerFor(token).schedule({
             method: 'POST',
-            headers: { Authorization: `Bot ${token}` },
-            body: form,
-            signal: AbortSignal.timeout(REST_TIMEOUT_MS),
+            path: `/channels/${encodeURIComponent(channelId)}/messages`,
+            routeKey: 'POST:/channels/:channel/messages',
+            majorKey: channelId,
+            makeInit: () => {
+                const form = new FormData();
+                form.append('files[0]', new Blob([buffer]), basename(filePath));
+                if (safeCaption) {
+                    form.append('payload_json', JSON.stringify({ content: safeCaption }));
+                }
+                return { body: form };
+            },
+            parse: async () => undefined,
         });
-        if (!response.ok) {
-            const body = await response.text().catch(() => '');
-            return { ok: false, error: body || response.statusText, status: response.status };
-        }
-        return { ok: true };
+        return sendResult(result);
     } catch (error) {
         const statusCode = (error as { statusCode?: number }).statusCode;
-        return { ok: false, error: (error as Error).message, status: statusCode || 502 };
+        const failure = discordDeliveryError({
+            channel: 'discord',
+            ...(statusCode === undefined ? {} : { status: statusCode }),
+            message: error instanceof Error ? error.message : String(error),
+            dispatched: false,
+            cause: error,
+        });
+        return {
+            ok: false,
+            failure,
+            error: failure.message,
+            ...(statusCode === undefined ? {} : { status: statusCode }),
+        };
     }
 }
