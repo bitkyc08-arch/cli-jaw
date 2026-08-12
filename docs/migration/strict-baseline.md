@@ -2,6 +2,12 @@
 
 > Frozen 2026-05-05 from `devlog/_plan/strict-migration/00-diagnostic.md` (post-WIP HEAD `3e4f218`).
 > Lowered 2026-05-05 at P20 on HEAD `5990f3f9667ee995eee73ea54725fbfaf4923da7`.
+> Raised 2026-08-12 to 100 for `7432145e` (fix: isolate environment-managed Slack settings):
+> `clearPersistedSlackConnectionForEnvironment` takes the same `Record<string, any>`
+> settings document its neighbours in `src/core/config.ts` already take
+> (`applyEnvOverrides`, `migrateSettings`, `saveSettings`). Narrowing it is a
+> config-module-wide change, not a one-signature fix, so the counter moves and
+> the narrowing stays a separate unit of work.
 > AST-aware counts via `scripts/check-strict-baseline.mjs`.
 >
 > When a phase intentionally lowers a counter, update this file in the same PR.
@@ -16,7 +22,7 @@
 
 | dir | any | debt | allow |
 |-----|----:|-----:|------:|
-| src | 99 | 0 | 4 |
+| src | 100 | 0 | 4 |
 | bin | 0 | 0 | 0 |
 | lib | 0 | 0 | 0 |
 | public/js | 0 | 0 | 0 |

@@ -297,6 +297,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `new_message` | Telegram/Discord/Slack inbound message |
 | `orc_state` | PABCD 상태 변경 + `taskAnchor`/`resolvedSelection`/`interview` 컨텍스트 |
 | `orchestrate_done` / `orchestrate_warning` | orchestration 완료/실패 + 비차단 경고 |
+| `request_settled` | 요청 하나의 최종 결말 (`completed｜steered｜merged｜failed｜cancelled｜dropped｜skipped`). `src/orchestrator/request-registry.ts`의 `settleOnce()`가 멱등이라 요청당 정확히 한 번 발생한다. `orchestrate_done`을 대체하지 않고 보완한다 — steer 성공처럼 완료 이벤트가 없는 경로를 덮기 위한 것. 전체 payload 스키마는 `structure/stream-events.md` 참고 (#276) |
 | `steer_started` | `/steer` 또는 pending queue steer가 새 프롬프트를 accepted 상태로 전환 |
 | `agent_added` / `agent_updated` / `agent_deleted` | employee CRUD 반영 |
 | `agent:claude-e:runtime_started` / `agent:claude-e:spawned` / `agent:claude-e:session` / `agent:claude-e:prompt_injected` | Claude E native helper start/session/prompt lifecycle bridge |
