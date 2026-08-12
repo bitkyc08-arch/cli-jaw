@@ -140,6 +140,17 @@ OfficeCLI is NOT bundled with cli-jaw postinstall. It is installed on-demand whe
 - **Binary priority**: `OFFICECLI_BIN` env → global `officecli` → not available
 - **Fork**: `lidge-jun/OfficeCLI` (CJK-enhanced, rhwp sidecars) vs. `iOfficeAI/OfficeCLI` (vanilla)
 - **Safety**: Never run parallel officecli processes on the same file
+- **Which repo**: the fork is required only for CJK font handling and HWP. For general
+  .xlsx/.docx/.pptx work use `--upstream` — the fork's latest release (`v1.0.98`, checked
+  2026-08-12) publishes only `officecli-mac-arm64`, so a fork install cannot succeed on
+  Windows, Linux, or macOS x64. The installer now checks the release asset list and fails
+  with that explanation instead of a bare 404 (#280).
+- **Never use `officecli import`**: it writes ZERO cells while reporting an accurate row and
+  column count, and `officecli validate` then passes on the empty workbook. Reproduced on
+  upstream 1.0.143 for every input shape, so upgrading is not an escape (#279, #295, #301).
+  Load cells through `officecli batch --input <file>` and prove the result with
+  `officecli view <file> stats` (Total Cells > 0). Use `--input`, not `--commands '<json>'`:
+  PowerShell strips the inner quotes and the parser error then blames the JSON (#296).
 
 ```bash
 officecli create file.docx                                          # create blank

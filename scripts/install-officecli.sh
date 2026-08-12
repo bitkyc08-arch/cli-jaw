@@ -96,6 +96,33 @@ get_latest_version() {
   curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1
 }
 
+# Fail closed when the release has no build for this platform.
+#
+# The download URL is releases/latest/download/<asset>, so a release that omits
+# our asset produced a bare 404 from curl with nothing naming the real problem.
+# That is the state the fork is in right now: v1.0.98 ships only
+# officecli-mac-arm64, so every other platform hit the 404 path (cli-jaw#280).
+assert_asset_published() {
+  local assets
+  assets=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    | sed -nE 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
+
+  # No asset list means the API is unreachable or rate-limited. Do not block the
+  # install on that: let the download attempt produce the real error.
+  [ -z "$assets" ] && return 0
+
+  if ! printf '%s\n' "$assets" | grep -qx "$ASSET"; then
+    fail "$(printf '%s\n' \
+      "${REPO} latest release (${1:-unknown}) has no ${ASSET}." \
+      "  published: $(printf '%s ' $assets)" \
+      "" \
+      "  The supported fork currently publishes only officecli-mac-arm64." \
+      "  For general XLSX/accessibility work use upstream, which builds every platform:" \
+      "      bash $0 --upstream" \
+      "  The fork is required only for CJK font handling and HWP (rhwp sidecars).")"
+  fi
+}
+
 # ── Check existing installation ──
 if [ -f "$TARGET_BIN" ] && [ "$FORCE" = "false" ] && [ "$UPDATE" = "false" ]; then
   if CURRENT=$("$TARGET_BIN" --version 2>/dev/null); then
@@ -131,6 +158,7 @@ fi
 
 # ── Download ──
 mkdir -p "$INSTALL_DIR"
+assert_asset_published "$(get_latest_version)"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 CHECKSUM_URL="https://github.com/${REPO}/releases/latest/download/SHA256SUMS"
 ASSET_BASE="${ASSET%.exe}"
