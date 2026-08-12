@@ -11,6 +11,7 @@ import {
     isSettingsPersistenceBlocked,
     configuredSlackEnvironmentVariables,
     slackEnvironmentManagedPatchPaths,
+    wikiRouteManagedPatchPaths,
 } from '../core/config.js';
 import { sanitizeSettingsInput } from '../core/settings-merge.js';
 import { readCodexContextWindow } from '../core/codex-config.js';
@@ -186,6 +187,13 @@ export function registerSettingsRoutes(
         const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
             ? req.body as Record<string, unknown>
             : {};
+        const wikiManagedPaths = wikiRouteManagedPatchPaths(body);
+        if (wikiManagedPaths.length > 0) {
+            fail(res, 409, 'wiki_configuration_requires_wiki_route', {
+                managedPaths: wikiManagedPaths,
+            });
+            return;
+        }
         const environmentManagedPaths = slackEnvironmentManagedPatchPaths(body);
         if (environmentManagedPaths.length > 0) {
             fail(res, 409, 'slack_connection_managed_by_environment', {

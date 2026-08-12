@@ -730,6 +730,16 @@ export function slackEnvironmentManagedPatchPaths(
         .map((key) => `slack.${key}`);
 }
 
+export const WIKI_ROUTE_MANAGED_SETTING_KEYS = ['enabled', 'root'] as const;
+
+export function wikiRouteManagedPatchPaths(patch: Record<string, unknown>): string[] {
+    const wiki = patch['wiki'];
+    if (!wiki || typeof wiki !== 'object' || Array.isArray(wiki)) return [];
+    return WIKI_ROUTE_MANAGED_SETTING_KEYS
+        .filter(key => Object.prototype.hasOwnProperty.call(wiki, key))
+        .map(key => `wiki.${key}`);
+}
+
 /**
  * Environment-managed Slack connections have a single source of truth. Clear
  * persisted connection fields before applying the runtime-only environment

@@ -44,6 +44,24 @@ test('an enabled provider whose vault is gone reports a failure', async () => {
     assert.equal(result.providers[0]?.status, 'error');
 });
 
+test('missing rg is an error with a safe failure code', async () => {
+    const root = tempRoot();
+    await scaffoldWikiVault(root);
+    const previous = process.env.CLI_JAW_RIPGREP_PATH;
+    process.env.CLI_JAW_RIPGREP_PATH = join(root, 'missing-rg');
+    try {
+        const provider = new WikiSearchProvider(() => ({ enabled: true, root, promptDigest: false }));
+        assert.equal(provider.status(), 'error');
+        assert.equal(provider.safeFailureCode(), 'notes_search_unavailable');
+        const result = await provider.search(query('anything'), opts());
+        assert.equal(result.warnings[0]?.code, 'notes_search_unavailable');
+        assert.equal(result.warnings[0]?.message, 'ripgrep (rg) is not installed');
+    } finally {
+        if (previous === undefined) delete process.env.CLI_JAW_RIPGREP_PATH;
+        else process.env.CLI_JAW_RIPGREP_PATH = previous;
+    }
+});
+
 test('an enabled vault returns hits located by path and line', async () => {
     const root = tempRoot();
     await scaffoldWikiVault(root);

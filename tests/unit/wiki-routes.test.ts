@@ -7,7 +7,9 @@ import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerWikiRoutes } from '../../src/routes/wiki.ts';
-import { DEFAULT_WIKI_CONFIG, normalizeWikiConfig, readWikiConfig, writeWikiConfig } from '../../src/wiki/config.ts';
+import {
+    DEFAULT_WIKI_CONFIG, normalizeWikiConfig, readWikiConfig, wikiProviderHealth, writeWikiConfig,
+} from '../../src/wiki/config.ts';
 
 function tempRoot(): string {
     return join(mkdtempSync(join(tmpdir(), 'jaw-wiki-route-')), 'vault');
@@ -17,6 +19,7 @@ type ServerOptions = {
     auth?: (req: Request, res: Response, next: NextFunction) => void;
     forbiddenRoots?: readonly string[];
     scaffold?: (root: string) => Promise<void>;
+    providerHealth?: typeof wikiProviderHealth;
 };
 
 async function withServer(fn: (baseUrl: string) => Promise<void>, options: ServerOptions = {}): Promise<void> {
@@ -26,6 +29,7 @@ async function withServer(fn: (baseUrl: string) => Promise<void>, options: Serve
     registerWikiRoutes(app, auth, {
         forbiddenRoots: () => options.forbiddenRoots ?? [],
         ...(options.scaffold ? { scaffold: options.scaffold } : {}),
+        ...(options.providerHealth ? { providerHealth: options.providerHealth } : {}),
     });
     const server: Server = createServer(app);
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -65,6 +69,33 @@ test('status reports a disabled vault and creates nothing', async () => {
         assert.equal(body.data.root, root);
     });
     assert.equal(existsSync(root), false, 'reading the status must not create the vault');
+});
+
+test('status reports notes_search_unavailable when the vault exists but rg cannot run', async () => {
+    const root = tempRoot();
+    const { scaffoldWikiVault } = await import('../../src/wiki/scaffold.ts');
+    await scaffoldWikiVault(root);
+    await writeWikiConfig(normalizeWikiConfig({ enabled: true, root, promptDigest: false }));
+
+    await withServer(async baseUrl => {
+        const response = await fetch(`${baseUrl}/api/wiki/status`);
+        const body = await response.json();
+        assert.equal(response.status, 200);
+        assert.equal(body.data.provider, 'error');
+        assert.equal(body.data.reason, 'notes_search_unavailable');
+    }, { providerHealth: config => wikiProviderHealth(config, () => false) });
+});
+
+test('enable refuses to persist when the search engine is unavailable', async () => {
+    const root = tempRoot();
+    await withServer(async baseUrl => {
+        const response = await post(baseUrl, '/api/wiki/enable', { root });
+        const body = await response.json();
+        assert.equal(response.status, 500);
+        assert.equal(body.error, 'wiki_enable_failed');
+        assert.equal(body.reason, 'notes_search_unavailable');
+    }, { providerHealth: config => wikiProviderHealth(config, () => false) });
+    assert.equal(readWikiConfig().enabled, false);
 });
 
 // This route writes directories to a caller-chosen path, so it cannot be less protected
@@ -176,8 +207,8 @@ test('enabling through a symlinked path persists the canonical root', async () =
     assert.equal(readWikiConfig().root, join(realpathSync(real), 'vault'));
 });
 
-// The settings API can write the wiki block without going through enable, so status has
-// to apply the same forbidden-root rule the provider and the prompt do. Reporting a
+// A legacy persisted setting can still name a forbidden root, so status has to apply
+// the same forbidden-root rule the provider and the prompt do. Reporting a
 // forbidden root as ready would tell the user the opposite of what search actually does.
 test('status refuses to report a forbidden root as enabled', async () => {
     const notes = tempRoot();

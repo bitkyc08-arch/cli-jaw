@@ -10,7 +10,7 @@ import {
     normalizeWikiConfig,
     readUsableWikiConfig,
     readWikiConfig,
-    wikiProviderStatus,
+    wikiProviderHealth,
     writeWikiConfig,
     type WikiConfig,
 } from '../wiki/config.js';
@@ -22,14 +22,17 @@ export type WikiRouteDeps = {
     // roots the vault must not collide with (040 §0c R2).
     forbiddenRoots?: () => readonly string[];
     scaffold?: typeof scaffoldWikiVault;
+    providerHealth?: typeof wikiProviderHealth;
 };
 
-function statusPayload(config: WikiConfig) {
+function statusPayload(config: WikiConfig, providerHealth: typeof wikiProviderHealth) {
+    const health = providerHealth(config);
     return {
         enabled: config.enabled,
         root: config.root,
         promptDigest: config.promptDigest,
-        provider: wikiProviderStatus(config),
+        provider: health.status,
+        ...(health.safeFailureCode ? { reason: health.safeFailureCode } : {}),
     };
 }
 
@@ -40,13 +43,14 @@ export function registerWikiRoutes(
 ): void {
     const forbiddenRoots = deps.forbiddenRoots ?? (() => []);
     const scaffold = deps.scaffold ?? scaffoldWikiVault;
+    const providerHealth = deps.providerHealth ?? wikiProviderHealth;
 
     app.get('/api/wiki/status', requireAuth, (_req, res) => {
         try {
             // The validated view, for the same reason the provider and the prompt use it:
             // the settings API can write this block without passing through enable, and
             // status must not report a forbidden root as ready or probe underneath it.
-            ok(res, statusPayload(readUsableWikiConfig(forbiddenRoots())));
+            ok(res, statusPayload(readUsableWikiConfig(forbiddenRoots()), providerHealth));
         } catch (error) {
             // An unusable persisted root should still produce a readable status rather
             // than a 500 the user cannot act on.
@@ -97,10 +101,12 @@ export function registerWikiRoutes(
             // could not be pinned to its canonical form then. Persisting the alias instead
             // would leave the setting following a link wherever it is later retargeted.
             const settled = normalizeWikiConfig(candidate);
-            const provider = wikiProviderStatus(settled);
-            if (provider !== 'ready') throw new Error(`wiki provider is ${provider}`);
+            const health = providerHealth(settled);
+            if (health.status !== 'ready') {
+                throw new Error(health.safeFailureCode ?? `wiki provider is ${health.status}`);
+            }
             const persisted = await writeWikiConfig(settled);
-            ok(res, statusPayload(persisted));
+            ok(res, statusPayload(persisted, providerHealth));
         } catch (error) {
             fail(res, 500, 'wiki_enable_failed', { reason: (error as Error).message });
         }
@@ -128,13 +134,15 @@ export function registerWikiRoutes(
             // Same reason as enable: pin only once the directory exists.
             const settled = next.enabled ? normalizeWikiConfig(next) : next;
             if (settled.enabled) {
-                const provider = wikiProviderStatus(settled);
-                if (provider !== 'ready') throw new Error(`wiki provider is ${provider}`);
+                const health = providerHealth(settled);
+                if (health.status !== 'ready') {
+                    throw new Error(health.safeFailureCode ?? `wiki provider is ${health.status}`);
+                }
             }
             // Disabling never touches the vault. The files and their history stay; the
             // provider simply stops answering. Deleting data is not a rollback.
             const persisted = await writeWikiConfig(settled);
-            ok(res, statusPayload(persisted));
+            ok(res, statusPayload(persisted, providerHealth));
         } catch (error) {
             fail(res, 500, 'wiki_configure_failed', { reason: (error as Error).message });
         }

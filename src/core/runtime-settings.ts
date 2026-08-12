@@ -8,6 +8,7 @@ import {
     RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
     MULTI_SESSION_DEFAULT_MIGRATION_ID, type MultiSessionDefaultMigration,
     type SettingsStateCandidate, type SettingsWrite, slackEnvironmentManagedPatchPaths,
+    wikiRouteManagedPatchPaths,
 } from './config.js';
 import { broadcast } from './bus.js';
 import { syncMainSessionToSettings } from './main-session.js';
@@ -171,6 +172,7 @@ type ApplyRuntimeSettingsOptions = {
     resetFallbackState?: () => void;
     cliSwitchRefresh?: (input: Record<string, unknown>) => Promise<unknown>;
     writeSettings?: SettingsWrite;
+    allowWikiLifecycle?: boolean;
     // The messaging restart is the other post-write side effect that can fail
     // and force a rollback. Mocking the whole runtime module to reach it means
     // re-declaring every export, so tests inject just this call instead.
@@ -324,6 +326,9 @@ async function applyRuntimeSettingsPatchSerialised(
             throw new Error('invalid_settings_field');
         }
         const patch = sanitized.value;
+        if (!opts.allowWikiLifecycle && wikiRouteManagedPatchPaths(patch).length > 0) {
+            throw new Error('wiki_configuration_requires_wiki_route');
+        }
         if (slackEnvironmentManagedPatchPaths(patch).length > 0) {
             throw new Error('slack_connection_managed_by_environment');
         }

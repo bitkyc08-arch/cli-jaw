@@ -244,3 +244,31 @@ test('SWA-011: metadata-only Slack environment ownership preserves externally up
         delete process.env['SLACK_TEAM_ID'];
     }
 }));
+
+test('external reload strips wiki lifecycle fields, warns, and keeps promptDigest sibling', () => withCapturedBroadcasts((events) => {
+    const warnings: string[] = [];
+    const previousWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    try {
+        replaceSettings({
+            ...settings,
+            wiki: { enabled: true, root: '/existing/wiki', promptDigest: false },
+        }, getSettingsPersistenceShape());
+        const reloaded = reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({
+                wiki: { enabled: false, root: '/replacement/wiki', promptDigest: true },
+            }),
+            lastSavedRaw: null,
+        });
+
+        assert.equal(reloaded, true);
+        assert.equal(settings['wiki'].enabled, true);
+        assert.equal(settings['wiki'].root, '/existing/wiki');
+        assert.equal(settings['wiki'].promptDigest, true);
+        assert.ok(warnings.some(line => line.includes('wiki.enabled, wiki.root')));
+        const change = events.find(event => event.type === 'settings_change');
+        assert.ok((change?.data['changedKeys'] as string[]).includes('wiki'));
+    } finally {
+        console.warn = previousWarn;
+    }
+}));

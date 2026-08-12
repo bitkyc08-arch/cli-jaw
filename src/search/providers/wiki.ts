@@ -3,9 +3,9 @@
 // link graph and vault index stay with the manager, because this provider needs neither.
 
 import { searchNotes } from '../../notes/search.js';
-import type { ProviderStatus, SearchHit, SearchQuery, SearchWarning } from '../contract.js';
+import type { ProviderStatus, SafeSearchFailureCode, SearchHit, SearchQuery, SearchWarning } from '../contract.js';
 import { providerEnvelope, type ProviderSearchOptions, type SearchProvider } from '../provider.js';
-import { forbiddenWikiRoots, readUsableWikiConfig, wikiProviderStatus, type WikiConfig } from '../../wiki/config.js';
+import { forbiddenWikiRoots, readUsableWikiConfig, wikiProviderHealth, type WikiConfig } from '../../wiki/config.js';
 
 // The shared note search refuses a request for more than this many results, so a page
 // deep enough to ask for more would throw rather than return an empty tail. Wiki search
@@ -33,23 +33,33 @@ export class WikiSearchProvider implements SearchProvider {
         }
     }
 
+    private health(config: WikiConfig = this.config()) {
+        return wikiProviderHealth(config);
+    }
+
     status(): ProviderStatus {
-        return wikiProviderStatus(this.config());
+        return this.health().status;
+    }
+
+    safeFailureCode(): SafeSearchFailureCode | null {
+        return this.health().safeFailureCode ?? null;
     }
 
     async search(query: SearchQuery, opts: ProviderSearchOptions) {
         const config = this.config();
-        const status = wikiProviderStatus(config);
-        if (status !== 'ready') {
+        const health = this.health(config);
+        if (health.status !== 'ready') {
             // A disabled vault performs no filesystem read at all, which is what makes
             // "off by default" mean something on disk and not just in the UI.
-            return providerEnvelope(this, query, [], [{
-                code: status === 'off' ? 'provider_off' : 'provider_failed',
-                provider: this.id,
-                message: status === 'off'
-                    ? 'wiki search provider is disabled'
-                    : 'wiki vault is unavailable',
-            }]);
+            const warning = health.safeFailureCode === 'notes_search_unavailable'
+                ? { code: 'notes_search_unavailable' as const, provider: this.id,
+                    message: 'ripgrep (rg) is not installed' }
+                : { code: health.status === 'off' ? 'provider_off' as const : 'provider_failed' as const,
+                    provider: this.id,
+                    message: health.status === 'off'
+                        ? 'wiki search provider is disabled'
+                        : 'wiki vault is unavailable' };
+            return providerEnvelope(this, query, [], [warning]);
         }
 
         const warnings: SearchWarning[] = query.sessionFilter === undefined ? [] : [{

@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { accessSync, constants as fsConstants, existsSync, readdirSync } from 'node:fs';
 import { readdir as readDir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
+import { extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { hasReservedNoteSegment, NOTES_RESERVED_DIRS } from './constants.js';
 import { isPathInside, NOTE_FILE_EXT, notePathError } from './path-guards.js';
 
@@ -171,6 +171,36 @@ export function resolveRipgrepCommand(): string {
     const configured = process.env[RIPGREP_ENV_PATH]?.trim();
     if (configured) return configured;
     return findBundledRipgrep() || 'rg';
+}
+
+export function isRipgrepAvailable(
+    command = resolveRipgrepCommand(),
+    env: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+): boolean {
+    const isWindows = platform === 'win32';
+    const listDelimiter = isWindows ? ';' : ':';
+
+    // Windows has no execute bit: presence is the only honest check there.
+    const mode = isWindows ? fsConstants.F_OK : fsConstants.X_OK;
+    const canExecute = (candidate: string): boolean => {
+        try {
+            accessSync(candidate, mode);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    if (isAbsolute(command) || command.includes('/') || command.includes('\\')) {
+        return canExecute(resolve(command));
+    }
+    const pathText = env['PATH'] ?? env['Path'] ?? env['path'] ?? '';
+    const extensions = isWindows && !extname(command)
+        ? (env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+        : [''];
+    return pathText.split(listDelimiter).filter(Boolean).some(dir =>
+        extensions.some(extension => canExecute(resolve(dir, `${command}${extension}`))));
 }
 
 function pushMatch(root: string, rawLine: string, results: NoteSearchResult[], limit: number, skipPaths: Set<string>): void {

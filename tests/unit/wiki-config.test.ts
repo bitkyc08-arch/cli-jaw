@@ -8,6 +8,7 @@ import {
     DEFAULT_WIKI_CONFIG,
     normalizeWikiConfig,
     readWikiConfig,
+    wikiProviderHealth,
     wikiProviderStatus,
     writeWikiConfig,
     WIKI_REQUIRED_DIRS,
@@ -66,12 +67,28 @@ test('status is off while disabled, whatever is on disk', async () => {
     const root = tempRoot();
     await scaffoldWikiVault(root);
     assert.equal(wikiProviderStatus({ enabled: false, root, promptDigest: false }), 'off');
+    assert.deepEqual(
+        wikiProviderHealth({ enabled: false, root, promptDigest: false }, () => { throw new Error('called'); }),
+        { status: 'off' },
+    );
 });
 
-test('status is ready once an enabled vault has its full layout', async () => {
+test('status is ready once an enabled vault has its full layout and search engine', async () => {
     const root = tempRoot();
     await scaffoldWikiVault(root);
-    assert.equal(wikiProviderStatus({ enabled: true, root, promptDigest: false }), 'ready');
+    assert.deepEqual(
+        wikiProviderHealth({ enabled: true, root, promptDigest: false }, () => true),
+        { status: 'ready' },
+    );
+});
+
+test('an enabled complete vault reports the safe missing-engine reason', async () => {
+    const root = tempRoot();
+    await scaffoldWikiVault(root);
+    assert.deepEqual(
+        wikiProviderHealth({ enabled: true, root, promptDigest: false }, () => false),
+        { status: 'error', safeFailureCode: 'notes_search_unavailable' },
+    );
 });
 
 test('an enabled vault that is missing or renamed reports error, not off', async () => {
@@ -83,7 +100,7 @@ test('an enabled vault that is missing or renamed reports error, not off', async
     assert.equal(wikiProviderStatus({ enabled: true, root, promptDigest: false }), 'error');
 
     renameSync(moved, root);
-    assert.equal(wikiProviderStatus({ enabled: true, root, promptDigest: false }), 'ready', 'and it recovers');
+    assert.equal(wikiProviderHealth({ enabled: true, root, promptDigest: false }, () => true).status, 'ready', 'and it recovers');
 });
 
 test('a vault missing any required directory or file is an error', async () => {
@@ -135,7 +152,7 @@ test('scaffolding a vault twice leaves existing content untouched', async () => 
     const { readFileSync } = await import('node:fs');
     assert.equal(readFileSync(userFile, 'utf8'), '# my own notes\n', 'a rewritten seed file must survive');
     assert.equal(readFileSync(seedFile, 'utf8'), '# edited by the user\n');
-    assert.equal(wikiProviderStatus({ enabled: true, root, promptDigest: false }), 'ready');
+    assert.equal(wikiProviderHealth({ enabled: true, root, promptDigest: false }, () => true).status, 'ready');
 });
 
 test('scaffolding into a directory that already holds notes keeps them', async () => {

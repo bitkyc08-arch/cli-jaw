@@ -12,6 +12,7 @@ import {
     SETTINGS_PATH, settings, replaceSettings, migrateSettings,
     normalizeProjectDirs, getLastSavedSettingsRaw,
     slackEnvironmentManagedPatchPaths, slackEnvironmentManagedSettingKeys,
+    wikiRouteManagedPatchPaths, WIKI_ROUTE_MANAGED_SETTING_KEYS,
 } from './config.js';
 import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
@@ -89,6 +90,14 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
         console.warn(`[settings-watch] ignored invalid settings fields: ${sanitized.invalidPaths.join(', ')}`);
     }
     const externalPatch = { ...sanitized.value };
+    const wikiManagedPaths = wikiRouteManagedPatchPaths(externalPatch);
+    if (wikiManagedPaths.length > 0) {
+        const wiki = { ...(externalPatch['wiki'] as Record<string, unknown>) };
+        for (const key of WIKI_ROUTE_MANAGED_SETTING_KEYS) delete wiki[key];
+        if (Object.keys(wiki).length > 0) externalPatch['wiki'] = wiki;
+        else delete externalPatch['wiki'];
+        console.warn(`[settings-watch] ignored wiki route-managed settings fields: ${wikiManagedPaths.join(', ')}`);
+    }
     const environmentManagedSlackPaths = slackEnvironmentManagedPatchPaths(externalPatch);
     if (environmentManagedSlackPaths.length > 0) {
         const slack = { ...(externalPatch["slack"] as Record<string, unknown>) };

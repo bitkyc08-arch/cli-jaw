@@ -1,11 +1,13 @@
 export type SearchCorpus = 'chat' | 'memory' | 'wiki' | 'all';
 export type ConcreteCorpus = Exclude<SearchCorpus, 'all'>;
 export type ProviderStatus = 'ready' | 'off' | 'error';
+export type SafeSearchFailureCode = 'notes_search_unavailable';
 export type RankingMode = 'recency' | 'rrf' | 'bm25' | 'trigram' | 'like';
 
 export type SearchWarning = {
     code: 'provider_off' | 'provider_failed' | 'engine_fallback' |
-        'legacy_response' | 'invalid_cursor' | 'session_filter_ignored';
+        'legacy_response' | 'invalid_cursor' | 'session_filter_ignored' |
+        SafeSearchFailureCode;
     message: string;
     provider?: string;
     instanceId?: string;

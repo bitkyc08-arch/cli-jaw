@@ -17,7 +17,7 @@
 
 import { closeSync, openSync, fstatSync, readSync, realpathSync, statSync, constants as fsConstants } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
-import { forbiddenWikiRoots, readUsableWikiConfig, wikiProviderStatus, type WikiConfig } from './config.js';
+import { forbiddenWikiRoots, readUsableWikiConfig, wikiProviderHealth, type WikiConfig } from './config.js';
 
 export const MAX_DIGEST_BYTES = 32 * 1024;
 export const DIGEST_RELATIVE_PATH = 'syntheses/compiled-digest.md';
@@ -162,7 +162,7 @@ export const loadDigestFileForTest = readDigestFile;
 
 export function loadCompiledDigest(config: WikiConfig = readUsableWikiConfig(forbiddenWikiRoots())): DigestLoad {
     if (!config.enabled || !config.promptDigest) return { ok: false, reason: 'disabled' };
-    if (wikiProviderStatus(config) !== 'ready') return { ok: false, reason: 'vault_unavailable' };
+    if (wikiProviderHealth(config).status !== 'ready') return { ok: false, reason: 'vault_unavailable' };
     return readDigestFile(config.root, join(config.root, DIGEST_RELATIVE_PATH));
 }
 

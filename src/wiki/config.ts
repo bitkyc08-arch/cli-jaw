@@ -9,7 +9,8 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { settings } from '../core/config.js';
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
-import type { ProviderStatus } from '../search/contract.js';
+import { isRipgrepAvailable } from '../notes/search.js';
+import type { ProviderStatus, SafeSearchFailureCode } from '../search/contract.js';
 
 export interface WikiConfig {
     enabled: boolean;
@@ -167,32 +168,47 @@ export function readUsableWikiConfig(forbiddenRoots: readonly string[] = []): Wi
 // mutation uses, so a wiki change cannot race a concurrent settings write.
 export async function writeWikiConfig(next: WikiConfig): Promise<WikiConfig> {
     const normalized = normalizeWikiConfig(next);
-    await applyRuntimeSettingsPatch({ wiki: normalized });
+    await applyRuntimeSettingsPatch({ wiki: normalized }, { allowWikiLifecycle: true });
     return normalized;
 }
 
 // A disabled vault reports 'off' even when its files are all present on disk: the
 // setting is the source of truth, not the directory. That is what makes disabling a
 // non-destructive operation — the files stay, the provider stops answering.
-export function wikiProviderStatus(config: WikiConfig): ProviderStatus {
-    if (!config.enabled) return 'off';
+export type WikiProviderHealth = {
+    status: ProviderStatus;
+    safeFailureCode?: SafeSearchFailureCode;
+};
+
+export function wikiProviderHealth(
+    config: WikiConfig,
+    engineAvailable: () => boolean = isRipgrepAvailable,
+): WikiProviderHealth {
+    if (!config.enabled) return { status: 'off' };
     try {
         for (const dir of ['', ...WIKI_REQUIRED_DIRS]) {
             const path = dir ? join(config.root, dir) : config.root;
-            if (!lstatSync(path).isDirectory()) return 'error';
+            if (!lstatSync(path).isDirectory()) return { status: 'error' };
             accessSync(path, fsConstants.R_OK);
         }
         for (const file of WIKI_REQUIRED_FILES) {
             const path = join(config.root, file);
-            if (!lstatSync(path).isFile()) return 'error';
+            if (!lstatSync(path).isFile()) return { status: 'error' };
             accessSync(path, fsConstants.R_OK);
         }
-        return 'ready';
+        if (!engineAvailable()) {
+            return { status: 'error', safeFailureCode: 'notes_search_unavailable' };
+        }
+        return { status: 'ready' };
     } catch {
         // A vault that was renamed, deleted, or made unreadable is an error rather than
         // an absence: the user asked for it to be on.
-        return 'error';
+        return { status: 'error' };
     }
+}
+
+export function wikiProviderStatus(config: WikiConfig): ProviderStatus {
+    return wikiProviderHealth(config).status;
 }
 
 // The roots the vault must not occupy, registered once at composition. The registry

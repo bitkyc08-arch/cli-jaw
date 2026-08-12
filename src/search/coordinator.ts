@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ConcreteCorpus, SearchQuery, SearchResultEnvelope, SearchWarning } from './contract.js';
+import type { ConcreteCorpus, SafeSearchFailureCode, SearchQuery, SearchResultEnvelope, SearchWarning } from './contract.js';
 import type { SearchProvider, SearchProviderRegistry } from './provider.js';
 
 type ProviderCursorState = { offset: number; exhausted: boolean };
@@ -59,14 +59,25 @@ const encodeCursor = (cursor: CursorV1): string =>
     Buffer.from(JSON.stringify(cursor)).toString('base64url');
 const returnedCount = (page: SearchResultEnvelope): number =>
     page.groups.reduce((sum, group) => sum + group.hits.length, 0);
+const SAFE_FAILURE_MESSAGES: Record<SafeSearchFailureCode, string> = {
+    notes_search_unavailable: 'ripgrep (rg) is not installed',
+};
+function safeFailureWarning(provider: SearchProvider, code: unknown): SearchWarning | null {
+    if (code !== 'notes_search_unavailable') return null;
+    return { code, provider: provider.id, message: SAFE_FAILURE_MESSAGES[code] };
+}
 /**
  * Provider errors can carry SQL, filesystem paths, upstream bodies, or
  * credentials. Log the detail server-side; return a stable message.
  */
 const failureWarning = (provider: SearchProvider, reason: unknown): SearchWarning => {
     console.error('[search:provider]', provider.id, reason instanceof Error ? reason.message : String(reason));
-    return { code: 'provider_failed', provider: provider.id, message: 'search provider failed' };
+    const safe = safeFailureWarning(provider, (reason as { code?: unknown } | null)?.code);
+    return safe ?? { code: 'provider_failed', provider: provider.id, message: 'search provider failed' };
 };
+const statusFailureWarning = (provider: SearchProvider): SearchWarning =>
+    safeFailureWarning(provider, provider.safeFailureCode?.())
+    ?? { code: 'provider_failed', provider: provider.id, message: 'search provider failed' };
 
 export class SearchCoordinator {
     constructor(private readonly registry: SearchProviderRegistry) {}
@@ -134,10 +145,7 @@ export class SearchCoordinator {
                     code: 'provider_off' as const, provider: provider.id,
                     message: `${provider.corpus} search provider is disabled`,
                 })),
-                ...erroredProviders.map(provider => ({
-                    code: 'provider_failed' as const, provider: provider.id,
-                    message: 'search provider failed',
-                })),
+                ...erroredProviders.map(provider => statusFailureWarning(provider)),
                 ...pages.flatMap(({ page }) => page.warnings),
             ],
             page: { hasMore, nextCursor: hasMore ? encodeCursor({ v: 1, hash, providers: states }) : null },

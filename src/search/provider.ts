@@ -1,5 +1,6 @@
 import type {
-    ConcreteCorpus, ProviderStatus, SearchHit, SearchQuery, SearchResultEnvelope, SearchWarning,
+    ConcreteCorpus, ProviderStatus, SafeSearchFailureCode, SearchHit, SearchQuery,
+    SearchResultEnvelope, SearchWarning,
 } from './contract.js';
 
 export type ProviderSearchOptions = {
@@ -13,6 +14,7 @@ export interface SearchProvider {
     readonly id: string;
     readonly corpus: ConcreteCorpus;
     status(): ProviderStatus;
+    safeFailureCode?(): SafeSearchFailureCode | null;
     search(query: SearchQuery, opts: ProviderSearchOptions): Promise<SearchResultEnvelope>;
 }
 

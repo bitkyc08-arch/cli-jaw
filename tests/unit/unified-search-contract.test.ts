@@ -35,10 +35,15 @@ class FakeProvider implements SearchProvider {
         readonly corpus: ConcreteCorpus,
         private readonly implementation: SearchImplementation,
         private readonly providerStatus: ProviderStatus = 'ready',
+        private readonly failureCode: 'notes_search_unavailable' | null = null,
     ) {}
 
     status(): ProviderStatus {
         return this.providerStatus;
+    }
+
+    safeFailureCode(): 'notes_search_unavailable' | null {
+        return this.failureCode;
     }
 
     async search(query: SearchQuery, opts: ProviderSearchOptions): Promise<SearchResultEnvelope> {
@@ -319,4 +324,34 @@ test('provider rejection reasons are not echoed to the client', async () => {
     assert.equal(failure.message, 'search provider failed');
     assert.doesNotMatch(JSON.stringify(result), /creds\.db|token=abc123|SELECT secret/,
         'no internal detail may reach the response');
+});
+
+test('an allowlisted notes engine failure exposes only its canonical warning', async () => {
+    const leaky = new FakeProvider('wiki-leaky', 'wiki', () => {
+        throw Object.assign(new Error('attacker-controlled /secret token=x'), {
+            code: 'notes_search_unavailable',
+        });
+    });
+    const result = await new SearchCoordinator(registryOf(leaky))
+        .search({ query: 'needle', corpus: 'wiki' });
+
+    assert.equal(result.warnings[0]?.code, 'notes_search_unavailable');
+    assert.equal(result.warnings[0]?.message, 'ripgrep (rg) is not installed');
+    assert.doesNotMatch(JSON.stringify(result), /attacker-controlled|\/secret|token=x/);
+});
+
+test('an errored provider can expose an allowlisted status reason without keeping pagination open', async () => {
+    const broken = new FakeProvider(
+        'wiki-broken', 'wiki', () => { throw new Error('must not search'); },
+        'error', 'notes_search_unavailable',
+    );
+    const result = await new SearchCoordinator(registryOf(broken))
+        .search({ query: 'needle', corpus: 'wiki' });
+
+    assert.equal(broken.calls.length, 0);
+    assert.equal(result.page.hasMore, false);
+    assert.equal(result.page.nextCursor, null);
+    assert.equal(result.providers[0]?.status, 'error');
+    assert.equal(result.warnings[0]?.code, 'notes_search_unavailable');
+    assert.equal(result.warnings[0]?.message, 'ripgrep (rg) is not installed');
 });

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { spawn } from 'node:child_process';
-import { buildRipgrepArgs, resolveRipgrepCommand, searchNotes } from '../../src/notes/search.js';
+import { buildRipgrepArgs, isRipgrepAvailable, resolveRipgrepCommand, searchNotes } from '../../src/notes/search.js';
 
 type FakeSpawnOptions = {
     stdout?: string[];
@@ -83,6 +83,54 @@ test('notes search honors CLI_JAW_RIPGREP_PATH for manager service environments'
     } finally {
         if (previous === undefined) delete process.env.CLI_JAW_RIPGREP_PATH;
         else process.env.CLI_JAW_RIPGREP_PATH = previous;
+    }
+});
+
+test('ripgrep availability rejects a missing configured command', () => {
+    assert.equal(isRipgrepAvailable('/definitely/missing/rg', {}), false);
+});
+
+test('ripgrep availability resolves the current service PATH', () => {
+    const root = tmpRoot();
+    try {
+        const executable = join(root, 'rg');
+        writeFileSync(executable, '');
+        chmodSync(executable, 0o755);
+        assert.equal(isRipgrepAvailable('rg', { PATH: root }, 'linux'), true);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('ripgrep availability walks PATHEXT on win32', () => {
+    const root = tmpRoot();
+    try {
+        writeFileSync(join(root, 'rg.EXE'), '');
+        assert.equal(isRipgrepAvailable('rg', { Path: root, PATHEXT: '.EXE' }, 'win32'), true);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('ripgrep availability ignores an extensionless file on win32', () => {
+    const root = tmpRoot();
+    try {
+        writeFileSync(join(root, 'rg'), '');
+        assert.equal(isRipgrepAvailable('rg', { Path: root, PATHEXT: '.EXE' }, 'win32'), false);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('ripgrep availability requires the execute bit on posix', () => {
+    const root = tmpRoot();
+    try {
+        const executable = join(root, 'rg');
+        writeFileSync(executable, '');
+        chmodSync(executable, 0o644);
+        assert.equal(isRipgrepAvailable('rg', { PATH: root }, 'linux'), false);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
     }
 });
 
