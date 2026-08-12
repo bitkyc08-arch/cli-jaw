@@ -98,6 +98,33 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 > 현재 `package.json`에는 `lint` script가 없다.
 
+### Windows npm install integrity and PowerShell shims
+
+npm 12+ may block dependency lifecycle scripts unless `cli-jaw` is explicitly
+approved. The supported one-shot recovery is
+`npm install -g cli-jaw --allow-scripts=cli-jaw`; persist the narrow approval
+with `npm config set allow-scripts=cli-jaw --location=user`. Do not use npm's
+package-less printed variant or a wildcard approval. Run `jaw doctor` after
+recovery: the install receipt check distinguishes completed, stale, blocked,
+safe-mode, failed, and receipt-free `.git` development clones. Doctor also
+lists verified `.cli-jaw-*` npm staging leftovers so a user can close the
+locking process and remove them manually.
+
+On native Windows npm may generate both `jaw.ps1` and `jaw.cmd`. PowerShell
+execution policy applies to `jaw.ps1`, but not to `jaw.cmd`. Doctor probes
+`Get-ExecutionPolicy` with a three-second bound: `Restricted`, `AllSigned`, and
+`Undefined` warn; `RemoteSigned`, `Bypass`, and `Unrestricted` pass; probe
+failure is informational. Recovery choices are:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+jaw.cmd doctor
+node "$(npm prefix -g)\node_modules\cli-jaw\dist\bin\cli-jaw.js" doctor
+```
+
+The policy change is user-scoped. Operators who must not change policy can use
+the cmd shim or direct Node entry point instead.
+
 ### Direct smoke utilities
 
 | utility | command | purpose |

@@ -15,6 +15,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
     detectPackageManager,
+    checkPsExecutionPolicy,
     formatIntegrityReport,
     formatRecoveryCommands,
     inspectInstallIntegrity,
@@ -55,6 +56,24 @@ test('no receipt and no home marker → blocked with allow-scripts recovery', ()
     assert.equal(integrity.userSetupDone, false);
     const report = formatIntegrityReport(integrity);
     assert.match(report, /--allow-scripts=cli-jaw/);
+});
+
+test('missing receipt classifies only a .git-marked development clone', () => {
+    const root = makeRoot();
+    assert.equal(inspectInstallIntegrity(root, makeHome(), {
+        existsSync: file => file === path.join(root, '.git'),
+    }).installScriptState, 'dev-clone');
+    assert.equal(inspectInstallIntegrity(root, makeHome(), {
+        existsSync: () => false,
+    }).installScriptState, 'blocked');
+});
+
+test('receipt states win over the development-clone marker', () => {
+    const completed = makeRoot({ schema: 1, state: 'completed', packageVersion: PKG_VERSION });
+    const stale = makeRoot({ schema: 1, state: 'completed', packageVersion: '0.0.1' });
+    const marker = { existsSync: () => true };
+    assert.equal(inspectInstallIntegrity(completed, makeHome(), marker).installScriptState, 'completed');
+    assert.equal(inspectInstallIntegrity(stale, makeHome(), marker).installScriptState, 'stale');
 });
 
 test('receipt from a different version → stale (upgrade never hidden)', () => {
@@ -119,6 +138,42 @@ test('npm recovery keeps the package argument (npm/cli#9835 regression)', () => 
     // The broken npm-printed form must never appear.
     assert.ok(!commands.some(c => /npm install -g --allow-scripts/.test(c)),
         'must not echo npm\'s package-less remediation');
+});
+
+test('win32 npm recovery includes PowerShell shim guidance', () => {
+    const commands = formatRecoveryCommands(integrityFor('npm'), 'win32');
+    assert.ok(commands.some(command => command.includes('jaw.ps1')));
+    assert.ok(commands.some(command => command.includes('jaw.cmd')));
+    assert.ok(commands.some(command => command.includes('dist\\bin\\cli-jaw.js')));
+});
+
+test('PowerShell execution policy maps safe and blocked values', () => {
+    for (const policy of ['RemoteSigned', 'Bypass', 'Unrestricted']) {
+        assert.deepEqual(checkPsExecutionPolicy({ platform: 'win32', runPolicy: () => policy }), {
+            state: 'ok', policy,
+        });
+    }
+    for (const policy of ['Restricted', 'AllSigned', 'Undefined']) {
+        const result = checkPsExecutionPolicy({ platform: 'win32', runPolicy: () => policy });
+        assert.equal(result.state, 'warn');
+        assert.match(result.guidance || '', /CurrentUser RemoteSigned/);
+        assert.match(result.guidance || '', /jaw\.cmd/);
+        assert.match(result.guidance || '', /node <prefix>/);
+    }
+});
+
+test('PowerShell execution policy skips non-Windows and treats probe failures as unknown', () => {
+    let called = false;
+    assert.deepEqual(checkPsExecutionPolicy({
+        platform: 'linux',
+        runPolicy: () => { called = true; return 'Restricted'; },
+    }), { state: 'skipped' });
+    assert.equal(called, false);
+    assert.deepEqual(checkPsExecutionPolicy({ platform: 'win32', runPolicy: () => '' }), { state: 'unknown' });
+    assert.deepEqual(checkPsExecutionPolicy({
+        platform: 'win32',
+        runPolicy: () => { throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); },
+    }), { state: 'unknown' });
 });
 
 test('dangerous wildcards are never suggested anywhere', () => {
