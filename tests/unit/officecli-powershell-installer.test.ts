@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const installer = resolve(import.meta.dirname, '../../scripts/install-officecli.ps1');
+const windowsOnly = {
+    skip: process.platform === 'win32' ? false : 'requires Windows PowerShell',
+};
 
 function encodedPowerShell(source: string): string {
     return Buffer.from(source, 'utf16le').toString('base64');
@@ -50,7 +53,7 @@ function runInstaller(release: { tag: string; assets: string[] }, repo?: string)
     }
 }
 
-test('#280: Windows fork install fails before download when the release omits its asset', () => {
+test('#280: Windows fork install fails before download when the release omits its asset', windowsOnly, () => {
     const result = runInstaller({ tag: 'v1.0.98', assets: ['officecli-mac-arm64'] });
 
     assert.equal(result.status, 1);
@@ -61,7 +64,7 @@ test('#280: Windows fork install fails before download when the release omits it
     assert.doesNotMatch(result.output, /DOWNLOAD_REACHED/);
 });
 
-test('#280: Windows upstream install proceeds when the release publishes its asset', () => {
+test('#280: Windows upstream install proceeds when the release publishes its asset', windowsOnly, () => {
     const result = runInstaller({
         tag: 'v1.0.143',
         assets: ['officecli-win-x64.exe', 'officecli-win-arm64.exe', 'SHA256SUMS'],
