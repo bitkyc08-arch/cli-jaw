@@ -245,6 +245,12 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - `grok`은 `~/.grok/auth.json`의 OIDC `key`를 우선 읽고 `https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig` gRPC-web 응답으로 SuperGrok weekly usage pool window를 만든다. 실패하면 legacy `cli-chat-proxy.grok.com/v1/billing` monthly credits window로 fallback한다.
 - `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
 
+### Wiki lifecycle ownership
+
+- `wiki.enabled` and `wiki.root` are owned by `POST /api/wiki/enable` and `POST /api/wiki/configure`. The enable route scaffolds the vault, verifies provider readiness, and only then persists the lifecycle configuration.
+- Generic `PUT /api/settings` rejects either lifecycle field with `409 wiki_configuration_requires_wiki_route`; `wiki.promptDigest` remains writable there. External `settings.json` reloads ignore the two lifecycle fields and emit a warning instead of bypassing the wiki routes.
+- At server startup, a persisted enabled vault whose provider is not ready emits `[jaw:wiki] enabled but unavailable at startup (...)` without logging the vault path. Repair it through `POST /api/wiki/enable`, or disable it through `POST /api/wiki/configure`.
+
 ### `/api/project/git-summary`
 
 - `GET /api/project/git-summary`는 Settings의 `projectDirs[0]`만 읽는 read-only header helper다.

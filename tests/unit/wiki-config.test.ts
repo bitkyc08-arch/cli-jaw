@@ -6,10 +6,12 @@ import { tmpdir, homedir } from 'node:os';
 import { join, parse } from 'node:path';
 import {
     DEFAULT_WIKI_CONFIG,
+    currentWikiStartupWarning,
     normalizeWikiConfig,
     readWikiConfig,
     wikiProviderHealth,
     wikiProviderStatus,
+    wikiStartupWarning,
     writeWikiConfig,
     WIKI_REQUIRED_DIRS,
     WIKI_REQUIRED_FILES,
@@ -88,6 +90,30 @@ test('an enabled complete vault reports the safe missing-engine reason', async (
     assert.deepEqual(
         wikiProviderHealth({ enabled: true, root, promptDigest: false }, () => false),
         { status: 'error', safeFailureCode: 'notes_search_unavailable' },
+    );
+});
+
+test('startup warning names the wiki lifecycle routes without exposing the vault path', () => {
+    const config = { enabled: true, root: 'C:\\private\\wiki', promptDigest: false };
+    const warning = wikiStartupWarning(config, {
+        status: 'error',
+        safeFailureCode: 'notes_search_unavailable',
+    });
+
+    assert.match(warning ?? '', /^\[jaw:wiki\] enabled but unavailable at startup/);
+    assert.match(warning ?? '', /notes_search_unavailable/);
+    assert.match(warning ?? '', /POST \/api\/wiki\/enable/);
+    assert.match(warning ?? '', /POST \/api\/wiki\/configure/);
+    assert.equal(warning?.includes(config.root), false);
+    assert.equal(wikiStartupWarning({ ...config, enabled: false }, { status: 'error' }), null);
+    assert.equal(wikiStartupWarning(config, { status: 'ready' }), null);
+    assert.match(
+        currentWikiStartupWarning(() => { throw new Error(`invalid root: ${config.root}`); }, () => true) ?? '',
+        /wiki_configuration_invalid/,
+    );
+    assert.equal(
+        currentWikiStartupWarning(() => { throw new Error('must not read'); }, () => false),
+        null,
     );
 });
 
