@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
     nativeOutcome,
     resolveControlNative,
@@ -14,6 +18,20 @@ const record: PidfileRecord = {
     pid: 1234, startedAt: { value: '99', source: 'linux-proc' }, port: 3457, home: '/jaw/home', version: '2.2.18',
 };
 const owned: OwnershipVerdict = { status: 'owned', record };
+
+test('SLC-000: the root CLI dispatches service lifecycle commands', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cli-jaw-service-dispatch-'));
+    try {
+        const output = execFileSync(process.execPath, [
+            '--import', 'tsx',
+            'bin/cli-jaw.ts', '--home', home,
+            'service', 'stop', '--port', '65534',
+        ], { encoding: 'utf8' });
+        assert.match(output, /no pidfile exists for this home/);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
 
 function lifecycle(overrides: Partial<ServiceLifecycleDeps> = {}): ServiceLifecycleDeps {
     return {

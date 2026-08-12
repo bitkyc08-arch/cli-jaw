@@ -81,7 +81,7 @@ export async function runServiceLifecycle(action: 'stop' | 'restart', deps: Serv
 }
 
 // ─── Args ────────────────────────────────────────────
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
 const { values: opts, positionals: pos } = parseArgs({
     args: process.argv.slice(3),
     options: {
