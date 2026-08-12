@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { __setToolEnvironment, runInstallCmd } from '../../bin/postinstall.ts';
+import {
+    __setToolEnvironment,
+    runInstallCmd,
+    runSkillDepInstall,
+    runTool,
+} from '../../bin/postinstall.ts';
 
 // Behavior cover for #274. execName() alone proves the mapping; this proves the
 // install path actually GOES THROUGH it. The fake adapter sits BELOW name
@@ -77,5 +82,60 @@ test('the seam restores the previous adapter', () => {
         assert.match(first.calls[0]!.file, /cmd\.exe$/, 'inner restore must return to the outer win32 seam');
     } finally {
         first.restore();
+    }
+});
+
+test('ISS-UV-001: the Windows uv installer writes a .ps1 script', () => {
+    const { calls, restore } = record('win32');
+    try {
+        runSkillDepInstall({
+            type: 'remote-script',
+            url: 'https://astral.sh/uv/install.ps1',
+            shell: 'powershell',
+        }, {});
+    } finally {
+        restore();
+    }
+
+    const curl = calls[0]!;
+    const powershell = calls[1]!;
+    const outputPath = curl.args[curl.args.indexOf('-o') + 1]!;
+    const filePath = powershell.args[powershell.args.indexOf('-File') + 1]!;
+    assert.match(outputPath, /\.ps1$/);
+    assert.equal(filePath, outputPath);
+});
+
+test('ISS-UV-002: the POSIX uv installer keeps .sh', () => {
+    const { calls, restore } = record('linux');
+    try {
+        runSkillDepInstall({
+            type: 'remote-script',
+            url: 'https://astral.sh/uv/install.sh',
+            shell: 'sh',
+        }, {});
+    } finally {
+        restore();
+    }
+
+    const curl = calls[0]!;
+    const shell = calls[1]!;
+    const outputPath = curl.args[curl.args.indexOf('-o') + 1]!;
+    assert.match(outputPath, /\.sh$/);
+    assert.equal(shell.args[0], outputPath);
+});
+
+test('ISS-UV-003: an ENOENT failure names the resolved command', () => {
+    const restore = __setToolEnvironment(() => {
+        const error = new Error('spawn failed') as Error & { code: string };
+        error.code = 'ENOENT';
+        throw error;
+    }, 'win32');
+    try {
+        assert.throws(
+            () => runTool('npm', ['i', '-g', 'some-package']),
+            /resolved command: .*cmd\.exe \/d \/s \/c npm\.cmd i -g some-package/,
+        );
+    } finally {
+        restore();
     }
 });

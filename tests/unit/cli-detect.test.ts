@@ -5,7 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
+    __setLookupExecForTests,
     buildCliDetectionEnv,
+    formatCliUnavailableMessage,
     isSpawnableCliFile,
     listCliBinaryCandidates,
     prioritizeCliCandidates,
@@ -84,6 +86,47 @@ test('listCliBinaryCandidates returns candidates with spawnability state', () =>
     const result = listCliBinaryCandidates(commandName, `${dir}${path.delimiter}${readProcessPath()}`);
 
     assert.equal(result.candidates.some((candidate) => candidate.path === cliPath && candidate.spawnable), true);
+});
+
+test('CD-SCAN-001: a missing lookup tool is reported as a scan error, not as absence', () => {
+    __setLookupExecForTests(() => {
+        const error = new Error('spawn lookup ENOENT') as Error & { code: string };
+        error.code = 'ENOENT';
+        throw error;
+    });
+    try {
+        const scan = listCliBinaryCandidates('codex-app', '/missing');
+        assert.deepEqual(scan.candidates, []);
+        assert.match(scan.scanError || '', /lookup tool '.*' not found/);
+    } finally {
+        __setLookupExecForTests(null);
+    }
+});
+
+test('CD-SCAN-002: a genuine no-match stays a plain empty scan', () => {
+    __setLookupExecForTests(() => {
+        const error = new Error('no matches') as Error & { status: number; stdout: string };
+        error.status = 1;
+        error.stdout = '';
+        throw error;
+    });
+    try {
+        const scan = listCliBinaryCandidates('codex-app', '/empty');
+        assert.deepEqual(scan.candidates, []);
+        assert.equal(scan.scanError, undefined);
+    } finally {
+        __setLookupExecForTests(null);
+    }
+});
+
+test('CD-SCAN-003: the unavailable message names the scan error', () => {
+    const message = formatCliUnavailableMessage('codex-app', {
+        available: false,
+        path: null,
+        scanError: 'lookup timed out after 3000ms',
+    });
+
+    assert.match(message, /could not be resolved: lookup timed out after 3000ms/);
 });
 
 test('prioritizeCliCandidates moves bun shims behind managed node bins for claude', () => {

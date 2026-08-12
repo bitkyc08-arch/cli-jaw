@@ -62,11 +62,22 @@ export function __setToolEnvironment(
 // Mirrors execFileSync's own typing: with `encoding` set the caller gets a
 // string, otherwise a Buffer. Without this the callers that .trim() the output
 // would have to cast at every site.
-function runTool(command: string, args: string[], opts: { encoding: string } & Record<string, unknown>): string;
-function runTool(command: string, args: string[], opts?: Record<string, unknown>): Buffer;
-function runTool(command: string, args: string[], opts: Record<string, unknown> = {}): string | Buffer {
+export function runTool(command: string, args: string[], opts: { encoding: string } & Record<string, unknown>): string;
+export function runTool(command: string, args: string[], opts?: Record<string, unknown>): Buffer;
+export function runTool(command: string, args: string[], opts: Record<string, unknown> = {}): string | Buffer {
     const spec = launchSpec(command, args, toolPlatform);
-    return execFileAdapter(spec.file, spec.args, opts);
+    try {
+        return execFileAdapter(spec.file, spec.args, opts);
+    } catch (error) {
+        // ENOENT on Windows reads like "npm is missing" when the real story is
+        // that the resolved launcher was not on PATH. Name what we ran.
+        const err = error as Error & { code?: string | number; resolvedCommand?: string };
+        err.resolvedCommand = `${spec.file} ${spec.args.join(' ')}`;
+        if (err.code === 'ENOENT') {
+            err.message = `${err.message} (resolved command: ${err.resolvedCommand})`;
+        }
+        throw error;
+    }
 }
 import { buildServicePath } from '../src/core/runtime-path.js';
 import { classifyClaudeInstall } from '../src/core/claude-install.js';
@@ -886,12 +897,16 @@ const SKILL_DEPS = [
     },
 ];
 
-function runSkillDepInstall(install: (typeof SKILL_DEPS)[number]['install'], env: NodeJS.ProcessEnv): void {
+export function runSkillDepInstall(install: (typeof SKILL_DEPS)[number]['install'], env: NodeJS.ProcessEnv): void {
     if ('pkg' in install) {
         runTool('npm', ['i', '-g', install.pkg], { stdio: 'pipe', timeout: 120000, env });
         return;
     }
-    const tmpScript = path.join(os.tmpdir(), `jaw-dep-${Date.now()}.sh`);
+    // PowerShell's -File dispatches on the extension: handing it a .sh path
+    // is refused outright, which is why the Windows uv install failed with a
+    // message that named nothing (#274).
+    const suffix = install.shell === 'powershell' ? 'ps1' : 'sh';
+    const tmpScript = path.join(os.tmpdir(), `jaw-dep-${Date.now()}.${suffix}`);
     try {
         runTool('curl', ['-fsSL', '-o', tmpScript, install.url], { stdio: 'pipe', timeout: 30000, env });
         if (install.shell === 'powershell') {

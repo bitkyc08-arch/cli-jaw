@@ -39,6 +39,7 @@ import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAll
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
+import { formatCliUnavailableMessage } from '../core/cli-detect.js';
 import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
@@ -742,19 +743,6 @@ function makeCleanEnv(extraEnv: Record<string, string> = {}) {
         ...extraEnv,
         PATH: buildServicePath(extraEnv["PATH"] || env["PATH"] || ''),
     } as NodeJS.ProcessEnv;
-}
-
-function formatCliUnavailableMessage(cli: string, detected: ReturnType<typeof detectCli>): string {
-    const rejected = detected.rejected || [];
-    if (rejected.length > 0) {
-        const details = rejected
-            .slice(0, 3)
-            .map((entry) => `${entry.path} (${entry.reason})`)
-            .join('; ');
-        const suffix = rejected.length > 3 ? `; +${rejected.length - 3} more` : '';
-        return `CLI '${cli}' found on PATH but no spawnable executable was available. Rejected: ${details}${suffix}. Run \`jaw doctor --json\`.`;
-    }
-    return `CLI '${cli}' not found in PATH. Run \`jaw doctor --json\`.`;
 }
 
 function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {

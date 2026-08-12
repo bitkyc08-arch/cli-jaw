@@ -5,6 +5,30 @@ import { execFileSync } from 'node:child_process';
 import { buildServicePath } from './runtime-path.js';
 import { classifyClaudeInstall } from './claude-install.js';
 
+// This seam has exactly one call site and it always passes encoding:'utf8',
+// so the adapter is typed to return the string that call site needs. A
+// `string | Buffer` adapter would break the `.trim()` that follows.
+type LookupExec = (
+    file: string,
+    args: string[],
+    opts: Record<string, unknown>,
+) => string;
+
+const defaultLookupExec: LookupExec = (file, args, opts) =>
+    String(execFileSync(file, args, opts as Parameters<typeof execFileSync>[2]));
+
+let lookupExec: LookupExec = defaultLookupExec;
+
+/**
+ * Test seam. Discovery failures (missing where.exe, timeout, malformed PATH)
+ * cannot be provoked on a healthy host, so the ENOENT/timeout branches are
+ * unreachable without injection — and an unreachable branch is an unverified
+ * branch. Mirrors the adapter bin/postinstall.ts already uses.
+ */
+export function __setLookupExecForTests(next: LookupExec | null): void {
+    lookupExec = next ?? defaultLookupExec;
+}
+
 export interface RejectedCliCandidate {
     path: string;
     reason: string;
@@ -14,6 +38,7 @@ export interface CliDetection {
     available: boolean;
     path: string | null;
     rejected?: RejectedCliCandidate[];
+    scanError?: string;
 }
 
 export interface CliBinaryCandidate {
@@ -24,6 +49,8 @@ export interface CliBinaryCandidate {
 
 export interface CliCandidateScan {
     candidates: CliBinaryCandidate[];
+    /** Present when discovery itself failed, as opposed to finding nothing. */
+    scanError?: string;
 }
 
 function uniqueLines(raw: string): string[] {
@@ -342,12 +369,12 @@ export function buildCliDetectionEnv(
 
 export function listCliBinaryCandidates(name: string, seedPath = readProcessPath()): CliCandidateScan {
     if (!/^[a-z0-9_-]+$/i.test(name)) return { candidates: [] };
+    // `where.exe` rather than bare `where`: names the real executable and
+    // does not depend on PATHEXT resolving the launcher's own name.
+    const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
+    const args = process.platform === 'win32' ? [name] : ['-a', name];
     try {
-        // `where.exe` rather than bare `where`: names the real executable and
-        // does not depend on PATHEXT resolving the launcher's own name.
-        const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
-        const args = process.platform === 'win32' ? [name] : ['-a', name];
-        const raw = execFileSync(cmd, args, {
+        const raw = lookupExec(cmd, args, {
             encoding: 'utf8',
             timeout: 3000,
             env: buildCliDetectionEnv(seedPath),
@@ -364,12 +391,55 @@ export function listCliBinaryCandidates(name: string, seedPath = readProcessPath
                 return candidate;
             }),
         };
-    } catch {
-        return { candidates: [] };
+    } catch (error) {
+        // #273: 'not found in PATH' was also what a failed where.exe launch,
+        // a timeout, and a malformed PATH all produced. Keep the distinction
+        // so the reported message names what actually happened.
+        //
+        // execFileSync errors carry status/stdout/signal at runtime, but
+        // NodeJS.ErrnoException declares none of them — describe the real shape.
+        const err = error as Error & {
+            code?: string | number;
+            status?: number | null;
+            signal?: NodeJS.Signals | null;
+            stdout?: string | Buffer | null;
+        };
+
+        // `where.exe`/`which` exits 1 with empty stdout when the name simply is
+        // not there. That is an ordinary empty scan, not a discovery failure.
+        if (err.status === 1 && !String(err.stdout ?? '').trim()) {
+            return { candidates: [] };
+        }
+
+        const scanError = err.code === 'ENOENT'
+            ? `lookup tool '${cmd}' not found`
+            : err.signal === 'SIGTERM'
+                ? `lookup timed out after 3000ms`
+                : (err.message || 'lookup failed');
+        return { candidates: [], scanError };
     }
 }
 
 export function detectCliBinary(name: string, seedPath = readProcessPath()): CliDetection {
     const scan = listCliBinaryCandidates(name, seedPath);
-    return selectSpawnableCliPath(scan.candidates.map((candidate) => candidate.path));
+    return {
+        ...selectSpawnableCliPath(scan.candidates.map((candidate) => candidate.path)),
+        ...(scan.scanError ? { scanError: scan.scanError } : {}),
+    };
+}
+
+export function formatCliUnavailableMessage(cli: string, detected: CliDetection): string {
+    const rejected = detected.rejected || [];
+    if (rejected.length > 0) {
+        const details = rejected
+            .slice(0, 3)
+            .map((entry) => `${entry.path} (${entry.reason})`)
+            .join('; ');
+        const suffix = rejected.length > 3 ? `; +${rejected.length - 3} more` : '';
+        return `CLI '${cli}' found on PATH but no spawnable executable was available. Rejected: ${details}${suffix}. Run \`jaw doctor --json\`.`;
+    }
+    if (detected.scanError) {
+        return `CLI '${cli}' could not be resolved: ${detected.scanError}. Run \`jaw doctor --json\`.`;
+    }
+    return `CLI '${cli}' not found in PATH. Run \`jaw doctor --json\`.`;
 }

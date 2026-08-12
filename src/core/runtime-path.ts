@@ -1,17 +1,94 @@
 import fs from 'node:fs';
 import os from 'node:os';
-import { basename, delimiter, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, win32 as pathWin32 } from 'node:path';
 
-function uniquePaths(paths: Array<string | null | undefined>): string[] {
+function uniquePaths(paths: Array<string | null | undefined>, caseInsensitive = false): string[] {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const entry of paths) {
         const trimmed = String(entry || '').trim();
-        if (!trimmed || seen.has(trimmed)) continue;
-        seen.add(trimmed);
+        if (!trimmed) continue;
+        const key = caseInsensitive ? trimmed.toLowerCase() : trimmed;
+        if (seen.has(key)) continue;
+        seen.add(key);
         out.push(trimmed);
     }
     return out;
+}
+
+/**
+ * Split a PATH string using the delimiter its producer actually used.
+ *
+ * A win32 process can inherit a POSIX-delimited PATH from MSYS/git-bash.
+ * Splitting that on ';' yields one giant entry that resolves nothing (#273).
+ *
+ * Colon splitting has one ambiguity: 'C:\x' contains a delimiter-looking
+ * colon. Splitting on ':' turns it into ['C', '\x'], so any single-letter
+ * fragment followed by a non-empty fragment is rejoined. The rejoin does NOT
+ * require a leading separator: 'C:tools' and 'C:.\node_modules\.bin' are
+ * drive-RELATIVE and equally valid Windows PATH entries.
+ * A whole-string "every part starts with /" test is NOT enough: a real
+ * git-bash PATH mixes POSIX entries with inherited Windows ones, e.g.
+ * '/mingw64/bin:/usr/bin:C:\\Users\\u\\AppData\\Roaming\\npm'.
+ */
+export function splitPathList(raw: string, platform: NodeJS.Platform = process.platform): string[] {
+    const value = String(raw || '').trim();
+    if (!value) return [];
+    if (platform !== 'win32') return value.split(':').map(s => s.trim()).filter(Boolean);
+
+    // A semicolon is unambiguous on Windows: the producer used the native
+    // delimiter, so no colon interpretation is needed.
+    if (value.includes(';')) return value.split(';').map(s => s.trim()).filter(Boolean);
+    if (!value.includes(':')) return [value];
+
+    const raws = value.split(':');
+    const out: string[] = [];
+    for (let i = 0; i < raws.length; i++) {
+        const part = (raws[i] ?? '').trim();
+        if (!part) continue;
+        const next = raws[i + 1];
+        // Rejoin any drive-qualified entry, absolute ('C:\tools') or
+        // drive-relative ('C:tools', 'C:.\node_modules\.bin'). Windows accepts
+        // both, and path.win32.resolve treats the latter as a real path, so a
+        // rejoin rule that only accepted a following separator would split one
+        // valid entry into two invalid ones.
+        if (/^[A-Za-z]$/.test(part) && next !== undefined && next !== '') {
+            out.push(`${part}:${next.trim()}`);
+            i++;
+            continue;
+        }
+        out.push(part);
+    }
+    return out.filter(Boolean);
+}
+
+/**
+ * Windows system directories a spawned process cannot work without.
+ *
+ * Omitting System32 is what #294 reported: without it the agent cannot
+ * resolve powershell, where, or cmd, and silently works around the gap.
+ */
+function windowsSystemDirs(env: NodeJS.ProcessEnv): string[] {
+    const systemRoot = env['SystemRoot'] || env['windir'] || 'C:\\WINDOWS';
+    const system32 = pathWin32.join(systemRoot, 'System32');
+    return [
+        system32,
+        systemRoot,
+        pathWin32.join(system32, 'Wbem'),
+        pathWin32.join(system32, 'WindowsPowerShell', 'v1.0'),
+    ];
+}
+
+function windowsUserDirs(env: NodeJS.ProcessEnv, homeDir: string): string[] {
+    const appData = env['APPDATA'] || pathWin32.join(homeDir, 'AppData', 'Roaming');
+    const localAppData = env['LOCALAPPDATA'] || pathWin32.join(homeDir, 'AppData', 'Local');
+    return [
+        pathWin32.join(appData, 'npm'),
+        pathWin32.join(localAppData, 'Microsoft', 'WindowsApps'),
+        pathWin32.join(homeDir, '.local', 'bin'),
+        pathWin32.join(homeDir, '.cargo', 'bin'),
+        pathWin32.join(homeDir, '.bun', 'bin'),
+    ];
 }
 
 function listManagedNodeBins(homeDir: string): string[] {
@@ -61,14 +138,14 @@ export function buildServicePath(
     seedPath = process.env["PATH"] || '',
     extraDirs: string[] = [],
     homeDir = os.homedir(),
+    platform: NodeJS.Platform = process.platform,
+    env: NodeJS.ProcessEnv = process.env,
 ): string {
-    const seeded = String(seedPath || '')
-        .split(delimiter)
-        .map((segment) => segment.trim())
-        .filter(Boolean);
+    const isWindows = platform === 'win32';
+    const seeded = splitPathList(seedPath, platform);
 
-    const defaults = [
-        dirname(process.execPath),
+    const common = [dirname(process.execPath)];
+    const unixDefaults = [
         join(homeDir, '.local', 'bin'),
         join(homeDir, '.claude', 'local', 'bin'),
         join(homeDir, 'bin'),
@@ -96,6 +173,10 @@ export function buildServicePath(
         '/sbin',
         ...listManagedNodeBins(homeDir),
     ];
+    const defaults = isWindows
+        ? [...common, ...windowsSystemDirs(env), ...windowsUserDirs(env, homeDir)]
+        : [...common, ...unixDefaults];
 
-    return uniquePaths([...seeded, ...extraDirs, ...defaults]).join(delimiter);
+    const listDelimiter = isWindows ? ';' : ':';
+    return uniquePaths([...seeded, ...extraDirs, ...defaults], isWindows).join(listDelimiter);
 }
