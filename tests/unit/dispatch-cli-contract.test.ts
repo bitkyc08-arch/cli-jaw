@@ -127,3 +127,39 @@ test('dispatch CLI preserves runId in poll recovery hints without auto-inlining 
         '409 worker-busy polling should thread the existing runId into pollers',
     );
 });
+
+// #276: the reporter saw `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`
+// from the CLI. This file already blames post-response process.exit() for it in
+// two places and uses exitCode + break instead — but the 202 --async path and two
+// error paths still exited hard after the body was read. This locks the rule for
+// every path below readJsonResponse, so the next one added does not reintroduce it.
+//
+// Source-shape rather than behavioural on purpose: the failure is a native abort
+// during socket teardown on Windows, which cannot be asserted from a macOS/Linux
+// unit test. What IS checkable here is that no path exits hard after the read.
+test('no dispatch path calls process.exit() after the response body is read', () => {
+    // Scope to the single-dispatch block: from its own readJsonResponse call to
+    // the end of the labelled dispatchRun block. Earlier process.exit(1) calls
+    // are legitimate — usage help and a pre-response fetch failure, neither of
+    // which has an open socket to drain.
+    const readIdx = dispatchSrc.indexOf(
+        'const { body, nonJsonError } = await readJsonResponse<DispatchResultBody>(res, \'dispatch endpoint\')',
+    );
+    assert.ok(readIdx > 0, 'single-dispatch response read anchor moved; update this test');
+
+    const endIdx = dispatchSrc.indexOf('\n}', dispatchSrc.indexOf('break dispatchRun;', readIdx));
+    assert.ok(endIdx > readIdx, 'dispatchRun block end anchor moved; update this test');
+
+    const offenders = dispatchSrc.slice(readIdx, endIdx)
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.includes('process.exit(') && !line.startsWith('//') && !line.startsWith('*'));
+
+    assert.deepEqual(
+        offenders,
+        [],
+        'post-response paths must use `process.exitCode = N; break dispatchRun;` so the '
+        + 'pooled HTTP socket can drain — process.exit() here tears the process down '
+        + 'mid-teardown, the documented UV_HANDLE_CLOSING candidate in #276',
+    );
+});

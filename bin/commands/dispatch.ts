@@ -561,13 +561,20 @@ try {
     const { body, nonJsonError } = await readJsonResponse<DispatchResultBody>(res, 'dispatch endpoint');
     if (nonJsonError) {
         console.error(`❌ ${nonJsonError}`);
-        process.exit(1);
+        // Post-response: the socket is still draining. Same reason as the paths below.
+        process.exitCode = 1;
+        break dispatchRun;
     }
     if (res.status === 202) {
         // --async: worker is claimed and running server-side — print the handle
         // and return the turn instead of blocking up to 10 minutes.
         if (isAsync) {
-            if (json) { printJsonResult(body); process.exit(0); }
+            // exitCode + break, not process.exit(): the response body is already
+            // read, so exiting here tears the process down while the pooled HTTP
+            // socket is still closing. That is the pattern the 200 and 409 paths
+            // below deliberately avoid as the libuv UV_HANDLE_CLOSING candidate
+            // in #276; this path had been left behind.
+            if (json) { printJsonResult(body); process.exitCode = 0; break dispatchRun; }
             console.log(`🚀 ${targetName} dispatched (async)`);
             const w = body.worker;
             if (w?.runId) {
@@ -578,10 +585,11 @@ try {
                 // Defensive: a 202 without worker metadata still leaves a handle.
                 console.log(`  status: cli-jaw worker status "${targetName}"`);
             }
-            process.exit(0);
+            process.exitCode = 0;
+            break dispatchRun;
         }
         const pollAgentId = body?.worker?.agentId || (agent ? await resolveAgentId(agent) : null);
-        if (!pollAgentId) { console.error('❌ dispatch started but worker id was not returned'); process.exit(1); }
+        if (!pollAgentId) { console.error('❌ dispatch started but worker id was not returned'); process.exitCode = 1; break dispatchRun; }
         const pollRunId = body?.worker?.runId;
         const liveProgress = shouldPrintLiveProgress();
         const polled = liveProgress ? await pollAndPrintWorker(pollAgentId, targetName, pollRunId) : await pollWorkerResult(pollAgentId, targetName, pollRunId);
