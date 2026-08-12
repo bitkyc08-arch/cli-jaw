@@ -30,11 +30,20 @@ test('TZ-004: old.stop() failure triggers wait before proceeding', () => {
     assert.ok(initBlock.includes('setTimeout(r, 2000)'), 'must wait 2s after stop failure');
 });
 
-test('TZ-005: deleteWebhook called before bot.start', () => {
-    const delIdx = botSrc.indexOf('deleteWebhook');
-    const startIdx = botSrc.indexOf('bot.start(');
-    assert.ok(delIdx >= 0, 'deleteWebhook must be called');
-    assert.ok(delIdx < startIdx, 'deleteWebhook must come before bot.start');
+test('TZ-005: deleteWebhook called before polling via durable poller', () => {
+    // wp9 moved deleteWebhook into TelegramDurablePoller.bootstrapInner()
+    // (update-offset.ts) where it runs before the first getUpdates call.
+    const pollerSrc = fs.readFileSync(join(projectRoot, 'src/telegram/update-offset.ts'), 'utf8');
+    assert.ok(pollerSrc.includes('deleteWebhook'), 'deleteWebhook must exist in the durable poller');
+    // Find the method IMPLEMENTATION (not the type/call site) by looking for
+    // the method signature with its parameter list.
+    const implIdx = pollerSrc.indexOf('bootstrapInner(signal: AbortSignal)');
+    assert.ok(implIdx >= 0, 'bootstrapInner implementation must exist');
+    const implBlock = pollerSrc.slice(implIdx, implIdx + 600);
+    const delInImpl = implBlock.indexOf('deleteWebhook');
+    const getUpdInImpl = implBlock.indexOf('getUpdates');
+    assert.ok(delInImpl >= 0, 'deleteWebhook must be in bootstrapInner');
+    assert.ok(delInImpl < getUpdInImpl, 'deleteWebhook must come before getUpdates');
 });
 
 test('TZ-006: onStart resets tg409RetryCount', () => {

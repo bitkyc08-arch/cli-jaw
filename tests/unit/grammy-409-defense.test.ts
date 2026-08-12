@@ -24,9 +24,9 @@ test('initTelegram awaits old bot stop', () => {
         'old.stop() must be awaited to prevent polling race');
 });
 
-test('bot.start() has .catch() for 409 handling', () => {
-    assert.match(botSrc, /bot\.start\([\s\S]*?\)\.catch\(/,
-        'bot.start() must have .catch() to handle 409 GrammyError');
+test('poller.start() has .catch() for 409 handling', () => {
+    assert.match(botSrc, /poller\.start\(\)\.catch\(/,
+        'poller.start() must have .catch() to handle 409 GrammyError');
 });
 
 test('409 retry uses tgRetryTimer for dedup', () => {
