@@ -63,7 +63,18 @@ function readMemory(): string {
 }
 
 async function waitForFlushCompletion(): Promise<void> {
-    for (let i = 0; i < 100; i++) {
+    // The tail of a flush is not microtask work: before it releases the lock it
+    // awaits a dynamic `import('../memory/indexing.js')`, auto-reflect, and an
+    // embedding-sync step that can reach the loopback dashboard. A fixed number
+    // of setImmediate ticks therefore races the loader on a loaded CI runner —
+    // the same test passed on the run before. Poll against wall-clock instead so
+    // the bound is "this took too long", not "this needed more than N ticks".
+    //
+    // The wait itself stays on setImmediate: the late-settlement test runs under
+    // `t.mock.timers.enable({ apis: ['setTimeout'] })`, so a setTimeout-based
+    // poll would never fire there.
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
         if (!getFlushStatus().locked) return;
         await new Promise<void>(resolve => setImmediate(resolve));
     }
