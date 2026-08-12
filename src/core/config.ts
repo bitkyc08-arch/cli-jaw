@@ -290,6 +290,14 @@ function createDefaultSettings() {
             // Tell the agent WHO sent an inbound message. Off = raw ids only,
             // and no human name reaches prompts, DB rows, or broadcasts.
             senderIdentity: true,
+            // Conversation context (channel, thread, participants) in the agent
+            // prompt. On by default, like sender identity: without it the agent
+            // is told to call /api/slack/* with a channel id nobody gave it.
+            conversationContext: true,
+            // The channel member summary is opt-in. A 200-person list in every
+            // prompt is token waste and needless exposure; the pull endpoint
+            // /api/slack/members still serves the full roster on demand.
+            channelRoster: false,
             identityCacheTtlMs: 21600000,
         },
         messaging: {
@@ -609,6 +617,10 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     }
     // Sender identity migration — added 260811, absent from all prior files.
     if (s["slack"].senderIdentity === undefined) s["slack"].senderIdentity = true;
+    // Conversation context migration — added 260812. An existing install gets
+    // the block on (like sender identity) and the roster off.
+    if (s["slack"].conversationContext === undefined) s["slack"].conversationContext = true;
+    if (s["slack"].channelRoster === undefined) s["slack"].channelRoster = false;
     if (!Number.isFinite(s["slack"].identityCacheTtlMs) || s["slack"].identityCacheTtlMs <= 0) {
         s["slack"].identityCacheTtlMs = 21600000;
     }

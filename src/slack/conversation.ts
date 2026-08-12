@@ -36,7 +36,19 @@ export type SlackConversationInfo = {
     resolved: boolean;
 };
 
-export type SlackThreadParticipant = { id: string; name: string; isBot: boolean };
+export type SlackThreadParticipant = {
+    id: string;
+    name: string;
+    isBot: boolean;
+    /**
+     * The `U…` id carried alongside a bot marker, when the message had both.
+     *
+     * `id` prefers the bot id, but self-detection compares against
+     * `auth.test`'s `user_id`, which is a `U…`. Without keeping this the bot's
+     * OWN messages render as some third-party app.
+     */
+    userId?: string;
+};
 
 export type SlackThreadInfo = {
     threadTs: string;
@@ -255,12 +267,16 @@ export async function resolveThreadInfo(
 
             const ids: string[] = [];
             const isBotById = new Map<string, boolean>();
+            const userIdById = new Map<string, string>();
             for (const message of result.messages) {
                 // Bot marker first: `user` alone does not prove a human.
                 const botId = message.botId;
                 const id = botId || message.user;
                 if (!id || isBotById.has(id)) continue;
                 isBotById.set(id, Boolean(botId));
+                // A granular-permission app message carries both; keep the user
+                // id so self-detection still works downstream.
+                if (botId && message.user) userIdById.set(id, message.user);
                 ids.push(id);
                 if (ids.length >= MAX_PARTICIPANTS) break;
             }
@@ -277,11 +293,15 @@ export async function resolveThreadInfo(
             const info: SlackThreadInfo = {
                 threadTs,
                 replyCount,
-                participants: ids.map(id => ({
-                    id,
-                    name: names.get(id)?.name ?? id,
-                    isBot: isBotById.get(id) === true,
-                })),
+                participants: ids.map(id => {
+                    const userId = userIdById.get(id);
+                    return {
+                        id,
+                        name: names.get(id)?.name ?? id,
+                        isBot: isBotById.get(id) === true,
+                        ...(userId ? { userId } : {}),
+                    };
+                }),
                 // Retain only what the prefetch renders, with bounded text: a
                 // cached thread must not pin megabytes of message bodies.
                 messages: result.messages.map(message => ({
