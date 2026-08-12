@@ -67,7 +67,7 @@ test('lifecycle builds start command with top-level home flag', () => {
     assert.deepEqual(manager.buildStartCommand(3457), [
         '/usr/local/bin/jaw',
         '--home',
-        '/Users/jun/.cli-jaw',
+        join('/Users/jun', '.cli-jaw'),
         'serve',
         '--port',
         '3457',
@@ -76,13 +76,60 @@ test('lifecycle builds start command with top-level home flag', () => {
     assert.deepEqual(manager.buildStartCommand(3458), [
         '/usr/local/bin/jaw',
         '--home',
-        '/Users/jun/.cli-jaw-3458',
+        join('/Users/jun', '.cli-jaw-3458'),
         'serve',
         '--port',
         '3458',
         '--no-open',
     ]);
     cleanup();
+});
+
+test('lifecycle runs JavaScript jaw entrypoints through Node', (t) => {
+    const { dir, cleanup } = setupTmpStorage();
+    t.after(cleanup);
+    const manager = new DashboardLifecycleManager({
+        managerPort: MANAGER_PORT,
+        from: 3457,
+        count: 50,
+        jawPath: 'C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\cli-jaw\\dist\\bin\\cli-jaw.js',
+        nodePath: 'C:\\Program Files\\nodejs\\node.exe',
+        storageRoot: dir,
+    });
+
+    assert.deepEqual(manager.buildStartCommand(3458, 'C:\\Users\\user\\.cli-jaw-3458'), [
+        'C:\\Program Files\\nodejs\\node.exe',
+        'C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\cli-jaw\\dist\\bin\\cli-jaw.js',
+        '--home',
+        'C:\\Users\\user\\.cli-jaw-3458',
+        'serve',
+        '--port',
+        '3458',
+        '--no-open',
+    ]);
+});
+
+test('lifecycle keeps executable jaw entrypoints in command position', (t) => {
+    const { dir, cleanup } = setupTmpStorage();
+    t.after(cleanup);
+    const manager = new DashboardLifecycleManager({
+        managerPort: MANAGER_PORT,
+        from: 3457,
+        count: 50,
+        jawPath: 'C:\\Users\\user\\AppData\\Roaming\\npm\\jaw.cmd',
+        nodePath: 'C:\\Program Files\\nodejs\\node.exe',
+        storageRoot: dir,
+    });
+
+    assert.deepEqual(manager.buildStartCommand(3458, 'C:\\Users\\user\\.cli-jaw-3458'), [
+        'C:\\Users\\user\\AppData\\Roaming\\npm\\jaw.cmd',
+        '--home',
+        'C:\\Users\\user\\.cli-jaw-3458',
+        'serve',
+        '--port',
+        '3458',
+        '--no-open',
+    ]);
 });
 
 test('lifecycle rejects ports outside scan range', async (t) => {
@@ -157,10 +204,10 @@ test('lifecycle marks offline ports as startable with default home policy', (t) 
     const defaultRow = manager.decorateInstance(makeOffline(3457));
     const row = manager.decorateInstance(makeOffline(3460));
 
-    assert.equal(defaultRow.lifecycle?.defaultHome, '/Users/jun/.cli-jaw');
+    assert.equal(defaultRow.lifecycle?.defaultHome, join('/Users/jun', '.cli-jaw'));
     assert.equal(row.lifecycle?.owner, 'none');
     assert.equal(row.lifecycle?.canStart, true);
-    assert.equal(row.lifecycle?.defaultHome, '/Users/jun/.cli-jaw-3460');
+    assert.equal(row.lifecycle?.defaultHome, join('/Users/jun', '.cli-jaw-3460'));
 });
 
 test('lifecycle stop can terminate external core listener PID but restart remains owner-limited', async (t) => {
