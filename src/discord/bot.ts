@@ -369,7 +369,7 @@ function observeGatewaySnapshot(snapshot: DiscordGatewaySnapshot): void {
         || snapshot.lastEventCode?.startsWith('shard_error:')) {
         log.warn(`[discord:gateway] ${snapshot.lastEventCode}`);
     } else if (snapshot.state === 'blocked') {
-        log.error(`[discord:gateway] blocked (${snapshot.lastEventCode ?? 'unknown'})`);
+        log.error(logErrorText(`[discord:gateway] blocked (${snapshot.lastEventCode ?? 'unknown'})`));
     } else if (snapshot.state === 'recovering') {
         log.warn(`[discord:gateway] recovering (${snapshot.lastEventCode ?? 'unknown'})`);
     }

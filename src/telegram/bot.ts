@@ -874,7 +874,7 @@ async function _initTelegramInner() {
     // The durable offset is scoped by bot identity, so polling must not start
     // when getMe cannot provide that identity.
     if (botUserId === null) {
-        log.error('[tg] refusing to start durable polling: bot identity could not be read');
+        log.error(logErrorText('[tg] refusing to start durable polling: bot identity could not be read'));
         return;
     }
 
