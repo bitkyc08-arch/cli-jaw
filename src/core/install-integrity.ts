@@ -215,25 +215,59 @@ export function checkPsExecutionPolicy({
         stdio: 'pipe',
         timeout: 3000,
     }),
+    runRegQuery = defaultRegQuery,
 }: {
     platform?: NodeJS.Platform;
     runPolicy?: () => string;
+    runRegQuery?: () => string;
 } = {}): PsExecutionPolicyResult {
     if (platform !== 'win32') return { state: 'skipped' };
     try {
         const policy = runPolicy().trim();
-        if (!policy) return { state: 'unknown' };
-        const normalized = policy.toLowerCase();
-        if (['restricted', 'allsigned', 'undefined'].includes(normalized)) {
-            return { state: 'warn', policy, guidance: PS_POLICY_GUIDANCE };
-        }
-        if (['remotesigned', 'bypass', 'unrestricted'].includes(normalized)) {
-            return { state: 'ok', policy };
-        }
-        return { state: 'unknown', policy };
+        if (policy) return classifyPolicy(policy);
     } catch {
-        return { state: 'unknown' };
+        // PS probe unavailable (e.g. security module cannot load under sshd)
     }
+    try {
+        const policy = runRegQuery().trim();
+        if (policy) return classifyPolicy(policy);
+    } catch {
+        // both probes unavailable
+    }
+    return { state: 'unknown' };
+}
+
+function classifyPolicy(policy: string): PsExecutionPolicyResult {
+    const normalized = policy.toLowerCase();
+    if (['restricted', 'allsigned', 'undefined'].includes(normalized)) {
+        return { state: 'warn', policy, guidance: PS_POLICY_GUIDANCE };
+    }
+    if (['remotesigned', 'bypass', 'unrestricted'].includes(normalized)) {
+        return { state: 'ok', policy };
+    }
+    return { state: 'unknown', policy };
+}
+
+/** Registry fallback for hosts where the PS security module cannot load. */
+function defaultRegQuery(): string {
+    const keys = [
+        'HKCU\\SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell',
+        'HKLM\\SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell',
+    ];
+    for (const key of keys) {
+        try {
+            const out = execFileSync('reg', ['query', key, '/v', 'ExecutionPolicy'], {
+                encoding: 'utf8',
+                stdio: 'pipe',
+                timeout: 3000,
+            });
+            const match = out.match(/ExecutionPolicy\s+REG_SZ\s+(\S+)/);
+            if (match) return match[1];
+        } catch {
+            // user-level absent or unreadable; try machine-level
+        }
+    }
+    return '';
 }
 
 /** Problem → cause → command, Puppeteer-style. Plain text, pipe-safe. */

@@ -251,3 +251,22 @@ test('read-only node_modules → writableInstallTree false and report avoids reb
         fs.chmodSync(path.join(root, 'node_modules'), 0o755);
     }
 });
+
+test('ps policy falls back to registry when the PS probe fails', () => {
+    const result = checkPsExecutionPolicy({
+        platform: 'win32',
+        runPolicy: () => { throw new Error('module load failed'); },
+        runRegQuery: () => 'Restricted',
+    });
+    assert.strictEqual(result.state, 'warn');
+    assert.strictEqual(result.policy, 'Restricted');
+});
+
+test('ps policy unknown when both probes fail', () => {
+    const result = checkPsExecutionPolicy({
+        platform: 'win32',
+        runPolicy: () => { throw new Error('x'); },
+        runRegQuery: () => { throw new Error('y'); },
+    });
+    assert.strictEqual(result.state, 'unknown');
+});
