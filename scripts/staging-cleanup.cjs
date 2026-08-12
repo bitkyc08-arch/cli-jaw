@@ -14,11 +14,20 @@ const LEDGER_FILE = '.cli-jaw-cleanup-ledger.json';
 const LOCK_ERRORS = new Set(['EBUSY', 'EACCES', 'EPERM']);
 
 function defaultReadName(dir) {
-    try {
-        return JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name;
-    } catch {
-        return null;
+    // npm staging layout nests the package under node_modules/cli-jaw; a plain
+    // root package.json covers any future flat layout.
+    const candidates = [
+        path.join(dir, 'package.json'),
+        path.join(dir, 'node_modules', 'cli-jaw', 'package.json'),
+    ];
+    for (const file of candidates) {
+        try {
+            return JSON.parse(fs.readFileSync(file, 'utf8')).name;
+        } catch {
+            // try next layout
+        }
     }
+    return null;
 }
 
 function defaultWalkFiles(dir) {

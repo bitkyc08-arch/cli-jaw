@@ -158,3 +158,13 @@ test('rename failure rolls back the ledger authorization', () => {
     assert.ok(!listed.includes('.cli-jaw-renfail.deleting'), 'rolled-back .deleting must not be retry-eligible');
     assert.ok(listed.includes('.cli-jaw-renfail'), 'original fresh candidate stays visible to doctor');
 });
+test('npm staging nested layout is validated and cleaned', () => {
+    const root = fixture([]);
+    const nested = path.join(root, '.cli-jaw-nested', 'node_modules', 'cli-jaw');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, 'package.json'), JSON.stringify({ name: 'cli-jaw', version: '0.0.0' }));
+    let removed = 0;
+    const result = cleanupStaleStaging(root, deps({ rm: () => { removed += 1; } }));
+    assert.strictEqual(removed, 1);
+    assert.deepStrictEqual(result.removed, ['.cli-jaw-nested']);
+});
