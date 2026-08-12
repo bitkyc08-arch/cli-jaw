@@ -31,6 +31,7 @@ import { admitSlackRun, claimSlackEvent, enqueueSlackIngress, resetSlackIngress,
 import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
 import { resetSlackIdentityCache } from './identity.js';
+import { resetSlackConversationCache } from './conversation.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -423,6 +424,9 @@ async function disposeSlackRuntime(): Promise<void> {
     // Identity is cached per (team, id). A re-init can authenticate against a
     // different workspace, so the cache must not outlive the runtime that filled it.
     resetSlackIdentityCache();
+    // Same reasoning for channel names and thread participants: a workspace
+    // switch would otherwise attribute the previous team's conversations.
+    resetSlackConversationCache();
     if (forwarderHandler) {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;

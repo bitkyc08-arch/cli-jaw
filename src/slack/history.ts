@@ -59,24 +59,67 @@ function normalize(raw: RawMessage[]): SlackHistoryMessage[] {
     return out;
 }
 
+export type SlackHistoryOpts = {
+    limit?: number;
+    fetchImpl?: SlackFetch;
+    /** Cancels the request, the retry wait, and any further attempt. */
+    signal?: AbortSignal;
+    /**
+     * Skip the bounded retry when Slack answers `ratelimited`.
+     *
+     * Default false keeps today's behavior for `/api/slack/history` and
+     * attachment recovery. Enrichment callers set it: they own a suppression
+     * window of their own, and retrying a 429 fires a second request before that
+     * window can be applied.
+     */
+    noRetryOnRateLimit?: boolean;
+};
+
+/** Abortable, unref'd sleep. A cancelled ingress must not hold the loop open. */
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.resolve();
+    return new Promise<void>(resolve => {
+        const timer = setTimeout(finish, ms);
+        timer.unref?.();
+        function finish(): void {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', finish);
+            resolve();
+        }
+        signal?.addEventListener('abort', finish, { once: true });
+    });
+}
+
 async function callWithRetry(
     token: string,
     method: 'conversations.history' | 'conversations.replies',
     body: Record<string, unknown>,
-    fetchImpl?: SlackFetch,
+    opts: SlackHistoryOpts = {},
 ): Promise<SlackHistoryResult> {
     // form-encoded on purpose: conversations.replies REJECTS a JSON body with
     // invalid_arguments ("missing required field: channel/ts") — verified live
     // 2026-08-06 against T0BMJ7RSPHQ. conversations.history accepts both, so
     // both ride the form path for one consistent contract.
-    const opts = { form: true as const, ...(fetchImpl ? { fetchImpl } : {}) };
-    let result = await slackApi<RawHistoryData>(token, method, body, opts);
-    if (!result.ok && isRetryableSlackError(result.error)) {
+    const callOpts = {
+        form: true as const,
+        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+    };
+    let result = await slackApi<RawHistoryData>(token, method, body, callOpts);
+    // A 429 is retried by default (existing callers depend on it), but an
+    // enrichment caller opts out: it applies its own suppression window, and a
+    // retry would fire a second request before that window exists.
+    const retryable = isRetryableSlackError(result.error)
+        && !(opts.noRetryOnRateLimit && result.error === 'ratelimited');
+    if (!result.ok && retryable && !opts.signal?.aborted) {
         // One bounded retry after a short pause (Hermes uses 1s/2s; a single
         // 1s attempt is enough for an interactive lookup — the caller can
         // simply retry the whole request otherwise).
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        result = await slackApi<RawHistoryData>(token, method, body, opts);
+        await sleepUnlessAborted(1000, opts.signal);
+        // Re-check: the wait is where a cancel usually lands.
+        if (!opts.signal?.aborted) {
+            result = await slackApi<RawHistoryData>(token, method, body, callOpts);
+        }
     }
     if (!result.ok) {
         // describeSlackError output is operator prose (never echoes tokens);
@@ -103,7 +146,7 @@ async function callWithRetry(
 export function fetchSlackHistory(
     token: string,
     channel: string,
-    opts: { limit?: number; oldest?: string; latest?: string; inclusive?: boolean; fetchImpl?: SlackFetch } = {},
+    opts: SlackHistoryOpts & { oldest?: string; latest?: string; inclusive?: boolean } = {},
 ): Promise<SlackHistoryResult> {
     return callWithRetry(token, 'conversations.history', {
         channel,
@@ -113,7 +156,7 @@ export function fetchSlackHistory(
         // Slack ignores `inclusive` when neither bound is present; send it only
         // when it can actually take effect.
         ...(opts.inclusive && (opts.oldest || opts.latest) ? { inclusive: true } : {}),
-    }, opts.fetchImpl);
+    }, opts);
 }
 
 /** One thread: conversations.replies (parent message included, oldest first). */
@@ -121,13 +164,13 @@ export function fetchSlackReplies(
     token: string,
     channel: string,
     threadTs: string,
-    opts: { limit?: number; fetchImpl?: SlackFetch } = {},
+    opts: SlackHistoryOpts = {},
 ): Promise<SlackHistoryResult> {
     return callWithRetry(token, 'conversations.replies', {
         channel,
         ts: threadTs,
         limit: clampLimit(opts.limit),
-    }, opts.fetchImpl);
+    }, opts);
 }
 
 const FORMAT_CHAR_CAP = 6000;
