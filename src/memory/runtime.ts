@@ -73,8 +73,9 @@ import {
 } from './shared.js';
 
 import { getLastExpansionTerms } from './keyword-expand.js';
-import { reindexAll, searchIndex, formatHits, reindexIndexCounts, reindexIntegratedMemoryFile } from './indexing.js';
+import { reindexAll, reindexSingleFile, searchIndex, formatHits, reindexIndexCounts, reindexIntegratedMemoryFile } from './indexing.js';
 import { ensureAdvancedMemoryStructure, bootstrapAdvancedMemory, syncCoreProfile, scanSystemProfile } from './bootstrap.js';
+import { refreshHostToolchainProfileFile, stripHostToolchainManagedBlock } from './host-toolchain.js';
 import { reflectRecentEpisodes, type ReflectionResult } from './reflect.js';
 import { log } from '../core/logger.js';
 
@@ -130,7 +131,7 @@ export function loadAdvancedProfileSummary(maxChars = 800) {
     const file = join(getAdvancedMemoryDir(), 'profile.md');
     if (!fs.existsSync(file)) return '';
     const { body } = parseMarkdownFileLight(safeReadFile(file));
-    const trimmed = body.trim();
+    const trimmed = stripHostToolchainManagedBlock(body).trim();
     if (!trimmed) return '';
     return trimmed.length > maxChars ? trimmed.slice(0, maxChars) + '\n...(truncated)' : trimmed;
 }
@@ -279,13 +280,25 @@ function getLegacyClaudeMemoryDir() {
     return join(os.homedir(), '.claude', 'projects', hash, 'memory');
 }
 
+function refreshHostToolchain(root: string) {
+    const profilePath = join(root, 'profile.md');
+    const profile = refreshHostToolchainProfileFile(profilePath, {
+        workingDir: expandHomePath(settings["workingDir"] || process.cwd(), os.homedir()),
+    });
+    reindexSingleFile(root, profilePath);
+    return profile;
+}
+
 export function ensureIntegratedMemoryReady() {
     const created = ensureAdvancedMemoryStructure();
     syncCoreProfile(getAdvancedMemoryDir(), { force: false });
     const status = getAdvancedMemoryStatus();
     const meta = readMeta();
     const alreadyBootstrapped = meta?.bootstrapStatus === 'done';
-    if (status.indexState === 'ready' && alreadyBootstrapped) return { created, bootstrapped: false, status };
+    if (status.indexState === 'ready' && alreadyBootstrapped) {
+        refreshHostToolchain(getAdvancedMemoryDir());
+        return { created, bootstrapped: false, status: getAdvancedMemoryStatus() };
+    }
     const hasLegacy = fs.existsSync(join(JAW_HOME, 'memory', 'MEMORY.md'))
         || fs.existsSync(join(JAW_HOME, 'memory', 'daily'))
         || fs.existsSync(getLegacyClaudeMemoryDir())
@@ -312,6 +325,8 @@ export function ensureIntegratedMemoryReady() {
             });
             writeText(profilePath, fm + `# Profile\n\n${systemInfo}\n`);
             log.info('[jaw:bootstrap] seeded profile from system scan (no legacy data found)');
+        } else {
+            refreshHostToolchain(root);
         }
         const result = reindexAll(root);
         writeMeta({ bootstrapStatus: 'done', lastBootstrapAt: new Date().toISOString() });
@@ -323,6 +338,7 @@ export function ensureIntegratedMemoryReady() {
         importKv: true,
         importClaudeSession: true,
     });
+    refreshHostToolchain(getAdvancedMemoryDir());
     return { created, bootstrapped: true, status: getAdvancedMemoryStatus(), result };
 }
 

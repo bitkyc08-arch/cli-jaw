@@ -26,6 +26,11 @@ import {
 } from './shared.js';
 import { reindexAll, reindexSingleFile } from './indexing.js';
 import { launchSpec } from '../core/exec-name.js';
+import {
+    type HostToolchainProfile,
+    renderHostToolchainManagedBlock,
+    resolveHostToolchainProfile,
+} from './host-toolchain.js';
 
 function slug(value: string) {
     return value
@@ -382,7 +387,7 @@ function tryExec(bin: string, args: string[]): string {
 }
 
 /** Scan hardware + project root info to seed profile when no legacy data exists */
-export function scanSystemProfile(): string {
+export function scanSystemProfile(hostToolchain?: HostToolchainProfile): string {
     const lines: string[] = [];
 
     // Hardware
@@ -406,6 +411,14 @@ export function scanSystemProfile(): string {
     if (npmVer) lines.push(`- npm: ${npmVer}`);
     const bunVer = tryExec('bun', ['--version']);
     if (bunVer) lines.push(`- bun: ${bunVer}`);
+
+    // Durable host capabilities are a managed profile section. Discovery is
+    // intentionally tool-specific and stores only absolute paths, safe version
+    // tokens, provenance labels, and verification results.
+    lines.push('');
+    lines.push(renderHostToolchainManagedBlock(hostToolchain ?? resolveHostToolchainProfile(null, {
+        workingDir: settings["workingDir"] || process.cwd(),
+    })));
 
     // Working directory / project root
     const wd = settings["workingDir"] || process.cwd();

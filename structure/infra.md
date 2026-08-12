@@ -648,9 +648,9 @@ Channel narrowing helpers and slash-command registration.
 
 ---
 
-## src/memory/ — persistent + advanced memory runtime (13 files, 3155L)
+## src/memory/ — persistent + advanced memory runtime (16 files, 4267L)
 
-`memory.ts`, `runtime.ts`, `shared.ts`, `heartbeat.ts`, `heartbeat-schedule.ts`, `indexing.ts`, `keyword-expand.ts`, `bootstrap.ts`, `injection.ts`, `identity.ts`, `reflect.ts`, `advanced.ts`, `worklog.ts`.
+`memory.ts`, `runtime.ts`, `shared.ts`, `heartbeat.ts`, `heartbeat-report.ts`, `heartbeat-schedule.ts`, `indexing.ts`, `keyword-expand.ts`, `bootstrap.ts`, `host-toolchain.ts`, `injection.ts`, `identity.ts`, `reflect.ts`, `synonyms.ts`, `advanced.ts`, `worklog.ts`.
 
 ### memory.ts (154L)
 
@@ -677,9 +677,9 @@ Advanced memory runtime의 entry point. FTS5 인덱스, search routing, task sna
 
 주기 작업과 스케줄 파싱/실행을 담당한다. 현재 소스 오브 트루스는 `~/.cli-jaw/heartbeat.json`이며, schedule은 `every`/`cron` + `timeZone`을 지원한다. PABCD 활성, heartbeat 중첩, main agent busy 상태에서는 `pendingJobs` 큐로 밀어두고, user message queue가 먼저 비워진 뒤 heartbeat pending을 drain한다. 프롬프트 앞에는 memory search 지시를 자동 주입한다. (#252) job별 opt-in `runner: main|employee|script`(기본 main; employee는 `claimWorker`+`runSingleAgent`, busy 시 `skipped: employee busy` 경고 리포트; script는 argv `execFile` no-shell)와 `reportPolicy: always|anomaly_only|silent` + 구조화 리포트 계약(`heartbeat-report.ts`: status/changed/record_required/user_visible/summary/evidence/next_action)을 지원한다. `[SILENT]`/quiet marker는 정책과 무관하게 우선하며, silent 정책 anchor는 `delivered_at NULL` + "recorded (not sent)" 주입 문구로 구분된다. main runner는 `orchestrateAndCollectData`의 `agyPlannerOnly` 신호(#251)에 1회 한정 재시도한다. PUT `/api/heartbeat`는 UI가 모르는 runner 필드를 job id 기준 merge-by-id로 보존한다.
 
-### indexing.ts / keyword-expand.ts / bootstrap.ts
+### indexing.ts / keyword-expand.ts / bootstrap.ts / host-toolchain.ts
 
-index 준비, BM25/expansion, bootstrapping/import 흐름을 담당한다.
+index 준비, BM25/expansion, bootstrapping/import 흐름을 담당한다. `host-toolchain.ts`는 검증한 호스트 도구 경로를 marker-owned profile 구역에 보존하고 bounded disk-prompt 요약을 만든다.
 
 ### worklog.ts / shared.ts
 

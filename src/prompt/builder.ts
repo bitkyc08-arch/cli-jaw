@@ -10,7 +10,8 @@ import { getActiveChatSession, listChatSessions } from '../core/chat-sessions.js
 import { currentSessionScope } from '../core/session-context.js';
 import { memoryFlushCounter } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
-import { buildTaskSnapshot, hasSoulFile, loadProfileSummary, loadSoulSummary } from '../memory/runtime.js';
+import { buildTaskSnapshot, getAdvancedMemoryDir, hasSoulFile, loadProfileSummary, loadSoulSummary } from '../memory/runtime.js';
+import { parseHostToolchainProfile, renderHostToolchainPromptBlock } from '../memory/host-toolchain.js';
 import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 import { findStaticEmployee } from '../core/employees.js';
@@ -668,6 +669,17 @@ function loadDiskSoul(): string {
     }
 }
 
+function loadDiskHostToolchain(): string {
+    try {
+        const profilePath = join(getAdvancedMemoryDir(), 'profile.md');
+        if (!fs.existsSync(profilePath)) return '';
+        return renderHostToolchainPromptBlock(parseHostToolchainProfile(fs.readFileSync(profilePath, 'utf8')));
+    } catch (error) {
+        log.warn('[memory] disk host toolchain load failed:', (error as Error).message);
+        return '';
+    }
+}
+
 function getCurrentSessionIdentityLine(): string {
     const sessionId = currentSessionScope()?.chatSessionId ?? getActiveChatSession();
     const session = listChatSessions().find(row => row.id === sessionId);
@@ -716,6 +728,8 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
         prompt += `- JAW_HOME: ${diskPromptPath(JAW_HOME)}\n`;
         prompt += `- Working directory: ${diskPromptPath(diskWorkingDir)}\n`;
         prompt += '- These resolved instance paths override placeholder paths in older/custom prompt files.\n';
+        const hostToolchain = loadDiskHostToolchain();
+        if (hostToolchain) prompt += `\n\n---\n${hostToolchain}\n`;
         const soul = loadDiskSoul();
         try {
             const profile = loadProfileSummary(600);

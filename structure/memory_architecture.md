@@ -8,8 +8,8 @@ aliases: [CLI-JAW Memory Architecture, advanced memory runtime, memory architect
 
 # Memory Architecture — 통합 메모리 시스템
 
-> 최종 갱신: 2026-06-03
-> 소스: `src/memory/runtime.ts` 375L (사실상 facade), `src/memory/shared.ts` 265L, `src/memory/bootstrap.ts` 524L, `src/memory/indexing.ts` 569L, `src/memory/keyword-expand.ts` 98L, `src/memory/synonyms.ts` 60L, `src/memory/reflect.ts` 379L, `src/memory/identity.ts` 86L, `src/memory/injection.ts` 69L, `src/memory/memory.ts` 154L, `src/memory/worklog.ts` 200L, `src/memory/heartbeat.ts` 209L, `src/memory/heartbeat-schedule.ts` 410L, `src/memory/advanced.ts` 1L (re-export shim), `src/agent/memory-flush-controller.ts` 185L, `src/agent/spawn.ts` 2011L, `src/prompt/builder.ts` 1040L, `src/orchestrator/pipeline.ts` 538L, `src/routes/memory.ts`, `src/routes/jaw-memory.ts`, `src/cli/command-context.ts`, `src/cli/handlers-runtime.ts`
+> 최종 갱신: 2026-08-12
+> 소스: `src/memory/runtime.ts` 396L (사실상 facade), `src/memory/shared.ts` 266L, `src/memory/bootstrap.ts` 597L, `src/memory/host-toolchain.ts` 457L, `src/memory/indexing.ts` 721L, `src/memory/keyword-expand.ts` 98L, `src/memory/synonyms.ts` 60L, `src/memory/reflect.ts` 380L, `src/memory/identity.ts` 87L, `src/memory/injection.ts` 69L, `src/memory/memory.ts` 165L, `src/memory/worklog.ts` 200L, `src/memory/heartbeat.ts` 311L, `src/memory/heartbeat-schedule.ts` 410L, `src/memory/advanced.ts` 1L (re-export shim), `src/agent/memory-flush-controller.ts` 185L, `src/agent/spawn.ts` 2011L, `src/prompt/builder.ts` 1159L, `src/orchestrator/pipeline.ts` 538L, `src/routes/memory.ts`, `src/routes/jaw-memory.ts`, `src/cli/command-context.ts`, `src/cli/handlers-runtime.ts`
 > 임베딩: `src/manager/memory/embedding/` — `provider.ts`, `vec-store.ts`, `sync.ts`, `state-machine.ts`, `hybrid-search.ts`, `index.ts` + `src/manager/routes/dashboard-memory.ts`
 
 ---
@@ -164,7 +164,14 @@ Prefers ES Module only, no CommonJS.
 - 즉, raw conversation dump가 아니라 섹션 머리말 중심의 요약 주입이다.
 - `forDisk: true` 경로는 legacy fallback을 먼저 조립한 뒤, `shared/soul.md`를 인덱스 상태와 무관하게 최대 6000자로 읽고, 준비된 경우 advanced `profile.md` 요약(600자)과 `buildTaskSnapshot('current session context', 1500)` 결과를 `## Disk Memory Context` 아래에 추가한다. 6000자 초과, 빈 파일, 읽기 실패는 warning 로그로 드러난다. disk prompt에는 실제 `JAW_HOME`과 `settings.workingDir`도 함께 기록된다. 즉 `B.md`/workspace `AGENTS.md`는 런타임 boss prompt와 동일하지는 않지만, 더 이상 legacy-only 스냅샷은 아니다.
 
-### 3-E: Core Memory
+### 3-E: Durable Host Toolchain
+
+- `src/memory/host-toolchain.ts` owns a bounded managed block in `memory/structured/profile.md`; it records only absolute paths, safe version tokens, source labels, `verified_at`, and a verification result for `officecli`, `soffice`, Python, and ripgrep.
+- Startup fast-verifies a cached absolute path directly. A failed or stale cache entry falls back to bounded tool-specific discovery; Windows Store Python redirectors are recorded as rejected rather than usable interpreters.
+- The managed markers replace only cli-jaw-owned content, preserving curated profile sections and the independent `cli-jaw:core-memory` block (#262).
+- Disk prompt generation strips the raw managed JSON from profile summaries and emits one human-readable `## Host toolchain` block capped at 1800 characters. Verified paths are used before discovery.
+
+### 3-F: Core Memory
 
 | 항목 | 값 |
 |------|-----|
