@@ -3,7 +3,7 @@
 // Transport modules register themselves via registerTransport() to avoid circular deps.
 
 import { settings, saveSettings } from '../core/config.js';
-import type { MessengerChannel, RemoteTarget } from './types.js';
+import { isRemoteTarget, type MessengerChannel, type RemoteTarget } from './types.js';
 import { log } from '../core/logger.js';
 import { logErrorText } from './redact.js';
 
@@ -77,25 +77,17 @@ function persistTargetsNow() {
     try { saveSettings(settings); } catch (e) { log.warn('[messaging:persist]', logErrorText(e)); }
 }
 
-/** Check if a target has the minimum required shape */
-function isValidTarget(t: unknown): t is RemoteTarget {
-    return !!t && typeof t === 'object'
-        && typeof (t as { channel?: unknown }).channel === 'string'
-        && typeof (t as { targetId?: unknown }).targetId === 'string'
-        && (t as { targetId: string }).targetId.length > 0;
-}
-
 /** Hydrate target state from persisted settings.messaging (skip malformed) */
 export function hydrateTargetsFromSettings(s: Record<string, any>) {
     const messaging = s?.["messaging"];
     if (!messaging) return;
     for (const ch of ['telegram', 'discord', 'slack'] as MessengerChannel[]) {
         const la = messaging.lastActive?.[ch];
-        if (isValidTarget(la)) {
+        if (isRemoteTarget(la) && la.channel === ch) {
             lastActiveTargets.set(ch, la);
         }
         const ls = messaging.latestSeen?.[ch];
-        if (isValidTarget(ls)) {
+        if (isRemoteTarget(ls) && ls.channel === ch) {
             latestSeenTargets.set(ch, ls);
         }
     }

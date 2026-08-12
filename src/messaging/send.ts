@@ -4,7 +4,7 @@
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
-import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
+import { isRemoteTarget, type MessengerChannel, type OutboundType, type RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
@@ -37,8 +37,8 @@ export function registerSendTransport(channel: MessengerChannel, fn: TransportSe
 
 // ─── Normalize ──────────────────────────────────────
 
-function badRequest(code: string): Error & { statusCode: number; code: string } {
-    return Object.assign(new Error(code), { statusCode: 400, code });
+function badRequest(code: string, message = code): Error & { statusCode: number; code: string } {
+    return Object.assign(new Error(message), { statusCode: 400, code });
 }
 
 function normalizeOutboundType(value: unknown): OutboundType {
@@ -56,6 +56,12 @@ function normalizeChannel(value: unknown): MessengerChannel | 'active' {
         ? 'active'
         : String(value).trim().toLowerCase();
     if (!CHANNELS.has(channel as MessengerChannel | 'active')) {
+        if (/^[CDG][A-Z0-9]+$/i.test(channel)) {
+            throw badRequest(
+                'invalid_channel',
+                'invalid_channel: channel is a transport; use channel:"slack" with chat_id or target.targetId for a Slack conversation id',
+            );
+        }
         throw badRequest('invalid_channel');
     }
     return channel as MessengerChannel | 'active';
@@ -130,7 +136,7 @@ export function validateTarget(
     channel: MessengerChannel,
     options: { requireConfiguredAllowlist?: boolean } = {},
 ): boolean {
-    if (!target || !target.targetId) return false;
+    if (!isRemoteTarget(target)) return false;
     if (target.channel !== channel) return false;
     if (channel === 'discord') {
         const allowed = settings["discord"]?.channelIds;
@@ -179,6 +185,26 @@ export function validateExplicitChatId(channel: MessengerChannel, chatId: string
     return validateTarget(targetFromChatId(channel, chatId), channel, { requireConfiguredAllowlist: true });
 }
 
+function sameSlackDestination(explicit: RemoteTarget, known: RemoteTarget): boolean {
+    if (!isRemoteTarget(known) || known.channel !== 'slack') return false;
+    if (!validateTarget(known, 'slack')) return false;
+    if (explicit.targetId !== known.targetId) return false;
+    if (explicit.threadId != null && explicit.threadId !== known.threadId) return false;
+    return true;
+}
+
+function authorizeExplicitTarget(target: RemoteTarget, channel: MessengerChannel): RemoteTarget | null {
+    if (!isRemoteTarget(target) || target.channel !== channel) return null;
+    if (validateTarget(target, channel, { requireConfiguredAllowlist: true })) return target;
+    if (channel !== 'slack' || settings["slack"]?.channelIds?.length) return null;
+    for (const known of [getLastActiveTarget('slack'), getLatestSeenTarget('slack')]) {
+        if (known && sameSlackDestination(target, known)) {
+            return target.threadId == null && known.threadId != null ? known : target;
+        }
+    }
+    return null;
+}
+
 export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
     const channel = resolveChannel(req);
 
@@ -188,20 +214,23 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
 
     if (req.chatId != null && String(req.chatId).trim()) {
         const explicitTarget = targetFromChatId(channel, req.chatId);
-        if (!validateTarget(explicitTarget, channel, { requireConfiguredAllowlist: true })) {
-            return { ok: false, status: 403, error: `Explicit ${channel} chatId is not in the configured allowlist` };
-        }
         if (req.target && (req.target.targetId !== explicitTarget.targetId || req.target.channel !== explicitTarget.channel)) {
             return { ok: false, status: 400, error: 'chatId and target refer to different destinations' };
         }
-        req.target = req.target || explicitTarget;
+        const authorized = authorizeExplicitTarget(req.target || explicitTarget, channel);
+        if (!authorized) {
+            return { ok: false, status: 403, error: `Explicit ${channel} chatId is not configured or the current active conversation` };
+        }
+        req.target = authorized;
     }
 
     // Validate explicit target (shape + allowlist)
     if (req.target) {
-        if (!validateTarget(req.target, channel, { requireConfiguredAllowlist: true })) {
+        const authorized = authorizeExplicitTarget(req.target, channel);
+        if (!authorized) {
             return { ok: false, status: 403, error: `Invalid or disallowed target for ${channel}: ${req.target.targetId || '(empty)'}` };
         }
+        req.target = authorized;
     }
 
     // Resolve target: explicit > validated lastActive > validated latestSeen > configured fallback > error

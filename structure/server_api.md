@@ -152,6 +152,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 > 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 251개 route handler 기준이다. 이 중 API 엔드포인트는 250개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
+`POST /api/channel/send`에서 `channel`은 `telegram|discord|slack|active` transport다. 대화 ID는 `chat_id` 또는 `target.targetId`에 넣는다. Slack thread를 명시할 때 `target.threadId`는 reply ts가 아닌 parent message ts다. target을 생략하면 검증된 현재 대화와 thread를 사용한다. 빈 `slack.channelIds`는 임의 explicit channel을 열지 않으며, 이미 저장·검증된 `lastActive/latestSeen`과 같은 conversation/thread만 명시적으로 재사용할 수 있다.
+
 ---
 
 ## Security / Guards

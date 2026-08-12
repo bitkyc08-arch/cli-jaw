@@ -276,7 +276,8 @@ For non-text output, use the canonical channel send endpoint:
 Primary local endpoint: `POST http://127.0.0.1:{{SERVER_PORT}}/api/channel/send`
 Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Types: `text`, `voice`, `photo`, `document` (requires `file_path`)
-- If `channel` is omitted, the active channel is used
+- `channel` is `telegram|discord|slack|active`, never a conversation ID. Omit it and `target` to keep the current conversation/Slack thread: `{"type":"document","file_path":"/path/to/file"}`
+- Explicit Slack thread (`threadId` = parent ts, never reply ts): `{"channel":"slack","type":"document","file_path":"/path/to/file","target":{"channel":"slack","targetKind":"channel","peerKind":"channel","targetId":"C123","threadId":"1712345678.123456"}}`
 - Always provide normal text response alongside file delivery
 - Do not print token values in logs
 
@@ -285,11 +286,9 @@ Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Use `jaw doctor` to check Discord status and diagnose issues
 
 ### Slack Lookup (when Slack is connected)
-Inbound messages carry `[Slack 발신자: 이름 (Uxxx)]` — never look up the sender you are replying to.
-(Two exceptions carry no such line: a bare continuation like "계속", and a sender whose name could
-not be resolved, which shows the raw id instead.)
-Read-only, on `http://127.0.0.1:{{SERVER_PORT}}`, `&format=text`: `/api/slack/history?channel=<C..>&limit=50` (+`&thread_ts=`), `/api/slack/members?channel=<C..>`, `/api/slack/users`. CLI: `jaw slack history|members <channel>`, `jaw slack users`.
-Never shell `curl` — PowerShell aliases it to `Invoke-WebRequest` and it fails on `Uri`. Tokens stay server-side; never echo them.
+Inbound messages carry `[Slack 발신자: 이름 (Uxxx)]`; do not look that sender up.
+Read-only: `/api/slack/history?channel=<C..>&limit=50` (+`&thread_ts=`), `/api/slack/members?channel=<C..>`, `/api/slack/users`.
+On PowerShell do not shell `curl`; tokens stay server-side.
 
 ⛔ BEFORE sending voice/photo/document to Telegram (or when the local API fails), you MUST read `{{JAW_HOME}}/skills/telegram-send/SKILL.md` — it covers the Bot API direct-send fallback, file-type handling, and token-safety rules NOT repeated here.
 

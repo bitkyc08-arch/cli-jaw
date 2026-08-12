@@ -1,9 +1,54 @@
 // Send validation behavior tests — Phase 9
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+
+type SlackTarget = {
+    channel: 'slack';
+    targetKind: 'channel' | 'user';
+    peerKind: 'channel' | 'group' | 'direct';
+    targetId: string;
+    threadId?: string;
+};
+
+const slackTarget = (targetId = 'C_CURRENT', threadId = '1710000000.000100'): SlackTarget => ({
+    channel: 'slack',
+    targetKind: 'channel',
+    peerKind: 'channel',
+    targetId,
+    ...(threadId ? { threadId } : {}),
+});
+
+async function withIsolatedSlack(
+    run: (capture: { requests: Array<Record<string, any>> }) => Promise<void>,
+    channelIds: string[] = [],
+) {
+    const { settings } = await import('../../src/core/config.js');
+    const { registerSendTransport } = await import('../../src/messaging/send.js');
+    const { clearTargetState } = await import('../../src/messaging/runtime.js');
+    const previousSlack = settings.slack;
+    const previousChannel = settings.channel;
+    const previousMessaging = settings.messaging;
+    const capture = { requests: [] as Array<Record<string, any>> };
+    try {
+        clearTargetState();
+        settings.channel = 'slack';
+        settings.slack = { ...(settings.slack || {}), channelIds };
+        registerSendTransport('slack', async req => {
+            capture.requests.push(structuredClone(req));
+            return { ok: true };
+        });
+        await run(capture);
+    } finally {
+        clearTargetState();
+        settings.slack = previousSlack;
+        settings.channel = previousChannel;
+        settings.messaging = previousMessaging;
+    }
+}
 
 // ─── validateTarget behavior ─────────────────────────
 
@@ -120,6 +165,187 @@ test('normalizeChannelSendRequest rejects invalid outbound type and channel', as
         () => normalizeChannelSendRequest({ channel: 'discord', type: false }),
         /invalid_outbound_type/,
     );
+});
+
+test('normalizeChannelSendRequest gives Slack-shaped channel values an actionable transport hint', async () => {
+    const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
+    assert.throws(
+        () => normalizeChannelSendRequest({ channel: 'C123ABC', type: 'text', text: 'hello' }),
+        (error: unknown) => {
+            const typed = error as Error & { statusCode?: number; code?: string };
+            assert.equal(typed.statusCode, 400);
+            assert.equal(typed.code, 'invalid_channel');
+            assert.match(typed.message, /channel is (?:a )?transport/i);
+            assert.match(typed.message, /chat_id|target\.targetId/);
+            return true;
+        },
+    );
+});
+
+test('empty Slack allowlist permits the exact last-active chatId and preserves its current thread', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget());
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'hello', chatId: 'C_CURRENT' });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests.length, 1);
+        assert.deepEqual(capture.requests[0]?.target, slackTarget());
+    });
+});
+
+test('empty Slack allowlist permits the exact last-active object target and preserves an omitted thread', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget());
+
+        const result = await sendChannelOutput({
+            channel: 'slack',
+            type: 'text',
+            text: 'hello',
+            target: slackTarget('C_CURRENT', ''),
+        });
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(capture.requests[0]?.target, slackTarget());
+    });
+});
+
+test('empty Slack allowlist permits an exact explicit parent thread', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget());
+
+        const result = await sendChannelOutput({
+            channel: 'slack',
+            type: 'document',
+            target: slackTarget(),
+        });
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(capture.requests[0]?.target, slackTarget());
+    });
+});
+
+test('latest-seen Slack target authorizes the same explicit chat when last-active is absent', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLatestSeenTarget } = await import('../../src/messaging/runtime.js');
+        setLatestSeenTarget('slack', slackTarget());
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', chatId: 'C_CURRENT' });
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(capture.requests[0]?.target, slackTarget());
+    });
+});
+
+test('empty Slack allowlist does not authorize without trusted runtime state', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', chatId: 'C_CURRENT' });
+        assert.equal(result.ok, false);
+        assert.equal(result.status, 403);
+        assert.equal(capture.requests.length, 0);
+    });
+});
+
+test('active-equivalent Slack authorization rejects another channel or another thread', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget());
+
+        const otherChannel = await sendChannelOutput({ channel: 'slack', type: 'text', chatId: 'C_OTHER' });
+        const otherThread = await sendChannelOutput({
+            channel: 'slack',
+            type: 'text',
+            target: slackTarget('C_CURRENT', '1710000000.999999'),
+        });
+
+        assert.equal(otherChannel.ok, false);
+        assert.equal(otherChannel.status, 403);
+        assert.equal(otherThread.ok, false);
+        assert.equal(otherThread.status, 403);
+        assert.equal(capture.requests.length, 0);
+    });
+});
+
+test('forged Slack peerKind never turns a channel ID into a direct-message bypass', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const result = await sendChannelOutput({
+            channel: 'slack',
+            type: 'text',
+            target: {
+                channel: 'slack',
+                targetKind: 'user',
+                peerKind: 'direct',
+                targetId: 'C_FORGED',
+            },
+        });
+        assert.equal(result.ok, false);
+        assert.equal(result.status, 403);
+        assert.equal(capture.requests.length, 0);
+    });
+});
+
+test('malformed explicit Slack target cannot borrow authority from a matching active target', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget());
+
+        const result = await sendChannelOutput({
+            channel: 'slack',
+            type: 'text',
+            target: { channel: 'slack', targetId: 'C_CURRENT' } as never,
+        });
+
+        assert.equal(result.ok, false);
+        assert.equal(result.status, 403);
+        assert.equal(capture.requests.length, 0);
+    });
+});
+
+for (const [label, malformed] of [
+    ['missing targetKind', { channel: 'slack', peerKind: 'channel', targetId: 'C_CURRENT' }],
+    ['invalid targetKind', { channel: 'slack', targetKind: 'thread', peerKind: 'channel', targetId: 'C_CURRENT' }],
+    ['missing peerKind', { channel: 'slack', targetKind: 'channel', targetId: 'C_CURRENT' }],
+    ['invalid peerKind', { channel: 'slack', targetKind: 'channel', peerKind: 'workspace', targetId: 'C_CURRENT' }],
+    ['non-string threadId', { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_CURRENT', threadId: 123 }],
+    ['non-string guildId', { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_CURRENT', guildId: 123 }],
+    ['cross-channel candidate', { channel: 'discord', targetKind: 'channel', peerKind: 'channel', targetId: 'C_CURRENT' }],
+] as const) {
+    test(`malformed persisted Slack state cannot authorize an explicit target: ${label}`, async () => {
+        await withIsolatedSlack(async capture => {
+            const { sendChannelOutput } = await import('../../src/messaging/send.js');
+            const { hydrateTargetsFromSettings } = await import('../../src/messaging/runtime.js');
+            hydrateTargetsFromSettings({ messaging: { lastActive: { slack: malformed }, latestSeen: {} } });
+
+            const result = await sendChannelOutput({ channel: 'slack', type: 'text', chatId: 'C_CURRENT' });
+
+            assert.equal(result.ok, false);
+            assert.equal(result.status, 403);
+            assert.equal(capture.requests.length, 0);
+        });
+    });
+}
+
+test('a non-empty Slack allowlist remains authoritative over current runtime state', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_CURRENT'));
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', chatId: 'C_CURRENT' });
+        assert.equal(result.ok, false);
+        assert.equal(result.status, 403);
+        assert.equal(capture.requests.length, 0);
+    }, ['C_ALLOWED']);
 });
 
 // ─── validateDiscordFileSize behavior ────────────────

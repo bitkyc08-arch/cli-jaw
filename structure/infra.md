@@ -494,7 +494,7 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ## src/messaging/ — shared messaging runtime (13 files)
 
-Telegram/Discord 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다.
+Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.
 
 `thread-target.ts` — `threadIdNumber(target)` extracts `message_thread_id` for programmatic Telegram sends (P0 forum topic support).
 
@@ -537,7 +537,7 @@ choke point로 모았다.
 | `ChannelSendRequest` | outbound request 타입 |
 | `registerSendTransport()` | 채널별 send 함수 등록 |
 | `normalizeChannelSendRequest()` | HTTP body → request 정규화 |
-| `validateTarget()` | allowlist + target shape 검증 |
+| `validateTarget()` | allowlist + full target shape 검증. 빈 Slack allowlist에서 explicit target은 검증된 `lastActive/latestSeen`의 같은 conversation/thread만 재사용 가능 |
 | `sendChannelOutput()` | explicit target > validated lastActive > validated latestSeen > configured fallback 순으로 전송 |
 
 추가로 `validateTarget()`이 Telegram `allowedChatIds`와 Discord `channelIds`/thread parent를 같이 검사하고, stale cached target이면 `clearTargetState()`로 바로 비운다.

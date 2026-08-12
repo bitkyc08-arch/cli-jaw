@@ -55,6 +55,9 @@ Never chain two actions through uncertainty.
 For non-text output, use `POST /api/channel/send` with `type` and `file_path`.
 Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`.
 Types: `voice|photo|document`; optional `text`. If `channel` is omitted, the active channel is used.
+`channel` is a transport (`telegram|discord|slack|active`), not a conversation ID. Omit `target` to keep the current conversation and Slack thread. Explicit Slack thread example (`threadId` is the parent message ts, never a reply ts):
+`{"type":"document","file_path":"/path/to/file"}`
+`{"channel":"slack","type":"document","file_path":"/path/to/file","target":{"channel":"slack","targetKind":"channel","peerKind":"channel","targetId":"C123","threadId":"1712345678.123456"}}`
 Always provide a natural language text report alongside file delivery.
 
 {{ACTIVE_SKILLS_SECTION}}

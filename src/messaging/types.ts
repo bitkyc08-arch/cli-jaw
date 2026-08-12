@@ -30,4 +30,22 @@ export type RuntimeOrigin = 'web' | 'cli' | 'system' | 'bgtask' | MessengerChann
 
 export type OutboundType = 'text' | 'voice' | 'photo' | 'document' | 'keyboard';
 
+const MESSENGER_CHANNELS = new Set<MessengerChannel>(['telegram', 'discord', 'slack']);
+const REMOTE_TARGET_KINDS = new Set<RemoteTargetKind>(['user', 'channel']);
+const REMOTE_PEER_KINDS = new Set<RemotePeerKind>(['direct', 'group', 'channel']);
+
+/** Validate persisted or network-derived target data before it becomes routing authority. */
+export function isRemoteTarget(value: unknown): value is RemoteTarget {
+    if (!value || typeof value !== 'object') return false;
+    const target = value as Record<string, unknown>;
+    if (!MESSENGER_CHANNELS.has(target['channel'] as MessengerChannel)) return false;
+    if (!REMOTE_TARGET_KINDS.has(target['targetKind'] as RemoteTargetKind)) return false;
+    if (!REMOTE_PEER_KINDS.has(target['peerKind'] as RemotePeerKind)) return false;
+    if (typeof target['targetId'] !== 'string' || !target['targetId'].trim()) return false;
+    for (const field of ['threadId', 'guildId', 'parentTargetId'] as const) {
+        if (target[field] != null && typeof target[field] !== 'string') return false;
+    }
+    return true;
+}
+
 // targetId is always string. Legacy number chatIds are String()-converted at ingest.

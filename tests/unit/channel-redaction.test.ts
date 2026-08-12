@@ -820,8 +820,8 @@ test('a transport failure is masked before it can become an HTTP body', async ()
             channel: 'telegram',
             type: 'text',
             text: 'hi',
-            target: { channel: 'telegram', targetId: '4242' },
-        } as never);
+            target: { channel: 'telegram', targetKind: 'user', peerKind: 'direct', targetId: '4242' },
+        });
 
         // Guard against the request being rejected before it reaches the
         // transport: an early return would make this pass without ever
