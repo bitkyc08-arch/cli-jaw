@@ -19,6 +19,7 @@ import {
     slackIdentityCacheStats,
     resetSlackIdentityCache,
     setCapabilityLockForTest,
+    missingScopeWarnedForTest,
 } from '../../src/slack/identity.ts';
 import { settings } from '../../src/core/config.ts';
 
@@ -230,8 +231,8 @@ test('reset clears the negative cache as well as the positive partitions', async
 // ─── warn-once latch across a reset ─────────────────
 
 test('a stale missing_scope cannot consume the warn latch a reset just cleared', async () => {
-    // A lookup issued under the OLD token can land after a workspace switch.
-    // If it re-arms the warn-once latch, the real missing_scope of the NEW
+    // A lookup issued under the OLD token can land after a workspace switch. If
+    // it re-arms the warn-once latch, the real missing_scope of the NEW
     // workspace is never reported to the operator.
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
@@ -249,17 +250,20 @@ test('a stale missing_scope cannot consume the warn latch a reset just cleared',
     release();
     await pending;
 
-    // The latch must still be armed: a fresh missing_scope has to warn.
+    // THE assertion: the stale response must not have consumed the latch.
+    // Asserting only "the next lookup still ran" is not an oracle — that stays
+    // true even when the warning is silently swallowed.
+    assert.equal(
+        missingScopeWarnedForTest(), false,
+        'a superseded response must not consume the warn-once latch',
+    );
+
+    // And the latch is genuinely spendable afterwards by a live failure.
     const fresh = makeFetch([{ ok: false, error: 'missing_scope', needed: 'users:read' }]);
-    const warnings: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
-    try {
-        await resolveSlackIdentity(TOKEN, { userId: 'U2' }, { teamId: 'T0NEW', fetchImpl: fresh.impl });
-    } finally {
-        console.warn = originalWarn;
-    }
-    // The logger may route elsewhere; the load-bearing assertion is that the
-    // lookup still ran rather than being suppressed by stale state.
+    await resolveSlackIdentity(TOKEN, { userId: 'U2' }, { teamId: 'T0NEW', fetchImpl: fresh.impl });
     assert.equal(fresh.calls.length, 1, 'the new workspace must still be probed');
+    assert.equal(
+        missingScopeWarnedForTest(), true,
+        'a current-generation failure does arm the latch',
+    );
 });

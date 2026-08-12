@@ -74,5 +74,10 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // variant, and an agent that calls the macOS tools there gets an opaque
     // `sky.get_app_state is not a function`. Only the routing decision lives
     // here; the pipe/session/SSH depth stays in the desktop-control skill.
-    assert.ok(a1Src.length <= 37100, `a1-system.md is ${a1Src.length} chars — over the 37,100 budget`);
+    // Budget raised 37,100 → 37,800 for the #302/#310 Windows shell contract.
+    // This one cannot live in a skill: writing a `.ps1` is plain scripting work
+    // that never routes through desktop-control, and a BOM-less file corrupts
+    // its own string literals before the script runs. It is a data-loss
+    // invariant, so it belongs where every agent already looks.
+    assert.ok(a1Src.length <= 37800, `a1-system.md is ${a1Src.length} chars — over the 37,800 budget`);
 });

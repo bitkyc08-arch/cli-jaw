@@ -530,6 +530,18 @@ export function setCapabilityLockForTest(until: number): void {
 }
 
 /**
+ * Test hook: has the once-per-process missing-scope warning already fired?
+ *
+ * Exposed because the latch is otherwise unobservable, which let a test assert
+ * the wrong thing — it checked that a lookup still ran, which stays true even
+ * when a stale response silently consumes the latch and suppresses the real
+ * warning for the next workspace.
+ */
+export function missingScopeWarnedForTest(): boolean {
+    return missingScopeWarned;
+}
+
+/**
  * Drop every cached identity. Wired to the Slack runtime lifecycle so a workspace
  * switch cannot serve names from the previous team, and so re-authenticating
  * clears a missing_scope lockout without a process restart.
