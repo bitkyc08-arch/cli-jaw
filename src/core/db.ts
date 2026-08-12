@@ -115,6 +115,17 @@ db.exec(`
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- #321: "already handled" has to survive a restart, because "still to
+    -- handle" does. The queue above is durable while the ingress dedupe was
+    -- process memory, so a reconnect before Slack observed our ACK could admit
+    -- the same delivery twice under the next lifecycle. Rows are written only
+    -- AFTER a run is admitted and expire on the same 10-minute redelivery
+    -- horizon as the in-memory map.
+    CREATE TABLE IF NOT EXISTS slack_event_dedup (
+        event_key  TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+    );
+
     -- Per-bucket resumable session storage. Bucket key is a stable CLI+model-family
     -- identifier (e.g. 'codex', 'codex-spark', 'claude'). Prevents cross-model resume
     -- errors like 'thread/resume failed: no rollout found' when the user toggles
@@ -613,6 +624,12 @@ export const listQueuedMessages = db.prepare('SELECT id, payload FROM queued_mes
 export const insertQueuedMessage = db.prepare('INSERT OR REPLACE INTO queued_messages (id, payload) VALUES (?, ?)');
 export const deleteQueuedMessage = db.prepare('DELETE FROM queued_messages WHERE id = ?');
 export const clearQueuedMessages = db.prepare('DELETE FROM queued_messages');
+
+// ─── Slack Event Dedupe Persistence (#321) ──────────
+export const findSlackEventDedup = db.prepare('SELECT expires_at FROM slack_event_dedup WHERE event_key = ?');
+export const insertSlackEventDedup = db.prepare('INSERT OR REPLACE INTO slack_event_dedup (event_key, expires_at) VALUES (?, ?)');
+export const sweepSlackEventDedup = db.prepare('DELETE FROM slack_event_dedup WHERE expires_at <= ?');
+export const clearSlackEventDedup = db.prepare('DELETE FROM slack_event_dedup');
 
 type QueuedMessageMigrationPayload = Record<string, unknown> & {
     schemaVersion?: number;

@@ -5,6 +5,14 @@ import { submitMessage, type SubmitResult } from '../orchestrator/gateway.js';
 import { sessionLanes } from '../orchestrator/session-lanes.js';
 import { buildRemoteBindingKey } from '../messaging/session-key.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import {
+    clearSlackEventDedup,
+    findSlackEventDedup,
+    insertSlackEventDedup,
+    sweepSlackEventDedup,
+} from '../core/db.js';
+import { log } from '../core/logger.js';
+import { logErrorText } from '../messaging/redact.js';
 
 const ingressTails = new Map<string, Promise<void>>();
 const controllers = new Set<AbortController>();
@@ -37,23 +45,92 @@ export function slackEventKey(teamId: string, channel: string, ts: string): stri
     return `${teamId || 'unknown'}:${channel}:${ts}`;
 }
 
-/** true = already handled; the caller should drop this delivery. */
+/**
+ * RESERVE, not commit (#321). Returns true when this delivery was already
+ * handled and the caller should drop it.
+ *
+ * The reservation is in memory so the same-tick test-and-set stays atomic, and
+ * it is checked against the durable record so a runtime that restarted before
+ * Slack observed our ACK does not run the redelivery a second time.
+ *
+ * Deliberately NOT durable at this point: the caller has an `await` and several
+ * early returns between here and admission, and Socket Mode acks before doing
+ * any work. Writing durably here would turn a recoverable redelivery into a
+ * ten-minute silent message loss — duplication is visible and cancellable, a
+ * vanished message is not.
+ */
 export function claimSlackEvent(key: string): boolean {
     const now = Date.now();
     const seenAt = seenEvents.get(key);
     if (seenAt !== undefined && seenAt > now) return true;
+    if (isSlackEventCommitted(key, now)) return true;
     // Lazy sweep of expired keys only — no timer, so the loop can still exit.
     if (seenEvents.size > 500) {
         for (const [candidate, expiry] of seenEvents) {
             if (expiry <= now) seenEvents.delete(candidate);
         }
+        sweepCommittedSlackEvents(now);
     }
     seenEvents.set(key, now + EVENT_DEDUP_TTL_MS);
     return false;
 }
 
+function isSlackEventCommitted(key: string, now: number): boolean {
+    try {
+        const row = findSlackEventDedup.get(key) as { expires_at?: number } | undefined;
+        return typeof row?.expires_at === 'number' && row.expires_at > now;
+    } catch (error) {
+        // A broken dedupe store must never stop us receiving messages.
+        log.warn('[slack:dedupe] durable read failed:', logErrorText(error));
+        return false;
+    }
+}
+
+function sweepCommittedSlackEvents(now: number): void {
+    try { sweepSlackEventDedup.run(now); }
+    catch { /* best-effort cleanup; expiry is enforced on read anyway */ }
+}
+
+/**
+ * COMMIT. Called only once a run has actually been admitted, so an event that
+ * died before admission is still redeliverable.
+ *
+ * Fail-open by design: if the write throws, the run is already accepted and
+ * cancelling it would risk losing the message. Duplication after a restart is
+ * the honest failure direction here.
+ */
+export function commitSlackEvent(key: string): void {
+    const expiresAt = Date.now() + EVENT_DEDUP_TTL_MS;
+    seenEvents.set(key, expiresAt);
+    try { insertSlackEventDedup.run(key, expiresAt); }
+    catch (error) {
+        log.warn('[slack:dedupe] durable commit failed:', logErrorText(error));
+    }
+}
+
+/**
+ * Clears the in-memory reservations only. The durable record is what makes a
+ * restart safe, so wiping it here would reintroduce #321; it expires by TTL.
+ */
 export function resetSlackEventDedup(): void {
     seenEvents.clear();
+}
+
+/** Test-only: drops the durable record too. */
+export function clearSlackEventDedupForTest(): void {
+    seenEvents.clear();
+    try { clearSlackEventDedup.run(); } catch { /* table may not exist in a bare fixture */ }
+}
+
+/** The ingress lifecycle counter, captured at reserve time and revalidated
+ *  before admission: a reset in between means this delivery belongs to a dead
+ *  generation and must not be admitted (a redelivery already re-reserved it). */
+export function currentIngressGeneration(): number {
+    return generation;
+}
+
+export function isIngressGenerationCurrent(captured: number): boolean {
+    return captured === generation;
 }
 
 function downloadLimit(): number {

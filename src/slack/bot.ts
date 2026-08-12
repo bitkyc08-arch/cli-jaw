@@ -30,7 +30,7 @@ import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
-import { admitSlackRun, claimSlackEvent, enqueueSlackIngress, resetSlackIngress, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
+import { admitSlackRun, claimSlackEvent, commitSlackEvent, currentIngressGeneration, enqueueSlackIngress, isIngressGenerationCurrent, resetSlackIngress, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
 import { resolveConversationInfo, resolveThreadInfo } from './conversation.js';
 import { buildSlackContextBlock, applySlackContext, buildThreadPreamble, ROSTER_PREVIEW } from './context.js';
@@ -103,12 +103,22 @@ async function slackOrchestrate(
     prompt: string,
     displayMsg: string,
     signal: AbortSignal,
+    dedupe: { eventKey?: string; reservationGeneration?: number } = {},
 ) {
     const client = getSlackSendClient();
     if (!client.token) return;
     const token = client.token;
     const chatId = target.targetId;
     if (signal.aborted) return;
+    // #321: the reservation was taken before an `await` and several early
+    // returns. If a reset landed in that window this delivery belongs to a dead
+    // generation — a redelivery has already re-reserved it, and admitting here
+    // would run the same message twice.
+    if (dedupe.reservationGeneration !== undefined
+        && !isIngressGenerationCurrent(dedupe.reservationGeneration)) {
+        log.info('[slack:in] skipped (stale_generation)');
+        return;
+    }
     const result = admitSlackRun({
         target, prompt, displayText: displayMsg, chatId,
         runReply: async (ctx: SlackRunContext) => {
@@ -149,6 +159,10 @@ async function slackOrchestrate(
             }
         },
     });
+    // Durable commit AFTER admission, with no await in between: an event that
+    // died before this line stays redeliverable, which is the whole point of
+    // ordering it here rather than at reservation time.
+    if (dedupe.eventKey && result.action !== 'rejected') commitSlackEvent(dedupe.eventKey);
     result.laneTail?.catch(error => log.error('[slack:lane]', logErrorText(error)));
 
     if (result.action === 'queued') {
@@ -213,7 +227,7 @@ export async function processSlackMessageEvent(
     target: RemoteTarget,
     text: string,
     signal: AbortSignal,
-    opts: { prefetchToken?: number } = {},
+    opts: { prefetchToken?: number; eventKey?: string; reservationGeneration?: number } = {},
 ): Promise<void> {
     // The claim was taken synchronously in handleSlackEnvelope, before this task
     // was queued. Every path out of here that did NOT inject history has to give
@@ -236,7 +250,7 @@ async function runSlackMessageEvent(
     target: RemoteTarget,
     text: string,
     signal: AbortSignal,
-    opts: { prefetchToken?: number },
+    opts: { prefetchToken?: number; eventKey?: string; reservationGeneration?: number },
     commitPrefetch: () => void,
 ): Promise<void> {
     const files = event.files || [];
@@ -284,7 +298,11 @@ async function runSlackMessageEvent(
         // the message, and the conversation is already obvious in Slack's own UI.
         displayText = buildSenderDisplay(identity, displayText);
     }
-    await slackOrchestrate(target, prompt, displayText, signal);
+    await slackOrchestrate(target, prompt, displayText, signal, {
+        ...(opts.eventKey ? { eventKey: opts.eventKey } : {}),
+        ...(opts.reservationGeneration !== undefined
+            ? { reservationGeneration: opts.reservationGeneration } : {}),
+    });
 }
 
 /**
@@ -406,6 +424,10 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
         log.info(`[slack:in] skipped (${decision.reason})`);
         return;
     }
+    // Carried to the admission site so the durable commit happens only after a
+    // run is accepted, and so a reset in between invalidates this delivery.
+    let reservedEventKey: string | undefined;
+    let reservationGeneration: number | undefined;
     // Message-level dedupe goes HERE — after the gate, before identity resolution.
     // After the gate, because Slack delivers a `message` copy and an `app_mention`
     // copy of one mention under the same ts; the gate drops the former, and letting
@@ -421,6 +443,8 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
             log.info('[slack:in] skipped (duplicate_event)');
             return;
         }
+        reservedEventKey = eventKey;
+        reservationGeneration = currentIngressGeneration();
     }
     if (event.type === 'app_mention' && event.channel) {
         // A mention inside a thread marks that thread; a top-level mention
@@ -482,7 +506,11 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     }
 
     enqueueSlackIngress(slackIngressLaneKey(target), signal =>
-        processSlackMessageEvent(event, target, text, signal, { prefetchToken }));
+        processSlackMessageEvent(event, target, text, signal, {
+            prefetchToken,
+            ...(reservedEventKey ? { eventKey: reservedEventKey } : {}),
+            ...(reservationGeneration !== undefined ? { reservationGeneration } : {}),
+        }));
 }
 
 // ─── Init / Shutdown ────────────────────────────────
