@@ -24,15 +24,16 @@ function isTrustedTransport(transport: DispatchApprovalTransport): boolean {
 }
 
 function identity(transport: DispatchApprovalTransport, rawEvent: unknown): { senderId: string; bot: boolean; self: boolean } | null {
-    const event = (rawEvent && typeof rawEvent === 'object' ? rawEvent : {}) as Record<string, any>;
+    const event = (rawEvent && typeof rawEvent === 'object' ? rawEvent : {}) as Record<string, unknown>;
     if (transport.platform === 'slack') {
         return event['user'] ? { senderId: String(event['user']), bot: Boolean(event['bot_id'] || event['subtype'] === 'bot_message'), self: Boolean(event['__jawSelf']) } : null;
     }
     if (transport.platform === 'telegram') {
-        const from = event['message']?.from ?? event['from'];
+        const message = event['message'] as Record<string, unknown> | undefined;
+        const from = (message?.['from'] ?? event['from']) as { id?: unknown; is_bot?: unknown } | undefined;
         return from?.id !== undefined ? { senderId: String(from.id), bot: Boolean(from.is_bot), self: Boolean(event['__jawSelf']) } : null;
     }
-    const author = event['author'];
+    const author = event['author'] as { id?: unknown; bot?: unknown } | undefined;
     return author?.id ? { senderId: String(author.id), bot: Boolean(author.bot), self: Boolean(event['__jawSelf']) } : null;
 }
 

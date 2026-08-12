@@ -86,10 +86,11 @@ function createTelegramPollingIngress(): DispatchApprovalTransport {
     registerProductionTransport(transport);
     return transport;
 }
-export function handleTelegramUpdate(update: Record<string, any>, transport = telegramApprovalIngress): boolean {
-    const message = update['message'];
+export function handleTelegramUpdate(update: Record<string, unknown>, transport = telegramApprovalIngress): boolean {
+    const message = update['message'] as { text?: unknown; from?: { id?: unknown; is_bot?: boolean } } | undefined;
     const text = typeof message?.text === 'string' ? message.text : '';
-    const fromId = message?.from?.id;
+    const fromIdRaw = message?.from?.id;
+    const fromId = typeof fromIdRaw === 'number' ? fromIdRaw : undefined;
     const approval = handleApprovalCommand(transport, {
         ...update,
         __jawSelf: isSelfEcho({ fromId, isBot: message?.from?.is_bot, botUserId, allowBots: settings["telegram"]?.allowBots }),
@@ -911,7 +912,7 @@ async function _initTelegramInner() {
         store: telegramUpdateOffsets,
         handleUpdateThroughFinalDelivery: async (update) => {
             try {
-                if (handleTelegramUpdate(update as unknown as Record<string, any>, telegramApprovalIngress)) return;
+                if (handleTelegramUpdate(update as unknown as Record<string, unknown>, telegramApprovalIngress)) return;
                 await bot.handleUpdate(update);
                 if (telegramFinalDeliveryFailures.has(update.update_id)) {
                     throw new Error('telegram_final_delivery_failed');
