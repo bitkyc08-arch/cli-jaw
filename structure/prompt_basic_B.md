@@ -112,4 +112,4 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 - 실행 규칙 + delegation 규칙: `cli-jaw dispatch`와 subtask JSON은 금지지만, CLI 자체 sub-agent(Task/Agent tool)는 내부 병렬 작업용으로 명시적으로 허용
 - PABCD A/B/C 중 Approved Plan이 주입될 때 `Project root`와 path guard가 함께 들어가므로, 직원은 `Workspace Context`와 Approved Plan의 root를 기준으로 파일을 읽고 검증한다.
 
-이 구조 때문에 B.md는 단순한 "완성본"이 아니라, 현재 시스템 프롬프트가 어떻게 합성되는지 보여주는 캐시 스냅샷이다. forDisk 경로가 advanced `## Memory Runtime` 블록 대신 legacy fallback + 축약 profile/snapshot 보강을 사용한다는 점은 같이 봐야 한다.
+이 구조 때문에 B.md는 단순한 "완성본"이 아니라, 현재 시스템 프롬프트가 어떻게 합성되는지 보여주는 캐시 스냅샷이다. forDisk 경로는 advanced `## Memory Runtime` 블록 대신 legacy fallback에 bounded `shared/soul.md`, 축약 profile/snapshot, 실제 `JAW_HOME`·working directory를 보강한다는 점을 같이 봐야 한다.
