@@ -308,13 +308,14 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
         if (SIDEBAR_HIDDEN_CLIS.has(name)) continue;
         const probeDescription = describeCliProbe(info);
         const checking = probeDescription === 'checking';
+        const probeUnknown = probeDescription === 'unknown';
         const probeFailing = probeDescription === 'probe-failing';
         const capabilityFailed = probeDescription === 'capability-failed';
-        const q = checking || probeFailing ? undefined : quota?.[name];
+        const q = checking || probeUnknown || probeFailing ? undefined : quota?.[name];
         let dotClass: string;
         if (checking) {
             dotClass = 'checking';
-        } else if (probeFailing) {
+        } else if (probeUnknown || probeFailing) {
             // A preserved snapshot would otherwise render green while every
             // probe is erroring — the dashboard lie #277 reports.
             dotClass = 'warn';
@@ -343,7 +344,7 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
         // A failing probe means we know nothing current about this runtime, so
         // offering install/auth remediation would send the user to fix the
         // wrong thing entirely (#277).
-        if (!checking && !probeFailing && (!info.available || dotClass === 'warn')) {
+        if (!checking && !probeUnknown && !probeFailing && (!info.available || dotClass === 'warn')) {
             const hint = AUTH_HINTS[name];
             if (hint) {
                 const isNotInstalled = !info.available;
@@ -413,6 +414,8 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
 
         const probeLine = checking
             ? '<div role="status" aria-live="polite" style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px">상태 확인 중</div>'
+            : probeUnknown
+                ? `<div role="alert" style="font-size:10px;color:var(--warning);margin:2px 0 0 16px">Probe unavailable${info.probeError ? ` · ${escapeHtml(info.probeError)}` : ''}</div>`
             : probeFailing
                 ? `<div role="alert" style="font-size:10px;color:var(--warning);margin:2px 0 0 16px">상태 확인 실패 · 재시도 중${info.probeError ? ` · ${escapeHtml(info.probeError)}` : ''}</div>`
                 : capabilityFailed
@@ -442,13 +445,16 @@ function renderCliStatus(data: { cliStatus: Record<string, CliStatusInfo> | null
     // While probes are failing we cannot tell ready from unready, so the
     // "no ready CLI" alarm would be exactly the false alarm #277 reports —
     // the runtime worked the whole time.
-    const anyProbeFailing = allEntries.some(([, info]) => describeCliProbe(info) === 'probe-failing');
+    const anyProbeUnavailable = allEntries.some(([, info]) => {
+        const state = describeCliProbe(info);
+        return state === 'probe-failing' || state === 'unknown';
+    });
     const hasReadyCli = allEntries.some(([name, info]) => {
         if (describeCliProbe(info) !== 'ready') return false;
         const q = quota?.[name];
         return !q || q.authenticated !== false;
     });
-    if (!hasReadyCli && !anyProbeFailing && allEntries.length > 0 && el) {
+    if (!hasReadyCli && !anyProbeUnavailable && allEntries.length > 0 && el) {
         el.insertAdjacentHTML('afterbegin',
             `<div style="padding:8px 10px;margin-bottom:8px;background:var(--warning-dim);border:1px solid var(--warning);border-radius:6px;font-size:11px;color:var(--warning)">
                 ${ICONS.warning} ${t('cli.noReadyCli')}

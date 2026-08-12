@@ -6,6 +6,10 @@ import {
 } from '../../src/cli/cli-status.ts';
 import { collectCliStatus } from '../../src/cli/cli-status-worker.ts';
 import { CLI_KEYS } from '../../src/cli/registry.ts';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { CliProbeNotice } from '../../public/manager/src/settings/pages/Agent.tsx';
+import { describeCliProbeAvailability } from '../../public/js/features/settings-types.ts';
 
 const firstCli = CLI_KEYS[0]!;
 
@@ -68,6 +72,18 @@ test('a probe that cannot run is unknown rather than missing', async () => {
     assert.equal(row.probeError, 'lookup tool where.exe could not run');
     assert.equal(row.checkedCapability, 'spawn-probe');
     assert.equal(row.available, null);
+
+    const presentation = describeCliProbeAvailability(row);
+    assert.deepEqual(presentation, {
+        kind: 'unknown',
+        message: 'Probe unavailable: lookup tool where.exe could not run',
+        allowRemediation: false,
+    });
+
+    const html = renderToStaticMarkup(createElement(CliProbeNotice, { status: row }));
+    assert.match(html, /Probe unavailable/);
+    assert.match(html, /lookup tool where\.exe could not run/);
+    assert.doesNotMatch(html, /install|login|auth/i);
 });
 
 test('stale is emitted only after a fresh result decays', async () => {

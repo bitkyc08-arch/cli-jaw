@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SettingsPageProps, DirtyEntry } from '../types';
 import {
     CLI_STATUS_POLL_HORIZON_MS,
@@ -41,6 +41,7 @@ import {
 } from './components/agent/agent-save';
 import { SettingsRequestError } from '../settings-client';
 import { describeError } from '../components/error-normalize';
+import { describeCliProbeAvailability } from '../../../../js/features/settings-types';
 
 export { splitAgentSaveBundle };
 
@@ -67,6 +68,37 @@ type CliStatusInfo = {
     /** Server backoff deadline; used to time re-reads while `failing`. */
     nextRetryAt?: number;
 };
+
+export function CliProbeNotice({ status, exhausted = false }: {
+    status: CliStatusInfo | undefined;
+    exhausted?: boolean;
+}) {
+    if (exhausted) {
+        return (
+            <div className="settings-inline-notice" role="alert">
+                상태 확인이 끝나지 않았습니다. 새로고침하거나 잠시 후 다시 확인하세요.
+            </div>
+        );
+    }
+    if (!status) return null;
+
+    const presentation = describeCliProbeAvailability(status);
+    if (presentation.kind === 'checking') {
+        return <div className="settings-inline-notice" role="status" aria-live="polite">상태 확인 중</div>;
+    }
+    if (presentation.kind === 'unknown') {
+        return <div className="settings-inline-notice" role="alert">{presentation.message}</div>;
+    }
+    if (presentation.kind === 'failing') {
+        return (
+            <div className="settings-inline-notice" role="alert">
+                상태 확인 실패 (재시도 중)
+                {status.probeError ? `: ${status.probeError}` : ''}
+            </div>
+        );
+    }
+    return null;
+}
 
 export function conflictSettingsFromError(error: unknown): AgentSnapshot | null {
     if (!(error instanceof SettingsRequestError) || error.status !== 409) return null;
@@ -404,24 +436,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     {sessionMigrationError ? <span className="settings-field-error" role="alert">{sessionMigrationError}</span> : null}
                 </div>
             ) : null}
-            {cliStatus[draft.cli]?.probeState === 'checking' && !cliStatusExhausted ? (
-                <div className="settings-inline-notice" role="status" aria-live="polite">상태 확인 중</div>
-            ) : null}
-            {cliStatusExhausted ? (
-                // Without this, a poll that runs out while the snapshot still
-                // says `checking` would leave the exact notice #312 reported.
-                <div className="settings-inline-notice" role="alert">
-                    상태 확인이 끝나지 않았습니다. 새로고침하거나 잠시 후 다시 확인하세요.
-                </div>
-            ) : null}
-            {cliStatus[draft.cli]?.probeState === 'failing' ? (
-                // Without this the panel stays silent while every probe errors,
-                // which is the state #277 reported as an endless "stale".
-                <div className="settings-inline-notice" role="alert">
-                    상태 확인 실패 (재시도 중)
-                    {cliStatus[draft.cli]?.probeError ? `: ${cliStatus[draft.cli]!.probeError}` : ''}
-                </div>
-            ) : null}
+            <CliProbeNotice status={cliStatus[draft.cli]} exhausted={cliStatusExhausted} />
             <RuntimeHeader
                 cli={draft.cli}
                 cliOptions={cliOptions.length > 0 ? cliOptions : [draft.cli || 'claude']}

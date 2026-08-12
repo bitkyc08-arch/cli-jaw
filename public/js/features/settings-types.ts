@@ -82,6 +82,36 @@ export function describeCliProbe(info: CliStatusInfo): 'checking' | 'unknown' | 
     if (info.probeState === 'stale') return 'stale';
     return info.available === true && info.capabilityReady !== false ? 'ready' : 'unavailable';
 }
+
+export type CliProbeAvailabilityPresentation = {
+    kind: 'checking' | 'unknown' | 'failing' | 'none';
+    message: string | null;
+    allowRemediation: boolean;
+};
+
+/** Status-only presentation shared by legacy and Manager settings surfaces. */
+export function describeCliProbeAvailability(
+    info: Pick<CliStatusInfo, 'probeState' | 'probeError'>,
+): CliProbeAvailabilityPresentation {
+    if (info.probeState === 'checking') {
+        return { kind: 'checking', message: 'Checking status', allowRemediation: false };
+    }
+    if (info.probeState === 'unknown') {
+        return {
+            kind: 'unknown',
+            message: `Probe unavailable${info.probeError ? `: ${info.probeError}` : ''}`,
+            allowRemediation: false,
+        };
+    }
+    if (info.probeState === 'failing') {
+        return {
+            kind: 'failing',
+            message: `Status check failed (retrying)${info.probeError ? `: ${info.probeError}` : ''}`,
+            allowRemediation: false,
+        };
+    }
+    return { kind: 'none', message: null, allowRemediation: true };
+}
 export function shouldHydrateRuntimeMigrationResponse(status: number): boolean {
     return status >= 200 && status < 300 || status === 409;
 }
