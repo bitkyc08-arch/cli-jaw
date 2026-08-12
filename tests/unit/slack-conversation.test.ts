@@ -233,6 +233,51 @@ test('reply count excludes the parent', async () => {
     assert.equal(thread.replyCount, 2);
 });
 
+test('reply count prefers the parent reply_count over the fetched window', async () => {
+    // The window is capped at 50, so counting messages would report a
+    // 500-reply thread as 49. Slack's own count on the parent is authoritative.
+    const { impl } = makeFetch([replies([
+        { ts: '100.1', user: 'U1', text: 'parent', reply_count: 500 },
+        { ts: '100.2', user: 'U2', text: 'a' },
+        { ts: '100.3', user: 'U3', text: 'b' },
+    ])]);
+    const thread = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: impl });
+    assert.equal(thread.replyCount, 500);
+});
+
+test('retained prefetch text is bounded per message', async () => {
+    const huge = 'x'.repeat(40_000);
+    const { impl } = makeFetch([replies([
+        { ts: '100.1', user: 'U1', text: 'parent' },
+        { ts: '100.2', user: 'U2', text: huge },
+    ])]);
+    const thread = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: impl });
+    const retained = thread.messages?.find(m => m.ts === '100.2');
+    assert.ok(retained);
+    assert.ok([...retained.text].length <= 500, 'a cached thread must not pin megabytes of text');
+});
+
+test('conversations.info and conversations.replies do not share a start slot', async () => {
+    const info = makeFetch([{ ok: true, channel: { id: 'C1', name: 'ops', is_channel: true } }]);
+    await resolveConversationInfo(TOKEN, 'C1', { teamId: TEAM, fetchImpl: info.impl });
+    // No rate-limit reset: a shared clock would decline this immediately, which
+    // is exactly the starvation the per-method split prevents.
+    const thread = makeFetch([replies([{ ts: '100.1', user: 'U1', text: 'parent' }])]);
+    const result = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: thread.impl });
+    assert.equal(thread.calls.length, 1, 'the thread lookup has its own budget');
+    assert.equal(result.resolved, true);
+});
+
+test('a missing scope on conversations.info does not lock conversations.replies', async () => {
+    const denied = makeFetch([{ ok: false, error: 'missing_scope', needed: 'channels:read' }]);
+    await resolveConversationInfo(TOKEN, 'C1', { teamId: TEAM, fetchImpl: denied.impl });
+    // Different methods need different scopes; one must not lock the other out.
+    const thread = makeFetch([replies([{ ts: '100.1', user: 'U1', text: 'parent' }])]);
+    const result = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: thread.impl });
+    assert.equal(thread.calls.length, 1);
+    assert.equal(result.resolved, true);
+});
+
 test('a failed thread lookup degrades to an empty participant list', async () => {
     const { impl } = makeFetch([{ ok: false, error: 'thread_not_found' }]);
     const thread = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: impl });

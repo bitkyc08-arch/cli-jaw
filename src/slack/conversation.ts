@@ -61,6 +61,12 @@ const CACHE_CAP = 500;
 /** Slack caps display names at 64 code points; a topic is a hint, not a body. */
 const TOPIC_MAX = 64;
 const PARENT_TEXT_MAX = 300;
+/**
+ * Retained prefetch text per message. 50 messages x 500 code points bounds a
+ * cached thread to ~25k characters; without it, 500 entries x 50 messages x
+ * Slack's 40k-character limit is a multi-gigabyte ceiling.
+ */
+const PREFETCH_TEXT_MAX = 500;
 /** Bounded so a long thread cannot dominate the prompt block. */
 const MAX_PARTICIPANTS = 12;
 const THREAD_FETCH_LIMIT = 50;
@@ -85,7 +91,13 @@ const CAPABILITY_ERRORS = new Set([
 
 type Part = 'conversation' | 'thread';
 
-let lastStartAt = 0;
+/**
+ * Per-METHOD start clocks. conversations.info and conversations.replies are
+ * separate Tier-3 methods with separate budgets: sharing one clock let a channel
+ * lookup consume the slot and starve the thread lookup that immediately follows
+ * it on the same message.
+ */
+const lastStartAt = new Map<string, number>();
 
 const conversationCache = new EnrichmentCache<Part, SlackConversationInfo | SlackThreadInfo, string>({
     partitions: {
@@ -97,19 +109,29 @@ const conversationCache = new EnrichmentCache<Part, SlackConversationInfo | Slac
     suppressionCap: CACHE_CAP,
     classifyFailure: (error, ctx): Suppression => (
         CAPABILITY_ERRORS.has(error)
-            ? { kind: 'capability', key: 'conversation:capability', ttlMs: CAPABILITY_MS }
+            ? { kind: 'capability', key: ctx.capabilityKey, ttlMs: CAPABILITY_MS }
             // Unknown and future error codes land here too: bounded, never a
             // workspace-wide lock.
             : { kind: 'resource', key: ctx.resourceKey, ttlMs: SUPPRESS_MS }
     ),
 });
 
-/** Token-bucket of one: declines rather than queues, so ingress never waits. */
-function admitStart(): boolean {
+/** Token-bucket of one PER METHOD: declines rather than queues, so ingress never waits. */
+function admitStartFor(method: string): boolean {
     const now = Date.now();
-    if (now - lastStartAt < MIN_START_INTERVAL_MS) return false;
-    lastStartAt = now;
+    const previous = lastStartAt.get(method) ?? 0;
+    if (now - previous < MIN_START_INTERVAL_MS) return false;
+    lastStartAt.set(method, now);
     return true;
+}
+
+/**
+ * Capability keys are per method. `conversations.info` answering missing_scope
+ * proves nothing about `conversations.replies` — they require different scopes,
+ * so one must not lock the other out for 30 minutes.
+ */
+function capabilityKeyFor(method: string): string {
+    return `conversation:capability:${method}`;
 }
 
 type RawConversation = {
@@ -163,9 +185,9 @@ export async function resolveConversationInfo(
     const value = await conversationCache.resolve({
         partition: 'conversation',
         resourceKey: key,
-        capabilityKey: 'conversation:capability',
+        capabilityKey: capabilityKeyFor('conversations.info'),
         ...(opts.signal ? { signal: opts.signal } : {}),
-        admitStart,
+        admitStart: () => admitStartFor('conversations.info'),
         degraded: () => degradedConversation(channel),
         load: async () => {
             const result = await slackApi<{ channel?: RawConversation }>(
@@ -218,9 +240,9 @@ export async function resolveThreadInfo(
     const value = await conversationCache.resolve({
         partition: 'thread',
         resourceKey: key,
-        capabilityKey: 'conversation:capability',
+        capabilityKey: capabilityKeyFor('conversations.replies'),
         ...(opts.signal ? { signal: opts.signal } : {}),
-        admitStart,
+        admitStart: () => admitStartFor('conversations.replies'),
         degraded: () => degradedThread(threadTs),
         load: async () => {
             const result = await fetchSlackReplies(token, channel, threadTs, {
@@ -246,15 +268,27 @@ export async function resolveThreadInfo(
             // unresolved participant shown by id is better than a round trip.
             const names = getCachedSlackIdentities(opts.teamId, ids);
             const parent = result.messages.find(message => message.ts === threadTs);
+            // Slack's own count on the parent is authoritative. The fetched
+            // window is capped at 50, so length-1 would report a 500-reply
+            // thread as 49.
+            const replyCount = typeof parent?.replyCount === 'number'
+                ? parent.replyCount
+                : Math.max(result.messages.length - 1, 0);
             const info: SlackThreadInfo = {
                 threadTs,
-                replyCount: Math.max(result.messages.length - 1, 0),
+                replyCount,
                 participants: ids.map(id => ({
                     id,
                     name: names.get(id)?.name ?? id,
                     isBot: isBotById.get(id) === true,
                 })),
-                messages: result.messages,
+                // Retain only what the prefetch renders, with bounded text: a
+                // cached thread must not pin megabytes of message bodies.
+                messages: result.messages.map(message => ({
+                    ...message,
+                    text: cap(message.text, PREFETCH_TEXT_MAX),
+                    ...(message.files ? { files: [] } : {}),
+                })),
                 resolved: true,
             };
             if (parent?.text) info.parentText = cap(parent.text, PARENT_TEXT_MAX);
@@ -279,7 +313,7 @@ export function cachedNameMap(teamId: string, ids: readonly string[]): Map<strin
  */
 export function resetSlackConversationCache(): void {
     conversationCache.reset();
-    lastStartAt = 0;
+    lastStartAt.clear();
 }
 
 export function slackConversationCacheStats(): { conversations: number; threads: number } {
@@ -289,5 +323,5 @@ export function slackConversationCacheStats(): { conversations: number; threads:
 
 /** Test hook: the 1.2s start gate would otherwise serialize unit tests. */
 export function resetConversationRateLimitForTest(): void {
-    lastStartAt = 0;
+    lastStartAt.clear();
 }

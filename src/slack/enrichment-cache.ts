@@ -270,6 +270,15 @@ export class EnrichmentCache<P extends string, V, E> {
         return { entries, suppressed: this.suppressed.size, inFlight: this.inFlight.size };
     }
 
+    /**
+     * The current generation. Adapters compare against the value handed to their
+     * loader to tell a live result from a superseded one — needed when a failure
+     * has side effects of its own (a warn-once latch, a metric).
+     */
+    currentGeneration(): number {
+        return this.generation;
+    }
+
     // ─── internals ──────────────────────────────────
 
     private emit(event: EnrichmentEvent): void {

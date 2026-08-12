@@ -263,7 +263,7 @@ function noteMissingScope(data: unknown): void {
 type IdentityLoad = { ok: true; value: SlackIdentity } | { ok: false; error: IdentityFailure };
 
 async function lookupUser(
-    token: string, userId: string, opts: SlackIdentityOpts,
+    token: string, userId: string, opts: SlackIdentityOpts, generation: number,
 ): Promise<IdentityLoad> {
     const result = await slackApi<{ user?: RawSlackUser }>(token, 'users.info', { user: userId }, {
         form: true,
@@ -276,14 +276,18 @@ async function lookupUser(
     // The cache owns suppression windows and the probe slot; this only names the
     // failure class. Generation guarding also lives there.
     if (result.error === 'missing_scope') {
-        noteMissingScope(result.data);
+        // Only a CURRENT-generation failure may consume the warn-once latch. A
+        // stale lookup (issued under the previous token) would otherwise re-arm
+        // it after a reset cleared it, silencing the real warning for the new
+        // workspace.
+        if (generation === identityCache.currentGeneration()) noteMissingScope(result.data);
         return { ok: false, error: 'missing_scope' };
     }
     return { ok: false, error: result.error === 'user_not_found' ? 'not_found' : 'transient' };
 }
 
 async function lookupBot(
-    token: string, botId: string, opts: SlackIdentityOpts,
+    token: string, botId: string, opts: SlackIdentityOpts, generation: number,
 ): Promise<IdentityLoad> {
     const result = await slackApi<{ bot?: { id?: string; name?: string; user_id?: string } }>(
         token, 'bots.info', { bot: botId }, {
@@ -306,7 +310,7 @@ async function lookupBot(
         };
     }
     if (result.error === 'missing_scope') {
-        noteMissingScope(result.data);
+        if (generation === identityCache.currentGeneration()) noteMissingScope(result.data);
         return { ok: false, error: 'missing_scope' };
     }
     return { ok: false, error: 'transient' };
@@ -353,7 +357,9 @@ export async function resolveSlackIdentity(
         resourceKey: key,
         capabilityKey: CAPABILITY_KEY,
         ...(opts.signal ? { signal: opts.signal } : {}),
-        load: () => (isBot ? lookupBot(token, id, opts) : lookupUser(token, id, opts)),
+        load: ({ generation }) => (isBot
+            ? lookupBot(token, id, opts, generation)
+            : lookupUser(token, id, opts, generation)),
         degraded: fallback,
     });
     if (identity.resolved) return identity;
