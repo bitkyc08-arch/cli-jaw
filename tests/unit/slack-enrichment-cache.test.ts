@@ -366,3 +366,51 @@ test('a coalesced waiter does not consume the start budget', async () => {
     assert.equal(loads, 1);
     assert.equal(admissions, 1, 'joining is not starting');
 });
+
+// ─── failure attribution ────────────────────────────
+
+test('a failure suppresses the key that actually failed, even when loads interleave', async () => {
+    // Regression: the resource key used to be passed through a module-level
+    // variable. Two concurrent loads on different keys interleave, and a slow
+    // continuation classified its failure AFTER a peer overwrote that variable —
+    // suppressing the innocent key and leaving the broken one hammering Slack.
+    const seen: Array<{ error: string; key: string }> = [];
+    const cache = new EnrichmentCache<Part, string, string>({
+        partitions: { main: { ttlMs: () => 60_000, cap: 100 }, other: { ttlMs: () => 60_000, cap: 100 } },
+        classifyFailure: (error, ctx) => {
+            seen.push({ error, key: ctx.resourceKey });
+            return { kind: 'resource', key: ctx.resourceKey, ttlMs: 60_000 };
+        },
+    });
+
+    // A settles first but classifies late; B overwrites any shared state between.
+    const slow = cache.resolve({
+        partition: 'main', resourceKey: 'KEY_A', capabilityKey: 'c',
+        load: async () => { await new Promise(r => setTimeout(r, 1)); return fail('err_a'); },
+        degraded: () => 'D',
+    });
+    const fast = cache.resolve({
+        partition: 'main', resourceKey: 'KEY_B', capabilityKey: 'c',
+        load: async () => { await new Promise(r => setTimeout(r, 3)); return fail('err_b'); },
+        degraded: () => 'D',
+    });
+    await Promise.all([slow, fast]);
+
+    for (const entry of seen) {
+        const expected = entry.error === 'err_a' ? 'KEY_A' : 'KEY_B';
+        assert.equal(entry.key, expected, `${entry.error} must suppress ${expected}`);
+    }
+    assert.equal(seen.length, 2);
+
+    // And the suppression landed on the right keys: a retry of each is blocked,
+    // while an untouched key still loads.
+    let reloads = 0;
+    const retry = async (key: string) => cache.resolve({
+        partition: 'main', resourceKey: key, capabilityKey: 'c',
+        load: async () => { reloads += 1; return ok('fresh'); }, degraded: () => 'D',
+    });
+    assert.equal(await retry('KEY_A'), 'D');
+    assert.equal(await retry('KEY_B'), 'D');
+    assert.equal(reloads, 0, 'both failed keys must be suppressed');
+    assert.equal(await retry('KEY_C'), 'fresh', 'an unrelated key is unaffected');
+});

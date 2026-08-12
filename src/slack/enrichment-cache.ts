@@ -46,10 +46,24 @@ export type PartitionSpec = {
     cap: number;
 };
 
+export type FailureContext = {
+    /** The key whose load failed. Passed explicitly — never read from shared state. */
+    resourceKey: string;
+    capabilityKey: string;
+};
+
 export type EnrichmentCacheOptions<P extends string, E> = {
     partitions: Record<P, PartitionSpec>;
     suppressionCap?: number;
-    classifyFailure: (error: E) => Suppression;
+    /**
+     * Classify a failure into a suppression window.
+     *
+     * `ctx` carries the keys because a module-level "current key" variable is
+     * NOT safe here: two concurrent loads on different keys interleave, and a
+     * slow continuation can classify its failure after a peer has overwritten
+     * the shared variable — suppressing the wrong resource.
+     */
+    classifyFailure: (error: E, ctx: FailureContext) => Suppression;
     onEvent?: (event: EnrichmentEvent) => void;
 };
 
@@ -99,7 +113,7 @@ export class EnrichmentCache<P extends string, V, E> {
     /** Capability keys whose lock has lapsed and whose re-probe is in flight. */
     private readonly probing = new Set<string>();
     private readonly suppressionCap: number;
-    private readonly classifyFailure: (error: E) => Suppression;
+    private readonly classifyFailure: (error: E, ctx: FailureContext) => Suppression;
     private readonly onEvent: ((event: EnrichmentEvent) => void) | undefined;
     /**
      * Bumped by reset. Captured at dispatch and re-checked before BOTH the cache
@@ -364,7 +378,7 @@ export class EnrichmentCache<P extends string, V, E> {
                     this.write(partition, resourceKey, result.value);
                     return result.value;
                 }
-                const suppression = this.classifyFailure(result.error);
+                const suppression = this.classifyFailure(result.error, { resourceKey, capabilityKey });
                 if (suppression.kind === 'capability') {
                     this.suppress(suppression.key, suppression.ttlMs);
                     this.probing.delete(suppression.key);

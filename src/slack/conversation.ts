@@ -85,7 +85,6 @@ const CAPABILITY_ERRORS = new Set([
 
 type Part = 'conversation' | 'thread';
 
-let pendingResourceKey = '';
 let lastStartAt = 0;
 
 const conversationCache = new EnrichmentCache<Part, SlackConversationInfo | SlackThreadInfo, string>({
@@ -96,12 +95,12 @@ const conversationCache = new EnrichmentCache<Part, SlackConversationInfo | Slac
         thread: { ttlMs: () => THREAD_TTL_MS, cap: CACHE_CAP },
     },
     suppressionCap: CACHE_CAP,
-    classifyFailure: (error): Suppression => (
+    classifyFailure: (error, ctx): Suppression => (
         CAPABILITY_ERRORS.has(error)
             ? { kind: 'capability', key: 'conversation:capability', ttlMs: CAPABILITY_MS }
             // Unknown and future error codes land here too: bounded, never a
             // workspace-wide lock.
-            : { kind: 'resource', key: pendingResourceKey, ttlMs: SUPPRESS_MS }
+            : { kind: 'resource', key: ctx.resourceKey, ttlMs: SUPPRESS_MS }
     ),
 });
 
@@ -169,7 +168,6 @@ export async function resolveConversationInfo(
         admitStart,
         degraded: () => degradedConversation(channel),
         load: async () => {
-            pendingResourceKey = key;
             const result = await slackApi<{ channel?: RawConversation }>(
                 token, 'conversations.info',
                 { channel, include_num_members: true },
@@ -179,7 +177,6 @@ export async function resolveConversationInfo(
                     ...(opts.signal ? { signal: opts.signal } : {}),
                 },
             );
-            pendingResourceKey = key;
             const raw = result.data?.channel;
             if (!result.ok || !raw) {
                 return { ok: false as const, error: result.error || 'unknown_error' };
@@ -226,14 +223,12 @@ export async function resolveThreadInfo(
         admitStart,
         degraded: () => degradedThread(threadTs),
         load: async () => {
-            pendingResourceKey = key;
             const result = await fetchSlackReplies(token, channel, threadTs, {
                 limit: THREAD_FETCH_LIMIT,
                 noRetryOnRateLimit: true,
                 ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
                 ...(opts.signal ? { signal: opts.signal } : {}),
             });
-            pendingResourceKey = key;
             if (!result.ok) return { ok: false as const, error: result.error };
 
             const ids: string[] = [];

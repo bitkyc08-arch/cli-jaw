@@ -123,27 +123,18 @@ const identityCache = new EnrichmentCache<'user' | 'bot', SlackIdentity, Identit
         bot: { ttlMs, cap: CACHE_CAP },
     },
     suppressionCap: CACHE_CAP,
-    classifyFailure: (error): Suppression => {
+    classifyFailure: (error, ctx): Suppression => {
         if (error === 'missing_scope') {
             return { kind: 'capability', key: CAPABILITY_KEY, ttlMs: CAPABILITY_REPROBE_MS };
         }
         // Keyed per identity: one unknown user must not suppress anyone else.
         return {
             kind: 'resource',
-            key: pendingNegativeKey,
+            key: ctx.resourceKey,
             ttlMs: error === 'not_found' ? NEGATIVE_TTL_NOT_FOUND_MS : NEGATIVE_TTL_TRANSIENT_MS,
         };
     },
 });
-
-/**
- * The resource key of the lookup currently being classified.
- *
- * `classifyFailure` receives only the error, but a resource suppression has to
- * name the key it applies to. The assignment and the classification happen in
- * the same synchronous turn inside the cache, so this cannot interleave.
- */
-let pendingNegativeKey = '';
 
 function ttlMs(): number {
     const raw = Number(settings['slack']?.identityCacheTtlMs);
@@ -362,15 +353,7 @@ export async function resolveSlackIdentity(
         resourceKey: key,
         capabilityKey: CAPABILITY_KEY,
         ...(opts.signal ? { signal: opts.signal } : {}),
-        load: async () => {
-            // Read in the same synchronous turn the classifier runs in.
-            pendingNegativeKey = key;
-            const result = isBot
-                ? await lookupBot(token, id, opts)
-                : await lookupUser(token, id, opts);
-            pendingNegativeKey = key;
-            return result;
-        },
+        load: () => (isBot ? lookupBot(token, id, opts) : lookupUser(token, id, opts)),
         degraded: fallback,
     });
     if (identity.resolved) return identity;
