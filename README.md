@@ -126,7 +126,12 @@ $port = 3458
 $logDir = Join-Path $jawHome 'logs'
 $outLog = Join-Path $logDir 'serve.out.log'
 $errLog = Join-Path $logDir 'serve.err.log'
-New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logDir -ErrorAction Stop | Out-Null
+foreach ($path in @($outLog, $errLog)) {
+    # OpenOrCreate preserves existing content while proving that the child can append.
+    $probe = [IO.File]::Open($path, 'OpenOrCreate', 'Write', 'ReadWrite')
+    $probe.Dispose()
+}
 
 $jaw = (Get-Command jaw.cmd -ErrorAction Stop).Source
 $childCommand = "& '$jaw' --home '$jawHome' serve --port $port --no-open 1>> '$outLog' 2>> '$errLog'"
@@ -134,11 +139,16 @@ $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCom
 Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $encoded -WindowStyle Hidden | Out-Null
 ```
 
-Read each stream from a PowerShell terminal:
+Read each stream from a separate PowerShell terminal (`Get-Content -Wait`
+occupies its terminal). These commands use explicit paths because variables
+from the launch terminal are not available in a new PowerShell session:
 
 ```powershell
-Get-Content -LiteralPath $outLog -Tail 100 -Wait
-Get-Content -LiteralPath $errLog -Tail 100 -Wait
+# Terminal 1
+Get-Content -LiteralPath 'C:\jaw\worker-a\logs\serve.out.log' -Tail 100 -Wait
+
+# Terminal 2
+Get-Content -LiteralPath 'C:\jaw\worker-a\logs\serve.err.log' -Tail 100 -Wait
 ```
 
 Lifecycle commands are home-scoped and verify `<JAW_HOME>\jaw.pid.json`
@@ -154,11 +164,31 @@ cannot recreate the operator's file redirection. To preserve file capture,
 `stop`, optionally rotate the closed logs, and run the launch block again:
 
 ```powershell
+$pidFile = Join-Path $jawHome 'jaw.pid.json'
+$serverProcess = $null
+if (Test-Path -LiteralPath $pidFile -PathType Leaf) {
+    $record = Get-Content -LiteralPath $pidFile -Raw -ErrorAction Stop | ConvertFrom-Json
+    $serverProcess = Get-Process -Id ([int]$record.pid) -ErrorAction SilentlyContinue
+}
+
 & $jaw --home $jawHome service stop --port $port
+if ($LASTEXITCODE -ne 0) {
+    throw "jaw service stop failed with exit code $LASTEXITCODE"
+}
+if ($serverProcess) {
+    try {
+        if (-not $serverProcess.WaitForExit(5000)) {
+            throw "jaw serve pid $($serverProcess.Id) did not exit within 5000ms"
+        }
+    } finally {
+        $serverProcess.Dispose()
+    }
+}
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 foreach ($path in @($outLog, $errLog)) {
     if (Test-Path -LiteralPath $path) {
-        Move-Item -LiteralPath $path -Destination "$path.$stamp"
+        Move-Item -LiteralPath $path -Destination "$path.$stamp" -ErrorAction Stop
     }
 }
 # Run the Start-Process launch block above again.
