@@ -231,9 +231,9 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (7 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (499L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (506L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (119L)
-│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (121L) ✨
+│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (126L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (85L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)

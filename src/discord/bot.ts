@@ -17,11 +17,18 @@ import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './comma
 import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
-import type { Attachment, Message } from 'discord.js';
+import type { Attachment, Interaction, Message } from 'discord.js';
 import { asSendable, asThreadLike, asTypingChannel } from './channel-types.js';
 import { log } from '../core/logger.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { createSeenSet, DELIVERY_DEDUPE_TTL_MS } from '../messaging/dedupe.js';
+import {
+    DiscordGatewaySupervisor,
+    type DiscordGatewayClientPort,
+    type DiscordGatewaySnapshot,
+    type GatewayEventMap,
+    type GatewayEventName,
+} from './gateway-supervisor.js';
 
 /** Redelivered message ids, so a gateway resume does not run the agent twice. */
 const discordSeenMessages = createSeenSet(DELIVERY_DEDUPE_TTL_MS);
@@ -32,6 +39,39 @@ export let discordClient: Client | null = null;
 export const discordActiveChannelIds = new Set<string>();
 let forwarderHandler: BroadcastListener | null = null;
 let dcInitLock = false;
+let gatewaySupervisor: DiscordGatewaySupervisor | null = null;
+let lastGatewayEventCode: string | null = null;
+
+interface DiscordGenerationResources {
+    client: Client;
+    messageHandler: (msg: Message) => void;
+    interactionHandler: (interaction: Interaction) => void;
+    forwarder: BroadcastListener | null;
+}
+
+const generationResources = new Map<DiscordGatewayClientPort, DiscordGenerationResources>();
+
+export class DiscordJsGatewayClientPort implements DiscordGatewayClientPort {
+    constructor(readonly client: Client) {}
+
+    login(token: string): Promise<string> { return this.client.login(token); }
+    destroy(): void { this.client.destroy(); }
+    shardIds(): readonly number[] { return [...this.client.ws.shards.keys()]; }
+
+    on<K extends GatewayEventName>(
+        event: K,
+        listener: (...args: GatewayEventMap[K]) => void,
+    ): void {
+        this.client.on(event, listener);
+    }
+
+    off<K extends GatewayEventName>(
+        event: K,
+        listener: (...args: GatewayEventMap[K]) => void,
+    ): void {
+        this.client.off(event, listener);
+    }
+}
 
 type SavedDiscordAttachment = { name: string; filePath: string };
 type FailedDiscordAttachment = { name: string; reason: string };
@@ -195,6 +235,146 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
 
 // ─── Init / Shutdown ────────────────────────────────
 
+async function installDiscordGeneration(
+    port: DiscordGatewayClientPort,
+    client: Client,
+): Promise<void> {
+    const messageHandler = (msg: Message): void => {
+        void handleDiscordMessage(client, msg).catch((error) => {
+            log.error('[discord:message]', logErrorText(error));
+        });
+    };
+    const interactionHandler = (interaction: Interaction): void => {
+        if (!interaction.isChatInputCommand()) return;
+        void handleDiscordSlashCommand(interaction).catch((error) => {
+            log.error('[discord:command]', logErrorText(error));
+        });
+    };
+
+    client.on(Events.MessageCreate, messageHandler);
+    client.on(Events.InteractionCreate, interactionHandler);
+    const resources: DiscordGenerationResources = {
+        client,
+        messageHandler,
+        interactionHandler,
+        forwarder: null,
+    };
+    generationResources.set(port, resources);
+    await registerDiscordSlashCommands(client);
+
+    if (settings["discord"]?.forwardAll !== false) {
+        const forwarder = createDiscordForwarder({
+            client,
+            getLastTarget: () => getLastActiveTarget('discord'),
+            shouldSkip: (data) => data["origin"] === 'discord',
+            log: ({ channelId, preview }) => {
+                log.info(`[discord:forward] → ${channelId}: ${preview}...`);
+            },
+        });
+        addBroadcastListener(forwarder);
+        resources.forwarder = forwarder;
+        forwarderHandler = forwarder;
+    }
+
+    discordClient = client;
+}
+
+async function retireDiscordGeneration(port: DiscordGatewayClientPort): Promise<void> {
+    const resources = generationResources.get(port);
+    generationResources.delete(port);
+    if (!resources) return;
+
+    resources.client.off(Events.MessageCreate, resources.messageHandler);
+    resources.client.off(Events.InteractionCreate, resources.interactionHandler);
+    if (resources.forwarder) {
+        removeBroadcastListener(resources.forwarder);
+        if (forwarderHandler === resources.forwarder) forwarderHandler = null;
+    }
+    if (discordClient === resources.client) discordClient = null;
+}
+
+async function handleDiscordMessage(client: Client, msg: Message): Promise<void> {
+    if (msg.author.id === client.user?.id) return; // never process own messages
+    if (msg.author.bot && !settings["discord"].allowBots) return;
+    if (settings["discord"].channelIds?.length) {
+        const parentId = asThreadLike(msg.channel)?.parentId;
+        if (!settings["discord"].channelIds.includes(msg.channelId)
+            && !(parentId && settings["discord"].channelIds.includes(parentId))) return;
+    }
+
+    if (settings["discord"].mentionOnly && msg.guild) {
+        if (!client.user || !msg.mentions.has(client.user, { ignoreRepliedUser: true })) return;
+    }
+
+    if (discordSeenMessages.seen(msg.id)) {
+        log.info(`[discord:duplicate] id=${msg.id}`);
+        return;
+    }
+
+    markChannelActive(msg.channelId);
+    const target = buildDiscordTarget(msg);
+    setLastActiveTarget('discord', target);
+    setLatestSeenTarget('discord', target);
+
+    let normalizedText = msg.content?.trim() || '';
+    if (settings["discord"].mentionOnly && client.user) {
+        normalizedText = stripBotMention(normalizedText, client.user.id);
+    }
+
+    if (msg.attachments.size > 0) {
+        try {
+            const { saved, failed } = await downloadAndSaveDiscordAttachments(msg.attachments);
+            if (saved.length === 0) {
+                const warning = buildAttachmentFailureWarning(failed) || '❌ No attachment could be processed';
+                await msg.reply(warning).catch(() => { });
+                return;
+            }
+
+            const prompt = buildMediaPromptMany(saved.map(item => item.filePath), normalizedText);
+            const fileLabel = saved.length === 1
+                ? `[📎 ${saved[0]!.name}] ${normalizedText}`.trim()
+                : `[📎 ${saved.length} files] ${normalizedText}`.trim();
+            const warning = buildAttachmentFailureWarning(failed);
+            if (warning) await msg.reply(warning).catch(() => { });
+            dcOrchestrate(msg, prompt, fileLabel).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
+        } catch (error) {
+            log.error('[discord:attachment]', logErrorText(error));
+            await msg.reply(`❌ ${userErrorText(error)}`).catch(() => { });
+        }
+        return;
+    }
+
+    const text = normalizedText;
+    if (!text) return;
+    log.info(`[discord:in] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
+
+    // Reset intent: use submitMessage gateway for consistency
+    if (isResetIntent(text)) {
+        const result = submitMessage(text, { origin: 'discord', target });
+        if (result.action === 'rejected') {
+            await msg.reply(t('ws.agentBusy', {}, currentLocale()));
+        } else {
+            await msg.reply(t('tg.resetDone', {}, currentLocale()));
+        }
+        return;
+    }
+
+    dcOrchestrate(msg, text, text).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
+}
+
+function observeGatewaySnapshot(snapshot: DiscordGatewaySnapshot): void {
+    if (snapshot.lastEventCode === lastGatewayEventCode) return;
+    lastGatewayEventCode = snapshot.lastEventCode;
+    if (snapshot.lastEventCode?.startsWith('client_error:')
+        || snapshot.lastEventCode?.startsWith('shard_error:')) {
+        log.warn(`[discord:gateway] ${snapshot.lastEventCode}`);
+    } else if (snapshot.state === 'blocked') {
+        log.error(`[discord:gateway] blocked (${snapshot.lastEventCode ?? 'unknown'})`);
+    } else if (snapshot.state === 'recovering') {
+        log.warn(`[discord:gateway] recovering (${snapshot.lastEventCode ?? 'unknown'})`);
+    }
+}
+
 export async function initDiscord() {
     if (dcInitLock) {
         log.warn('[discord] initDiscord already in progress, skipping');
@@ -208,165 +388,56 @@ export async function initDiscord() {
         return;
     }
 
-    const client = new Client({
-        intents: [
-            GatewayIntentBits.Guilds,
-            GatewayIntentBits.GuildMessages,
-            GatewayIntentBits.MessageContent,
-            GatewayIntentBits.DirectMessages,
-        ],
-        partials: [Partials.Channel], // Required for DM events
-        allowedMentions: { parse: [] },
+    const supervisor = new DiscordGatewaySupervisor({
+        token: settings["discord"].token,
+        createClient: () => new DiscordJsGatewayClientPort(new Client({
+            intents: [
+                GatewayIntentBits.Guilds,
+                GatewayIntentBits.GuildMessages,
+                GatewayIntentBits.MessageContent,
+                GatewayIntentBits.DirectMessages,
+            ],
+            partials: [Partials.Channel],
+            allowedMentions: { parse: [] },
+        })),
+        onGenerationReady: async (port) => {
+            const adapter = port as DiscordJsGatewayClientPort;
+            await installDiscordGeneration(port, adapter.client);
+        },
+        onConnectionReady: (port) => {
+            const adapter = port as DiscordJsGatewayClientPort;
+            log.info(`[discord] ✅ Bot logged in as ${adapter.client.user?.tag || 'unknown'}`);
+        },
+        onClientRetired: retireDiscordGeneration,
+        onSnapshot: observeGatewaySnapshot,
     });
-
-    // ── Error handler: disable Discord on network failure ──
-    client.on(Events.Error, (err) => {
-        log.error(`[discord] ❌ Client error: ${logErrorText(err)}`);
-        log.error('[discord] Disabling Discord for this session — restart to retry');
-        shutdownDiscord().catch(() => { /* ignore */ });
-    });
-
-    // ── Message handler ──
-    client.on(Events.MessageCreate, async (msg) => {
-        if (msg.author.id === client.user?.id) return; // never process own messages
-        if (msg.author.bot && !settings["discord"].allowBots) return;
-        if (settings["discord"].channelIds?.length) {
-            const parentId = asThreadLike(msg.channel)?.parentId;
-            if (!settings["discord"].channelIds.includes(msg.channelId)
-                && !(parentId && settings["discord"].channelIds.includes(parentId))) return;
-        }
-
-        // @mention gating: skip non-mentioned messages in guild channels
-        if (settings["discord"].mentionOnly && msg.guild) {
-            if (!client.user || !msg.mentions.has(client.user, { ignoreRepliedUser: true })) return;
-        }
-
-        // discord.js can redeliver on a gateway resume, and each delivery
-        // would start another agent run.
-        //
-        // This sits AFTER the allowlist and mention gates on purpose: a
-        // message that will be dropped anyway should not consume a slot in
-        // the seen-set, or traffic from channels the bot ignores could fill
-        // it on its own.
-        if (discordSeenMessages.seen(msg.id)) {
-            log.info(`[discord:duplicate] id=${msg.id}`);
-            return;
-        }
-
-        markChannelActive(msg.channelId);
-        const target = buildDiscordTarget(msg);
-        setLastActiveTarget('discord', target);
-        setLatestSeenTarget('discord', target);
-
-        let normalizedText = msg.content?.trim() || '';
-        if (settings["discord"].mentionOnly && client.user) {
-            normalizedText = stripBotMention(normalizedText, client.user.id);
-        }
-
-        // Attachment handling
-        if (msg.attachments.size > 0) {
-            try {
-                const { saved, failed } = await downloadAndSaveDiscordAttachments(msg.attachments);
-                if (saved.length === 0) {
-                    const warning = buildAttachmentFailureWarning(failed) || '❌ No attachment could be processed';
-                    await msg.reply(warning).catch(() => { });
-                    return;
-                }
-
-                const prompt = buildMediaPromptMany(saved.map(item => item.filePath), normalizedText);
-                const fileLabel = saved.length === 1
-                    ? `[📎 ${saved[0]!.name}] ${normalizedText}`.trim()
-                    : `[📎 ${saved.length} files] ${normalizedText}`.trim();
-
-                const warning = buildAttachmentFailureWarning(failed);
-                if (warning) {
-                    await msg.reply(warning).catch(() => { });
-                }
-
-                dcOrchestrate(msg, prompt, fileLabel).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
-            } catch (e) {
-                log.error('[discord:attachment]', logErrorText(e));
-                await msg.reply(`❌ ${userErrorText(e)}`).catch(() => { });
-            }
-            return;
-        }
-
-        // Text message
-        const text = normalizedText;
-        if (!text) return;
-
-        log.info(`[discord:in] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
-
-        // Reset intent: use submitMessage gateway for consistency
-        if (isResetIntent(text)) {
-            const result = submitMessage(text, { origin: 'discord', target });
-            if (result.action === 'rejected') {
-                await msg.reply(t('ws.agentBusy', {}, currentLocale()));
-            } else {
-                await msg.reply(t('tg.resetDone', {}, currentLocale()));
-            }
-            return;
-        }
-
-        dcOrchestrate(msg, text, text).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
-    });
-
-    // ── Slash command handler ──
-    client.on(Events.InteractionCreate, async (interaction) => {
-        if (!interaction.isChatInputCommand()) return;
-        await handleDiscordSlashCommand(interaction);
-    });
-
-    // ── Forwarder: non-Discord responses → Discord ──
-    if (settings["discord"]?.forwardAll !== false) {
-        const fwd = createDiscordForwarder({
-            client,
-            getLastTarget: () => getLastActiveTarget('discord'),
-            shouldSkip: (data) => data["origin"] === 'discord',
-            log: ({ channelId, preview }) => {
-                log.info(`[discord:forward] → ${channelId}: ${preview}...`);
-            },
-        });
-        forwarderHandler = fwd;
-        addBroadcastListener(fwd);
-    }
-
-    // ── Login ──
-    try {
-        await client.login(settings["discord"].token);
-    } catch (err) {
-        log.error(`[discord] ❌ Login failed (network?): ${logErrorText(err)}`);
-        log.error('[discord] Disabling Discord for this session — restart to retry');
-        if (forwarderHandler) {
-            removeBroadcastListener(forwarderHandler);
-            forwarderHandler = null;
-        }
-        try { await client.destroy(); } catch { /* ignore */ }
-        return;
-    }
-    discordClient = client;
-    log.info(`[discord] ✅ Bot logged in as ${client.user?.tag || 'unknown'}`);
-
-    // Register slash commands after login
-    await registerDiscordSlashCommands(client);
+    gatewaySupervisor = supervisor;
+    await supervisor.start();
     } finally { dcInitLock = false; }
 }
 
 export async function shutdownDiscord() {
-    if (forwarderHandler) {
-        removeBroadcastListener(forwarderHandler);
-        forwarderHandler = null;
-    }
     discordActiveChannelIds.clear();
-    if (!discordClient) return;
-    const old = discordClient;
-    discordClient = null;
-    try {
-        await old.destroy();
-    } catch (e) {
-        log.warn('[discord:stop]', logErrorText(e));
-        await new Promise(r => setTimeout(r, 2000));
+    const supervisor = gatewaySupervisor;
+    gatewaySupervisor = null;
+    if (supervisor) {
+        try {
+            await supervisor.stop();
+        } catch (error) {
+            log.warn('[discord:stop]', logErrorText(error));
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    } else if (discordClient) {
+        const old = discordClient;
+        discordClient = null;
+        try {
+            await old.destroy();
+        } catch (error) {
+            log.warn('[discord:stop]', logErrorText(error));
+            await new Promise(r => setTimeout(r, 2000));
+        }
     }
+    forwarderHandler = null;
     log.info('[discord] stopped');
 }
 
