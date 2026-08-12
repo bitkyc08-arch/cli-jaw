@@ -16,6 +16,7 @@ export type SlackApiResult<T = Record<string, unknown>> = {
     ok: boolean;
     error?: string;
     status?: number;
+    retryAfterMs?: number;
     data?: T;
 };
 
@@ -101,8 +102,25 @@ export type SlackFetch = typeof fetch;
  * The repo runs `exactOptionalPropertyTypes`, so `{ status: undefined }` is not
  * assignable to `{ status?: number }` — the key has to be absent instead.
  */
-export function slackFailure(error: string, status?: number): { ok: false; error: string; status?: number } {
-    return status === undefined ? { ok: false, error } : { ok: false, error, status };
+export function slackFailure(
+    error: string,
+    status?: number,
+    retryAfterMs?: number,
+): { ok: false; error: string; status?: number; retryAfterMs?: number } {
+    return {
+        ok: false,
+        error,
+        ...(status !== undefined ? { status } : {}),
+        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+    };
+}
+
+export function parseRetryAfterMs(headers: Pick<Headers, 'get'>): number | undefined {
+    const raw = headers.get('retry-after');
+    if (raw == null || raw.trim() === '') return undefined;
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds) || seconds < 0) return undefined;
+    return Math.ceil(seconds * 1000);
 }
 
 /**
@@ -144,20 +162,39 @@ export async function slackApi<T = Record<string, unknown>>(
 
     try {
         const response = await doFetch(url, init);
+        const retryAfterMs = response.headers
+            ? parseRetryAfterMs(response.headers)
+            : undefined;
         const text = await response.text();
         let parsed: Record<string, unknown> = {};
         try {
             parsed = text ? JSON.parse(text) as Record<string, unknown> : {};
         } catch {
-            return { ok: false, error: 'invalid_json_response', status: response.status };
+            return {
+                ok: false,
+                error: 'invalid_json_response',
+                status: response.status,
+                ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+            };
         }
         // Slack signals application errors with HTTP 200 + ok:false.
         if (parsed['ok'] !== true) {
             const err = typeof parsed['error'] === 'string' ? parsed['error'] : 'unknown_error';
             log.warn('[slack:api]', redactSlackTokens(`${method} failed: ${err}`));
-            return { ok: false, error: err, status: response.status, data: parsed as T };
+            return {
+                ok: false,
+                error: err,
+                status: response.status,
+                ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+                data: parsed as T,
+            };
         }
-        return { ok: true, status: response.status, data: parsed as T };
+        return {
+            ok: true,
+            status: response.status,
+            ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+            data: parsed as T,
+        };
     } catch (error) {
         return {
             ok: false,
