@@ -5,6 +5,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
 import { createInterface } from 'readline';
+import { ownProcess, type OwnedProcess, type OwnedProcessOptions } from '../agent/spawn/process-kill.js';
 
 type AcpId = string | number;
 interface AcpRequest<P = unknown> { jsonrpc: '2.0'; id: AcpId; method: string; params?: P }
@@ -42,17 +43,24 @@ export class AcpClient extends EventEmitter {
     _buffer: string;
     _activityPing: (() => void) | null;
     _agentCapabilities: unknown;
+    private ownedProc: OwnedProcess | null;
+    private spawnImpl: typeof spawn;
+    private ownedProcessOptions: OwnedProcessOptions | undefined;
 
     constructor({
         model,
         workDir,
         permissions = 'auto',
         env = {},
+        spawnImpl = spawn,
+        ownedProcessOptions,
     }: {
         model?: string;
         workDir?: string;
         permissions?: string;
         env?: Record<string, string | undefined>;
+        spawnImpl?: typeof spawn;
+        ownedProcessOptions?: OwnedProcessOptions;
     } = {}) {
         super();
         this.model = model;
@@ -66,6 +74,9 @@ export class AcpClient extends EventEmitter {
         this._buffer = '';
         this._activityPing = null;
         this._agentCapabilities = null;
+        this.ownedProc = null;
+        this.spawnImpl = spawnImpl;
+        this.ownedProcessOptions = ownedProcessOptions;
     }
 
     /** Build copilot process args from model + permission mode */
@@ -86,11 +97,12 @@ export class AcpClient extends EventEmitter {
     spawn() {
         const args = this.buildSpawnArgs();
 
-        this.proc = spawn('copilot', args, {
+        this.proc = this.spawnImpl('copilot', args, {
             cwd: this.workDir,
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, ...this.env },
         });
+        this.ownedProc = ownProcess(this.proc, this.ownedProcessOptions);
 
         // NDJSON line parser on stdout
         const rl = createInterface({ input: this.proc.stdout });
@@ -125,9 +137,7 @@ export class AcpClient extends EventEmitter {
 
     /** Kill the process */
     kill() {
-        if (this.proc && !this.proc.killed) {
-            this.proc.kill('SIGTERM');
-        }
+        this.ownedProc?.terminate('cancel');
     }
 
     // ─── JSON-RPC transport ──────────────────────

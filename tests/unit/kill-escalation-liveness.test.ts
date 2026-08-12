@@ -105,9 +105,58 @@ test('the duplicate-registration reaper decides liveness by exit state, not by k
         'prev.killed only records signal delivery and must not stand in for liveness',
     );
 
+    // Case 3: the grace-period escalation must be liveness-checked. This used
+    // to assert one literal `setTimeout(... killProcessTreeIfAlive ...)` shape,
+    // which broke the moment the reaper moved onto the shared OwnedProcess
+    // owner even though the guarantee was unchanged. Assert the GUARANTEE —
+    // that the escalation is delegated to something that re-checks the child —
+    // rather than the spelling of the delegation.
     assert.match(
         region,
-        /setTimeout\(\(\) => \{\s*killProcessTreeIfAlive\(prev, prevPid\);\s*\}, DUP_REGISTRATION_KILL_GRACE_MS\)/,
-        'the grace-period escalation must route through the liveness-checked helper',
+        /ownProcess\(prev,[\s\S]*?graceMs:\s*DUP_REGISTRATION_KILL_GRACE_MS[\s\S]*?\.terminate\(/,
+        'the reaper must delegate to the owner with the documented grace',
     );
+    assert.doesNotMatch(
+        region,
+        /setTimeout\([\s\S]{0,200}killProcessTree\(/,
+        'no hand-rolled escalation may survive beside the owner',
+    );
+});
+
+/**
+ * The behavioral counterpart to the source checks above: OwnedProcess is the
+ * single place every spawn.ts escalation now routes through, so its liveness
+ * guarantee is what actually protects a recycled PID.
+ */
+test('the owner refuses to escalate onto a PID whose child already exited', async () => {
+    const { OwnedProcess } = await import('../../src/agent/spawn/process-kill.js');
+    const { EventEmitter } = await import('node:events');
+
+    const child = new EventEmitter() as unknown as import('node:child_process').ChildProcess;
+    (child as { pid?: number }).pid = 31337;
+    (child as { exitCode: number | null }).exitCode = null;
+    (child as { signalCode: string | null }).signalCode = null;
+    // A CLI that traps SIGTERM: `killed` is set, but it is still running.
+    (child as { killed?: boolean }).killed = true;
+
+    const signals: Array<{ pid: number; signal: string }> = [];
+    let escalate: (() => void) | null = null;
+    const owned = new OwnedProcess(child, {
+        terminateTree: (pid, signal = 'SIGTERM') => { signals.push({ pid, signal }); },
+        setTimer: ((fn: () => void) => { escalate = fn; return { unref() { return this; } } as unknown as NodeJS.Timeout; }) as unknown as typeof setTimeout,
+    });
+
+    owned.terminate('duplicate-registration');
+    assert.deepEqual(signals, [{ pid: 31337, signal: 'SIGTERM' }]);
+
+    // Still alive despite `killed` — escalation must reach it.
+    escalate!();
+    assert.deepEqual(signals[1], { pid: 31337, signal: 'SIGKILL' });
+
+    // Now it exits, and a second escalation must NOT fire: the PID may belong
+    // to someone else, and killProcessTree walks children.
+    signals.length = 0;
+    (child as { exitCode: number | null }).exitCode = 0;
+    escalate!();
+    assert.deepEqual(signals, [], 'a recycled PID must never be signalled');
 });

@@ -107,15 +107,17 @@ test('D2: a duplicate-registration kill records a reason and escalates', async (
         source.includes("killReason === DUP_REGISTRATION_KILL_REASON"),
         'the exit handler must treat a dup kill like a steer so it does not evict the new child',
     );
-    // Every sibling kill path escalates; a CLI that traps SIGTERM would
-    // otherwise survive with no map entry left to find it. The escalation goes
-    // through killProcessTreeIfAlive rather than a bare killProcessTree: this
-    // reaper landed from a different branch than the liveness guards, and a
-    // blind delayed SIGKILL walks `pgrep -P` against a PID the OS may have
-    // already recycled. The helper still kills a SIGTERM-trapping child, since
-    // its exitCode and signalCode both stay null.
+    // Escalation is now handled by OwnedProcess: it walks the tree, schedules
+    // a grace period, and re-checks the original child before SIGKILL — so a
+    // PID recycled during the grace is never signalled. The behavioral test
+    // for that guarantee lives in owned-process.test.ts and
+    // kill-escalation-liveness.test.ts; here we verify the delegation pattern.
     assert.ok(
-        source.includes('killProcessTreeIfAlive(prev, prevPid)'),
-        'the dup kill must escalate after a grace period, guarded by a liveness check',
+        source.includes("ownProcess(prev,"),
+        'the dup kill must delegate to OwnedProcess for liveness-guarded escalation',
+    );
+    assert.ok(
+        source.includes(".terminate('duplicate-registration')"),
+        'the dup kill must record its reason through the owner',
     );
 });

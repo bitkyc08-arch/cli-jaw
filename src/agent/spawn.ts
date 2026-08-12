@@ -118,6 +118,10 @@ const DUP_REGISTRATION_KILL_REASON = 'dup-registration';
 const DUP_REGISTRATION_KILL_GRACE_MS = 2_000;
 
 function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
+    // Defensive: the concrete spawn site should already own this child, and
+    // ownProcess is memoized, so this returns that existing owner rather than
+    // installing a second escalation timer.
+    ownProcess(child);
     const prev = activeProcesses.get(agentLabel);
     if (prev && prev !== child) {
         // `killed` only records that a signal was delivered, so it is not a
@@ -137,21 +141,12 @@ function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
                 // Record a kill reason so the stale exit handler classifies this
                 // as an intentional kill rather than a genuine agent error.
                 killReasons.set(prevPid, DUP_REGISTRATION_KILL_REASON);
-                try {
-                    killProcessTree(prevPid, 'SIGTERM');
-                } catch (error) {
-                    console.warn(`[spawn:dup] failed to kill previous child for ${agentLabel}:`, (error as Error)?.message ?? error);
-                }
-                // Escalate like every sibling kill path does: a CLI that traps
-                // SIGTERM would otherwise survive with no map entry to find it.
-                // Route through killProcessTreeIfAlive so a child that exited
-                // during the grace period cannot have its recycled PID killed:
-                // killProcessTree walks `pgrep -P`, so a blind escalation would
-                // take an unrelated process tree down with it.
-                const escalate = setTimeout(() => {
-                    killProcessTreeIfAlive(prev, prevPid);
-                }, DUP_REGISTRATION_KILL_GRACE_MS);
-                escalate.unref?.();
+                // The owner performs the SIGTERM tree walk, schedules the same
+                // grace, and re-checks the original child before escalating —
+                // so a PID recycled during the grace is never signalled.
+                ownProcess(prev, {
+                    policy: () => ({ initialSignal: 'SIGTERM', graceMs: DUP_REGISTRATION_KILL_GRACE_MS }),
+                }).terminate('duplicate-registration');
             }
         }
     }
@@ -288,7 +283,7 @@ interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
 }
 
-import { hasChildExited, killProcessTree, killProcessTreeIfAlive } from './spawn/process-kill.js';
+import { hasChildExited, killProcessTree, killProcessTreeIfAlive, ownProcess } from './spawn/process-kill.js';
 import { releaseChildOutputAfterExit } from './spawn/exit-drain.js';
 import { clampPendingLine } from './spawn/line-buffer.js';
 import { appendBoundedFullText } from './events/fulltext-bound.js';
@@ -591,28 +586,26 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     const policy = getKillPolicy(scopeKey, reason);
     console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey) || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
     if (activeProcess.pid) killReasons.set(activeProcess.pid, reason);
-    try {
-        if (activeProcess.pid) {
-            killProcessTree(activeProcess.pid, policy.signal);
-        } else {
-            activeProcess.kill(policy.signal);
-        }
-    } catch (e: unknown) { console.warn(`[agent:kill] ${policy.signal} failed`, { pid: activeProcess?.pid, error: (e as Error).message }); }
     const proc = activeProcess;
+    // One owner runs the whole termination: tree walk with the policy signal,
+    // then escalation after policy.escalationMs that re-checks the ORIGINAL
+    // child. The previous escalation guarded on `!proc.killed`, which only
+    // records that a signal was delivered — a CLI that traps SIGTERM stays
+    // alive with killed set, and was therefore never escalated.
+    ownProcess(proc, {
+        policy: () => ({ initialSignal: policy.signal, graceMs: policy.escalationMs }),
+    }).terminate(reason === 'steer' ? 'steer' : 'cancel');
     // Immediately sever stdio to stop late output from reaching broadcast handlers
     proc.stdout?.removeAllListeners('data');
     proc.stderr?.removeAllListeners('data');
-    setTimeout(() => {
-        try {
-            if (proc && !proc.killed) {
-                if (proc.pid) killProcessTree(proc.pid, 'SIGKILL');
-                else proc.kill('SIGKILL');
-            }
-        } catch (e: unknown) { console.warn('[agent:kill] SIGKILL failed', { pid: proc?.pid, error: (e as Error).message }); }
+    // Stdio teardown stays on its own timer: it must happen even when the
+    // owner short-circuits because the child had already exited.
+    const teardown = setTimeout(() => {
         proc.stdin?.destroy();
         proc.stdout?.destroy();
         proc.stderr?.destroy();
     }, policy.escalationMs);
+    teardown.unref?.();
     // Fix C1: 사용자 stop/steer 시 해당 scope busy가 즉시 false가 되도록 참조를 동기 해제.
     // 실제 child 종료는 위 setTimeout SIGKILL이 백그라운드에서 마무리.
     // exit handler의 setActiveProcess(null) / activeProcesses.delete 는 idempotent.
@@ -634,29 +627,19 @@ export function killAllAgents(reason = 'user') {
     for (const [id, proc] of activeProcesses) {
         console.log(`[jaw:killAll] killing ${id}, reason=${reason}`);
         if (proc.pid) killReasons.set(proc.pid, reason);
-        try {
-            if (proc.pid) {
-                killProcessTree(proc.pid, 'SIGTERM');
-            } else {
-                proc.kill('SIGTERM');
-            }
-            killed++;
-        } catch (e: unknown) { console.warn(`[agent:killAll] SIGTERM failed for ${id}`, (e as Error).message); }
+        // Same owner contract as killActiveAgent: tree walk now, escalation
+        // after the grace, guarded by real exit state rather than `killed`.
+        ownProcess(proc, {
+            policy: () => ({ initialSignal: 'SIGTERM', graceMs: 2000 }),
+        }).terminate('shutdown');
+        killed++;
         const ref = proc;
-        setTimeout(() => {
-            try {
-                if (ref && !ref.killed) {
-                    if (ref.pid) {
-                        killProcessTree(ref.pid, 'SIGKILL');
-                    } else {
-                        ref.kill('SIGKILL');
-                    }
-                }
-            } catch { /* already dead */ }
+        const teardown = setTimeout(() => {
             ref.stdin?.destroy();
             ref.stdout?.destroy();
             ref.stderr?.destroy();
         }, 2000);
+        teardown.unref?.();
     }
     if (reason === 'api' || reason === 'user') {
         activeProcesses.clear();

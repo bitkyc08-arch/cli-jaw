@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { publish } from '../core/event-bus.js';
 import { loadSettings } from '../core/config.js';
+import { ownProcess, type OwnedProcess, type OwnedProcessOptions } from '../agent/spawn/process-kill.js';
 import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionReplayEvent, type CodeSessionTransport, type PendingPermission, type PromptAccepted, type StoredCodeSessionInfo } from './types.js';
 
 const PROTOCOL_VERSION = 1;
@@ -86,8 +87,15 @@ function normalizeStoredSession(raw: Record<string, unknown>): StoredCodeSession
     return entry;
 }
 
-class AcpHost implements CodeSessionTransport {
+export type AcpHostOptions = {
+    spawnImpl?: typeof spawn;
+    ownedProcessOptions?: OwnedProcessOptions;
+    idleReapMs?: number;
+};
+
+export class AcpHost implements CodeSessionTransport {
     #child: ChildProcess | null = null;
+    #ownedChild: OwnedProcess | null = null;
     #nextId = 1;
     #pendingRpc = new Map<number | string, Deferred>();
     #sessions = new Map<string, CodeSessionInfo>();
@@ -95,12 +103,21 @@ class AcpHost implements CodeSessionTransport {
     #replayCaptures = new Map<string, Set<CodeSessionReplayEvent[]>>();
     #initialized: Promise<void> | null = null;
     #idleReaper: ReturnType<typeof setInterval> | null = null;
+    readonly #spawnImpl: typeof spawn;
+    readonly #ownedProcessOptions: OwnedProcessOptions | undefined;
+    readonly #idleReapMs: number | undefined;
+
+    constructor(options: AcpHostOptions = {}) {
+        this.#spawnImpl = options.spawnImpl ?? spawn;
+        this.#ownedProcessOptions = options.ownedProcessOptions;
+        this.#idleReapMs = options.idleReapMs;
+    }
 
     // ── child lifecycle ───────────────────────────────────────────────
     async #ensureChild(): Promise<void> {
         if (this.#child && this.#child.exitCode === null && this.#initialized) return this.#initialized;
         const { cmd, args, binDir } = resolveAcpCommand();
-        const child = spawn(cmd, args, {
+        const child = this.#spawnImpl(cmd, args, {
             stdio: ['pipe', 'pipe', 'inherit'],
             env: {
                 ...process.env,
@@ -109,6 +126,7 @@ class AcpHost implements CodeSessionTransport {
             },
         });
         this.#child = child;
+        this.#ownedChild = ownProcess(child, this.#ownedProcessOptions);
         const rl = createInterface({ input: child.stdout! });
         rl.on('line', line => this.#onLine(line));
         child.on('exit', code => this.#onChildExit(code));
@@ -116,8 +134,9 @@ class AcpHost implements CodeSessionTransport {
         // of returning the same rejected promise forever (no auto-recovery otherwise).
         this.#initialized = this.#handshake().catch(err => {
             this.#initialized = null;
-            try { this.#child?.kill('SIGTERM'); } catch { /* ignore */ }
+            this.#ownedChild?.terminate('startup-failed');
             this.#child = null;
+            this.#ownedChild = null;
             throw err;
         });
         this.#startIdleReaper();
@@ -138,6 +157,7 @@ class AcpHost implements CodeSessionTransport {
         for (const s of this.#sessions.values()) s.status = 'closed';
         this.#permissions.clear();
         this.#child = null;
+        this.#ownedChild = null;
         this.#initialized = null;
         publish('jwc', 'code_child_exit', { code });
         // Lazy respawn: next newSession()/prompt() re-runs #ensureChild().
@@ -146,14 +166,15 @@ class AcpHost implements CodeSessionTransport {
 
     #startIdleReaper(): void {
         if (this.#idleReaper) return;
-        const settings = loadSettings();
-        const idleReapMs = Number((settings['code'] as Record<string, unknown> | undefined)?.['idleReapMs'] ?? DEFAULT_CODE_SETTINGS.idleReapMs);
+        const settings = this.#idleReapMs === undefined ? loadSettings() : undefined;
+        const idleReapMs = this.#idleReapMs
+            ?? Number((settings?.['code'] as Record<string, unknown> | undefined)?.['idleReapMs'] ?? DEFAULT_CODE_SETTINGS.idleReapMs);
         this.#idleReaper = setInterval(() => {
             if (!this.#child) return;
             const live = [...this.#sessions.values()].filter(s => s.status !== 'closed');
             const newest = Math.max(0, ...live.map(s => s.lastUsedAt));
             if (live.length === 0 && Date.now() - newest > idleReapMs) {
-                this.#child.kill('SIGTERM');
+                this.#ownedChild?.terminate('timeout');
             }
         }, idleReapMs);
         this.#idleReaper.unref();
@@ -380,8 +401,9 @@ class AcpHost implements CodeSessionTransport {
         if (this.#idleReaper) { clearInterval(this.#idleReaper); this.#idleReaper = null; }
         for (const sessionId of [...this.#sessions.keys()]) await this.closeSession(sessionId).catch(() => {});
         this.#child?.stdin?.end();
-        this.#child?.kill('SIGTERM');
+        this.#ownedChild?.terminate('shutdown');
         this.#child = null;
+        this.#ownedChild = null;
     }
 }
 

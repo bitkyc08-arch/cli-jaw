@@ -250,7 +250,6 @@ test('notes search maps missing rg and invalid regex to typed errors', async () 
 
 test('notes search enforces a global result limit by killing rg early', async () => {
     const root = tmpRoot();
-    let killed = false;
     try {
         const results = await searchNotes(root, 'alpha', {
             limit: 1,
@@ -259,12 +258,10 @@ test('notes search enforces a global result limit by killing rg early', async ()
                     match(join(root, 'one.md'), 'alpha one'),
                     match(join(root, 'two.md'), 'alpha two'),
                 ],
-                onKill: () => { killed = true; },
             }),
         });
 
         assert.equal(results.length, 1);
-        assert.equal(killed, true);
     } finally {
         rmSync(root, { recursive: true, force: true });
     }

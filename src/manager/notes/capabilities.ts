@@ -1,21 +1,28 @@
 import { spawn } from 'node:child_process';
+import { ownProcess, type OwnedProcessOptions } from '../../agent/spawn/process-kill.js';
 import type { DashboardNotesCapabilities, NotesCapability } from '../types.js';
 
 const COMMAND_TIMEOUT_MS = 750;
+
+export type NotesCapabilitiesOptions = {
+    spawnImpl?: typeof spawn;
+    ownedProcessOptions?: OwnedProcessOptions;
+};
 
 function versionLine(output: string): string | undefined {
     return output.split(/\r?\n/u).map(line => line.trim()).find(Boolean);
 }
 
-function checkCommand(command: string, args: string[]): Promise<NotesCapability> {
+function checkCommand(command: string, args: string[], options: NotesCapabilitiesOptions): Promise<NotesCapability> {
     return new Promise(resolve => {
-        const child = spawn(command, args, { shell: false });
+        const child = (options.spawnImpl ?? spawn)(command, args, { shell: false });
+        const ownedChild = ownProcess(child, options.ownedProcessOptions);
         let output = '';
         let settled = false;
         const timer = setTimeout(() => {
             if (settled) return;
             settled = true;
-            child.kill('SIGTERM');
+            ownedChild.terminate('timeout');
             resolve({ available: false, command, reason: 'timeout' });
         }, COMMAND_TIMEOUT_MS);
 
@@ -43,11 +50,11 @@ function checkCommand(command: string, args: string[]): Promise<NotesCapability>
     });
 }
 
-export async function detectNotesCapabilities(): Promise<DashboardNotesCapabilities> {
+export async function detectNotesCapabilities(options: NotesCapabilitiesOptions = {}): Promise<DashboardNotesCapabilities> {
     const [ripgrep, git, pdf] = await Promise.all([
-        checkCommand('rg', ['--version']),
-        checkCommand('git', ['--version']),
-        checkCommand('pdftotext', ['-v']),
+        checkCommand('rg', ['--version'], options),
+        checkCommand('git', ['--version'], options),
+        checkCommand('pdftotext', ['-v'], options),
     ]);
     return {
         ripgrep,

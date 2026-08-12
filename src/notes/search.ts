@@ -3,6 +3,8 @@ import { accessSync, constants as fsConstants, existsSync, readdirSync } from 'n
 import { readdir as readDir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
+import { ownProcess } from '../agent/spawn/process-kill.js';
+import type { OwnedProcessOptions } from '../agent/spawn/process-kill.js';
 import { hasReservedNoteSegment, NOTES_RESERVED_DIRS } from './constants.js';
 import { isPathInside, NOTE_FILE_EXT, notePathError } from './path-guards.js';
 
@@ -20,6 +22,7 @@ export type SearchNotesOptions = {
     ripgrepPath?: string;
     timeoutMs?: number;
     spawnImpl?: typeof spawn;
+    ownedProcessOptions?: OwnedProcessOptions;
 };
 
 const MIN_QUERY_LENGTH = 2;
@@ -262,6 +265,7 @@ export async function searchNotes(
             shell: false,
             env: { ...process.env, RIPGREP_CONFIG_PATH: '' },
         });
+        const ownedChild = ownProcess(child, options.ownedProcessOptions);
         let settled = false;
         let outputBytes = 0;
         let stderr = '';
@@ -275,7 +279,7 @@ export async function searchNotes(
             else resolvePromise(value || results);
         };
         const timer = setTimeout(() => {
-            child.kill('SIGTERM');
+            ownedChild.terminate('timeout');
             finish(notePathError(504, 'notes_search_timeout', 'notes search timed out'));
         }, timeoutMs);
 
@@ -286,7 +290,7 @@ export async function searchNotes(
             const text = String(chunk);
             outputBytes += Buffer.byteLength(text);
             if (outputBytes > MAX_OUTPUT_BYTES) {
-                child.kill('SIGTERM');
+                ownedChild.terminate('output-limit');
                 finish(notePathError(413, 'notes_search_output_too_large', 'notes search output was too large'));
                 return;
             }
@@ -297,7 +301,7 @@ export async function searchNotes(
                 lineBuffer = lineBuffer.slice(newline + 1);
                 if (results.length >= limit) {
                     killedForLimit = true;
-                    child.kill('SIGTERM');
+                    ownedChild.terminate('completion');
                     finish(undefined, results);
                     return;
                 }
@@ -307,7 +311,7 @@ export async function searchNotes(
         child.stderr?.on('data', chunk => {
             stderr += String(chunk);
             if (Buffer.byteLength(stderr) > MAX_OUTPUT_BYTES) {
-                child.kill('SIGTERM');
+                ownedChild.terminate('output-limit');
                 finish(notePathError(413, 'notes_search_output_too_large', 'notes search output was too large'));
             }
         });

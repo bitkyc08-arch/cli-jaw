@@ -18,6 +18,7 @@ import {
 } from './types.js';
 import { getTask, markTerminal, markCancelled, setTaskPid } from './registry.js';
 import { log } from '../core/logger.js';
+import { ownProcess, type OwnedProcess, type OwnedProcessOptions, type ProcessTerminationReason } from '../agent/spawn/process-kill.js';
 
 /** Raw capture persisted as the result column on terminal transition.
  * The notifier's resultExtractor turns this into the final {{result}} text. */
@@ -32,10 +33,16 @@ export interface BgTaskCapture {
 
 export type TerminalCallback = (taskId: string) => void;
 
+export type BgTaskRunnerOptions = {
+    spawnImpl?: typeof spawn;
+    ownedProcessOptions?: Omit<OwnedProcessOptions, 'policy'>;
+};
+
 interface RunnerHandle {
     taskId: string;
     mode: 'child' | 'probe';
     child?: ChildProcess;
+    ownedChild?: OwnedProcess;
     probeTimer?: ReturnType<typeof setInterval>;
     stallTimer?: ReturnType<typeof setInterval>;
     deadlineTimer?: ReturnType<typeof setTimeout>;
@@ -43,6 +50,7 @@ interface RunnerHandle {
     respawned: boolean;
     finished: boolean;
     onTerminal: TerminalCallback;
+    options: BgTaskRunnerOptions;
 }
 
 const STDOUT_RING_LINES = 200;
@@ -58,13 +66,13 @@ export function listActiveRunnerIds(): string[] {
     return [...activeRunners.keys()];
 }
 
-export function startTask(row: BgTaskRow, onTerminal: TerminalCallback): void {
+export function startTask(row: BgTaskRow, onTerminal: TerminalCallback, options: BgTaskRunnerOptions = {}): void {
     if (activeRunners.has(row.id)) return;
     if (row.status !== 'running') return;
     if (row.spec.completion.type === 'session-status') {
         startProbe(row, onTerminal);
     } else {
-        startChild(row, onTerminal, false);
+        startChild(row, onTerminal, false, options);
     }
 }
 
@@ -72,19 +80,19 @@ export function startTask(row: BgTaskRow, onTerminal: TerminalCallback): void {
  * markCancelled guards the exit handler from double-transitioning. */
 export function cancelTask(taskId: string): boolean {
     const changed = markCancelled(taskId);
-    teardown(taskId);
+    teardown(taskId, 'cancel');
     return changed;
 }
 
 /** Graceful-shutdown teardown: kill children and clear timers, but leave DB
  * rows as 'running' so boot recovery re-attaches or orphans them. */
 export function stopAllBgTasks(): void {
-    for (const taskId of [...activeRunners.keys()]) teardown(taskId);
+    for (const taskId of [...activeRunners.keys()]) teardown(taskId, 'shutdown');
 }
 
 // ─── child mode ──────────────────────────────────────
 
-function startChild(row: BgTaskRow, onTerminal: TerminalCallback, isRespawn: boolean): void {
+function startChild(row: BgTaskRow, onTerminal: TerminalCallback, isRespawn: boolean, options: BgTaskRunnerOptions): void {
     const spec = row.spec;
     const command = spec.command ?? [];
     if (command.length === 0) {
@@ -99,6 +107,7 @@ function startChild(row: BgTaskRow, onTerminal: TerminalCallback, isRespawn: boo
         respawned: isRespawn,
         finished: false,
         onTerminal,
+        options,
     };
     activeRunners.set(row.id, handle);
 
@@ -108,7 +117,7 @@ function startChild(row: BgTaskRow, onTerminal: TerminalCallback, isRespawn: boo
 
     let child: ChildProcess;
     try {
-        child = spawn(command[0]!, command.slice(1), {
+        child = (options.spawnImpl ?? spawn)(command[0]!, command.slice(1), {
             cwd: spec.cwd,
             env: spec.env ? { ...process.env, ...spec.env } : process.env,
             stdio: ['ignore', 'pipe', 'pipe'],
@@ -121,6 +130,12 @@ function startChild(row: BgTaskRow, onTerminal: TerminalCallback, isRespawn: boo
         }, onTerminal);
         return;
     }
+    handle.ownedChild = ownProcess(child, {
+        ...options.ownedProcessOptions,
+        policy: reason => reason === 'stall'
+            ? { initialSignal: 'SIGKILL', graceMs: null }
+            : { initialSignal: 'SIGTERM', graceMs: 2_000 },
+    });
     handle.child = child;
     if (child.pid) setTaskPid(row.id, child.pid);
 
@@ -138,8 +153,7 @@ function startChild(row: BgTaskRow, onTerminal: TerminalCallback, isRespawn: boo
                 matchedLine = line;
                 // Terminal on match — most watchers exit on their own right
                 // after the terminal line; kill covers the ones that linger.
-                settle(handle, 'complete', { matchedLine, stdoutTail, stderrTail });
-                child.kill('SIGTERM');
+                settle(handle, 'complete', { matchedLine, stdoutTail, stderrTail }, 'completion');
             }
         });
     }
@@ -214,6 +228,7 @@ function startProbe(row: BgTaskRow, onTerminal: TerminalCallback): void {
         respawned: false,
         finished: false,
         onTerminal,
+        options: {},
     };
     activeRunners.set(row.id, handle);
 
@@ -265,16 +280,16 @@ function armStallTimer(handle: RunnerHandle, row: BgTaskRow, capture: () => Pick
             teardown(row.id);
             return;
         }
-        handle.child?.kill('SIGKILL');
         if (row.spec.respawn === true && !handle.respawned) {
+            handle.ownedChild?.terminate('stall');
             log.warn(`[bgtask:${row.id}] stalled ${stallAfterMs}ms — respawning once`);
             cleanupHandle(handle);
             activeRunners.delete(row.id);
             handle.finished = true;
-            startChild(fresh, handle.onTerminal, true);
+            startChild(fresh, handle.onTerminal, true, handle.options);
             return;
         }
-        settle(handle, 'failed', { ...capture(), reason: `stalled: no output for ${stallAfterMs}ms` });
+        settle(handle, 'failed', { ...capture(), reason: `stalled: no output for ${stallAfterMs}ms` }, 'stall');
     }, Math.min(STALL_CHECK_INTERVAL_MS, Math.max(50, Math.floor(stallAfterMs / 2))));
     handle.stallTimer.unref?.();
 }
@@ -284,22 +299,27 @@ function armDeadlineTimer(handle: RunnerHandle, row: BgTaskRow, capture: () => P
     if (!Number.isFinite(deadlineAt)) return;
     const delay = deadlineAt - Date.now();
     if (delay <= 0) {
-        settle(handle, 'failed', { ...capture(), reason: 'deadline exceeded' });
+        settle(handle, 'failed', { ...capture(), reason: 'deadline exceeded' }, 'timeout');
         return;
     }
     handle.deadlineTimer = setTimeout(() => {
-        settle(handle, 'failed', { ...capture(), reason: 'deadline exceeded' });
+        settle(handle, 'failed', { ...capture(), reason: 'deadline exceeded' }, 'timeout');
     }, delay);
     handle.deadlineTimer.unref?.();
 }
 
 /** Single terminal path: persist capture, tear down, fire onTerminal exactly once. */
-function settle(handle: RunnerHandle, status: 'complete' | 'failed', capture: BgTaskCapture): void {
+function settle(
+    handle: RunnerHandle,
+    status: 'complete' | 'failed',
+    capture: BgTaskCapture,
+    reason: ProcessTerminationReason = 'shutdown',
+): void {
     if (handle.finished) return;
     handle.finished = true;
-    handle.child?.kill('SIGTERM');
+    handle.ownedChild?.terminate(reason);
     finishTask(handle.taskId, status, capture, handle.onTerminal);
-    teardown(handle.taskId);
+    teardown(handle.taskId, reason);
 }
 
 function finishTask(taskId: string, status: 'complete' | 'failed', capture: BgTaskCapture, onTerminal: TerminalCallback): void {
@@ -322,13 +342,11 @@ function cleanupHandle(handle: RunnerHandle): void {
     if (handle.deadlineTimer) clearTimeout(handle.deadlineTimer);
 }
 
-function teardown(taskId: string): void {
+function teardown(taskId: string, reason: ProcessTerminationReason = 'shutdown'): void {
     const handle = activeRunners.get(taskId);
     if (!handle) return;
     handle.finished = true;
     cleanupHandle(handle);
-    try {
-        handle.child?.kill('SIGTERM');
-    } catch { /* already dead */ }
+    handle.ownedChild?.terminate(reason);
     activeRunners.delete(taskId);
 }
