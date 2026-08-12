@@ -20,9 +20,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 
 export type PackageManager = 'npm' | 'pnpm' | 'bun' | 'unknown';
-export type InstallScriptState = 'blocked' | 'safe-mode' | 'completed' | 'failed' | 'stale';
+export type InstallScriptState = 'blocked' | 'safe-mode' | 'completed' | 'failed' | 'stale' | 'dev-clone';
+export type PsExecutionPolicyState = 'skipped' | 'ok' | 'warn' | 'unknown';
 
 export interface InstallStateReceipt {
     schema: number;
@@ -117,14 +119,18 @@ function canWriteInstallTree(installRoot: string): boolean {
     }
 }
 
-export function inspectInstallIntegrity(installRoot: string, jawHome: string): InstallIntegrity {
+export function inspectInstallIntegrity(
+    installRoot: string,
+    jawHome: string,
+    deps: { existsSync: (file: string) => boolean } = { existsSync: fs.existsSync },
+): InstallIntegrity {
     const pkgVersion = readPackageVersion(installRoot);
     const receipt = readInstallState(installRoot);
     const setup = readSetupState(jawHome);
 
     let installScriptState: InstallScriptState;
     if (!receipt) {
-        installScriptState = 'blocked';
+        installScriptState = deps.existsSync(path.join(installRoot, '.git')) ? 'dev-clone' : 'blocked';
     } else if (pkgVersion && receipt.packageVersion !== pkgVersion) {
         installScriptState = 'stale';
     } else if (receipt.state === 'completed' || receipt.state === 'safe-mode' || receipt.state === 'failed') {
@@ -160,7 +166,10 @@ export function inspectInstallIntegrity(installRoot: string, jawHome: string): I
  * package argument and fails with ENOENT (npm/cli#9835); never echo that form.
  * `--dangerously-allow-all-scripts` is deliberately never suggested.
  */
-export function formatRecoveryCommands(integrity: InstallIntegrity): string[] {
+export function formatRecoveryCommands(
+    integrity: InstallIntegrity,
+    platform: NodeJS.Platform = process.platform,
+): string[] {
     const allow = integrity.scriptDependents.join(',');
     switch (integrity.packageManager) {
         case 'bun':
@@ -174,6 +183,9 @@ export function formatRecoveryCommands(integrity: InstallIntegrity): string[] {
             return [
                 `npm install -g cli-jaw --allow-scripts=${allow}`,
                 `npm config set allow-scripts=${allow} --location=user`,
+                ...(platform === 'win32'
+                    ? ['PowerShell: if jaw.ps1 is blocked, use jaw.cmd or node <prefix>\\node_modules\\cli-jaw\\dist\\bin\\cli-jaw.js']
+                    : []),
             ];
         default:
             return [
@@ -181,6 +193,46 @@ export function formatRecoveryCommands(integrity: InstallIntegrity): string[] {
                 `pnpm add -g --allow-build=${allow} cli-jaw`,
                 'bun add -g --trust cli-jaw',
             ];
+    }
+}
+
+export interface PsExecutionPolicyResult {
+    state: PsExecutionPolicyState;
+    policy?: string;
+    guidance?: string;
+}
+
+const PS_POLICY_GUIDANCE = [
+    'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned',
+    'use jaw.cmd instead of jaw.ps1',
+    'use node <prefix>\\node_modules\\cli-jaw\\dist\\bin\\cli-jaw.js',
+].join('  |  ');
+
+export function checkPsExecutionPolicy({
+    platform = process.platform,
+    runPolicy = () => execFileSync('powershell', ['-NoProfile', '-Command', 'Get-ExecutionPolicy'], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+        timeout: 3000,
+    }),
+}: {
+    platform?: NodeJS.Platform;
+    runPolicy?: () => string;
+} = {}): PsExecutionPolicyResult {
+    if (platform !== 'win32') return { state: 'skipped' };
+    try {
+        const policy = runPolicy().trim();
+        if (!policy) return { state: 'unknown' };
+        const normalized = policy.toLowerCase();
+        if (['restricted', 'allsigned', 'undefined'].includes(normalized)) {
+            return { state: 'warn', policy, guidance: PS_POLICY_GUIDANCE };
+        }
+        if (['remotesigned', 'bypass', 'unrestricted'].includes(normalized)) {
+            return { state: 'ok', policy };
+        }
+        return { state: 'unknown', policy };
+    } catch {
+        return { state: 'unknown' };
     }
 }
 

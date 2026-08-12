@@ -21,6 +21,7 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { cleanupStaleStaging } = require('./staging-cleanup.cjs');
 
 // ─── 1. Node version fail-fast ──────────────────────
 const major = parseInt(process.versions.node.split('.')[0], 10);
@@ -81,6 +82,18 @@ function writeInstallState(rootDir, state, extra) {
     } catch {
         // A missing receipt only downgrades diagnostics; never fail the install.
     }
+}
+
+// npm can leave a previous `.cli-jaw-*` staging tree behind when Windows has
+// an open handle. Cleanup is advisory and must never make this install fail.
+try {
+    const cleanup = cleanupStaleStaging(path.join(root, '..'), {
+        log: message => console.warn(`[jaw:init] ⚠️  ${message}`),
+    });
+    console.log(`[jaw:init] staging cleanup: removed=${cleanup.removed.length ? cleanup.removed.join(',') : 'none'} skipped=${cleanup.skipped.length ? cleanup.skipped.join(',') : 'none'}`);
+} catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[jaw:init] ⚠️  staging cleanup unavailable: ${message}`);
 }
 
 // ─── 3. Safe mode: no build/install work ────────────

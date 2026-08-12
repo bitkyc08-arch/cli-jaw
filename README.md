@@ -51,6 +51,33 @@ jaw dashboard
 > npm install -g cli-jaw --allow-scripts=cli-jaw
 > ```
 
+### Windows npm install recovery
+
+npm 12+ may finish a global install while blocking CLI-JAW's dependency
+`postinstall`. Approve only this package and reinstall, or save the approval for
+future upgrades:
+
+```powershell
+npm install -g cli-jaw --allow-scripts=cli-jaw
+npm config set allow-scripts=cli-jaw --location=user
+jaw doctor
+```
+
+If PowerShell reports that `jaw.ps1` cannot be loaded because script execution
+is disabled, choose one of these bounded workarounds:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+jaw.cmd doctor
+node "$(npm prefix -g)\node_modules\cli-jaw\dist\bin\cli-jaw.js" doctor
+```
+
+`jaw.ps1` is PowerShell's npm shim and is subject to execution policy;
+`jaw.cmd` is the equivalent cmd shim and does not use that policy. The direct
+`node` form bypasses both shims. `jaw doctor` reports a blocked/stale install,
+leftover npm staging directories, and the current PowerShell policy; it also
+prints the matching recovery guidance.
+
 That's it. Open **http://localhost:24576** for the manager dashboard. Per-instance agent Web UIs still run from **http://localhost:3457** when you start `jaw serve`. Requires [Node.js 22.4+](https://nodejs.org).
 
 > **First time?** The default npm install initializes CLI-JAW and attempts native Claude setup. Other AI CLIs are optional; install them all during npm setup with `CLI_JAW_INSTALL_CLI_TOOLS=1 npm install -g cli-jaw` on macOS/Linux. On Windows, use the WSL install path below.

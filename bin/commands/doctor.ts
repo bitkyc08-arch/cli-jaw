@@ -8,8 +8,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
-import { inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
+import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
@@ -256,6 +257,21 @@ function check(name: string, fn: () => string) {
     }
 }
 
+function resolvePackageRoot(): string {
+    // Compiled location is dist/bin/commands/doctor.js, so walk up until the
+    // directory actually holding package.json (same fallback as bin/cli-jaw.ts).
+    let packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    if (!fs.existsSync(path.join(packageRoot, 'package.json'))) {
+        packageRoot = path.join(packageRoot, '..');
+    }
+    return packageRoot;
+}
+
+const require_ = createRequire(import.meta.url);
+const { listStaleStaging } = require_(path.join(resolvePackageRoot(), 'scripts', 'staging-cleanup.cjs')) as {
+    listStaleStaging(nodeModulesDir: string): string[];
+};
+
 console.log(!values.json ? '\n  🦈 cli-jaw doctor\n' : '');
 
 // 1. Home directory
@@ -271,21 +287,36 @@ check('Home directory', () => {
 // scripts, so a "successful" global install may have skipped our postinstall.
 // The install-state receipt (or the jaw-init setup marker) tells them apart.
 check('Install scripts', () => {
-    // Compiled location is dist/bin/commands/doctor.js, so walk up until the
-    // directory actually holding package.json (same fallback as bin/cli-jaw.ts).
-    let packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-    if (!fs.existsSync(path.join(packageRoot, 'package.json'))) {
-        packageRoot = path.join(packageRoot, '..');
-    }
+    const packageRoot = resolvePackageRoot();
     const integrity = inspectInstallIntegrity(packageRoot, JAW_HOME);
     if (integrity.installScriptState === 'completed') {
         return integrity.userSetupDone ? 'ran (setup complete)' : 'ran';
+    }
+    if (integrity.installScriptState === 'dev-clone') {
+        return 'development clone (receipt not required)';
     }
     if (integrity.userSetupDone) {
         return `install scripts ${integrity.installScriptState} — setup completed manually via jaw init`;
     }
     const commands = formatRecoveryCommands(integrity).join('  |  ');
     throw new Error(`WARN: install scripts ${integrity.installScriptState} — postinstall did not run. Fix: ${commands}  (or run: jaw init)`);
+});
+
+check('Stale npm staging', () => {
+    const nodeModulesDir = path.join(resolvePackageRoot(), '..');
+    const leftovers = listStaleStaging(nodeModulesDir);
+    if (!leftovers.length) return 'none';
+    throw new Error(`WARN: ${leftovers.join(', ')} — close processes using these directories, then remove them manually from ${nodeModulesDir}`);
+});
+
+check('PowerShell execution policy', () => {
+    const policy = checkPsExecutionPolicy();
+    if (policy.state === 'skipped') return 'skipped (non-win32)';
+    if (policy.state === 'unknown') return 'unknown (probe unavailable)';
+    if (policy.state === 'warn') {
+        throw new Error(`WARN: ${policy.policy} — ${policy.guidance}`);
+    }
+    return policy.policy || 'ok';
 });
 
 // 2. settings.json
