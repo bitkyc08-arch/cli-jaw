@@ -262,11 +262,12 @@ test('ps policy falls back to registry when the PS probe fails', () => {
     assert.strictEqual(result.policy, 'Restricted');
 });
 
-test('ps policy unknown when both probes fail', () => {
+test('ps policy warns with the Windows default when both probes fail', () => {
     const result = checkPsExecutionPolicy({
         platform: 'win32',
         runPolicy: () => { throw new Error('x'); },
         runRegQuery: () => { throw new Error('y'); },
     });
-    assert.strictEqual(result.state, 'unknown');
+    assert.strictEqual(result.state, 'warn');
+    assert.match(result.policy || '', /Restricted/);
 });

@@ -234,7 +234,9 @@ export function checkPsExecutionPolicy({
     } catch {
         // both probes unavailable
     }
-    return { state: 'unknown' };
+    // No configured value in HKCU/HKLM and no PS probe: the Windows effective
+    // default is Restricted, which is exactly the blocking case (#331).
+    return { state: 'warn', policy: 'Restricted (default)', guidance: PS_POLICY_GUIDANCE };
 }
 
 function classifyPolicy(policy: string): PsExecutionPolicyResult {
