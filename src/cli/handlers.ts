@@ -443,6 +443,7 @@ export async function versionHandler(_args: string[], ctx: CliCommandContext): P
                 probeState: entry.probeState === 'checking'
                     || entry.probeState === 'stale'
                     || entry.probeState === 'failing'
+                    || entry.probeState === 'unknown'
                     ? entry.probeState
                     : 'fresh',
                 path: entry.path ?? null,

@@ -63,15 +63,17 @@ export interface CliStatusInfo {
     authenticated: boolean | null;
     path: string | null;
     source: string;
-    probeState: 'checking' | 'fresh' | 'stale' | 'failing';
+    checkedCapability: string;
+    probeState: 'checking' | 'fresh' | 'stale' | 'failing' | 'unknown';
     reason?: string;
-    /** Underlying probe error, present only while `failing`. */
+    /** Underlying probe error, present while `failing` or `unknown`. */
     probeError?: string;
     probeFailures?: number;
     nextRetryAt?: number;
 }
-export function describeCliProbe(info: CliStatusInfo): 'checking' | 'probe-failing' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
+export function describeCliProbe(info: CliStatusInfo): 'checking' | 'unknown' | 'probe-failing' | 'capability-failed' | 'stale' | 'ready' | 'unavailable' {
     if (info.probeState === 'checking') return 'checking';
+    if (info.probeState === 'unknown') return 'unknown';
     // Ahead of every other branch: while probes keep failing we know nothing
     // current about the runtime, so a preserved snapshot must not be rendered
     // as ready or merely stale (#277).
@@ -79,6 +81,36 @@ export function describeCliProbe(info: CliStatusInfo): 'checking' | 'probe-faili
     if (info.binaryInstalled === true && info.capabilityReady === false) return 'capability-failed';
     if (info.probeState === 'stale') return 'stale';
     return info.available === true && info.capabilityReady !== false ? 'ready' : 'unavailable';
+}
+
+export type CliProbeAvailabilityPresentation = {
+    kind: 'checking' | 'unknown' | 'failing' | 'none';
+    message: string | null;
+    allowRemediation: boolean;
+};
+
+/** Status-only presentation shared by legacy and Manager settings surfaces. */
+export function describeCliProbeAvailability(
+    info: Pick<CliStatusInfo, 'probeState' | 'probeError'>,
+): CliProbeAvailabilityPresentation {
+    if (info.probeState === 'checking') {
+        return { kind: 'checking', message: 'Checking status', allowRemediation: false };
+    }
+    if (info.probeState === 'unknown') {
+        return {
+            kind: 'unknown',
+            message: `Probe unavailable${info.probeError ? `: ${info.probeError}` : ''}`,
+            allowRemediation: false,
+        };
+    }
+    if (info.probeState === 'failing') {
+        return {
+            kind: 'failing',
+            message: `Status check failed (retrying)${info.probeError ? `: ${info.probeError}` : ''}`,
+            allowRemediation: false,
+        };
+    }
+    return { kind: 'none', message: null, allowRemediation: true };
 }
 export function shouldHydrateRuntimeMigrationResponse(status: number): boolean {
     return status >= 200 && status < 300 || status === 409;

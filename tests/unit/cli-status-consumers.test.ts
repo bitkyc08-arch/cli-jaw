@@ -15,6 +15,7 @@ function status(overrides: Partial<CliStatusInfo>): CliStatusInfo {
         authenticated: null,
         path: null,
         source: 'pending-probe',
+        checkedCapability: 'spawn-probe',
         probeState: 'checking',
         ...overrides,
     };

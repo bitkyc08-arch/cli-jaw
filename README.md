@@ -111,14 +111,17 @@ wsl.exe -d Ubuntu -- bash -lc "jaw dashboard"
 <details>
 <summary><b>Native Windows (PowerShell beta)</b> — detached server logs</summary>
 
-`jaw serve` writes to the stdout and stderr streams it inherits. It does not
-create or open `serve.out.log`, and native Windows does not have a registered
+`jaw serve` preserves the stdout and stderr streams it inherits and also appends
+both streams to `<JAW_HOME>\logs\serve.log`. At startup, a file already at 5 MiB
+is rotated once to `serve.log.1`. Native Windows still does not have a registered
 `jaw service` logging backend. PowerShell's
 `Start-Process -RedirectStandardOutput/-RedirectStandardError` creates or
-truncates its target files on every launch.
+truncates its target files on every launch, so do not point those options at
+the instance-owned `serve.log`.
 
-Run the redirection inside a child PowerShell process instead. This example
-appends operator-owned logs under `<JAW_HOME>\logs`:
+If separate operator-owned stdout/stderr files are needed, run the redirection
+inside a child PowerShell process instead. This example appends them under
+`<JAW_HOME>\logs` without the `Start-Process` truncate default:
 
 ```powershell
 $jawHome = 'C:\jaw\worker-a'

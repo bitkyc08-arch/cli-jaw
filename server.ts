@@ -4,6 +4,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import { log } from './src/core/logger.js';
+import { openServeLog } from './src/core/serve-log.js';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -152,6 +153,7 @@ process.env["PATH"] = buildServicePath(process.env["PATH"] || '');
 // ─── Init ────────────────────────────────────────────
 
 ensureDirs();
+const serveLog = openServeLog(JAW_HOME);
 const stopWidgetWatcher = startWidgetWatcher();
 fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
 runMigration(projectRoot);
@@ -528,6 +530,8 @@ const shutdown = async (sig: string) => {
         try { clearPidfileIfOurs(ownPidfileRecord, defaultLifecycleDeps); }
         catch (e) { console.warn('[jaw:lifecycle] could not clear pidfile:', (e as Error).message); }
     }
+
+    await serveLog.close();
 
     clearTimeout(forceExitTimer);
     process.exit(0);

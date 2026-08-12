@@ -16,6 +16,7 @@ function completedSnapshot(source = 'fixture'): CliStatusSnapshot {
         authenticated: true,
         path: `/bin/${cli}`,
         source,
+        checkedCapability: 'spawn-probe',
         probeState: 'fresh' as const,
     }]));
 }
@@ -68,6 +69,7 @@ test('cold snapshot is registry-only nullable checking and returns before a slow
             authenticated: null,
             path: null,
             source: 'pending-probe',
+            checkedCapability: 'spawn-probe',
             probeState: 'checking',
         });
     }
