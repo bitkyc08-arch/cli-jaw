@@ -47,7 +47,11 @@ import { SearchCoordinator } from './src/search/coordinator.js';
 import { SearchProviderRegistry } from './src/search/provider.js';
 import { WikiSearchProvider } from './src/search/providers/wiki.js';
 import { registerWikiRoutes } from './src/routes/wiki.js';
-import { forbiddenWikiRoots, setForbiddenWikiRoots } from './src/wiki/config.js';
+import {
+    currentWikiStartupWarning,
+    forbiddenWikiRoots,
+    setForbiddenWikiRoots,
+} from './src/wiki/config.js';
 import { dashboardPath } from './src/manager/dashboard-home.js';
 import { ChatSearchProvider } from './src/search/providers/chat.js';
 import { MemorySearchProvider } from './src/search/providers/memory.js';
@@ -563,6 +567,9 @@ server.listen(PORT, bindHost, async () => {
     log.info(`  CLI:    ${settings["cli"]}`);
     log.info(`  Perms:  ${settings["permissions"]}`);
     log.info(`  CWD:    ${settings["workingDir"]}`);
+
+    const wikiWarning = currentWikiStartupWarning();
+    if (wikiWarning) log.warn(wikiWarning);
 
     // Stale PABCD cleanup already runs at module init (line ~195) with 24h filter
 

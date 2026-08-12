@@ -147,10 +147,9 @@ export function storedWikiRoot(): string {
     return resolve(text.replace(/^~(?=$|\/)/, homedir()));
 }
 
-// The enable route validates the root before it scaffolds, but the generic settings API
-// and the settings-file watcher can both write this block without going near that route.
-// Enforcing the rule where the config is CONSUMED is what makes it hold whatever path
-// the setting arrived by.
+// The wiki routes own lifecycle writes and the live watcher strips attempts to bypass
+// them. This consume-side check still covers legacy settings and lifecycle fields loaded
+// directly from settings.json during boot, before the watcher begins enforcing the rule.
 export function readUsableWikiConfig(forbiddenRoots: readonly string[] = []): WikiConfig {
     const config = readWikiConfig();
     if (!config.enabled) return config;
@@ -209,6 +208,37 @@ export function wikiProviderHealth(
 
 export function wikiProviderStatus(config: WikiConfig): ProviderStatus {
     return wikiProviderHealth(config).status;
+}
+
+/**
+ * Produce a path-free startup diagnostic for a vault that was persisted as enabled
+ * but cannot serve searches. Lifecycle repair stays on the wiki routes; pointing at
+ * those routes keeps operators away from the generic settings back door.
+ */
+function formatWikiStartupWarning(reason: string): string {
+    return `[jaw:wiki] enabled but unavailable at startup (${reason}); `
+        + 'repair with POST /api/wiki/enable or disable with POST /api/wiki/configure';
+}
+
+export function wikiStartupWarning(
+    config: WikiConfig,
+    health: WikiProviderHealth = wikiProviderHealth(config),
+): string | null {
+    if (!config.enabled || health.status !== 'error') return null;
+    return formatWikiStartupWarning(health.safeFailureCode ?? 'wiki_provider_unavailable');
+}
+
+/** Read the persisted startup state without letting an invalid legacy root abort boot. */
+export function currentWikiStartupWarning(
+    readConfig: () => WikiConfig = readWikiConfig,
+    enabled: () => boolean = isWikiEnabled,
+): string | null {
+    if (!enabled()) return null;
+    try {
+        return wikiStartupWarning(readConfig());
+    } catch {
+        return formatWikiStartupWarning('wiki_configuration_invalid');
+    }
 }
 
 // The roots the vault must not occupy, registered once at composition. The registry
