@@ -50,10 +50,10 @@ for (const file of ['a1-system.md', 'control-system.md', 'employee.md']) {
 
 test('PLAT-004: a1-system documents the two Windows results that look like success', () => {
     const a1 = read('a1-system.md');
-    assert.match(a1, /list_apps\(\)[^\n]*(?:not|never)[^\n]*health/i,
+    assert.match(a1, /list_apps\(\)[^\n]*(?:not a health|dead pipe|never[^\n]*health)/i,
         'list_apps must be marked as NOT a health signal');
-    assert.match(a1, /list_windows\(\)[^\n]*\[\]|empty list/i,
-        'an empty window list must be described as a precondition failure');
+    assert.match(a1, /not on the pipe/i,
+        'an empty window list must be described as a pipe/session precondition failure');
     assert.match(a1, /node_repl/, 'the node_repl requirement must be stated');
 });
 

@@ -485,7 +485,7 @@ jaw skill list              # see what's available
 | **Web-AI vendors** | `jaw browser web-ai --vendor chatgpt\|gemini\|grok` with session lifecycle, diagnostics, source-audit/answer-artifact support, and ChatGPT code-mode zip recovery |
 | **Diagram Skill** | Generate SVG diagrams and interactive visualizations, rendered inline in chat |
 
-Computer Use lets you control any macOS app — Finder, Safari, System Settings, Xcode — through natural language. Point it at your localhost dev server in Safari and you get a full visual testing loop.
+Computer Use lets you control desktop apps — Finder, Safari, System Settings, Xcode on macOS; any window on Windows — through natural language. Point it at your localhost dev server in a browser and you get a full visual testing loop. The two hosts expose different APIs (macOS is app-scoped, Windows is window-scoped), and the `desktop-control` skill routes between them.
 
 ---
 
@@ -690,7 +690,7 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt cont
 | Browser commands fail | Install Chrome/Chromium. Run `jaw browser start` first |
 | Employee dispatch hangs | Run `jaw employee list`, ensure the employee CLI is authenticated (`jaw doctor`), then retry with `jaw dispatch --watch` |
 | Employee dispatch returns non-JSON or HTML | The server may be stale or missing the route. Run `npm run build` or restart the manager/dashboard process. |
-| Computer Use not working | macOS only. Codex CLI required. Check Automation permission in System Settings |
+| Computer Use not working | macOS or Windows; Codex CLI required. macOS: check Automation permission in System Settings. Windows: run calls inside `node_repl` and keep the Codex desktop app running in the logged-on session — an empty `list_windows()` means you are not on the pipe, not that no windows are open |
 
 ---
 

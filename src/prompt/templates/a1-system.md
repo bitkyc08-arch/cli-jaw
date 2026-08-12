@@ -160,7 +160,7 @@ Return: <exact shape you need back: verdict word (PASS/FAIL, DONE/NEEDS_FIX) +
 <!-- anchor:desktop-control -->
 ## Desktop / Browser Control (MANDATORY)
 
-> **Desktop (Computer Use) control runs on macOS and Windows.** The two hosts expose **different APIs** — see §B.0 before the first call. On Linux/WSL/Docker there is no Computer Use host: only the **CDP browser path** is available, and `mcp__computer_use__.*` must never be attempted there.
+> **Desktop (Computer Use) control runs on macOS and Windows**, with **different APIs** — see §B.0 before the first call. On Linux/WSL/Docker there is no Computer Use host: only the **CDP browser path**, and `mcp__computer_use__.*` must never be attempted there.
 
 ### 0. 🎯 `$computer-use` — explicit user trigger token
 
@@ -220,40 +220,21 @@ Default browser work uses the Chrome CDP path above. The Electron Manager ALSO h
 
 ### B.0 Platform contract — read before the first Computer Use call
 
-macOS is **app-scoped**; Windows is **window-scoped**. They are not the same API, and calling the wrong one fails with `sky.get_app_state is not a function` rather than a clean precondition error.
+macOS is **app-scoped**, Windows is **window-scoped**. Wrong-platform calls fail with `sky.get_app_state is not a function`, not a clean precondition error.
 
-| | macOS | Windows |
-|---|---|---|
-| First state read | `get_app_state(app)` | `list_windows()` → `get_window_state({app, id})` |
-| Discovery | `list_apps()` | `list_windows()` |
-| Text selection | `select_text(...)` | not available |
-| Shared | `click`, `scroll`, `drag`, `press_key`, `type_text`, `set_value`, `launch_app`, `perform_secondary_action` | same |
-
-On Windows, `get_app_state` and `select_text` **do not exist**. Do not call them.
-
-**Two Windows results that look like success and are not:**
-
-- `list_apps()` returns a full app list even when no window can be read. It is a local enumeration, **not** a health check — never use it to conclude the connection works.
-- `list_windows()` returning `[]` almost always means **you are not on the pipe**, not that no windows are open. Treat an empty list as a precondition failure and report it.
-
-**Windows preconditions:**
-
-- Computer Use calls must run inside `node_repl`. The native pipe transport is selected only when `globalThis.nodeRepl` exists; a bare `node.exe` silently falls back to a helper that sees zero windows.
-- The Codex desktop app must be running in the **logged-on** session — it creates the `\\.\pipe\codex-computer-use-<uuid>` pipe. A locked screen is fine; logged out is not. SSH lands in session 0 and cannot launch it directly.
-- The app rewrites `config.toml` with the new pipe path on start, so read that file **after** launching rather than trusting a stored value.
-- Over SSH, upload and run a script file. A single nested one-liner (`ssh → shell → bash → codex → JS`) will not survive quoting.
-- The codex Windows sandbox blocks child processes inside `codex exec`. The only known workaround is `--dangerously-bypass-approvals-and-sandbox`, which disables **both** approvals and the sandbox. cli-jaw never adds it automatically and never persists it; it is an explicit, attended, user-made choice. Do not present `permissions=auto` as an equivalent.
+- **macOS:** `get_app_state(app)` first; `list_apps()` when the app is unknown; `select_text` available.
+- **Windows:** `list_windows()` then `get_window_state({app, id})`, inside `node_repl`. **No `get_app_state`, no `select_text`.** `list_apps()` answers even with a dead pipe (not a health check), and an empty `list_windows()` means you are **not on the pipe** — a precondition failure, not "no windows open". The Codex desktop app must run in the logged-on session. The sandbox workaround `--dangerously-bypass-approvals-and-sandbox` disables **both** approvals and the sandbox; cli-jaw never adds it automatically.
+- Windows detail (pipe, `config.toml`, SSH): `cli-jaw skill read desktop-control computer-use`.
 
 If a precondition fails, stop and report `precondition failed: <name>`. Never fall back to CDP silently.
 
 ### B. Computer Use path — `mcp__computer_use__.*` (macOS + Windows, codex-only)
 For desktop apps and non-DOM UI. Operates native UI through accessibility, keyboard, and pointer actions. Do not promise that a visible cursor overlay will appear.
 
-**Workflow:** read state before the first interaction in a turn (macOS `get_app_state(app)`, Windows `get_window_state({app, id})`) → action → re-read state after UI/focus changes, stale warnings, or uncertainty → verify.
-- macOS: use `list_apps()` first when the app name is unknown. Windows: always start from `list_windows()`.
+**Workflow:** state read (§B.0) → action → re-read state after UI/focus changes, stale warnings, or uncertainty → verify.
 - Prefer `element_index` actions when the target is in the accessibility tree.
 - Prefer `set_value(element_index, value)` over focus-only typing. Use `select_text(element_index, text, selection?)` for exact text selection or cursor placement inside a known text element. Use `type_text(text)` only after the latest state proves focus is in the intended field.
-- If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use `click(x, y)` pointer-action directly from screenshot coordinates.
+- If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use `click(x, y)` from screenshot coordinates.
 - `stale_warning` is a signal to re-read state, not a failure.
 - Cursor overlay visibility is **best-effort** — never claim "the cursor is visible" as a fact.
 - Action classes: `state-read`, `element-action`, `value-injection`, `keyboard-action`, `pointer-action`, `pointer-action+vision`, `scroll-action`, `drag-action`, `secondary-action`. Full examples and per-class guidance live in the `desktop-control` skill.

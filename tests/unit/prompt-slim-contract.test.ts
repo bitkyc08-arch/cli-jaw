@@ -69,5 +69,10 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // exclusions-first dispatch constraint (4d8c54cc, 43c2a4f2).
     // Budget raised 35,000 → 36,000 for diagram-file default delivery
     // additions (260707 diagram-file storage + inlay).
-    assert.ok(a1Src.length <= 36000, `a1-system.md is ${a1Src.length} chars — over the 36,000 budget`);
+    // Budget raised 36,000 → 37,100 for the #308 Computer Use platform
+    // contract (§B.0). Windows is a genuinely different API surface, not a
+    // variant, and an agent that calls the macOS tools there gets an opaque
+    // `sky.get_app_state is not a function`. Only the routing decision lives
+    // here; the pipe/session/SSH depth stays in the desktop-control skill.
+    assert.ok(a1Src.length <= 37100, `a1-system.md is ${a1Src.length} chars — over the 37,100 budget`);
 });
