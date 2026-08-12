@@ -262,7 +262,7 @@ function defaultRegQuery(): string {
                 timeout: 3000,
             });
             const match = out.match(/ExecutionPolicy\s+REG_SZ\s+(\S+)/);
-            if (match) return match[1];
+            if (match?.[1]) return match[1];
         } catch {
             // user-level absent or unreadable; try machine-level
         }
