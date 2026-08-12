@@ -174,7 +174,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         })());
         if (deliveries.length === 0) throw new Error('dispatch_approval_no_operator_delivery');
         const results = await Promise.allSettled(deliveries);
-        if (!results.some(result => result.status === 'fulfilled')) throw new Error('dispatch_approval_delivery_failed');
+        if (results.some(result => result.status === 'rejected')) throw new Error('dispatch_approval_delivery_failed');
     }
 
     app.post('/api/orchestrate/dispatch/pending', requireAuth, async (req, res) => {

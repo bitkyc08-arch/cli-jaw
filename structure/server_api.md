@@ -217,8 +217,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 ### `/api/orchestrate/dispatch/pending`
 
 - `POST`는 일반 `requireAuth` 클라이언트가 action-scoped dispatch를 제출하는 전용 경로다. 응답은 `202 { jti, digest, expiresAt }`이며 bearer나 boss token을 반환하지 않는다.
-- 서버는 설정된 `dispatchApproval.operators`의 Slack/Telegram/Discord 운영자 DM에 target, project root, task digest, mutable scope, fan-out cap, server-instance audience, JTI, digest, expiry를 보낸다. allowlist가 비거나 전달이 모두 실패하면 fail-closed 한다.
-- 승인은 HTTP로 받지 않는다. 검증된 Socket Mode/polling/gateway 이벤트에서 운영자가 `approve <jti> <digest>`를 보내야 한다. pending은 기본 120초, 부팅 세대별, 원자적 single-use다.
+- 서버는 설정된 `dispatchApproval.operators`의 Slack/Telegram/Discord 운영자 DM에 target, project root, task digest, mutable scope, fan-out cap, server-instance audience, JTI, digest, expiry를 보낸다. allowlist가 비거나 설정된 운영자 전달 중 하나라도 실패하면 pending을 취소하고 fail-closed 한다.
+- 승인은 HTTP로 받지 않는다. 검증된 Socket Mode/polling/gateway 이벤트에서 운영자가 `approve <jti> <digest>`를 보내야 한다. pending은 기본 120초, 최대 300초, 부팅 세대별, 원자적 single-use다. settings API는 300초 초과를 거부하고 store 경계도 300초로 clamp한다.
 - `GET /api/orchestrate/dispatch/pending/:jti`는 CLI polling용 상태/결과 조회이며 승인 기능은 없다.
 
 ### `/api/orchestrate/dispatch`

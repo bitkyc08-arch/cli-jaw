@@ -59,7 +59,7 @@ import {
 } from './elicitation-buttons.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { sendWithRetryPolicy } from '../messaging/retry.js';
-import { createTelegramPollingIngress, handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -81,6 +81,15 @@ const telegramFinalDeliveryFailures = new Set<number>();
 let botUserId: number | null = null;
 export function setTelegramBotUserIdForTest(value: number | null): void { botUserId = value; }
 let telegramApprovalIngress: DispatchApprovalTransport | null = null;
+const telegramApprovalTransports = new WeakSet<object>();
+function createTelegramPollingIngress(): DispatchApprovalTransport {
+    const transport = Object.freeze({ platform: 'telegram' as const });
+    telegramApprovalTransports.add(transport);
+    return transport;
+}
+export function isTelegramApprovalTransport(value: DispatchApprovalTransport): boolean {
+    return telegramApprovalTransports.has(value as object);
+}
 
 export function handleTelegramUpdate(update: Record<string, any>, transport = telegramApprovalIngress): boolean {
     const message = update['message'];

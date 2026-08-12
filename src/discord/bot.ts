@@ -13,7 +13,7 @@ import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '.
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
-import { createDiscordGatewayIngress, handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
@@ -43,6 +43,15 @@ let dcInitLock = false;
 let gatewaySupervisor: DiscordGatewaySupervisor | null = null;
 let lastGatewayEventCode: string | null = null;
 let discordApprovalIngress: DispatchApprovalTransport | null = null;
+const discordApprovalTransports = new WeakSet<object>();
+function createDiscordGatewayIngress(): DispatchApprovalTransport {
+    const transport = Object.freeze({ platform: 'discord' as const });
+    discordApprovalTransports.add(transport);
+    return transport;
+}
+export function isDiscordApprovalTransport(value: DispatchApprovalTransport): boolean {
+    return discordApprovalTransports.has(value as object);
+}
 
 interface DiscordGenerationResources {
     client: Client;

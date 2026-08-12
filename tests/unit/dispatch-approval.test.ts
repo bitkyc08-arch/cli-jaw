@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DispatchApprovalStore, formatDispatchApprovalMessage } from '../../src/core/dispatch-approval.js';
+import * as ingress from '../../src/core/dispatch-approval-ingress.js';
 
 function make(store: DispatchApprovalStore, extra: Record<string, unknown> = {}) {
     return store.create({
@@ -28,6 +29,29 @@ test('expiry and cancellation are terminal', () => {
     const cancelled = make(store);
     assert.equal(store.cancel(cancelled.jti, cancelled.digest), true);
     assert.deepEqual(store.consume({ jti: cancelled.jti, digest: cancelled.digest, platform: 'discord', senderId: '1' }), { ok: false, reason: 'cancelled' });
+});
+
+test('TTL is clamped to the 300 second security maximum', () => {
+    const store = new DispatchApprovalStore(() => 5_000, 'boot-a');
+    const row = make(store, { ttlSeconds: 86_400 });
+    assert.equal(row.expiresAt, 305_000);
+});
+
+test('production transport constructors are not public exports', () => {
+    assert.equal('createSlackSocketIngress' in ingress, false);
+    assert.equal('createTelegramPollingIngress' in ingress, false);
+    assert.equal('createDiscordGatewayIngress' in ingress, false);
+    assert.equal(typeof ingress.createTestTransport, 'function');
+});
+
+test('a caller-fabricated platform transport cannot approve', () => {
+    const storeRow = make(new DispatchApprovalStore(() => 0, 'isolated'));
+    const result = ingress.handleApprovalCommand(
+        { platform: 'slack' },
+        { user: 'U1' },
+        `approve ${storeRow.jti} ${storeRow.digest}`,
+    );
+    assert.deepEqual(result, { handled: true, approved: false, reason: 'untrusted_transport' });
 });
 
 test('modified digest and cross-instance audience are rejected', () => {

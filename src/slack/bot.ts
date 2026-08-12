@@ -42,7 +42,7 @@ import type { SlackIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
 import { resetSlackIdentityCache } from './identity.js';
 import { resetSlackConversationCache } from './conversation.js';
-import { createSlackSocketIngress, handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -67,6 +67,15 @@ let lifecycleGeneration = 0;
  */
 let initRequestPending = false;
 let slackApprovalIngress: DispatchApprovalTransport | null = null;
+const slackApprovalTransports = new WeakSet<object>();
+function createSlackSocketIngress(): DispatchApprovalTransport {
+    const transport = Object.freeze({ platform: 'slack' as const });
+    slackApprovalTransports.add(transport);
+    return transport;
+}
+export function isSlackApprovalTransport(value: DispatchApprovalTransport): boolean {
+    return slackApprovalTransports.has(value as object);
+}
 
 export function getSlackSelfUserId(): string | null { return selfUserId; }
 export function setSlackSelfUserIdForTest(value: string | null): void { selfUserId = value; }

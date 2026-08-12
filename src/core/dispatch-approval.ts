@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { log } from './logger.js';
 
 export const DEFAULT_DISPATCH_APPROVAL_TTL_SECONDS = 120;
+export const MAX_DISPATCH_APPROVAL_TTL_SECONDS = 300;
 
 export type DispatchApprovalPlatform = 'slack' | 'telegram' | 'discord';
 
@@ -74,7 +75,7 @@ export class DispatchApprovalStore {
     create(input: CreatePendingDispatchInput): DispatchApprovalRecord {
         if (input.employeeMarker) throw new Error('employee_dispatch_approval_forbidden');
         const ttlSeconds = Number.isFinite(input.ttlSeconds)
-            ? Math.max(1, Math.floor(input.ttlSeconds!))
+            ? Math.min(MAX_DISPATCH_APPROVAL_TTL_SECONDS, Math.max(1, Math.floor(input.ttlSeconds!)))
             : DEFAULT_DISPATCH_APPROVAL_TTL_SECONDS;
         const scope: DispatchApprovalScope = {
             target: input.target,

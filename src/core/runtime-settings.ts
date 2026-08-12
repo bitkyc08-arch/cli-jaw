@@ -21,6 +21,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from './logger.js';
+import { MAX_DISPATCH_APPROVAL_TTL_SECONDS } from './dispatch-approval.js';
 
 export type RuntimeDefaultMigrationAction = 'accept' | 'keep';
 
@@ -197,7 +198,9 @@ function validateDispatchApprovalPatch(patch: Record<string, unknown>): void {
     const block = patch["dispatchApproval"];
     if (!block || typeof block !== 'object' || Array.isArray(block)) throw new Error('invalid_dispatch_approval');
     const approval = block as Record<string, unknown>;
-    if ("ttlSeconds" in approval && (!Number.isInteger(approval["ttlSeconds"]) || Number(approval["ttlSeconds"]) < 1)) {
+    if ("ttlSeconds" in approval && (!Number.isInteger(approval["ttlSeconds"])
+        || Number(approval["ttlSeconds"]) < 1
+        || Number(approval["ttlSeconds"]) > MAX_DISPATCH_APPROVAL_TTL_SECONDS)) {
         throw new Error('invalid_dispatch_approval_ttl');
     }
     if (!("operators" in approval)) return;

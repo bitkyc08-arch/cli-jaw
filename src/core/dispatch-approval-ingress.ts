@@ -1,6 +1,9 @@
 import { dispatchApprovalStore, type DispatchApprovalPlatform } from './dispatch-approval.js';
 import { settings } from './config.js';
 import { log } from './logger.js';
+import { isSlackApprovalTransport } from '../slack/bot.js';
+import { isTelegramApprovalTransport } from '../telegram/bot.js';
+import { isDiscordApprovalTransport } from '../discord/bot.js';
 
 export type DispatchApprovalTransport = { readonly platform: DispatchApprovalPlatform };
 const trustedTransports = new WeakSet<object>();
@@ -11,13 +14,17 @@ function createTransport(platform: DispatchApprovalPlatform, provenance: string)
     return transport;
 }
 
-export const createSlackSocketIngress = (): DispatchApprovalTransport => createTransport('slack', 'socket-mode');
-export const createTelegramPollingIngress = (): DispatchApprovalTransport => createTransport('telegram', 'polling');
-export const createDiscordGatewayIngress = (): DispatchApprovalTransport => createTransport('discord', 'gateway');
 export const createTestTransport = (platform: DispatchApprovalPlatform): DispatchApprovalTransport => {
     log.info(`[dispatch-approval:test-transport] platform=${platform}`);
     return createTransport(platform, 'test');
 };
+
+function isTrustedTransport(transport: DispatchApprovalTransport): boolean {
+    return trustedTransports.has(transport as object)
+        || isSlackApprovalTransport(transport)
+        || isTelegramApprovalTransport(transport)
+        || isDiscordApprovalTransport(transport);
+}
 
 function identity(transport: DispatchApprovalTransport, rawEvent: unknown): { senderId: string; bot: boolean; self: boolean } | null {
     const event = (rawEvent && typeof rawEvent === 'object' ? rawEvent : {}) as Record<string, any>;
@@ -45,7 +52,7 @@ export function handleApprovalCommand(
 ): { handled: boolean; approved?: boolean; reason?: string } {
     const match = /^\s*(approve|cancel)\s+([0-9a-f-]{36})\s+([0-9a-f]{64})\s*$/i.exec(text);
     if (!match) return { handled: false };
-    if (!transport || !trustedTransports.has(transport as object)) return { handled: true, approved: false, reason: 'untrusted_transport' };
+    if (!transport || !isTrustedTransport(transport)) return { handled: true, approved: false, reason: 'untrusted_transport' };
     const actor = identity(transport, rawEvent);
     if (!actor) return { handled: true, approved: false, reason: 'missing_sender' };
     if (actor.bot || actor.self) return { handled: true, approved: false, reason: actor.self ? 'self' : 'bot' };
