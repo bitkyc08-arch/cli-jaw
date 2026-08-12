@@ -236,3 +236,33 @@ test('/version does not collapse failing into fresh', async () => {
     assert.match(codexLine!, /probe failing/);
     assert.match(codexLine!, /spawn worker ENOENT/);
 });
+
+// #277 follow-up. Making the failure VISIBLE was the earlier fix; this makes it
+// LOCATABLE. The worker collapsed every failure into one string, so a Windows
+// probe that never converged could not be narrowed to detection, the auth read,
+// or the capability probe. Each stage is now tagged and the tag survives the IPC
+// hop into the message an operator reads.
+test('a worker failure names the stage that produced it', async () => {
+    const { inStageForTest, formatWorkerFailureForTest } = await import('../../src/cli/cli-status-worker.ts');
+
+    // Innermost stage wins: an auth failure inside a detect-wrapped call must
+    // still say auth, otherwise every error would report the outermost stage.
+    const tagged = await inStageForTest('detect', null, async () =>
+        inStageForTest('auth', 'codex-app', () => { throw new Error('ENOENT where.exe'); }),
+    ).then(() => null, (e: Error & { cliStatusStage?: string; cli?: string }) => e);
+
+    assert.ok(tagged, 'the stage wrapper must rethrow');
+    assert.equal(tagged!.cliStatusStage, 'auth', 'innermost stage should win');
+    assert.equal(tagged!.cli, 'codex-app');
+
+    // The parent renders stage + cli into the message that reaches probeError.
+    assert.equal(
+        formatWorkerFailureForTest({ error: 'ENOENT where.exe', stage: 'auth', cli: 'codex-app' }),
+        '[auth codex-app] ENOENT where.exe',
+    );
+    // An untagged failure keeps the old shape rather than growing empty brackets.
+    assert.equal(
+        formatWorkerFailureForTest({ error: 'worker exited before result' }),
+        'worker exited before result',
+    );
+});

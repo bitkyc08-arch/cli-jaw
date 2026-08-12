@@ -107,15 +107,36 @@ export function runCliStatusWorker(options: CliStatusWorkerOptions = {}): Promis
             if (!settled) finish(new Error(`CLI status worker exited before result (${code ?? signal ?? 'unknown'})`));
         });
         child.once('message', (message: unknown) => {
-            const payload = message as { ok?: unknown; snapshot?: unknown; error?: unknown };
+            const payload = message as { ok?: unknown; snapshot?: unknown; error?: unknown; stage?: unknown; cli?: unknown };
             if (payload?.ok === true && isSnapshot(payload.snapshot)) {
                 finish(null, payload.snapshot);
                 return;
             }
-            finish(new Error(typeof payload?.error === 'string' ? payload.error : 'Invalid CLI status worker response'));
+            finish(new Error(formatWorkerFailure(payload)));
         });
     });
 }
+
+/**
+ * Render a worker failure, keeping the stage the child tagged.
+ *
+ * #277: without it the parent's message reads identically whether detection,
+ * the auth read, or the capability probe failed — which is why the Windows
+ * report could never be narrowed past "it never converges". An untagged
+ * failure keeps its original shape rather than growing empty brackets.
+ */
+function formatWorkerFailure(payload: { error?: unknown; stage?: unknown; cli?: unknown } | null | undefined): string {
+    const base = typeof payload?.error === 'string' ? payload.error : 'Invalid CLI status worker response';
+    const where = [
+        typeof payload?.stage === 'string' ? payload.stage : null,
+        typeof payload?.cli === 'string' ? payload.cli : null,
+    ].filter(Boolean).join(' ');
+    return where ? `[${where}] ${base}` : base;
+}
+
+/** Test seam: the stage tagger and the failure renderer, exercised directly. */
+export const inStageForTest = inStage;
+export const formatWorkerFailureForTest = formatWorkerFailure;
 
 export function runCommand(binary: string, args: string[], timeoutMs: number): Promise<{ code: number | null; output: string; timedOut: boolean; outputLimited: boolean }> {
     return new Promise((resolve) => {
@@ -248,15 +269,39 @@ async function authForCli(cli: string, path: string | null, detected: Record<str
     }
 }
 
+/**
+ * Tag a thrown error with the stage that produced it.
+ *
+ * #277: on Windows every runtime reported `checking` then `stale` forever while
+ * the runtime demonstrably worked, and the worker's single error string could
+ * not say whether detection, the auth read, or the capability probe was the one
+ * failing. Diagnosing it required guessing. The tag survives the IPC hop.
+ */
+async function inStage<T>(stage: string, cli: string | null, run: () => Promise<T> | T): Promise<T> {
+    try {
+        return await run();
+    } catch (error) {
+        const tagged = error instanceof Error ? error : new Error(String(error));
+        const staged = tagged as Error & { cliStatusStage?: string; cli?: string };
+        // First writer wins: the innermost stage is the specific one.
+        staged.cliStatusStage ??= stage;
+        if (cli) staged.cli ??= cli;
+        throw staged;
+    }
+}
+
 export async function collectCliStatus(): Promise<CliStatusSnapshot> {
-    const detected = detectAllCli() as Record<string, { available?: boolean; path?: string | null }>;
+    const detected = await inStage('detect', null, () =>
+        detectAllCli() as Record<string, { available?: boolean; path?: string | null }>);
     const rows = await Promise.all(Object.entries(detected).map(async ([cli, info]) => {
         const binaryInstalled = Boolean(info.available);
         const path = typeof info.path === 'string' ? info.path : null;
         let capability: CapabilityResult = { ready: binaryInstalled };
-        if (cli === 'codex-app' && binaryInstalled && path) capability = await probeCodexApp(path);
+        if (cli === 'codex-app' && binaryInstalled && path) {
+            capability = await inStage('capability', cli, () => probeCodexApp(path));
+        }
         const auth = binaryInstalled
-            ? await authForCli(cli, path, detected)
+            ? await inStage('auth', cli, () => authForCli(cli, path, detected))
             : { authenticated: false, source: 'none' };
         const row: CliStatusRow = {
             available: binaryInstalled && capability.ready,
@@ -277,7 +322,18 @@ async function runChild(): Promise<void> {
     try {
         process.send?.({ ok: true, snapshot: await collectCliStatus() });
     } catch (error) {
-        process.send?.({ ok: false, error: error instanceof Error ? error.message : String(error) });
+        // #277: every failure in here used to arrive as one bare string, so a
+        // Windows probe that never converged could not be located — detection,
+        // auth read, and capability probe all looked identical from outside.
+        // `stage` is set by collectCliStatus() as it moves; an error that
+        // carries one names where it died.
+        const staged = error as Error & { cliStatusStage?: string; cli?: string };
+        process.send?.({
+            ok: false,
+            error: staged instanceof Error ? staged.message : String(error),
+            ...(staged?.cliStatusStage ? { stage: staged.cliStatusStage } : {}),
+            ...(staged?.cli ? { cli: staged.cli } : {}),
+        });
     } finally {
         process.disconnect?.();
     }
