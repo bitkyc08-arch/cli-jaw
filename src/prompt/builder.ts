@@ -10,7 +10,7 @@ import { getActiveChatSession, listChatSessions } from '../core/chat-sessions.js
 import { currentSessionScope } from '../core/session-context.js';
 import { memoryFlushCounter } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
-import { buildTaskSnapshot, getAdvancedMemoryDir, hasSoulFile, loadProfileSummary, loadSoulSummary } from '../memory/runtime.js';
+import { buildTaskSnapshot, getAdvancedMemoryDir, hasSoulFile, loadProfileSummary, loadSoulSummary, refreshHostToolchainForDiskPrompt } from '../memory/runtime.js';
 import { parseHostToolchainProfile, renderHostToolchainPromptBlock } from '../memory/host-toolchain.js';
 import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
@@ -671,6 +671,7 @@ function loadDiskSoul(): string {
 
 function loadDiskHostToolchain(): string {
     try {
+        refreshHostToolchainForDiskPrompt();
         const profilePath = join(getAdvancedMemoryDir(), 'profile.md');
         if (!fs.existsSync(profilePath)) return '';
         return renderHostToolchainPromptBlock(parseHostToolchainProfile(fs.readFileSync(profilePath, 'utf8')));

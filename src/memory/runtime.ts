@@ -280,13 +280,55 @@ function getLegacyClaudeMemoryDir() {
     return join(os.homedir(), '.claude', 'projects', hash, 'memory');
 }
 
+const HOST_TOOLCHAIN_REFRESH_INTERVAL_MS = 5 * 60_000;
+let hostToolchainRefreshState: {
+    root: string;
+    workingDir: string;
+    profileMtimeMs: number;
+    refreshedAt: number;
+} | null = null;
+
+function resolvedHostWorkingDir(): string {
+    return expandHomePath(settings["workingDir"] || process.cwd(), os.homedir());
+}
+
+function rememberHostToolchainRefresh(root: string, workingDir: string): void {
+    const profilePath = join(root, 'profile.md');
+    const profileMtimeMs = fs.existsSync(profilePath) ? fs.statSync(profilePath).mtimeMs : -1;
+    hostToolchainRefreshState = { root, workingDir, profileMtimeMs, refreshedAt: Date.now() };
+}
+
 function refreshHostToolchain(root: string) {
     const profilePath = join(root, 'profile.md');
+    const workingDir = resolvedHostWorkingDir();
     const profile = refreshHostToolchainProfileFile(profilePath, {
-        workingDir: expandHomePath(settings["workingDir"] || process.cwd(), os.homedir()),
+        workingDir,
     });
-    reindexSingleFile(root, profilePath);
+    try {
+        reindexSingleFile(root, profilePath);
+    } catch (error) {
+        log.warn('[jaw:toolchain] profile refresh indexing skipped:', (error as Error).message);
+    }
+    rememberHostToolchainRefresh(root, workingDir);
     return profile;
+}
+
+/** Refresh before disk prompt generation without probing again on every agent spawn. */
+export function refreshHostToolchainForDiskPrompt(): void {
+    const root = getAdvancedMemoryDir();
+    const profilePath = join(root, 'profile.md');
+    if (!fs.existsSync(profilePath)) return;
+    const workingDir = resolvedHostWorkingDir();
+    const profileMtimeMs = fs.statSync(profilePath).mtimeMs;
+    const current = hostToolchainRefreshState;
+    if (current
+        && current.root === root
+        && current.workingDir === workingDir
+        && current.profileMtimeMs === profileMtimeMs
+        && Date.now() - current.refreshedAt < HOST_TOOLCHAIN_REFRESH_INTERVAL_MS) {
+        return;
+    }
+    refreshHostToolchain(root);
 }
 
 export function ensureIntegratedMemoryReady() {
@@ -324,6 +366,7 @@ export function ensureIntegratedMemoryReady() {
                 updated_at: new Date().toISOString(),
             });
             writeText(profilePath, fm + `# Profile\n\n${systemInfo}\n`);
+            rememberHostToolchainRefresh(root, resolvedHostWorkingDir());
             log.info('[jaw:bootstrap] seeded profile from system scan (no legacy data found)');
         } else {
             refreshHostToolchain(root);

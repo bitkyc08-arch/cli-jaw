@@ -1,11 +1,13 @@
 import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, dirname, isAbsolute, join } from 'node:path';
 
 import {
     HOST_TOOL_NAMES,
+    HOST_TOOLCHAIN_PATH_CANDIDATE_LIMIT,
     HOST_TOOLCHAIN_PROMPT_BUDGET,
     type HostToolName,
     type HostToolchainProfile,
@@ -59,6 +61,46 @@ test('first scan discovers and records verified absolute tool paths', () => {
         assert.equal(profile.tools[tool].verification, 'verified');
         assert.equal(profile.tools[tool].version, '9.8.7');
         assert.equal(profile.tools[tool].verified_at, FIRST_SCAN_AT.toISOString());
+    }
+});
+
+test('PATH discovery verifies at most the bounded unique candidate count per tool', () => {
+    const root = mkdtempSync(join(tmpdir(), 'jaw-host-toolchain-cap-'));
+    const paths: string[] = [];
+    const candidates = new Set<string>();
+    try {
+        for (let i = 0; i < HOST_TOOLCHAIN_PATH_CANDIDATE_LIMIT + 4; i++) {
+            const dir = join(root, `candidate-${i}`);
+            const candidate = join(dir, process.platform === 'win32' ? 'rg.cmd' : 'rg');
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(candidate, process.platform === 'win32'
+                ? '@echo off\r\necho ripgrep 1.0.0\r\n'
+                : '#!/bin/sh\necho ripgrep 1.0.0\n', 'utf8');
+            if (process.platform !== 'win32') chmodSync(candidate, 0o755);
+            paths.push(dir);
+            candidates.add(process.platform === 'win32' ? candidate.toLowerCase() : candidate);
+        }
+
+        const checked: string[] = [];
+        const pathValue = paths.join(delimiter);
+        resolveHostToolchainProfile(null, {
+            platform: process.platform,
+            env: process.platform === 'win32' ? { Path: pathValue, PATHEXT: '.CMD;.EXE' } : { PATH: pathValue },
+            homeDir: root,
+            workingDir: root,
+        }, {
+            now: () => FIRST_SCAN_AT,
+            verify(tool, candidatePath) {
+                const key = process.platform === 'win32' ? candidatePath.toLowerCase() : candidatePath;
+                if (tool === 'ripgrep' && candidates.has(key)) checked.push(key);
+                return { ok: false, missing: true };
+            },
+        });
+
+        assert.equal(checked.length, HOST_TOOLCHAIN_PATH_CANDIDATE_LIMIT);
+        assert.equal(new Set(checked).size, checked.length, 'PATH candidates remain deduplicated');
+    } finally {
+        rmSync(root, { recursive: true, force: true });
     }
 });
 
@@ -165,14 +207,30 @@ test('generated disk AGENTS has one short human-readable Host toolchain block', 
     assert.ok(bounded.length <= HOST_TOOLCHAIN_PROMPT_BUDGET);
     assert.match(bounded, /^## Host toolchain/m);
     assert.doesNotMatch(bounded, /schema_version/);
+    for (const budget of [-10, 0, 1, 5, 14, 15]) {
+        assert.ok(
+            renderHostToolchainPromptBlock(huge, budget).length <= Math.max(0, budget),
+            `tiny prompt budget ${budget} must be honored exactly`,
+        );
+    }
 
     const profilePath = join(getAdvancedMemoryDir(), 'profile.md');
     mkdirSync(dirname(profilePath), { recursive: true });
     writeFileSync(profilePath, `# Profile\n\n## Curated\n- keep\n\n${renderHostToolchainManagedBlock(verifiedProfile('/verified'))}\n`, 'utf8');
     const prompt = getSystemPrompt({ forDisk: true });
+    const refreshed = readFileSync(profilePath, 'utf8');
+    const refreshedProfile = parseHostToolchainProfile(refreshed);
 
     assert.equal((prompt.match(/^## Host toolchain$/gm) || []).length, 1);
-    assert.match(prompt, /officecli: `\/verified\/officecli`/);
+    assert.doesNotMatch(prompt, /\/verified\/officecli/, 'disk generation must not publish an unverified cached path');
+    assert.notEqual(refreshedProfile?.verified_at, FIRST_SCAN_AT.toISOString());
+    for (const tool of HOST_TOOL_NAMES) {
+        const entry = refreshedProfile?.tools[tool];
+        if (entry?.verification === 'verified') assert.ok(isAbsolute(entry.path || ''));
+    }
     assert.doesNotMatch(prompt, /cli-jaw:host-toolchain:start/);
     assert.doesNotMatch(prompt, /schema_version/);
+
+    getSystemPrompt({ forDisk: true });
+    assert.equal(readFileSync(profilePath, 'utf8'), refreshed, 'fresh disk generations skip redundant subprocess probes');
 });

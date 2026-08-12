@@ -9,7 +9,7 @@ aliases: [CLI-JAW Memory Architecture, advanced memory runtime, memory architect
 # Memory Architecture — 통합 메모리 시스템
 
 > 최종 갱신: 2026-08-12
-> 소스: `src/memory/runtime.ts` 396L (사실상 facade), `src/memory/shared.ts` 266L, `src/memory/bootstrap.ts` 597L, `src/memory/host-toolchain.ts` 457L, `src/memory/indexing.ts` 721L, `src/memory/keyword-expand.ts` 98L, `src/memory/synonyms.ts` 60L, `src/memory/reflect.ts` 380L, `src/memory/identity.ts` 87L, `src/memory/injection.ts` 69L, `src/memory/memory.ts` 165L, `src/memory/worklog.ts` 200L, `src/memory/heartbeat.ts` 311L, `src/memory/heartbeat-schedule.ts` 410L, `src/memory/advanced.ts` 1L (re-export shim), `src/agent/memory-flush-controller.ts` 185L, `src/agent/spawn.ts` 2011L, `src/prompt/builder.ts` 1159L, `src/orchestrator/pipeline.ts` 538L, `src/routes/memory.ts`, `src/routes/jaw-memory.ts`, `src/cli/command-context.ts`, `src/cli/handlers-runtime.ts`
+> 소스: `src/memory/runtime.ts` 439L (사실상 facade), `src/memory/shared.ts` 266L, `src/memory/bootstrap.ts` 597L, `src/memory/host-toolchain.ts` 469L, `src/memory/indexing.ts` 721L, `src/memory/keyword-expand.ts` 98L, `src/memory/synonyms.ts` 60L, `src/memory/reflect.ts` 380L, `src/memory/identity.ts` 87L, `src/memory/injection.ts` 69L, `src/memory/memory.ts` 165L, `src/memory/worklog.ts` 201L, `src/memory/heartbeat.ts` 311L, `src/memory/heartbeat-report.ts` 49L, `src/memory/heartbeat-schedule.ts` 410L, `src/memory/advanced.ts` 1L (re-export shim), `src/agent/memory-flush-controller.ts` 185L, `src/agent/spawn.ts` 2011L, `src/prompt/builder.ts` 1160L, `src/orchestrator/pipeline.ts` 538L, `src/routes/memory.ts`, `src/routes/jaw-memory.ts`, `src/cli/command-context.ts`, `src/cli/handlers-runtime.ts`
 > 임베딩: `src/manager/memory/embedding/` — `provider.ts`, `vec-store.ts`, `sync.ts`, `state-machine.ts`, `hybrid-search.ts`, `index.ts` + `src/manager/routes/dashboard-memory.ts`
 
 ---
@@ -167,7 +167,7 @@ Prefers ES Module only, no CommonJS.
 ### 3-E: Durable Host Toolchain
 
 - `src/memory/host-toolchain.ts` owns a bounded managed block in `memory/structured/profile.md`; it records only absolute paths, safe version tokens, source labels, `verified_at`, and a verification result for `officecli`, `soffice`, Python, and ripgrep.
-- Startup fast-verifies a cached absolute path directly. A failed or stale cache entry falls back to bounded tool-specific discovery; Windows Store Python redirectors are recorded as rejected rather than usable interpreters.
+- Startup fast-verifies a cached absolute path directly. Disk prompt generation refreshes an old or externally changed profile through a five-minute, mtime, and working-directory freshness gate so repeated agent spawns do not reprobe. A failed or stale cache entry falls back to bounded tool-specific discovery; PATH verification is capped at six unique candidates per tool, and Windows Store Python redirectors are recorded as rejected rather than usable interpreters.
 - The managed markers replace only cli-jaw-owned content, preserving curated profile sections and the independent `cli-jaw:core-memory` block (#262).
 - Disk prompt generation strips the raw managed JSON from profile summaries and emits one human-readable `## Host toolchain` block capped at 1800 characters. Verified paths are used before discovery.
 

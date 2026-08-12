@@ -8,6 +8,7 @@ import { launchSpec } from '../core/exec-name.js';
 export const HOST_TOOLCHAIN_START = '<!-- cli-jaw:host-toolchain:start -->';
 export const HOST_TOOLCHAIN_END = '<!-- cli-jaw:host-toolchain:end -->';
 export const HOST_TOOLCHAIN_PROMPT_BUDGET = 1800;
+export const HOST_TOOLCHAIN_PATH_CANDIDATE_LIMIT = 6;
 
 export const HOST_TOOL_NAMES = ['officecli', 'soffice', 'python', 'ripgrep'] as const;
 export type HostToolName = typeof HOST_TOOL_NAMES[number];
@@ -219,10 +220,17 @@ function defaultDiscover(
     for (const envName of ENV_PATHS[tool]) addCandidate(candidates, env[envName], `env:${envName}`);
 
     let scanError = false;
+    const pathCandidateKeys = new Set<string>();
     for (const name of pathNames(tool, platform)) {
         const scan = listCliBinaryCandidates(name, env['PATH'] || env['Path'] || env['path'] || '');
         scanError ||= !!scan.scanError;
-        for (const candidate of scan.candidates) addCandidate(candidates, candidate.path, 'PATH');
+        for (const candidate of scan.candidates) {
+            const key = platform === 'win32' ? candidate.path.toLowerCase() : candidate.path;
+            if (pathCandidateKeys.has(key)) continue;
+            if (pathCandidateKeys.size >= HOST_TOOLCHAIN_PATH_CANDIDATE_LIMIT) continue;
+            pathCandidateKeys.add(key);
+            addCandidate(candidates, candidate.path, 'PATH');
+        }
     }
     for (const candidate of knownCandidates(tool, platform, env, homeDir, workingDir)) {
         addCandidate(candidates, candidate, 'known-location');
@@ -453,5 +461,9 @@ export function renderHostToolchainPromptBlock(
         }
     }
     const rendered = lines.join('\n');
-    return rendered.length <= maxChars ? rendered : `${rendered.slice(0, Math.max(0, maxChars - 16))}\n...(truncated)`;
+    const budget = Math.max(0, maxChars);
+    const suffix = '\n...(truncated)';
+    if (rendered.length <= budget) return rendered;
+    if (budget <= suffix.length) return suffix.slice(0, budget);
+    return `${rendered.slice(0, budget - suffix.length)}${suffix}`;
 }
