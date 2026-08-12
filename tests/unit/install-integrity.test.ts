@@ -162,18 +162,22 @@ test('PowerShell execution policy maps safe and blocked values', () => {
     }
 });
 
-test('PowerShell execution policy skips non-Windows and treats probe failures as unknown', () => {
+test('PowerShell execution policy skips non-Windows and warns with default on probe failure', () => {
     let called = false;
     assert.deepEqual(checkPsExecutionPolicy({
         platform: 'linux',
         runPolicy: () => { called = true; return 'Restricted'; },
     }), { state: 'skipped' });
     assert.equal(called, false);
-    assert.deepEqual(checkPsExecutionPolicy({ platform: 'win32', runPolicy: () => '' }), { state: 'unknown' });
-    assert.deepEqual(checkPsExecutionPolicy({
+    const empty = checkPsExecutionPolicy({ platform: 'win32', runPolicy: () => '', runRegQuery: () => '' });
+    assert.strictEqual(empty.state, 'warn');
+    assert.match(empty.policy || '', /Restricted/);
+    const thrown = checkPsExecutionPolicy({
         platform: 'win32',
         runPolicy: () => { throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); },
-    }), { state: 'unknown' });
+        runRegQuery: () => { throw new Error('reg missing'); },
+    });
+    assert.strictEqual(thrown.state, 'warn');
 });
 
 test('dangerous wildcards are never suggested anywhere', () => {
