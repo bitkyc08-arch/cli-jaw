@@ -75,12 +75,21 @@ export type SlackHistoryOpts = {
     noRetryOnRateLimit?: boolean;
 };
 
-/** Abortable, unref'd sleep. A cancelled ingress must not hold the loop open. */
-function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+/**
+ * Abortable sleep. A cancelled ingress must not hold the loop open, which is
+ * why the timer is unref'd by default.
+ *
+ * `keepAlive` exists for callers that are AWAITING the pause as part of their
+ * result: an unref'd timer lets the process exit mid-await, and the pending
+ * promise then resolves never. Under CI load that surfaced as
+ * "Promise resolution is still pending but the event loop has already
+ * resolved" on the retry-backoff path.
+ */
+function sleepUnlessAborted(ms: number, signal?: AbortSignal, keepAlive = false): Promise<void> {
     if (signal?.aborted) return Promise.resolve();
     return new Promise<void>(resolve => {
         const timer = setTimeout(finish, ms);
-        timer.unref?.();
+        if (!keepAlive) timer.unref?.();
         function finish(): void {
             clearTimeout(timer);
             signal?.removeEventListener('abort', finish);
@@ -115,7 +124,9 @@ async function callWithRetry(
         // One bounded retry after a short pause (Hermes uses 1s/2s; a single
         // 1s attempt is enough for an interactive lookup — the caller can
         // simply retry the whole request otherwise).
-        await sleepUnlessAborted(1000, opts.signal);
+        // keepAlive: the caller is awaiting this pause to produce its result,
+        // so the process must not be allowed to exit mid-backoff.
+        await sleepUnlessAborted(1000, opts.signal, true);
         // Re-check: the wait is where a cancel usually lands.
         if (!opts.signal?.aborted) {
             result = await slackApi<RawHistoryData>(token, method, body, callOpts);
