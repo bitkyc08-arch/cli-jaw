@@ -369,6 +369,29 @@ WSL 증거는 `WSL_DISTRO_NAME`, `WSL_INTEROP`, `/run/WSL`,
 브라우저 헬퍼들은 `probes` 파라미터를 받는다. 이게 없으면 desktop-linux
 픽스처가 실제 호스트의 `/proc` 를 읽어서 WSL 러너에서 결과가 뒤집힌다.
 
+### Windows serve 로깅
+
+`jaw serve` 는 상속받은 stdout/stderr 출력을 그대로 유지하면서 두 스트림을
+`<JAW_HOME>\logs\serve.log` 에 append 한다. 서버 시작 시 파일이 5 MiB 이상이면
+기존 `serve.log.1` 을 교체하고 현재 파일을 그 이름으로 한 단계 rotate 한다.
+
+PowerShell `Start-Process -RedirectStandardOutput/-RedirectStandardError` 는 대상
+파일을 시작마다 생성하거나 truncate한다. 따라서 이 옵션을 instance-owned
+`serve.log` 에 연결하지 않는다. 별도 운영자 로그가 필요하면 child PowerShell의
+append redirection을 사용한다.
+
+```powershell
+$jawHome = 'C:\jaw\worker-a'
+$logDir = Join-Path $jawHome 'logs'
+$outLog = Join-Path $logDir 'serve.out.log'
+$errLog = Join-Path $logDir 'serve.err.log'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$jaw = (Get-Command jaw.cmd -ErrorAction Stop).Source
+$command = "& '$jaw' --home '$jawHome' serve --no-open 1>> '$outLog' 2>> '$errLog'"
+$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $encoded -WindowStyle Hidden
+```
+
 ---
 
 ## src/cli/registry.ts — CLI/모델 단일 소스 (231L)
