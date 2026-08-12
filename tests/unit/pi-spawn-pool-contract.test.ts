@@ -10,5 +10,12 @@ test('Pi spawn keeps employees per-turn and sends boss turns through the pool le
     const pooledAcquire = branch.indexOf('acquirePiRuntime({', employee);
     assert.ok(employee > 0 && directSpawn > employee && pooledAcquire > directSpawn);
     assert.match(branch, /lease\.session\.sendPrompt/);
-    assert.match(source, /cli=pi action=lease\.cancel/);
+    // The kill path used to log a per-CLI literal (`cli=pi action=lease.cancel`).
+    // Commit 211531d6 scoped main execution state and merged codex-app/pi into one
+    // branch that interpolates the active CLI, so assert the surviving contract:
+    // a pi turn registers a cancel hook, and the shared kill path routes pi
+    // through it as a lease cancel.
+    assert.match(branch, /mainRun\.cancelTurn\s*=\s*cancelHook/);
+    assert.match(source, /getActiveMainCli\(scopeKey\)\s*===\s*'pi'/);
+    assert.match(source, /action=lease\.cancel/);
 });

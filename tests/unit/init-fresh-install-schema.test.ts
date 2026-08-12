@@ -22,7 +22,19 @@ function runInit(home: string, extraArgs: string[] = []): { status: number | nul
         join(projectRoot, 'bin/commands/init.ts'),
         'init', '--non-interactive', ...extraArgs,
     ], {
-        env: { ...process.env, CLI_JAW_HOME: home },
+        // What this suite asserts is the settings document init writes. Installing
+        // provider CLIs, MCP servers, and skill deps is a different concern, and on
+        // a clean CI runner those npm installs take longer than the step allows —
+        // the run then fails before the first assertion. Same skip switches the
+        // sibling init suites use.
+        env: {
+            ...process.env,
+            CLI_JAW_HOME: home,
+            CLI_JAW_SKIP_CLI_TOOLS: '1',
+            CLI_JAW_SKIP_MCP_SERVERS: '1',
+            CLI_JAW_SKIP_SKILL_DEPS: '1',
+            CLI_JAW_SKIP_CLAUDE: '1',
+        },
         encoding: 'utf8',
         timeout: 60_000,
     });

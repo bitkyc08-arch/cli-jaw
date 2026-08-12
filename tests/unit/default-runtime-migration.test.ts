@@ -11,8 +11,11 @@ process.env['CLI_JAW_HOME'] = home;
 after(() => rmSync(home, { recursive: true, force: true }));
 
 let pickerCalls = 0;
+// `namedExports`, not `exports`: on Node 22 the `exports` form leaves the named
+// bindings unresolved, so importing `pickFirstReadyCli` throws at link time.
+// `namedExports` applies on both 22 (CI) and 24 (local).
 mock.module(resolve(import.meta.dirname, '../../src/cli/readiness.js'), {
-    exports: {
+    namedExports: {
         pickFirstReadyCli: () => {
             pickerCalls += 1;
             return 'codex-app';

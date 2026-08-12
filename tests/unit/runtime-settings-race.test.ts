@@ -37,15 +37,23 @@ test('RSR-003: spawn waits before reading session bucket state', () => {
 });
 
 test('RSR-004: gated main spawn contributes to busy state and queue gating', () => {
-    assert.match(spawnSrc, /let\s+mainSpawnStarting\s*=\s*false/);
-    assert.match(spawnSrc, /return\s+!!activeProcess\s*\|\|\s*jawRuntime\.busy\s*\|\|\s*queueCtrl\.isRetryPending\(\)\s*\|\|\s*mainSpawnStarting/);
-    assert.match(spawnSrc, /queueCtrl\.isRetryPending\(\)/,
-        'isAgentBusy must delegate retry check to queue controller');
+    // 211531d6 moved the module-global `mainSpawnStarting` into per-scope
+    // MainRunState.starting, and isAgentBusy now reads that scoped map. The
+    // contract under test is unchanged: a gated spawn marks itself starting,
+    // and busy state derives from the scoped run plus the retry timer.
+    assert.match(spawnSrc, /starting:\s*boolean/);
+    assert.match(spawnSrc, /mainRun!\.starting\s*=\s*true/);
+    assert.match(spawnSrc, /return\s+activeMainProcesses\.has\(scopeKey\)\s*\|\|\s*runtimeForScope\(scopeKey\)\.busy\s*\|\|\s*queueCtrl\.isRetryPending\(scopeKey\)/);
+    assert.match(spawnSrc, /queueCtrl\.isRetryPending\(scopeKey\)/,
+        'isAgentBusy must delegate the retry check to the queue controller');
 });
 
 test('RSR-005: stop cancels a pending gated main spawn', () => {
-    assert.match(spawnSrc, /let\s+cancelPendingMainSpawn/);
-    assert.match(spawnSrc, /cancelPendingMainSpawn\s*\?\s*\(\s*cancelPendingMainSpawn\(reason\),\s*true\s*\)/);
+    // Same refactor: the cancel hook is stored on the scoped run
+    // (`MainRunState.cancelPending`) instead of a module-level binding.
+    assert.match(spawnSrc, /cancelPending\?:\s*\(reason:\s*string\)\s*=>\s*void/);
+    assert.match(spawnSrc, /mainRun!\.cancelPending\s*=\s*cancelThisSpawn/);
+    assert.match(spawnSrc, /run\?\.cancelPending\s*\?\s*\(\s*run\.cancelPending\(reason\),\s*true\s*\)/);
     assert.match(spawnSrc, /if\s*\(\s*cancelled\s*\)\s*\{[\s\S]*code:\s*-1[\s\S]*\}/);
 });
 

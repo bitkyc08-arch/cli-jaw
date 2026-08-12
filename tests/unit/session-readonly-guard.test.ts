@@ -123,8 +123,11 @@ test('normal, retry, slash fallback, attachment, command, stop, and voice attemp
         const sessionView = await import('../../public/js/features/session-hub.ts');
         sessionView.configureSessionView(onResponse, '/1');
         const { state } = await import('../../public/js/state.ts');
+        // `namedExports`, not `exports`: Node 22 leaves the named bindings
+        // unresolved under the `exports` form, so importers of `providerLabel`
+        // fail at link time. `namedExports` works on both 22 (CI) and 24 (local).
         mock.module(join(import.meta.dirname, '../../public/js/provider-icons.js'), {
-            exports: {
+            namedExports: {
                 providerIcon: () => '',
                 providerLabel: (value: string) => value,
                 hydrateProviderIcons: () => {},
