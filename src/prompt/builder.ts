@@ -11,6 +11,7 @@ import { currentSessionScope } from '../core/session-context.js';
 import { memoryFlushCounter } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
 import { buildTaskSnapshot, loadProfileSummary } from '../memory/runtime.js';
+import { readSoul } from '../memory/identity.js';
 import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 import { findStaticEmployee } from '../core/employees.js';
@@ -23,6 +24,17 @@ import { invalidateSkillCommandsCache, registerSkillLoader } from '../core/skill
 import { log } from '../core/logger.js';
 
 const promptCache = new Map();
+
+/**
+ * Character budget for soul.md inside generated AGENTS.md (#300).
+ *
+ * Sized between its neighbours in that block — profile 600, snapshot 1500 —
+ * because identity is the part a session most needs to carry, but AGENTS.md is
+ * read on every turn so an unbounded file would tax the context window forever.
+ * readSoul() itself is unbounded; the bound belongs here, at the disk-prompt
+ * boundary, not in the API surface that also serves it.
+ */
+const SOUL_DISK_BUDGET = 1200;
 
 function getRepoBundledSkillPath(...parts: string[]): string {
     return join(process.cwd(), ...parts);
@@ -562,10 +574,20 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
         // so Codex/OpenCode sessions have soul, profile, and snapshot context.
         prompt = appendLegacyMemoryContext(prompt);
         try {
+            // #300: this block promised soul context and never read it, so a
+            // codex-app session ran on shipped defaults while the host had a
+            // configured identity on disk. readSoul() returns '' when the file
+            // is absent, so an unconfigured host is unchanged.
+            //
+            // Bounded like its neighbours: readSoul() is unbounded, and AGENTS.md
+            // is prepended to every turn, so an unbounded identity file would tax
+            // the context window on every request.
+            const soul = readSoul().trim().slice(0, SOUL_DISK_BUDGET);
             const profile = loadProfileSummary(600);
             const snapshot = buildTaskSnapshot('current session context', 1500);
-            if (profile || snapshot) {
+            if (soul || profile || snapshot) {
                 prompt += '\n\n---\n## Core Memory\n';
+                if (soul) prompt += soul + '\n';
                 if (profile) prompt += profile + '\n';
                 if (snapshot) prompt += '\n' + snapshot;
             }
