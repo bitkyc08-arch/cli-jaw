@@ -112,7 +112,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `dispatch` | `bin/commands/dispatch.ts` | `(--agent <name> \| --virtual <name>) --task <task> [--role <role>] [--cli <cli>] [--model <model>] [--mutable] [--scope <path>] [--port <port>] [--watch] [--quiet] [--json]`; human output follows bounded safe worker progress by default; `--quiet`/`--json` suppress live progress; `--batch --agents '<JSON array>'` where each entry accepts `agent` or `virtual` and prints grouped safe summaries with `runId` recovery commands instead of full worker text |
 | `goal` | `bin/commands/goal.ts` | `set <objective>`, `plan [hint]`, `refine <objective>`, `status`, `update <summary>`, `done [note]`, `cancel [reason]`, `pause`, `resume`, `clear`, `reset`, `history [limit]`; `--json`; plan-mode stores hints as `planHint` and requires refine before checkpoints; status exposes derived `pauseGate` when an agent pause audit is pending |
 | `worker` | `bin/commands/worker.ts` | `status [agent\|runId] [--recent N] [--json]`, `watch [agent\|runId] [--json]`, `read <runId> [--offset N] [--limit N] [--tail N] [--json]`, `--port <port>`; status/watch use safe summaries (`snapshot.workers` is running-only; `--recent` reads durable safe records), while read is the explicit raw worker-output surface backed by `/api/orchestrate/worker-runs/:runId/output` |
-| `service` | `bin/commands/service.ts` | `[--port PORT] [--backend launchd\|systemd\|docker] [status\|unset\|logs]` |
+| `service` | `bin/commands/service.ts` | `[--port PORT] [--backend launchd\|systemd\|docker] [status\|stop\|restart\|unset\|logs]`; standalone `serve`는 `<JAW_HOME>/jaw.pid.json` ownership 검증 후 해당 인스턴스만 제어하고, 등록된 launchd/systemd 인스턴스는 native service manager에 위임 |
 | `dashboard` | `bin/commands/dashboard.ts` | `serve [--port 24576] [--from 3457] [--count 50] [--no-open]`, `memory {search\|instances\|read\|config\|state\|estimate\|reindex\|help} [--instance <ids>] [--limit N] [--json] [--port <port>]`, `chat search "<query>" [--instance <ids>] [--limit N] [--days N] [--json]` |
 | `connector` | `bin/commands/connector.ts` | `board add/update/list`, `notes write/list`, `reminders add/list/done`, `audit [--limit N] [--json]` |
 | `reminders` | `bin/commands/reminders.ts` | `list`, `add`, `done`; `--json`, `--priority`, `--due`, `--remind`, message/thread link flags |
@@ -130,6 +130,14 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jwc install` to install the optional external runtime, `jaw jwc doctor` to inspect `JWC_SDK_PATH` readiness, and `jaw jwc clean` to remove the external runtime prefix.
 
 ## Command Behavior Notes
+
+### `jaw service stop|restart`
+
+- 반드시 제어할 인스턴스와 같은 `--home`을 지정한다. 다중 인스턴스에서는 필요하면 `--port`도 함께 지정한다.
+- standalone `jaw serve`는 `<JAW_HOME>/jaw.pid.json`의 home, PID 생존 여부, OS process start time, start-time source가 모두 일치할 때만 `SIGTERM`을 보낸다. stale/foreign/unverifiable pidfile은 신호 없이 거부한다.
+- `restart`는 기존 PID 종료를 확인한 뒤 같은 home/port로 detached `serve --no-open`을 시작한다.
+- launchd/systemd에 실제 등록된 인스턴스는 기존 native service restart/stop 경로로 위임한다.
+- Windows에서 `Get-Process node | Stop-Process` 같은 전역 종료는 다른 cli-jaw 인스턴스와 Codex app-server까지 종료할 수 있으므로 사용하지 않는다.
 
 ### `/clear`
 

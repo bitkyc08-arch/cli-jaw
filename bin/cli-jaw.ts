@@ -301,7 +301,7 @@ switch (command) {
         await import('./commands/worker.js');
         break;
     case 'service':
-        await import('./commands/service.js');
+        await import('./commands/service.js').then(mod => mod.main());
         break;
     case 'dashboard':
         await import('./commands/dashboard.js');

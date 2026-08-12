@@ -568,6 +568,8 @@ jaw slack setup                   # guided Slack app setup (manifest + token val
 jaw clone ~/project               # clone instance to new directory
 jaw --home ~/project serve --port 3458  # run second instance
 jaw service install               # auto-start on boot
+jaw --home ~/project service restart --port 3458  # restart only this instance
+jaw --home ~/project service stop --port 3458     # stop only this instance
 jaw project set ~/repo            # set projectDirs for review/orchestration
 jaw lock                          # protect this instance from stop-all flows
 
@@ -625,6 +627,16 @@ jaw --home ~/my-project serve --port 3458
 ```
 
 Each instance is fully independent — different working directory, different memory, different MCP config. The manager dashboard sees them all.
+
+For a standalone `jaw serve`, use the home-scoped lifecycle commands instead of killing every Node process. The server records verifiable ownership in `<JAW_HOME>/jaw.pid.json`; `stop` and `restart` refuse stale, foreign, or unverifiable records. Registered launchd/systemd instances delegate to their service manager.
+
+```bash
+# Windows PowerShell
+jaw --home C:\jaw\worker-a service restart --port 3458
+
+# macOS/Linux
+jaw --home "$HOME/jaw/worker-a" service stop --port 3458
+```
 
 ---
 

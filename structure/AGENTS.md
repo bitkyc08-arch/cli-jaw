@@ -41,6 +41,7 @@ When refreshing docs from recent non-strict commits, check these first:
 - `src/goal/pause-gate.ts` / `src/agent/lifecycle-handler.ts`: `goal_pause_gate_pending` continuation suppression — `stream-events.md`, `INDEX.md` delta.
 - `src/agent/events/claude.ts`: plain `claude` `text_delta` live streaming — `stream-events.md` §3.
 - `tests/run.mts` / `package.json` test scripts: programmatic test driver — `infra.md` scripts table.
+- `bin/commands/service.ts` / `src/core/instance-lifecycle.ts`: home-scoped `service stop|restart`, ownership pidfile, and native-service delegation — `commands.md`, root README/AGENTS/CLAUDE.
 - `src/orchestrator/attestation.ts`: PABCD `--attest` evidence gate — `prompt_flow.md`, `INDEX.md`.
 - `src/cli/handlers-skill-invoke.ts`: dynamic `/skill:<id>` — `commands.md`, `INDEX.md`.
 - `src/browser/adaptive-fetch/scheduler.ts` / `src/browser/web-ai/session-artifacts.ts`: adaptive-fetch P0 + web-ai parity wave — `infra.md`, `str_func.md` counts (web-ai 96, adaptive-fetch 34).
