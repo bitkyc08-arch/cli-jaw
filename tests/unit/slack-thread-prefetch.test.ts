@@ -17,13 +17,21 @@ import { join } from 'node:path';
 import { settings } from '../../src/core/config.ts';
 
 import {
-    claimThreadPrefetch,
-    commitThreadPrefetch,
-    releaseThreadPrefetch,
+    claimThreadPrefetch as claimThreadPrefetchForOwner,
+    commitThreadPrefetch as commitThreadPrefetchForOwner,
+    releaseThreadPrefetch as releaseThreadPrefetchForOwner,
     resetThreadPrefetchClaims,
     resetThreadTrackerForTest,
 } from '../../src/slack/thread-tracker.ts';
 import { buildThreadPreamble, PREAMBLE_TOTAL_CAP } from '../../src/slack/context.ts';
+
+const OWNER = { global: 0, scope: 0 };
+const claimThreadPrefetch = (channel: string, threadTs: string) =>
+    claimThreadPrefetchForOwner(channel, threadTs, OWNER);
+const commitThreadPrefetch = (channel: string, threadTs: string, token: number) =>
+    commitThreadPrefetchForOwner(channel, threadTs, OWNER, token);
+const releaseThreadPrefetch = (channel: string, threadTs: string, token: number) =>
+    releaseThreadPrefetchForOwner(channel, threadTs, OWNER, token);
 
 let recoverAttachments: () => Promise<unknown[]> = async () => [];
 

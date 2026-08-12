@@ -31,7 +31,7 @@ import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
-import { admitSlackRun, claimSlackEvent, commitSlackEvent, currentIngressGeneration, enqueueSlackIngress, isIngressGenerationCurrent, resetSlackIngress, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
+import { admitSlackRun, claimSlackEvent, commitSlackEvent, currentIngressGeneration, enqueueSlackIngress, isIngressGenerationCurrent, resetSlackIngress, resolveSlackScopeForTarget, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
 import { resolveConversationInfo, resolveThreadInfo } from './conversation.js';
 import { buildSlackContextBlock, applySlackContext, buildThreadPreamble, ROSTER_PREVIEW } from './context.js';
@@ -40,6 +40,7 @@ import { cachedNameMap } from './conversation.js';
 import { fetchSlackChannelMembers } from './roster.js';
 import type { SlackIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
+import { getSessionOwnershipGeneration, type SessionOwnerToken } from '../agent/session-persistence.js';
 import { resetSlackIdentityCache } from './identity.js';
 import { resetSlackConversationCache } from './conversation.js';
 
@@ -104,7 +105,11 @@ async function slackOrchestrate(
     prompt: string,
     displayMsg: string,
     signal: AbortSignal,
-    dedupe: { eventKey?: string; reservationGeneration?: number } = {},
+    dedupe: {
+        eventKey?: string;
+        reservationGeneration?: number;
+        preResolvedScope?: string | null;
+    } = {},
 ) {
     const client = getSlackSendClient();
     if (!client.token) return;
@@ -122,6 +127,8 @@ async function slackOrchestrate(
     }
     const result = admitSlackRun({
         target, prompt, displayText: displayMsg, chatId,
+        ...(dedupe.preResolvedScope !== undefined
+            ? { preResolvedScope: dedupe.preResolvedScope } : {}),
         runReply: async (ctx: SlackRunContext) => {
             try {
                 const progress = await startSlackProgress(
@@ -228,7 +235,13 @@ export async function processSlackMessageEvent(
     target: RemoteTarget,
     text: string,
     signal: AbortSignal,
-    opts: { prefetchToken?: number; eventKey?: string; reservationGeneration?: number } = {},
+    opts: {
+        prefetchToken?: number;
+        prefetchOwner?: SessionOwnerToken;
+        preResolvedScope?: string | null;
+        eventKey?: string;
+        reservationGeneration?: number;
+    } = {},
 ): Promise<void> {
     // The claim was taken synchronously in handleSlackEnvelope, before this task
     // was queued. Every path out of here that did NOT inject history has to give
@@ -239,13 +252,15 @@ export async function processSlackMessageEvent(
     let prefetchCommitted = false;
     try {
         await runSlackMessageEvent(event, target, text, signal, opts, () => {
-            prefetchCommitted = Boolean(opts.prefetchToken) && commitThreadPrefetch(
-                event.channel || '', event.thread_ts || '', opts.prefetchToken || 0,
+            prefetchCommitted = Boolean(opts.prefetchToken && opts.prefetchOwner) && commitThreadPrefetch(
+                event.channel || '', event.thread_ts || '', opts.prefetchOwner!, opts.prefetchToken || 0,
             );
         });
     } finally {
-        if (opts.prefetchToken && !prefetchCommitted) {
-            releaseThreadPrefetch(event.channel || '', event.thread_ts || '', opts.prefetchToken);
+        if (opts.prefetchToken && opts.prefetchOwner && !prefetchCommitted) {
+            releaseThreadPrefetch(
+                event.channel || '', event.thread_ts || '', opts.prefetchOwner, opts.prefetchToken,
+            );
         }
     }
 }
@@ -255,7 +270,13 @@ async function runSlackMessageEvent(
     target: RemoteTarget,
     text: string,
     signal: AbortSignal,
-    opts: { prefetchToken?: number; eventKey?: string; reservationGeneration?: number },
+    opts: {
+        prefetchToken?: number;
+        prefetchOwner?: SessionOwnerToken;
+        preResolvedScope?: string | null;
+        eventKey?: string;
+        reservationGeneration?: number;
+    },
     commitPrefetch: () => void,
 ): Promise<void> {
     const files = event.files || [];
@@ -307,6 +328,7 @@ async function runSlackMessageEvent(
         ...(opts.eventKey ? { eventKey: opts.eventKey } : {}),
         ...(opts.reservationGeneration !== undefined
             ? { reservationGeneration: opts.reservationGeneration } : {}),
+        ...(opts.preResolvedScope !== undefined ? { preResolvedScope: opts.preResolvedScope } : {}),
     });
 }
 
@@ -322,7 +344,7 @@ const INBOUND_CONTEXT_DEADLINE_MS = 700;
 
 async function buildInboundContextBlock(
     event: SlackMessageEvent, identity: SlackIdentity, signal: AbortSignal,
-    opts: { prefetchToken?: number } = {},
+    opts: { prefetchToken?: number; preResolvedScope?: string | null } = {},
     commitPrefetch: () => void = () => { },
 ): Promise<string> {
     const channel = event.channel || '';
@@ -355,7 +377,8 @@ async function buildInboundContextBlock(
         // First entry into a thread already in progress: give the agent what was
         // said before it was pulled in. Once only — later messages ride the
         // agent session, and re-injecting would waste tokens and Tier 3 budget.
-        if (!opts.prefetchToken || !thread?.resolved || !thread.messages?.length) return block;
+        const shouldPrefetch = Boolean(opts.prefetchToken) || opts.preResolvedScope === null;
+        if (!shouldPrefetch || !thread?.resolved || !thread.messages?.length) return block;
         // The current message is already the prompt body; repeating it here
         // would show the agent its own input twice.
         const prior = thread.messages.filter(message => message.ts !== event.ts);
@@ -424,6 +447,7 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     const event = payload?.event;
     if (!event) return;
 
+    const target = buildSlackTarget(event);
     const decision = shouldProcessSlackEvent(event, gateConfig(), envelope.type);
     if (!decision.process) {
         log.info(`[slack:in] skipped (${decision.reason})`);
@@ -451,6 +475,10 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
         reservedEventKey = eventKey;
         reservationGeneration = currentIngressGeneration();
     }
+    const preResolvedScope = resolveSlackScopeForTarget(target);
+    const prefetchOwner = preResolvedScope
+        ? getSessionOwnershipGeneration(preResolvedScope)
+        : undefined;
     if (event.type === 'app_mention' && event.channel) {
         // A mention inside a thread marks that thread; a top-level mention
         // marks the thread this message would parent (marking point a).
@@ -459,8 +487,10 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
             // A thread WE start needs no history: the parent mention and our
             // reply are already the session's own context. Spend the claim now
             // so the first follow-up does not re-inject what the agent said.
-            const token = claimThreadPrefetch(event.channel, event.ts);
-            commitThreadPrefetch(event.channel, event.ts, token);
+            if (prefetchOwner) {
+                const token = claimThreadPrefetch(event.channel, event.ts, prefetchOwner);
+                commitThreadPrefetch(event.channel, event.ts, prefetchOwner, token);
+            }
         }
     }
     // Claim the one-time thread prefetch HERE, synchronously, before the ingress
@@ -470,12 +500,11 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
     // which is not awaited). On the accepted message-event path no `await` runs
     // between this function's entry and this line, so the test-and-set is atomic
     // against a second envelope in the same tick.
-    const prefetchToken = event.thread_ts
-        ? claimThreadPrefetch(event.channel || '', event.thread_ts)
+    const prefetchToken = event.thread_ts && prefetchOwner
+        ? claimThreadPrefetch(event.channel || '', event.thread_ts, prefetchOwner)
         : 0;
     let prefetchHandedOff = false;
     try {
-        const target = buildSlackTarget(event);
         setLastActiveTarget('slack', target);
         setLatestSeenTarget('slack', target);
 
@@ -515,12 +544,16 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
         prefetchHandedOff = enqueueSlackIngress(slackIngressLaneKey(target), signal =>
             processSlackMessageEvent(event, target, text, signal, {
                 prefetchToken,
+                ...(prefetchOwner ? { prefetchOwner } : {}),
+                preResolvedScope,
                 ...(reservedEventKey ? { eventKey: reservedEventKey } : {}),
                 ...(reservationGeneration !== undefined ? { reservationGeneration } : {}),
             }));
     } finally {
-        if (prefetchToken && !prefetchHandedOff) {
-            releaseThreadPrefetch(event.channel || '', event.thread_ts || '', prefetchToken);
+        if (prefetchToken && prefetchOwner && !prefetchHandedOff) {
+            releaseThreadPrefetch(
+                event.channel || '', event.thread_ts || '', prefetchOwner, prefetchToken,
+            );
         }
     }
 }

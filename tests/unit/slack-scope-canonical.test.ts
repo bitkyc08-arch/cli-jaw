@@ -17,7 +17,7 @@ mock.module('../../src/orchestrator/scope.ts', {
         channelGateOn: () => true,
         scopeForChatSession: (sessionId: string, remoteKey?: string, gateEnabled?: boolean) => {
             scopeCalls.push({ sessionId, ...(remoteKey ? { remoteKey } : {}), ...(gateEnabled === undefined ? {} : { gateEnabled }) });
-            return 'canonical:sentinel';
+            return gateEnabled === false ? 'default' : 'canonical:sentinel';
         },
     },
 });
@@ -31,7 +31,7 @@ mock.module('../../src/orchestrator/gateway.ts', {
     },
 });
 
-const { admitSlackRun } = await import('../../src/slack/ingress.ts');
+const { admitSlackRun, resolveSlackScopeForTarget } = await import('../../src/slack/ingress.ts');
 
 test('Slack ingress delegates its resolved chat identity to the canonical scope helper', () => {
     settings.multiSession = { enabled: true, channels: { slack: true } };
@@ -57,4 +57,40 @@ test('Slack ingress delegates its resolved chat identity to the canonical scope 
         gateEnabled: true,
     }]);
     assert.equal(submittedScope, 'canonical:sentinel');
+});
+
+test('Slack ingress uses a pre-resolved scope without resolving it again', () => {
+    settings.multiSession = { enabled: true, channels: { slack: true } };
+    scopeCalls.length = 0;
+    submittedScope = undefined;
+
+    admitSlackRun({
+        target: {
+            channel: 'slack',
+            targetKind: 'channel',
+            peerKind: 'channel',
+            targetId: 'C1',
+        },
+        prompt: 'hello',
+        displayText: 'hello',
+        chatId: 'C1',
+        preResolvedScope: 'canonical:pre-resolved',
+        runReply: async () => {},
+    });
+
+    assert.deepEqual(scopeCalls, []);
+    assert.equal(submittedScope, 'canonical:pre-resolved');
+});
+
+test('scope resolution returns null when Slack has no bound session', () => {
+    settings.multiSession = { enabled: false, channels: { slack: true } };
+    scopeCalls.length = 0;
+
+    assert.equal(resolveSlackScopeForTarget({
+        channel: 'slack',
+        targetKind: 'channel',
+        peerKind: 'channel',
+        targetId: 'C1',
+    }), null);
+    assert.deepEqual(scopeCalls, [{ sessionId: 'active-session', gateEnabled: false }]);
 });
