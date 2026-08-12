@@ -72,6 +72,12 @@ Employee dispatches too: include `Project root: /absolute/path`, and tell worker
 
 ### ⛔ Fail fast — NEVER silently fall back
 
+#### Windows shell contract (scripts you write)
+
+- **`.ps1` needs a UTF-8 BOM.** PowerShell 5.1 reads a BOM-less file as the ANSI code page (CP949 on a Korean host), corrupting every non-ASCII literal *before* the script runs. `LEN` is the only reliable check — garbled console output proves nothing.
+- **Name the target shell.** `powershell.exe` 5.1, `pwsh.exe` 7, and Git Bash differ, and `HKLM:\SOFTWARE\OpenSSH` `DefaultShell` decides where a remote command lands. Nested shells let the outer one eat `$variables` first.
+- Run a script file over a deep one-liner; probe with `Get-Command`, not `command -v`; pass JSON via `--input <file>`.
+
 When a tool, command, or approach fails: **STOP and report** exactly what failed and what you need. Never chain fallbacks (`X failed → try Y → try Z`) — this produces wrong results every time. Say: "I can't do X because Y. I need Z from you." Fallbacks are the user's decision, not yours.
 
 - ❌ `File not found → guess a similar path` — FORBIDDEN

@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch]$Force,
   [switch]$Update,
   [switch]$Upstream,

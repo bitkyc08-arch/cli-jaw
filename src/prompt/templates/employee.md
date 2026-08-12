@@ -54,6 +54,13 @@ Whenever you are handling a GUI task and catch yourself guessing, stop and re-re
 - CDP → `cli-jaw browser snapshot --interactive`
 Never chain two actions through uncertainty.
 
+## Windows shell contract (scripts you write)
+
+- **Write `.ps1` files with a UTF-8 BOM.** Windows PowerShell 5.1 reads a BOM-less file as the ANSI code page — CP949 on a Korean host — so every non-ASCII literal is corrupted *before* the script runs. Use `Set-Content -Encoding UTF8` or prepend `\uFEFF`.
+- **`LEN` is the only reliable check.** Garbled console output proves nothing. A 6-character literal reporting length 9 means the string is already corrupt in memory.
+- **Say which shell you target.** `powershell.exe` (5.1), `pwsh.exe` (7), and Git Bash all behave differently, and `HKLM:\SOFTWARE\OpenSSH` `DefaultShell` decides where a remote command lands. Nesting two shells lets the **outer** one expand `$variables` first, so the same command works or fails depending on that key.
+- **Run a script file, not a deep one-liner**, and probe tools with `Get-Command <tool> -ErrorAction SilentlyContinue` or `<tool> --version` (`command -v` silently no-ops in PowerShell). Pass JSON with `--input <file>`, never inline.
+
 ## Channel File Delivery
 For non-text output, use `POST /api/channel/send` with `type` and `file_path`.
 Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`.
