@@ -12,6 +12,7 @@ import {
     sweepSlackEventDedup,
 } from '../core/db.js';
 import { log } from '../core/logger.js';
+import { logErrorText } from '../messaging/redact.js';
 
 const ingressTails = new Map<string, Promise<void>>();
 const controllers = new Set<AbortController>();
@@ -80,7 +81,7 @@ function isSlackEventCommitted(key: string, now: number): boolean {
         return typeof row?.expires_at === 'number' && row.expires_at > now;
     } catch (error) {
         // A broken dedupe store must never stop us receiving messages.
-        log.warn('[slack:dedupe] durable read failed:', (error as Error).message);
+        log.warn('[slack:dedupe] durable read failed:', logErrorText(error));
         return false;
     }
 }
@@ -103,7 +104,7 @@ export function commitSlackEvent(key: string): void {
     seenEvents.set(key, expiresAt);
     try { insertSlackEventDedup.run(key, expiresAt); }
     catch (error) {
-        log.warn('[slack:dedupe] durable commit failed:', (error as Error).message);
+        log.warn('[slack:dedupe] durable commit failed:', logErrorText(error));
     }
 }
 
