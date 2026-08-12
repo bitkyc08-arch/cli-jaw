@@ -26,6 +26,7 @@ import {
 } from './shared.js';
 import { reindexAll, reindexSingleFile } from './indexing.js';
 import { launchSpec } from '../core/exec-name.js';
+import { detectWindowsShell } from '../core/windows-shell.js';
 
 function slug(value: string) {
     return value
@@ -384,6 +385,9 @@ function tryExec(bin: string, args: string[]): string {
 /** Scan hardware + project root info to seed profile when no legacy data exists */
 export function scanSystemProfile(): string {
     const lines: string[] = [];
+    const shell = process.platform === 'win32'
+        ? detectWindowsShell()
+        : process.env['SHELL'] || 'unknown';
 
     // Hardware
     lines.push('## System');
@@ -392,7 +396,7 @@ export function scanSystemProfile(): string {
     lines.push(`- release: ${os.release()}`);
     lines.push(`- cpus: ${os.cpus().length} cores (${os.cpus()[0]?.model || 'unknown'})`);
     lines.push(`- memory: ${(os.totalmem() / 1073741824).toFixed(1)} GB`);
-    lines.push(`- shell: ${process.env["SHELL"] || 'unknown'}`);
+    lines.push(`- shell: ${shell}`);
     lines.push(`- user: ${os.userInfo().username}`);
     lines.push(`- home: ${os.homedir()}`);
 
