@@ -107,6 +107,12 @@ test('Slack step 1 generates and copies a named JSON manifest before setup', () 
     assert.match(mod, /slackAppName = 'cli-jaw'/, 'Slack app name must default to cli-jaw');
     assert.match(mod, /\/api\/slack\/manifest\?name=/, 'the app name is not sent to the canonical manifest route');
     assert.match(mod, /copyText\(json\)/, 'the JSON manifest must use the shared clipboard bridge');
+    assert.doesNotMatch(mod, /pattern="\[a-z0-9\._-\]\+"/, 'app-name input must not impose the bot character class');
+    assert.doesNotMatch(mod, /maxlength="35"/, 'HTML code-unit length must not preempt the code-point validator');
+    assert.doesNotMatch(mod, /!\/\^\[a-z0-9\._-\]\+\$\/\.test\(appName\)/, 'client validation must not impose the bot character class');
+    assert.match(mod, /!appName \|\| Array\.from\(appName\)\.length > 35/, 'client must enforce the app-name length contract');
+    assert.match(mod, /data\?\.botDisplayName/, 'the UI must read the server-derived bot handle');
+    assert.match(mod, /onboarding\.slackManifestCopiedWithBot/, 'the UI must disclose a changed bot handle');
     assert.doesNotMatch(mod, /postPreviewOpenBrowser/, 'Slack setup must not route through Manager Browser');
 
     const generationStart = mod.indexOf('async function runSlackManifestGeneration');
@@ -134,11 +140,17 @@ test('Slack step 1 generates and copies a named JSON manifest before setup', () 
             'onboarding.slackGenerateManifest',
             'onboarding.slackManifestGenerating',
             'onboarding.slackManifestReady',
+            'onboarding.slackManifestCopiedWithBot',
             'onboarding.slackManifestError',
             'onboarding.slackAppNameError',
         ]) {
             assert.ok(dict[key], `${locale}.json missing ${key}`);
         }
+    }
+    const forbiddenSharedClaims = ['both the app and bot', '앱과 봇에 함께', 'アプリとボットの両方', '同时用于应用和机器人'];
+    for (const [index, locale] of ['en', 'ko', 'ja', 'zh'].entries()) {
+        const dict = JSON.parse(read(`public/locales/${locale}.json`)) as Record<string, string>;
+        assert.ok(!dict['onboarding.slackAppNameHint']?.includes(forbiddenSharedClaims[index]!), `${locale}.json still claims one shared name`);
     }
     const ko = JSON.parse(read('public/locales/ko.json')) as Record<string, string>;
     assert.equal(ko['onboarding.slackManifestReady'], '복사되었습니다');

@@ -16,14 +16,25 @@ export const MAX_SLACK_APP_NAME_LENGTH = 35;
 
 function normalizedSlackAppName(appName: string): string {
     const normalized = appName.trim();
-    if (!normalized || Array.from(normalized).length > MAX_SLACK_APP_NAME_LENGTH || !/^[a-z0-9._-]+$/.test(normalized)) {
-        throw new RangeError(`Slack app name must be 1-${MAX_SLACK_APP_NAME_LENGTH} characters using lowercase letters, numbers, dots, underscores, or hyphens.`);
+    if (!normalized || Array.from(normalized).length > MAX_SLACK_APP_NAME_LENGTH) {
+        throw new RangeError(`Slack app name must be 1-${MAX_SLACK_APP_NAME_LENGTH} characters.`);
     }
     return normalized;
 }
 
+function derivedSlackBotDisplayName(appName: string): string {
+    if (/^[a-z0-9._-]+$/.test(appName)) return appName;
+    const sanitized = appName
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/[._-]+/g, '-')
+        .replace(/^[._-]+|[._-]+$/g, '');
+    return sanitized || DEFAULT_SLACK_APP_NAME;
+}
+
 export function createSlackAppManifest(appName: string = DEFAULT_SLACK_APP_NAME) {
     const name = normalizedSlackAppName(appName);
+    const botDisplayName = derivedSlackBotDisplayName(name);
     return {
         _metadata: { major_version: 1 },
         display_information: {
@@ -32,7 +43,7 @@ export function createSlackAppManifest(appName: string = DEFAULT_SLACK_APP_NAME)
         },
         features: {
             bot_user: {
-                display_name: name,
+                display_name: botDisplayName,
                 always_online: false,
             },
             // The Messages tab is what gives users a DM composer for the app.

@@ -128,8 +128,8 @@ function stepBody(state: FlowState): string {
             <div class="onboarding-field">
                 <label for="onboard-slack-app-name">${escapeHtml(t('onboarding.slackAppName'))}</label>
                 <input id="onboard-slack-app-name" data-onboard-app-name="1" class="input-sm"
-                    type="text" maxlength="35" pattern="[a-z0-9._-]+" autocomplete="off"
-                    autocapitalize="none" spellcheck="false"
+                    type="text" autocomplete="off"
+                    spellcheck="false"
                     aria-describedby="onboard-slack-app-name-hint onboard-slack-manifest-status"
                     value="${escapeHtml(slackAppName)}">
                 <span class="onboarding-hint" id="onboard-slack-app-name-hint">${escapeHtml(t('onboarding.slackAppNameHint'))}</span>
@@ -341,7 +341,7 @@ async function runSlackManifestGeneration(): Promise<void> {
 
     const appName = input.value.trim();
     slackAppName = appName;
-    if (!appName || Array.from(appName).length > 35 || !/^[a-z0-9._-]+$/.test(appName)) {
+    if (!appName || Array.from(appName).length > 35) {
         status.classList.add('is-error');
         status.textContent = t('onboarding.slackAppNameError');
         input.focus();
@@ -354,7 +354,7 @@ async function runSlackManifestGeneration(): Promise<void> {
     button.textContent = t('onboarding.slackManifestGenerating');
 
     try {
-        const data = await api<{ json?: string }>(`/api/slack/manifest?name=${encodeURIComponent(appName)}`);
+        const data = await api<{ json?: string; botDisplayName?: string }>(`/api/slack/manifest?name=${encodeURIComponent(appName)}`);
         if (generation !== flowGeneration || flow?.channel !== 'slack' || slackAppName.trim() !== appName) return;
         const json = data?.json || '';
         if (!json) throw new Error('empty manifest');
@@ -362,7 +362,10 @@ async function runSlackManifestGeneration(): Promise<void> {
         if (!copied.ok) throw new Error(copied.error || 'copy failed');
         if (generation !== flowGeneration || flow?.channel !== 'slack' || slackAppName.trim() !== appName) return;
         flow = markSlackManifestGenerated(flow);
-        status.textContent = t('onboarding.slackManifestReady');
+        const botName = data?.botDisplayName;
+        status.textContent = botName && botName !== appName
+            ? t('onboarding.slackManifestCopiedWithBot', { bot: botName })
+            : t('onboarding.slackManifestReady');
         syncSlackStepActions();
     } catch {
         status.classList.add('is-error');

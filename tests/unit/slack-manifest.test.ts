@@ -67,22 +67,52 @@ test('slash command starter set exists in the shared catalog shape', () => {
     }
 });
 
-test('custom app name is applied to both the app and bot display names', () => {
-    const manifest = createSlackAppManifest('demo');
-    assert.equal(manifest.display_information.name, 'demo');
-    assert.equal(manifest.features.bot_user.display_name, 'demo');
-
-    const parsed = JSON.parse(slackManifestJson('demo'));
-    assert.deepEqual(parsed, manifest);
+test('custom app name is preserved while the bot display name is derived', () => {
+    const cases = [
+        ['Demo', 'Demo', 'demo'],
+        ['demo app', 'demo app', 'demo-app'],
+        ['데모', '데모', 'cli-jaw'],
+        [' .__Demo   App--. ', '.__Demo   App--.', 'demo-app'],
+        ['!!!', '!!!', 'cli-jaw'],
+    ] as const;
+    for (const [input, appName, botName] of cases) {
+        const manifest = createSlackAppManifest(input);
+        assert.equal(manifest.display_information.name, appName);
+        assert.equal(manifest.features.bot_user.display_name, botName);
+    }
 });
 
-test('app name validation enforces the shared Slack app and bot name format', () => {
-    for (const value of ['', '   ', 'bad\nname', 'x'.repeat(36), 'demo app', 'Demo', '데모']) {
+test('legacy lowercase slug names keep identical app and bot output', () => {
+    for (const value of ['cli-jaw', 'demo', 'demo-app', 'demo_app', 'demo.app', '...']) {
+        const manifest = createSlackAppManifest(value);
+        assert.equal(manifest.display_information.name, value);
+        assert.equal(manifest.features.bot_user.display_name, value);
+    }
+});
+
+test('app name validation enforces only the Slack app name length contract', () => {
+    for (const value of ['', '   ', 'x'.repeat(36), '데'.repeat(36)]) {
         assert.throws(() => createSlackAppManifest(value), /Slack app name/);
     }
-    for (const value of ['demo', 'demo-app', 'demo_app', 'demo.app']) {
+    for (const value of ['bad\nname', 'demo app', 'Demo', '데모']) {
         assert.doesNotThrow(() => createSlackAppManifest(value));
     }
+});
+
+test('unicode lowercase expansion stays within the Slack bot display-name limit', () => {
+    const input = 'İ'.repeat(35);
+    const manifest = createSlackAppManifest(input);
+    const botName = manifest.features.bot_user.display_name;
+    assert.equal(Array.from(manifest.display_information.name).length, 35);
+    assert.equal(Array.from(botName).length, 69);
+    assert.ok(Array.from(botName).length <= 80);
+});
+
+test('JSON output preserves the app name and serialized derived bot name', () => {
+    const manifest = createSlackAppManifest('demo app');
+    const parsed = JSON.parse(slackManifestJson('demo app'));
+    assert.deepEqual(parsed, manifest);
+    assert.equal(parsed.features.bot_user.display_name, 'demo-app');
 });
 
 test('YAML output round-trips to the same manifest', () => {

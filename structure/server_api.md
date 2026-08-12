@@ -81,7 +81,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | --- | --- | --- |
 | `GET` | `/` | `public/dist/index.html`이 있으면 Vite build를 서빙, 없으면 static fallback |
 | `GET` | `/api/health` | `{ ok, version, uptime }` |
-| `GET` | `/api/slack/manifest` | 설정 페이지 "매니페스트 복사"용 canonical Slack 앱 매니페스트 `{ ok, data: { yaml } }` (비밀값 없음, unauthenticated) |
+| `GET` | `/api/slack/manifest` | 설정 페이지 "매니페스트 복사"용 canonical Slack 앱 매니페스트. 선택 `?name=`은 1~35자 앱 표시명을 받고 봇 표시명은 자동 파생한다. `{ ok, data: { yaml, json, botDisplayName } }` (비밀값 없음, unauthenticated) |
 | `POST` | `/api/channels/validate` | 온보딩 마법사 라이브 크리덴셜 검증 `{ channel, botToken, appToken?, guildId? }` → `{ ok, identity?, teamId? }` 또는 `{ ok:false, error }`. 저장하지 않고 검증만 수행 |
 | `GET` | `/api/session` | 현재 main session row 반환 |
 | `GET` | `/api/messages` | `includeTrace=1|true|yes`면 trace 포함 메시지 조회. `?limit=N`(1–5000)이면 최근 N개만 ascending 반환; 생략 시 전체 history |

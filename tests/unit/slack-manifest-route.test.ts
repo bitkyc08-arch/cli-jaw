@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 
 const { registerSystemRoutes } = await import('../../src/routes/system.ts');
 
-test('GET /api/slack/manifest returns YAML and JSON with the requested app name', () => {
+test('GET /api/slack/manifest preserves the app name and derives the bot name', () => {
     const handlers = new Map<string, (req: unknown, res: unknown) => void>();
     const app = {
         get: (path: string, handler: (req: unknown, res: unknown) => void) => { handlers.set(path, handler); },
@@ -17,18 +17,19 @@ test('GET /api/slack/manifest returns YAML and JSON with the requested app name'
     const handler = handlers.get('/api/slack/manifest');
     assert.ok(handler, 'route not registered');
 
-    let payload: { ok?: boolean; data?: { yaml?: string; json?: string } } | null = null;
-    handler({ query: { name: 'demo' } }, { json: (body: unknown) => { payload = body as typeof payload; } });
+    let payload: { ok?: boolean; data?: { yaml?: string; json?: string; botDisplayName?: string } } | null = null;
+    handler({ query: { name: 'Demo App' } }, { json: (body: unknown) => { payload = body as typeof payload; } });
 
     assert.equal(payload?.ok, true);
     const manifest = parse(payload?.data?.yaml || '');
     const jsonManifest = JSON.parse(payload?.data?.json || '{}');
-    assert.equal(manifest.display_information.name, 'demo');
-    assert.equal(manifest.features.bot_user.display_name, 'demo');
-    assert.equal(jsonManifest.display_information.name, 'demo');
-    assert.equal(jsonManifest.features.bot_user.display_name, 'demo');
+    assert.equal(manifest.display_information.name, 'Demo App');
+    assert.equal(manifest.features.bot_user.display_name, 'demo-app');
+    assert.equal(jsonManifest.display_information.name, 'Demo App');
+    assert.equal(jsonManifest.features.bot_user.display_name, 'demo-app');
     assert.equal(manifest.settings.socket_mode_enabled, true);
     assert.ok(manifest.oauth_config.scopes.bot.includes('chat:write'));
+    assert.equal(payload?.data?.botDisplayName, 'demo-app');
 });
 
 test('GET /api/slack/manifest rejects an invalid app name', () => {

@@ -12,6 +12,7 @@ import { buildChannelHealthSnapshot } from '../messaging/channel-health.js';
 import { getCliModelAndEffort } from '../core/main-session.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import {
+    createSlackAppManifest,
     DEFAULT_SLACK_APP_NAME,
     slackManifestJson,
     slackManifestYaml,
@@ -49,9 +50,13 @@ export function registerSystemRoutes(app: Router, deps: { jawAuthToken: string }
         }
         const appName = rawName ?? DEFAULT_SLACK_APP_NAME;
         try {
+            const manifest = createSlackAppManifest(appName);
             ok(res, {
                 yaml: slackManifestYaml(appName),
                 json: slackManifestJson(appName),
+                // Additive field for UI disclosure; existing consumers only
+                // read yaml/json. Derive once in the canonical core owner.
+                botDisplayName: manifest.features.bot_user.display_name,
             });
         } catch (error) {
             if (error instanceof RangeError) {
