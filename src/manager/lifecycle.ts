@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { homedir } from 'node:os';
-import { getJawPath } from '../core/instance.js';
+import { getJawPath, getNodePath } from '../core/instance.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import type {
     DashboardInstance,
@@ -68,6 +68,7 @@ export type DashboardLifecycleManagerOptions = {
     from: number;
     count: number;
     jawPath?: string;
+    nodePath?: string;
     homeRoot?: string;
     dashboardHome?: string;
     storageRoot?: string;
@@ -81,6 +82,7 @@ export class DashboardLifecycleManager {
     private readonly from: number;
     private readonly to: number;
     private readonly jawPath: string;
+    private readonly nodePath: string | undefined;
     private readonly homeRoot: string;
     private readonly spawnImpl: typeof spawn;
     private readonly verify: ProcessVerifyImpl;
@@ -93,6 +95,7 @@ export class DashboardLifecycleManager {
         this.from = options.from;
         this.to = options.from + options.count - 1;
         this.jawPath = options.jawPath || getJawPath();
+        this.nodePath = options.nodePath;
         this.homeRoot = options.homeRoot || homedir();
         this.spawnImpl = options.spawnImpl || spawn;
         this.verify = { ...defaultProcessVerify, ...(options.processVerify || {}) };
@@ -109,7 +112,10 @@ export class DashboardLifecycleManager {
     }
 
     buildStartCommand(port: number, home = this.defaultHome(port)): string[] {
-        return [this.jawPath, '--home', home, 'serve', '--port', String(port), '--no-open'];
+        const jawCommand = /\.(?:c|m)?js$/i.test(this.jawPath)
+            ? [this.nodePath || getNodePath(), this.jawPath]
+            : [this.jawPath];
+        return [...jawCommand, '--home', home, 'serve', '--port', String(port), '--no-open'];
     }
 
     decorateScanResult(result: DashboardScanResult, serviceStates?: Map<number, DashboardServiceState>): DashboardScanResult {
