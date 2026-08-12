@@ -43,6 +43,7 @@ export const SETTINGS_PATH = join(JAW_HOME, 'settings.json');
 // Remote-auth token file (server.ts writes JAW_AUTH_TOKEN here at boot,
 // 0600). Loopback never needs it; LAN/remote API clients and operators do.
 export const TOKEN_PATH = join(JAW_HOME, 'token');
+export const PIDFILE_PATH = join(JAW_HOME, 'jaw.pid.json');
 export const HEARTBEAT_JOBS_PATH = join(JAW_HOME, 'heartbeat.json');
 export const UPLOADS_DIR = join(JAW_HOME, 'uploads');
 export const WIDGETS_DIR = join(JAW_HOME, 'widgets');

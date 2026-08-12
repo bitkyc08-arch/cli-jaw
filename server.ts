@@ -72,10 +72,11 @@ import { ensureMemoryRuntimeReady, hasSoulFile } from './src/memory/runtime.js';
 
 import { loadLocales } from './src/core/i18n.js';
 import {
-    PROMPTS_DIR, DB_PATH,
+    PROMPTS_DIR, DB_PATH, JAW_HOME,
     settings, loadSettings, saveSettings,
-    ensureDirs, runMigration, TOKEN_PATH,
+    ensureDirs, runMigration, TOKEN_PATH, APP_VERSION,
 } from './src/core/config.js';
+import { clearPidfileIfOurs, defaultLifecycleDeps, processStartedAt, writePidfile } from './src/core/instance-lifecycle.js';
 import { startSettingsWatch } from './src/core/settings-watch.js';
 import { startWidgetWatcher } from './src/core/widget-watcher.js';
 import {
@@ -287,6 +288,16 @@ try {
     console.warn('[jaw:auth] could not write token file:', (e as Error).message);
 }
 
+// Fail closed: Date.now() would let a recycled PID satisfy ownership later.
+const startedAt = processStartedAt(process.pid);
+const ownPidfileRecord = startedAt ? { pid: process.pid, startedAt, port: PORT, home: JAW_HOME, version: APP_VERSION } : null;
+if (ownPidfileRecord) {
+    try { writePidfile(ownPidfileRecord, defaultLifecycleDeps); }
+    catch (e) { console.warn('[jaw:lifecycle] could not write pidfile:', (e as Error).message); }
+} else {
+    console.warn('[jaw:lifecycle] no OS start time for this process; skipping pidfile. `jaw service stop` will report no-pidfile for this instance.');
+}
+
 // Boss-only dispatch token (phase 8). Server generates and stores in process.env;
 // main-agent spawns inherit it, employee spawns strip it in makeCleanEnv.
 initBossToken();
@@ -496,6 +507,11 @@ const shutdown = async (sig: string) => {
         console.log('[server] database closed');
     } catch (e) {
         console.warn('[server] database close failed:', (e as Error).message);
+    }
+
+    if (ownPidfileRecord) {
+        try { clearPidfileIfOurs(ownPidfileRecord, defaultLifecycleDeps); }
+        catch (e) { console.warn('[jaw:lifecycle] could not clear pidfile:', (e as Error).message); }
     }
 
     clearTimeout(forceExitTimer);

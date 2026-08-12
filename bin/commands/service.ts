@@ -4,6 +4,8 @@
  *   jaw service              — OS 감지 → 설치 + 시작 (원스텝)
  *   jaw service --port 3458  — 커스텀 포트로 등록
  *   jaw service status       — 현재 상태 확인
+ *   jaw service stop         — 이 홈의 서버만 graceful stop
+ *   jaw service restart      — 이 홈의 서버만 graceful restart
  *   jaw service unset        — 서비스 제거
  *   jaw service logs         — 로그 보기
  */
@@ -13,8 +15,73 @@ import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 import { instanceId, getNodePath, getJawPath, sanitizeUnitName, buildServicePath } from '../../src/core/instance.js';
+import { defaultLifecycleDeps, verifyOwnership, type OwnershipVerdict } from '../../src/core/instance-lifecycle.js';
+import type { DashboardLifecycleResult, DashboardServiceState } from '../../src/manager/types.js';
+import { detectServiceState, restartServiceInstance, stopServiceInstance } from '../../src/manager/platform-service.js';
+
+export type ServiceLifecycleOutcome = {
+    action: 'stop' | 'restart';
+    status: 'stopped' | 'already-stopped' | 'no-pidfile' | 'stale' | 'foreign'
+        | 'permission-denied' | 'unverifiable' | 'raced' | 'timeout';
+    pid?: number;
+    message: string;
+};
+
+export interface ServiceLifecycleDeps {
+    verifyOwnership: () => OwnershipVerdict;
+    /** Final re-check shrinks, but cannot close, the residual race before kill(2). */
+    verifyAndSignal: (signal: NodeJS.Signals) => 'signalled' | 'raced' | 'not-owned';
+    controlNative?: ((action: 'stop' | 'restart') => Promise<ServiceLifecycleOutcome>) | null;
+    waitForExit: (pid: number, timeoutMs: number) => Promise<boolean>;
+    startInstance?: (() => Promise<void>) | null;
+}
+
+export interface NativeControlDeps {
+    detectServiceState: (port: number, home: string) => Promise<DashboardServiceState>;
+    stopServiceInstance: (label: string) => Promise<DashboardLifecycleResult>;
+    restartServiceInstance: (label: string) => Promise<DashboardLifecycleResult>;
+}
+
+export function nativeOutcome(action: 'stop' | 'restart', result: DashboardLifecycleResult): ServiceLifecycleOutcome {
+    return { action, status: result.ok ? 'stopped' : 'foreign', ...(result.pid ? { pid: result.pid } : {}), message: result.message };
+}
+
+export async function resolveControlNative(
+    port: number,
+    home: string,
+    deps: NativeControlDeps,
+): Promise<((action: 'stop' | 'restart') => Promise<ServiceLifecycleOutcome>) | null> {
+    const state = await deps.detectServiceState(port, home);
+    if (!state.registered) return null;
+    return action => (action === 'stop' ? deps.stopServiceInstance(state.label) : deps.restartServiceInstance(state.label))
+        .then(result => nativeOutcome(action, result));
+}
+
+function nonOwnedOutcome(action: 'stop' | 'restart', verdict: Exclude<OwnershipVerdict, { status: 'owned' }>): ServiceLifecycleOutcome {
+    const pid = 'record' in verdict ? verdict.record.pid : undefined;
+    const reason = 'reason' in verdict ? `: ${verdict.reason}` : '';
+    const message = verdict.status === 'unverifiable' ? `cannot verify ownership${reason}; refusing to signal`
+        : verdict.status === 'permission-denied' ? `permission denied for pid ${pid}; refusing to signal`
+            : verdict.status === 'no-pidfile' ? 'no pidfile exists for this home'
+                : verdict.status === 'already-stopped' ? `pid ${pid} is already stopped` : `${verdict.status} pidfile${reason}`;
+    return { action, status: verdict.status, ...(pid ? { pid } : {}), message };
+}
+
+export async function runServiceLifecycle(action: 'stop' | 'restart', deps: ServiceLifecycleDeps): Promise<ServiceLifecycleOutcome> {
+    if (deps.controlNative) return deps.controlNative(action);
+    const verdict = deps.verifyOwnership();
+    if (verdict.status !== 'owned') return nonOwnedOutcome(action, verdict);
+    const signalResult = deps.verifyAndSignal('SIGTERM');
+    if (signalResult === 'raced') return { action, status: 'raced', pid: verdict.record.pid, message: 'the instance exited while stopping it; nothing was signalled' };
+    if (signalResult === 'not-owned') return { action, status: 'stale', pid: verdict.record.pid, message: 'final ownership check denied the pid; nothing was signalled' };
+    if (action === 'stop') return { action, status: 'stopped', pid: verdict.record.pid, message: `sent SIGTERM to pid ${verdict.record.pid}` };
+    if (!await deps.waitForExit(verdict.record.pid, 5000)) return { action, status: 'timeout', pid: verdict.record.pid, message: `pid ${verdict.record.pid} did not exit within 5000ms` };
+    await deps.startInstance?.();
+    return { action, status: 'stopped', pid: verdict.record.pid, message: `restarted instance after pid ${verdict.record.pid} exited` };
+}
 
 // ─── Args ────────────────────────────────────────────
+async function main(): Promise<void> {
 const { values: opts, positionals: pos } = parseArgs({
     args: process.argv.slice(3),
     options: {
@@ -30,7 +97,7 @@ const knownKeys = new Set(['port', 'backend']);
 for (const key of Object.keys(opts)) {
     if (!knownKeys.has(key)) {
         console.error(`❌ Unknown option: --${key}`);
-        console.error('   Usage: jaw service [--port PORT] [--backend launchd|systemd|docker] [status|unset|logs]');
+        console.error('   Usage: jaw service [--port PORT] [--backend launchd|systemd|docker] [status|stop|restart|unset|logs]');
         process.exit(1);
     }
 }
@@ -51,6 +118,50 @@ if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
     console.error(`\u274c Invalid port: ${PORT}`);
     console.error('   Port must be an integer between 1 and 65535');
     process.exit(1);
+}
+
+const lifecycleAction = pos[0] === 'stop' || pos[0] === 'restart' ? pos[0] : null;
+if (lifecycleAction) {
+    const controlNative = await resolveControlNative(portNum, JAW_HOME, {
+        detectServiceState, stopServiceInstance, restartServiceInstance,
+    });
+    let initiallyOwned: Extract<OwnershipVerdict, { status: 'owned' }>['record'] | null = null;
+    const outcome = await runServiceLifecycle(lifecycleAction, {
+        controlNative,
+        verifyOwnership: () => {
+            const verdict = verifyOwnership(JAW_HOME, defaultLifecycleDeps);
+            initiallyOwned = verdict.status === 'owned' ? verdict.record : null;
+            return verdict;
+        },
+        verifyAndSignal: signal => {
+            const finalVerdict = verifyOwnership(JAW_HOME, defaultLifecycleDeps);
+            if (finalVerdict.status === 'stale' || finalVerdict.status === 'foreign') return 'not-owned';
+            if (finalVerdict.status !== 'owned') return 'raced';
+            if (!initiallyOwned
+                || finalVerdict.record.pid !== initiallyOwned.pid
+                || finalVerdict.record.startedAt.source !== initiallyOwned.startedAt.source
+                || finalVerdict.record.startedAt.value !== initiallyOwned.startedAt.value) return 'raced';
+            try { process.kill(finalVerdict.record.pid, signal); return 'signalled'; }
+            catch { return 'raced'; }
+        },
+        waitForExit: async (pid, timeoutMs) => {
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                if (defaultLifecycleDeps.probe(pid).status === 'dead') return true;
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            return false;
+        },
+        startInstance: async () => {
+            const child = nodeSpawn(getNodePath(), [getJawPath(), '--home', JAW_HOME, 'serve', '--port', PORT, '--no-open'], {
+                detached: true, stdio: 'ignore',
+            });
+            child.unref();
+        },
+    });
+    console.log(outcome.message);
+    if (!['stopped', 'already-stopped', 'no-pidfile'].includes(outcome.status)) process.exitCode = 1;
+    return;
 }
 
 const INSTANCE = instanceId();
@@ -287,3 +398,8 @@ switch (sub) {
         break;
     }
 }
+}
+
+const isEntryPoint = process.argv[1]?.endsWith('service.js')
+    || process.argv[1]?.endsWith('service.ts');
+if (isEntryPoint) void main();
