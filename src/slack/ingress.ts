@@ -211,11 +211,23 @@ export type SlackRunContext = {
     remoteKey?: string;
 };
 
+export function resolveSlackScopeForTarget(target: RemoteTarget): string | null {
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const gateEnabled = multiSessionEnabled && channelGateOn('slack');
+    const remoteKey = gateEnabled ? buildRemoteBindingKey(target) : undefined;
+    const chatSessionId = multiSessionEnabled && !gateEnabled
+        ? 'default'
+        : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
+    const scope = scopeForChatSession(chatSessionId, remoteKey, gateEnabled);
+    return scope === 'default' ? null : scope;
+}
+
 export function admitSlackRun(params: {
     target: RemoteTarget;
     prompt: string;
     displayText: string;
     chatId: string;
+    preResolvedScope?: string | null;
     runReply: (ctx: SlackRunContext) => Promise<void>;
 }): SubmitResult & { laneTail?: Promise<void> } {
     const multiSessionEnabled = settings["multiSession"]?.enabled === true;
@@ -224,7 +236,9 @@ export function admitSlackRun(params: {
     const chatSessionId = multiSessionEnabled && !gateEnabled
         ? 'default'
         : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
-    const scope = scopeForChatSession(chatSessionId, remoteKey, gateEnabled);
+    const scope = params.preResolvedScope !== undefined
+        ? params.preResolvedScope ?? 'default'
+        : scopeForChatSession(chatSessionId, remoteKey, gateEnabled);
     const result = submitMessage(params.prompt, {
         origin: 'slack', displayText: params.displayText, skipOrchestrate: true,
         target: params.target, chatId: params.chatId,

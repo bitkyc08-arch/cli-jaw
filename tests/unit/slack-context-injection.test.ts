@@ -72,8 +72,11 @@ const { processSlackMessageEvent } = await import('../../src/slack/bot.ts');
 const { slackTargetFromId } = await import('../../src/messaging/slack-target.ts');
 const { primeSlackIdentityCache, resetSlackIdentityCache } =
     await import('../../src/slack/identity.ts');
-const { claimThreadPrefetch, resetThreadPrefetchClaims } =
+const { claimThreadPrefetch: claimThreadPrefetchForOwner, resetThreadPrefetchClaims } =
     await import('../../src/slack/thread-tracker.ts');
+const OWNER = { global: 0, scope: 0 };
+const claimThreadPrefetch = (channel: string, threadTs: string) =>
+    claimThreadPrefetchForOwner(channel, threadTs, OWNER);
 
 function reset(): void {
     submitted.length = 0;
@@ -182,7 +185,7 @@ test('the first entry into a live thread injects what was said before', async ()
     const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
     await processSlackMessageEvent(
         threadedEvent, target, 'deploy status?', new AbortController().signal,
-        { prefetchToken: token },
+        { prefetchToken: token, prefetchOwner: OWNER },
     );
     const prompt = submitted[0]?.prompt ?? '';
     assert.ok(prompt.includes('앞선 대화'), 'the preamble must be present');
@@ -198,7 +201,7 @@ test('a message with no claim gets no preamble', async () => {
     const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
     await processSlackMessageEvent(
         threadedEvent, target, 'deploy status?', new AbortController().signal,
-        { prefetchToken: 0 },
+        { prefetchToken: 0, prefetchOwner: OWNER },
     );
     assert.ok(!(submitted[0]?.prompt ?? '').includes('앞선 대화'));
 });
@@ -211,7 +214,7 @@ test('an unusable prefetch releases its claim so a later message can retry', asy
     const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
     await processSlackMessageEvent(
         threadedEvent, target, 'deploy status?', new AbortController().signal,
-        { prefetchToken: token },
+        { prefetchToken: token, prefetchOwner: OWNER },
     );
     assert.ok(!(submitted[0]?.prompt ?? '').includes('앞선 대화'));
     // Nothing was injected, so the thread must still be claimable.
@@ -228,7 +231,7 @@ test('a committed prefetch keeps its claim', async () => {
     const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
     await processSlackMessageEvent(
         threadedEvent, target, 'deploy status?', new AbortController().signal,
-        { prefetchToken: token },
+        { prefetchToken: token, prefetchOwner: OWNER },
     );
     assert.ok((submitted[0]?.prompt ?? '').includes('앞선 대화'));
     assert.equal(
@@ -244,7 +247,7 @@ test('a continuation releases its claim untouched', async () => {
     const target = slackTargetFromId('C0A1B2C3', { threadTs: '1754983201.123456' });
     await processSlackMessageEvent(
         { ...threadedEvent, text: '/continue' }, target, '/continue',
-        new AbortController().signal, { prefetchToken: token },
+        new AbortController().signal, { prefetchToken: token, prefetchOwner: OWNER },
     );
     assert.equal(submitted[0]?.prompt, '/continue');
     assert.ok(

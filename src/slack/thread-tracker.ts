@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { JAW_HOME } from '../core/config.js';
+import type { SessionOwnerToken } from '../agent/session-persistence.js';
 
 /** Cap before trimming — matches Hermes' 500-entry tracker. */
 export const SLACK_THREADS_CAP = 500;
@@ -92,11 +93,16 @@ export function isThreadParticipated(channel: string, threadTs: string): boolean
 // too, so re-injecting the thread's history is the RIGHT behavior. Persisting
 // the claim would leave a context-less session permanently without context.
 
-type PrefetchClaim = { token: number; committed: boolean };
+type PrefetchClaim = { token: number; committed: boolean; lastUsed: number };
 /** key -> current owner and whether history was actually injected. */
 const prefetchClaimed = new Map<string, PrefetchClaim>();
 const PREFETCH_CLAIM_CAP = 500;
 let prefetchToken = 0;
+let prefetchUse = 0;
+
+function prefetchKey(channel: string, threadTs: string, owner: SessionOwnerToken): string {
+    return `${threadKey(channel, threadTs)}:${owner.global}:${owner.scope}`;
+}
 
 /**
  * Claim the one-time prefetch for a thread.
@@ -111,18 +117,26 @@ let prefetchToken = 0;
  * B claims, A's straggler releases B's claim, and the thread gets prefetched
  * twice.
  */
-export function claimThreadPrefetch(channel: string, threadTs: string): number {
+export function claimThreadPrefetch(
+    channel: string, threadTs: string, owner: SessionOwnerToken,
+): number {
     if (!channel || !threadTs) return 0;
-    const key = threadKey(channel, threadTs);
-    if (prefetchClaimed.has(key)) return 0;
+    const key = prefetchKey(channel, threadTs, owner);
+    const existing = prefetchClaimed.get(key);
+    if (existing) {
+        existing.lastUsed = ++prefetchUse;
+        return 0;
+    }
     if (prefetchClaimed.size >= PREFETCH_CLAIM_CAP) {
         // Active owners are singleflight locks, not cache entries. Evicting one
         // lets another envelope claim the same live thread and inject history
         // twice. Only completed claims may give ground under pressure.
         let removed = 0;
         const target = Math.floor(PREFETCH_CLAIM_CAP / 2);
-        for (const [stale, claim] of prefetchClaimed) {
-            if (!claim.committed) continue;
+        const completed = [...prefetchClaimed.entries()]
+            .filter(([, claim]) => claim.committed)
+            .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+        for (const [stale] of completed) {
             prefetchClaimed.delete(stale);
             removed += 1;
             if (removed >= target) break;
@@ -133,16 +147,19 @@ export function claimThreadPrefetch(channel: string, threadTs: string): number {
         if (prefetchClaimed.size >= PREFETCH_CLAIM_CAP) return 0;
     }
     const token = ++prefetchToken;
-    prefetchClaimed.set(key, { token, committed: false });
+    prefetchClaimed.set(key, { token, committed: false, lastUsed: ++prefetchUse });
     return token;
 }
 
 /** Mark that this owner actually injected history; completed claims are evictable. */
-export function commitThreadPrefetch(channel: string, threadTs: string, token: number): boolean {
+export function commitThreadPrefetch(
+    channel: string, threadTs: string, owner: SessionOwnerToken, token: number,
+): boolean {
     if (!channel || !threadTs || !token) return false;
-    const claim = prefetchClaimed.get(threadKey(channel, threadTs));
+    const claim = prefetchClaimed.get(prefetchKey(channel, threadTs, owner));
     if (!claim || claim.token !== token) return false;
     claim.committed = true;
+    claim.lastUsed = ++prefetchUse;
     return true;
 }
 
@@ -155,9 +172,11 @@ export function commitThreadPrefetch(channel: string, threadTs: string, token: n
  *
  * Only the CURRENT owner may release. A stale token is a no-op.
  */
-export function releaseThreadPrefetch(channel: string, threadTs: string, token: number): void {
+export function releaseThreadPrefetch(
+    channel: string, threadTs: string, owner: SessionOwnerToken, token: number,
+): void {
     if (!channel || !threadTs || !token) return;
-    const key = threadKey(channel, threadTs);
+    const key = prefetchKey(channel, threadTs, owner);
     if (prefetchClaimed.get(key)?.token !== token) return;
     prefetchClaimed.delete(key);
 }
@@ -165,6 +184,7 @@ export function releaseThreadPrefetch(channel: string, threadTs: string, token: 
 export function resetThreadPrefetchClaims(): void {
     prefetchClaimed.clear();
     prefetchToken = 0;
+    prefetchUse = 0;
 }
 
 /** Test hook: point the store at a temp file and drop the cache. */
