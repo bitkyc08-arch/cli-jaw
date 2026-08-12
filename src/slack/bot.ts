@@ -22,7 +22,8 @@ import { SlackSocketClient, type SlackEnvelope } from './socket.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import {
     isThreadParticipated, markThreadParticipated,
-    claimThreadPrefetch, releaseThreadPrefetch, resetThreadPrefetchClaims,
+    claimThreadPrefetch, commitThreadPrefetch,
+    releaseThreadPrefetch, resetThreadPrefetchClaims,
 } from './thread-tracker.js';
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
@@ -223,7 +224,11 @@ export async function processSlackMessageEvent(
     // rather than a return-by-return audit.
     let prefetchCommitted = false;
     try {
-        await runSlackMessageEvent(event, target, text, signal, opts, () => { prefetchCommitted = true; });
+        await runSlackMessageEvent(event, target, text, signal, opts, () => {
+            prefetchCommitted = Boolean(opts.prefetchToken) && commitThreadPrefetch(
+                event.channel || '', event.thread_ts || '', opts.prefetchToken || 0,
+            );
+        });
     } finally {
         if (opts.prefetchToken && !prefetchCommitted) {
             releaseThreadPrefetch(event.channel || '', event.thread_ts || '', opts.prefetchToken);
@@ -430,7 +435,8 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope): Promise<void
             // A thread WE start needs no history: the parent mention and our
             // reply are already the session's own context. Spend the claim now
             // so the first follow-up does not re-inject what the agent said.
-            claimThreadPrefetch(event.channel, event.ts);
+            const token = claimThreadPrefetch(event.channel, event.ts);
+            commitThreadPrefetch(event.channel, event.ts, token);
         }
     }
     // Claim the one-time thread prefetch HERE, synchronously, before the ingress

@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 
 import {
     claimThreadPrefetch,
+    commitThreadPrefetch,
     releaseThreadPrefetch,
     resetThreadPrefetchClaims,
 } from '../../src/slack/thread-tracker.ts';
@@ -72,6 +73,34 @@ test('reset clears every claim', () => {
     claimThreadPrefetch('C1', '100.1');
     resetThreadPrefetchClaims();
     assert.ok(claimThreadPrefetch('C1', '100.1') > 0, 'a new runtime re-injects history');
+});
+
+test('capacity pressure never evicts an active claim', () => {
+    const tokens: number[] = [];
+    for (let i = 0; i < 500; i += 1) {
+        tokens.push(claimThreadPrefetch('C1', `${i}.1`));
+    }
+    assert.ok(tokens.every(token => token > 0));
+    assert.equal(
+        claimThreadPrefetch('C1', 'overflow.1'), 0,
+        'a new prefetch must degrade while every bounded slot is active',
+    );
+    assert.equal(
+        claimThreadPrefetch('C1', '0.1'), 0,
+        'the oldest live owner must remain claimed under pressure',
+    );
+});
+
+test('capacity pressure may evict completed claims but preserves active ones', () => {
+    const active = claimThreadPrefetch('C1', 'active.1');
+    for (let i = 0; i < 499; i += 1) {
+        const ts = `done-${i}.1`;
+        const token = claimThreadPrefetch('C1', ts);
+        assert.ok(commitThreadPrefetch('C1', ts, token));
+    }
+    assert.ok(claimThreadPrefetch('C1', 'new.1') > 0, 'completed entries make bounded room');
+    assert.equal(claimThreadPrefetch('C1', 'active.1'), 0, 'the live owner is never evicted');
+    releaseThreadPrefetch('C1', 'active.1', active);
 });
 
 // ─── preamble rendering ─────────────────────────────
