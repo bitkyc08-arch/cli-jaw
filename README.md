@@ -514,7 +514,7 @@ Same capabilities as Telegram — text, files, commands. Channel/thread routing,
 
 ### Slack
 
-Socket Mode bot with the same shared command catalog — mentions, DMs, slash commands, file/image relay, thread replies.
+Socket Mode bot with the same shared command catalog — mentions, DMs, slash commands, file/image relay, thread replies. Each Slack-triggered agent turn receives the current conversation ID and parent thread timestamp explicitly, so history/member lookups and targeted replies do not depend on parsing an internal session label or enabling multi-session.
 
 <details>
 <summary>Setup (guided wizard)</summary>

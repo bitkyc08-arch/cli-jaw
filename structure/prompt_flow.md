@@ -93,6 +93,10 @@ graph TD
 
 이전 버전에 있던 timestamp stamp(`YYMMDD-HH:MMAM/PM.`) 주입은 현재 `getSystemPrompt()`에서 제거됐다.
 
+### 메시지별 원격 대화 컨텍스트
+
+`src/agent/spawn.ts`는 시스템 프롬프트 캐시와 별개로 Boss user prompt를 감쌀 때 원격 대화 식별자를 주입한다. Slack-origin turn은 `src/prompt/conversation-context.ts`를 통해 `Current Slack conversation: channel_id=<id>; thread_ts=<parent ts|none>` 줄을 받는다. 이 줄은 `multiSession.enabled`와 무관하며, agent는 내부 session label을 파싱하지 않고 `/api/slack/history`, `/api/slack/members`, `/api/channel/send`의 target을 구성할 수 있다. 식별자는 제어문자와 줄바꿈을 제거하고 길이를 제한한 뒤 주입한다.
+
 ### Memory Injection
 
 메모리는 두 갈래다.

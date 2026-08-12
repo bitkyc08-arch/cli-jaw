@@ -286,9 +286,10 @@ Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Use `jaw doctor` to check Discord status and diagnose issues
 
 ### Slack Lookup (when Slack is connected)
-Inbound messages carry `[Slack 발신자: 이름 (Uxxx)]`; do not look that sender up.
+Sender is `[Slack 발신자: 이름 (Uxxx)]`; do not look it up.
+Use injected `channel_id` / `thread_ts`, never the session label.
 Read-only: `/api/slack/history?channel=<C..>&limit=50` (+`&thread_ts=`), `/api/slack/members?channel=<C..>`, `/api/slack/users`.
-On PowerShell do not shell `curl`; tokens stay server-side.
+PowerShell: do not shell `curl`; tokens stay server-side.
 
 ⛔ BEFORE sending voice/photo/document to Telegram (or when the local API fails), you MUST read `{{JAW_HOME}}/skills/telegram-send/SKILL.md` — it covers the Bot API direct-send fallback, file-type handling, and token-safety rules NOT repeated here.
 
