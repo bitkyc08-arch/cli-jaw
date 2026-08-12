@@ -162,6 +162,27 @@ export function assertMemoryRelPath(input: string, { allowExt = ['.md'] }: { all
 }
 
 /**
+ * realpath both for existing paths and for not-yet-existing targets
+ * (canonical parent + basename). Returns null ONLY when nothing exists on
+ * disk to canonicalize (pure lexical/fake-path callers keep the lexical
+ * verdict). Any other realpath error (EACCES/ELOOP/EIO) fails closed —
+ * a guard that cannot see the filesystem must not approve. No caching:
+ * a retargeted symlink/junction must never be authorized by a stale entry.
+ */
+function tryCanonical(p: string): string | null {
+    try {
+        return fs.realpathSync.native(p);
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw forbidden('path_escape');
+        try {
+            return path.join(fs.realpathSync.native(path.dirname(p)), path.basename(p));
+        } catch (inner) {
+            if ((inner as NodeJS.ErrnoException).code === 'ENOENT') return null;
+            throw forbidden('path_escape');
+        }
+    }
+}
+/**
  * baseDir 아래로 안전하게 resolve — 탈출 시 403
  * @param {string} baseDir
  * @param {string} unsafeName
@@ -183,6 +204,14 @@ export function safeResolveUnder(
     // directory; exact matching only ever fails closed.
     const pref = base.endsWith(p.sep) ? base : base + p.sep;
     if (resolved !== base && !resolved.startsWith(pref)) {
+        throw forbidden('path_escape');
+    }
+    // Canonical containment (T4/wp5): the lexical check cannot see a junction
+    // or symlink under baseDir that leads outside. Re-check containment on
+    // realpaths when the host can canonicalize both sides.
+    const canonBase = tryCanonical(base);
+    const canonResolved = tryCanonical(resolved);
+    if (canonBase && canonResolved && !isUnderRoot(canonResolved, canonBase, env)) {
         throw forbidden('path_escape');
     }
     return resolved;

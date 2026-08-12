@@ -596,7 +596,7 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
     assert.ok(panelCss.includes('.bottom-tab-close:hover'), 'bottom panel close controls must be visibly styled');
     assert.ok(!/\.bottom-tab-close\s*\{[^}]*opacity:\s*0/s.test(panelCss), 'bottom panel close controls must not be hidden until hover');
     assert.ok(terminalMain.includes("import { spawn as spawnPty } from 'node-pty'"), 'Electron terminal backend must use node-pty instead of pipe-backed child_process.spawn');
-    assert.ok(terminalMain.includes("const pty = spawnPty(shell, ['-l']"), 'terminal sessions must be created as login PTYs');
+    assert.ok(terminalMain.includes('loginArgsForShell(shell)'), 'terminal sessions must derive login args per shell/platform');
     assert.ok(terminalMain.includes('session.pty.write(data)'), 'terminal writes must go to the PTY');
     assert.ok(terminalMain.includes('session.pty.resize('), 'terminal resize must resize the PTY');
     assert.ok(electronConfig.includes("'node-pty'"), 'electron-vite must externalize node-pty native bindings');

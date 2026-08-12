@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
 import { discoverShell } from './shell-discovery.js';
+import { loginArgsForShell } from './shell-args.js';
 import { sanitizeEnv } from './env-sanitize.js';
 import { isWithinHome } from '../path-security.js';
 import { isAllowedSender } from '../ipc-origin-guard.js';
@@ -74,7 +75,7 @@ export function registerTerminalIpc(getWindow: () => BrowserWindow | null): void
         const cols = clampDimension(opts?.cols, 80, 20, 500);
         const rows = clampDimension(opts?.rows, 24, 4, 200);
 
-        const pty = spawnPty(shell, ['-l'], {
+        const pty = spawnPty(shell, loginArgsForShell(shell), {
             name: 'xterm-256color',
             cols,
             rows,
