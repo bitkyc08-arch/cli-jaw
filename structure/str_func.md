@@ -309,7 +309,7 @@ cli-jaw/
 │   │   ├── traces.ts         ← public trace summary/events read routes (80L)
 │   │   └── browser.ts        ← 브라우저 API 라우트 + `cdpPort(req)` 포트 우선순위 + primitive/tab/debug/doctor/cleanup/web-ai routes (489L)
 │   ├── security/             ← 보안 입력 검증 (4 files)
-│   │   ├── path-guards.ts    ← assertSkillId, assertFilename, assertMemoryRelPath, assertSendFilePath, safeResolveUnder (223L)
+│   │   ├── path-guards.ts    ← assertSkillId, assertFilename, assertMemoryRelPath, assertSendFilePath, safeResolveUnder (255L)
 │   │   ├── decode.ts         ← decodeFilenameSafe (21L)
 │   │   ├── network-acl.ts    ← isPrivateIP, isAllowedHost, isAllowedOrigin, originMatchesHost, extractHost (131L)
 │   │   └── security-audit-log.ts ← SQLite-backed security audit event log (162L) ✨

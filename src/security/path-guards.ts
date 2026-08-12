@@ -63,13 +63,21 @@ export function assertNoWindowsStreamSuffix(
     env: PathEnvironment = hostPathEnvironment,
 ): void {
     if (!env.windows) return;
-    const segments = String(input || '').split(/[\\/]+/);
-    for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
+    const value = String(input || '');
+
+    // Strip the ROOT before scanning. `path.win32.parse` understands drive
+    // roots (`C:\`), UNC roots (`\\server\share\`), and extended-length
+    // namespace roots (`\\?\C:\`, `\\?\UNC\server\share\`). Scanning the whole
+    // string instead would reject `\\?\C:\Data\f.md` — a legitimate long-path
+    // form that `path.toNamespacedPath()` emits — as if its drive colon were a
+    // stream separator.
+    const root = path.win32.parse(value).root;
+    const tail = root ? value.slice(root.length) : value;
+
+    for (const seg of tail.split(/[\\/]+/)) {
         if (!seg) continue;
-        // A drive letter is the only legal colon, and only in the first segment.
-        const isDriveSegment = i === 0 && /^[A-Za-z]:$/.test(seg);
-        if (!isDriveSegment && seg.includes(':')) throw forbidden('path_stream_denied');
+        // No colon is legal outside the root: this is the NTFS ADS separator.
+        if (seg.includes(':')) throw forbidden('path_stream_denied');
         // `.` and `..` are ordinary relative segments that legitimately end in
         // a dot. Rejecting them here would mask traversal as an encoding error
         // and break every relative path — containment, not this rule, is what
@@ -80,19 +88,24 @@ export function assertNoWindowsStreamSuffix(
 }
 
 /**
- * Fold a path for COMPARISON only — never for the value returned to callers.
+ * Canonical identity for containment comparison.
  *
- * ASCII-only on purpose: `toLowerCase()` is locale-sensitive (Turkish dotless
- * i) and would fold characters Win32 does not. POSIX is returned untouched,
- * because a Linux host genuinely can hold `A.md` and `a.md` as distinct files
- * and folding there would create the vulnerability this function prevents.
+ * Deliberately NOT case-folding, on any platform. Folding ASCII merely because
+ * the host is Windows is an over-authorization bug, not a convenience: Windows
+ * supports per-directory case sensitivity (`fsutil file setCaseSensitiveInfo`)
+ * and case-sensitive SMB shares, so `...\Root` and `...\root` can be two
+ * different directories. Folding makes a forbidden sibling look contained.
+ * This was demonstrated on a real Windows host — see
+ * devlog/_plan/260812_windows_and_channels_parity/010.
+ *
+ * Case-insensitivity is instead obtained where it is actually true: both the
+ * candidate and the roots in `assertSendFilePath` pass through native
+ * `realpath`, which restores each entry's real on-disk casing. Comparing those
+ * canonical forms exactly is both correct on case-insensitive volumes and safe
+ * on case-sensitive ones.
  */
-export function foldPathIdentity(
-    p: string,
-    env: PathEnvironment = hostPathEnvironment,
-): string {
-    if (!env.windows) return p;
-    return p.replace(/[A-Z]/g, (c) => c.toLowerCase());
+export function pathIdentity(p: string): string {
+    return p;
 }
 
 /**
@@ -164,11 +177,12 @@ export function safeResolveUnder(
     const p = env.impl;
     const base = p.resolve(baseDir);
     const resolved = p.resolve(base, unsafeName);
-    // Fold for comparison; return the UNFOLDED path so real filenames survive.
-    const foldedBase = foldPathIdentity(base, env);
-    const foldedResolved = foldPathIdentity(resolved, env);
-    const pref = foldedBase.endsWith(p.sep) ? foldedBase : foldedBase + p.sep;
-    if (foldedResolved !== foldedBase && !foldedResolved.startsWith(pref)) {
+    // Exact comparison, deliberately. This helper is purely lexical — it never
+    // canonicalizes — so it cannot know whether the volume is case sensitive.
+    // Folding here would be a guess that fails open on a case-sensitive
+    // directory; exact matching only ever fails closed.
+    const pref = base.endsWith(p.sep) ? base : base + p.sep;
+    if (resolved !== base && !resolved.startsWith(pref)) {
         throw forbidden('path_escape');
     }
     return resolved;
@@ -179,9 +193,16 @@ export function safeResolveUnder(
  * Prevents arbitrary file exfiltration via /api/telegram/send, /api/channel/send, etc.
  * @throws 403 path_not_allowed
  */
+/**
+ * Containment between two ALREADY-CANONICAL paths.
+ *
+ * Both sides come from native `realpath`, so each carries its true on-disk
+ * casing and an exact comparison is right on case-insensitive and
+ * case-sensitive volumes alike.
+ */
 function isUnderRoot(canonical: string, root: string, env: PathEnvironment = hostPathEnvironment): boolean {
-    const c = foldPathIdentity(canonical, env);
-    const r = foldPathIdentity(root, env);
+    const c = pathIdentity(canonical);
+    const r = pathIdentity(root);
     const pref = r.endsWith(env.impl.sep) ? r : r + env.impl.sep;
     return c === r || c.startsWith(pref);
 }
@@ -213,8 +234,19 @@ export function assertSendFilePath(
 
     if (projectDirs) {
         for (const dir of projectDirs) {
+            // Compare canonical-to-canonical. The previous form required
+            // `realpath(dir) === resolve(dir)`, which silently dropped every
+            // project root on Windows whose stored casing differed from the
+            // on-disk casing, because native realpath restores real casing
+            // (verified on a Windows host: input `...\mixed` canonicalizes to
+            // `...\MiXeD`, so the equality never held).
+            //
+            // Resolving the root is also what makes containment meaningful: the
+            // candidate is already canonical, so both sides must be. A root
+            // that is a symlink is therefore evaluated at its target, which is
+            // the location the operator actually granted by configuring it.
             const currentReal = env.realpath(p.resolve(dir));
-            if (!currentReal || currentReal !== p.resolve(dir)) continue;
+            if (!currentReal) continue;
             if (isUnderRoot(canonical, currentReal, env)) return canonical;
         }
     }

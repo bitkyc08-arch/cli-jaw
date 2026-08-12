@@ -11,21 +11,29 @@ import assert from 'node:assert';
 import path from 'node:path';
 import {
     assertNoWindowsStreamSuffix,
-    foldPathIdentity,
     safeResolveUnder,
     assertSendFilePath,
     hostPathEnvironment,
     type PathEnvironment,
 } from '../../src/security/path-guards.js';
 
-/** A Win32 environment with a fake realpath, so no real NTFS volume is needed. */
-function win32Env(existing: string[] = []): PathEnvironment {
-    const known = new Set(existing.map((p) => p.toLowerCase()));
+/**
+ * A Win32 environment whose fake realpath imitates the behavior measured on a
+ * real Windows host: lookup is case-insensitive, but the value returned is the
+ * entry's TRUE on-disk casing. An earlier fake echoed the input back, which
+ * hid exactly the bug this suite now covers.
+ *
+ * `existing` entries are the canonical (on-disk) spellings.
+ */
+function win32Env(existing: string[] = [], caseSensitive = false): PathEnvironment {
+    const canonical = new Map(existing.map((p) => [p.toLowerCase(), p]));
     return {
         impl: path.win32,
         windows: true,
-        // Identity canonicalization: these fixtures are already canonical.
-        realpath: (p: string) => (known.has(p.toLowerCase()) ? p : null),
+        realpath: (p: string) => {
+            if (caseSensitive) return existing.includes(p) ? p : null;
+            return canonical.get(p.toLowerCase()) ?? null;
+        },
         resolveHome: (p: string) => path.win32.resolve(p),
     };
 }
@@ -80,29 +88,40 @@ test('POSIX keeps colon filenames legal', () => {
     assert.strictEqual(codeOf(() => assertNoWindowsStreamSuffix('weird.name.', env)), 'NO_THROW');
 });
 
-// ── case folding ─────────────────────────────────────────────────
+// ── Windows namespace roots ──────────────────────────────────────
 
-test('folding is ASCII-only on Windows and identity on POSIX', () => {
-    assert.strictEqual(foldPathIdentity('C:\\Data\\X', win32Env()), 'c:\\data\\x');
-    assert.strictEqual(foldPathIdentity('/Data/X', posixEnv()), '/Data/X');
+test('extended-length namespace roots are not mistaken for ADS', () => {
+    // `\\?\C:\...` is what path.toNamespacedPath() emits for long paths. Its
+    // drive colon lives in the ROOT, not in a name segment.
+    const env = win32Env();
+    assert.strictEqual(codeOf(() => assertNoWindowsStreamSuffix('\\\\?\\C:\\Data\\f.md', env)), 'NO_THROW');
+    assert.strictEqual(codeOf(() => assertNoWindowsStreamSuffix('\\\\.\\C:\\Data\\f.md', env)), 'NO_THROW');
+    assert.strictEqual(codeOf(() => assertNoWindowsStreamSuffix('\\\\?\\UNC\\server\\share\\f.md', env)), 'NO_THROW');
+    assert.strictEqual(codeOf(() => assertNoWindowsStreamSuffix('\\\\server\\share\\f.md', env)), 'NO_THROW');
 });
 
-test('folding leaves non-ASCII untouched (Turkish dotless-i hazard)', () => {
-    // A locale-sensitive toLowerCase() would map these unpredictably.
-    assert.strictEqual(foldPathIdentity('C:\\İX\\ıY', win32Env()), 'c:\\İx\\ıy');
+test('ADS is still rejected inside a namespace path', () => {
+    const env = win32Env();
+    assert.strictEqual(
+        codeOf(() => assertNoWindowsStreamSuffix('\\\\?\\C:\\Data\\f.md:hidden', env)),
+        'path_stream_denied',
+    );
 });
 
 // ── containment ──────────────────────────────────────────────────
 
-test('Windows containment ignores case but still returns the unfolded path', () => {
+test('safeResolveUnder returns the path unmodified', () => {
     const env = win32Env();
     const out = safeResolveUnder('C:\\Data', 'Sub\\F.md', env);
-    assert.strictEqual(out, 'C:\\Data\\Sub\\F.md', 'must not return a lowercased path');
+    assert.strictEqual(out, 'C:\\Data\\Sub\\F.md', 'must not lowercase a real filename');
 });
 
-test('Windows containment accepts a differently-cased root', () => {
+test('safeResolveUnder compares exactly, never case-folded', () => {
+    // This helper is purely lexical and cannot know whether the volume is
+    // case sensitive, so it must fail CLOSED rather than guess. Folding here
+    // would authorize a sibling on a case-sensitive directory.
     const env = win32Env();
-    assert.strictEqual(codeOf(() => safeResolveUnder('c:\\data', 'F.md', env)), 'NO_THROW');
+    assert.strictEqual(codeOf(() => safeResolveUnder('C:\\Data', 'c:\\data\\f.md', env)), 'path_escape');
 });
 
 test('POSIX containment stays case-SENSITIVE', () => {
@@ -150,9 +169,45 @@ test('send boundary rejects ADS even when the base file resolves', () => {
 });
 
 test('send boundary allows a file inside workingDir with different casing', () => {
+    // Realpath restores true casing on BOTH sides, so a differently-cased
+    // request for the same directory is correctly allowed.
     const env = win32Env(['C:\\Work\\a.md', 'C:\\Work']);
-    const out = assertSendFilePath('C:\\Work\\a.md', 'c:\\work', null, env);
-    assert.strictEqual(out, 'C:\\Work\\a.md');
+    const out = assertSendFilePath('c:\\work\\A.MD', 'c:\\work', null, env);
+    assert.strictEqual(out, 'C:\\Work\\a.md', 'returns the canonical on-disk path');
+});
+
+test('send boundary does NOT over-authorize on a case-sensitive volume', () => {
+    // Windows supports per-directory case sensitivity, and case-sensitive SMB
+    // shares behave the same way. `Root` and `root` are then DIFFERENT
+    // directories, and folding would have let the sibling through.
+    const env = win32Env(['C:\\cs\\Root', 'C:\\cs\\root', 'C:\\cs\\root\\secret.txt'], true);
+    assert.strictEqual(
+        codeOf(() => assertSendFilePath('C:\\cs\\root\\secret.txt', 'C:\\cs\\Root', null, env)),
+        'path_not_allowed',
+    );
+});
+
+test('send boundary rejects trailing-dot and trailing-space forms', () => {
+    const env = win32Env(['C:\\work\\a.md', 'C:\\work']);
+    assert.strictEqual(
+        codeOf(() => assertSendFilePath('C:\\work\\a.md.', 'C:\\work', null, env)),
+        'path_trailing_trim_denied',
+    );
+    assert.strictEqual(
+        codeOf(() => assertSendFilePath('C:\\work\\a.md ', 'C:\\work', null, env)),
+        'path_trailing_trim_denied',
+    );
+});
+
+test('send boundary allows files under JAW_HOME', () => {
+    const prev = process.env['CLI_JAW_HOME'];
+    process.env['CLI_JAW_HOME'] = 'C:\\jawhome';
+    try {
+        const env = win32Env(['C:\\jawhome', 'C:\\jawhome\\f.md']);
+        assert.strictEqual(assertSendFilePath('C:\\jawhome\\f.md', undefined, null, env), 'C:\\jawhome\\f.md');
+    } finally {
+        if (prev === undefined) delete process.env['CLI_JAW_HOME']; else process.env['CLI_JAW_HOME'] = prev;
+    }
 });
 
 test('send boundary rejects a sibling-prefix directory', () => {
@@ -167,6 +222,23 @@ test('send boundary honours projectDirs', () => {
     const env = win32Env(['C:\\Proj\\a.md', 'C:\\Proj']);
     const out = assertSendFilePath('C:\\Proj\\a.md', undefined, ['C:\\Proj'], env);
     assert.strictEqual(out, 'C:\\Proj\\a.md');
+});
+
+test('projectDirs works when stored casing differs from on-disk casing', () => {
+    // Verified on Windows: realpath('...\\mixed') returns '...\\MiXeD'. The
+    // previous `realpath(dir) === resolve(dir)` precondition therefore dropped
+    // the root entirely and denied every file under it.
+    const env = win32Env(['C:\\MiXeD', 'C:\\MiXeD\\a.md']);
+    const out = assertSendFilePath('C:\\mixed\\a.md', undefined, ['C:\\mixed'], env);
+    assert.strictEqual(out, 'C:\\MiXeD\\a.md');
+});
+
+test('POSIX send boundary stays case-SENSITIVE', () => {
+    const env = posixEnv(['/work', '/work/a.md']);
+    assert.strictEqual(
+        codeOf(() => assertSendFilePath('/WORK/a.md', '/work', null, env)),
+        'path_not_resolvable',
+    );
 });
 
 test('send boundary still reports unresolvable paths', () => {
