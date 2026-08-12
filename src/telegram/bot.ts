@@ -37,6 +37,8 @@ import {
     relayTelegramImages,
 } from './forwarder.js';
 import { sendTelegramMarkdown, type RichSendOpts } from './rich-message.js';
+import { db } from '../core/db.js';
+import { TelegramDurablePoller, TelegramUpdateOffsetStore } from './update-offset.js';
 
 export {
     escapeHtmlTg,
@@ -56,7 +58,6 @@ import {
     discardPendingElicitation,
 } from './elicitation-buttons.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
-import { createSeenSet, DELIVERY_DEDUPE_TTL_MS } from '../messaging/dedupe.js';
 import { sendWithRetryPolicy } from '../messaging/retry.js';
 
 // ─── State ───────────────────────────────────────────
@@ -68,6 +69,8 @@ let tgInitLock = false;
 let tg409RetryCount = 0;
 const TG_MAX_RETRIES = 3;
 let botUsername: string | null = null;
+let telegramPoller: TelegramDurablePoller | null = null;
+const telegramFinalDeliveryFailures = new Set<number>();
 /**
  * The bot's own user id, learned from getMe at startup.
  *
@@ -95,8 +98,7 @@ export function isSelfEcho(input: {
     if (input.isBot && !input.allowBots) return true;
     return false;
 }
-/** Redelivered update_ids, so a reconnect replay does not run the agent twice. */
-const telegramSeenUpdates = createSeenSet(DELIVERY_DEDUPE_TTL_MS);
+const telegramUpdateOffsets = new TelegramUpdateOffsetStore(db);
 let targetReplyForwarderInstalled = false;
 const telegramForwarderLifecycle = createForwarderLifecycle({
     addListener: addBroadcastListener,
@@ -184,6 +186,13 @@ function installTelegramTargetReplyForwarder(): void {
 export async function shutdownTelegram() {
     if (tgRetryTimer) { clearTimeout(tgRetryTimer); tgRetryTimer = null; }
     detachTelegramForwarder();
+    if (telegramPoller) {
+        const oldPoller = telegramPoller;
+        telegramPoller = null;
+        try { await oldPoller.stop(); } catch (e: unknown) {
+            log.warn('[telegram:poller-stop]', logErrorText(e));
+        }
+    }
     if (!telegramBot) return;
     const old = telegramBot;
     telegramBot = null;
@@ -405,6 +414,11 @@ async function _initTelegramInner() {
             await new Promise(r => setTimeout(r, 2000));
         }
     }
+    const stoppingPoller = telegramPoller?.stop().catch((e: unknown) => {
+        log.warn('[telegram:poller-stop]', logErrorText(e));
+    });
+    telegramPoller = null;
+    await stoppingPoller;
     const envToken = process.env["TELEGRAM_TOKEN"];
     if (envToken) settings["telegram"].token = envToken;
 
@@ -514,37 +528,19 @@ async function _initTelegramInner() {
         await next();
     });
 
-    // Drop a redelivered update. grammY replays from the last committed offset
-    // after a reconnect, so the same update_id can arrive twice — and each one
-    // would start another agent run.
-    //
-    // Placed AFTER the allowlist and mention gates deliberately: dedupe
-    // upstream of them lets traffic we never process fill the seen-set — memory
-    // an outsider controls, and a budget an unmentioned group message can
-    // exhaust before a real one arrives. A duplicate that WOULD be processed
-    // passes both gates too, so nothing is lost by checking later.
-    bot.use(async (ctx, next) => {
-        const updateId = ctx.update?.update_id;
-        if (updateId !== undefined && telegramSeenUpdates.seen(String(updateId))) {
-            log.info(`[tg:duplicate] update_id=${updateId}`);
-            return;
-        }
-        await next();
-    });
-
     bot.command('start', (ctx) => ctx.reply(t('tg.connected', {}, currentLocale())));
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat?.id ?? ''}</code>`, { parse_mode: 'HTML' }));
 
     // Inline-keyboard elicitation answers (single_select fences → buttons).
     bot.callbackQuery(/^elic:/, async (ctx) => {
         const cbChatId = ctx.chat?.id;
-        if (!cbChatId) { await ctx.answerCallbackQuery().catch(() => { }); return; }
+        if (!cbChatId) { await ctx.answerCallbackQuery(); return; }
         const result = handleElicitationCallback(String(cbChatId), ctx.callbackQuery.data ?? '');
         if (result.kind === 'stale') {
-            await ctx.answerCallbackQuery({ text: t('tg.elicitationExpired', {}, currentLocale()) }).catch(() => { });
+            await ctx.answerCallbackQuery({ text: t('tg.elicitationExpired', {}, currentLocale()) });
             return;
         }
-        await ctx.answerCallbackQuery({ text: redactOutboundText(result.ack) }).catch(() => { });
+        await ctx.answerCallbackQuery({ text: redactOutboundText(result.ack) });
         // Best-effort: freeze the tapped question's keyboard so the choice reads as taken.
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => { });
         if (result.kind === 'complete') {
@@ -579,23 +575,50 @@ async function _initTelegramInner() {
 
         if (result.action === 'queued') {
             log.info(`[tg:queue] agent busy, queued (${result.pending} pending)`);
-            await ctx.reply(t('tg.queued', { count: result.pending }, currentLocale()));
-
             // 큐 처리 후 응답을 이 채팅으로 전달 — requestId로 request-level 격리
             const requestId = result.requestId;
-            const queueHandler = (type: string, data: Record<string, unknown>) => {
-                if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'telegram' && data["requestId"] === requestId) {
+            const finalDeliveryControl: { cancel?: (reason: unknown) => void } = {};
+            const finalDelivery = new Promise<void>((resolve, reject) => {
+                let timer: ReturnType<typeof setTimeout>;
+                let settled = false;
+                const cleanup = () => {
+                    clearTimeout(timer);
                     removeBroadcastListener(queueHandler);
-                    sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx))
-                        .then(async () => {
-                            await relayTelegramImages(bot, chat.id, String(data["text"]), responseTarget);
-                            await sendElicitationKeyboards(chat.id, data["elicitationSpecs"]);
+                };
+                finalDeliveryControl.cancel = (reason) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    reject(reason);
+                };
+                const queueHandler = (type: string, data: Record<string, unknown>) => {
+                    if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'telegram' || data["requestId"] !== requestId) return;
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    void sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx))
+                        .then(() => {
+                            resolve();
+                            void relayTelegramImages(bot, chat.id, String(data["text"]), responseTarget).catch(() => { });
+                            void sendElicitationKeyboards(chat.id, data["elicitationSpecs"]).catch(() => { });
                         })
-                        .catch(() => { });
-                }
-            };
-            addBroadcastListener(queueHandler);
-            setTimeout(() => removeBroadcastListener(queueHandler), 300000);
+                        .catch(reject);
+                };
+                timer = setTimeout(() => {
+                    finalDeliveryControl.cancel?.(new Error('telegram_queue_delivery_timeout'));
+                }, 300000);
+                addBroadcastListener(queueHandler);
+            });
+            void finalDelivery.catch(() => { });
+            try {
+                await ctx.reply(t('tg.queued', { count: result.pending }, currentLocale()));
+                await finalDelivery;
+            } catch (error) {
+                finalDeliveryControl.cancel?.(error);
+                await finalDelivery.catch(() => { });
+                telegramFinalDeliveryFailures.add(ctx.update.update_id);
+                throw error;
+            }
             return;
         }
 
@@ -694,6 +717,7 @@ async function _initTelegramInner() {
 
         if (toolHandler) addBroadcastListener(toolHandler);
 
+        let finalDeliveryStarted = false;
         try {
             const { text: collectedText, data: doneData } = await orchestrateAndCollectData(prompt, stripUndefined({
                 origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true,
@@ -711,10 +735,11 @@ async function _initTelegramInner() {
             if (statusMsgId) {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
+            finalDeliveryStarted = true;
             await sendTelegramMarkdown(ctx.api, chat.id, collectedText, replyOptsOf(ctx));
-            await relayTelegramImages(bot, chat.id, collectedText, responseTarget);
-            await sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]);
             log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
+            void relayTelegramImages(bot, chat.id, collectedText, responseTarget).catch(() => { });
+            void sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]).catch(() => { });
         } catch (err: unknown) {
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
@@ -727,6 +752,7 @@ async function _initTelegramInner() {
             }
             log.error('[tg:error]', logErrorText(err));
             await ctx.reply(`❌ Error: ${userErrorText(err)}`);
+            if (finalDeliveryStarted) telegramFinalDeliveryFailures.add(ctx.update.update_id);
         }
     }
 
@@ -784,7 +810,7 @@ async function _initTelegramInner() {
             }
             return;
         }
-        tgOrchestrate(ctx, text, text);
+        await tgOrchestrate(ctx, text, text);
     });
 
     bot.on('message:photo', async (ctx) => {
@@ -800,7 +826,7 @@ async function _initTelegramInner() {
             })) as Record<string, unknown>;
             const filePath = saveUpload(dlResult["buffer"] as Buffer, `photo${dlResult["ext"]}`);
             const prompt = buildMediaPrompt(filePath, caption);
-            tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`);
+            await tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`);
         } catch (err: unknown) {
             log.error('[tg:photo:error]', logErrorText(err));
             await ctx.reply(t('tg.imageFail', { msg: userErrorText(err) }, currentLocale()));
@@ -819,14 +845,14 @@ async function _initTelegramInner() {
             })) as Record<string, any>;
             const filePath = saveUpload(dlResult["buffer"], doc.file_name || 'document');
             const prompt = buildMediaPrompt(filePath, caption);
-            tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);
+            await tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);
         } catch (err: unknown) {
             log.error('[tg:doc:error]', logErrorText(err));
             await ctx.reply(t('tg.fileFail', { msg: userErrorText(err) }, currentLocale()));
         }
     });
 
-    bot.on('message:voice', (ctx) => handleVoice(ctx, currentLocale, tgOrchestrate));
+    bot.on('message:voice', async (ctx) => { await handleVoice(ctx, currentLocale, tgOrchestrate); });
 
     // Identity first: the self-echo guard needs it, and the refusal below has
     // to happen BEFORE anything is attached. Returning after attaching left the
@@ -838,17 +864,17 @@ async function _initTelegramInner() {
     botUserId = null;
     try {
         const me = await bot.api.getMe();
+        bot.botInfo = me;
         botUsername = me.username || null;
         botUserId = me.id ?? null;
     } catch (err: unknown) {
         log.warn('[tg] getMe failed; bot identity unknown', logErrorText(err));
     }
 
-    // Without an identity the guard has only the is_bot flag to work with — and
-    // allowBots turns that off. Starting anyway would leave the loop this guard
-    // exists to prevent wide open, so refuse instead.
-    if (botUserId === null && settings["telegram"]?.allowBots) {
-        log.error('[tg] refusing to start: allowBots is on but the bot identity could not be read');
+    // The durable offset is scoped by bot identity, so polling must not start
+    // when getMe cannot provide that identity.
+    if (botUserId === null) {
+        log.error('[tg] refusing to start durable polling: bot identity could not be read');
         return;
     }
 
@@ -861,18 +887,30 @@ async function _initTelegramInner() {
         log.warn('[tg:commands] setMyCommands failed:', logErrorText(e));
     });
 
-    try {
-        await bot.api.raw.deleteWebhook({ drop_pending_updates: true });
-    } catch { /* best effort */ }
-
-    bot.start({
-        drop_pending_updates: true,
+    const poller = new TelegramDurablePoller({
+        api: bot.api,
+        key: String(botUserId),
+        store: telegramUpdateOffsets,
+        handleUpdateThroughFinalDelivery: async (update) => {
+            try {
+                await bot.handleUpdate(update);
+                if (telegramFinalDeliveryFailures.has(update.update_id)) {
+                    throw new Error('telegram_final_delivery_failed');
+                }
+            } finally {
+                telegramFinalDeliveryFailures.delete(update.update_id);
+            }
+        },
         onStart: (info) => {
             tg409RetryCount = 0;
-            log.info(`[tg] ✅ @${info.username} polling active`);
+            const skipped = info.skippedThroughUpdateId === null ? '' : `; skipped through update ${info.skippedThroughUpdateId}`;
+            log.info(`[tg] ✅ @${botUsername ?? botUserId} durable polling active at offset ${info.nextOffset}${skipped}`);
         },
-    }).catch((err) => {
-        const is409 = err?.error_code === 409 || err?.message?.includes('409');
+    });
+    telegramPoller = poller;
+    poller.start().catch((err: unknown) => {
+        const telegramError = err as { error_code?: number; message?: string };
+        const is409 = telegramError.error_code === 409 || telegramError.message?.includes('409');
         if (is409) {
             tg409RetryCount++;
             if (tg409RetryCount > TG_MAX_RETRIES) {
@@ -885,7 +923,7 @@ async function _initTelegramInner() {
                 tgRetryTimer = setTimeout(() => { tgRetryTimer = null; void initTelegram(); }, delay);
             }
         } else {
-            log.error('[tg:fatal]', logErrorText(err));
+            log.error('[tg:fatal] Telegram durability bootstrap/polling failed; no uncommitted backlog consumed', logErrorText(err));
         }
     });
     telegramBot = bot;
