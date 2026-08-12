@@ -38,7 +38,7 @@ cli-jaw/
 │   └── mime-detect.ts        ← MIME 타입 감지 헬퍼 (67L)
 ├── src/
 │   ├── core/                 ← 의존 0 인프라 계층 (31 files, 3847L)
-│   │   ├── config.ts         ← JAW_HOME, settings, APP_VERSION + migrateSettings legacy Claude model normalization + avatar settings deep merge + default `settings.pi` + corrupt settings backup + CLI 탐지 re-export hub (1249L)
+│   │   ├── config.ts         ← JAW_HOME, settings, APP_VERSION + migrateSettings legacy Claude model normalization + avatar settings deep merge + default `settings.pi` + corrupt settings backup + CLI 탐지 re-export hub (1258L)
 │   │   ├── cli-detection.ts  ← CLI 탐지 + `pi` npm-exec fallback + `kiro-code`(`kiro-cli` binary)/`claude-e`/`ai-e` helper `--idle-timeout-ms` compatibility probe + local package release/debug candidates (288L)
 │   │   ├── compact.ts        ← compact 헬퍼 (COMPACT_MARKER_CONTENT, managed summary builder, cutoff logic, harvestGitGrep + harvestChatGrep 1KB/1KB budget split) (772L)
 │   │   ├── instance.ts       ← 인스턴스 ID, node/jaw 경로, 유닛명 sanitize (61L)
@@ -52,7 +52,7 @@ cli-jaw/
 │   │   ├── main-session.ts   ← 메인 세션 authoritative CLI/clear-state helper + clearBossSessionOnly (232L)
 │   │   ├── message-summary.ts ← message preview/summary helper (55L)
 │   │   ├── path-expand.ts    ← shell-style path expansion helper (12L)
-│   │   ├── runtime-settings.ts ← settings side effects 통합 helper (439L)
+│   │   ├── runtime-settings.ts ← settings side effects 통합 helper (460L)
 │   │   ├── runtime-settings-gate.ts ← settings mutation in-flight gate (41L)
 │   │   ├── codex-config.ts   ← Codex config.toml context window sync (96L)
 │   │   ├── runtime-path.ts   ← buildServicePath() PATH 보강 (nvm/fnm/homebrew/volta/asdf/cargo/bun/yarn/pnpm 14+ dirs) (182L)
@@ -65,7 +65,7 @@ cli-jaw/
 │   │   ├── launchd-cleanup.ts ← launchd stale plist / runtime cleanup (16L)
 │   │   ├── launchd-plist.ts  ← launchd plist 생성 helper (61L)
 │   │   ├── tcc.ts            ← macOS TCC / screen-recording 권한 점검 (55L)
-│   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (176L)
+│   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (187L)
 │   │   └── skill-cache.ts    ← 활성 스킬 슬래시 커맨드 캐시 (registerSkillLoader, getSkillCommandsCache, invalidateSkillCommandsCache) (44L)
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3163L)
@@ -223,7 +223,7 @@ cli-jaw/
 │   │   ├── synonyms.ts       ← keyword synonym expansion helper (60L) ✨
 │   │   └── worklog.ts        ← Worklog CRUD + phase matrix (201L)
 │   ├── telegram/             ← Telegram 인터페이스 (9 files)
-│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (931L)
+│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (951L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (43L)
 │   │   ├── forwarder.ts      ← text 전송 뒤 guarded local-image photo relay + escape/chunk/createForwarder (245L)
 │   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (315L)
@@ -231,15 +231,15 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (7 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (506L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (519L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (119L)
-│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (126L) ✨
+│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (155L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (85L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)
 │   ├── slack/                ← Slack 인터페이스 (20 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (372L)
-│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (672L)
+│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (686L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (205L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (62L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (216L)
@@ -293,7 +293,7 @@ cli-jaw/
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (352L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
-│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1105L)
+│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1174L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (635L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (431L)
@@ -422,7 +422,7 @@ cli-jaw/
 │   ├── helpers/help.ts       ← CLI help text helper (9L)
 │   └── commands/             ← 34 top-level ts files + `tui/` 11 helper 모듈
 │       ├── serve.ts          ← 서버 시작 (--port/--host/--open) + SIGINT child.kill('SIGINT') orphan fix (123L)
-│       ├── dispatch.ts       ← 직원 호출 (pipe mode 호환) + default safe live progress follow + `--quiet`/`--json` quiet paths + virtual employee dispatch + batch dispatch safe summary + stale/non-JSON route diagnostics + worker result polling + ECONNREFUSED retry (650L)
+│       ├── dispatch.ts       ← 직원 호출 (pipe mode 호환) + default safe live progress follow + `--quiet`/`--json` quiet paths + virtual employee dispatch + batch dispatch safe summary + stale/non-JSON route diagnostics + worker result polling + ECONNREFUSED retry (689L)
 │       ├── chat.ts           ← 터미널 채팅 TUI (3모드, locale bootstrap, refreshInfo, active model 표시, no-arg `/model`·`/cli` selector intercept, transcript 축적, overlay wiring, batched key tokenization, settings snapshot, 362L)
 │       ├── chat-search.ts    ← 채팅 메시지 히스토리 검색 (--days/--recent/--context/--limit, 70L)
 │       ├── goal.ts           ← goal autonomy CLI (start/status/pause/resume/stop) (197L) ✨
