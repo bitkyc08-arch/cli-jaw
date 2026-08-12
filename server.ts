@@ -290,7 +290,7 @@ try {
 
 // Fail closed: Date.now() would let a recycled PID satisfy ownership later.
 const startedAt = processStartedAt(process.pid);
-const ownPidfileRecord = startedAt ? { pid: process.pid, startedAt, port: PORT, home: JAW_HOME, version: APP_VERSION } : null;
+const ownPidfileRecord = startedAt ? { pid: process.pid, startedAt, port: Number(PORT), home: JAW_HOME, version: APP_VERSION } : null;
 if (ownPidfileRecord) {
     try { writePidfile(ownPidfileRecord, defaultLifecycleDeps); }
     catch (e) { console.warn('[jaw:lifecycle] could not write pidfile:', (e as Error).message); }
