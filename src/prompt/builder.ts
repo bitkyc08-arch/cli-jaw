@@ -326,16 +326,116 @@ function appendAnchorIfMissing(
 }
 
 /**
- * Safely append the Desktop/Browser Control anchor block to a user-edited
- * A1 file when the anchor is missing. Returns true when an append was made.
+ * Normalized MD5s of every desktop-control anchor block cli-jaw has shipped.
+ * A user file whose block matches one of these was NOT edited inside the
+ * markers, so replacing it destroys nothing. Anything else is treated as
+ * user-authored and is preserved. Same pattern as KNOWN_A1_SOURCE_HASHES.
+ *
+ * Regenerate with: node scripts/anchor-hash.mjs (see the test, which pins the
+ * currently-shipped template block so this list cannot silently go stale).
  */
-function ensureDesktopControlAnchor(fileContent: string, rendered: string): string | null {
-    return appendAnchorIfMissing(
+const KNOWN_DESKTOP_CONTROL_ANCHOR_HASHES = new Set<string>([
+    // 4ef0bc51 — the macOS-only contract shipped through v2.2.19, replaced by
+    // the darwin/win32 split in #308. This is the block installed users have.
+    '0a819e06ac3e0b7f5b10eae6bc388eef',
+]);
+
+export function hashAnchorBlock(block: string): string {
+    return createHash('md5').update(normalizeRenderedContent(block)).digest('hex');
+}
+
+type AnchorTopology =
+    | { kind: 'absent' }
+    | { kind: 'single'; start: number; end: number }
+    | { kind: 'malformed' };
+
+/**
+ * The old helpers looked only at the FIRST open and FIRST close marker, so a
+ * file with a dangling open, a reversed pair, or two blocks could be neither
+ * safely replaced nor safely appended. Count both tokens and demand exactly
+ * one correctly-ordered pair before touching anything.
+ */
+export function findAnchorTopology(content: string, open: string, close: string): AnchorTopology {
+    const opens: number[] = [];
+    const closes: number[] = [];
+    for (let i = content.indexOf(open); i !== -1; i = content.indexOf(open, i + open.length)) opens.push(i);
+    for (let i = content.indexOf(close); i !== -1; i = content.indexOf(close, i + close.length)) closes.push(i);
+    // The close marker (`<!-- /anchor:x -->`) does not contain the open marker
+    // as a substring, so the two counts are independent.
+    if (opens.length === 0 && closes.length === 0) return { kind: 'absent' };
+    if (opens.length !== 1 || closes.length !== 1) return { kind: 'malformed' };
+    const start = opens[0]!;
+    const end = closes[0]!;
+    if (end <= start) return { kind: 'malformed' };
+    return { kind: 'single', start, end: end + close.length };
+}
+
+export type AnchorUpsertResult =
+    | { action: 'appended'; content: string }
+    | { action: 'replaced'; content: string }
+    | { action: 'preserved-user-edit' }
+    | { action: 'preserved-malformed' }
+    | { action: 'unchanged' };
+
+/**
+ * Bring a user-edited A-1 up to the current desktop-control contract without
+ * ever discarding text the user wrote. Replacement happens only when the
+ * existing block is byte-for-byte one we shipped.
+ */
+export function upsertKnownAnchorBlock(
+    fileContent: string,
+    rendered: string,
+    open: string,
+    close: string,
+    knownHashes: Set<string>,
+): AnchorUpsertResult {
+    const block = extractAnchorBlock(rendered, open, close);
+    if (!block) return { action: 'unchanged' };
+    const topology = findAnchorTopology(fileContent, open, close);
+    if (topology.kind === 'malformed') return { action: 'preserved-malformed' };
+    if (topology.kind === 'absent') {
+        const sep = fileContent.endsWith('\n') ? '\n' : '\n\n';
+        return { action: 'appended', content: fileContent + sep + block + '\n' };
+    }
+    const existing = fileContent.slice(topology.start, topology.end);
+    if (existing === block) return { action: 'unchanged' };
+    if (!knownHashes.has(hashAnchorBlock(existing))) return { action: 'preserved-user-edit' };
+    return {
+        action: 'replaced',
+        content: fileContent.slice(0, topology.start) + block + fileContent.slice(topology.end),
+    };
+}
+
+/**
+ * Applies the upsert to A-1 text and logs why. Returns updated text, or null
+ * when nothing may be written.
+ */
+function migrateDesktopControlAnchor(fileContent: string, rendered: string): string | null {
+    const result = upsertKnownAnchorBlock(
         fileContent,
         rendered,
         DESKTOP_CONTROL_ANCHOR_OPEN,
         DESKTOP_CONTROL_ANCHOR_CLOSE,
+        KNOWN_DESKTOP_CONTROL_ANCHOR_HASHES,
     );
+    switch (result.action) {
+        case 'appended':
+            log.info('[prompt] A-1.md: appended desktop-control anchor (user edits preserved)');
+            return result.content;
+        case 'replaced':
+            log.info('[prompt] A-1.md: updated desktop-control anchor to the current contract');
+            return result.content;
+        case 'preserved-user-edit':
+            log.warn('[prompt] A-1.md: desktop-control anchor was edited locally — left as-is. '
+                + 'It may predate the current platform contract (e.g. Windows Computer Use).');
+            return null;
+        case 'preserved-malformed':
+            log.warn('[prompt] A-1.md: desktop-control anchor markers are malformed or duplicated — '
+                + 'left as-is. Fix the markers to receive contract updates.');
+            return null;
+        default:
+            return null;
+    }
 }
 
 function ensureDashboardConnectorAnchor(fileContent: string, rendered: string): string | null {
@@ -381,10 +481,9 @@ export function initPromptFiles() {
                 // User edited — preserve their changes, but advance hash baseline.
                 // Safe-append new anchor blocks the user hasn't opted in to yet.
                 let userText = fs.readFileSync(A1_PATH, 'utf8');
-                const appendedDesktop = ensureDesktopControlAnchor(userText, a1Content);
+                const appendedDesktop = migrateDesktopControlAnchor(userText, a1Content);
                 if (appendedDesktop) {
                     userText = appendedDesktop;
-                    log.info('[prompt] A-1.md: appended desktop-control anchor (user edits preserved)');
                 }
                 const appendedConnector = ensureDashboardConnectorAnchor(userText, a1Content);
                 if (appendedConnector) {
@@ -423,6 +522,12 @@ export function initPromptFiles() {
             fs.writeFileSync(hashPath, currentHash);
             log.info('[prompt] A-1.md migrated from known stock template');
         } else {
+            // A customized pre-hash file still deserves the current anchor
+            // contract. Without this the install keeps its old desktop-control
+            // block forever: the hash is advanced here and the hash-present
+            // branch above never revisits an anchor that already exists.
+            const migrated = migrateDesktopControlAnchor(fileContent, a1Content);
+            if (migrated) fs.writeFileSync(A1_PATH, migrated);
             fs.writeFileSync(hashPath, currentHash);
             log.info('[prompt] A-1.md preserved (customized legacy file)');
         }

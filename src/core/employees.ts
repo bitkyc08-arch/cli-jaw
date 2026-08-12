@@ -29,7 +29,36 @@ export const DEFAULT_EMPLOYEES = [
 export type EmployeeCli = CliEngine;
 
 export interface StaticEmployeeRuntimeHints {
+    /**
+     * Platforms on which this employee can actually run. Empty/absent means
+     * "no platform constraint". Values are `process.platform` strings, which
+     * is what the dispatch-time check receives; a WSL process reports `linux`
+     * and is therefore denied by omission rather than by a separate probe.
+     */
+    supportedPlatforms?: NodeJS.Platform[];
+    /**
+     * @deprecated Use `supportedPlatforms`. Retained because this object is
+     * serialized to clients through `GET /api/employees` (see `EmployeeListing`),
+     * so removing it would break external consumers. Always DERIVED from
+     * `supportedPlatforms` by `withDerivedRuntimeHints()` — never set it by hand,
+     * or the two fields can disagree.
+     */
     requiresDarwin?: boolean;
+}
+
+/**
+ * A boolean cannot express `darwin | win32`. Rather than let the legacy field
+ * drift from the real constraint, we compute it: it is true only when darwin is
+ * the sole supported platform. Enforcement itself never reads it — that is
+ * `checkRuntimeHints`, which the dispatch route turns into a 412.
+ */
+export function withDerivedRuntimeHints(
+    hints: StaticEmployeeRuntimeHints | undefined,
+): StaticEmployeeRuntimeHints | undefined {
+    if (!hints) return hints;
+    const platforms = hints.supportedPlatforms;
+    if (!platforms || platforms.length === 0) return hints;
+    return { ...hints, requiresDarwin: platforms.length === 1 && platforms[0] === 'darwin' };
 }
 
 export interface StaticEmployee {
@@ -214,7 +243,10 @@ export const STATIC_EMPLOYEES: StaticEmployee[] = [
         skills: ['desktop-control', 'screen-capture', 'codex-imagegen'],
         systemPromptPatchFile: 'control-system.md',
         runtimeHints: {
-            requiresDarwin: true,
+            // Computer Use runs on macOS (app-scoped API) and on Windows
+            // (window-scoped API). Linux and WSL have no Computer Use host, and
+            // a WSL process reports `linux`, so both stay denied. See #308.
+            supportedPlatforms: ['darwin', 'win32'],
         },
         delegation: {
             mode: 'preferred_for_long_sessions',
@@ -263,8 +295,11 @@ export function checkRuntimeHints(
     const out: RuntimeHintCheckResult = { fail: [], warn: [] };
     const hints = spec.runtimeHints;
     if (!hints) return out;
-    if (hints.requiresDarwin && platform !== 'darwin') {
-        out.fail.push(`${spec.name} requires macOS (current: ${platform})`);
+    const platforms = hints.supportedPlatforms;
+    if (platforms && platforms.length > 0 && !platforms.includes(platform)) {
+        out.fail.push(
+            `${spec.name} supports ${platforms.join(', ')} (current: ${platform})`,
+        );
     }
     return out;
 }
@@ -354,7 +389,7 @@ export async function listEmployees(): Promise<EmployeeListing[]> {
             model,
             role: s.description,
             source: 'static',
-            runtimeHints: s.runtimeHints,
+            runtimeHints: withDerivedRuntimeHints(s.runtimeHints),
             skills: s.skills,
             systemPromptPatchFile: s.systemPromptPatchFile,
             delegation: s.delegation,

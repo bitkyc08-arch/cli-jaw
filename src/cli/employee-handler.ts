@@ -62,7 +62,8 @@ export async function employeeHandler(args: string[], ctx: CliCommandContext): P
             `role: ${emp.role || '-'}`,
         ];
         if (emp.skills?.length) lines.push(`skills: ${emp.skills.join(', ')}`);
-        if (emp.runtimeHints?.requiresDarwin) lines.push('requires: macOS');
+        const platforms = emp.runtimeHints?.supportedPlatforms;
+        if (platforms?.length) lines.push(`supports: ${platforms.join(', ')}`);
         return { ok: true, text: lines.join('\n') };
     }
 

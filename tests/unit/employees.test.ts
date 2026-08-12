@@ -13,6 +13,8 @@ import {
     checkRuntimeHints,
     checkModelSupport,
     resolveDispatchableEmployee,
+    listEmployees,
+    withDerivedRuntimeHints,
 } from '../../src/core/employees.ts';
 
 const ROOT = process.cwd();
@@ -31,12 +33,12 @@ async function withInactiveOpenCodex<T>(fn: () => Promise<T>): Promise<T> {
     }
 }
 
-test('P37-CU-001: Control static employee is defined with Codex + luna + darwin hint', () => {
+test('P37-CU-001: Control static employee is defined with Codex + luna + darwin/win32 support', () => {
     const control = findStaticEmployee('Control');
     assert.ok(control, 'Control must be in STATIC_EMPLOYEES');
     assert.equal(control!.cli, 'codex');
     assert.equal(control!.model, 'gpt-5.6-luna');
-    assert.equal(control!.runtimeHints?.requiresDarwin, true);
+    assert.deepEqual(control!.runtimeHints?.supportedPlatforms, ['darwin', 'win32']);
 });
 
 test('P37-CU-002: Control carries desktop-control + screen-capture + codex-imagegen', () => {
@@ -64,11 +66,41 @@ test('P37-CU-004: Control defers non-GUI tasks back to Boss', () => {
     assert.deepEqual(control.defer, { when: 'not-gui-automation', back_to: 'Boss' });
 });
 
-test('P37-CU-005: checkRuntimeHints fails when requiresDarwin but platform is linux', () => {
+test('P37-CU-005: checkRuntimeHints fails on linux because it is outside supportedPlatforms', () => {
     const control = findStaticEmployee('Control')!;
     const result = checkRuntimeHints(control, 'linux');
     assert.ok(result.fail.length > 0, 'expected at least one fail on linux');
-    assert.match(result.fail.join('\n'), /darwin|macOS|linux/i);
+    // The message must name BOTH the current platform and what is allowed,
+    // otherwise an operator on WSL cannot tell why dispatch was refused.
+    const message = result.fail.join('\n');
+    assert.match(message, /linux/);
+    assert.match(message, /darwin/);
+    assert.match(message, /win32/);
+});
+
+// #308: Computer Use exists on Windows (window-scoped API). A WSL process
+// reports `linux` via process.platform, so it stays denied by omission.
+test('P37-CU-005b: checkRuntimeHints passes on both darwin and win32', () => {
+    const control = findStaticEmployee('Control')!;
+    assert.deepEqual(checkRuntimeHints(control, 'darwin').fail, []);
+    assert.deepEqual(checkRuntimeHints(control, 'win32').fail, []);
+});
+
+test('P37-CU-005c: requiresDarwin stays in the serialized listing and agrees with supportedPlatforms', async () => {
+    // runtimeHints is returned by GET /api/employees, so the legacy boolean
+    // cannot simply be dropped. It is derived, never hand-set.
+    const listing = await withInactiveOpenCodex(() => listEmployees());
+    const control = listing.find((e) => e.name === 'Control');
+    assert.ok(control, 'Control must appear in the employee listing');
+    assert.deepEqual(control!.runtimeHints?.supportedPlatforms, ['darwin', 'win32']);
+    assert.equal(control!.runtimeHints?.requiresDarwin, false,
+        'Control no longer requires macOS, so the legacy flag must say so');
+});
+
+test('P37-CU-005d: withDerivedRuntimeHints reports darwin-only as requiring macOS', () => {
+    assert.equal(withDerivedRuntimeHints({ supportedPlatforms: ['darwin'] })?.requiresDarwin, true);
+    assert.equal(withDerivedRuntimeHints({ supportedPlatforms: ['win32'] })?.requiresDarwin, false);
+    assert.equal(withDerivedRuntimeHints(undefined), undefined);
 });
 
 test('P37-CU-006: resolveDispatchableEmployee returns static row with synthetic id', async () => {
