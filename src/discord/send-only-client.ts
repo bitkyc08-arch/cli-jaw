@@ -81,6 +81,35 @@ export async function sendDiscordTextRest(
     return { ok: true };
 }
 
+export async function openDiscordDm(token: string, userId: string, fetchImpl?: typeof fetch): Promise<{ ok: true; channelId: string } | { ok: false; error: string }> {
+    const scheduler = fetchImpl ? new DiscordRestScheduler({ token, fetchImpl }) : schedulerFor(token);
+    const result = await scheduler.schedule<{ id?: string }>({
+        method: 'POST',
+        path: '/users/@me/channels',
+        routeKey: 'POST:/users/@me/channels',
+        majorKey: '@me',
+        makeInit: () => ({
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipient_id: userId }),
+        }),
+        parse: response => response.json() as Promise<{ id?: string }>,
+    });
+    if (!result.ok || !result.value?.id) return { ok: false, error: result.ok ? 'discord_dm_channel_missing' : result.failure.message };
+    return { ok: true, channelId: result.value.id };
+}
+
+export async function sendDiscordDm(token: string, userId: string, text: string, fetchImpl?: typeof fetch): Promise<DiscordRestSendResult> {
+    const dm = await openDiscordDm(token, userId, fetchImpl);
+    if (!dm.ok) return { ok: false, failure: discordDeliveryError({ channel: 'discord', message: dm.error, dispatched: false }), error: dm.error };
+    if (!fetchImpl) return sendDiscordTextRest(token, dm.channelId, text);
+    const scheduler = new DiscordRestScheduler({ token, fetchImpl });
+    for (const chunk of chunkDiscordMessage(text)) {
+        const result = await scheduler.schedule({ method: 'POST', path: `/channels/${encodeURIComponent(dm.channelId)}/messages`, routeKey: 'POST:/channels/:channel/messages', majorKey: dm.channelId, makeInit: () => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: chunk }) }), parse: async () => undefined });
+        if (!result.ok) return sendResult(result);
+    }
+    return { ok: true };
+}
+
 export async function sendDiscordFileRest(
     token: string,
     channelId: string,

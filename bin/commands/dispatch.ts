@@ -59,23 +59,7 @@ if (process.env["JAW_EMPLOYEE_MODE"] === '1') {
     process.exit(2);
 }
 
-// Phase 8: boss-only dispatch. Token must be inherited from the server process.
 const bossToken = process.env["JAW_BOSS_TOKEN"] || '';
-if (!bossToken) {
-    console.error('❌ JAW_BOSS_TOKEN missing. This session is not authorized to dispatch employees.');
-    // The old wording told users to "ensure this process inherited its env",
-    // which cannot work: the boss token is generated inside the running serve
-    // process and never written to disk, so a separately opened shell has
-    // nothing to inherit from. Saying so plainly beats sending people to look
-    // for a file that does not exist (#276).
-    console.error('   The boss token lives only in the serve process\'s memory — it is never written to disk,');
-    console.error('   so a separately opened shell cannot inherit it. $JAW_HOME/token is the API bearer');
-    console.error('   token, not this capability.');
-    console.error('');
-    console.error('   To dispatch: run this from the agent session that serve spawned.');
-    console.error('   To send an ordinary prompt instead: jaw ask "<text>"');
-    process.exit(2);
-}
 
 const portIdx = process.argv.indexOf('--port');
 const PORT = (portIdx !== -1 && process.argv[portIdx + 1]) ? process.argv[portIdx + 1] : undefined;
@@ -508,6 +492,61 @@ await getCliAuthToken(PORT);
 dispatchRun: {
 try {
     if (!json && !quiet) console.log(`🚀 Dispatching to ${targetName}...`);
+
+    if (!bossToken) {
+        const pendingResponse = await cliFetch(`${BASE}/api/orchestrate/dispatch/pending`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...(agent ? { agent } : { virtual }), task, mutable, scope,
+                ...(taskTags.length ? { task_tags: taskTags } : {}), ...(role ? { role } : {}),
+                ...(cli ? { cli } : {}), ...(model ? { model } : {}), wait: false,
+            }),
+        });
+        const pending = await readJsonResponse<{ ok?: boolean; jti?: string; digest?: string; status?: string; outcome?: DispatchResultBody; error?: string; expiresAt?: number }>(pendingResponse, 'dispatch pending endpoint');
+        if (!pendingResponse.ok || !pending.body.jti) {
+            printNonOkResponse(pending.body, pendingResponse.status);
+            process.exitCode = 1;
+            break dispatchRun;
+        }
+        if (!json && !quiet) console.log(`⏳ Awaiting operator approval (JTI ${pending.body.jti})...`);
+        let approvedOutcome: DispatchResultBody | undefined;
+        const deadline = Math.min(pending.body.expiresAt || Date.now() + 120_000, Date.now() + 600_000);
+        while (Date.now() <= deadline) {
+            await sleep(1_000);
+            const statusResponse = await cliFetch(`${BASE}/api/orchestrate/dispatch/pending/${encodeURIComponent(pending.body.jti)}`);
+            const status = await readJsonResponse<{ status?: string; outcome?: DispatchResultBody; error?: string }>(statusResponse, 'dispatch approval status endpoint');
+            if (status.body.status === 'completed') { approvedOutcome = status.body.outcome; break; }
+            if (status.body.status === 'failed' || status.body.status === 'cancelled' || status.body.status === 'expired') {
+                console.error(`❌ Dispatch approval ${status.body.status}${status.body.error ? `: ${status.body.error}` : ''}`);
+                process.exitCode = 1;
+                break dispatchRun;
+            }
+        }
+        if (!approvedOutcome) {
+            console.error('❌ Dispatch approval expired before approval.');
+            process.exitCode = 1;
+            break dispatchRun;
+        }
+        if (approvedOutcome.worker?.agentId && approvedOutcome.state !== 'done' && approvedOutcome.state !== 'failed') {
+            if (isAsync) {
+                if (json) printJsonResult(approvedOutcome);
+                else {
+                    console.log(`🚀 ${targetName} dispatched (approved, async)`);
+                    if (approvedOutcome.worker.runId) console.log(`  runId: ${approvedOutcome.worker.runId}`);
+                }
+                process.exitCode = 0;
+                break dispatchRun;
+            }
+            const liveProgress = shouldPrintLiveProgress();
+            approvedOutcome = liveProgress
+                ? await pollAndPrintWorker(approvedOutcome.worker.agentId, targetName, approvedOutcome.worker.runId)
+                : await pollWorkerResult(approvedOutcome.worker.agentId, targetName, approvedOutcome.worker.runId);
+        }
+        if (json) printJsonResult(approvedOutcome);
+        else printDispatchResult(targetName, approvedOutcome);
+        process.exitCode = dispatchExitCode(approvedOutcome);
+        break dispatchRun;
+    }
 
     let res: Response | undefined;
     let lastError: unknown;

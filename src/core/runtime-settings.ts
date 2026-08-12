@@ -21,6 +21,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from './logger.js';
+import { MAX_DISPATCH_APPROVAL_TTL_SECONDS } from './dispatch-approval.js';
 
 export type RuntimeDefaultMigrationAction = 'accept' | 'keep';
 
@@ -192,6 +193,25 @@ function stringField(record: Record<string, unknown>, key: string): string {
     return typeof value === 'string' ? value : '';
 }
 
+function validateDispatchApprovalPatch(patch: Record<string, unknown>): void {
+    if (!("dispatchApproval" in patch)) return;
+    const block = patch["dispatchApproval"];
+    if (!block || typeof block !== 'object' || Array.isArray(block)) throw new Error('invalid_dispatch_approval');
+    const approval = block as Record<string, unknown>;
+    if ("ttlSeconds" in approval && (!Number.isInteger(approval["ttlSeconds"])
+        || Number(approval["ttlSeconds"]) < 1
+        || Number(approval["ttlSeconds"]) > MAX_DISPATCH_APPROVAL_TTL_SECONDS)) {
+        throw new Error('invalid_dispatch_approval_ttl');
+    }
+    if (!("operators" in approval)) return;
+    const operators = approval["operators"];
+    if (!operators || typeof operators !== 'object' || Array.isArray(operators)) throw new Error('invalid_dispatch_approval_operators');
+    const lists = operators as Record<string, unknown>;
+    if ("slack" in lists && (!Array.isArray(lists["slack"]) || !lists["slack"].every(value => typeof value === 'string'))) throw new Error('invalid_dispatch_approval_slack_operators');
+    if ("telegram" in lists && (!Array.isArray(lists["telegram"]) || !lists["telegram"].every(value => Number.isSafeInteger(value)))) throw new Error('invalid_dispatch_approval_telegram_operators');
+    if ("discord" in lists && (!Array.isArray(lists["discord"]) || !lists["discord"].every(value => typeof value === 'string'))) throw new Error('invalid_dispatch_approval_discord_operators');
+}
+
 function selectedModelForCli(cli: string, currentSettings: Record<string, unknown>): string {
     const activeOverrides = asRecord(currentSettings["activeOverrides"]);
     const perCli = asRecord(currentSettings["perCli"]);
@@ -326,6 +346,7 @@ async function applyRuntimeSettingsPatchSerialised(
             throw new Error('invalid_settings_field');
         }
         const patch = sanitized.value;
+        validateDispatchApprovalPatch(patch);
         if (!opts.allowWikiLifecycle && wikiRouteManagedPatchPaths(patch).length > 0) {
             throw new Error('wiki_configuration_requires_wiki_route');
         }

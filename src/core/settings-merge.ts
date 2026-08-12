@@ -126,12 +126,23 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
     // Deep merge nested objects. A key missing from this list is REPLACED wholesale by a
     // partial patch, so `{wiki:{promptDigest:true}}` would silently drop the root and the
     // enabled flag along with it.
-    for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'slack', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network', 'wiki']) {
+    if (remaining["dispatchApproval"]?.operators && typeof remaining["dispatchApproval"].operators === 'object') {
+        result["dispatchApproval"] = result["dispatchApproval"] || {};
+        remaining["dispatchApproval"] = { ...remaining["dispatchApproval"] };
+        result["dispatchApproval"].operators = {
+            ...(result["dispatchApproval"].operators || {}),
+            ...remaining["dispatchApproval"].operators,
+        };
+        delete remaining["dispatchApproval"].operators;
+    }
+
+    for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'slack', 'dispatchApproval', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network', 'wiki']) {
         if (remaining[key] && typeof remaining[key] === 'object') {
             result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];
         }
     }
+
 
     // Deep merge nested network.remoteAccess
     if (remaining["network"]?.remoteAccess && typeof remaining["network"].remoteAccess === 'object') {
