@@ -40,9 +40,44 @@ function Normalize-Version([string]$version) {
   return $version.Trim().TrimStart('v')
 }
 
+function Get-LatestRelease([string]$repoName) {
+  return Invoke-RestMethod -Uri "https://api.github.com/repos/$repoName/releases/latest" -Headers @{ "User-Agent" = "cli-jaw-postinstall" }
+}
+
 function Get-LatestTag([string]$repoName) {
-  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repoName/releases/latest" -Headers @{ "User-Agent" = "cli-jaw-postinstall" }
+  $release = Get-LatestRelease $repoName
   return [string]$release.tag_name
+}
+
+function Assert-AssetPublished([string]$repoName, [string]$assetName) {
+  try {
+    $release = Get-LatestRelease $repoName
+  } catch {
+    # Match the shell installer's network fallback: if GitHub metadata itself is
+    # unavailable, let the download report the concrete transport failure.
+    Write-Warn "Could not inspect $repoName release assets; the download will verify availability"
+    return
+  }
+
+  $published = @($release.assets | ForEach-Object { [string]$_.name } | Where-Object { $_ })
+  if ($published -contains $assetName) { return }
+
+  $tag = if ($release.tag_name) { [string]$release.tag_name } else { "unknown" }
+  $publishedText = if ($published.Count -gt 0) { $published -join " " } else { "(none)" }
+  $lines = @(
+    "$repoName latest release ($tag) has no $assetName.",
+    "  published: $publishedText"
+  )
+  if ($repoName -eq "lidge-jun/OfficeCLI") {
+    $lines += @(
+      "",
+      "  The supported fork currently publishes only officecli-mac-arm64.",
+      "  For general XLSX/accessibility work use upstream, which builds every platform:",
+      "      powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Upstream",
+      "  The fork is required only for CJK font handling and HWP (rhwp sidecars)."
+    )
+  }
+  Fail ($lines -join [Environment]::NewLine)
 }
 
 Write-Info "Platform: win32/$arch -> $asset"
@@ -85,6 +120,7 @@ if ((Test-Path $targetBin) -and -not $Force -and $Update) {
   }
 }
 
+Assert-AssetPublished $Repo $asset
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 $downloadUrl = "https://github.com/$Repo/releases/latest/download/$asset"
 
