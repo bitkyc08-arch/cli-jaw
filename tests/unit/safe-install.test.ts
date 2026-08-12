@@ -459,10 +459,15 @@ test('SAF-004g: postinstall child processes use service-safe PATH consistently',
 });
 
 test('SAF-004h: README scopes Windows installation support to WSL', () => {
+    const nativeWindowsBetaStart = readmeSrc.indexOf('<summary><b>Native Windows (PowerShell beta)</b>');
+    const nativeWindowsBetaEnd = readmeSrc.indexOf('</details>', nativeWindowsBetaStart);
+    const readmeOutsideNativeWindowsBeta = nativeWindowsBetaStart >= 0 && nativeWindowsBetaEnd >= 0
+        ? readmeSrc.slice(0, nativeWindowsBetaStart) + readmeSrc.slice(nativeWindowsBetaEnd + '</details>'.length)
+        : readmeSrc;
     assert.ok(readmeSrc.includes('wsl --install'), 'README should document Windows setup through WSL');
     assert.ok(readmeSrc.includes('wsl.exe -d Ubuntu -- bash -lc "jaw dashboard"'), 'README should document PowerShell-to-WSL login-shell invocation');
     assert.ok(readmeSrc.includes('macOS / Linux / WSL with Node.js 22+ already installed'), 'README default npm install block should be OS-scoped');
-    assert.equal(readmeSrc.includes('Get-Command jaw'), false, 'README must not troubleshoot native PowerShell jaw resolution as a supported path');
+    assert.equal(readmeOutsideNativeWindowsBeta.includes('Get-Command jaw'), false, 'README must keep native PowerShell jaw resolution inside the explicitly scoped beta section');
     assert.equal(localizedReadmeSrc.includes('$env:JAW_SAFE="1"; npm install -g cli-jaw'), false, 'localized READMEs must not advertise native PowerShell safe install');
     assert.equal(localizedReadmeSrc.includes('# Windows PowerShell'), false, 'localized READMEs must not present native PowerShell install snippets');
     assert.equal(localizedReadmeSrc.includes('npm bin -g'), false, 'localized README troubleshooting should use npm prefix -g, not removed npm bin -g');
