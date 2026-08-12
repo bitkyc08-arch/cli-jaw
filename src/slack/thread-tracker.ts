@@ -92,8 +92,9 @@ export function isThreadParticipated(channel: string, threadTs: string): boolean
 // too, so re-injecting the thread's history is the RIGHT behavior. Persisting
 // the claim would leave a context-less session permanently without context.
 
-/** key -> the token of the claim currently holding it. */
-const prefetchClaimed = new Map<string, number>();
+type PrefetchClaim = { token: number; committed: boolean };
+/** key -> current owner and whether history was actually injected. */
+const prefetchClaimed = new Map<string, PrefetchClaim>();
 const PREFETCH_CLAIM_CAP = 500;
 let prefetchToken = 0;
 
@@ -115,15 +116,34 @@ export function claimThreadPrefetch(channel: string, threadTs: string): number {
     const key = threadKey(channel, threadTs);
     if (prefetchClaimed.has(key)) return 0;
     if (prefetchClaimed.size >= PREFETCH_CLAIM_CAP) {
-        // Oldest half by insertion order — a claim is never refreshed, so
-        // insertion order IS recency here.
-        for (const [stale] of [...prefetchClaimed].slice(0, Math.floor(PREFETCH_CLAIM_CAP / 2))) {
+        // Active owners are singleflight locks, not cache entries. Evicting one
+        // lets another envelope claim the same live thread and inject history
+        // twice. Only completed claims may give ground under pressure.
+        let removed = 0;
+        const target = Math.floor(PREFETCH_CLAIM_CAP / 2);
+        for (const [stale, claim] of prefetchClaimed) {
+            if (!claim.committed) continue;
             prefetchClaimed.delete(stale);
+            removed += 1;
+            if (removed >= target) break;
         }
+        // All bounded slots can legitimately be in flight. Decline rather than
+        // queue or violate singleflight; a later message can retry after one
+        // owner commits or releases.
+        if (prefetchClaimed.size >= PREFETCH_CLAIM_CAP) return 0;
     }
     const token = ++prefetchToken;
-    prefetchClaimed.set(key, token);
+    prefetchClaimed.set(key, { token, committed: false });
     return token;
+}
+
+/** Mark that this owner actually injected history; completed claims are evictable. */
+export function commitThreadPrefetch(channel: string, threadTs: string, token: number): boolean {
+    if (!channel || !threadTs || !token) return false;
+    const claim = prefetchClaimed.get(threadKey(channel, threadTs));
+    if (!claim || claim.token !== token) return false;
+    claim.committed = true;
+    return true;
 }
 
 /**
@@ -138,7 +158,7 @@ export function claimThreadPrefetch(channel: string, threadTs: string): number {
 export function releaseThreadPrefetch(channel: string, threadTs: string, token: number): void {
     if (!channel || !threadTs || !token) return;
     const key = threadKey(channel, threadTs);
-    if (prefetchClaimed.get(key) !== token) return;
+    if (prefetchClaimed.get(key)?.token !== token) return;
     prefetchClaimed.delete(key);
 }
 

@@ -180,8 +180,8 @@ export function slackIngressLaneKey(target: RemoteTarget): string {
 export function enqueueSlackIngress(
     laneKey: string,
     task: (signal: AbortSignal) => Promise<void>,
-): void {
-    if (resetting) return;
+): boolean {
+    if (resetting) return false;
     const taskGeneration = generation;
     const controller = new AbortController();
     controllers.add(controller);
@@ -201,6 +201,7 @@ export function enqueueSlackIngress(
     void tail.then(() => {
         if (ingressTails.get(laneKey) === tail) ingressTails.delete(laneKey);
     });
+    return true;
 }
 
 export type SlackRunContext = {

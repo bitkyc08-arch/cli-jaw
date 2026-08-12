@@ -9,17 +9,99 @@
 // thread BEFORE the ingress task runs, so a participation check inside that task
 // is a dead branch (#316).
 
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { settings } from '../../src/core/config.ts';
 
 import {
     claimThreadPrefetch,
+    commitThreadPrefetch,
     releaseThreadPrefetch,
     resetThreadPrefetchClaims,
+    resetThreadTrackerForTest,
 } from '../../src/slack/thread-tracker.ts';
 import { buildThreadPreamble, PREAMBLE_TOTAL_CAP } from '../../src/slack/context.ts';
 
-test.beforeEach(() => resetThreadPrefetchClaims());
+let recoverAttachments: () => Promise<unknown[]> = async () => [];
+
+mock.module('../../src/slack/attachment-recovery.ts', {
+    namedExports: {
+        recoverSlackAttachments: async () => recoverAttachments(),
+    },
+});
+
+mock.module('../../src/orchestrator/gateway.ts', {
+    namedExports: {
+        submitMessage: () => ({ action: 'started', requestId: 'R-prefetch' }),
+    },
+});
+
+mock.module('../../src/orchestrator/collect.ts', {
+    namedExports: { orchestrateAndCollect: async () => 'reply' },
+});
+
+mock.module('../../src/slack/send-only-client.ts', {
+    namedExports: {
+        getSlackSendClient: () => ({ token: 'xoxb-test' }),
+        sendSlackText: async () => ({ ok: true }),
+    },
+});
+
+mock.module('../../src/slack/forwarder.ts', {
+    namedExports: {
+        createSlackForwarder: () => () => { },
+        relaySlackImages: async () => { },
+    },
+});
+
+const { handleSlackEnvelope } = await import('../../src/slack/bot.ts');
+const { enqueueSlackIngress, resetSlackIngress } = await import('../../src/slack/ingress.ts');
+
+const trackerPath = join(tmpdir(), `cli-jaw-prefetch-${process.pid}.json`);
+
+test.beforeEach(async () => {
+    await resetSlackIngress();
+    resetThreadPrefetchClaims();
+    resetThreadTrackerForTest(trackerPath);
+    recoverAttachments = async () => [];
+    settings.slack.channelIds = [];
+    settings.slack.mentionOnly = true;
+    settings.slack.threadRequireMention = false;
+});
+
+test.after(() => {
+    resetThreadTrackerForTest();
+    rmSync(trackerPath, { force: true });
+    rmSync(`${trackerPath}.tmp`, { force: true });
+});
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(done => { resolve = done; });
+    return { promise, resolve };
+}
+
+function threadedEnvelope(text: string, suffix: string) {
+    return {
+        envelope_id: `E-${suffix}`,
+        type: 'events_api',
+        payload: {
+            event: {
+                type: 'app_mention', channel: `C-${suffix}`, user: 'U1', text,
+                ts: `${suffix}.2`, thread_ts: `${suffix}.1`,
+            },
+        },
+    } as const;
+}
+
+function assertClaimReleased(suffix: string): void {
+    const token = claimThreadPrefetch(`C-${suffix}`, `${suffix}.1`);
+    assert.ok(token > 0, `thread ${suffix} remained claimed`);
+    releaseThreadPrefetch(`C-${suffix}`, `${suffix}.1`, token);
+}
 
 test('a thread is claimable exactly once', () => {
     const first = claimThreadPrefetch('C1', '100.1');
@@ -72,6 +154,88 @@ test('reset clears every claim', () => {
     claimThreadPrefetch('C1', '100.1');
     resetThreadPrefetchClaims();
     assert.ok(claimThreadPrefetch('C1', '100.1') > 0, 'a new runtime re-injects history');
+});
+
+test('capacity pressure never evicts an active claim', () => {
+    const tokens: number[] = [];
+    for (let i = 0; i < 500; i += 1) {
+        tokens.push(claimThreadPrefetch('C1', `${i}.1`));
+    }
+    assert.ok(tokens.every(token => token > 0));
+    assert.equal(
+        claimThreadPrefetch('C1', 'overflow.1'), 0,
+        'a new prefetch must degrade while every bounded slot is active',
+    );
+    assert.equal(
+        claimThreadPrefetch('C1', '0.1'), 0,
+        'the oldest live owner must remain claimed under pressure',
+    );
+});
+
+test('capacity pressure may evict completed claims but preserves active ones', () => {
+    const active = claimThreadPrefetch('C1', 'active.1');
+    for (let i = 0; i < 499; i += 1) {
+        const ts = `done-${i}.1`;
+        const token = claimThreadPrefetch('C1', ts);
+        assert.ok(commitThreadPrefetch('C1', ts, token));
+    }
+    assert.ok(claimThreadPrefetch('C1', 'new.1') > 0, 'completed entries make bounded room');
+    assert.equal(claimThreadPrefetch('C1', 'active.1'), 0, 'the live owner is never evicted');
+    releaseThreadPrefetch('C1', 'active.1', active);
+});
+
+test('an accepted envelope that becomes empty releases its prefetch claim', async () => {
+    // The gate accepts whitespace as a present text field, but normalization
+    // below the claim turns it into an empty prompt and returns before enqueue.
+    await handleSlackEnvelope(threadedEnvelope('   ', 'empty'));
+    assertClaimReleased('empty');
+});
+
+test('a reset handled before enqueue releases its prefetch claim', async () => {
+    await handleSlackEnvelope(threadedEnvelope('reset', 'reset'));
+    assertClaimReleased('reset');
+});
+
+test('an attachment-recovery exception releases its prefetch claim', async () => {
+    recoverAttachments = async () => { throw new Error('recovery failed'); };
+    await assert.rejects(
+        handleSlackEnvelope(threadedEnvelope('inspect attachment', 'recover-error')),
+        /recovery failed/,
+    );
+    assertClaimReleased('recover-error');
+});
+
+test('an ingress reset that refuses handoff releases the caller-owned claim', async () => {
+    const blocker = deferred<void>();
+    assert.equal(
+        enqueueSlackIngress('prefetch-reset-blocker', async () => blocker.promise), true,
+        'the blocker must be accepted before reset starts',
+    );
+    await Promise.resolve();
+
+    const recoveryEntered = deferred<void>();
+    const recoveryResult = deferred<unknown[]>();
+    recoverAttachments = async () => {
+        recoveryEntered.resolve();
+        return recoveryResult.promise;
+    };
+
+    const handling = handleSlackEnvelope(threadedEnvelope('continue', 'reset-race'));
+    await recoveryEntered.promise;
+    const resetting = resetSlackIngress();
+    try {
+        assert.equal(
+            enqueueSlackIngress('prefetch-reset-probe', async () => { }), false,
+            'ingress must report that it refused ownership during reset',
+        );
+        recoveryResult.resolve([]);
+        await handling;
+        assertClaimReleased('reset-race');
+    } finally {
+        recoveryResult.resolve([]);
+        blocker.resolve();
+        await resetting;
+    }
 });
 
 // ─── preamble rendering ─────────────────────────────
