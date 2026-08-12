@@ -73,6 +73,7 @@ import { createRateLimiter, createRateLimitMiddleware } from './src/core/rate-li
 import * as browser from './src/browser/index.js';
 
 import { ensureMemoryRuntimeReady, hasSoulFile } from './src/memory/runtime.js';
+import { refreshHostToolchain } from './src/memory/host-toolchain.js';
 
 import { loadLocales } from './src/core/i18n.js';
 import {
@@ -193,6 +194,16 @@ try {
     console.log('[jaw:startup] memory ready, hasSoul:', hasSoulFile());
 } catch (e: unknown) {
     console.warn('[jaw:memory-init]', (e as Error).message);
+}
+
+// #299: resolve the host toolchain ONCE per start, before the first AGENTS.md
+// is generated below. Not inside the prompt builder — regenerateB() runs on
+// every agent spawn, and probing there would put subprocess lookups in a hot
+// path. A failed scan keeps whatever the previous run learned.
+try {
+    refreshHostToolchain();
+} catch (e: unknown) {
+    console.warn('[jaw:toolchain]', (e as Error).message);
 }
 
 // Phase 3.1: safe → auto 강제 마이그레이션 (기존 사용자 대응)
