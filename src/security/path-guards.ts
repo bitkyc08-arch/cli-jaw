@@ -17,6 +17,85 @@ function forbidden(code: string) {
 }
 
 /**
+ * The path semantics a guard should reason with.
+ *
+ * Injectable so the Windows rules are testable on any CI OS — the same reason
+ * `platform-kind.ts` takes its inputs as parameters. Production always passes
+ * the host's own `path`, so behavior is unchanged unless a test says otherwise.
+ */
+export interface PathEnvironment {
+    /** `path.win32`, `path.posix`, or the host default. */
+    readonly impl: typeof path;
+    /** True when Windows filename identity rules apply. */
+    readonly windows: boolean;
+    /** Canonicalizes an existing path, or returns null when unresolvable. */
+    readonly realpath: (p: string) => string | null;
+    /** Expands `~` and resolves to absolute, using `impl` semantics. */
+    readonly resolveHome: (p: string) => string;
+}
+
+function defaultRealpath(p: string): string | null {
+    try { return fs.realpathSync.native(p); }
+    catch { return null; }
+}
+
+export const hostPathEnvironment: PathEnvironment = {
+    impl: path,
+    windows: process.platform === 'win32',
+    realpath: defaultRealpath,
+    resolveHome: resolveHomePath,
+};
+
+/**
+ * Reject NTFS alternate-data-stream suffixes and Win32-trimmed components.
+ *
+ * Measured on Windows (devlog/_plan/260812_windows_and_channels_parity/005):
+ * writing `a.md:hidden` succeeds, the stream is absent from a name-only
+ * directory listing, and its content is still fully readable — so a name-based
+ * allowlist never sees the payload. `trailing.md.` lands on disk as
+ * `trailing.md`, so two distinct strings name one file.
+ *
+ * Only applied under Windows semantics: on POSIX a colon is a legal filename
+ * character, and rejecting it there would break working callers.
+ */
+export function assertNoWindowsStreamSuffix(
+    input: string,
+    env: PathEnvironment = hostPathEnvironment,
+): void {
+    if (!env.windows) return;
+    const segments = String(input || '').split(/[\\/]+/);
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (!seg) continue;
+        // A drive letter is the only legal colon, and only in the first segment.
+        const isDriveSegment = i === 0 && /^[A-Za-z]:$/.test(seg);
+        if (!isDriveSegment && seg.includes(':')) throw forbidden('path_stream_denied');
+        // `.` and `..` are ordinary relative segments that legitimately end in
+        // a dot. Rejecting them here would mask traversal as an encoding error
+        // and break every relative path — containment, not this rule, is what
+        // decides whether `..` is allowed to escape.
+        if (seg === '.' || seg === '..') continue;
+        if (/[ .]$/.test(seg)) throw forbidden('path_trailing_trim_denied');
+    }
+}
+
+/**
+ * Fold a path for COMPARISON only — never for the value returned to callers.
+ *
+ * ASCII-only on purpose: `toLowerCase()` is locale-sensitive (Turkish dotless
+ * i) and would fold characters Win32 does not. POSIX is returned untouched,
+ * because a Linux host genuinely can hold `A.md` and `a.md` as distinct files
+ * and folding there would create the vulnerability this function prevents.
+ */
+export function foldPathIdentity(
+    p: string,
+    env: PathEnvironment = hostPathEnvironment,
+): string {
+    if (!env.windows) return p;
+    return p.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
+/**
  * Skill ID 검증 — 소문자 영숫자 + 하이픈/점/밑줄만 허용
  * @param {string} id
  * @returns {string} trimmed id
@@ -76,11 +155,22 @@ export function assertMemoryRelPath(input: string, { allowExt = ['.md'] }: { all
  * @returns {string} resolved absolute path
  * @throws 403 path_escape
  */
-export function safeResolveUnder(baseDir: string, unsafeName: string) {
-    const base = path.resolve(baseDir);
-    const resolved = path.resolve(base, unsafeName);
-    const pref = base.endsWith(path.sep) ? base : base + path.sep;
-    if (resolved !== base && !resolved.startsWith(pref)) throw forbidden('path_escape');
+export function safeResolveUnder(
+    baseDir: string,
+    unsafeName: string,
+    env: PathEnvironment = hostPathEnvironment,
+) {
+    assertNoWindowsStreamSuffix(unsafeName, env);
+    const p = env.impl;
+    const base = p.resolve(baseDir);
+    const resolved = p.resolve(base, unsafeName);
+    // Fold for comparison; return the UNFOLDED path so real filenames survive.
+    const foldedBase = foldPathIdentity(base, env);
+    const foldedResolved = foldPathIdentity(resolved, env);
+    const pref = foldedBase.endsWith(p.sep) ? foldedBase : foldedBase + p.sep;
+    if (foldedResolved !== foldedBase && !foldedResolved.startsWith(pref)) {
+        throw forbidden('path_escape');
+    }
     return resolved;
 }
 
@@ -89,36 +179,43 @@ export function safeResolveUnder(baseDir: string, unsafeName: string) {
  * Prevents arbitrary file exfiltration via /api/telegram/send, /api/channel/send, etc.
  * @throws 403 path_not_allowed
  */
-function safeRealpath(p: string): string | null {
-    try { return fs.realpathSync.native(p); }
-    catch { return null; }
+function isUnderRoot(canonical: string, root: string, env: PathEnvironment = hostPathEnvironment): boolean {
+    const c = foldPathIdentity(canonical, env);
+    const r = foldPathIdentity(root, env);
+    const pref = r.endsWith(env.impl.sep) ? r : r + env.impl.sep;
+    return c === r || c.startsWith(pref);
 }
 
-function isUnderRoot(canonical: string, root: string): boolean {
-    const pref = root.endsWith(path.sep) ? root : root + path.sep;
-    return canonical === root || canonical.startsWith(pref);
-}
+export function assertSendFilePath(
+    filePath: string,
+    workingDir?: string,
+    projectDirs?: string[] | null,
+    env: PathEnvironment = hostPathEnvironment,
+): string {
+    // Reject stream/trim forms before any filesystem call: `a.md:hidden`
+    // resolves and realpaths cleanly, so a later check would already be too late.
+    assertNoWindowsStreamSuffix(filePath, env);
 
-export function assertSendFilePath(filePath: string, workingDir?: string, projectDirs?: string[] | null): string {
-    const resolved = path.resolve(filePath);
-    const canonical = safeRealpath(resolved);
+    const p = env.impl;
+    const resolved = p.resolve(filePath);
+    const canonical = env.realpath(resolved);
     if (!canonical) throw forbidden('path_not_resolvable');
 
     // Allow anything under JAW_HOME
-    const jawHome = resolveHomePath(process.env["CLI_JAW_HOME"] || process.env["JAW_HOME"] || path.join(os.homedir(), '.cli-jaw'));
-    const canonJaw = safeRealpath(jawHome);
-    if (canonJaw && isUnderRoot(canonical, canonJaw)) return canonical;
+    const jawHome = env.resolveHome(process.env["CLI_JAW_HOME"] || process.env["JAW_HOME"] || p.join(os.homedir(), '.cli-jaw'));
+    const canonJaw = env.realpath(jawHome);
+    if (canonJaw && isUnderRoot(canonical, canonJaw, env)) return canonical;
 
     if (workingDir) {
-        const canonWd = safeRealpath(path.resolve(workingDir));
-        if (canonWd && isUnderRoot(canonical, canonWd)) return canonical;
+        const canonWd = env.realpath(p.resolve(workingDir));
+        if (canonWd && isUnderRoot(canonical, canonWd, env)) return canonical;
     }
 
     if (projectDirs) {
         for (const dir of projectDirs) {
-            const currentReal = safeRealpath(path.resolve(dir));
-            if (!currentReal || currentReal !== path.resolve(dir)) continue;
-            if (isUnderRoot(canonical, currentReal)) return canonical;
+            const currentReal = env.realpath(p.resolve(dir));
+            if (!currentReal || currentReal !== p.resolve(dir)) continue;
+            if (isUnderRoot(canonical, currentReal, env)) return canonical;
         }
     }
 
