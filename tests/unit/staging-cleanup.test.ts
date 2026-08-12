@@ -12,7 +12,9 @@ const { cleanupStaleStaging, listStaleStaging } = require_('../../scripts/stagin
 };
 
 function fixture(names: string[]): string {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-staging-'));
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-staging-'));
+    const root = path.join(base, 'node_modules');
+    fs.mkdirSync(root, { recursive: true });
     for (const name of names) fs.mkdirSync(path.join(root, name), { recursive: true });
     return root;
 }
@@ -118,4 +120,41 @@ test('ledger-backed deleting directory is retried', () => {
     }));
     assert.deepEqual(result, { removed: ['.cli-jaw-old.deleting'], skipped: [] });
     assert.deepEqual(calls, ['rm:.cli-jaw-old.deleting', 'ledger']);
+});
+test('non-node_modules parent is never scanned', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-staging-'));
+    fs.mkdirSync(path.join(base, '.cli-jaw-x'), { recursive: true });
+    let calls = 0;
+    const result = cleanupStaleStaging(base, deps({
+        rm: () => { calls += 1; },
+        rename: () => { calls += 1; },
+        probeOpen: () => { calls += 1; },
+    }));
+    assert.strictEqual(calls, 0);
+    assert.deepStrictEqual(result, { removed: [], skipped: [] });
+});
+
+test('non-.cli-jaw .deleting with ledger entry is untouched', () => {
+    const root = fixture(['myapp.deleting']);
+    let removed = 0;
+    const result = cleanupStaleStaging(root, deps({
+        readLedger: () => [{ dir: 'myapp.deleting', verifiedName: 'cli-jaw', renamedAt: 't' }],
+        rm: () => { removed += 1; },
+    }));
+    assert.strictEqual(removed, 0);
+    assert.deepStrictEqual(result.removed, []);
+});
+
+test('rename failure rolls back the ledger authorization', () => {
+    const root = fixture(['.cli-jaw-renfail']);
+    const persisted: unknown[][] = [];
+    cleanupStaleStaging(root, deps({
+        rename: () => { throw Object.assign(new Error('busy'), { code: 'EBUSY' }); },
+        writeLedger: (_file: string, entries: unknown[]) => { persisted.push(entries); },
+    }));
+    const last = persisted[persisted.length - 1] as Array<{ dir?: string }>;
+    assert.ok(!last.some(entry => entry?.dir === '.cli-jaw-renfail.deleting'), 'authorization must be rolled back');
+    const listed = listStaleStaging(root, deps({ readLedger: () => last }));
+    assert.ok(!listed.includes('.cli-jaw-renfail.deleting'), 'rolled-back .deleting must not be retry-eligible');
+    assert.ok(listed.includes('.cli-jaw-renfail'), 'original fresh candidate stays visible to doctor');
 });

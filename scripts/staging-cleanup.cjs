@@ -66,6 +66,11 @@ function dependencies(deps = {}) {
 }
 
 function scan(nodeModulesDir, deps) {
+    // npm staging lives in a directory literally named node_modules; anything
+    // else (dev clone parent, arbitrary caller) is never scanned (#329 v4).
+    if (path.basename(nodeModulesDir) !== 'node_modules') {
+        return { ledgerPath: path.join(nodeModulesDir, LEDGER_FILE), entries: [], fresh: [], retries: [] };
+    }
     const ledgerPath = path.join(nodeModulesDir, LEDGER_FILE);
     const ledger = deps.readLedger(ledgerPath);
     const entries = Array.isArray(ledger) ? ledger : [];
@@ -84,7 +89,7 @@ function scan(nodeModulesDir, deps) {
     for (const name of names) {
         const candidate = path.join(nodeModulesDir, name);
         if (name.endsWith('.deleting')) {
-            if (verifiedRetries.has(name)) retries.push({ name, path: candidate });
+            if (/^\.cli-jaw-.*\.deleting$/.test(name) && verifiedRetries.has(name)) retries.push({ name, path: candidate });
             continue;
         }
         if (/^\.cli-jaw-/.test(name) && deps.readName(candidate) === 'cli-jaw') {
@@ -151,6 +156,9 @@ function cleanupStaleStaging(nodeModulesDir, suppliedDeps = {}) {
         } catch (error) {
             skipped.push(candidate.name);
             deps.log(`staging cleanup rename skipped ${candidate.name}: ${error instanceof Error ? error.message : String(error)}`);
+            // Roll back the authorization so a later unrelated directory at the
+            // .deleting name can never inherit it.
+            removeLedgerEntry(deletingName);
             continue;
         }
         try {
