@@ -46,10 +46,10 @@ export async function sendSlackText(
     token: string,
     target: RemoteTarget,
     text: string,
-    options: { fetchImpl?: SlackFetch } = {},
+    options: { fetchImpl?: SlackFetch; blocks?: unknown } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number }> {
     const chunks = chunkSlackMessage(toMrkdwn(text));
-    for (const chunk of chunks) {
+    for (const [index, chunk] of chunks.entries()) {
         const result = await slackApi(
             token,
             'chat.postMessage',
@@ -58,6 +58,7 @@ export async function sendSlackText(
                 text: chunk,
                 // thread_ts is the PARENT ts (see slack-target.resolveSlackThreadTs)
                 ...(target.threadId ? { thread_ts: target.threadId } : {}),
+                ...(index === 0 && options.blocks ? { blocks: options.blocks } : {}),
             },
             options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
         );

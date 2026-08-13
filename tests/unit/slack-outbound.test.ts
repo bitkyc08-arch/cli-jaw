@@ -713,3 +713,12 @@ test('slackSendHandler posts the text of an opted-in keyboard downgrade and reco
         globalThis.fetch = priorFetch;
     }
 });
+
+test('blocks ride on the first sendSlackText chunk', async () => {
+    const { impl, calls } = makeFetch([{ ok: true }]);
+    const blocks = [{ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Approve' }, action_id: 'appr:x' }] }];
+    await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl, blocks });
+    const body = bodyOf(calls[0]!);
+    assert.equal(body['text'], 'hi');
+    assert.deepEqual(body['blocks'], blocks);
+});

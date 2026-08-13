@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dispatchApprovalStore } from '../../src/core/dispatch-approval.ts';
-import { parseApprovalCallbackData, presentTelegramApproval, presentDiscordApproval } from '../../src/messaging/approval-presentation.ts';
+import { parseApprovalCallbackData, presentTelegramApproval, presentDiscordApproval, presentSlackApproval } from '../../src/messaging/approval-presentation.ts';
 
 test('telegram keyboard callback_data is opaque and under 64 bytes', () => {
     const row = dispatchApprovalStore.create({
@@ -35,4 +35,17 @@ test('discord components use the same opaque custom_id prefix', () => {
     assert.equal(parseApprovalCallbackData(buttons![1]!.custom_id)?.action, 'deny');
     assert.ok(buttons![0]!.custom_id.length <= 100);
     assert.doesNotMatch(buttons![0]!.custom_id, new RegExp(row.jti));
+});
+
+test('slack blocks use the same opaque action_id prefix', () => {
+    const row = dispatchApprovalStore.create({
+        target: { kind: 'agent', name: 'A' }, projectRoot: '/r', task: 't3',
+        mutable: false, scope: null, fanOutCap: 1,
+    });
+    const presented = presentSlackApproval(row, { actorId: 'U1', conversationKey: 'U1' }, 'please approve');
+    const buttons = presented.slackBlocks?.[0]?.elements;
+    assert.equal(buttons?.length, 2);
+    assert.equal(parseApprovalCallbackData(buttons![0]!.action_id)?.action, 'approve');
+    assert.equal(parseApprovalCallbackData(buttons![1]!.action_id)?.action, 'deny');
+    assert.doesNotMatch(buttons![0]!.action_id, new RegExp(row.jti));
 });

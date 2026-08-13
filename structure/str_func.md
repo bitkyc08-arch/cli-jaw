@@ -134,7 +134,7 @@ cli-jaw/
 │   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (123L)
 │   │   ├── extract-images.ts ← Markdown AST 로컬 이미지 후보 추출 + 확장자 필터/중복 제거/4개 cap (36L)
 │   │   ├── access-policy.ts   ← remote command access-policy substrate (deny/allowlist/paired/all) (45L)
-│   │   ├── approval-presentation.ts ← Telegram/Discord Approve/Deny keyboards + opaque appr/aprd ids (96L)
+│   │   ├── approval-presentation.ts ← Telegram/Discord/Slack Approve/Deny keyboards + opaque appr/aprd ids (128L)
 │   │   ├── remote-command-context.ts ← channel-neutral remote command identity (51L)
 │   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + operator list/replay (541L)
 │   │   ├── ingress-audit.ts  ← append-only replay audit JSONL (49L)
@@ -251,7 +251,7 @@ cli-jaw/
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)
 │   ├── slack/                ← Slack 인터페이스 (20 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (407L)
-│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (775L)
+│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (808L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (205L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (66L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (216L)
@@ -266,7 +266,7 @@ cli-jaw/
 │   │   ├── ingress.ts        ← 세션별 ingress lane + admitSlackRun 동기 실행 예약(sessionLanes) + 전역 다운로드 세마포어 + shutdown abort/drain (290L) ✨
 │   │   ├── inbound-file.ts   ← 인바운드 첨부 단일 IO owner (files.info → 인증 스트리밍 다운로드 → saveUpload, 파일/메시지 바이트 예산, 고정 error code) (280L) ✨
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
-│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (69L)
+│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (70L)
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (134L)
@@ -305,7 +305,7 @@ cli-jaw/
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (352L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
-│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1183L)
+│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1189L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (661L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (431L)

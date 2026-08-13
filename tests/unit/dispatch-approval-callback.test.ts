@@ -108,3 +108,20 @@ test('approve and deny race on one jti is a single terminal', () => {
     assert.equal(s.cancel(row.jti, row.digest), false); // already approved
     assert.equal(s.get(row.jti)?.status, 'approved');
 });
+
+test('interactive slack user object is an operator id, not [object Object]', () => {
+    settings.dispatchApproval = { operators: { slack: ['U1'], telegram: [], discord: [] }, ttlSeconds: 120 };
+    const row = dispatchApprovalStore.create({ target: { kind: 'agent', name: 'A' }, projectRoot: '/r', task: 'slack-obj', mutable: false, scope: null, fanOutCap: 1 });
+    const id = dispatchApprovalStore.issueApprovalCallback(row.jti, {
+        actorId: 'U1', conversationKey: 'U1', sessionGeneration: 0, action: 'approve',
+    })!;
+    const transport = createTestTransport('slack');
+    const result = handleApprovalCallback(
+        transport,
+        { user: { id: 'U1' } },
+        id,
+        'approve',
+        { conversationKey: 'U1', sessionGeneration: 0 },
+    );
+    assert.equal(result.approved, true, result.reason);
+});

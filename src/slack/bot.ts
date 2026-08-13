@@ -49,7 +49,8 @@ import { recoverSlackAttachments } from './attachment-recovery.js';
 import { getSessionOwnershipGeneration, type SessionOwnerToken } from '../agent/session-persistence.js';
 import { resetSlackIdentityCache } from './identity.js';
 import { resetSlackConversationCache } from './conversation.js';
-import { handleApprovalCommand, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 
 let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
@@ -493,15 +494,47 @@ function slackPayloadDigest(event: SlackMessageEvent): string {
 
 // ─── Envelope routing ───────────────────────────────
 
+
+function slackInteractiveUserId(payload: Record<string, unknown>): string {
+    const user = payload['user'];
+    if (typeof user === 'string') return user;
+    if (user && typeof user === 'object' && 'id' in user) return String((user as { id: unknown }).id);
+    return '';
+}
 export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTransport = slackApprovalIngress): Promise<void> {
     if (envelope.type === 'slash_commands') {
         await handleSlackSlashCommand(envelope.payload || {});
         return;
     }
     if (envelope.type === 'interactive') {
-        // v1 scope: acked by the socket layer and logged. Block Kit callback
-        // routing is a recorded follow-up (050 section 5.8).
-        log.info('[slack:interactive] received (not routed in v1)');
+        const payload = envelope.payload || {};
+        const actions = payload['actions'];
+        const actionId = Array.isArray(actions) && actions[0] && typeof actions[0] === 'object'
+            ? String((actions[0] as { action_id?: unknown })['action_id'] || '')
+            : '';
+        const parsed = parseApprovalCallbackData(actionId);
+        if (!parsed) {
+            log.info('[slack:interactive] received (not an approval action)');
+            return;
+        }
+        const result = handleApprovalCallback(
+            approvalTransport,
+            payload,
+            parsed.opaqueId,
+            parsed.action,
+            {
+                conversationKey: slackInteractiveUserId(payload),
+                sessionGeneration: 0,
+            },
+        );
+        const reply = result.approved ? 'approved' : (result.reason || 'rejected');
+        const channel = typeof payload['channel'] === 'object' && payload['channel']
+            ? String((payload['channel'] as { id?: unknown })['id'] || '')
+            : '';
+        const token = getSlackSendClient().token;
+        if (token && channel) {
+            await sendSlackText(token, slackTargetFromId(channel), redactOutboundText(reply)).catch(() => undefined);
+        }
         return;
     }
     const payload = envelope.payload as { event?: SlackMessageEvent } | undefined;
