@@ -35,6 +35,7 @@ import {
 import {
     admitIngress, getIngressJournal, settleIngress, type IngressAdmission,
 } from '../messaging/durable-ingress.js';
+import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { createHash } from 'node:crypto';
 import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
@@ -352,7 +353,7 @@ function telegramUpdateEnvelope(update: Record<string, unknown>): InboundEnvelop
 function admitTelegramUpdate(update: Record<string, unknown>): IngressAdmission {
     const journal = getIngressJournal();
     const envelope = journal ? telegramUpdateEnvelope(update) : null;
-    const admission = admitIngress(journal, envelope, telegramPayloadDigest(update));
+    const admission = admitIngress(journal, envelope, telegramPayloadDigest(update), undefined, envelope ? currentGenerationForEnvelope(envelope) : 0);
     if (!admission.admit) {
         log.info(`[tg:ingress] update ${String(update['update_id'])} already handled — not re-running`);
     }

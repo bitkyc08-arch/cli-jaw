@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS ingress_events (
     next_attempt_at  INTEGER,
     last_error       TEXT,
     tombstone_until  INTEGER,
+    session_generation INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (channel, account_id, event_id)
 );
 CREATE INDEX IF NOT EXISTS idx_ingress_events_ready
@@ -66,6 +67,7 @@ export type IngressEventRecord = {
     nextAttemptAt: number | null;
     lastError: string | null;
     tombstoneUntil: number | null;
+    sessionGeneration: number;
 };
 
 export type ReplayOutcome =
@@ -161,6 +163,7 @@ function rowToRecord(row: Record<string, unknown>): IngressEventRecord {
         nextAttemptAt: (row['next_attempt_at'] as number | null) ?? null,
         lastError: (row['last_error'] as string | null) ?? null,
         tombstoneUntil: (row['tombstone_until'] as number | null) ?? null,
+        sessionGeneration: Number(row['session_generation'] ?? 0),
     };
 }
 
@@ -195,6 +198,10 @@ export class IngressJournal {
         this.bootId = options.bootId ?? randomUUID();
         this.tombstoneTtlMs = { ...DEFAULT_TOMBSTONE_TTL_MS, ...options.tombstoneTtlMs };
         this.database.exec(CREATE_INGRESS_EVENTS_SQL);
+        const cols = this.database.prepare('PRAGMA table_info(ingress_events)').all() as Array<{ name: string }>;
+        if (!cols.some(c => c.name === 'session_generation')) {
+            this.database.exec('ALTER TABLE ingress_events ADD COLUMN session_generation INTEGER NOT NULL DEFAULT 0');
+        }
     }
 
     /**
@@ -203,7 +210,7 @@ export class IngressJournal {
      * while the same id as a string lands as "12345" — two rows for one logical event,
      * and dedupe silently stops working.
      */
-    append(envelope: InboundEnvelope, payloadDigest: string, payloadJson?: string): AppendResult {
+    append(envelope: InboundEnvelope, payloadDigest: string, payloadJson?: string, sessionGeneration = 0): AppendResult {
         if (!isInboundEnvelope(envelope)) {
             throw new Error('ingress journal: append requires a valid InboundEnvelope');
         }
@@ -215,8 +222,8 @@ export class IngressJournal {
             INSERT INTO ingress_events (
                 channel, account_id, event_id, conversation_key, thread_key, actor_id,
                 target_json, ack_policy, trace_id, payload_digest, payload_json,
-                state, attempt_count, received_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', 0, ?)
+                state, attempt_count, received_at, session_generation
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', 0, ?, ?)
         `).run(
             envelope.channel,
             envelope.accountId,
@@ -230,6 +237,7 @@ export class IngressJournal {
             payloadDigest,
             payloadJson ?? null,
             envelope.receivedAt,
+            sessionGeneration,
         );
         const record = this.find(envelope.channel, envelope.accountId, envelope.eventId);
         if (!record) throw new Error('ingress journal: append did not persist');
@@ -466,7 +474,7 @@ export class IngressJournal {
 
 /** What the journal decided about one inbound event, carried to the completion call. */
 export type IngressAdmission =
-    | { admit: false; reason: 'already_handled' }
+    | { admit: false; reason: 'already_handled' | 'stale_generation' }
     | { admit: true; journaled: false }
     | { admit: true; journaled: true; envelope: InboundEnvelope };
 
@@ -485,13 +493,17 @@ export function admitIngress(
     envelope: InboundEnvelope | null,
     payloadDigest: string,
     payloadJson?: string,
+    sessionGeneration = 0,
 ): IngressAdmission {
     // No journal (CLI processes, tests) or an event with no durable identity: behave
     // exactly as this path did before the journal existed.
     if (!journal || !envelope) return { admit: true, journaled: false };
-    const result = journal.append(envelope, payloadDigest, payloadJson);
+    const result = journal.append(envelope, payloadDigest, payloadJson, sessionGeneration);
     if (!result.appended && result.record.state === 'completed') {
         return { admit: false, reason: 'already_handled' };
+    }
+    if (!result.appended && result.record.sessionGeneration !== sessionGeneration) {
+        return { admit: false, reason: 'stale_generation' };
     }
     journal.markProcessing(envelope.channel, envelope.accountId, envelope.eventId);
     return { admit: true, journaled: true, envelope };

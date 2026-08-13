@@ -553,7 +553,7 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ### durable-ingress.ts / ingress-audit.ts
 
-`IngressJournal` is the SQLite record of every inbound Telegram/Discord/Slack event. Transports call `admitIngress`/`settleIngress`; operators inspect and recover with `jaw messaging ingress list|show|replay|audit`. `requestReplay` is a state CAS back to `received`. Nothing in-process re-runs the handler — vendor redelivery does. Replay audit is append-only JSONL at `$JAW_HOME/messaging-ingress-audit.jsonl`.
+`IngressJournal` rows stamp `session_generation`. A redelivery whose generation no longer matches is `stale_generation` and is not claimed. `IngressJournal` is the SQLite record of every inbound Telegram/Discord/Slack event. Transports call `admitIngress`/`settleIngress`; operators inspect and recover with `jaw messaging ingress list|show|replay|audit`. `requestReplay` is a state CAS back to `received`. Nothing in-process re-runs the handler — vendor redelivery does. Replay audit is append-only JSONL at `$JAW_HOME/messaging-ingress-audit.jsonl`.
 
 
 Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.

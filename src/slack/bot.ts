@@ -24,6 +24,7 @@ import { slackApi } from './api.js';
 import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
 import { createHash } from 'node:crypto';
 import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
+import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { slackInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import {
@@ -482,7 +483,7 @@ export async function preflightSlackEnvelope(envelope: SlackEnvelope): Promise<S
     });
     if (!inbound) return 'committed';
 
-    const admission = admitIngress(journal, inbound, slackPayloadDigest(event));
+    const admission = admitIngress(journal, inbound, slackPayloadDigest(event), undefined, inbound ? currentGenerationForEnvelope(inbound) : 0);
     if (!admission.admit) return 'duplicate';
     return 'committed';
 }

@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import {
     admitIngress, getIngressJournal, settleIngress, type IngressAdmission,
 } from '../messaging/durable-ingress.js';
+import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
@@ -369,7 +370,7 @@ function admitDiscordMessage(client: Client, msg: Message, target: RemoteTarget)
         parentId: asThreadLike(msg.channel)?.parentId,
         target,
     });
-    const admission = admitIngress(journal, envelope, discordPayloadDigest(msg));
+    const admission = admitIngress(journal, envelope, discordPayloadDigest(msg), undefined, envelope ? currentGenerationForEnvelope(envelope) : 0);
     if (!admission.admit) {
         log.info(redactOutboundText(`[discord:ingress] message ${msg.id} already handled — not re-running`));
     }
