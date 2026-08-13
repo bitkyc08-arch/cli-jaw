@@ -3,23 +3,46 @@ name: Tests
 on:
   push:
     branches:
-      - dev
       - preview
       - main
-    paths-ignore:
-      - 'README*.md'
-      - 'docs/**'
   pull_request:
-    paths-ignore:
-      - 'README*.md'
-      - 'docs/**'
 
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine code changes
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+          changed=$(git diff --name-only "$base".."$head" || true)
+          non_doc=$(echo "$changed" | grep -vE '^README.*\.md$|^docs/' || true)
+          if [ -z "$non_doc" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   node-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     env:
       SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
@@ -166,3 +189,18 @@ jobs:
           exit ${SMOKE_EXIT:-0}
         env:
           NODE_ENV: test
+
+  tests:
+    needs: [changes, node-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify producers
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          count=$(echo "$RESULTS" | jq '[.[] | select(.result != "success" and .result != "skipped")] | length')
+          if [ "$count" -ne 0 ]; then
+            echo "$RESULTS" | jq '.'
+            exit 1
+          fi

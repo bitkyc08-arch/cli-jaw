@@ -1,10 +1,6 @@
 name: npm Publish
 
 on:
-  push:
-    branches:
-      - preview
-      - main
   workflow_dispatch:
     inputs:
       version:
@@ -19,6 +15,10 @@ on:
           - preview
           - latest
         default: preview
+      expected-sha:
+        description: "SHA that must match the checked-out HEAD"
+        required: true
+        type: string
       dry-run:
         description: "Dry run: build, pack, and validate without publishing"
         required: false
@@ -35,7 +35,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: npm-publish-${{ github.ref }}
+  group: npm-publish-${{ github.ref }}-${{ inputs.tag }}-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -50,6 +50,74 @@ jobs:
 
       - name: Checkout public skill fixtures
         run: git submodule update --init --depth 1 skills_ref
+
+      - name: Verify dispatched SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.expected-sha }}
+        run: |
+          set -euo pipefail
+          expected="${EXPECTED_SHA,,}"
+          actual="${GITHUB_SHA,,}"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::branch moved after the release audit (expected ${expected}, got ${actual})"
+            exit 1
+          fi
+          echo "Dispatched SHA matches checked-out HEAD."
+
+      - name: Require successful Tests for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_REF#refs/heads/}"
+          run_id="$(gh run list --workflow test.yml --branch "$branch" --commit "$GITHUB_SHA" --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful push run of test.yml found for $branch @ $GITHUB_SHA"
+            exit 1
+          fi
+          echo "Found successful test run: $run_id"
+
+      - name: Require platform checks when installer surface changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(git tag --merged "$GITHUB_SHA" --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
+          if [ -z "$previous_tag" ]; then
+            echo "::notice::No previous stable v* tag found; treating as first release, no platform diff required."
+            exit 0
+          fi
+
+          changed_file="$(mktemp)"
+          trap 'rm -f "$changed_file"' EXIT
+          git diff --name-only "$previous_tag..$GITHUB_SHA" > "$changed_file"
+
+          detector_status=0
+          node scripts/require-release-evidence.mjs --changed-files-stdin < "$changed_file" || detector_status=$?
+          case "$detector_status" in
+            0)
+              echo "No installer-sensitive changes since $previous_tag"
+              ;;
+            1)
+              branch="${GITHUB_REF#refs/heads/}"
+              platform_url="$(gh run list \
+                --workflow postinstall-platform.yml \
+                --branch "$branch" \
+                --commit "$GITHUB_SHA" \
+                --event push \
+                --status success \
+                --limit 1 --json url --jq '.[0].url // ""')"
+              if [ -z "$platform_url" ]; then
+                echo "::error::No successful Postinstall Platform Checks run found for $GITHUB_SHA on $branch"
+                exit 1
+              fi
+              echo "platform certified by: $platform_url"
+              ;;
+            *)
+              echo "::error::installer-sensitive path detector failed with status $detector_status"
+              exit "$detector_status"
+              ;;
+          esac
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
