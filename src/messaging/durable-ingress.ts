@@ -12,6 +12,7 @@ import type { Database as SqliteDatabase } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { InboundEnvelope, MessengerChannel } from './types.js';
 import { isInboundEnvelope } from './types.js';
+import { enterMessagingTrace } from './trace-context.js';
 
 export const INGRESS_EVENTS_TABLE = 'ingress_events';
 
@@ -506,6 +507,8 @@ export function admitIngress(
         return { admit: false, reason: 'stale_generation' };
     }
     journal.markProcessing(envelope.channel, envelope.accountId, envelope.eventId);
+    // Reuse the journal row's identity. A second minted id here is the bug M5 exists to stop.
+    enterMessagingTrace({ traceId: result.record.traceId, channel: envelope.channel });
     return { admit: true, journaled: true, envelope };
 }
 
