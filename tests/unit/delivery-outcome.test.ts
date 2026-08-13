@@ -118,11 +118,13 @@ test('capability declarations match what this tree can actually call', () => {
 });
 
 test('durableIngress is declared only where dedupe survives a restart', () => {
-    // Telegram persists an update-offset frontier and Slack commits event keys to
-    // SQLite; Discord only holds a TTL set in memory, so a restart forgets it.
+    // All three now record inbound events in the shared SQLite journal, so
+    // 'already handled' outlives the process that handled it.
     assert.equal(capabilitiesFor('telegram').durableIngress, true);
     assert.equal(capabilitiesFor('slack').durableIngress, true);
-    assert.equal(capabilitiesFor('discord').durableIngress, false);
+    // Discord kept a TTL set in memory until M3d put its messages in the shared
+    // journal; a restart no longer forgets what it already handled.
+    assert.equal(capabilitiesFor('discord').durableIngress, true);
 });
 
 test('declared message limits are the limits the chunkers actually apply', () => {

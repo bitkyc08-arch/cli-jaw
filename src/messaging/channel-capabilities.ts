@@ -61,7 +61,7 @@ const CAPABILITIES = {
         voice: true,
         threads: true,
         interactiveActions: false,
-        durableIngress: false,
+        durableIngress: true,
         replayableTransport: true,
         maxMessageChars: DISCORD_MAX_MESSAGE_CHARS,
     },

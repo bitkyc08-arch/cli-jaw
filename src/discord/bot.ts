@@ -17,6 +17,11 @@ import {
     transportNotStarted,
     type TransportStartOutcome,
 } from '../messaging/runtime.js';
+import { createHash } from 'node:crypto';
+import {
+    admitIngress, getIngressJournal, settleIngress, type IngressAdmission,
+} from '../messaging/durable-ingress.js';
+import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
@@ -306,6 +311,52 @@ async function retireDiscordGeneration(port: DiscordGatewayClientPort): Promise<
     if (discordClient === resources.client) discordClient = null;
 }
 
+
+/**
+ * Journal the message before it is handled. Discord differs from the other two
+ * channels in where the account id comes from: `client.user.id` is null before READY
+ * and can change across reconnects, so it is read here at handler time rather than
+ * captured at startup.
+ *
+ * When it cannot be resolved the message is NOT admitted. Handling it would put work
+ * through a path whose durability record could not be written, and dropping it
+ * silently is what this milestone exists to stop; the gateway still has it and will
+ * redeliver on the next generation.
+ */
+function admitDiscordMessage(client: Client, msg: Message, target: RemoteTarget): IngressAdmission {
+    const journal = getIngressJournal();
+    if (!journal) return { admit: true, journaled: false };
+
+    const botUserId = client.user?.id;
+    if (!botUserId) {
+        log.warn(redactOutboundText(`[discord:ingress] bot identity unavailable — not admitting message ${msg.id}`));
+        return { admit: false, reason: 'already_handled' };
+    }
+
+    const envelope = discordInboundEnvelope({
+        botUserId,
+        messageId: msg.id,
+        channelId: msg.channelId,
+        authorId: msg.author.id,
+        guildId: msg.guildId,
+        isThread: msg.channel?.isThread?.() ?? false,
+        parentId: asThreadLike(msg.channel)?.parentId,
+        target,
+    });
+    const admission = admitIngress(journal, envelope, discordPayloadDigest(msg));
+    if (!admission.admit) {
+        log.info(redactOutboundText(`[discord:ingress] message ${msg.id} already handled — not re-running`));
+    }
+    return admission;
+}
+
+/** Identity of the message body. Never the body itself: the journal is not an archive. */
+function discordPayloadDigest(msg: Message): string {
+    return createHash('sha256')
+        .update(JSON.stringify({ id: msg.id, content: msg.content ?? '', attachments: msg.attachments.size }))
+        .digest('hex');
+}
+
 export async function handleDiscordMessage(client: Client, msg: Message, transport = discordApprovalIngress): Promise<void> {
     const approval = handleApprovalCommand(transport, {
         ...msg,
@@ -332,6 +383,13 @@ export async function handleDiscordMessage(client: Client, msg: Message, transpo
 
     markChannelActive(msg.channelId);
     const target = buildDiscordTarget(msg);
+
+    // Durable record of this message. The seen-set above stays as the hot in-process
+    // filter; this is what survives a restart, which is the whole difference between
+    // Discord and the other two channels before M3.
+    const admission = admitDiscordMessage(client, msg, target);
+    if (!admission.admit) return;
+    const settle = (error?: unknown) => settleIngress(getIngressJournal(), admission, error);
     setLastActiveTarget('discord', target);
     setLatestSeenTarget('discord', target);
 
@@ -346,6 +404,8 @@ export async function handleDiscordMessage(client: Client, msg: Message, transpo
             if (saved.length === 0) {
                 const warning = buildAttachmentFailureWarning(failed) || '❌ No attachment could be processed';
                 await msg.reply(warning).catch(() => { });
+                // The user was told; there is nothing left to retry on redelivery.
+                settle();
                 return;
             }
 
@@ -356,15 +416,20 @@ export async function handleDiscordMessage(client: Client, msg: Message, transpo
             const warning = buildAttachmentFailureWarning(failed);
             if (warning) await msg.reply(warning).catch(() => { });
             dcOrchestrate(msg, prompt, fileLabel).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
+            settle();
         } catch (error) {
             log.error('[discord:attachment]', logErrorText(error));
             await msg.reply(`❌ ${userErrorText(error)}`).catch(() => { });
+            settle(error);
         }
         return;
     }
 
     const text = normalizedText;
-    if (!text) return;
+    if (!text) {
+        settle();
+        return;
+    }
     log.info(`[discord:in] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
 
     // Reset intent: use submitMessage gateway for consistency
@@ -375,10 +440,12 @@ export async function handleDiscordMessage(client: Client, msg: Message, transpo
         } else {
             await msg.reply(t('tg.resetDone', {}, currentLocale()));
         }
+        settle();
         return;
     }
 
     dcOrchestrate(msg, text, text).catch(e => log.error('[discord:orchestrate]', logErrorText(e)));
+    settle();
 }
 
 function observeGatewaySnapshot(snapshot: DiscordGatewaySnapshot): void {

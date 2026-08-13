@@ -99,7 +99,7 @@ capability.
 | `voice` | ✅ | ✅ | ✅ | 음성 파일 전달 (녹음 UI 아님) |
 | `threads` | ✅ | ✅ | ✅ | 스레드 타겟팅 |
 | `interactiveActions` | ✅ | ❌ | ❌ | 버튼 등 인터랙티브 액션 |
-| `durableIngress` | ✅ | ❌ | ✅ | 프로세스 재시작 후에도 유지되는 inbound 중복 제거 |
+| `durableIngress` | ✅ | ✅ | ✅ | 프로세스 재시작 후에도 유지되는 inbound 중복 제거 |
 | `replayableTransport` | ✅ | ✅ | ✅ | 미확인 프레임을 트랜스포트가 재전송 |
 | `maxMessageChars` | `32,000` | `2,000` | `3,900` | 단일 메시지 문자 상한 (chunker 상수) |
 
