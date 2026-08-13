@@ -36,7 +36,7 @@ const freshInstallSmokeSrc = readSource(join(__dirname, '../../scripts/fresh-ins
 const freshInstallEvidenceSrc = readSource(join(__dirname, '../../scripts/collect-fresh-install-evidence.sh'), 'utf8');
 const freshInstallEvidenceAuditSrc = readSource(join(__dirname, '../../scripts/audit-fresh-install-evidence.mjs'), 'utf8');
 const requireReleaseEvidenceSrc = readSource(join(__dirname, '../../scripts/require-release-evidence.mjs'), 'utf8');
-const releaseScriptSrc = readSource(join(__dirname, '../../scripts/release.sh'), 'utf8');
+const releaseScriptSrc = readSource(join(__dirname, '../../scripts/promote-to-main.sh'), 'utf8');
 const releasePreviewScriptSrc = readSource(join(__dirname, '../../scripts/release-preview.sh'), 'utf8');
 const gitattributesSrc = readSource(join(__dirname, '../../.gitattributes'), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(join(__dirname, '../../package.json'), 'utf8'));
@@ -530,7 +530,7 @@ test('SAF-004j2: fresh-machine evidence collector documents supported release ev
     assert.equal(packageJson.scripts?.['collect:fresh-install-evidence'], 'bash scripts/collect-fresh-install-evidence.sh');
     assert.equal(packageJson.scripts?.['audit:fresh-install-evidence'], 'node scripts/audit-fresh-install-evidence.mjs');
     assert.equal(packageJson.scripts?.['verify:release-evidence'], 'node scripts/verify-release-evidence.mjs');
-    // Evidence gates still run via release.sh/release-preview.sh (asserted in SAF-004j3);
+    // Evidence gates still run via promote-to-main.sh/release-preview.sh (asserted in SAF-004j3);
     // prepublishOnly only adds the frontend build-output integrity check.
     assert.equal(packageJson.scripts?.prepublishOnly, 'npm run build && npm run build:frontend && npm run check:frontend-build-output');
     assert.ok(freshInstallEvidenceSrc.includes('--target macos|wsl|linux|auto'), 'collector should require explicit supported target wording');
@@ -597,16 +597,17 @@ test('SAF-004j3: publish scripts enforce fresh-machine evidence before push or p
     assert.ok(requireReleaseEvidenceSrc.includes('scripts/audit-fresh-install-evidence.mjs'), 'release evidence trigger paths should include auditor changes');
     assert.ok(requireReleaseEvidenceSrc.includes('scripts/verify-release-evidence.mjs'), 'release evidence trigger paths should include release-gate changes');
     assert.ok(requireReleaseEvidenceSrc.includes('scripts/require-release-evidence.mjs'), 'release evidence trigger paths should include this publish guard');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/release.sh'), 'release evidence trigger paths should include stable release script changes');
+    assert.ok(requireReleaseEvidenceSrc.includes('scripts/promote-to-main.sh'), 'release evidence trigger paths should include stable promotion script changes');
     assert.ok(requireReleaseEvidenceSrc.includes('scripts/release-preview.sh'), 'release evidence trigger paths should include preview release script changes');
     assert.ok(readmeSrc.includes('CLI_JAW_MACOS_EVIDENCE_DIR=/path/to/macos-evidence'), 'README should document release-script evidence env');
-    assert.ok(readmeSrc.includes('bash scripts/release.sh patch'), 'README should show release script with evidence directories');
+    assert.ok(readmeSrc.includes('bash scripts/promote-to-main.sh patch'), 'README should show the promotion script with evidence directories');
 
     const releaseGatePos = releaseScriptSrc.indexOf('npm run gate:all');
     const freshEvidencePos = releaseScriptSrc.indexOf('node scripts/require-release-evidence.mjs');
-    const pushPos = releaseScriptSrc.indexOf('git push origin main');
+    const pushPos = releaseScriptSrc.indexOf('git push origin HEAD:dev');
     const publishPos = releaseScriptSrc.indexOf('npm publish --access public');
     assert.ok(releaseGatePos >= 0 && freshEvidencePos > releaseGatePos, 'fresh evidence gate should run after normal release gates');
+    assert.ok(pushPos >= 0, 'promotion script must push the release commit to origin/dev first');
     assert.ok(freshEvidencePos >= 0 && freshEvidencePos < pushPos, 'fresh evidence gate must run before git push');
     if (publishPos >= 0) {
         assert.ok(freshEvidencePos >= 0 && freshEvidencePos < publishPos, 'fresh evidence gate must run before npm publish');

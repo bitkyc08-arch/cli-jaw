@@ -11,34 +11,56 @@ function read(path: string): string {
     return readFileSync(join(projectRoot, path), 'utf8');
 }
 
-for (const scriptPath of ['scripts/release.sh', 'scripts/release-preview.sh']) {
-    test(`${scriptPath} pushes the tree it just built, not a same-named local branch`, () => {
-        // `git push origin main` pushes the LOCAL main branch, which is not
-        // necessarily what was just built, committed and tagged: releases are
-        // cut from whatever branch is checked out. Caught with local main
-        // sitting at v2.2.7 while the release commit was on dev -- the push
-        // would have published a tree three releases old, and the tag would
-        // have pointed somewhere else entirely.
-        const script = read(scriptPath);
-        const branch = scriptPath.includes('preview') ? 'preview' : 'main';
+test('scripts/release-preview.sh pushes the tree it just built, not a same-named local branch', () => {
+    // `git push origin preview` pushes the LOCAL preview branch, which is not
+    // necessarily what was just built, committed and tagged: releases are
+    // cut from whatever branch is checked out. Caught with local main
+    // sitting at v2.2.7 while the release commit was on dev -- the push
+    // would have published a tree three releases old, and the tag would
+    // have pointed somewhere else entirely.
+    const script = read('scripts/release-preview.sh');
 
+    assert.ok(
+        /git push origin HEAD:preview/.test(script),
+        'scripts/release-preview.sh must push HEAD to preview, not the local preview ref',
+    );
+
+    // A bare `git push origin <branch>` is only acceptable when the script
+    // has already established that HEAD is that branch.
+    for (const line of script.split('\n')) {
+        const bare = /^\s*git push origin preview\s*$/;
+        if (!bare.test(line)) continue;
         assert.ok(
-            new RegExp(`git push origin HEAD:${branch}`).test(script),
-            `${scriptPath} must push HEAD to ${branch}, not the local ${branch} ref`,
+            /CURRENT_BRANCH/.test(script),
+            'scripts/release-preview.sh pushes the bare preview ref without checking the current branch',
         );
+    }
+});
 
-        // A bare `git push origin <branch>` is only acceptable when the script
-        // has already established that HEAD is that branch.
-        for (const line of script.split('\n')) {
-            const bare = new RegExp(`^\\s*git push origin ${branch}\\s*$`);
-            if (!bare.test(line)) continue;
-            assert.ok(
-                /CURRENT_BRANCH/.test(script),
-                `${scriptPath} pushes the bare ${branch} ref without checking the current branch`,
-            );
-        }
-    });
+test('scripts/promote-to-main.sh promotes an exact dev SHA to main by fast-forward', () => {
+    // Issue #333: the old release.sh created the version bump commit on
+    // whatever branch was checked out and pushed it straight to origin/main,
+    // so main ended up ahead of dev and the raw push fired the publish
+    // workflow. The promotion script must commit on dev, push dev first, and
+    // then move main to that exact SHA without force.
+    const script = read('scripts/promote-to-main.sh');
 
+    assert.ok(/git rev-parse --abbrev-ref HEAD/.test(script), 'promotion must inspect the current branch');
+    assert.ok(script.includes('!= "dev"'), 'promotion must refuse to run off the dev branch');
+    assert.ok(script.includes('git status --porcelain'), 'promotion must require a clean working tree');
+    assert.ok(script.includes('git rev-parse origin/dev'), 'promotion must compare HEAD against origin/dev');
+    assert.ok(script.includes('git merge-base --is-ancestor origin/main HEAD'), 'promotion must verify main can fast-forward');
+    assert.ok(script.includes('git push origin HEAD:dev'), 'the release commit must land on dev before main');
+    assert.ok(script.includes('git push origin "$RELEASE_SHA:main"'), 'main must move to the exact promoted SHA');
+    assert.ok(!script.includes('push --force'), 'promotion must never force-push');
+    assert.ok(!script.includes('--force-with-lease'), 'promotion must never force-push, even with lease');
+    assert.ok(script.includes('git tag "v$VERSION" "$RELEASE_SHA"'), 'the release tag must pin the promoted SHA');
+    assert.ok(script.includes('gh workflow run publish.yml --ref main'), 'promotion must print the manual dispatch command');
+    assert.ok(script.includes('expected-sha='), 'the printed dispatch command must pin expected-sha');
+    assert.ok(!/^\s*gh workflow run/m.test(script), 'promotion must print the dispatch command, not auto-dispatch it');
+});
+
+for (const scriptPath of ['scripts/promote-to-main.sh', 'scripts/release-preview.sh']) {
     test(`${scriptPath} validates Electron shell before publishing`, () => {
         const script = read(scriptPath);
 
@@ -125,19 +147,22 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('--clobber'), 'desktop workflow reruns must replace stale release assets');
 });
 
-test('npm publish workflow uses dev/preview/main branch policy without release retargeting existing versions', () => {
+test('npm publish workflow is dispatch-only with a pinned SHA and no release retargeting of existing versions', () => {
     const workflow = read('.github/workflows/publish.yml');
 
-    assert.ok(workflow.includes('push:'), 'publish workflow must run from branch pushes');
-    assert.ok(workflow.includes('- preview'), 'publish workflow must bind the preview branch');
-    assert.ok(workflow.includes('- main'), 'publish workflow must bind the main branch');
-    assert.ok(!workflow.includes('- master'), 'publish workflow must not bind the removed master branch');
-    assert.ok(!workflow.includes('- dev'), 'publish workflow must not publish from the development branch');
+    // Issue #333: raw branch pushes used to fire real npm publishes, so a
+    // stray push to main published whatever it carried. The workflow is now
+    // dispatch-only and every dispatch pins the exact commit it expects.
+    assert.ok(!/^\s*push:\s*$/m.test(workflow), 'publish workflow must not run on git push');
+    assert.ok(workflow.includes('workflow_dispatch:'), 'publish workflow must remain manually dispatchable');
+    assert.ok(workflow.includes('expected-sha:'), 'publish dispatch must require an expected-sha input');
+    assert.ok(/expected-sha:[\s\S]{0,200}required: true/.test(workflow), 'expected-sha must be a required input');
+    assert.ok(workflow.includes('Verify dispatched SHA'), 'publish workflow must verify the dispatched SHA first');
+    assert.ok(workflow.includes('"$GITHUB_SHA" != "$EXPECTED_SHA"'), 'publish workflow must fail when the ref moved past expected-sha');
     assert.ok(workflow.includes('id-token: write'), 'publish workflow must support npm Trusted Publishing OIDC');
     assert.ok(workflow.includes('latest:main) ;;'), 'real latest publishes must run only from main');
     assert.ok(!workflow.includes('latest:master'), 'real latest publishes must not accept master');
-    assert.ok(workflow.includes('skip_publish="true"'), 'preview stable sync must set an explicit skip output');
-    assert.ok(workflow.includes('preview branch stable sync'), 'preview stable sync skip should be visible in the workflow logs');
+    assert.ok(workflow.includes('preview:preview) ;;'), 'real preview publishes must run only from the preview ref');
     assert.ok(workflow.includes('Check registry package version'), 'publish workflow must detect already-published versions');
     assert.ok(workflow.includes('SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published'),
         'publish workflow must skip npm publish when the exact version already exists');
@@ -159,7 +184,7 @@ test('release branch policy is reflected in CI workflows, release script, instal
     const testWorkflow = read('.github/workflows/test.yml');
     const postinstallWorkflow = read('.github/workflows/postinstall-platform.yml');
     const pagesWorkflow = read('.github/workflows/pages.yml');
-    const releaseScript = read('scripts/release.sh');
+    const releaseScript = read('scripts/promote-to-main.sh');
     const installScript = read('scripts/install.sh');
     const installWslScript = read('scripts/install-wsl.sh');
     const collectorScript = read('scripts/collect-fresh-install-evidence.sh');
@@ -183,10 +208,10 @@ test('release branch policy is reflected in CI workflows, release script, instal
     assert.ok(pagesWorkflow.includes('branches: [main]'), 'Pages deploy must publish docs from main');
     assert.ok(!pagesWorkflow.includes('branches: [master]'), 'Pages deploy must not depend on master');
 
-    assert.ok(releaseScript.includes('git push origin main'), 'stable release script must push main');
-    assert.ok(!releaseScript.includes('git push origin master'), 'stable release script must not push master');
-    assert.ok(releaseScript.includes('branch%3Amain'), 'stable release script must link to main workflow runs');
-    assert.ok(!releaseScript.includes('branch%3Amaster'), 'stable release script must not link to master workflow runs');
+    assert.ok(releaseScript.includes(':main"'), 'stable promotion script must move main to the promoted SHA');
+    assert.ok(!releaseScript.includes('git push origin master'), 'stable promotion script must not push master');
+    assert.ok(releaseScript.includes('workflows/publish.yml'), 'stable promotion script must link to the publish workflow');
+    assert.ok(!releaseScript.includes('branch%3Amaster'), 'stable promotion script must not link to master workflow runs');
 
     assert.ok(installScript.includes('/cli-jaw/main/scripts/install.sh'), 'install.sh usage should use main raw URL');
     assert.ok(installWslScript.includes('/cli-jaw/main/scripts/install-wsl.sh'), 'install-wsl.sh usage should use main raw URL');
