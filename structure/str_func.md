@@ -134,7 +134,7 @@ cli-jaw/
 │   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (123L)
 │   │   ├── extract-images.ts ← Markdown AST 로컬 이미지 후보 추출 + 확장자 필터/중복 제거/4개 cap (36L)
 │   │   ├── access-policy.ts   ← remote command access-policy substrate (deny/allowlist/paired/all) (45L)
-│   │   ├── approval-presentation.ts ← Telegram Approve/Deny keyboard + opaque appr/aprd callback ids (58L)
+│   │   ├── approval-presentation.ts ← Telegram/Discord Approve/Deny keyboards + opaque appr/aprd ids (96L)
 │   │   ├── remote-command-context.ts ← channel-neutral remote command identity (51L)
 │   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + operator list/replay (541L)
 │   │   ├── ingress-audit.ts  ← append-only replay audit JSONL (49L)
@@ -243,9 +243,9 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (7 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (599L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (625L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
-│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (155L) ✨
+│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (167L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (89L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)
@@ -305,7 +305,7 @@ cli-jaw/
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (352L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
-│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1179L)
+│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1183L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (661L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (431L)

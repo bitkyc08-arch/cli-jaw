@@ -1,8 +1,9 @@
-// Telegram-only approval keyboard (M4-A2b-tg).
-// Discord/Slack stay text until they have a send API that can carry actions.
+// Approval keyboards for operator DMs.
+// Telegram: inline keyboard callback_data `appr:<uuid>` / `aprd:<uuid>` (64-byte cap).
+// Discord: action-row buttons with the same custom_id prefix (100-byte cap).
+// Slack stays text — sendSlackText cannot carry actions yet.
 //
-// callback_data is `appr:<uuid>` / `aprd:<uuid>` so it stays under Telegram's
-// 64-byte limit and never embeds jti or digest.
+// Ids never embed jti or digest.
 
 import { dispatchApprovalStore, type DispatchApprovalRecord } from '../core/dispatch-approval.js';
 
@@ -13,9 +14,15 @@ export type TelegramApprovalKeyboard = {
     inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
 };
 
+export type DiscordApprovalComponents = Array<{
+    type: 1;
+    components: Array<{ type: 2; style: 3 | 4; custom_id: string; label: string }>;
+}>;
+
 export type ApprovalPresentation = {
     text: string;
     telegramKeyboard: TelegramApprovalKeyboard | null;
+    discordComponents: DiscordApprovalComponents | null;
 };
 
 export function parseApprovalCallbackData(data: string): { action: 'approve' | 'deny'; opaqueId: string } | null {
@@ -24,11 +31,10 @@ export function parseApprovalCallbackData(data: string): { action: 'approve' | '
     return null;
 }
 
-export function presentTelegramApproval(
+function issuePair(
     record: DispatchApprovalRecord,
     operator: { actorId: string; conversationKey: string; sessionGeneration?: number },
-    text: string,
-): ApprovalPresentation {
+): { approveData: string; denyData: string } | null {
     const sessionGeneration = operator.sessionGeneration ?? 0;
     const approveId = dispatchApprovalStore.issueApprovalCallback(record.jti, {
         actorId: operator.actorId,
@@ -42,17 +48,49 @@ export function presentTelegramApproval(
         sessionGeneration,
         action: 'deny',
     });
-    if (!approveId || !denyId) return { text, telegramKeyboard: null };
-    const approveData = APPROVE_PREFIX + approveId;
-    const denyData = DENY_PREFIX + denyId;
-    if (approveData.length > 64 || denyData.length > 64) return { text, telegramKeyboard: null };
+    if (!approveId || !denyId) return null;
+    return { approveData: APPROVE_PREFIX + approveId, denyData: DENY_PREFIX + denyId };
+}
+
+export function presentTelegramApproval(
+    record: DispatchApprovalRecord,
+    operator: { actorId: string; conversationKey: string; sessionGeneration?: number },
+    text: string,
+): ApprovalPresentation {
+    const pair = issuePair(record, operator);
+    if (!pair || pair.approveData.length > 64 || pair.denyData.length > 64) {
+        return { text, telegramKeyboard: null, discordComponents: null };
+    }
     return {
         text,
         telegramKeyboard: {
             inline_keyboard: [[
-                { text: 'Approve', callback_data: approveData },
-                { text: 'Deny', callback_data: denyData },
+                { text: 'Approve', callback_data: pair.approveData },
+                { text: 'Deny', callback_data: pair.denyData },
             ]],
         },
+        discordComponents: null,
+    };
+}
+
+export function presentDiscordApproval(
+    record: DispatchApprovalRecord,
+    operator: { actorId: string; conversationKey: string; sessionGeneration?: number },
+    text: string,
+): ApprovalPresentation {
+    const pair = issuePair(record, operator);
+    if (!pair || pair.approveData.length > 100 || pair.denyData.length > 100) {
+        return { text, telegramKeyboard: null, discordComponents: null };
+    }
+    return {
+        text,
+        telegramKeyboard: null,
+        discordComponents: [{
+            type: 1,
+            components: [
+                { type: 2, style: 3, custom_id: pair.approveData, label: 'Approve' },
+                { type: 2, style: 4, custom_id: pair.denyData, label: 'Deny' },
+            ],
+        }],
     };
 }

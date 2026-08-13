@@ -25,7 +25,8 @@ import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
-import { handleApprovalCommand, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
@@ -253,6 +254,25 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
 
 // ─── Init / Shutdown ────────────────────────────────
 
+async function handleDiscordApprovalButton(interaction: import('discord.js').ButtonInteraction): Promise<void> {
+    const parsed = parseApprovalCallbackData(interaction.customId);
+    if (!parsed) {
+        await interaction.deferUpdate().catch(() => undefined);
+        return;
+    }
+    await interaction.deferUpdate();
+    const result = handleApprovalCallback(
+        discordApprovalIngress,
+        { author: interaction.user },
+        parsed.opaqueId,
+        parsed.action,
+        { conversationKey: interaction.user.id, sessionGeneration: 0 },
+    );
+    const reply = result.approved ? 'approved' : (result.reason || 'rejected');
+    await interaction.editReply({ components: [] }).catch(() => undefined);
+    await interaction.followUp({ content: redactOutboundText(reply), ephemeral: true }).catch(() => undefined);
+}
+
 async function installDiscordGeneration(
     port: DiscordGatewayClientPort,
     client: Client,
@@ -263,6 +283,12 @@ async function installDiscordGeneration(
         });
     };
     const interactionHandler = (interaction: Interaction): void => {
+        if (interaction.isButton()) {
+            void handleDiscordApprovalButton(interaction).catch((error) => {
+                log.error('[discord:approval]', logErrorText(error));
+            });
+            return;
+        }
         if (!interaction.isChatInputCommand()) return;
         void handleDiscordSlashCommand(interaction).catch((error) => {
             log.error('[discord:command]', logErrorText(error));

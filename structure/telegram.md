@@ -37,7 +37,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 - 세 채널 inbound가 공유하는 SQLite journal. Telegram poller는 handler 전에 `admitIngress`, offset 전진 전에 `settleIngress`를 부른다.
 - 운영 조회/재생은 `jaw messaging ingress`. replay는 row를 `received`로 표시할 뿐이고, 재실행은 vendor 재전송이다.
-- 운영자 Telegram DM의 dispatch approval은 Approve/Deny 버튼(`appr:`/`aprd:` opaque id)을 붙인다. Slack/Discord는 아직 텍스트다.
+- 운영자 Telegram DM의 dispatch approval은 Approve/Deny 버튼(`appr:`/`aprd:` opaque id)을 붙인다. Discord도 같은 opaque 버튼을 붙인다. Slack은 아직 텍스트다.
 
 ### `src/messaging/thread-target.ts`
 
