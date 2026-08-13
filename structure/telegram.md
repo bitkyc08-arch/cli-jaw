@@ -32,6 +32,12 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 - `validateTarget()`는 Telegram allowedChatIds와 Discord channelIds / thread parent 허용을 둘 다 검사한다
 - `registerSendTransport()`로 채널별 outbound sender를 주입한다
 
+
+### `src/messaging/durable-ingress.ts`
+
+- 세 채널 inbound가 공유하는 SQLite journal. Telegram poller는 handler 전에 `admitIngress`, offset 전진 전에 `settleIngress`를 부른다.
+- 운영 조회/재생은 `jaw messaging ingress`. replay는 row를 `received`로 표시할 뿐이고, 재실행은 vendor 재전송이다.
+
 ### `src/messaging/thread-target.ts`
 
 - `threadIdNumber(target)` — programmatic Telegram sends용 `message_thread_id` 추출

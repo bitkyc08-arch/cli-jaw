@@ -542,7 +542,12 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ---
 
-## src/messaging/ — shared messaging runtime (13 files)
+## src/messaging/ — shared messaging runtime (22 files)
+
+### durable-ingress.ts / ingress-audit.ts
+
+`IngressJournal` is the SQLite record of every inbound Telegram/Discord/Slack event. Transports call `admitIngress`/`settleIngress`; operators inspect and recover with `jaw messaging ingress list|show|replay|audit`. `requestReplay` is a state CAS back to `received`. Nothing in-process re-runs the handler — vendor redelivery does. Replay audit is append-only JSONL at `$JAW_HOME/messaging-ingress-audit.jsonl`.
+
 
 Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.
 
@@ -918,9 +923,9 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 
 > 서브커맨드 라우터 + `--home` flag 처리 (manual `indexOf`, NOT parseArgs)
 > `--home` → `process.env.CLI_JAW_HOME` 설정 후 config.ts 동적 import
-> known-command guard: `--home` 사용 시 알려진 명령어(`serve`, `init`, `doctor`, `chat`, `employee`, `reset`, `mcp`, `skill`, `status`, `browser`, `memory`, `launchd`, `clone`, `service`, `dashboard`, `orchestrate`, `dispatch`)와 경로 누락을 구분
+> known-command guard: `--home` 사용 시 알려진 명령어는 `bin/cli-jaw.ts`의 `_knownCmds`와 같다 (`serve` … `slack`, `messaging` 포함). 경로 누락과 서브커맨드를 구분한다
 
-현재 subcommand router에 실제 등록된 명령은 `serve`, `init`, `doctor`, `chat`, `employee`, `reset`, `mcp`, `skill`, `status`, `browser`, `memory`, `launchd`, `clone`, `orchestrate`, `dispatch`, `service`, `dashboard`다.
+현재 subcommand router는 `bin/cli-jaw.ts` switch와 같다. Messaging operator surface: `jaw messaging ingress list|show|replay|audit`.
 
 ### bin/commands/serve.ts
 

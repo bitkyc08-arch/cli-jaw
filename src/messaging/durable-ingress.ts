@@ -68,6 +68,10 @@ export type IngressEventRecord = {
     tombstoneUntil: number | null;
 };
 
+export type ReplayOutcome =
+    | { replayed: false; reason: 'not_found' | 'already_completed' | 'payload_discarded' | 'in_flight' }
+    | { replayed: true; record: IngressEventRecord };
+
 export type AppendResult =
     | { appended: true; record: IngressEventRecord }
     | { appended: false; reason: 'duplicate'; record: IngressEventRecord };
@@ -325,6 +329,90 @@ export class IngressJournal {
             WHERE channel = ? AND account_id = ? AND event_id = ? AND state = 'processing'
         `).run(nextAttemptAt, lastError, channel, accountId, eventId).changes;
         return changes === 1;
+    }
+
+
+    /** Operator listing. Filters are all optional so an empty journal reads cleanly. */
+    list(filter: {
+        channel?: MessengerChannel;
+        state?: IngressState;
+        olderThanMs?: number;
+        limit?: number;
+    } = {}): IngressEventRecord[] {
+        const clauses: string[] = [];
+        const params: Array<string | number> = [];
+        if (filter.channel) { clauses.push('channel = ?'); params.push(filter.channel); }
+        if (filter.state) { clauses.push('state = ?'); params.push(filter.state); }
+        if (filter.olderThanMs !== undefined) {
+            clauses.push('received_at <= ?');
+            params.push(this.now() - filter.olderThanMs);
+        }
+        const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
+        params.push(filter.limit ?? 50);
+        const rows = this.database.prepare(
+            'SELECT * FROM ingress_events ' + where + ' ORDER BY received_at DESC LIMIT ?',
+        ).all(...params) as Array<Record<string, unknown>>;
+        return rows.map(rowToRecord);
+    }
+
+    /**
+     * Hand a row back for another attempt. Returns why it was refused rather than
+     * throwing, because every refusal here is a normal operator answer.
+     *
+     * A completed row is refused unless forced: its effects already happened, and
+     * re-running them is a worse outcome than not replaying. A tombstone whose payload
+     * was dropped at completion cannot be replayed at all, forced or not.
+     */
+    requestReplay(
+        channel: MessengerChannel,
+        accountId: string,
+        eventId: string,
+        options: { force?: boolean } = {},
+    ): ReplayOutcome {
+        const record = this.find(channel, accountId, eventId);
+        if (!record) return { replayed: false, reason: 'not_found' };
+        if (record.state === 'processing') return { replayed: false, reason: 'in_flight' };
+        if (record.state === 'completed') {
+            if (!options.force) return { replayed: false, reason: 'already_completed' };
+            if (record.payloadJson === null) return { replayed: false, reason: 'payload_discarded' };
+        }
+        // CAS on the state we just classified. Without this, a handler that claimed
+        // the row after find() would be reset to received and run twice.
+        const eligible = record.state === 'completed'
+            ? "state = 'completed' AND payload_json IS NOT NULL"
+            : "state IN ('received', 'dead_letter')";
+        const changes = this.database.prepare(
+            "UPDATE ingress_events SET state = 'received', next_attempt_at = ?, " +
+            'completed_at = NULL, tombstone_until = NULL, last_error = NULL ' +
+            'WHERE channel = ? AND account_id = ? AND event_id = ? AND ' + eligible,
+        ).run(this.now(), channel, accountId, eventId).changes;
+        if (changes !== 1) {
+            const latest = this.find(channel, accountId, eventId);
+            if (!latest) return { replayed: false, reason: 'not_found' };
+            if (latest.state === 'processing') return { replayed: false, reason: 'in_flight' };
+            if (latest.state === 'completed' && latest.payloadJson === null) {
+                return { replayed: false, reason: 'payload_discarded' };
+            }
+            if (latest.state === 'completed') return { replayed: false, reason: 'already_completed' };
+            return { replayed: false, reason: 'not_found' };
+        }
+        const replayed = this.find(channel, accountId, eventId);
+        if (!replayed) return { replayed: false, reason: 'not_found' };
+        return { replayed: true, record: replayed };
+    }
+
+    /** Aggregate counts for a health or status surface. */
+    counts(): Record<IngressState, number> {
+        const rows = this.database.prepare(
+            'SELECT state, COUNT(*) AS n FROM ingress_events GROUP BY state',
+        ).all() as Array<{ state: string; n: number }>;
+        const out: Record<IngressState, number> = {
+            received: 0, processing: 0, completed: 0, dead_letter: 0,
+        };
+        for (const row of rows) {
+            if (INGRESS_STATES.has(row.state as IngressState)) out[row.state as IngressState] = row.n;
+        }
+        return out;
     }
 
     listByState(state: IngressState, limit = 100): IngressEventRecord[] {

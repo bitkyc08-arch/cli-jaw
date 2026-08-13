@@ -686,6 +686,7 @@ jaw ask "question"                # one prompt, one answer — no TTY needed
 echo "question" | jaw ask -       # same, reading the prompt from stdin
 jaw doctor                        # installation and runtime diagnostics
 jaw slack setup                   # guided Slack app setup (manifest + token validation)
+jaw messaging ingress list        # inspect / replay the durable inbound journal
 
 # Instances
 jaw clone ~/project               # clone instance to new directory
