@@ -21,6 +21,10 @@ export type ChannelSendRequest = {
     target?: RemoteTarget;
     chatId?: string | number;
     reply_markup?: unknown;
+    /** Opt in to a lesser delivery when the channel cannot render the requested
+     *  fidelity. Absent means the caller would rather be told it is unsupported
+     *  than have the message quietly arrive as something else. */
+    interactiveFallback?: 'text';
 };
 
 // ─── Transport Send Registry ────────────────────────
@@ -49,6 +53,15 @@ function normalizeOutboundType(value: unknown): OutboundType {
         throw badRequest('invalid_outbound_type');
     }
     return type as OutboundType;
+}
+
+function normalizeInteractiveFallback(value: unknown): 'text' | undefined {
+    if (value == null || value === '') return undefined;
+    const fallback = String(value).trim().toLowerCase();
+    // Only one lesser delivery exists today. Accepting anything else would let a
+    // typo read as consent to a downgrade the caller did not ask for.
+    if (fallback !== 'text') throw badRequest('invalid_interactive_fallback');
+    return 'text';
 }
 
 function normalizeChannel(value: unknown): MessengerChannel | 'active' {
@@ -81,6 +94,12 @@ export function normalizeChannelSendRequest(body: Record<string, any>): ChannelS
         caption: body["caption"],
         target: body["target"],
         chatId: body["chat_id"] ?? body["chatId"],
+        // This normalizer is an allowlist, so an opt-in the caller sent would be
+        // dropped here and every HTTP keyboard send to a channel without
+        // interactive support would come back unsupported.
+        interactiveFallback: normalizeInteractiveFallback(
+            body["interactive_fallback"] ?? body["interactiveFallback"],
+        ),
     });
 }
 

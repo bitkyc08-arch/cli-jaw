@@ -88,14 +88,24 @@ const GATES = {
         },
     },
     'truth-table-fresh': {
-        description: 'CAPABILITY_TRUTH_TABLE.md edited within 7 days OR matches code refs',
+        description: 'CAPABILITY_TRUTH_TABLE.md edited within 7 days OR matches code refs, AND its generated messaging channel matrix matches src/messaging/channel-capabilities.ts',
         check() {
             const rel = 'structure/CAPABILITY_TRUTH_TABLE.md';
             const abs = path.join(repoRoot, rel);
             if (!fs.existsSync(abs)) return { ok: false, detail: `${rel} missing` };
+            // The generated messaging block first: a stale matrix is a wrong claim
+            // regardless of the file's mtime, so freshness must not excuse it.
+            // node_modules/.bin/tsx directly — npx resolution is not a gate dependency.
+            const generated = run(path.join('node_modules', '.bin', 'tsx'), [
+                'scripts/generate-channel-capability-table.mts', '--check',
+            ], { timeout: 60_000 });
+            if (generated.status !== 0) {
+                const detail = [generated.stderr, generated.stdout].filter(Boolean).join('\n').trim();
+                return { ok: false, detail: `messaging capability matrix drift:\n${detail || `tsx exited with ${generated.status}`}` };
+            }
             const stat = fs.statSync(abs);
             const ageDays = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60 * 24);
-            if (ageDays <= 7) return { ok: true, detail: `truth table ${ageDays.toFixed(2)}d old` };
+            if (ageDays <= 7) return { ok: true, detail: `truth table ${ageDays.toFixed(2)}d old; messaging matrix in sync` };
             const text = readFile(rel);
             const required = ['action-intent', 'target-resolver', 'answer-artifact', 'source-audit'];
             for (const term of required) {
@@ -103,7 +113,7 @@ const GATES = {
                     return { ok: false, detail: `truth table stale (${ageDays.toFixed(1)}d) and missing ${term}` };
                 }
             }
-            return { ok: true, detail: `truth table ${ageDays.toFixed(1)}d old but matches required terms` };
+            return { ok: true, detail: `truth table ${ageDays.toFixed(1)}d old but matches required terms; messaging matrix in sync` };
         },
     },
     'mcp-scope-frozen': {

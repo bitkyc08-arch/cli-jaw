@@ -8,12 +8,25 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 const gateScript = path.join(repoRoot, 'scripts', 'release-gates.mjs');
+const truthTablePath = path.join(repoRoot, 'structure/CAPABILITY_TRUTH_TABLE.md');
+const GENERATED_START = '<!-- BEGIN GENERATED: messaging-channel-capabilities -->';
+const GENERATED_END = '<!-- END GENERATED: messaging-channel-capabilities -->';
 
 function runGate(name: string): { status: number; stdout: string; stderr: string } {
     const r = spawnSync('node', [gateScript, name], {
         cwd: repoRoot,
         encoding: 'utf8',
     });
+    return { status: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+}
+
+function runGenerator(...args: string[]): { status: number; stdout: string; stderr: string } {
+    // node_modules/.bin/tsx, not npx: the gate resolves it the same way, and a
+    // test that used npx would pass while the gate failed offline.
+    const r = spawnSync(path.join(repoRoot, 'node_modules/.bin/tsx'), [
+        'scripts/generate-channel-capability-table.mts',
+        ...args,
+    ], { cwd: repoRoot, encoding: 'utf8' });
     return { status: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
 
@@ -51,6 +64,51 @@ describe('phase22 named release gates (cli-jaw)', () => {
         for (const term of ['action-intent', 'target-resolver', 'answer-artifact', 'source-audit']) {
             assert.ok(text.includes(term), `truth table must reference ${term}`);
         }
+    });
+
+    describe('generated messaging channel capability matrix', () => {
+        // The gate half that turns a stale doc into a release failure. Asserting on
+        // the committed text alone would stay green through exactly the drift this
+        // exists to catch, so the drift case runs the real generator over a mutated
+        // copy of the file and restores it afterwards.
+        it('the truth table carries the generated block markers', () => {
+            const text = fs.readFileSync(truthTablePath, 'utf8');
+            const start = text.indexOf(GENERATED_START);
+            const end = text.indexOf(GENERATED_END);
+            assert.ok(start >= 0, 'BEGIN marker is missing from the truth table');
+            assert.ok(end > start, 'END marker is missing or precedes BEGIN');
+            const block = text.slice(start, end);
+            assert.match(block, /channel-capabilities\.ts/, 'the block must name the source it came from');
+            assert.match(block, /channel-contract-conformance\.test\.ts/, 'the block must name the conformance test');
+            assert.match(block, /고치지 마세요|수정하지 마세요/, 'the block must say it is generated and off-limits to hand edits');
+        });
+
+        it('--check passes on the committed block', () => {
+            const r = runGenerator('--check');
+            assert.equal(r.status, 0, `expected in-sync matrix: ${r.stdout}\n${r.stderr}`);
+        });
+
+        it('--check fails when the generated block is hand-edited', () => {
+            const original = fs.readFileSync(truthTablePath, 'utf8');
+            assert.ok(original.includes('| `sendText` |'), 'the matrix row fixture is missing');
+            try {
+                // Flip a declared capability cell in the doc only; source is untouched.
+                fs.writeFileSync(truthTablePath, original.replace('| `sendText` | ✅', '| `sendText` | ❌'));
+                const r = runGenerator('--check');
+                assert.notEqual(r.status, 0, 'hand-edited matrix must fail --check');
+                assert.match(r.stderr, /drift/, `expected a drift message, got: ${r.stderr}`);
+                assert.match(r.stderr, /docs:channel-capabilities/, 'the failure must say how to fix it');
+            } finally {
+                fs.writeFileSync(truthTablePath, original);
+            }
+            assert.equal(runGenerator('--check').status, 0, 'fixture must restore the committed block');
+        });
+
+        it('--check writes nothing', () => {
+            const before = fs.readFileSync(truthTablePath);
+            runGenerator('--check');
+            assert.deepEqual(fs.readFileSync(truthTablePath), before);
+        });
     });
 
     describe('gate-docs keeps the documented gate list honest', () => {

@@ -119,7 +119,7 @@ cli-jaw/
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
 │   ├── messaging/            ← 통합 메시징 런타임 (14 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
-│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (281L)
+│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (300L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
 │   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (110L) ✨
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (243L) ✨
@@ -130,7 +130,7 @@ cli-jaw/
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (49L)
 │   │   ├── thread-target.ts  ← Telegram forum topic `message_thread_id` 정규화 helper (21L)
-│   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (53L)
+│   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (121L)
 │   │   └── extract-images.ts ← Markdown AST 로컬 이미지 후보 추출 + 확장자 필터/중복 제거/4개 cap (36L)
 │   ├── orchestrator/         ← 직원 오케스트레이션 + 인터페이스 통합 (19 files)
 │   │   ├── state-machine.ts ← IPABCD 상태 머신 (I=Interview pre-plan) + broadcast(state,title) + worklog 타이틀 파싱 + employee terminology + OrcContext.workingDir + OrcContext.interview + Project root dispatch contract + Phase60 actor-aware canTransition(GateInput) form-only evidence gate + STATE_PROMPTS --attest instructions (790L)
@@ -256,7 +256,7 @@ cli-jaw/
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (69L)
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
-│   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (44L)
+│   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (129L)
 │   │   ├── hot-notify.ts     ← CLI 설정 변경 후 실행 중 서버 hot-reload 통지 (loopback PUT /api/settings → transport 재시작, version skew 감지) (35L)
 │   │   ├── progress.ts       ← 실행 중 진행상황 릴레이 ("정보 수집 중…" placeholder → agent_tool 이벤트로 chat.update rate-limited 편집 → 답변 시 chat.delete) (120L) ✨

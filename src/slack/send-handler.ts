@@ -27,12 +27,33 @@ export async function slackSendHandler(
 
     switch (req.type) {
         case 'text':
-        // Slack's inline-keyboard analogue is Block Kit, whose callbacks need
-        // the interactive-envelope routing that v1 puts out of scope. Sending
-        // the text is better than silently dropping the message.
-        case 'keyboard':
             if (!req.text) return { ok: false, error: 'empty_text', status: 400 };
             return sendSlackText(client.token, target, req.text);
+        case 'keyboard': {
+            // Slack's inline-keyboard analogue is Block Kit, whose callbacks need
+            // interactive-envelope routing this tree does not have, so
+            // `interactiveActions` is declared false for Slack.
+            //
+            // This used to send the text anyway and say nothing. The message arrived
+            // without its actions and the caller had no way to find out — a silent
+            // loss of fidelity that read as success. Now the caller decides: opt in
+            // with `interactiveFallback: 'text'` and get the text plus a recorded
+            // downgrade, or get an explicit refusal.
+            if (req.interactiveFallback !== 'text') {
+                return {
+                    ok: false,
+                    error: 'interactive_actions_unsupported',
+                    status: 501,
+                    channel: 'slack',
+                    unsupported: { operation: 'interactiveActions', reason: 'capability_not_declared' },
+                };
+            }
+            if (!req.text) return { ok: false, error: 'empty_text', status: 400 };
+            const result = await sendSlackText(client.token, target, req.text);
+            return result.ok
+                ? { ...result, downgraded: { operation: 'interactiveActions', to: 'text' } }
+                : result;
+        }
         case 'photo':
         case 'document':
         case 'voice':

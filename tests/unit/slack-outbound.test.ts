@@ -629,12 +629,25 @@ test('slackSendHandler rejects an unsupported outbound type', async () => {
     assert.match(String(result['error']), /unsupported_outbound_type/);
 });
 
-test('slackSendHandler degrades a keyboard request to text', async () => {
+test('slackSendHandler refuses a keyboard request the caller did not downgrade', async () => {
     // Slack's analogue is Block Kit, whose callbacks need interactive-envelope
-    // routing that v1 excludes. Sending the text beats dropping the message.
+    // routing this tree excludes, so `interactiveActions` is declared false. The old
+    // behaviour sent the text anyway and said nothing, which read as a full success.
     const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
-        slackSendHandler({ type: 'keyboard', target: slackTargetFromId('C1') }));
-    assert.equal(result['error'], 'empty_text', 'keyboard should route into the text branch');
+        slackSendHandler({ type: 'keyboard', text: 'pick one', target: slackTargetFromId('C1') }));
+    assert.equal(result.ok, false);
+    assert.equal(result['error'], 'interactive_actions_unsupported');
+    assert.equal(result['status'], 501);
+    assert.deepEqual(result['unsupported'], {
+        operation: 'interactiveActions',
+        reason: 'capability_not_declared',
+    });
+});
+
+test('slackSendHandler still validates text on an opted-in keyboard downgrade', async () => {
+    const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
+        slackSendHandler({ type: 'keyboard', interactiveFallback: 'text', target: slackTargetFromId('C1') }));
+    assert.equal(result['error'], 'empty_text', 'the opted-in downgrade routes into the text branch');
 });
 
 test('slackSendHandler requires a target', async () => {
@@ -673,8 +686,10 @@ test('slackSendHandler opens a DM for a U-id then posts to the D-id', async () =
     }
 });
 
-test('slackSendHandler posts the text of a keyboard request', async () => {
-    // The degrade branch must actually send, not just avoid crashing.
+test('slackSendHandler posts the text of an opted-in keyboard downgrade and records it', async () => {
+    // The downgrade branch must actually send, not just avoid crashing — and it must
+    // say on the result that the actions were dropped, which is the whole point of
+    // making the caller ask for it.
     const seen: string[] = [];
     const impl = (async (url: string | URL | Request, init?: RequestInit) => {
         seen.push(`${String(url)}|${String(init?.body)}`);
@@ -685,9 +700,15 @@ test('slackSendHandler posts the text of a keyboard request', async () => {
     globalThis.fetch = impl;
     try {
         const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
-            slackSendHandler({ type: 'keyboard', text: 'pick one', target: slackTargetFromId('C1') }));
+            slackSendHandler({
+                type: 'keyboard',
+                text: 'pick one',
+                interactiveFallback: 'text',
+                target: slackTargetFromId('C1'),
+            }));
         assert.equal(result.ok, true);
         assert.ok(seen.some(s => s.includes('chat.postMessage') && s.includes('pick one')), 'keyboard text was not posted');
+        assert.deepEqual(result['downgraded'], { operation: 'interactiveActions', to: 'text' });
     } finally {
         globalThis.fetch = priorFetch;
     }
