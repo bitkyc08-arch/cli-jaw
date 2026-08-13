@@ -7,7 +7,7 @@
 #   ./release-preview.sh --major         → major bump (1.6.9 → 2.0.0-preview.*)
 #   ./release-preview.sh 1.8.0           → explicit base version
 #   ./release-preview.sh --require-evidence  → fail if fresh-machine evidence is missing
-#                                              (default: warn and continue, same as release.sh)
+#                                              (default: warn and continue, same as promote-to-main.sh)
 # npm publish is handled by .github/workflows/publish.yml through npm Trusted
 # Publishing (OIDC). Desktop artifacts are built and attached by GitHub Actions
 # after the GitHub prerelease is published.
@@ -154,7 +154,7 @@ npm version "$PREVIEW_VERSION" --no-git-tag-version
 VERSION=$(node -p "require('./package.json').version")
 echo "📌 package.json version: $VERSION"
 
-# Same reason as release.sh: the committed Electron version names the desktop
+# Same reason as promote-to-main.sh: the committed Electron version names the desktop
 # artifacts. This also has to run BEFORE gate:all below -- the electron-version
 # gate compares the two manifests, and the bump above has just moved the root
 # one, so skipping this would fail the preview release outright.
@@ -175,7 +175,7 @@ run_electron_release_checks
 echo "🛡️  Running release gates (gate:all)..."
 npm run gate:all
 
-# Matches release.sh: the fresh-machine evidence gate is advisory by default and
+# Matches promote-to-main.sh: the fresh-machine evidence gate is advisory by default and
 # enforced with --require-evidence. A preview build is the channel you reach for
 # precisely when installer changes still need real-machine coverage, so making
 # preview stricter than stable had it backwards — it blocked the release that

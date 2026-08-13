@@ -27,7 +27,7 @@ const installerSensitivePaths = [
   'scripts/audit-fresh-install-evidence.mjs',
   'scripts/verify-release-evidence.mjs',
   'scripts/require-release-evidence.mjs',
-  'scripts/release.sh',
+  'scripts/promote-to-main.sh',
   'scripts/release-preview.sh',
   'tests/unit/cli-detect.test.ts',
   'tests/unit/install-sh-exec.test.ts',
