@@ -1,6 +1,7 @@
 // ─── Database: schema + prepared statements ──────────
 
 import Database from 'better-sqlite3';
+import { initSessionGeneration } from './session-generation.js';
 import fs from 'fs';
 import { dirname } from 'path';
 import { DB_PATH } from './config.js';
@@ -94,6 +95,7 @@ db.exec(`
         seq         INTEGER NOT NULL UNIQUE,
         label       TEXT DEFAULT NULL,
         active_run_policy TEXT DEFAULT NULL,
+        generation  INTEGER NOT NULL DEFAULT 0,
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -334,6 +336,9 @@ if (!(sessionCols as Record<string, unknown>[]).some(c => c["name"] === 'active_
 const chatSessionCols = db.prepare('PRAGMA table_info(chat_sessions)').all();
 if (!(chatSessionCols as Record<string, unknown>[]).some(c => c["name"] === 'active_run_policy')) {
     db.exec('ALTER TABLE chat_sessions ADD COLUMN active_run_policy TEXT DEFAULT NULL');
+}
+if (!(chatSessionCols as Record<string, unknown>[]).some(c => c["name"] === 'generation')) {
+    db.exec('ALTER TABLE chat_sessions ADD COLUMN generation INTEGER NOT NULL DEFAULT 0');
 }
 
 const employeeSessionCols = db.prepare('PRAGMA table_info(employee_sessions)').all();
@@ -727,5 +732,7 @@ export function closeDb(): void {
         db.close();
     } catch { /* ignore */ }
 }
+
+initSessionGeneration(db);
 
 export { db };

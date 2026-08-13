@@ -316,6 +316,11 @@ const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
 
 ---
 
+
+### session-generation.ts / access-policy.ts / remote-command-context.ts (M4-A0)
+
+`src/core/session-generation.ts` owns persistent `chat_sessions.generation` (additive PRAGMA/ALTER). This integer is not `src/agent/session-persistence.ts` process-local spawn ownership. `replaceRemoteSessionGeneration` rebinds one conversation onto one session in a single transaction because `remote_session_bindings.chat_session_id` is UNIQUE. `src/messaging/access-policy.ts` is default-deny substrate (`deny` / `allowlist` / `paired` / `all`) with no production caller until M4-A1. `src/messaging/remote-command-context.ts` names `{channel, actorId, conversationKey, chatSessionId, generation}` so the three transports cannot invent three shapes.
+
 ## src/core/ — runtime support cluster (30 files, 3803L)
 
 `boss-auth.ts`, `config.ts`, `codex-config.ts`, `instance.ts`, `runtime-path.ts`, `main-session.ts`, `message-summary.ts`, `path-expand.ts`, `runtime-settings.ts`, `runtime-settings-gate.ts`, `settings-merge.ts`, `db.ts`, `bus.ts`, `employees.ts`, `i18n.ts`, `compact.ts`, `logger.ts`, `claude-install.ts`, `launchd-cleanup.ts`, `launchd-plist.ts`, `tcc.ts`.
