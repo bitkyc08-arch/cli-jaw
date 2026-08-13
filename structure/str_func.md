@@ -47,7 +47,7 @@ cli-jaw/
 │   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (233L)
 │   │   ├── rate-limit.ts     ← 클라이언트 클래스별(cli/manager/browser/lan/remote) 슬라이딩 윈도 리미터 + atomic peek/commit + Retry-After 미들웨어 팩토리 (213L)
 │   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (65L)
-│   │   ├── logger.ts         ← 로거 유틸 + structured log.event (84L)
+│   │   ├── logger.ts         ← 로거 유틸 + structured log.event (100L)
 │   │   ├── i18n.ts           ← 서버사이드 번역 (90L)
 │   │   ├── employees.ts      ← Employee 시드/CRUD 공용 로직 + 정적 직원 등록(Control: codex `gpt-5.6-luna` + `codex-imagegen`) + virtual synthetic row/preset helpers + DEFAULT_EMPLOYEES (437L)
 │   │   ├── main-session.ts   ← 메인 세션 authoritative CLI/clear-state helper + clearBossSessionOnly (232L)
@@ -118,7 +118,7 @@ cli-jaw/
 │   │   ├── tool-timeout.ts   ← tool inactivity timeout helper (33L)
 │   │   ├── watchdog.ts       ← idle/progress watchdog + 4h absolute hard cap with progress deadline extension (130L)
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
-│   ├── messaging/            ← 통합 메시징 런타임 (27 files)
+│   ├── messaging/            ← 통합 메시징 런타임 (28 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
 │   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (300L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
@@ -126,7 +126,7 @@ cli-jaw/
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (243L) ✨
 │   │   ├── redact.ts         ← 채널 크리덴셜 마스킹 (Slack/TG/Discord 토큰 + URL 경로 capability) (600L) ✨
 │   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 서로게이트 안전 + 펜스/언어태그 보존, 단 delimiter가 한도 이내일 때) (389L) ✨
-│   │   ├── channel-health.ts ← 채널 헬스 체크 helper (117L) ✨
+│   │   ├── channel-health.ts ← 채널 헬스 체크 helper + additive ingress/metrics snapshot (148L) ✨
 │   │   ├── channel-validate.ts ← 온보딩 마법사 라이브 크리덴셜 검증 (telegram getMe / discord users@me / slack auth.test+connections.open, 토큰 비로깅) (127L) ✨
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (49L)
@@ -138,7 +138,8 @@ cli-jaw/
 │   │   ├── remote-command-context.ts ← channel-neutral remote command identity (51L)
 │   │   ├── ingress-generation.ts ← envelope → chat_sessions.generation lookup (0 if unbound) (22L)
 │   │   ├── trace-context.ts  ← ALS MessagingTraceContext; reuses journal trace_id (73L)
-│   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + session_generation + operator list/replay (556L)
+│   │   ├── metrics.ts       ← in-process counters/histograms; labels channel/state/result only (97L)
+│   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + session_generation + operator list/replay (574L)
 │   │   ├── ingress-audit.ts  ← append-only replay audit JSONL (49L)
 │   │   ├── inbound-envelope.ts ← InboundEnvelope normalizers (229L)
 │   │   ├── channel-adapter.ts ← ChannelAdapter contract (130L)

@@ -175,7 +175,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
   ${c.bold}Setup & diagnostics:${c.reset}
     init                                Interactive setup wizard
     slack setup|manifest                Slack app manifest + guided setup
-    messaging ingress list|show|replay|audit
+    messaging ingress list|show|replay|audit | messaging doctor
                                         Durable ingress journal (local process)
     doctor [--json]                     Installation diagnostics
     map <dir> [--budget N]              Ranked source structure map

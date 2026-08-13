@@ -4,6 +4,7 @@
  *   jaw messaging ingress list [--channel telegram|discord|slack] [--state ...] [--older-than 24h] [--limit 50] [--json]
  *   jaw messaging ingress show <channel> <accountId> <eventId> [--json]
  *   jaw messaging ingress replay <channel> <accountId> <eventId> --reason <text> [--force]
+ *   jaw messaging doctor [--json]
  *
  * Reads the same SQLite file the server writes. Every inbound message from all three
  * channels lands there, so this is where a dead letter becomes visible and a message
@@ -14,6 +15,8 @@ import { db } from '../../src/core/db.js';
 import { IngressJournal, type IngressState } from '../../src/messaging/durable-ingress.js';
 import { isMessengerChannel, type MessengerChannel } from '../../src/messaging/types.js';
 import { appendIngressAudit, readIngressAudit } from '../../src/messaging/ingress-audit.js';
+import { snapshotMetrics } from '../../src/messaging/metrics.js';
+import { recentStructuredLogEvents } from '../../src/core/logger.js';
 
 const INGRESS_STATES: IngressState[] = ['received', 'processing', 'completed', 'dead_letter'];
 
@@ -24,6 +27,7 @@ function printHelp(): void {
     jaw messaging ingress show <channel> <account> <event>    Show one event
     jaw messaging ingress replay <channel> <account> <event> --reason <text>
     jaw messaging ingress audit [--limit 20]                  Show replay history
+    jaw messaging doctor [--json]                             Journal counts + this-process events
 
   List options:
     --channel telegram|discord|slack
@@ -77,6 +81,45 @@ const action = String(argv[2] || '').toLowerCase();
 
 if (!group || group === 'help' || group === '--help' || group === '-h') {
     printHelp();
+    process.exit(0);
+}
+
+if (group === 'doctor') {
+    const wantJson = argv.includes('--json');
+    const local = new IngressJournal(db);
+    const counts = local.counts();
+    const snapshot = {
+        ingress: {
+            received: counts.received,
+            processing: counts.processing,
+            completed: counts.completed,
+            dead_letter: counts.dead_letter,
+            oldestOpenReceivedAt: local.oldestOpenReceivedAt(),
+        },
+        metrics: snapshotMetrics(),
+        events: recentStructuredLogEvents(20),
+    };
+    if (wantJson) {
+        console.log(JSON.stringify(snapshot, null, 2));
+        process.exit(0);
+    }
+    const i = snapshot.ingress;
+    console.log(
+        `  received ${i.received}  processing ${i.processing}  ` +
+        `completed ${i.completed}  dead_letter ${i.dead_letter}`,
+    );
+    if (i.oldestOpenReceivedAt !== null) {
+        console.log(`  oldest open received_at ${i.oldestOpenReceivedAt}`);
+    }
+    if (snapshot.events.length === 0) {
+        console.log('  (no structured events in this process)');
+    } else {
+        for (const event of snapshot.events) {
+            const result = typeof event['result'] === 'string' ? event['result'] : '';
+            const traceId = typeof event['traceId'] === 'string' ? event['traceId'] : '-';
+            console.log(`  ${event.event}  ${traceId}  ${result}`);
+        }
+    }
     process.exit(0);
 }
 

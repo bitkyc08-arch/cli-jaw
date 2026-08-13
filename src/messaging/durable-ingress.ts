@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { InboundEnvelope, MessengerChannel } from './types.js';
 import { isInboundEnvelope } from './types.js';
 import { enterMessagingTrace } from './trace-context.js';
+import { inc } from './metrics.js';
 
 export const INGRESS_EVENTS_TABLE = 'ingress_events';
 
@@ -424,6 +425,14 @@ export class IngressJournal {
         return out;
     }
 
+    /** Oldest still-open row. Completed tombstones are history, not backlog. */
+    oldestOpenReceivedAt(): number | null {
+        const row = this.database.prepare(
+            "SELECT MIN(received_at) AS n FROM ingress_events WHERE state != 'completed'",
+        ).get() as { n: number | null } | undefined;
+        return typeof row?.n === 'number' ? row.n : null;
+    }
+
     listByState(state: IngressState, limit = 100): IngressEventRecord[] {
         const rows = this.database.prepare(`
             SELECT * FROM ingress_events WHERE state = ?
@@ -498,17 +507,26 @@ export function admitIngress(
 ): IngressAdmission {
     // No journal (CLI processes, tests) or an event with no durable identity: behave
     // exactly as this path did before the journal existed.
-    if (!journal || !envelope) return { admit: true, journaled: false };
+    if (!journal || !envelope) {
+        inc('ingress.admit', { result: 'unjournaled' });
+        return { admit: true, journaled: false };
+    }
     const result = journal.append(envelope, payloadDigest, payloadJson, sessionGeneration);
     if (!result.appended && result.record.state === 'completed') {
+        inc('ingress.admit', { channel: envelope.channel, result: 'already_handled' });
         return { admit: false, reason: 'already_handled' };
     }
     if (!result.appended && result.record.sessionGeneration !== sessionGeneration) {
+        inc('ingress.admit', { channel: envelope.channel, result: 'stale_generation' });
         return { admit: false, reason: 'stale_generation' };
     }
     journal.markProcessing(envelope.channel, envelope.accountId, envelope.eventId);
     // Reuse the journal row's identity. A second minted id here is the bug M5 exists to stop.
     enterMessagingTrace({ traceId: result.record.traceId, channel: envelope.channel });
+    inc('ingress.admit', {
+        channel: envelope.channel,
+        result: result.appended ? 'fresh' : 'redelivery',
+    });
     return { admit: true, journaled: true, envelope };
 }
 

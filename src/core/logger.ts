@@ -82,3 +82,19 @@ export const log = {
     error: (...args: unknown[]) => { if (current <= 3) { pushRing('error', args); console.error(...args); } },
     event: (name: string, fields: Record<string, unknown> = {}) => { writeEvent(name, fields); },
 };
+
+export type StructuredLogEvent = Record<string, unknown> & { event: string; ts: string };
+
+export function recentStructuredLogEvents(limit = 20): StructuredLogEvent[] {
+    const out: StructuredLogEvent[] = [];
+    for (const entry of drainLogRing()) {
+        try {
+            const parsed = JSON.parse(entry.text) as Record<string, unknown>;
+            if (typeof parsed['event'] !== 'string') continue;
+            out.push({ ...parsed, event: parsed['event'], ts: entry.ts });
+        } catch {
+            // text lines from log.info stay out of the structured view
+        }
+    }
+    return out.slice(-limit);
+}
