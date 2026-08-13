@@ -9,7 +9,14 @@ import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
 import { saveUpload, buildMediaPromptMany } from '../agent/spawn.js';
-import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
+import {
+    setLastActiveTarget,
+    setLatestSeenTarget,
+    getLastActiveTarget,
+    transportStarted,
+    transportNotStarted,
+    type TransportStartOutcome,
+} from '../messaging/runtime.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
@@ -387,17 +394,17 @@ function observeGatewaySnapshot(snapshot: DiscordGatewaySnapshot): void {
     }
 }
 
-export async function initDiscord() {
+export async function initDiscord(): Promise<TransportStartOutcome> {
     if (dcInitLock) {
         log.warn('[discord] initDiscord already in progress, skipping');
-        return;
+        return transportNotStarted('superseded');
     }
     dcInitLock = true;
     try {
     await shutdownDiscord();
     if (!settings["discord"]?.enabled || !settings["discord"]?.token) {
         log.info('[discord] ⏭️  Discord pending (disabled or no token)');
-        return;
+        return transportNotStarted('not_configured');
     }
 
     const supervisor = new DiscordGatewaySupervisor({
@@ -426,6 +433,12 @@ export async function initDiscord() {
     gatewaySupervisor = supervisor;
     discordApprovalIngress = createDiscordGatewayIngress();
     await supervisor.start();
+    // ACCEPTED, not ready. start() resolves once replaceClient has been issued, and
+    // replaceClient swallows a login failure into scheduleReplacement('login_failed')
+    // instead of rethrowing; the message handler is installed later by
+    // onGenerationReady. Readiness belongs to channel health — do not "fix" this
+    // into a guarantee the supervisor never makes.
+    return transportStarted;
     } finally { dcInitLock = false; }
 }
 

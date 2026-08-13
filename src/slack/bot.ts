@@ -13,7 +13,10 @@ import { submitMessage } from '../orchestrator/gateway.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { isContinueIntent } from '../orchestrator/parser.js';
-import { setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
+import {
+    setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget,
+    transportStarted, transportNotStarted, type TransportStartOutcome,
+} from '../messaging/runtime.js';
 import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-target.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildMediaPromptMany } from '../agent/spawn.js';
@@ -573,82 +576,116 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTrans
 
 // ─── Init / Shutdown ────────────────────────────────
 
-export async function initSlack(): Promise<void> {
+export async function initSlack(): Promise<TransportStartOutcome> {
     if (slackInitLock) {
         // Do not discard the request: the running init may be about to abort
         // because THIS caller's shutdown superseded it.
         log.info('[slack] initSlack already in progress — queuing a follow-up');
         initRequestPending = true;
-        return;
+        return transportNotStarted('superseded');
     }
     slackInitLock = true;
+    let outcome: TransportStartOutcome;
     try {
-        // Claim the generation FIRST so an external shutdown that lands while
-        // we are tearing down or authenticating is not lost, then tear down
-        // WITHOUT bumping it — an internal teardown must not invalidate the
-        // init it belongs to.
-        const generation = ++lifecycleGeneration;
-        await disposeSlackRuntime();
-        const sc = settings["slack"];
-        if (!sc?.enabled || !sc?.botToken) {
-            log.info('[slack] ⏭️  Slack pending (disabled or no bot token)');
-            return;
-        }
-        if (!sc.appToken) {
-            // Outbound still works via the send transport; only inbound needs
-            // the app-level token. Say so precisely instead of "failed".
-            log.warn('[slack] app-level token missing — outbound only, no inbound events');
-            return;
-        }
-        // One bot, one instance: a second instance sharing these tokens would
-        // silently swallow half the events (Socket Mode round-robin).
-        if (!shouldAttachSlack(sc.attachPort, settings["port"])) {
-            log.info(`[slack] not the attach instance (attach port ${sc.attachPort}, this :${settings["port"]}) — socket not opened`);
-            return;
-        }
-
-        const auth = await slackApi<{ user_id?: string; team_id?: string }>(sc.botToken, 'auth.test');
-        // A shutdown may have landed while auth.test was in flight; resuming
-        // here would resurrect a transport the caller asked us to stop.
-        if (generation !== lifecycleGeneration) {
-            log.info('[slack] init superseded during auth — aborting');
-            return;
-        }
-        if (!auth.ok) {
-            log.error('[slack] auth.test failed:', auth.error);
-            return;
-        }
-        selfUserId = auth.data?.user_id || null;
-        if (auth.data?.team_id && !sc.teamId) sc.teamId = auth.data.team_id;
-
-        const client = new SlackSocketClient({
-            appToken: sc.appToken,
-            onEnvelope: envelope => handleSlackEnvelope(envelope, slackApprovalIngress),
-        });
-        slackApprovalIngress = createSlackSocketIngress();
-        socketClient = client;
-        await client.start();
-        if (generation !== lifecycleGeneration) {
-            log.info('[slack] init superseded during connect — disposing socket');
-            client.stop();
-            if (socketClient === client) socketClient = null;
-            return;
-        }
-
-        forwarderHandler = createSlackForwarder({
-            getToken: () => getSlackSendClient().token,
-            getLastTarget: () => getLastActiveTarget('slack'),
-            shouldSkip: (data) => data["origin"] === 'slack',
-        });
-        addBroadcastListener(forwarderHandler);
-        log.info(`[slack] ✅ connected as ${selfUserId || 'unknown'}`);
-    } finally {
-        slackInitLock = false;
-        if (initRequestPending) {
-            initRequestPending = false;
-            await initSlack();
-        }
+        outcome = await runSlackInit();
+    } catch (err) {
+        // A thrown init still owes the queue a drain, exactly as the old
+        // `finally` did — otherwise a crash mid-start leaves Slack off until
+        // something unrelated happens to call init again.
+        await settleSlackInit();
+        throw err;
     }
+    // The follow-up is the call that actually opened the socket; this one only
+    // lost the race, so its `superseded` outcome must not shadow the real one.
+    return (await settleSlackInit()) ?? outcome;
+}
+
+/**
+ * Release the lock, then run a queued request and hand back ITS outcome
+ * (`null` when nothing was queued). Deliberately not a `finally` block: that
+ * can only replace a return value by returning from `finally`, which also
+ * swallows in-flight throws. Order is unchanged — the lock is dropped before
+ * the follow-up runs, so the retry takes the normal path rather than queuing
+ * itself forever.
+ */
+async function settleSlackInit(): Promise<TransportStartOutcome | null> {
+    slackInitLock = false;
+    if (!initRequestPending) return null;
+    initRequestPending = false;
+    return initSlack();
+}
+
+/** The init body proper. Runs only under `slackInitLock`. */
+async function runSlackInit(): Promise<TransportStartOutcome> {
+    // Claim the generation FIRST so an external shutdown that lands while
+    // we are tearing down or authenticating is not lost, then tear down
+    // WITHOUT bumping it — an internal teardown must not invalidate the
+    // init it belongs to.
+    const generation = ++lifecycleGeneration;
+    await disposeSlackRuntime();
+    const sc = settings["slack"];
+    if (!sc?.enabled || !sc?.botToken) {
+        log.info('[slack] ⏭️  Slack pending (disabled or no bot token)');
+        return transportNotStarted('not_configured');
+    }
+    if (!sc.appToken) {
+        // Outbound still works via the send transport; only inbound needs
+        // the app-level token. Say so precisely instead of "failed".
+        log.warn('[slack] app-level token missing — outbound only, no inbound events');
+        return transportNotStarted('outbound_only');
+    }
+    // One bot, one instance: a second instance sharing these tokens would
+    // silently swallow half the events (Socket Mode round-robin).
+    if (!shouldAttachSlack(sc.attachPort, settings["port"])) {
+        log.info(`[slack] not the attach instance (attach port ${sc.attachPort}, this :${settings["port"]}) — socket not opened`);
+        return transportNotStarted('not_attach_instance');
+    }
+
+    const auth = await slackApi<{ user_id?: string; team_id?: string }>(sc.botToken, 'auth.test');
+    // A shutdown may have landed while auth.test was in flight; resuming
+    // here would resurrect a transport the caller asked us to stop.
+    if (generation !== lifecycleGeneration) {
+        log.info('[slack] init superseded during auth — aborting');
+        return transportNotStarted('superseded');
+    }
+    if (!auth.ok) {
+        log.error('[slack] auth.test failed:', auth.error);
+        return transportNotStarted('failed', 'auth_test_failed');
+    }
+    selfUserId = auth.data?.user_id || null;
+    if (auth.data?.team_id && !sc.teamId) sc.teamId = auth.data.team_id;
+    // The team id namespaces every ingress dedup key, and `slackEventKey`
+    // degrades an empty one to the literal 'unknown' — so two workspaces,
+    // or one workspace across a restart, would share a key space and drop
+    // each other's messages as duplicates. Refuse to open the socket at
+    // all, the same way Telegram refuses to poll when getMe yields no id.
+    if (!String(sc.teamId ?? '').trim()) {
+        log.error(logErrorText('[slack] refusing to start inbound: workspace (team) id could not be resolved'));
+        return transportNotStarted('failed', 'team_id_unresolved');
+    }
+
+    const client = new SlackSocketClient({
+        appToken: sc.appToken,
+        onEnvelope: envelope => handleSlackEnvelope(envelope, slackApprovalIngress),
+    });
+    slackApprovalIngress = createSlackSocketIngress();
+    socketClient = client;
+    await client.start();
+    if (generation !== lifecycleGeneration) {
+        log.info('[slack] init superseded during connect — disposing socket');
+        client.stop();
+        if (socketClient === client) socketClient = null;
+        return transportNotStarted('superseded');
+    }
+
+    forwarderHandler = createSlackForwarder({
+        getToken: () => getSlackSendClient().token,
+        getLastTarget: () => getLastActiveTarget('slack'),
+        shouldSkip: (data) => data["origin"] === 'slack',
+    });
+    addBroadcastListener(forwarderHandler);
+    log.info(`[slack] ✅ connected as ${selfUserId || 'unknown'}`);
+    return transportStarted;
 }
 
 export async function shutdownSlack(): Promise<void> {

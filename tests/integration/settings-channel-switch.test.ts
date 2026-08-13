@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MessengerChannel } from '../../src/messaging/types.js';
+import { transportStarted } from '../../src/messaging/runtime.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
@@ -31,7 +32,7 @@ async function withStubbedTransports(
     runtime.__resetTransportRegistryForTests();
     for (const channel of ['telegram', 'discord', 'slack'] as MessengerChannel[]) {
         runtime.registerTransport(channel, {
-            init: async () => { calls.push({ channel, event: 'init' }); return true; },
+            init: async () => { calls.push({ channel, event: 'init' }); return transportStarted; },
             shutdown: async () => { calls.push({ channel, event: 'shutdown' }); },
         });
     }

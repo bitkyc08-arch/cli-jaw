@@ -51,7 +51,11 @@ export async function relayDiscordImages(
  * Discord text passes through this function, and masking per call site is how
  * the audit kept finding one that had been missed.
  */
-export function chunkDiscordMessage(text: string, limit = 2000): string[] {
+/** Discord's hard per-message ceiling. Exported so the capability declaration is
+ *  derived from the limit that actually chunks, not a second copy of the number. */
+export const DISCORD_MESSAGE_LIMIT = 2000;
+
+export function chunkDiscordMessage(text: string, limit = DISCORD_MESSAGE_LIMIT): string[] {
     return chunkFenceAware(redactOutboundText(text), limit);
 }
 

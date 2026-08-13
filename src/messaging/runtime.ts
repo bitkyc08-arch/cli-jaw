@@ -9,8 +9,34 @@ import { logErrorText } from './redact.js';
 
 // ─── Transport Registry (push-based, no circular imports) ─────
 
+/** Why a transport is not running. Only `failed` is an error worth shouting about:
+ *  the rest are ordinary states an operator chose or a concurrent call owns. */
+export type TransportStartFailureReason =
+    | 'not_configured'
+    | 'outbound_only'
+    | 'not_attach_instance'
+    | 'superseded'
+    | 'not_registered'
+    | 'failed';
+
+/** `started: true` means the transport was accepted, NOT that it is already
+ *  receiving. Telegram's poller and Discord's gateway both become ready after
+ *  init returns, so readiness is reported by channel health, not by this value. */
+export type TransportStartOutcome =
+    | { started: true }
+    | { started: false; reason: TransportStartFailureReason; detail?: string };
+
+export const transportStarted: TransportStartOutcome = { started: true };
+
+export function transportNotStarted(
+    reason: TransportStartFailureReason,
+    detail?: string,
+): TransportStartOutcome {
+    return detail === undefined ? { started: false, reason } : { started: false, reason, detail };
+}
+
 type TransportFns = {
-    init: () => Promise<boolean>;
+    init: () => Promise<TransportStartOutcome>;
     shutdown: () => Promise<void>;
 };
 
@@ -151,28 +177,44 @@ export function getRunningMessagingTransports(): MessengerChannel[] {
     return [...runningTransports];
 }
 
-export async function startMessagingTransport(channel: MessengerChannel): Promise<boolean> {
+/** The last fault recorded for a channel, or null. Only a genuine failure lands
+ *  here: a channel that declined to start because it was not configured, not the
+ *  attach instance, or superseded has nothing wrong with it. */
+export function getMessagingTransportError(channel: MessengerChannel): string | null {
+    return transportErrors.get(channel) ?? null;
+}
+
+export async function startMessagingTransport(
+    channel: MessengerChannel,
+): Promise<TransportStartOutcome> {
     const transport = transports.get(channel);
     if (!transport) {
         transportErrors.set(channel, 'transport_not_registered');
         log.warn(`[messaging] no transport registered for ${channel}`);
-        return false;
+        return transportNotStarted('not_registered');
     }
     try {
-        const started = await transport.init();
-        if (!started) {
+        const outcome = await transport.init();
+        if (!outcome.started) {
             runningTransports.delete(channel);
-            transportErrors.delete(channel);
-            return false;
+            // A channel nobody configured, or one a concurrent init owns, is not a
+            // fault. Recording it would surface a permanent error in health for a
+            // state the operator chose.
+            if (outcome.reason === 'failed') {
+                transportErrors.set(channel, outcome.detail ?? 'init_failed');
+            } else {
+                transportErrors.delete(channel);
+            }
+            return outcome;
         }
         runningTransports.add(channel);
         transportErrors.delete(channel);
-        return true;
+        return outcome;
     } catch (error) {
         runningTransports.delete(channel);
         transportErrors.set(channel, logErrorText(error));
         log.warn(`[messaging] ${channel} init error:`, logErrorText(error));
-        return false;
+        return transportNotStarted('failed', logErrorText(error));
     }
 }
 
@@ -190,8 +232,12 @@ export async function stopMessagingTransport(channel: MessengerChannel): Promise
     }
 }
 
-export async function initEnabledMessagingRuntimes(): Promise<Record<MessengerChannel, boolean>> {
-    const result: Record<MessengerChannel, boolean> = { telegram: false, discord: false, slack: false };
+export async function initEnabledMessagingRuntimes(): Promise<Record<MessengerChannel, TransportStartOutcome>> {
+    const result: Record<MessengerChannel, TransportStartOutcome> = {
+        telegram: transportNotStarted('not_configured'),
+        discord: transportNotStarted('not_configured'),
+        slack: transportNotStarted('not_configured'),
+    };
     for (const channel of getEnabledChannels()) {
         result[channel] = await startMessagingTransport(channel);
     }
@@ -199,7 +245,7 @@ export async function initEnabledMessagingRuntimes(): Promise<Record<MessengerCh
 }
 
 /** @deprecated Use initEnabledMessagingRuntimes instead. */
-export async function initActiveMessagingRuntime(): Promise<Record<MessengerChannel, boolean>> {
+export async function initActiveMessagingRuntime(): Promise<Record<MessengerChannel, TransportStartOutcome>> {
     return initEnabledMessagingRuntimes();
 }
 

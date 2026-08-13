@@ -640,9 +640,17 @@ server.listen(PORT, bindHost, async () => {
 
     hydrateTargetsFromSettings(settings);
     const messagingBoot = await initEnabledMessagingRuntimes();
-    for (const [channel, started] of Object.entries(messagingBoot)) {
-        if (!started && getEnabledChannels().includes(channel as MessengerChannel)) {
-            console.error(`[messaging:boot:${channel}] init failed; other gateways remain active`);
+    // Only `failed` is an incident. An outbound-only Slack install and a deliberate
+    // non-attach instance are operator choices; shouting `init failed` at them on
+    // every boot teaches people to skip this line when it finally matters.
+    for (const [channel, outcome] of Object.entries(messagingBoot)) {
+        if (outcome.started) continue;
+        if (!getEnabledChannels().includes(channel as MessengerChannel)) continue;
+        if (outcome.reason === 'failed') {
+            const detail = outcome.detail ? `: ${outcome.detail}` : '';
+            console.error(`[messaging:boot:${channel}] init failed${detail}; other gateways remain active`);
+        } else {
+            console.log(`[messaging:boot:${channel}] inbound not started (${outcome.reason})`);
         }
     }
 

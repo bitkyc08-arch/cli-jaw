@@ -10,12 +10,16 @@ import {
     getLastActiveTarget,
     getLatestSeenTarget,
     hydrateTargetsFromSettings,
+    getMessagingTransportError,
+    isMessagingTransportRunning,
     registerTransport,
     restartMessagingRuntime,
     setLastActiveTarget,
     setLatestSeenTarget,
     shutdownMessagingRuntime,
     startMessagingTransport,
+    transportNotStarted,
+    transportStarted,
     __resetTransportRegistryForTests,
     __resetTargetStateForTests,
 } from '../../src/messaging/runtime.js';
@@ -38,7 +42,7 @@ function transportSpy(channel: MessengerChannel, failInit = false) {
         init: async () => {
             initCalled++;
             if (failInit) throw new Error(`${channel} init failed`);
-            return true;
+            return transportStarted;
         },
         shutdown: async () => { shutdownCalled++; },
     });
@@ -176,8 +180,26 @@ test('shutdownMessagingRuntime stops all registered transports', async () => {
 test('startMessagingTransport records transport errors without throwing', async () => {
     freshSettings({ messaging: { enabledChannels: ['discord'], homeChannel: 'telegram' } });
     transportSpy('discord', true);
-    const started = await startMessagingTransport('discord');
-    assert.equal(started, false);
+    const outcome = await startMessagingTransport('discord');
+    assert.equal(outcome.started, false);
+    // A throw is a fault, so it must land in the reason that health treats as an
+    // incident — not in one of the states an operator deliberately chose.
+    assert.equal(outcome.started === false && outcome.reason, 'failed');
+});
+
+test('startMessagingTransport keeps a declined start out of the error record', async () => {
+    freshSettings({ messaging: { enabledChannels: ['slack'], homeChannel: 'slack' } });
+    registerTransport('slack', {
+        init: async () => transportNotStarted('not_attach_instance'),
+        shutdown: async () => {},
+    });
+    const outcome = await startMessagingTransport('slack');
+    assert.equal(outcome.started, false);
+    assert.equal(outcome.started === false && outcome.reason, 'not_attach_instance');
+    assert.equal(isMessagingTransportRunning('slack'), false);
+    // The non-attach instance is doing exactly what it was configured to do, so it
+    // must not leave a transport error behind for health to report as a fault.
+    assert.equal(getMessagingTransportError('slack'), null);
 });
 
 test('loadSettings migrates legacy channel to messaging.enabledChannels and homeChannel', () => {

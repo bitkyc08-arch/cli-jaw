@@ -26,7 +26,10 @@ import { clearMainSessionState, resetSessionPreservingHistory } from '../core/ma
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { handleVoice } from './voice.js';
-import { getLastActiveTarget, registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
+import {
+    getLastActiveTarget, registerTransport, setLastActiveTarget, setLatestSeenTarget,
+    transportNotStarted, transportStarted, type TransportStartOutcome,
+} from '../messaging/runtime.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
@@ -357,10 +360,7 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
 
 // Register transport at module load time
 registerTransport('telegram', {
-    init: async () => {
-        await initTelegram();
-        return true;
-    },
+    init: () => initTelegram(),
     shutdown: shutdownTelegram,
 });
 registerSendTransport('telegram', telegramSendHandler);
@@ -415,16 +415,16 @@ function makeTelegramCommandCtx() {
 
 // ─── Init ────────────────────────────────────────────
 
-export async function initTelegram() {
+export async function initTelegram(): Promise<TransportStartOutcome> {
     if (tgInitLock) {
         log.warn('[tg] initTelegram already in progress, skipping');
-        return;
+        return transportNotStarted('superseded');
     }
     tgInitLock = true;
-    try { await _initTelegramInner(); } finally { tgInitLock = false; }
+    try { return await _initTelegramInner(); } finally { tgInitLock = false; }
 }
 
-async function _initTelegramInner() {
+async function _initTelegramInner(): Promise<TransportStartOutcome> {
     // Dedupe retry timer — cancel pending retry if initTelegram called again
     if (tgRetryTimer) { clearTimeout(tgRetryTimer); tgRetryTimer = null; }
 
@@ -457,7 +457,7 @@ async function _initTelegramInner() {
 
     if (!settings["telegram"]?.enabled || !settings["telegram"]?.token) {
         log.info('[tg] ⏭️  Telegram pending (disabled or no token)');
-        return;
+        return transportNotStarted('not_configured');
     }
 
     // Pre-seed telegramActiveChatIds from persisted allowedChatIds
@@ -900,7 +900,7 @@ async function _initTelegramInner() {
     // when getMe cannot provide that identity.
     if (botUserId === null) {
         log.error(logErrorText('[tg] refusing to start durable polling: bot identity could not be read'));
-        return;
+        return transportNotStarted('failed', 'get_me_identity_unavailable');
     }
 
     // ─── Global Forwarding: non-Telegram responses → Telegram ───
@@ -955,4 +955,7 @@ async function _initTelegramInner() {
     });
     telegramBot = bot;
     log.info('[tg] Bot starting...');
+    // Accepted, not yet receiving: poller.start() above is deliberately not awaited so
+    // boot does not block on a Telegram round trip. Readiness is reported by health.
+    return transportStarted;
 }
