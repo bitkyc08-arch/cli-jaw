@@ -5,6 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
     IngressJournal,
     assertChildRetentionPredicatesRegistered,
@@ -308,4 +311,79 @@ test('init exposes the journal and creates the table', () => {
         .get();
     assert.ok(table, 'init must create the journal table');
     __resetIngressJournalForTests();
+});
+
+test('a second connection treating the same event as new still stores one row', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaw-ingress-unique-'));
+    try {
+        const path = join(home, 'jaw.db');
+        const firstDb = new Database(path);
+        firstDb.pragma('foreign_keys = ON');
+        const first = new IngressJournal(firstDb, { now: () => 1, bootId: 'boot-1' });
+        assert.equal(first.append(envelope(), 'd').appended, true);
+
+        const secondDb = new Database(path);
+        secondDb.pragma('foreign_keys = ON');
+        const second = new IngressJournal(secondDb, { now: () => 2, bootId: 'boot-2' });
+        const again = second.append(envelope(), 'd');
+        assert.equal(again.appended, false);
+        assert.equal(again.appended === false && again.reason, 'duplicate');
+        const rows = secondDb.prepare('SELECT COUNT(*) AS n FROM ingress_events').get() as { n: number };
+        assert.equal(rows.n, 1);
+        firstDb.close();
+        secondDb.close();
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('a unique race after find still returns duplicate instead of throwing', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaw-ingress-race-'));
+    try {
+        const path = join(home, 'jaw.db');
+        const firstDb = new Database(path);
+        firstDb.pragma('foreign_keys = ON');
+        const first = new IngressJournal(firstDb, { now: () => 1, bootId: 'boot-1' });
+        first.append(envelope({ eventId: 'race-1' }), 'd');
+
+        const secondDb = new Database(path);
+        secondDb.pragma('foreign_keys = ON');
+        const second = new IngressJournal(secondDb, { now: () => 2, bootId: 'boot-2' });
+        const originalFind = second.find.bind(second);
+        let finds = 0;
+        second.find = ((channel, accountId, eventId) => {
+            finds += 1;
+            if (finds === 1) return null;
+            return originalFind(channel, accountId, eventId);
+        }) as typeof second.find;
+        const raced = second.append(envelope({ eventId: 'race-1' }), 'd');
+        assert.equal(raced.appended, false);
+        assert.equal(raced.appended === false && raced.reason, 'duplicate');
+        assert.ok(finds >= 2, 'the unique catch must look the row up again');
+        firstDb.close();
+        secondDb.close();
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('a locked database still throws instead of looking like a duplicate', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaw-ingress-lock-'));
+    try {
+        const path = join(home, 'jaw.db');
+        const writer = new Database(path);
+        writer.pragma('foreign_keys = ON');
+        writer.pragma('busy_timeout = 0');
+        const journal = new IngressJournal(writer, { now: () => 1, bootId: 'boot-2' });
+
+        const locker = new Database(path);
+        locker.pragma('busy_timeout = 0');
+        locker.exec('BEGIN EXCLUSIVE');
+        assert.throws(() => journal.append(envelope({ eventId: 'locked' }), 'd'), /busy|locked|SQLITE_BUSY/i);
+        locker.exec('ROLLBACK');
+        locker.close();
+        writer.close();
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
 });

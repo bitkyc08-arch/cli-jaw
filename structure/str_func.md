@@ -139,7 +139,7 @@ cli-jaw/
 │   │   ├── ingress-generation.ts ← envelope → chat_sessions.generation lookup (0 if unbound) (22L)
 │   │   ├── trace-context.ts  ← ALS MessagingTraceContext; reuses journal trace_id (73L)
 │   │   ├── metrics.ts       ← in-process counters/histograms; labels channel/state/result only (97L)
-│   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + session_generation + operator list/replay (574L)
+│   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + session_generation + operator list/replay (592L)
 │   │   ├── ingress-audit.ts  ← append-only replay audit JSONL (49L)
 │   │   ├── inbound-envelope.ts ← InboundEnvelope normalizers (229L)
 │   │   ├── channel-adapter.ts ← ChannelAdapter contract (130L)

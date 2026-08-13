@@ -220,27 +220,36 @@ export class IngressJournal {
         if (existing) return { appended: false, reason: 'duplicate', record: existing };
 
         const traceId = this.mintTraceId(envelope);
-        this.database.prepare(`
-            INSERT INTO ingress_events (
-                channel, account_id, event_id, conversation_key, thread_key, actor_id,
-                target_json, ack_policy, trace_id, payload_digest, payload_json,
-                state, attempt_count, received_at, session_generation
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', 0, ?, ?)
-        `).run(
-            envelope.channel,
-            envelope.accountId,
-            envelope.eventId,
-            envelope.conversationKey,
-            envelope.threadKey ?? null,
-            envelope.actorId,
-            JSON.stringify(envelope.target),
-            envelope.ackPolicy,
-            traceId,
-            payloadDigest,
-            payloadJson ?? null,
-            envelope.receivedAt,
-            sessionGeneration,
-        );
+        try {
+            this.database.prepare(`
+                INSERT INTO ingress_events (
+                    channel, account_id, event_id, conversation_key, thread_key, actor_id,
+                    target_json, ack_policy, trace_id, payload_digest, payload_json,
+                    state, attempt_count, received_at, session_generation
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', 0, ?, ?)
+            `).run(
+                envelope.channel,
+                envelope.accountId,
+                envelope.eventId,
+                envelope.conversationKey,
+                envelope.threadKey ?? null,
+                envelope.actorId,
+                JSON.stringify(envelope.target),
+                envelope.ackPolicy,
+                traceId,
+                payloadDigest,
+                payloadJson ?? null,
+                envelope.receivedAt,
+                sessionGeneration,
+            );
+        } catch (error) {
+            // Another connection won the insert. Locked / disk-full must still throw
+            // so Slack can refuse ACK; only a primary-key clash is a duplicate.
+            if (!isUniqueConstraint(error)) throw error;
+            const raced = this.find(envelope.channel, envelope.accountId, envelope.eventId);
+            if (!raced) throw error;
+            return { appended: false, reason: 'duplicate', record: raced };
+        }
         const record = this.find(envelope.channel, envelope.accountId, envelope.eventId);
         if (!record) throw new Error('ingress journal: append did not persist');
         return { appended: true, record };
@@ -498,6 +507,15 @@ export type IngressAdmission =
  * again. Anything else is admitted — including a row a crash left mid-flight, because
  * the transport is redelivering precisely because nothing was ever acknowledged.
  */
+
+function isUniqueConstraint(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = 'code' in error ? String((error as { code?: unknown }).code) : '';
+    const message = error instanceof Error ? error.message : String(error);
+    return code === 'SQLITE_CONSTRAINT_PRIMARYKEY'
+        || code === 'SQLITE_CONSTRAINT_UNIQUE'
+        || /UNIQUE constraint failed: ingress_events/i.test(message);
+}
 export function admitIngress(
     journal: IngressJournal | null,
     envelope: InboundEnvelope | null,
