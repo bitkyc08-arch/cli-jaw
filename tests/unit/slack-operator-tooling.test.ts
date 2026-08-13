@@ -110,7 +110,7 @@ test('doctor --json emits a slack status object with the full ladder', () => {
 test('SoT docs document the slack channel', () => {
     assert.match(read('structure/INDEX.md'), /Slack/, 'INDEX.md does not mention Slack');
     assert.match(read('structure/server_api.md'), /\/api\/slack\/send/, 'the route is undocumented');
-    assert.match(read('structure/commands.md'), /Slack 37/, 'command visibility counts omit Slack');
+    assert.match(read('structure/commands.md'), /Slack 41/, 'command visibility counts omit Slack');
     assert.match(read('structure/telegram.md'), /Telegram\/Discord\/Slack/, 'the channel hub doc omits Slack');
     // The file tree renders paths as indented segments (`slack/`), not full
     // paths, so match the section header the way the document writes it.

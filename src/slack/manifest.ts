@@ -62,6 +62,11 @@ export function createSlackAppManifest(appName: string = DEFAULT_SLACK_APP_NAME)
                 { command: '/cli', description: 'Show or switch the CLI engine', usage_hint: '[engine]', should_escape: false },
                 { command: '/clear', description: 'Clear the conversation', should_escape: false },
                 { command: '/help', description: 'Command list', usage_hint: '[command]', should_escape: false },
+                { command: '/new', description: 'Start a new chat session', usage_hint: '[label]', should_escape: false },
+                { command: '/stop', description: 'Stop the current conversation run', should_escape: false },
+                { command: '/queue', description: 'List or drop queued messages', usage_hint: '[list|drop <n>]', should_escape: false },
+                { command: '/approve', description: 'Approve a pending dispatch', usage_hint: '<jti> <digest>', should_escape: false },
+                { command: '/deny', description: 'Deny a pending dispatch', usage_hint: '<jti> <digest>', should_escape: false },
             ],
         },
         oauth_config: {

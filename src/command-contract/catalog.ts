@@ -16,7 +16,7 @@ export const CAPABILITY = {
 const REMOTE_READONLY = new Set<string>();
 // root CLI는 서브커맨드 체계
 const CMDLINE_HIDDEN = new Set(['help', 'clear', 'model', 'cli', 'fallback',
-    'status', 'reset', 'skill', 'employee', 'mcp', 'memory', 'browser', 'prompt', 'version']);
+    'status', 'reset', 'skill', 'employee', 'mcp', 'memory', 'browser', 'prompt', 'version', 'stop', 'approve', 'deny']);
 
 /**
  * COMMANDS 배열에 인터페이스별 capability map 추가

@@ -48,7 +48,7 @@ export function handleApprovalCommand(
     rawEvent: unknown,
     text: string,
 ): { handled: boolean; approved?: boolean; reason?: string } {
-    const match = /^\s*(approve|cancel)\s+([0-9a-f-]{36})\s+([0-9a-f]{64})\s*$/i.exec(text);
+    const match = /^\s*(approve|cancel|deny)\s+([0-9a-f-]{36})\s+([0-9a-f]{64})\s*$/i.exec(text);
     if (!match) return { handled: false };
     if (!transport || !isTrustedTransport(transport)) return { handled: true, approved: false, reason: 'untrusted_transport' };
     const actor = identity(transport, rawEvent);
@@ -56,7 +56,7 @@ export function handleApprovalCommand(
     if (actor.bot || actor.self) return { handled: true, approved: false, reason: actor.self ? 'self' : 'bot' };
     if (!allowed(transport.platform, actor.senderId)) return { handled: true, approved: false, reason: 'operator_not_allowed' };
     const [, command, jti, digest] = match;
-    if (command!.toLowerCase() === 'cancel') {
+    if (command!.toLowerCase() === 'cancel' || command!.toLowerCase() === 'deny') {
         const cancelled = dispatchApprovalStore.cancel(jti!, digest!);
         return { handled: true, approved: false, reason: cancelled ? 'cancelled' : 'cancel_rejected' };
     }

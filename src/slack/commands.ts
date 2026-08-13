@@ -14,6 +14,7 @@ import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat
 import { withSessionScope } from '../core/session-context.js';
 import { log } from '../core/logger.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
+import { authorizePrivilegedRemote, isPrivilegedRemoteCommand } from '../cli/handlers/remote-session-commands.js';
 import { makeCommandCtx } from '../cli/command-context.js';
 import { normalizeLocale } from '../core/i18n.js';
 import { resetFallbackState } from '../agent/spawn.js';
@@ -53,7 +54,7 @@ import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
 import { setLastActiveTarget } from '../messaging/runtime.js';
 import { getSlackSendClient, sendSlackText } from './send-only-client.js';
 import { isConversationAllowed } from './events.js';
-import { logErrorText } from '../messaging/redact.js';
+import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 
 function makeSlackCommandCtx() {
     const locale = normalizeLocale(settings["locale"], 'ko');
@@ -121,6 +122,20 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
     }
 
     try {
+        const cmdName = parsed.type === 'known' ? (parsed.cmd?.name ?? parsed.name) : parsed.name;
+        if (isPrivilegedRemoteCommand(cmdName)) {
+            const userId = typeof payload['user_id'] === 'string' ? payload['user_id'] : '';
+            const auth = authorizePrivilegedRemote(cmdName, {
+                channel: 'slack',
+                actorId: userId,
+                conversationKey: remoteKey || channelId,
+                chatSessionId,
+            });
+            if (!auth.ok) {
+                await sendSlackText(token, target, redactOutboundText(auth.text));
+                return;
+            }
+        }
         const result = await withSessionScope(sessionScope,
             () => executeCommand(parsed, makeSlackCommandCtx()));
 

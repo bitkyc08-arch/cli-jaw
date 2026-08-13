@@ -3,8 +3,13 @@
 
 import { REST, Routes, SlashCommandBuilder, type Client, type ChatInputCommandInteraction } from 'discord.js';
 import { settings } from '../core/config.js';
+import { getActiveChatSession, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
+import { withSessionScope } from '../core/session-context.js';
+import { buildRemoteBindingKey } from '../messaging/session-key.js';
+import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
+import { authorizePrivilegedRemote, isPrivilegedRemoteCommand } from '../cli/handlers/remote-session-commands.js';
 import { makeCommandCtx } from '../cli/command-context.js';
 import { normalizeLocale } from '../core/i18n.js';
 import { resetFallbackState } from '../agent/spawn.js';
@@ -81,7 +86,36 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
     }
 
     await interaction.deferReply();
-    const result = await executeCommand(parsed, makeDiscordCommandCtx());
+    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
+    const gateOn = multiSessionEnabled && channelGateOn('discord');
+    const peerKind = interaction.guildId ? 'channel' as const : 'direct' as const;
+    const target = stripUndefined({
+        channel: 'discord' as const,
+        targetKind: 'channel' as const,
+        peerKind,
+        targetId: interaction.channelId,
+        guildId: interaction.guildId ?? undefined,
+    });
+    const remoteKey = multiSessionEnabled && gateOn ? buildRemoteBindingKey(target) : undefined;
+    const chatSessionId = multiSessionEnabled && !gateOn
+        ? 'default'
+        : remoteKey ? resolveOrCreateRemoteSession(remoteKey) : getActiveChatSession();
+    const scope = scopeForChatSession(chatSessionId, remoteKey, gateOn);
+    const cmdName = parsed.type === 'known' ? (parsed.cmd?.name ?? parsed.name) : parsed.name;
+    if (isPrivilegedRemoteCommand(cmdName)) {
+        const auth = authorizePrivilegedRemote(cmdName, {
+            channel: 'discord',
+            actorId: interaction.user.id,
+            conversationKey: remoteKey || interaction.channelId,
+            chatSessionId,
+        });
+        if (!auth.ok) {
+            await interaction.editReply(redactOutboundText(auth.text));
+            return;
+        }
+    }
+    const result = await withSessionScope({ scope, chatSessionId },
+        () => executeCommand(parsed, makeDiscordCommandCtx()));
 
     if (result?.steerPrompt) {
         await interaction.editReply(redactOutboundText(result.text || 'Redirecting...'));

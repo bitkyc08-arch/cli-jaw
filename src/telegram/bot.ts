@@ -20,6 +20,8 @@ import {
 } from '../agent/spawn.js';
 import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
+import { getActiveChatSession } from '../core/chat-sessions.js';
+import { authorizePrivilegedRemote, isPrivilegedRemoteCommand } from '../cli/handlers/remote-session-commands.js';
 import { getTelegramMenuCommands } from '../command-contract/policy.js';
 import { downloadTelegramFile, TELEGRAM_DOWNLOAD_LIMITS } from '../../lib/upload.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
@@ -856,6 +858,20 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         if (text.startsWith('/')) {
             const parsed = parseCommand(text);
             if (!parsed) return;
+            const cmdName = parsed.type === 'known' ? (parsed.cmd?.name ?? parsed.name) : parsed.name;
+            if (isPrivilegedRemoteCommand(cmdName)) {
+                const fromId = ctx.from?.id;
+                const auth = authorizePrivilegedRemote(cmdName, {
+                    channel: 'telegram',
+                    ...(fromId !== undefined ? { actorId: String(fromId) } : {}),
+                    conversationKey: String(ctx.chat.id),
+                    chatSessionId: getActiveChatSession(),
+                });
+                if (!auth.ok) {
+                    await ctx.reply(redactOutboundText(auth.text));
+                    return;
+                }
+            }
             const result = await executeCommand(parsed, makeTelegramCommandCtx());
 
             // ── /steer special path: kill + re-orchestrate with full TG UX ──
