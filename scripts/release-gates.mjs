@@ -484,6 +484,50 @@ const GATES = {
             return { ok: true, detail: 'install-integrity + scriptless contract suites green' };
         },
     },
+    'messaging-conformance': {
+        description: 'Telegram/Slack/Discord durable ingress and command contract suites + functional certification artifact',
+        check() {
+            const publicDocs = ['README.md', 'README.ko.md', 'README.ja.md', 'README.zh-CN.md', 'AGENTS.md'];
+            for (const rel of publicDocs) {
+                const abs = path.join(repoRoot, rel);
+                if (!fs.existsSync(abs)) continue;
+                const text = fs.readFileSync(abs, 'utf8');
+                if (/exactly[- ]once/i.test(text)) {
+                    return { ok: false, detail: `${rel} claims exactly-once` };
+                }
+                if (/release-certified/i.test(text)) {
+                    return { ok: false, detail: `${rel} claims release-certified` };
+                }
+            }
+            const suites = [
+                'tests/unit/channel-contract-conformance.test.ts',
+                'tests/unit/messaging-command-parity.test.ts',
+                'tests/unit/messaging-durable-ingress.test.ts',
+                'tests/unit/telegram-ingress-journal.test.ts',
+                'tests/unit/discord-ingress-journal.test.ts',
+                'tests/unit/ingress-generation.test.ts',
+                'tests/unit/messaging-trace-context.test.ts',
+                'tests/unit/messaging-metrics.test.ts',
+            ];
+            const missing = suites.filter((rel) => !fs.existsSync(path.join(repoRoot, rel)));
+            if (missing.length > 0) {
+                return { ok: false, detail: `channel fixture missing: ${missing.join(', ')}` };
+            }
+            const tests = run('npx', ['tsx', '--experimental-test-module-mocks', 'tests/run.mts', ...suites], { timeout: 180_000 });
+            if (tests.status !== 0) {
+                return { ok: false, detail: [tests.stdout, tests.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            const written = run(path.join('node_modules', '.bin', 'tsx'), ['scripts/write-messaging-certification.mts'], { timeout: 30_000 });
+            if (written.status !== 0) {
+                return { ok: false, detail: [written.stdout, written.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            const validated = run(path.join('node_modules', '.bin', 'tsx'), ['scripts/validate-messaging-certification.mts'], { timeout: 30_000 });
+            if (validated.status !== 0) {
+                return { ok: false, detail: [validated.stdout, validated.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            return { ok: true, detail: 'three-channel messaging suites green; functional-certified artifact valid' };
+        },
+    },
     'gate-docs': {
         description: 'structure/INDEX.md documents exactly the gates that exist, and each is npm-addressable',
         check() {

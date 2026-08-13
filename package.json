@@ -119,6 +119,8 @@
     "gate:native-load": "node scripts/release-gates.mjs native-load",
     "gate:sidecar-smoke": "node scripts/release-gates.mjs sidecar-smoke",
     "gate:install-integrity": "node scripts/release-gates.mjs install-integrity",
+    "gate:messaging-conformance": "node scripts/release-gates.mjs messaging-conformance",
+    "test:messaging-conformance": "tsx --experimental-test-module-mocks tests/run.mts tests/unit/channel-contract-conformance.test.ts tests/unit/messaging-command-parity.test.ts tests/unit/messaging-durable-ingress.test.ts tests/unit/telegram-ingress-journal.test.ts tests/unit/discord-ingress-journal.test.ts tests/unit/ingress-generation.test.ts tests/unit/messaging-trace-context.test.ts tests/unit/messaging-metrics.test.ts",
     "check:sidecar-prune-safety": "node scripts/check-sidecar-prune-safety.mjs",
     "sync:electron-version": "node scripts/sync-electron-version.cjs",
     "gate:all": "node scripts/release-gates.mjs",

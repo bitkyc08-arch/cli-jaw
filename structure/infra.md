@@ -557,6 +557,7 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 `admitIngress` enters that row's existing `trace_id` into `MessagingTraceContext` so a later `log.event` on the same turn can stamp it; it does not mint a second id.
 `/api/health` adds `channels.ingress` from `IngressJournal.counts()` and this-process `channels.metrics`; `jaw messaging doctor --json` reads the same SQLite file locally and cannot see the server ring.
+`gate:messaging-conformance` is the 22nd release gate: it re-runs the existing three-channel contract suites and writes a `functional-certified` artifact. It is not a chaos matrix and it is not `release-certified`.
 
 
 Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.
