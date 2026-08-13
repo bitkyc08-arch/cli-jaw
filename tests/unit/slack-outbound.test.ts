@@ -18,7 +18,7 @@ import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
 
 type Captured = { url: string; init: RequestInit | undefined };
 
-function makeFetch(responses: Array<Record<string, unknown> | { __raw: true; ok: boolean; status: number }>) {
+function makeFetch(responses: Array<Record<string, unknown> | { __raw: true; ok: boolean; status: number; headers?: Record<string, string> }>) {
     const calls: Captured[] = [];
     let i = 0;
     const impl = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -26,12 +26,18 @@ function makeFetch(responses: Array<Record<string, unknown> | { __raw: true; ok:
         const spec = responses[Math.min(i, responses.length - 1)];
         i++;
         if (spec && '__raw' in spec) {
-            return { ok: spec.ok, status: spec.status, text: async () => '' } as unknown as Response;
+            const headers = new Headers(spec.headers ?? {});
+            return { ok: spec.ok, status: spec.status, headers, text: async () => '' } as unknown as Response;
         }
+        const record = (spec ?? { ok: true }) as Record<string, unknown>;
+        const headers = new Headers((record['__headers'] as Record<string, string> | undefined) ?? {});
+        const body = { ...record };
+        delete body['__headers'];
         return {
             ok: true,
-            status: 200,
-            text: async () => JSON.stringify(spec ?? { ok: true }),
+            status: typeof record['__status'] === 'number' ? record['__status'] : 200,
+            headers,
+            text: async () => JSON.stringify(body),
         } as unknown as Response;
     // justified: the capture harness implements only the Response surface these modules read
     }) as unknown as typeof fetch;
@@ -721,4 +727,34 @@ test('blocks ride on the first sendSlackText chunk', async () => {
     const body = bodyOf(calls[0]!);
     assert.equal(body['text'], 'hi');
     assert.deepEqual(body['blocks'], blocks);
+});
+
+test('a short Slack rate limit retries the same chunk once', async () => {
+    const { impl, calls } = makeFetch([
+        { ok: false, error: 'ratelimited', __headers: { 'retry-after': '0.01' }, __status: 429 },
+        { ok: true },
+    ]);
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl });
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 2);
+    assert.equal(bodyOf(calls[0]!).text, 'hi');
+    assert.equal(bodyOf(calls[1]!).text, 'hi');
+});
+
+test('a long Slack rate limit is not waited out and is not retried', async () => {
+    const { impl, calls } = makeFetch([
+        { ok: false, error: 'ratelimited', __headers: { 'retry-after': '120' }, __status: 429 },
+    ]);
+    const started = Date.now();
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl });
+    assert.equal(result.ok, false);
+    assert.equal(calls.length, 1);
+    assert.ok(Date.now() - started < 1_000);
+});
+
+test('not_in_channel is not retried', async () => {
+    const { impl, calls } = makeFetch([{ ok: false, error: 'not_in_channel' }]);
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl });
+    assert.equal(result.ok, false);
+    assert.equal(calls.length, 1);
 });

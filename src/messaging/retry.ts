@@ -7,6 +7,8 @@
 interface TelegramApiErrorLike {
     error_code?: number;
     statusCode?: number;
+    status?: number;
+    error?: string;
     code?: string;
     message?: string;
     /**
@@ -15,6 +17,7 @@ interface TelegramApiErrorLike {
      * the documented field first.
      */
     description?: string;
+    retryAfterMs?: number;
     parameters?: { retry_after?: number };
     constructor?: { name?: string };
 }
@@ -39,7 +42,14 @@ export type SendFailureKind = 'format' | 'rate-limit' | 'ambiguous';
 
 export function classifySendFailure(err: unknown): SendFailureKind {
     const e = asApiError(err);
-    if (e.error_code === 429 || e.parameters?.retry_after !== undefined) return 'rate-limit';
+    const slackError = typeof e.error === 'string' ? e.error : '';
+    if (
+        e.error_code === 429
+        || e.statusCode === 429
+        || e.status === 429
+        || slackError === 'ratelimited'
+        || e.parameters?.retry_after !== undefined
+    ) return 'rate-limit';
 
     // 400 is Telegram's catch-all for a malformed request; only the parse and
     // entity variants mean "the same content, written differently, would work".
@@ -56,7 +66,11 @@ export function classifySendFailure(err: unknown): SendFailureKind {
 
 /** Seconds Telegram asked us to wait, in milliseconds. Zero when unstated. */
 export function retryAfterMs(err: unknown): number {
-    return (asApiError(err).parameters?.retry_after ?? 0) * 1000;
+    const e = asApiError(err);
+    if (typeof e.retryAfterMs === 'number' && Number.isFinite(e.retryAfterMs) && e.retryAfterMs >= 0) {
+        return e.retryAfterMs;
+    }
+    return (e.parameters?.retry_after ?? 0) * 1000;
 }
 
 /**

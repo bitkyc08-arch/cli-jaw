@@ -6,6 +6,7 @@ import { settings } from '../core/config.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { slackApi, describeSlackError, slackFailure, type SlackFetch } from './api.js';
 import { chunkSlackMessage, toMrkdwn } from './format.js';
+import { MAX_INLINE_RATE_LIMIT_MS, classifySendFailure, retryAfterMs } from '../messaging/retry.js';
 
 export type SlackSendClientResult =
     | { token: string; reason?: never; status?: never }
@@ -63,7 +64,33 @@ export async function sendSlackText(
             options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
         );
         if (!result.ok) {
-            return slackFailure(describeSlackError(result.error, result.data), result.status);
+            const classified = classifySendFailure({
+                error: result.error,
+                status: result.status,
+                retryAfterMs: result.retryAfterMs,
+            });
+            const wait = result.retryAfterMs ?? retryAfterMs({
+                error: result.error,
+                status: result.status,
+                retryAfterMs: result.retryAfterMs,
+            });
+            if (classified === 'rate-limit' && wait > 0 && wait <= MAX_INLINE_RATE_LIMIT_MS) {
+                await new Promise((resolve) => setTimeout(resolve, wait));
+                const retried = await slackApi(
+                    token,
+                    'chat.postMessage',
+                    {
+                        channel: target.targetId,
+                        text: chunk,
+                        ...(target.threadId ? { thread_ts: target.threadId } : {}),
+                        ...(index === 0 && options.blocks ? { blocks: options.blocks } : {}),
+                    },
+                    options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+                );
+                if (retried.ok) continue;
+                return slackFailure(describeSlackError(retried.error, retried.data), retried.status, retried.retryAfterMs);
+            }
+            return slackFailure(describeSlackError(result.error, result.data), result.status, result.retryAfterMs);
         }
     }
     return { ok: true };

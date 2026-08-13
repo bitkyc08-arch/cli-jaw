@@ -130,6 +130,8 @@ test('a rate limit is not classified as a formatting problem', () => {
     // Doing that to a 429 is the worst possible response to being told to
     // slow down: three sends instead of one wait.
     assert.equal(classifySendFailure({ error_code: 429, parameters: { retry_after: 3 } }), 'rate-limit');
+    assert.equal(classifySendFailure({ error: 'ratelimited', status: 429, retryAfterMs: 250 }), 'rate-limit');
+    assert.equal(retryAfterMs({ error: 'ratelimited', retryAfterMs: 250 }), 250);
     assert.equal(retryAfterMs({ error_code: 429, parameters: { retry_after: 3 } }), 3_000);
 });
 
