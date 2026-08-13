@@ -70,7 +70,8 @@ import {
 } from './elicitation-buttons.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { sendWithRetryPolicy } from '../messaging/retry.js';
-import { handleApprovalCommand, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -241,10 +242,19 @@ export function getTelegramTargetIds(): Array<string | number> {
         : ([...telegramActiveChatIds] as Array<string | number>);
 }
 
-export async function sendTelegramText(chatId: string, text: string) {
+export async function sendTelegramText(
+    chatId: string,
+    text: string,
+    extra?: { reply_markup?: import('@grammyjs/types').InlineKeyboardMarkup },
+) {
     const bot = resolveTelegramSendBot();
     if (!bot) throw new Error('Telegram not configured');
-    return bot.api.sendMessage(chatId, redactOutboundText(text));
+    const markup = extra?.reply_markup;
+    return bot.api.sendMessage(
+        chatId,
+        redactOutboundText(text),
+        markup ? { reply_markup: redactOutboundPayload(markup) } : undefined,
+    );
 }
 
 export type TelegramSendClientResult =
@@ -624,6 +634,24 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat?.id ?? ''}</code>`, { parse_mode: 'HTML' }));
 
     // Inline-keyboard elicitation answers (single_select fences → buttons).
+    bot.callbackQuery(/^(appr|aprd):/, async (ctx) => {
+        await ctx.answerCallbackQuery();
+        const data = ctx.callbackQuery.data ?? '';
+        const parsed = parseApprovalCallbackData(data);
+        const chatId = ctx.chat?.id !== undefined ? String(ctx.chat.id) : '';
+        if (!parsed || !chatId) return;
+        const result = handleApprovalCallback(
+            telegramApprovalIngress,
+            { message: { from: ctx.from } },
+            parsed.opaqueId,
+            parsed.action,
+            { conversationKey: chatId, sessionGeneration: 0 },
+        );
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => { });
+        const reply = result.approved ? 'approved' : (result.reason || 'rejected');
+        await ctx.reply(redactOutboundText(reply)).catch(() => { });
+    });
+
     bot.callbackQuery(/^elic:/, async (ctx) => {
         const cbChatId = ctx.chat?.id;
         if (!cbChatId) { await ctx.answerCallbackQuery(); return; }

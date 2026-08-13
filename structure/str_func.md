@@ -118,7 +118,7 @@ cli-jaw/
 │   │   ├── tool-timeout.ts   ← tool inactivity timeout helper (33L)
 │   │   ├── watchdog.ts       ← idle/progress watchdog + 4h absolute hard cap with progress deadline extension (130L)
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
-│   ├── messaging/            ← 통합 메시징 런타임 (22 files)
+│   ├── messaging/            ← 통합 메시징 런타임 (25 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
 │   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (300L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
@@ -134,6 +134,7 @@ cli-jaw/
 │   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (123L)
 │   │   ├── extract-images.ts ← Markdown AST 로컬 이미지 후보 추출 + 확장자 필터/중복 제거/4개 cap (36L)
 │   │   ├── access-policy.ts   ← remote command access-policy substrate (deny/allowlist/paired/all) (45L)
+│   │   ├── approval-presentation.ts ← Telegram Approve/Deny keyboard + opaque appr/aprd callback ids (58L)
 │   │   ├── remote-command-context.ts ← channel-neutral remote command identity (51L)
 │   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + operator list/replay (541L)
 │   │   ├── ingress-audit.ts  ← append-only replay audit JSONL (49L)
@@ -234,7 +235,7 @@ cli-jaw/
 │   │   ├── synonyms.ts       ← keyword synonym expansion helper (60L) ✨
 │   │   └── worklog.ts        ← Worklog CRUD + phase matrix (201L)
 │   ├── telegram/             ← Telegram 인터페이스 (9 files)
-│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (1053L)
+│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (1081L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (43L)
 │   │   ├── forwarder.ts      ← text 전송 뒤 guarded local-image photo relay + escape/chunk/createForwarder (245L)
 │   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (315L)
@@ -304,7 +305,7 @@ cli-jaw/
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (352L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
-│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1174L)
+│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1179L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (661L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (431L)

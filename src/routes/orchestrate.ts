@@ -53,6 +53,7 @@ import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbo
 import { recordDispatch } from '../goal-run/controller.js';
 import { log } from '../core/logger.js';
 import { dispatchApprovalStore, formatDispatchApprovalMessage, type DispatchApprovalRecord } from '../core/dispatch-approval.js';
+import { presentTelegramApproval } from '../messaging/approval-presentation.js';
 import { getSlackSendClient, resolveSlackDmChannel, sendSlackText } from '../slack/send-only-client.js';
 import { sendTelegramText } from '../telegram/bot.js';
 import { getDiscordSendClient, sendDiscordDm } from '../discord/send-only-client.js';
@@ -165,7 +166,11 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             if (!sent.ok) throw new Error(sent.error || 'slack_dm_failed');
             return sent;
         })());
-        for (const userId of operators.telegram || []) deliveries.push(sendTelegramText(String(userId), message));
+        for (const userId of operators.telegram || []) deliveries.push((async () => {
+            const chatId = String(userId);
+            const presented = presentTelegramApproval(record, { actorId: chatId, conversationKey: chatId, sessionGeneration: 0 }, message);
+            return sendTelegramText(chatId, presented.text, presented.telegramKeyboard ? { reply_markup: presented.telegramKeyboard } : undefined);
+        })());
         const discord = getDiscordSendClient();
         if (discord.token) for (const userId of operators.discord || []) deliveries.push((async () => {
             const sent = await sendDiscordDm(discord.token!, String(userId), message);

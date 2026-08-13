@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { dispatchApprovalStore } from '../../src/core/dispatch-approval.ts';
+import { parseApprovalCallbackData, presentTelegramApproval } from '../../src/messaging/approval-presentation.ts';
+
+test('telegram keyboard callback_data is opaque and under 64 bytes', () => {
+    const row = dispatchApprovalStore.create({
+        target: { kind: 'agent', name: 'A' }, projectRoot: '/r', task: 't',
+        mutable: false, scope: null, fanOutCap: 1,
+    });
+    const presented = presentTelegramApproval(row, { actorId: '42', conversationKey: '42' }, 'please approve');
+    assert.equal(presented.text, 'please approve');
+    const rowButtons = presented.telegramKeyboard?.inline_keyboard[0];
+    assert.equal(rowButtons?.length, 2);
+    const approve = parseApprovalCallbackData(rowButtons![0]!.callback_data);
+    const deny = parseApprovalCallbackData(rowButtons![1]!.callback_data);
+    assert.equal(approve?.action, 'approve');
+    assert.equal(deny?.action, 'deny');
+    assert.ok(rowButtons![0]!.callback_data.length <= 64);
+    assert.ok(rowButtons![1]!.callback_data.length <= 64);
+    assert.doesNotMatch(rowButtons![0]!.callback_data, new RegExp(row.jti));
+    assert.doesNotMatch(rowButtons![0]!.callback_data, new RegExp(row.digest));
+    assert.equal(parseApprovalCallbackData('elic:0:1'), null);
+});
