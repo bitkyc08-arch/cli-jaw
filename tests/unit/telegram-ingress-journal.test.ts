@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
-import { IngressJournal } from '../../src/messaging/durable-ingress.ts';
+import { IngressJournal, admitIngress, settleIngress } from '../../src/messaging/durable-ingress.ts';
 import { TelegramDurablePoller, TelegramUpdateOffsetStore } from '../../src/telegram/update-offset.ts';
 import { telegramInboundEnvelope } from '../../src/messaging/inbound-envelope.ts';
 import type { InboundEnvelope } from '../../src/messaging/types.ts';
@@ -45,23 +45,25 @@ function envelopeFor(updateId: number): InboundEnvelope {
     return envelope;
 }
 
-/** The same three-call order the live poller uses, with the handler injectable. */
+/**
+ * Calls the SHIPPED admit/settle protocol, not a copy of it. Only the envelope and the
+ * handler body are local; the ordering under test is the production one, so a change to
+ * it fails here rather than passing against a parallel implementation.
+ */
 function journaledHandler(
     journal: IngressJournal,
     handled: number[],
     handler: (updateId: number) => void = () => {},
 ) {
     return async (update: { update_id: number }) => {
-        const envelope = envelopeFor(update.update_id);
-        const appended = journal.append(envelope, `digest-${update.update_id}`);
-        if (!appended.appended) return;
-        journal.markProcessing('telegram', BOT, envelope.eventId);
+        const admission = admitIngress(journal, envelopeFor(update.update_id), `digest-${update.update_id}`);
+        if (!admission.admit) return;
         try {
             handler(update.update_id);
             handled.push(update.update_id);
-            journal.markCompleted('telegram', BOT, envelope.eventId);
+            settleIngress(journal, admission);
         } catch (error) {
-            journal.markRetryScheduled('telegram', BOT, envelope.eventId, 0, String(error));
+            settleIngress(journal, admission, error);
             throw error;
         }
     };
@@ -240,4 +242,26 @@ test('a numeric update id becomes the same journal key as its string form', () =
     // Bound raw, 12345 would land in the TEXT key as "12345.0" and this would be a
     // second row — one logical update handled twice, with nothing to show for it.
     assert.equal(journal.append(stringly, 'd').appended, false);
+});
+
+test('an update left mid-flight by a crash is retried, not skipped', async () => {
+    const database = freshDb();
+    const journal = new IngressJournal(database, { now: () => 1, bootId: 'boot' });
+    const handled: number[] = [];
+
+    // A crash between markProcessing and markCompleted leaves the row in `processing`.
+    // The offset never advanced, so Telegram redelivers, and that redelivery is the
+    // only chance this message has left. Treating it as a duplicate would drop it
+    // while advancing the offset past it, which is silent loss.
+    journal.append(envelopeFor(10), 'digest-10');
+    journal.markProcessing('telegram', BOT, '10');
+    assert.equal(journal.find('telegram', BOT, '10')?.state, 'processing');
+
+    const { store, poller } = pollerFor(database, journal, [updateFor(10)], handled);
+    store.bootstrap(KEY, 10);
+    await poller.pollOnce();
+
+    assert.deepEqual(handled, [10], 'a half-processed update must run again, not be dropped');
+    assert.equal(journal.find('telegram', BOT, '10')?.state, 'completed');
+    assert.equal(store.read(KEY), 11);
 });

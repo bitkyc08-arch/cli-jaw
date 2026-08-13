@@ -30,7 +30,9 @@ import {
     getLastActiveTarget, registerTransport, setLastActiveTarget, setLatestSeenTarget,
     transportNotStarted, transportStarted, type TransportStartOutcome,
 } from '../messaging/runtime.js';
-import { getIngressJournal } from '../messaging/durable-ingress.js';
+import {
+    admitIngress, getIngressJournal, settleIngress, type IngressAdmission,
+} from '../messaging/durable-ingress.js';
 import { createHash } from 'node:crypto';
 import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
@@ -331,46 +333,18 @@ function telegramUpdateEnvelope(update: Record<string, unknown>): InboundEnvelop
     });
 }
 
-/** What the journal decided about one update, carried to the completion call. */
-type TelegramAdmission =
-    | { journaled: false }
-    | { journaled: true; envelope: InboundEnvelope };
-
 /**
- * Append the update before it is handled. Returns 'duplicate' when the journal has
- * already seen it, which is how a Telegram redelivery after a crash stops short of
- * running the handler twice.
- *
- * An update the journal cannot identify (no chat, no sender) is still handled — those
- * kinds carry no conversation to dedupe against, and refusing them would drop
- * behaviour that works today for a durability guarantee they cannot use.
+ * Append the update before it is handled. The shared protocol in durable-ingress owns
+ * the ordering; this only supplies the Telegram-shaped envelope and digest.
  */
-function admitTelegramUpdate(update: Record<string, unknown>): TelegramAdmission | 'duplicate' {
+function admitTelegramUpdate(update: Record<string, unknown>): IngressAdmission {
     const journal = getIngressJournal();
-    if (!journal) return { journaled: false };
-    const envelope = telegramUpdateEnvelope(update);
-    if (!envelope) return { journaled: false };
-    const result = journal.append(envelope, telegramPayloadDigest(update));
-    if (!result.appended) {
-        log.info(`[tg:ingress] update ${envelope.eventId} already journaled — not re-running`);
-        return 'duplicate';
+    const envelope = journal ? telegramUpdateEnvelope(update) : null;
+    const admission = admitIngress(journal, envelope, telegramPayloadDigest(update));
+    if (!admission.admit) {
+        log.info(`[tg:ingress] update ${String(update['update_id'])} already handled — not re-running`);
     }
-    journal.markProcessing(envelope.channel, envelope.accountId, envelope.eventId);
-    return { journaled: true, envelope };
-}
-
-function completeTelegramUpdate(admission: TelegramAdmission): void {
-    if (!admission.journaled) return;
-    const { channel, accountId, eventId } = admission.envelope;
-    getIngressJournal()?.markCompleted(channel, accountId, eventId);
-}
-
-function failTelegramUpdate(admission: TelegramAdmission, error: unknown): void {
-    if (!admission.journaled) return;
-    const { channel, accountId, eventId } = admission.envelope;
-    // Back to received rather than dead-lettered: the offset is about to stay put, so
-    // Telegram will redeliver this update and the next attempt is the retry.
-    getIngressJournal()?.markRetryScheduled(channel, accountId, eventId, Date.now(), logErrorText(error));
+    return admission;
 }
 
 /** Identity of the update body, for detecting an edit that reuses an id. Never the
@@ -1013,19 +987,17 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             // append leaves the offset where it was and Telegram redelivers, which is
             // the whole reason the ordering is this way round.
             const admission = admitTelegramUpdate(update as unknown as Record<string, unknown>);
-            if (admission === 'duplicate') return;
+            if (!admission.admit) return;
             try {
-                if (handleTelegramUpdate(update as unknown as Record<string, unknown>, telegramApprovalIngress)) {
-                    completeTelegramUpdate(admission);
-                    return;
+                if (!handleTelegramUpdate(update as unknown as Record<string, unknown>, telegramApprovalIngress)) {
+                    await bot.handleUpdate(update);
+                    if (telegramFinalDeliveryFailures.has(update.update_id)) {
+                        throw new Error('telegram_final_delivery_failed');
+                    }
                 }
-                await bot.handleUpdate(update);
-                if (telegramFinalDeliveryFailures.has(update.update_id)) {
-                    throw new Error('telegram_final_delivery_failed');
-                }
-                completeTelegramUpdate(admission);
+                settleIngress(getIngressJournal(), admission);
             } catch (error) {
-                failTelegramUpdate(admission, error);
+                settleIngress(getIngressJournal(), admission, error);
                 throw error;
             } finally {
                 telegramFinalDeliveryFailures.delete(update.update_id);

@@ -250,16 +250,33 @@ export class IngressJournal {
         return row ? rowToRecord(row) : null;
     }
 
-    /** received|dead_letter -> processing. Bumps the attempt so a retry is visible. */
+    /**
+     * Anything not already completed -> processing. Bumps the attempt so a retry is
+     * visible.
+     *
+     * `processing` is deliberately an allowed source. A row sits in that state only
+     * because a previous run died between claiming the event and finishing it; the
+     * transport is about to redeliver precisely because nothing was ever acknowledged.
+     * Refusing to re-claim it would strand the one delivery the message has left.
+     */
     markProcessing(channel: MessengerChannel, accountId: string, eventId: string): boolean {
         const changes = this.database.prepare(`
             UPDATE ingress_events
             SET state = 'processing', started_at = ?, attempt_count = attempt_count + 1,
                 last_error = NULL, next_attempt_at = NULL
             WHERE channel = ? AND account_id = ? AND event_id = ?
-              AND state IN ('received', 'dead_letter')
+              AND state IN ('received', 'processing', 'dead_letter')
         `).run(this.now(), channel, accountId, eventId).changes;
         return changes === 1;
+    }
+
+    /**
+     * True when this event has already been handled to completion. The append path
+     * uses it to tell a genuine duplicate from a row a crash left mid-flight: only the
+     * former may be skipped.
+     */
+    isSettled(channel: MessengerChannel, accountId: string, eventId: string): boolean {
+        return this.find(channel, accountId, eventId)?.state === 'completed';
     }
 
     /**
@@ -357,6 +374,57 @@ export class IngressJournal {
         });
         return run.immediate();
     }
+}
+
+/** What the journal decided about one inbound event, carried to the completion call. */
+export type IngressAdmission =
+    | { admit: false; reason: 'already_handled' }
+    | { admit: true; journaled: false }
+    | { admit: true; journaled: true; envelope: InboundEnvelope };
+
+/**
+ * The append/claim half of the durable-ingress protocol, shared by every transport so
+ * the ordering is written once. A transport calls this before handling an event and
+ * `settleIngress` after, and the caller's own acknowledgement (Telegram's offset,
+ * Slack's ACK) must come after that settle.
+ *
+ * `admit: false` means the event completed on an earlier run and must not be handled
+ * again. Anything else is admitted — including a row a crash left mid-flight, because
+ * the transport is redelivering precisely because nothing was ever acknowledged.
+ */
+export function admitIngress(
+    journal: IngressJournal | null,
+    envelope: InboundEnvelope | null,
+    payloadDigest: string,
+    payloadJson?: string,
+): IngressAdmission {
+    // No journal (CLI processes, tests) or an event with no durable identity: behave
+    // exactly as this path did before the journal existed.
+    if (!journal || !envelope) return { admit: true, journaled: false };
+    const result = journal.append(envelope, payloadDigest, payloadJson);
+    if (!result.appended && result.record.state === 'completed') {
+        return { admit: false, reason: 'already_handled' };
+    }
+    journal.markProcessing(envelope.channel, envelope.accountId, envelope.eventId);
+    return { admit: true, journaled: true, envelope };
+}
+
+/** Terminal half of the protocol. `error` present means the run failed. */
+export function settleIngress(
+    journal: IngressJournal | null,
+    admission: IngressAdmission,
+    error?: unknown,
+): void {
+    if (!journal || !admission.admit || !admission.journaled) return;
+    const { channel, accountId, eventId } = admission.envelope;
+    if (error === undefined) {
+        journal.markCompleted(channel, accountId, eventId);
+        return;
+    }
+    // Back to received rather than dead-lettered: the transport is about to redeliver,
+    // so the redelivery is itself the retry.
+    const message = error instanceof Error ? error.message : String(error);
+    journal.markRetryScheduled(channel, accountId, eventId, Date.now(), message);
 }
 
 let journal: IngressJournal | null = null;
