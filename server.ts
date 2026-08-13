@@ -107,6 +107,7 @@ import './src/discord/register.js'; // side-effect: registers discord transport 
 import './src/slack/register.js'; // side-effect: registers slack transport (send-handler.js loads lazily on first use)
 import { initEnabledMessagingRuntimes, shutdownMessagingRuntime, hydrateTargetsFromSettings, getEnabledChannels } from './src/messaging/runtime.js';
 import { initIngressJournal } from './src/messaging/durable-ingress.js';
+import { initEffectClaimStore } from './src/messaging/effect-once.js';
 import type { MessengerChannel } from './src/messaging/types.js';
 
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
@@ -644,6 +645,11 @@ server.listen(PORT, bindHost, async () => {
     // and the connection is handed in rather than imported so the module stays testable
     // against a temporary database.
     initIngressJournal(db);
+    // Right after the journal, before any transport: the retention guard only learns
+    // about a child table when its owner registers a predicate, so a claim store
+    // created lazily on first use would leave a window in which the sweeper is
+    // allowed to delete the parent of a live claim.
+    initEffectClaimStore(db);
     const messagingBoot = await initEnabledMessagingRuntimes();
     // Only `failed` is an incident. An outbound-only Slack install and a deliberate
     // non-attach instance are operator choices; shouting `init failed` at them on
