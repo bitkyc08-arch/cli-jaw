@@ -561,6 +561,7 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 A file-backed restart is `tests/integration/messaging-ingress-restart.test.ts`: a second `IngressJournal` on the same `jaw.db` path. Completed stays `already_handled`; mid-flight keeps the stored `trace_id`.
 `append` treats a primary-key clash from a second connection as `duplicate`. A locked or full database still throws so Slack can refuse ACK.
 `sendSlackText` waits a short Slack `ratelimited`/429 and retries that chunk once. A long Retry-After still surfaces. The chunk loop does not restart.
+`sendChannelOutput` emits `outbound.send` on the current messaging ALS. Empty ALS stays empty — no second id.
 
 
 Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.

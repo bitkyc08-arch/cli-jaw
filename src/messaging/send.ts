@@ -9,6 +9,11 @@ import { getLastActiveTarget, getLatestSeenTarget, clearTargetState, getHomeChan
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
+import { log } from '../core/logger.js';
+
+export function stampOutboundSend(channel: MessengerChannel, ok: boolean): void {
+    log.event('outbound.send', { channel, result: ok ? 'ok' : 'error' });
+}
 
 // ─── Request Model ──────────────────────────────────
 
@@ -293,8 +298,9 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     // straight into HTTP response bodies via res.json(result). Masking at each
     // call site was tried and missed several; masking here cannot be bypassed.
     const result = await sendFn(req);
-    if (result.ok === false && typeof result.error === 'string') {
-        return { ...result, error: redactChannelSecrets(result.error) };
-    }
-    return result;
+    const sanitized = result.ok === false && typeof result.error === 'string'
+        ? { ...result, error: redactChannelSecrets(result.error) }
+        : result;
+    stampOutboundSend(channel, sanitized.ok !== false);
+    return sanitized;
 }

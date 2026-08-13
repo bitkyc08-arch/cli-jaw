@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { drainLogRing, log } from '../../src/core/logger.ts';
+import { stampOutboundSend } from '../../src/messaging/send.ts';
 import { IngressJournal, admitIngress } from '../../src/messaging/durable-ingress.ts';
 import {
     __resetMessagingTraceForTests,
@@ -130,4 +131,22 @@ test('re-admit of the same event reuses the stored trace_id', () => {
     assert.equal(again.admit, true);
     assert.equal(journal.find('telegram', '777', '12345')?.traceId, 'boot-1:telegram:12345');
     assert.equal(getMessagingTrace()?.traceId, 'boot-1:telegram:12345');
+});
+
+test('outbound.send stamps the admit traceId and stays silent without ALS', () => {
+    const database = new Database(':memory:');
+    database.pragma('foreign_keys = ON');
+    const journal = new IngressJournal(database, { now: () => 1, bootId: 'boot-1' });
+    admitIngress(journal, envelope(), 'digest-1');
+    stampOutboundSend('telegram', true);
+    const outbound = lastEvent('outbound.send');
+    assert.equal(outbound.traceId, 'boot-1:telegram:12345');
+    assert.equal(outbound.channel, 'telegram');
+    assert.equal(outbound.result, 'ok');
+
+    __resetMessagingTraceForTests();
+    stampOutboundSend('telegram', true);
+    const outside = lastEvent('outbound.send');
+    assert.equal(outside.traceId, undefined);
+    assert.equal(outside.result, 'ok');
 });
