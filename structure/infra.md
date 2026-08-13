@@ -319,6 +319,8 @@ const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
 
 ### session-generation.ts / access-policy.ts / remote-command-context.ts (M4-A0)
 
+M4-A2a adds opaque `issueApprovalCallback` / `resolveApprovalCallback` on the in-memory `DispatchApprovalStore`. Native Telegram/Discord/Slack buttons are not routed yet. HTTP still has no approve endpoint. Store `generation` is the process boot UUID (`restart_void`); callback `sessionGeneration` is `chat_sessions.generation`.
+
 `src/core/session-generation.ts` owns persistent `chat_sessions.generation` (additive PRAGMA/ALTER). This integer is not `src/agent/session-persistence.ts` process-local spawn ownership. `replaceRemoteSessionGeneration` rebinds one conversation onto one session in a single transaction because `remote_session_bindings.chat_session_id` is UNIQUE. `src/messaging/access-policy.ts` is default-deny substrate (`deny` / `allowlist` / `paired` / `all`) with no production caller until M4-A1. `src/messaging/remote-command-context.ts` names `{channel, actorId, conversationKey, chatSessionId, generation}` so the three transports cannot invent three shapes.
 
 ## src/core/ — runtime support cluster (30 files, 3803L)
