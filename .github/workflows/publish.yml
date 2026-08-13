@@ -1,12 +1,12 @@
 name: npm Publish
 
 on:
-  push:
-    branches:
-      - preview
-      - main
   workflow_dispatch:
     inputs:
+      expected-sha:
+        description: "Full commit SHA the dispatched ref must resolve to; the run fails on mismatch"
+        required: true
+        type: string
       version:
         description: "Version to publish; must equal package.json"
         required: true
@@ -43,6 +43,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Verify dispatched SHA
+        env:
+          EXPECTED_SHA: ${{ inputs['expected-sha'] }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EXPECTED_SHA" ]; then
+            echo "::error::expected-sha is required; promote first, then dispatch with the promoted commit SHA"
+            exit 1
+          fi
+          if [ "$GITHUB_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Dispatched ref resolved to $GITHUB_SHA but expected-sha is $EXPECTED_SHA. The branch moved after promotion; re-run scripts/promote-to-main.sh and dispatch again with the new SHA."
+            exit 1
+          fi
+          echo "SHA pinned: $GITHUB_SHA"
+
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -67,7 +82,6 @@ jobs:
       - name: Resolve release config
         id: release
         env:
-          EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_TAG: ${{ inputs.tag }}
@@ -76,32 +90,14 @@ jobs:
         run: |
           set -euo pipefail
           pkg_version="$(node -p "require('./package.json').version")"
-          tag=""
-          version="$pkg_version"
-          dry_run="false"
-          create_release="true"
+          # Dispatch-only: every input is explicit; the ref chosen at dispatch
+          # time determines the branch used for tag:branch matching below.
+          version="$INPUT_VERSION"
+          tag="$INPUT_TAG"
+          dry_run="${INPUT_DRY_RUN:-true}"
+          create_release="${INPUT_CREATE_RELEASE:-false}"
           skip_publish="false"
           skip_reason=""
-
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            version="$INPUT_VERSION"
-            tag="$INPUT_TAG"
-            dry_run="${INPUT_DRY_RUN:-true}"
-            create_release="${INPUT_CREATE_RELEASE:-false}"
-          else
-            case "$GITHUB_REF_NAME" in
-              preview)
-                tag="preview"
-                ;;
-              main)
-                tag="latest"
-                ;;
-              *)
-                echo "::error::Unsupported publish branch: $GITHUB_REF_NAME"
-                exit 1
-                ;;
-            esac
-          fi
 
           echo "package.json=${pkg_version}"
           echo "release.version=${version}"
@@ -120,31 +116,6 @@ jobs:
               *)
                 echo "::error::Real $tag publishes must run from the matching branch; got $GITHUB_REF_NAME";
                 exit 1;
-                ;;
-            esac
-          fi
-
-          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" = "preview" ]; then
-            case "$version" in
-              *-preview.*) ;;
-              *)
-                skip_publish="true"
-                skip_reason="preview branch stable sync"
-                dry_run="true"
-                create_release="false"
-                echo "::notice::Skipping npm publish for preview branch stable sync: $version"
-                ;;
-            esac
-          fi
-
-          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" = "main" ]; then
-            case "$version" in
-              *-*)
-                skip_publish="true"
-                skip_reason="main branch prerelease sync"
-                dry_run="true"
-                create_release="false"
-                echo "::notice::Skipping npm publish for main branch prerelease sync: $version"
                 ;;
             esac
           fi
