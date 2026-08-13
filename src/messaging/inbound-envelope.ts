@@ -152,8 +152,10 @@ export function slackInboundEnvelope(input: SlackInboundInput): InboundEnvelope 
         ...(threadKey ? { threadKey } : {}),
         actorId,
         receivedAt,
-        // Socket Mode requires an ack within 3s, before any work starts.
-        ackPolicy: 'transport-first',
+        // Socket Mode still requires an ack within 3s, but the ack is now held
+        // until this event is durably recorded. Acking first would let a crash
+        // between ack and journal lose a message Slack considers delivered.
+        ackPolicy: 'after-durable-append',
         ...(envelopeId ? { rawEnvelopeRef: rawRef('slack:envelope', envelopeId) } : {}),
         target: input.target,
     };

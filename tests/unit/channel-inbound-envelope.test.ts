@@ -91,7 +91,9 @@ test('slackInboundEnvelope maps every field from a top-level channel message', (
     assert.equal(env.conversationKey, 'slack:T0TEAM01:C0ABCDEF');
     assert.equal(env.actorId, 'U0USER01');
     assert.equal(env.receivedAt, 1700000000.123456 * 1000);
-    assert.equal(env.ackPolicy, 'transport-first');
+    // Slack acked first until the durable append landed in front of it (M3c). The
+    // policy is an observation of the transport, so it moved when the transport did.
+    assert.equal(env.ackPolicy, 'after-durable-append');
     assert.equal(env.rawEnvelopeRef, 'slack:envelope:env-abc-123');
     assert.deepEqual(env.target, slackTarget);
     assert.equal(isInboundEnvelope(env), true);

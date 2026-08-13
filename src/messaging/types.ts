@@ -32,11 +32,13 @@ export type RemoteInterface = MessengerChannel;
  *  delivery, and Discord's gateway ACK is not under this process's control. */
 export type IngressAckPolicy =
     | 'transport-first'
+    | 'after-durable-append'
     | 'after-final-delivery'
     | 'transport-managed';
 
 export const INGRESS_ACK_POLICIES = new Set<IngressAckPolicy>([
     'transport-first',
+    'after-durable-append',
     'after-final-delivery',
     'transport-managed',
 ]);

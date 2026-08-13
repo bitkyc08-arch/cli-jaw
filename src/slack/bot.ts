@@ -21,7 +21,10 @@ import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-targ
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildMediaPromptMany } from '../agent/spawn.js';
 import { slackApi } from './api.js';
-import { SlackSocketClient, type SlackEnvelope } from './socket.js';
+import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
+import { createHash } from 'node:crypto';
+import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
+import { slackInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import {
     isThreadParticipated, markThreadParticipated,
@@ -440,6 +443,54 @@ function raceContextDeadline(work: Promise<string>, ms: number): Promise<string>
     });
 }
 
+
+// ─── Durable ingress preflight (M3c) ────────────────
+
+/**
+ * Journals a Slack event BEFORE the socket acknowledges it. Runs the same gate the
+ * dispatch path runs, because Slack sends a `message` copy and an `app_mention` copy
+ * of one mention under a shared ts: journaling the copy the gate drops would claim
+ * the key and suppress the canonical delivery.
+ *
+ * Throws when the journal write fails. That is deliberate — the socket layer turns a
+ * throw into a withheld ack, so Slack redelivers instead of considering a message it
+ * never recorded as delivered.
+ */
+export async function preflightSlackEnvelope(envelope: SlackEnvelope): Promise<SlackPreflightResult> {
+    const journal = getIngressJournal();
+    if (!journal) return 'committed';
+    if (envelope.type !== 'events_api') return 'committed';
+
+    const payload = envelope.payload as { event?: SlackMessageEvent } | undefined;
+    const event = payload?.event;
+    if (!event?.channel || !event?.ts) return 'committed';
+
+    const decision = shouldProcessSlackEvent(event, gateConfig(), envelope.type);
+    if (!decision.process) return 'ignored';
+
+    const inbound = slackInboundEnvelope({
+        teamId: String(settings['slack']?.teamId || ''),
+        channelId: event.channel,
+        ts: event.ts,
+        threadTs: event.thread_ts,
+        userId: event.user,
+        botId: event.bot_id,
+        envelopeId: envelope.envelope_id,
+        replyInThread: settings['slack']?.replyInThread !== false,
+        target: buildSlackTarget(event),
+    });
+    if (!inbound) return 'committed';
+
+    const admission = admitIngress(journal, inbound, slackPayloadDigest(event));
+    if (!admission.admit) return 'duplicate';
+    return 'committed';
+}
+
+/** Identity of the event body. Never the body itself: the journal is not an archive. */
+function slackPayloadDigest(event: SlackMessageEvent): string {
+    return createHash('sha256').update(JSON.stringify(event)).digest('hex');
+}
+
 // ─── Envelope routing ───────────────────────────────
 
 export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTransport = slackApprovalIngress): Promise<void> {
@@ -667,6 +718,7 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
     const client = new SlackSocketClient({
         appToken: sc.appToken,
         onEnvelope: envelope => handleSlackEnvelope(envelope, slackApprovalIngress),
+        preflightEnvelope: preflightSlackEnvelope,
     });
     slackApprovalIngress = createSlackSocketIngress();
     socketClient = client;
