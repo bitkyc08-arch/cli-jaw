@@ -1,6 +1,10 @@
 import { settings } from '../core/config.js';
 import { shouldAttachSlack } from '../slack/events.js';
-import { getActiveChannel } from './runtime.js';
+import {
+    getHomeChannel,
+    getRunningMessagingTransports,
+    isMessagingTransportRunning,
+} from './runtime.js';
 import type { MessengerChannel } from './types.js';
 
 export type TransportCapability = {
@@ -11,7 +15,9 @@ export type TransportCapability = {
 };
 
 export type ChannelHealthSnapshot = {
+    /** @deprecated Remove in the next major after legacy-client telemetry is zero. */
     activeInbound: MessengerChannel;
+    activeInboundChannels: MessengerChannel[];
     telegram: TransportCapability;
     discord: TransportCapability;
     slack: TransportCapability;
@@ -45,7 +51,7 @@ function slackHasSendTarget(): boolean {
 }
 
 export function getTransportCapability(channel: MessengerChannel): TransportCapability {
-    const activeInbound = getActiveChannel() === channel;
+    const activeInbound = isMessagingTransportRunning(channel);
     if (channel === 'telegram') {
         const tg = settings["telegram"];
         const token = typeof tg?.token === 'string' ? tg.token.trim() : '';
@@ -102,7 +108,8 @@ export function getTransportCapability(channel: MessengerChannel): TransportCapa
 
 export function buildChannelHealthSnapshot(): ChannelHealthSnapshot {
     return {
-        activeInbound: getActiveChannel(),
+        activeInbound: getHomeChannel(),
+        activeInboundChannels: getRunningMessagingTransports(),
         telegram: getTransportCapability('telegram'),
         discord: getTransportCapability('discord'),
         slack: getTransportCapability('slack'),

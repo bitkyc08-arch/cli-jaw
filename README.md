@@ -633,6 +633,8 @@ Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/ph
 
 Same capabilities as Telegram — text, files, commands. Channel/thread routing, canonical `/api/channel/send`, and forwarder support for agent result broadcast. Setup via Web UI settings.
 
+You can enable multiple inbound channels at once. The manager and Web UI settings separate **enabled channels** from the **home channel**: enabled channels start their transport gateways; the home channel is the fallback for proactive sends and legacy `settings.channel` is a deprecated read-only alias for one major version.
+
 ### Slack
 
 Socket Mode bot with the same shared command catalog — mentions, DMs, slash commands, file/image relay, thread replies. Each Slack-triggered agent turn receives the current conversation ID and parent thread timestamp explicitly, so history/member lookups and targeted replies do not depend on parsing an internal session label or enabling multi-session.

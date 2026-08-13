@@ -9,7 +9,10 @@ import { registerSendTransport } from '../messaging/send.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 
 registerTransport('discord', {
-    init: async () => (await import('./bot.js')).initDiscord(),
+    init: async () => {
+        await (await import('./bot.js')).initDiscord();
+        return true;
+    },
     shutdown: async () => (await import('./bot.js')).shutdownDiscord(),
 });
 

@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { join } from 'path';
 import { DEFAULT_CLI, CLI_KEYS, buildDefaultPerCli } from '../cli/registry.js';
+import type { MessengerChannel } from '../messaging/types.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { resolveHomePath } from './path-expand.js';
@@ -188,9 +189,13 @@ export function runMigration(projectDir: string) {
 
 // ─── Settings ────────────────────────────────────────
 
-export const SETTINGS_SCHEMA_VERSION = 3;
+export const SETTINGS_SCHEMA_VERSION = 4;
 export const RUNTIME_DEFAULT_MIGRATION_ID = 'codex-app-default-v2' as const;
 export const MULTI_SESSION_DEFAULT_MIGRATION_ID = 'multi-session-default-v3' as const;
+// The schema version that introduced the session-default flip. Its migration marker is
+// keyed to this boundary, not to SETTINGS_SCHEMA_VERSION, so later schema bumps do not
+// re-ask a question the user has already answered.
+export const MULTI_SESSION_DEFAULT_SCHEMA_VERSION = 3;
 
 export type RuntimeDefaultMigration = {
     id: typeof RUNTIME_DEFAULT_MIGRATION_ID;
@@ -253,7 +258,6 @@ function createDefaultSettings() {
             activeHours: { start: '08:00', end: '22:00' },
             target: 'all',
         },
-        channel: 'telegram' as const,
         dispatchApproval: {
             operators: { slack: [] as string[], telegram: [] as number[], discord: [] as string[] },
             ttlSeconds: 120,
@@ -304,7 +308,9 @@ function createDefaultSettings() {
             channelRoster: false,
             identityCacheTtlMs: 21600000,
         },
-        messaging: {
+       messaging: {
+            enabledChannels: [] as MessengerChannel[],
+            homeChannel: 'telegram' as MessengerChannel,
             latestSeen: { telegram: null, discord: null, slack: null },
             lastActive: { telegram: null, discord: null, slack: null },
         },
@@ -514,7 +520,15 @@ function normalizeActiveOverrides(activeOverrides: Record<string, any> = {}, per
 }
 
 /** @internal — exported for unit testing */
+const MESSENGER_CHANNELS = ['telegram', 'discord', 'slack'] as const;
+export const isMessengerChannel = (value: unknown): value is MessengerChannel =>
+    MESSENGER_CHANNELS.includes(value as MessengerChannel);
+
 export function migrateSettings(s: Record<string, any>, sourceVersion = readSettingsSchemaVersion(s)) {
+    // Whatever the document claimed on the way in, what leaves this function is written
+    // by the current schema and says so. Individual markers below key off `sourceVersion`,
+    // which was read before this line, so stamping here does not disarm them.
+    s["settingsSchemaVersion"] = SETTINGS_SCHEMA_VERSION;
     if (s["planning"]) {
         if (s["planning"].cli && s["planning"].cli !== s["cli"]) s["cli"] = s["planning"].cli;
         if (s["planning"].model && s["planning"].model !== 'default') {
@@ -546,8 +560,11 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     // folded into the runtime one: the two flips can be rolled back at different times
     // for different reasons, and a shared marker would make that impossible to express.
     // A v1 document crosses both boundaries and so gets both markers in this one pass.
-    if (sourceVersion < SETTINGS_SCHEMA_VERSION) {
-        s["settingsSchemaVersion"] = SETTINGS_SCHEMA_VERSION;
+    //
+    // The boundary is the version that introduced the flip (3), NOT the current schema
+    // version. Pinning it to the current version would re-fire this marker on every
+    // later bump and silently overwrite an answer the user already gave.
+    if (sourceVersion < MULTI_SESSION_DEFAULT_SCHEMA_VERSION) {
         s["multiSessionDefaultMigration"] = {
             id: MULTI_SESSION_DEFAULT_MIGRATION_ID,
             // Someone who already turned sessions on made this decision before we asked.
@@ -581,19 +598,31 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
         s["memory"].model = normalizeModelForCli(s["memory"].cli, s["memory"].model);
     }
 
-    // Discord/channel migration
-    if (!s["channel"]) s["channel"] = 'telegram';
-    if (!s["discord"]) {
-        s["discord"] = {
-            enabled: false,
-            token: '',
-            guildId: '',
-            channelIds: [],
-            forwardAll: true,
-            allowBots: false,
-            mentionOnly: false,
-        };
+    // v3 channel -> v4 messaging gateway migration.
+    const messaging = s["messaging"] && typeof s["messaging"] === 'object'
+        ? s["messaging"]
+        : {};
+    const legacyChannel: MessengerChannel = isMessengerChannel(s["channel"])
+        ? s["channel"]
+        : 'telegram';
+
+    if (sourceVersion < 4 || !Array.isArray(messaging.enabledChannels)) {
+        messaging.enabledChannels = [legacyChannel];
+    } else {
+        messaging.enabledChannels = [...new Set(
+            messaging.enabledChannels.filter(isMessengerChannel),
+        )];
     }
+    if (!isMessengerChannel(messaging.homeChannel)) {
+        messaging.homeChannel = legacyChannel;
+    }
+    if (!messaging.enabledChannels.includes(messaging.homeChannel)
+        && messaging.enabledChannels.length > 0) {
+        messaging.homeChannel = messaging.enabledChannels[0];
+    }
+    s["messaging"] = messaging;
+    delete s["channel"];
+
     // Telegram mentionOnly migration — existing users had hardcoded always-on behavior
     if (s["telegram"] && s["telegram"].mentionOnly === undefined) {
         s["telegram"].mentionOnly = true;
@@ -838,13 +867,13 @@ export type SettingsStateCandidate = {
     shape: SettingsPersistenceShape;
 };
 
-function readSettingsSchemaVersion(raw: Record<string, any>): 1 | 2 | 3 {
+function readSettingsSchemaVersion(raw: Record<string, any>): 1 | 2 | 3 | 4 {
     if (!("settingsSchemaVersion" in raw)) return 1;
     const version = raw["settingsSchemaVersion"];
     if (!Number.isInteger(version) || version < 1 || version > SETTINGS_SCHEMA_VERSION) {
         throw new Error(`unsupported_settings_schema_version:${String(version)}`);
     }
-    return version as 1 | 2 | 3;
+    return version as 1 | 2 | 3 | 4;
 }
 
 function validateRuntimeDefaultMigration(value: unknown): void {
@@ -924,6 +953,22 @@ function assertCurrentSchemaSessionShape(raw: Record<string, any>): void {
     validateMultiSessionDefaultMigration(raw["multiSessionDefaultMigration"]);
 }
 
+/**
+ * A v4 document must carry the new messaging gateway shape. Malformed enabled/home
+ * arrays are rejected at boot so they cannot silently drop or corrupt channels.
+ */
+function assertCurrentSchemaMessagingShape(raw: Record<string, unknown>): void {
+    const messaging = raw["messaging"];
+    if (!isPlainRecord(messaging)) throw new Error('invalid_messaging_block');
+    const enabled = messaging["enabledChannels"];
+    if (!Array.isArray(enabled) || !enabled.every(isMessengerChannel)) {
+        throw new Error('invalid_messaging_enabled_channels');
+    }
+    if (!isMessengerChannel(messaging["homeChannel"])) {
+        throw new Error('invalid_messaging_home_channel');
+    }
+}
+
 export function loadSettings() {
     // A fresh load is a fresh verdict: a successful parse (or a genuinely absent
     // file) below re-enables persistence; only the unreadable-existing-file catch
@@ -965,16 +1010,18 @@ export function loadSettings() {
         // A document claiming the current schema must actually carry what this schema
         // writes. Checked before the merge, because after it the absence is gone.
         if (sourceVersion >= 3) assertCurrentSchemaSessionShape(raw);
+        if (sourceVersion >= 4) assertCurrentSchemaMessagingShape(raw);
         const legacyCli = sourceVersion === 1 && !CLI_KEYS.includes(raw["cli"])
             ? 'claude'
             : raw["cli"];
         const hadPlanning = !!raw.planning;
         const defaults = createDefaultSettings();
-        // Everything below the current schema predates the session defaults, so absent
-        // keys resolve to what they used to mean rather than to the new defaults. The
-        // merge runs before migrateSettings, so this is the only place that still knows
-        // whether a key was in the document or is about to be invented (110 §4b-1).
-        const multiSessionBaseline = sourceVersion < SETTINGS_SCHEMA_VERSION
+        // Everything below v3 predates the session defaults, so absent keys resolve to
+        // what they used to mean rather than to the new defaults. The merge runs before
+        // migrateSettings, so this is the only place that still knows whether a key was
+        // in the document or is about to be invented (110 §4b-1). The boundary is the
+        // flip's own version — a v3 document already carries the new meaning.
+        const multiSessionBaseline = sourceVersion < MULTI_SESSION_DEFAULT_SCHEMA_VERSION
             ? LEGACY_MULTI_SESSION_BASELINE
             : defaults.multiSession;
         // Deep merge perCli so new CLI defaults (e.g. copilot) are preserved
@@ -1009,10 +1056,10 @@ export function loadSettings() {
                 agent: { ...defaults.avatar.agent, ...(raw.avatar?.agent || {}) },
                 user: { ...defaults.avatar.user, ...(raw.avatar?.user || {}) },
             },
-            messaging: {
-                latestSeen: { ...defaults.messaging.latestSeen, ...(raw.messaging?.latestSeen || {}) },
-                lastActive: { ...defaults.messaging.lastActive, ...(raw.messaging?.lastActive || {}) },
-            },
+           messaging: {
+               latestSeen: { ...defaults.messaging.latestSeen, ...(raw.messaging?.latestSeen || {}) },
+               lastActive: { ...defaults.messaging.lastActive, ...(raw.messaging?.lastActive || {}) },
+           },
             jawCeo: { ...defaults.jawCeo, ...(raw.jawCeo || {}) },
             pi: { ...defaults.pi, ...(raw.pi || {}) },
             network: { ...defaults.network, ...(raw.network || {}) },

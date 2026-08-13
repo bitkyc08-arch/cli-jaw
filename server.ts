@@ -105,7 +105,8 @@ import { makeWebCommandCtx } from './src/cli/web-command-ctx.js';
 
 import './src/discord/register.js'; // side-effect: registers discord transport (bot.js + discord.js load lazily on first use)
 import './src/slack/register.js'; // side-effect: registers slack transport (send-handler.js loads lazily on first use)
-import { initActiveMessagingRuntime, shutdownMessagingRuntime, hydrateTargetsFromSettings } from './src/messaging/runtime.js';
+import { initEnabledMessagingRuntimes, shutdownMessagingRuntime, hydrateTargetsFromSettings, getEnabledChannels } from './src/messaging/runtime.js';
+import type { MessengerChannel } from './src/messaging/types.js';
 
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
 import { initAlertDelivery } from './src/agent/alert-escalation.js';
@@ -638,10 +639,11 @@ server.listen(PORT, bindHost, async () => {
     } catch (e: unknown) { console.error('[mcp-init]', (e as Error).message); }
 
     hydrateTargetsFromSettings(settings);
-    try {
-        await initActiveMessagingRuntime();
-    } catch (e: unknown) {
-        console.error('[messaging:boot]', (e as Error).message);
+    const messagingBoot = await initEnabledMessagingRuntimes();
+    for (const [channel, started] of Object.entries(messagingBoot)) {
+        if (!started && getEnabledChannels().includes(channel as MessengerChannel)) {
+            console.error(`[messaging:boot:${channel}] init failed; other gateways remain active`);
+        }
     }
 
     try {

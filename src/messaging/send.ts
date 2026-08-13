@@ -5,7 +5,7 @@ import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import { isRemoteTarget, type MessengerChannel, type OutboundType, type RemoteTarget } from './types.js';
-import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
+import { getLastActiveTarget, getLatestSeenTarget, clearTargetState, getHomeChannel } from './runtime.js';
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
@@ -87,8 +87,14 @@ export function normalizeChannelSendRequest(body: Record<string, any>): ChannelS
 // ─── Resolve Target ─────────────────────────────────
 
 function resolveChannel(req: ChannelSendRequest): MessengerChannel {
+    if (req.target) {
+        if (req.channel && req.channel !== 'active' && req.channel !== req.target.channel) {
+            throw badRequest('channel_target_mismatch');
+        }
+        return req.target.channel;
+    }
     if (req.channel && req.channel !== 'active') return req.channel;
-    return (settings["channel"] as MessengerChannel) || 'telegram';
+    return getHomeChannel();
 }
 
 // ─── Send ───────────────────────────────────────────

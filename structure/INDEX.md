@@ -59,7 +59,7 @@ graph LR
 | **3 — Interfaces** | [commands.md](commands.md), [server_api.md](server_api.md), [frontend.md](frontend.md), [telegram.md](telegram.md), [stream-events.md](stream-events.md) | 슬래시 커맨드, Express 라우트, Web UI, Telegram 봇, Discord 봇, Slack 봇, SSE/WS 이벤트 트레이스 |
 | **4 — Reference** | [infra.md](infra.md), [prompt_basic_A1.md](prompt_basic_A1.md), [prompt_basic_A2.md](prompt_basic_A2.md), [prompt_basic_B.md](prompt_basic_B.md), [CAPABILITY_TRUTH_TABLE.md](CAPABILITY_TRUTH_TABLE.md), [frontend_modernization_analysis.md](frontend_modernization_analysis.md), [gitstructure.md](gitstructure.md) | 코어 모듈, 프롬프트 템플릿, capability parity truth table, 현대화 분석, Git 토폴로지 |
 
-> Tier 1 → 2 → 3 순서로 읽으면 전체 구조가 잡힙니다. Tier 4는 필요할 때 참조.
+> Tier 1 → 2 → 3 순서로 읽으면 전체 구조가 잡힙니다. Tier 4는 필요할 때 참조. Concurrent inbound gateway changes are documented in `telegram.md` §common messaging layer, `infra.md` §`src/messaging/`, and this index.
 
 ---
 
@@ -79,7 +79,7 @@ graph LR
 | [stream-events.md](stream-events.md) | SSE-first runtime event channel + WebSocket fallback + CLI NDJSON/Grok streaming-json + ProcessBlock 매핑 + goal pause gate(`goal_pause_gate_pending`, continuation suppression) + plain `claude` `text_delta` live streaming | SSE, WebSocket, NDJSON, stepRef, ProcessBlock, Grok, goal pause gate |
 | [🎨 frontend.md](frontend.md) | `public/` 소스/자산 + Electron 데스크톱, slash workflow chips, Manager notes/search/settings/reminders/WYSIWYG, interview tracker panel, MCP settings page, Pi profile popup, kiro-code provider UI, ProcessBlock 렌더링(hydrated expand/`reconstructStepsFromBlock`, virtual-scroll detail release, `data-had-detail`) | 프론트엔드, Vite 8, PWA, Electron, ProcessBlock, virtual-scroll |
 | [frontend_modernization_analysis.md](frontend_modernization_analysis.md) | 8개 현대화 제안의 비용-편익 분석 | 리팩터링, 비용분석, 마이그레이션 |
-| [telegram.md](telegram.md) | Telegram 봇 + forum topic-aware send + Dashboard Telegram Hub(P0–P4) + hub-member relay + heartbeat + 음성 STT | 텔레그램, 하트비트, STT, forum hub |
+| [telegram.md](telegram.md) | Telegram 봇 + forum topic-aware send + Dashboard Telegram Hub(P0–P4) + hub-member relay + heartbeat + 음성 STT | 텔레그램, 하트비트, STT, forum hub, concurrent gateway |
 | [prompt_basic_A1.md](prompt_basic_A1.md) | 시스템 프롬프트 기본값 (A-1.md) | 시스템규칙, 기본값 |
 | [prompt_basic_A2.md](prompt_basic_A2.md) | 사용자 설정 프롬프트 (A-2.md) | 사용자설정, 페르소나 |
 | [prompt_basic_B.md](prompt_basic_B.md) | 조립 결과 + 스킬/MCP/하트비트 기본값 | 조립결과, 캐시, 기본값 |

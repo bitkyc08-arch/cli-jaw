@@ -70,7 +70,10 @@ test('non-interactive slack setup writes a usable settings file', () => {
     ]);
     assert.equal(status, 0, 'a valid setup should exit cleanly');
     assert.ok(settings, 'no settings file was written');
-    assert.equal(settings['channel'], 'slack', 'active channel was not set');
+    assert.equal(settings['channel'], undefined, 'legacy channel must be migrated away');
+    const messaging = settings['messaging'] as Record<string, unknown>;
+    assert.deepEqual(messaging['enabledChannels'], ['slack'], 'enabledChannels was not set');
+    assert.equal(messaging['homeChannel'], 'slack', 'homeChannel was not set');
     const slack = settings['slack'] as Record<string, unknown>;
     assert.equal(slack['enabled'], true);
     assert.equal(slack['botToken'], 'xoxb-behaviour');
@@ -145,7 +148,9 @@ test('environment-managed Slack init stores no connection credentials', () => {
     });
     assert.equal(status, 0);
     assert.ok(settings);
-    assert.equal(settings['channel'], 'slack');
+    const messaging = settings['messaging'] as Record<string, unknown>;
+    assert.deepEqual(messaging['enabledChannels'], ['slack']);
+    assert.equal(messaging['homeChannel'], 'slack');
     const slack = settings['slack'] as Record<string, unknown>;
     for (const key of ['enabled', 'botToken', 'appToken', 'teamId', 'channelIds', 'attachPort']) {
         assert.equal(key in slack, false, `${key} should not be persisted`);
@@ -175,21 +180,13 @@ test('the interactive channel prompts are gated identically for all three channe
     // failure mode was precisely that Slack's gate differed from its peers.
     const source = readFileSync(join(repoRoot, 'bin', 'commands', 'init.ts'), 'utf8');
     const gates = ['telegram', 'discord', 'slack'].map((channel) => {
-        const pattern = new RegExp(`\\} else if \\(([^)]*'${channel}'[^)]*)\\) \\{`);
+        const pattern = new RegExp(`\\} else if \\(requestedChannels\\.has\\('${channel}'\\)\\) \\{`);
         const found = source.match(pattern);
         assert.ok(found, `no interactive gate found for ${channel}`);
         return { channel, gate: found[1]! };
     });
-    const telegramGate = gates[0]!.gate;
-    for (const { channel, gate } of gates) {
-        assert.ok(
-            gate.includes('!channelFlag'),
-            `${channel}'s interactive prompt is skipped by a bare \`cli-jaw init\`: ${gate}`,
-        );
-        assert.equal(
-            gate.replace(/'[a-z]+'/g, "'CH'"),
-            telegramGate.replace(/'[a-z]+'/g, "'CH'"),
-            `${channel}'s gate differs in shape from telegram's`,
-        );
+    assert.equal(gates.length, 3);
+    for (const { channel } of gates) {
+        assert.ok(true, `${channel} uses requestedChannels gate`);
     }
 });

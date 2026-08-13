@@ -44,7 +44,6 @@ async function exercisePromptExamples(promptPath: string) {
     const { normalizeChannelSendRequest, registerSendTransport, sendChannelOutput } = await import('../../src/messaging/send.js');
     const { clearTargetState, setLastActiveTarget } = await import('../../src/messaging/runtime.js');
     const previousSlack = settings.slack;
-    const previousChannel = settings.channel;
     const previousMessaging = settings.messaging;
     const previousProjectDirs = settings.projectDirs;
     const sent: Array<Record<string, any>> = [];
@@ -58,7 +57,8 @@ async function exercisePromptExamples(promptPath: string) {
     });
     try {
         clearTargetState();
-        settings.channel = 'slack';
+        // The home channel is what an example with no explicit target resolves to.
+        settings.messaging = { enabledChannels: ['slack'], homeChannel: 'slack' };
         settings.slack = { ...(settings.slack || {}), channelIds: [String(explicit.target.targetId)] };
         settings.projectDirs = [fixtureDir];
         registerSendTransport('slack', async req => {
@@ -86,7 +86,6 @@ async function exercisePromptExamples(promptPath: string) {
     } finally {
         clearTargetState();
         settings.slack = previousSlack;
-        settings.channel = previousChannel;
         settings.messaging = previousMessaging;
         settings.projectDirs = previousProjectDirs;
         fs.rmSync(fixtureDir, { recursive: true, force: true });

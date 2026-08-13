@@ -571,10 +571,11 @@ choke point로 모았다.
 | Function | 역할 |
 | --- | --- |
 | `registerTransport()` | 채널별 init/shutdown 등록 |
-| `getActiveChannel()` | 현재 활성 채널 반환 |
-| `initActiveMessagingRuntime()` | 활성 채널 transport init |
+| `getEnabledChannels()` | 현재 enabled 채널 목록 반환 |
+| `getHomeChannel()` | 현재 home 채널 반환 |
+| `initEnabledMessagingRuntimes()` | enabled 채널 각각 transport init |
 | `shutdownMessagingRuntime()` | 전체 transport shutdown |
-| `restartMessagingRuntime()` | active channel/active config가 바뀔 때만 restart |
+| `restartMessagingRuntime()` | enabled set, per-channel config, locale 변경 시 영향 채널만 restart (home-only 변경은 restart 없음) |
 | `setLastActiveTarget()` / `getLastActiveTarget()` | 마지막 활성 타겟 추적 |
 | `setLatestSeenTarget()` / `getLatestSeenTarget()` | 최신 관측 타겟 추적 |
 | `clearTargetState()` | stale target 제거 |

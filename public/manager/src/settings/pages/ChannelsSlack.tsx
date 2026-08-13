@@ -23,9 +23,9 @@ import {
     usePageSnapshot,
 } from './page-shell';
 import { expandPatch } from './path-utils';
-import { ActiveChannelToggle } from './components/ActiveChannelToggle';
-import type { ActiveChannel } from './components/ActiveChannelToggle';
+import type { MessengerChannel } from './components/ChannelEnablementControl';
 import { TransportStatusChips } from './components/TransportStatusChips';
+import { ChannelEnablementControl } from './components/ChannelEnablementControl';
 
 type SlackBlock = {
     enabled?: boolean;
@@ -40,7 +40,10 @@ type SlackBlock = {
 };
 
 type SlackSnapshot = {
-    channel?: ActiveChannel;
+    messaging?: {
+        enabledChannels?: MessengerChannel[];
+        homeChannel?: MessengerChannel;
+    };
     slack?: SlackBlock;
     slackEnvironmentVariables?: string[];
     [key: string]: unknown;
@@ -72,6 +75,8 @@ export function isValidSlackConversationId(chip: string): boolean {
 export default function ChannelsSlack({ port, client, dirty, registerSave }: SettingsPageProps) {
     const { state, refresh, setData } = usePageSnapshot<SlackSnapshot>(client, '/api/settings');
 
+    const [enabledChannels, setEnabledChannels] = useState<MessengerChannel[]>([]);
+    const [homeChannel, setHomeChannel] = useState<MessengerChannel>('telegram');
     const [enabled, setEnabled] = useState(false);
     const [botToken, setBotToken] = useState('');
     const [appToken, setAppToken] = useState('');
@@ -98,6 +103,10 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
+        const messaging = state.data.messaging || {};
+        const rawEnabled = Array.isArray(messaging.enabledChannels) ? messaging.enabledChannels : [];
+        setEnabledChannels(rawEnabled.filter(isMessengerChannel) as MessengerChannel[]);
+        setHomeChannel(isMessengerChannel(messaging.homeChannel) ? messaging.homeChannel : 'telegram');
         applySnapshot(state.data.slack || {});
     }, [state, applySnapshot]);
 
@@ -117,7 +126,6 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
         return state.data.slack || {};
     }, [state]);
 
-    const originalChannel = state.kind === 'ready' ? state.data.channel : undefined;
     const environmentVariables = state.kind === 'ready' && Array.isArray(state.data.slackEnvironmentVariables)
         ? state.data.slackEnvironmentVariables
         : [];
@@ -178,10 +186,15 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
         >
             <SettingsSection
                 title="Channels"
-                hint="Choose which channel receives inbound chat. Outbound send can still work on the other channels when configured."
+                hint="Choose which channels receive inbound chat. Outbound send can still work on any configured channel."
             >
-                <ActiveChannelToggle
-                    original={originalChannel}
+                <ChannelEnablementControl
+                    pageChannel="slack"
+                    snapshot={state.kind === 'ready' ? state.data : {}}
+                    enabledChannels={enabledChannels}
+                    homeChannel={homeChannel}
+                    setEnabledChannels={setEnabledChannels}
+                    setHomeChannel={setHomeChannel}
                     dirty={dirty}
                     idPrefix="sl-channel"
                 />
@@ -332,4 +345,8 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
             </SettingsSection>
         </form>
     );
+}
+
+function isMessengerChannel(value: unknown): value is MessengerChannel {
+    return value === 'telegram' || value === 'discord' || value === 'slack';
 }

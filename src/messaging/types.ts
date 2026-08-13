@@ -30,7 +30,7 @@ export type RuntimeOrigin = 'web' | 'cli' | 'system' | 'bgtask' | MessengerChann
 
 export type OutboundType = 'text' | 'voice' | 'photo' | 'document' | 'keyboard';
 
-const MESSENGER_CHANNELS = new Set<MessengerChannel>(['telegram', 'discord', 'slack']);
+export const MESSENGER_CHANNELS = new Set<MessengerChannel>(['telegram', 'discord', 'slack']);
 const REMOTE_TARGET_KINDS = new Set<RemoteTargetKind>(['user', 'channel']);
 const REMOTE_PEER_KINDS = new Set<RemotePeerKind>(['direct', 'group', 'channel']);
 
@@ -49,3 +49,5 @@ export function isRemoteTarget(value: unknown): value is RemoteTarget {
 }
 
 // targetId is always string. Legacy number chatIds are String()-converted at ingest.
+export const isMessengerChannel = (value: unknown): value is MessengerChannel =>
+    MESSENGER_CHANNELS.has(value as MessengerChannel);

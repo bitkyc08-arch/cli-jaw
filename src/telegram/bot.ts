@@ -356,7 +356,13 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
 }
 
 // Register transport at module load time
-registerTransport('telegram', { init: initTelegram, shutdown: shutdownTelegram });
+registerTransport('telegram', {
+    init: async () => {
+        await initTelegram();
+        return true;
+    },
+    shutdown: shutdownTelegram,
+});
 registerSendTransport('telegram', telegramSendHandler);
 installTelegramTargetReplyForwarder();
 

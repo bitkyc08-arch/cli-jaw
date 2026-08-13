@@ -2,6 +2,8 @@ import { api } from '../api.js';
 import { escapeHtml } from '../render.js';
 import { t } from './i18n.js';
 
+export type MessengerChannel = 'telegram' | 'discord' | 'slack';
+
 export type TransportStatus = {
     configured: boolean;
     activeInbound: boolean;
@@ -10,7 +12,9 @@ export type TransportStatus = {
 };
 
 export type ChannelHealth = {
-    activeInbound: 'telegram' | 'discord' | 'slack';
+    /** @deprecated Use activeInboundChannels for the actual running set. */
+    activeInbound: MessengerChannel;
+    activeInboundChannels: MessengerChannel[];
     telegram: TransportStatus;
     discord: TransportStatus;
     slack: TransportStatus;
@@ -24,15 +28,29 @@ function isTransportStatus(value: unknown): value is TransportStatus {
         && typeof row['sendCapable'] === 'boolean';
 }
 
+function isMessengerChannel(value: unknown): value is MessengerChannel {
+    return value === 'telegram' || value === 'discord' || value === 'slack';
+}
+
 export function parseChannelHealth(payload: unknown): ChannelHealth | null {
     if (!payload || typeof payload !== 'object') return null;
     const channels = (payload as { channels?: unknown }).channels;
     if (!channels || typeof channels !== 'object') return null;
     const row = channels as Record<string, unknown>;
-    // Extract to a local so TypeScript narrows it for the return below; a
-    // repeated property read is not narrowed.
+    const rawActiveChannels = row['activeInboundChannels'];
+    let activeInboundChannels: MessengerChannel[] | null;
+    if (rawActiveChannels !== undefined) {
+        activeInboundChannels = Array.isArray(rawActiveChannels)
+            && rawActiveChannels.every(isMessengerChannel)
+            ? [...new Set(rawActiveChannels)]
+            : null;
+    } else {
+        const legacyActive = row['activeInbound'];
+        activeInboundChannels = isMessengerChannel(legacyActive) ? [legacyActive] : null;
+    }
+    if (!activeInboundChannels) return null;
     const active = row['activeInbound'];
-    if (active !== 'telegram' && active !== 'discord' && active !== 'slack') return null;
+    if (!isMessengerChannel(active)) return null;
     if (!isTransportStatus(row['telegram']) || !isTransportStatus(row['discord'])) return null;
     // Slack is tolerated as absent: a newer bundle can be served against an
     // older running server during a rolling update, and rejecting the whole
@@ -42,6 +60,7 @@ export function parseChannelHealth(payload: unknown): ChannelHealth | null {
         : { configured: false, activeInbound: false, sendCapable: false, reason: 'unavailable' };
     return {
         activeInbound: active,
+        activeInboundChannels,
         telegram: row['telegram'],
         discord: row['discord'],
         slack,

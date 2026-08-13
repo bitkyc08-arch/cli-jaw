@@ -10,14 +10,41 @@ import { logErrorText } from './redact.js';
 // ─── Transport Registry (push-based, no circular imports) ─────
 
 type TransportFns = {
-    init: () => Promise<void>;
+    init: () => Promise<boolean>;
     shutdown: () => Promise<void>;
 };
 
 const transports = new Map<MessengerChannel, TransportFns>();
+const CHANNELS = ['telegram', 'discord', 'slack'] as const;
+const runningTransports = new Set<MessengerChannel>();
+const transportErrors = new Map<MessengerChannel, string>();
+
+function isMessengerChannel(value: unknown): value is MessengerChannel {
+    return CHANNELS.includes(value as MessengerChannel);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
 
 export function registerTransport(channel: MessengerChannel, fns: TransportFns) {
     transports.set(channel, fns);
+}
+
+/** Test-only: clear registry and running state between tests. */
+export function __resetTransportRegistryForTests() {
+    transports.clear();
+    lastActiveTargets.clear();
+    latestSeenTargets.clear();
+    runningTransports.clear();
+    transportErrors.clear();
+}
+
+/** Test-only: clear target maps between tests. */
+export function __resetTargetStateForTests() {
+    lastActiveTargets.clear();
+    latestSeenTargets.clear();
+    persistTimer = null;
 }
 
 // ─── Last Active / Latest Seen Target State ─────────
@@ -95,29 +122,90 @@ export function hydrateTargetsFromSettings(s: Record<string, any>) {
 
 // ─── Lifecycle ──────────────────────────────────────
 
-export function getActiveChannel(): MessengerChannel {
-    return (settings["channel"] as MessengerChannel) || 'telegram';
+/** The only part of a settings document these readers look at. Narrow on purpose:
+ *  callers pass whatever settings shape they hold (server, CLI, doctor), and none of
+ *  them should have to widen to an index signature to ask which channels are on. */
+export type MessagingSnapshot = { messaging?: unknown };
+
+export function getEnabledChannels(
+    snapshot: MessagingSnapshot = settings,
+): MessengerChannel[] {
+    const messaging = snapshot.messaging;
+    const raw = isPlainRecord(messaging) ? messaging["enabledChannels"] : undefined;
+    return Array.isArray(raw) ? raw.filter(isMessengerChannel) : [];
 }
 
-export async function initActiveMessagingRuntime() {
-    const channel = getActiveChannel();
+export function getHomeChannel(
+    snapshot: MessagingSnapshot = settings,
+): MessengerChannel {
+    const messaging = snapshot.messaging;
+    const home = isPlainRecord(messaging) ? messaging["homeChannel"] : undefined;
+    return isMessengerChannel(home) ? home : 'telegram';
+}
+
+export function isMessagingTransportRunning(channel: MessengerChannel): boolean {
+    return runningTransports.has(channel);
+}
+
+export function getRunningMessagingTransports(): MessengerChannel[] {
+    return [...runningTransports];
+}
+
+export async function startMessagingTransport(channel: MessengerChannel): Promise<boolean> {
     const transport = transports.get(channel);
-    if (transport) {
-        await transport.init();
-    } else {
-        log.info(`[messaging] no transport registered for ${channel}`);
+    if (!transport) {
+        transportErrors.set(channel, 'transport_not_registered');
+        log.warn(`[messaging] no transport registered for ${channel}`);
+        return false;
+    }
+    try {
+        const started = await transport.init();
+        if (!started) {
+            runningTransports.delete(channel);
+            transportErrors.delete(channel);
+            return false;
+        }
+        runningTransports.add(channel);
+        transportErrors.delete(channel);
+        return true;
+    } catch (error) {
+        runningTransports.delete(channel);
+        transportErrors.set(channel, logErrorText(error));
+        log.warn(`[messaging] ${channel} init error:`, logErrorText(error));
+        return false;
     }
 }
 
+export async function stopMessagingTransport(channel: MessengerChannel): Promise<boolean> {
+    const transport = transports.get(channel);
+    if (!transport) return true;
+    try {
+        await transport.shutdown();
+        runningTransports.delete(channel);
+        return true;
+    } catch (error) {
+        transportErrors.set(channel, logErrorText(error));
+        log.warn(`[messaging] ${channel} shutdown error:`, logErrorText(error));
+        return false;
+    }
+}
+
+export async function initEnabledMessagingRuntimes(): Promise<Record<MessengerChannel, boolean>> {
+    const result: Record<MessengerChannel, boolean> = { telegram: false, discord: false, slack: false };
+    for (const channel of getEnabledChannels()) {
+        result[channel] = await startMessagingTransport(channel);
+    }
+    return result;
+}
+
+/** @deprecated Use initEnabledMessagingRuntimes instead. */
+export async function initActiveMessagingRuntime(): Promise<Record<MessengerChannel, boolean>> {
+    return initEnabledMessagingRuntimes();
+}
+
 export async function shutdownMessagingRuntime() {
-    for (const [name, transport] of transports) {
-        try {
-            await transport.shutdown();
-        } catch (e) {
-            // A transport shutdown failure comes from the vendor client, whose
-            // error text has carried a request URL with the bot token in it.
-            log.warn(`[messaging] ${name} shutdown error:`, logErrorText(e));
-        }
+    for (const channel of CHANNELS) {
+        await stopMessagingTransport(channel);
     }
 }
 
@@ -129,20 +217,23 @@ export async function restartMessagingRuntime(
     next: Record<string, any>,
     patch: Record<string, any>,
 ) {
-    const prevChannel = prev["channel"] || 'telegram';
-    const nextChannel = next["channel"] || 'telegram';
+    const prevEnabled = new Set(getEnabledChannels(prev));
+    const nextEnabled = new Set(getEnabledChannels(next));
+    const affected = new Set<MessengerChannel>();
 
-    // Only restart if active channel changed, or the active channel's config changed
-    const channelSwitched = prevChannel !== nextChannel;
-    const activeChannelPatched = !!patch[nextChannel as string];
-    const localeSwitched = patch["locale"] !== undefined;
+    for (const channel of CHANNELS) {
+        if (prevEnabled.has(channel) !== nextEnabled.has(channel)) affected.add(channel);
+        if (patch[channel] !== undefined && (prevEnabled.has(channel) || nextEnabled.has(channel))) {
+            affected.add(channel);
+        }
+        if (patch["locale"] !== undefined && nextEnabled.has(channel)) affected.add(channel);
+    }
 
-    // Inactive channel config change should NOT trigger restart
-    if (!channelSwitched && !activeChannelPatched && !localeSwitched) return;
+    if (affected.size === 0) return;
 
-    // Clear stale targets on restart to prevent routing to previous channel/thread
-    clearTargetState();
-
-    await shutdownMessagingRuntime();
-    await initActiveMessagingRuntime();
+    for (const channel of affected) {
+        if (prevEnabled.has(channel)) await stopMessagingTransport(channel);
+        clearTargetState(channel);
+        if (nextEnabled.has(channel)) await startMessagingTransport(channel);
+    }
 }

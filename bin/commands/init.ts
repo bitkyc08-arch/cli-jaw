@@ -16,8 +16,13 @@ import {
     SLACK_CONNECTION_SETTING_KEYS,
 } from '../../src/core/config.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
+import type { MessengerChannel } from '../../src/messaging/types.js';
 
 const CLI_CHOICES = CLI_KEYS.join(', ');
+const MESSENGER_CHANNELS = ['telegram', 'discord', 'slack'] as const;
+const isMessengerChannel = (value: unknown): value is MessengerChannel =>
+    MESSENGER_CHANNELS.includes(value as MessengerChannel);
+
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
@@ -27,10 +32,12 @@ const { values } = parseArgs({
         safe: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
         force: { type: 'boolean', default: false },
-        'working-dir': { type: 'string' },
-        cli: { type: 'string' },
-        channel: { type: 'string' },
-        'telegram-token': { type: 'string' },
+       'working-dir': { type: 'string' },
+       cli: { type: 'string' },
+       channel: { type: 'string' },
+        channels: { type: 'string' },
+        'home-channel': { type: 'string' },
+       'telegram-token': { type: 'string' },
         'allowed-chat-ids': { type: 'string' },
         'discord-token': { type: 'string' },
         'discord-guild-id': { type: 'string' },
@@ -55,7 +62,9 @@ Options:
   --force               Overwrite existing settings
   --working-dir <path>  Set working directory
   --cli <name>          Default CLI (${CLI_CHOICES})
-  --channel <ch>        Active channel (telegram, discord, or slack)
+  --channel <ch>        Deprecated alias for --channels <ch> --home-channel <ch>
+  --channels <list>     Comma-separated enabled inbound gateways (telegram,discord,slack)
+  --home-channel <ch>     Default channel for proactive outbound (telegram, discord, or slack)
   --telegram-token <t>  Telegram bot token
   --allowed-chat-ids <ids>  Comma-separated Telegram chat IDs
   --discord-token <t>   Discord bot token
@@ -74,9 +83,9 @@ fs.mkdirSync(JAW_HOME, { recursive: true });
 
 interface InitSettings {
     workingDir?: string;
-    cli?: string;
-    telegram?: { enabled?: boolean; token?: string; allowedChatIds?: unknown[] };
-    discord?: {
+   cli?: string;
+   telegram?: { enabled?: boolean; token?: string; allowedChatIds?: unknown[] };
+   discord?: {
         enabled?: boolean;
         token?: string;
         guildId?: string;
@@ -96,6 +105,11 @@ interface InitSettings {
         replyInThread?: boolean;
     };
     skillsDir?: string;
+    messaging?: {
+        enabledChannels?: MessengerChannel[];
+        homeChannel?: MessengerChannel;
+        [k: string]: unknown;
+    };
     channel?: string;
     [k: string]: unknown;
 }
@@ -127,10 +141,45 @@ const cli = String(values.cli ||
 
 // Channel selection
 const channelFlag = values.channel as string | undefined;
-if (channelFlag && channelFlag !== 'telegram' && channelFlag !== 'discord' && channelFlag !== 'slack') {
-    console.error(`  ❌ Invalid --channel "${channelFlag}". Must be "telegram", "discord", or "slack".`);
+const channelsFlag = values.channels as string | undefined;
+const homeChannelFlag = values['home-channel'] as string | undefined;
+
+function parseChannelsInput(raw: string | undefined): MessengerChannel[] | undefined {
+    if (!raw) return undefined;
+    return raw.split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean)
+        .filter((ch): ch is MessengerChannel => {
+            if (isMessengerChannel(ch)) return true;
+            console.error(`  ❌ Invalid channel "${ch}" in --channels. Must be telegram, discord, or slack.`);
+            process.exit(1);
+        });
+}
+
+if (channelFlag && channelsFlag) {
+    console.error('  ❌ --channel cannot be used with --channels. Use --channels and --home-channel instead.');
     process.exit(1);
 }
+if (channelFlag && !isMessengerChannel(channelFlag)) {
+    console.error(`  ❌ Invalid --channel "${channelFlag}". Must be telegram, discord, or slack.`);
+    process.exit(1);
+}
+if (homeChannelFlag && !isMessengerChannel(homeChannelFlag)) {
+    console.error(`  ❌ Invalid --home-channel "${homeChannelFlag}". Must be telegram, discord, or slack.`);
+    process.exit(1);
+}
+
+const legacyChannelFlag: MessengerChannel | undefined = isMessengerChannel(channelFlag)
+    ? channelFlag
+    : undefined;
+const flagEnabledChannels = parseChannelsInput(channelsFlag) ||
+    (legacyChannelFlag ? [legacyChannelFlag] : undefined);
+const requestedChannels: Set<MessengerChannel> = flagEnabledChannels
+    ? new Set(flagEnabledChannels)
+    : values['non-interactive']
+        ? new Set<MessengerChannel>()
+        : new Set<MessengerChannel>(MESSENGER_CHANNELS);
+
 const slackEnvironmentVariables = configuredSlackEnvironmentVariables();
 const slackEnvironmentManaged = slackEnvironmentVariables.length > 0;
 const slackCredentialFlags = [
@@ -152,7 +201,7 @@ if (values['non-interactive']) {
         tgToken = values['telegram-token'] as string;
         tgChatIds = ((values['allowed-chat-ids'] || '') as string).split(',').map((s: string) => +s.trim()).filter(Boolean);
     }
-} else if (!channelFlag || channelFlag === 'telegram') {
+} else if (requestedChannels.has('telegram')) {
     const tgAnswer = await ask('Telegram 연결? (y/n)', settings.telegram?.enabled ? 'y' : 'n');
     tgEnabled = tgAnswer.toLowerCase() === 'y';
     if (tgEnabled) {
@@ -172,7 +221,7 @@ if (values['non-interactive']) {
         dcChannelIds = ((values['discord-channel-ids'] || '') as string).split(',').map(s => s.trim()).filter(Boolean);
         dcEnabled = true;
     }
-} else if (!channelFlag || channelFlag === 'discord') {
+} else if (requestedChannels.has('discord')) {
     const dcAnswer = await ask('Discord 연결? (y/n)', settings.discord?.enabled ? 'y' : 'n');
     dcEnabled = dcAnswer.toLowerCase() === 'y';
     if (dcEnabled) {
@@ -198,7 +247,7 @@ if (slackEnvironmentManaged) {
         slChannelIds = ((values['slack-channel-ids'] || '') as string).split(',').map(s => s.trim()).filter(Boolean);
         slEnabled = true;
     }
-} else if (!channelFlag || channelFlag === 'slack') {
+} else if (requestedChannels.has('slack')) {
     // Matches the Telegram and Discord blocks: a bare `cli-jaw init` offers
     // every channel. Gating this on the flag alone would hide Slack from the
     // default interactive setup entirely.
@@ -215,14 +264,14 @@ if (slackEnvironmentManaged) {
 }
 
 // Validate: --channel discord requires Discord config
-if (channelFlag === 'discord' && !dcEnabled) {
-    console.error('  ❌ --channel discord requires --discord-token.');
+if (requestedChannels.has('discord') && !dcEnabled) {
+    console.error('  ❌ --channels discord requires --discord-token.');
     process.exit(1);
 }
 
 // Validate: --channel slack requires at least the bot token
-if (channelFlag === 'slack' && !slEnabled && !process.env['SLACK_BOT_TOKEN']) {
-    console.error('  ❌ --channel slack requires --slack-bot-token.');
+if (requestedChannels.has('slack') && !slEnabled && !process.env['SLACK_BOT_TOKEN']) {
+    console.error('  ❌ --channels slack requires --slack-bot-token.');
     process.exit(1);
 }
 // Catch swapped tokens BEFORE writing. Otherwise init produces a
@@ -265,14 +314,26 @@ const skillsDir = String(values['skills-dir'] ||
 
 rl.close();
 
-// Determine active channel
-let activeChannel: string = channelFlag || settings.channel || 'telegram';
-if (!channelFlag) {
-    // Only infer when exactly one channel is configured; two or more leaves
-    // the existing value alone rather than silently picking one.
-    if (dcEnabled && !tgEnabled && !slEnabled) activeChannel = 'discord';
-    else if (tgEnabled && !dcEnabled && !slEnabled) activeChannel = 'telegram';
-    else if (slEnabled && !tgEnabled && !dcEnabled) activeChannel = 'slack';
+// Determine enabled gateways and home channel (legacy single-selection kept as comment: dcEnabled && !tgEnabled).
+const messagingEnabledChannels: MessengerChannel[] = [];
+if (tgEnabled) messagingEnabledChannels.push('telegram');
+if (dcEnabled) messagingEnabledChannels.push('discord');
+if (slEnabled) messagingEnabledChannels.push('slack');
+
+let homeChannel: MessengerChannel = 'telegram';
+if (homeChannelFlag && isMessengerChannel(homeChannelFlag)) {
+    homeChannel = homeChannelFlag;
+} else if (channelFlag && isMessengerChannel(channelFlag)) {
+    homeChannel = channelFlag;
+} else {
+    const existingHome = settings.messaging?.homeChannel ?? settings.channel;
+    if (isMessengerChannel(existingHome as unknown)) homeChannel = existingHome as MessengerChannel;
+}
+if (messagingEnabledChannels.length > 0 && !messagingEnabledChannels.includes(homeChannel)) {
+    homeChannel = messagingEnabledChannels[0] ?? 'telegram';
+}
+if (!messagingEnabledChannels.includes(homeChannel)) {
+    messagingEnabledChannels.unshift(homeChannel);
 }
 
 // Merge (preserve existing values unless --force)
@@ -293,7 +354,12 @@ merged.workingDir = workingDir;
 merged.cli = cli;
 merged["permissions"] = 'auto';
 merged.skillsDir = skillsDir;
-merged.channel = activeChannel;
+delete merged['channel'];
+merged.messaging = {
+    ...(settings.messaging || {}),
+    enabledChannels: messagingEnabledChannels,
+    homeChannel,
+};
 if (tgEnabled || values.force) {
     merged.telegram = { enabled: tgEnabled, token: tgToken, allowedChatIds: tgChatIds };
 }
@@ -421,7 +487,8 @@ console.log(`
 
   Working dir : ${workingDir}
   CLI         : ${cli}
-  Channel     : ${activeChannel}
+  Gateways    : ${messagingEnabledChannels.join(', ') || 'none'}
+  Home channel: ${homeChannel}
   Permissions : auto
   Telegram    : ${tgEnabled ? '✅ ' + tgToken.slice(0, 10) + '...' : '❌ off'}
   Discord     : ${dcEnabled ? '✅ ' + dcToken.slice(0, 10) + '...' : '❌ off'}

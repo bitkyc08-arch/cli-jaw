@@ -1,100 +1,215 @@
-import { readSource } from './source-normalize.js';
-// Messaging runtime tests — Phase 6 Bundle B
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+    clearTargetState,
+    getEnabledChannels,
+    getHomeChannel,
+    getLastActiveTarget,
+    getLatestSeenTarget,
+    hydrateTargetsFromSettings,
+    registerTransport,
+    restartMessagingRuntime,
+    setLastActiveTarget,
+    setLatestSeenTarget,
+    shutdownMessagingRuntime,
+    startMessagingTransport,
+    __resetTransportRegistryForTests,
+    __resetTargetStateForTests,
+} from '../../src/messaging/runtime.js';
+import { loadSettings, settings, SETTINGS_PATH, migrateSettings } from '../../src/core/config.js';
+import type { MessengerChannel, RemoteTarget } from '../../src/messaging/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
-const runtimeSrc = readSource(join(projectRoot, 'src/messaging/runtime.ts'), 'utf8');
-const configSrc = readSource(join(projectRoot, 'src/core/config.ts'), 'utf8');
-const runtimeSettingsSrc = readSource(join(projectRoot, 'src/core/runtime-settings.ts'), 'utf8');
-const serverSrc = readSource(join(projectRoot, 'server.ts'), 'utf8');
 
-// ─── Target state management ──────────────────────
+function freshSettings(override: Record<string, any> = {}) {
+    __resetTransportRegistryForTests();
+    __resetTargetStateForTests();
+    settings["messaging"] = { enabledChannels: [], homeChannel: 'telegram', lastActive: {}, latestSeen: {}, ...override.messaging };
+}
 
-test('runtime exports clearTargetState for restart cleanup', () => {
-    assert.match(runtimeSrc, /export function clearTargetState/,
-        'clearTargetState must be exported');
+function transportSpy(channel: MessengerChannel, failInit = false) {
+    let initCalled = 0;
+    let shutdownCalled = 0;
+    registerTransport(channel, {
+        init: async () => {
+            initCalled++;
+            if (failInit) throw new Error(`${channel} init failed`);
+            return true;
+        },
+        shutdown: async () => { shutdownCalled++; },
+    });
+    return { get initCalled() { return initCalled; }, get shutdownCalled() { return shutdownCalled; } };
+}
+
+const tgTarget: RemoteTarget = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: 'tg-1' };
+const dcTarget: RemoteTarget = { channel: 'discord', targetKind: 'channel', peerKind: 'group', targetId: 'dc-1' };
+const slackTarget: RemoteTarget = { channel: 'slack', targetKind: 'channel', peerKind: 'group', targetId: 'sl-1' };
+
+test('getEnabledChannels returns messaging.enabledChannels', () => {
+    freshSettings({ messaging: { enabledChannels: ['discord', 'slack'], homeChannel: 'discord' } });
+    assert.deepEqual(getEnabledChannels(), ['discord', 'slack']);
 });
 
-test('runtime exports hydrateTargetsFromSettings for boot-time hydration', () => {
-    assert.match(runtimeSrc, /export function hydrateTargetsFromSettings/,
-        'hydrateTargetsFromSettings must be exported');
+test('getEnabledChannels filters unknown channels', () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram', 'unknown'], homeChannel: 'telegram' } });
+    assert.deepEqual(getEnabledChannels(), ['telegram']);
 });
 
-test('server.ts hydrates targets from settings on boot', () => {
-    assert.ok(serverSrc.includes('hydrateTargetsFromSettings'),
-        'server.ts should call hydrateTargetsFromSettings on boot');
+test('getHomeChannel falls back to telegram when unset', () => {
+    freshSettings({ messaging: {} });
+    assert.equal(getHomeChannel(), 'telegram');
 });
 
-// ─── Stale target cleanup on restart ───────────────
-
-test('restartMessagingRuntime clears stale targets', () => {
-    assert.match(runtimeSrc, /clearTargetState\(\)/,
-        'restartMessagingRuntime must call clearTargetState()');
+test('clearTargetState(channel) removes only that channel', () => {
+    freshSettings({ messaging: {} });
+    setLastActiveTarget('telegram', tgTarget);
+    setLastActiveTarget('discord', dcTarget);
+    setLatestSeenTarget('slack', slackTarget);
+    clearTargetState('discord');
+    assert.deepEqual(getLastActiveTarget('telegram'), tgTarget);
+    assert.equal(getLastActiveTarget('discord'), null);
+    assert.deepEqual(getLatestSeenTarget('slack'), slackTarget);
 });
 
-// ─── Inactive channel patch does NOT restart active ─
-
-test('inactive channel patch does not restart active runtime', () => {
-    // restartMessagingRuntime should check if the ACTIVE channel was patched,
-    // not just any channel
-    assert.match(runtimeSrc, /activeChannelPatched/,
-        'should track whether the active channel was patched');
-    assert.ok(!runtimeSrc.includes('!!patch.telegram\n        || !!patch.discord'),
-        'should NOT restart on any telegram/discord patch — only active channel');
-});
-
-// ─── Env override in catch path ────────────────────
-
-test('loadSettings catch path applies env overrides', () => {
-    // The catch block (no settings.json) should still apply DISCORD_TOKEN etc.
-    assert.match(configSrc, /applyEnvOverrides/,
-        'config should have applyEnvOverrides function');
-    // Verify it's called in the loadSettings catch path
-    const loadSettingsFn = configSrc.slice(
-        configSrc.indexOf('export function loadSettings'),
-        configSrc.indexOf('\nexport function saveSettings'),
+test('restartMessagingRuntime clears only affected channel targets', async () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } });
+    const tg = transportSpy('telegram');
+    const dc = transportSpy('discord');
+    await startMessagingTransport('telegram');
+    await startMessagingTransport('discord');
+    setLastActiveTarget('telegram', tgTarget);
+    setLastActiveTarget('discord', dcTarget);
+    setLastActiveTarget('slack', slackTarget);
+    await restartMessagingRuntime(
+        { messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } },
+        { messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } },
+        { discord: { enabled: true } },
     );
-    const outerCatchIdx = loadSettingsFn.indexOf('} catch');
-    const catchBlock = loadSettingsFn.slice(outerCatchIdx);
-    assert.ok(catchBlock.includes('applyEnvOverrides'),
-        'loadSettings catch path must call applyEnvOverrides');
+    assert.equal(dc.shutdownCalled, 1, 'discord transport should shutdown');
+    assert.equal(dc.initCalled, 2, 'discord transport should re-init');
+    assert.equal(tg.initCalled, 1, 'telegram transport should not re-init');
+    assert.equal(tg.shutdownCalled, 0, 'telegram transport should keep running');
+    assert.equal(getLastActiveTarget('discord'), null, 'discord target should be cleared');
+    assert.deepEqual(getLastActiveTarget('telegram'), tgTarget, 'telegram target should survive');
+    assert.deepEqual(getLastActiveTarget('slack'), slackTarget, 'slack target should survive');
 });
 
-test('applyEnvOverrides handles DISCORD_TOKEN', () => {
-    assert.match(configSrc, /process\.env\.DISCORD_TOKEN/,
-        'should read DISCORD_TOKEN from env');
+test('restartMessagingRuntime is no-op when disabled channel is patched', async () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram'], homeChannel: 'telegram' } });
+    const tg = transportSpy('telegram');
+    await startMessagingTransport('telegram');
+    setLastActiveTarget('telegram', tgTarget);
+    await restartMessagingRuntime(
+        { messaging: { enabledChannels: ['telegram'], homeChannel: 'telegram' } },
+        { messaging: { enabledChannels: ['telegram'], homeChannel: 'telegram' } },
+        { discord: { token: 'x' } },
+    );
+    assert.equal(tg.shutdownCalled, 0, 'telegram transport should stay running');
+    assert.deepEqual(getLastActiveTarget('telegram'), tgTarget, 'telegram target should survive');
 });
 
-test('applyEnvOverrides handles TELEGRAM_ALLOWED_CHAT_IDS', () => {
-    assert.match(configSrc, /process\.env\.TELEGRAM_ALLOWED_CHAT_IDS/,
-        'should read TELEGRAM_ALLOWED_CHAT_IDS from env');
+test('restartMessagingRuntime restarts enabled channels on locale patch', async () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } });
+    const tg = transportSpy('telegram');
+    const dc = transportSpy('discord');
+    await startMessagingTransport('telegram');
+    await startMessagingTransport('discord');
+    await restartMessagingRuntime(
+        { messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } },
+        { messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } },
+        { locale: 'ko' },
+    );
+    assert.equal(tg.shutdownCalled, 1);
+    assert.equal(dc.shutdownCalled, 1);
+    assert.equal(tg.initCalled, 2);
+    assert.equal(dc.initCalled, 2);
 });
 
-// ─── Transactional settings + restart ───────────────
+test('homeChannel-only patch does not restart inbound transports', async () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } });
+    const tg = transportSpy('telegram');
+    const dc = transportSpy('discord');
+    await startMessagingTransport('telegram');
+    await startMessagingTransport('discord');
+    await restartMessagingRuntime(
+        { messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } },
+        { messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'discord' } },
+        { messaging: { homeChannel: 'discord' } },
+    );
+    assert.equal(tg.shutdownCalled, 0);
+    assert.equal(dc.shutdownCalled, 0);
+    assert.equal(tg.initCalled, 1);
+    assert.equal(dc.initCalled, 1);
+});
+
+test('hydrateTargetsFromSettings restores channel-scoped targets', () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram'], homeChannel: 'telegram' } });
+    hydrateTargetsFromSettings({
+        messaging: {
+            enabledChannels: ['telegram', 'discord'],
+            homeChannel: 'telegram',
+            lastActive: { telegram: tgTarget, discord: dcTarget },
+            latestSeen: { slack: slackTarget },
+        },
+    });
+    assert.deepEqual(getLastActiveTarget('telegram'), tgTarget);
+    assert.deepEqual(getLastActiveTarget('discord'), dcTarget);
+    assert.equal(getLastActiveTarget('slack'), null);
+    assert.deepEqual(getLatestSeenTarget('slack'), slackTarget);
+});
+
+test('shutdownMessagingRuntime stops all registered transports', async () => {
+    freshSettings({ messaging: { enabledChannels: ['telegram', 'discord'], homeChannel: 'telegram' } });
+    const tg = transportSpy('telegram');
+    const dc = transportSpy('discord');
+    await startMessagingTransport('telegram');
+    await startMessagingTransport('discord');
+    await shutdownMessagingRuntime();
+    assert.equal(tg.shutdownCalled, 1);
+    assert.equal(dc.shutdownCalled, 1);
+});
+
+test('startMessagingTransport records transport errors without throwing', async () => {
+    freshSettings({ messaging: { enabledChannels: ['discord'], homeChannel: 'telegram' } });
+    transportSpy('discord', true);
+    const started = await startMessagingTransport('discord');
+    assert.equal(started, false);
+});
+
+test('loadSettings migrates legacy channel to messaging.enabledChannels and homeChannel', () => {
+    const raw = JSON.stringify({
+        settingsSchemaVersion: 3,
+        channel: 'slack',
+        cli: 'codex',
+        multiSession: { enabled: true, maxConcurrent: 2 },
+        multiSessionDefaultMigration: { id: 'multi-session-default-v3', state: 'accepted' },
+        telegram: { enabled: true, token: '' },
+    });
+    writeFileSync(SETTINGS_PATH, raw);
+    loadSettings();
+    assert.equal(settings.channel, undefined);
+    assert.deepEqual(settings.messaging.enabledChannels, ['slack']);
+    assert.equal(settings.messaging.homeChannel, 'slack');
+    assert.equal(settings.settingsSchemaVersion, 4);
+    unlinkSync(SETTINGS_PATH);
+});
+
+test('migrateSettings normalizes duplicate enabledChannels without reordering', () => {
+    const migrated = migrateSettings({
+        settingsSchemaVersion: 4,
+        channel: 'discord',
+        messaging: { enabledChannels: ['discord', 'discord', 'telegram'], homeChannel: 'discord' },
+    });
+    assert.deepEqual(migrated.messaging.enabledChannels, ['discord', 'telegram']);
+    assert.equal(migrated.messaging.homeChannel, 'discord');
+});
 
 test('applyRuntimeSettingsPatch is async and awaits restart', () => {
-    assert.match(runtimeSettingsSrc, /export async function applyRuntimeSettingsPatch/,
-        'must be async function');
-    // The call is awaited through an injectable indirection now, so match the
-    // await and the callee rather than one literal spelling of the pair.
-    assert.match(runtimeSettingsSrc, /await \(opts\.restartMessaging \?\? restartMessagingRuntime\)\(/,
-        'must await the messaging restart');
+    const runtimeSettingsSrc = readFileSync(join(projectRoot, 'src/core/runtime-settings.ts'), 'utf8');
+    assert.match(runtimeSettingsSrc, /export async function applyRuntimeSettingsPatch/, 'must be async function');
+    assert.match(runtimeSettingsSrc, /await \(opts\.restartMessaging \?\? restartMessagingRuntime\)\(/, 'must await the messaging restart');
 });
-
-// The old form grepped for replaceSettings/saveSettings with prevSnapshot, and
-// both call sites disappeared when persistence moved to write-then-commit. What
-// matters is that a messaging restart failure undoes the patch everywhere, so
-// drive a real failure and check the outcome.
-// This file owns the messaging restart path specifically, so the failure is
-// injected into restartMessagingRuntime rather than into the CLI switch, which
-// a different test covers. Writes go to an injected sink because every test
-// file shares one temp home and the real settings.json would race.
-// The rollback contract for this path is asserted in
-// tests/unit/cli-switch-refresh.test.ts, which owns the settings-mutation
-// cases. They share process-wide settings state and the database, so
-// splitting them across files made them race on a SQLite lock rather than
-// on anything they were checking.

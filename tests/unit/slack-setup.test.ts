@@ -91,7 +91,7 @@ test('setup rejects an app token without the xapp- prefix', (t) => {
 
 test('setup writes slack settings, preserves unrelated fields, never touches channel', (t) => {
     const seed = {
-        channel: 'telegram',
+        messaging: { enabledChannels: ['telegram'], homeChannel: 'telegram' },
         slack: { enabled: false, mentionOnly: false, replyInThread: false, forwardAll: true },
     };
     const { status, output, home } = runSlack([
@@ -115,7 +115,8 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
     assert.equal(s.slack.mentionOnly, false);
     assert.equal(s.slack.replyInThread, false);
     // A two-token channel must never hijack the active channel.
-    assert.equal(s.channel, 'telegram');
+    assert.equal(s.messaging.homeChannel, 'telegram');
+    assert.deepEqual(s.messaging.enabledChannels, ['telegram']);
 });
 
 test('setup without an app token writes outbound-only with a warning', (t) => {
