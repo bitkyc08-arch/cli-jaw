@@ -106,6 +106,7 @@ import { makeWebCommandCtx } from './src/cli/web-command-ctx.js';
 import './src/discord/register.js'; // side-effect: registers discord transport (bot.js + discord.js load lazily on first use)
 import './src/slack/register.js'; // side-effect: registers slack transport (send-handler.js loads lazily on first use)
 import { initEnabledMessagingRuntimes, shutdownMessagingRuntime, hydrateTargetsFromSettings, getEnabledChannels } from './src/messaging/runtime.js';
+import { initIngressJournal } from './src/messaging/durable-ingress.js';
 import type { MessengerChannel } from './src/messaging/types.js';
 
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
@@ -639,6 +640,10 @@ server.listen(PORT, bindHost, async () => {
     } catch (e: unknown) { console.error('[mcp-init]', (e as Error).message); }
 
     hydrateTargetsFromSettings(settings);
+    // Before any transport starts: the journal must exist for the first inbound event,
+    // and the connection is handed in rather than imported so the module stays testable
+    // against a temporary database.
+    initIngressJournal(db);
     const messagingBoot = await initEnabledMessagingRuntimes();
     // Only `failed` is an incident. An outbound-only Slack install and a deliberate
     // non-attach instance are operator choices; shouting `init failed` at them on
