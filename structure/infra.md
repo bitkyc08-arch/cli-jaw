@@ -183,7 +183,46 @@ the cmd shim or direct Node entry point instead.
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `pick-gyp-python.sh`, `release.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
+`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `pick-gyp-python.sh`, `promote-to-main.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
+
+---
+
+## 릴리스 무결성 계약 (release integrity, #333)
+
+브랜치 모델은 feature → `dev` → `main` 그대로다. `main`은 릴리스 포인터이며, `dev`에서 검증된 커밋만 fast-forward로 승격된다.
+
+### 릴리스 절차 (`scripts/promote-to-main.sh`)
+
+1. `dev` 체크아웃에서 실행한다. 작업 트리가 깨끗해야 하고 HEAD == `origin/dev`여야 하며, `origin/main`이 `dev`의 조상이 아니면 즉시 중단한다.
+2. 빌드(tsc·vite) + Electron 검증 + `gate:all` + 증거 게이트(`--require-evidence`로 강제)를 통과해야 한다.
+3. 버전 범프 커밋을 **dev 위에** 만들고 `origin/dev`로 푸시한다. main이 dev보다 앞서는 일이 구조적으로 사라진다.
+4. 그 정확한 SHA를 `git push origin <sha>:main`으로 fast-forward 승격한다. force 금지 — 실패하면 main이 dev 밖에서 움직인 것이므로 사람이 확인한다.
+5. `v<version>` 태그를 그 SHA에 만들고 푸시, GitHub Release 스텁을 생성한다.
+6. npm publish는 자동으로 일어나지 않는다. 스크립트가 마지막에 출력하는 `gh workflow run publish.yml --ref main -f expected-sha=<sha> ...` 명령을 운영자가 검토 후 직접 실행한다.
+
+### publish.yml — dispatch 전용
+
+`.github/workflows/publish.yml`은 push 트리거가 없다. `workflow_dispatch`만 받으며 `expected-sha` 입력이 필수다: 디스패치 시점의 `github.sha`가 `expected-sha`와 다르면(브랜치가 그 사이 움직였으면) 첫 스텝에서 실패한다. 실제 publish는 여전히 tag:branch 매칭을 요구한다 — `latest`는 `main` ref에서만, `preview`는 `preview` ref에서만.
+
+### 저장소 관리자 수동 설정 (API 권한 없음 — owner가 GitHub UI에서 직접)
+
+push 토큰에는 admin 권한이 없어 아래는 owner가 수동으로 설정해야 한다:
+
+1. **Default branch를 `dev`로 변경**: Settings → General → Default branch → `dev`. PR 기본 타깃과 clone 기본이 dev가 된다.
+2. **`main` 브랜치 보호**: Settings → Branches → Add branch ruleset (또는 classic protection) → 대상 `main`:
+   - Require status checks to pass: `node-tests` 필수 체크로 지정
+   - Do not allow bypassing the above settings (관리자 포함 강제)
+   - Block force pushes, Restrict deletions 활성화
+   - fast-forward push(`promote-to-main.sh`의 `<sha>:main`)는 dev에서 CI를 통과한 커밋이므로 보호 규칙과 충돌하지 않는다.
+3. (권장) `dev`에도 force push 차단 룰을 두면 승격 전제(HEAD == origin/dev)가 더 단단해진다.
+
+### 롤백 / 부분 릴리스 복구
+
+- **promote 후 publish 전에 문제 발견**: 아무것도 배포되지 않았다. `gh workflow run`을 실행하지 말고, 수정 커밋을 dev에 올린 뒤 `promote-to-main.sh`를 다시 실행한다(새 버전으로 재승격). main을 되돌릴 필요 없다 — 다음 fast-forward가 덮는다.
+- **publish 실패(레지스트리 오류 등)**: 태그·릴리스는 이미 있으므로 같은 SHA로 workflow를 재디스패치한다(`expected-sha` 동일). publish.yml은 이미 존재하는 버전을 감지하면 skip하므로 재실행이 안전하다.
+- **잘못된 버전이 npm에 올라간 경우**: `npm deprecate cli-jaw@<version> "reason"`으로 표시하고, dist-tag가 오염됐으면 `npm dist-tag add cli-jaw@<good-version> latest`로 되돌린다. unpublish는 72시간 제한과 재사용 불가 제약이 있으므로 최후 수단.
+- **태그만 만들어지고 release 생성 실패**: 스크립트가 backfill 명령을 출력한다. `gh release create v<version> ...`으로 수동 생성하면 desktop-release.yml이 이어받는다.
+- **main이 dev 밖에서 움직여 fast-forward 불가**: 그 커밋을 dev로 merge해 계보를 합친 뒤 재승격한다. main에 대한 force push는 금지.
 
 ---
 
