@@ -59,6 +59,12 @@ git worktree add -b "$PROMOTION_BRANCH" "$WORKTREE" "$PREVIEW_SHA"
   if [ -n "$(git diff --cached --name-only)" ]; then
     git commit -m "chore(promote): sync doc line counts" --no-verify
   fi
+  # Second pass: the commit itself may change str_func.md line counts (self-referential)
+  bash structure/verify-counts.sh --fix >/dev/null 2>&1 || true
+  if [ -n "$(git diff --name-only)" ]; then
+    git add structure/ 2>/dev/null || true
+    git commit -m "chore(promote): sync doc line counts (pass 2)" --no-verify
+  fi
   npm run gate:all
   node scripts/require-release-evidence.mjs --accept-ci-evidence
   git add package.json package-lock.json electron/package.json electron/package-lock.json
