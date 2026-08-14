@@ -348,7 +348,7 @@ jobs:
           exit 1
 
       - name: Create GitHub release
-        if: ${{ steps.release.outputs.skip-publish != 'true' && steps.release.outputs.dry-run != 'true' && steps.release.outputs.create-release == 'true' && steps.registry.outputs.exists != 'true' }}
+        if: ${{ steps.release.outputs.skip-publish != 'true' && steps.release.outputs.dry-run != 'true' && steps.release.outputs.create-release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
