@@ -9,6 +9,7 @@ import {
     redactChannelSecrets, userErrorText, logErrorText,
     redactionCopyWork, resetRedactionCopyWork,
 } from '../../src/messaging/redact.js';
+import { foldWork, resetFoldWork } from '../../src/messaging/fold.js';
 
 // A realistic Telegram secret: 35 chars after the numeric bot id.
 const TG_SECRET = 'AAHfoobarbazquxquux12345678901234567';
@@ -54,6 +55,40 @@ function assertLinearCopyWork(build: (n: number) => string, n: number, label: st
     assert.ok(ratio < 1.5, `${label}: copy work per character grew ${ratio.toFixed(2)}x `
         + `(${small.toFixed(2)} → ${large.toFixed(2)} between ${n} and ${n * 2}); `
         + 'expected assembly to stay proportional to input length');
+}
+
+/** Characters the FOLD walked while masking `input`, per input character. */
+function foldWorkPerChar(input: string): number {
+    resetFoldWork();
+    redactChannelSecrets(input);
+    return foldWork() / input.length;
+}
+
+/**
+ * Assert that fold work stays proportional to input length as the input grows.
+ *
+ * The twin of `assertLinearCopyWork`, for the other half of the cost. The two
+ * are not interchangeable, and the deep-nesting test proves it: its fixture
+ * nests escapes until the fold gives up, so `stripSecretsFoundInCanonicalForm`
+ * returns down the `exhausted` branch and never reaches the apply loop at all.
+ * Copy work on that fixture is exactly 0 — measured 0 at every size and on both
+ * axes — so a copy-work ratio there is 0/0, and the assertion it produces can
+ * neither pass nor mean anything. Fold work is what that fixture actually
+ * spends, so fold work is what guards it.
+ *
+ * Budgeted folding holds this flat at 9.93 per character for every depth.
+ * Bounding rounds instead — each one rescanning the whole string — moves it to
+ * 140.7, 269.2 and 525.5 for depth 256/512/1024: it doubles with the depth,
+ * which is the signature of the quadratic. The 1.5x bound sits far outside the
+ * flat case and far below the regression, matching `assertLinearCopyWork`.
+ */
+function assertLinearFoldWork(build: (n: number) => string, n: number, label: string): void {
+    const small = foldWorkPerChar(build(n));
+    const large = foldWorkPerChar(build(n * 2));
+    const ratio = large / small;
+    assert.ok(ratio < 1.5, `${label}: fold work per character grew ${ratio.toFixed(2)}x `
+        + `(${small.toFixed(2)} → ${large.toFixed(2)} between ${n} and ${n * 2}); `
+        + 'expected folding to stay proportional to input length');
 }
 
 // ─── Telegram: the token lives in the URL path ───────
@@ -378,17 +413,32 @@ test('the repeat sweep covers every proven credential, not the first few', () =>
 test('deep nesting across many runs does not stall the sink', () => {
     // 40 runs nested 512 deep is 43 KB, and rebuilding the fold per round took
     // three quarters of a second — enough to matter in a logging path.
-    let input = '';
-    for (let run = 0; run < 40; run += 1) {
-        let piece = `bot123456789:${'A'.repeat(35)}`;
-        for (let round = 0; round < 512; round += 1) {
-            piece = piece.replace(/%/g, '%25').replace(/^bot/, '%62ot');
+    //
+    // NESTING DEPTH is the axis, not the number of runs, and the two are not
+    // interchangeable. The fold rescans the whole string once per decode round,
+    // so its cost is (rounds x length). Only depth drives the round count:
+    // doubling the runs doubles the length but leaves the rounds alone, which
+    // is linear growth even when the bound is broken. Measured against a
+    // round-capped fold, per-character work went 140.7 -> 269.2 -> 525.5 along
+    // depth (it doubles — the quadratic signature) while the runs axis sat at
+    // 269.2 -> 269.2, a ratio of 1.00. A guard on the runs axis cannot fail.
+    //
+    // What holds it flat is `decodeBudgetFor`: charging every round against one
+    // character budget caps total work at 8x the input, so the healthy fold
+    // reads 9.93 per character at every depth.
+    const build = (depth: number) => {
+        let input = '';
+        for (let run = 0; run < 40; run += 1) {
+            let piece = `bot123456789:${'A'.repeat(35)}`;
+            for (let round = 0; round < depth; round += 1) {
+                piece = piece.replace(/%/g, '%25').replace(/^bot/, '%62ot');
+            }
+            input += `${piece} `;
         }
-        input += `${piece} `;
-    }
-    const started = Date.now();
-    redactChannelSecrets(input);
-    assert.ok(Date.now() - started < 300, `took ${Date.now() - started}ms on ${input.length} chars`);
+        return input;
+    };
+
+    assertLinearFoldWork(build, 512, 'nesting depth');
 });
 
 test('keyboard button labels and urls are masked', async () => {
