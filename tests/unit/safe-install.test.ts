@@ -591,14 +591,30 @@ test('SAF-004j2: fresh-machine evidence collector documents supported release ev
 });
 
 test('SAF-004j3: publish scripts enforce fresh-machine evidence before push or publish', () => {
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/install.sh'), 'release evidence trigger paths should include macOS installer changes');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/install-wsl.sh'), 'release evidence trigger paths should include WSL installer changes');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/verify-fresh-install.sh'), 'release evidence trigger paths should include verifier changes');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/audit-fresh-install-evidence.mjs'), 'release evidence trigger paths should include auditor changes');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/verify-release-evidence.mjs'), 'release evidence trigger paths should include release-gate changes');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/require-release-evidence.mjs'), 'release evidence trigger paths should include this publish guard');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/promote-to-main.sh'), 'release evidence trigger paths should include stable release script changes');
-    assert.ok(requireReleaseEvidenceSrc.includes('scripts/release-preview.sh'), 'release evidence trigger paths should include preview release script changes');
+    // These used to be substring checks against the guard's source, back when it
+    // carried its own hand-written path list. That list drifted from the platform
+    // workflow by 21 paths (#333 G1), so the guard now derives the set instead —
+    // and the assertions have to look at the DERIVED set, not the source text.
+    // Full parity coverage lives in tests/unit/installer-sensitive-path-parity.test.ts.
+    const printed = spawnSync(process.execPath, [join(repoRoot, 'scripts/require-release-evidence.mjs'), '--print-paths'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+    });
+    assert.equal(printed.status, 0, `release evidence guard should print its derived path set:\n${printed.stderr}`);
+    const sensitivePaths: string[] = JSON.parse(printed.stdout);
+    const requiresEvidence = (path: string) => assert.ok(
+        sensitivePaths.includes(path),
+        `release evidence trigger paths should include ${path}`,
+    );
+    requiresEvidence('scripts/install.sh');
+    requiresEvidence('scripts/install-wsl.sh');
+    requiresEvidence('scripts/install.ps1');
+    requiresEvidence('scripts/verify-fresh-install.sh');
+    requiresEvidence('scripts/audit-fresh-install-evidence.mjs');
+    requiresEvidence('scripts/verify-release-evidence.mjs');
+    requiresEvidence('scripts/require-release-evidence.mjs');
+    requiresEvidence('scripts/promote-to-main.sh');
+    requiresEvidence('scripts/release-preview.sh');
     assert.ok(readmeSrc.includes('CLI_JAW_MACOS_EVIDENCE_DIR=/path/to/macos-evidence'), 'README should document release-script evidence env');
     assert.ok(readmeSrc.includes('bash scripts/promote-to-main.sh'), 'README should show stable promotion script with evidence directories');
 
