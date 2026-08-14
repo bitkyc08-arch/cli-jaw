@@ -226,8 +226,8 @@ test('npm publish workflow uses dev/preview/main branch policy without release r
     assert.ok(workflow.includes('Check registry package version'), 'publish workflow must detect already-published versions');
     assert.ok(workflow.includes('SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published'),
         'publish workflow must skip npm publish when the exact version already exists');
-    assert.ok(workflow.includes("steps.registry.outputs.exists != 'true'"),
-        'publish workflow must not retarget a GitHub Release for an already-published npm version');
+    assert.ok(workflow.includes('gh release view "$tag"'),
+        'publish workflow must check for existing GitHub release before create-or-edit');
     assert.ok(workflow.includes('Create GitHub release'), 'publish workflow must create or update a GitHub Release');
     assert.ok(workflow.includes('--prerelease'), 'preview publishes must create GitHub prereleases');
     assert.ok(workflow.includes('previous_tag='), 'GitHub release notes must derive the previous tag automatically');
