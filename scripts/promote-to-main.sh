@@ -54,7 +54,9 @@ git worktree add -b "$PROMOTION_BRANCH" "$WORKTREE" "$PREVIEW_SHA"
   npm ci --ignore-scripts
   npm version "$STABLE_VERSION" --no-git-tag-version --allow-same-version
   node scripts/sync-electron-version.cjs
-  bash structure/verify-counts.sh --fix >/dev/null 2>&1 || true
+  if bash structure/verify-counts.sh --fix >/dev/null 2>&1; then
+    git add structure/ 2>/dev/null || true
+  fi
   npm run gate:all
   node scripts/require-release-evidence.mjs --accept-ci-evidence
   git add package.json package-lock.json electron/package.json electron/package-lock.json
