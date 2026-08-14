@@ -560,7 +560,8 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 `gate:messaging-conformance` is the 22nd release gate: it re-runs the existing three-channel contract suites and writes a `functional-certified` artifact. It is not a chaos matrix and it is not `release-certified`.
 A file-backed restart is `tests/integration/messaging-ingress-restart.test.ts`: a second `IngressJournal` on the same `jaw.db` path. Completed stays `already_handled`; mid-flight keeps the stored `trace_id`.
 `append` treats a primary-key clash from a second connection as `duplicate`. A locked or full database still throws so Slack can refuse ACK.
-`src/messaging/effect-once.ts` owns `effect_claims`. A claim is held by `owner_id` + `claim_token`; an expired lease lets a new owner claim the row but never re-runs the effect body, and `manual` is the terminal hold for an outcome nobody can determine. Non-terminal claims block the ingress retention sweep.
+`src/messaging/effect-once.ts` owns `effect_claims`.
+`src/messaging/outbound-outbox.ts` owns `outbound_attempts`. A row is reserved before the vendor call. `ambiguous` is reachable only from `sending` and is terminal for the automatic path. Non-terminal and `ambiguous` attempts block the ingress retention sweep. A claim is held by `owner_id` + `claim_token`; an expired lease lets a new owner claim the row but never re-runs the effect body, and `manual` is the terminal hold for an outcome nobody can determine. Non-terminal claims block the ingress retention sweep.
 `sendSlackText` waits a short Slack `ratelimited`/429 and retries that chunk once. A long Retry-After still surfaces. The chunk loop does not restart.
 `sendChannelOutput` emits `outbound.send` on the current messaging ALS. Empty ALS stays empty — no second id.
 

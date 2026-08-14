@@ -108,6 +108,7 @@ import './src/slack/register.js'; // side-effect: registers slack transport (sen
 import { initEnabledMessagingRuntimes, shutdownMessagingRuntime, hydrateTargetsFromSettings, getEnabledChannels } from './src/messaging/runtime.js';
 import { initIngressJournal } from './src/messaging/durable-ingress.js';
 import { initEffectClaimStore } from './src/messaging/effect-once.js';
+import { initOutboundOutbox } from './src/messaging/outbound-outbox.js';
 import type { MessengerChannel } from './src/messaging/types.js';
 
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
@@ -650,6 +651,7 @@ server.listen(PORT, bindHost, async () => {
     // created lazily on first use would leave a window in which the sweeper is
     // allowed to delete the parent of a live claim.
     initEffectClaimStore(db);
+    initOutboundOutbox(db);
     const messagingBoot = await initEnabledMessagingRuntimes();
     // Only `failed` is an incident. An outbound-only Slack install and a deliberate
     // non-attach instance are operator choices; shouting `init failed` at them on
