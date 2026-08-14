@@ -56,6 +56,9 @@ git worktree add -b "$PROMOTION_BRANCH" "$WORKTREE" "$PREVIEW_SHA"
   node scripts/sync-electron-version.cjs
   bash structure/verify-counts.sh --fix >/dev/null 2>&1 || true
   git add structure/ 2>/dev/null || true
+  if [ -n "$(git diff --cached --name-only)" ]; then
+    git commit -m "chore(promote): sync doc line counts" --no-verify
+  fi
   npm run gate:all
   node scripts/require-release-evidence.mjs --accept-ci-evidence
   git add package.json package-lock.json electron/package.json electron/package-lock.json
