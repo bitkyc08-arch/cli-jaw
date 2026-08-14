@@ -642,16 +642,23 @@ server.listen(PORT, bindHost, async () => {
     } catch (e: unknown) { console.error('[mcp-init]', (e as Error).message); }
 
     hydrateTargetsFromSettings(settings);
+    // Children first, journal second. The journal's constructor asserts that every
+    // table with a foreign key into it has registered a retention predicate, and a
+    // predicate is only registered by its owning store's constructor. On a FRESH
+    // database the old order survived by accident — the child tables did not exist
+    // yet, so the assert found nothing to complain about. On any host that has
+    // already run this version once, the tables are on disk while the registry is
+    // empty at process start, so the assert threw and took the whole boot with it:
+    // messaging never initialized and every channel silently went dark.
+    //
+    // Creating the stores first is also the honest order — the guard is meant to
+    // prove the children announced themselves, which it cannot do before they exist.
+    initEffectClaimStore(db);
+    initOutboundOutbox(db);
     // Before any transport starts: the journal must exist for the first inbound event,
     // and the connection is handed in rather than imported so the module stays testable
     // against a temporary database.
     initIngressJournal(db);
-    // Right after the journal, before any transport: the retention guard only learns
-    // about a child table when its owner registers a predicate, so a claim store
-    // created lazily on first use would leave a window in which the sweeper is
-    // allowed to delete the parent of a live claim.
-    initEffectClaimStore(db);
-    initOutboundOutbox(db);
     const messagingBoot = await initEnabledMessagingRuntimes();
     // Only `failed` is an incident. An outbound-only Slack install and a deliberate
     // non-attach instance are operator choices; shouting `init failed` at them on
