@@ -24,6 +24,11 @@ if (shouldShowHelp(process.argv)) printAndExit(`
   Connects to the running jaw server for interactive chat.
   Server must be running first (jaw serve).
 
+  Subcommands:
+    jaw chat search <query>  Search chat message history
+                             Options: --days N, --context N, --limit N,
+                                      --recent N, --all-sessions
+
   Modes:
     (default)    Rich TUI with persistent footer
     --raw        JSON protocol mode (for UI integration)

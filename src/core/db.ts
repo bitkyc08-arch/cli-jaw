@@ -409,6 +409,20 @@ export const searchMessages = db.prepare(`
         (SELECT id FROM messages WHERE session_id = $session_id ORDER BY id DESC LIMIT 1 OFFSET $recent),
         0
       ))
+   ORDER BY id DESC
+   LIMIT $limit
+`);
+
+export const searchMessagesAllSessions = db.prepare(`
+    SELECT id, role, content, cli, tool_log, created_at, session_id,
+           CASE WHEN content LIKE '%' || $q || '%' THEN 'content' ELSE 'tool_log' END AS match_field
+    FROM messages
+    WHERE (content LIKE '%' || $q || '%' OR tool_log LIKE '%' || $q || '%')
+      AND ($days IS NULL OR created_at >= datetime('now', '-' || $days || ' days'))
+      AND ($recent IS NULL OR id >= COALESCE(
+        (SELECT id FROM messages ORDER BY id DESC LIMIT 1 OFFSET $recent),
+        0
+      ))
     ORDER BY id DESC
     LIMIT $limit
 `);

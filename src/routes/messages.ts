@@ -7,7 +7,7 @@ import type { Router } from 'express';
 import { ok } from '../http/response.js';
 import {
     getMessages, getMessagesWithTrace, getRecentMessagesAll, getRecentMessagesAllWithTrace,
-    searchMessages, getMessageContext, getMessageCount,
+    searchMessages, searchMessagesAllSessions, getMessageContext, getMessageCount,
     getLatestAssistantMessage, getLatestDashboardActivityMessage,
 } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
@@ -87,8 +87,12 @@ export function registerMessageRoutes(app: Router): void {
         const recentRaw = Number(req.query['recent']);
         const recent = (recentRaw > 0 && recentRaw <= 5000) ? recentRaw : null;
         const contextRange = Math.min(Math.max(Number(req.query['context']) || 0, 0), 5);
-        const session_id = typeof req.query["session"] === 'string' ? req.query["session"] : getActiveChatSession();
-        const rows = searchMessages.all({ q, limit, session_id, days, recent }) as Record<string, unknown>[];
+        const sessionRaw = typeof req.query["session"] === 'string' ? req.query["session"] : null;
+        const allSessions = sessionRaw === '*' || req.query['allSessions'] === 'true' || req.query['allSessions'] === '1';
+        const session_id = allSessions ? null : (sessionRaw || getActiveChatSession());
+        const rows = allSessions
+            ? searchMessagesAllSessions.all({ q, limit, days, recent }) as Record<string, unknown>[]
+            : searchMessages.all({ q, limit, session_id, days, recent }) as Record<string, unknown>[];
         const results = rows.map(row => {
             const entry: Record<string, unknown> = {
                 id: row['id'],
@@ -98,6 +102,7 @@ export function registerMessageRoutes(app: Router): void {
                 match_field: row['match_field'],
                 tool_log: resolveToolLog(row['id'], row['tool_log'] as string | null | undefined),
                 created_at: row['created_at'],
+                ...(allSessions && row['session_id'] ? { session_id: row['session_id'] } : {}),
             };
             if (contextRange > 0) {
                 entry['context'] = getMessageContext.all({

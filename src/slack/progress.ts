@@ -37,10 +37,44 @@ export function truncateStatus(text: string): string {
  */
 export function statusFromToolEvent(data: Record<string, unknown>, fallback: string): string | null {
     const label = typeof data['label'] === 'string' ? data['label'].trim() : '';
-    const detail = typeof data['detail'] === 'string' ? data['detail'].trim() : '';
+    const rawDetail = typeof data['detail'] === 'string' ? data['detail'].trim() : '';
+    // Sanitize detail: strip file paths, command lines, and API URLs that
+    // should not be exposed in external Slack channels (#365).
+    const detail = sanitizeProgressDetail(rawDetail);
     if (!label && !detail) return null;
     const head = label || fallback;
     return truncateStatus(detail ? `${head} — ${detail}` : head);
+}
+
+/**
+ * Strip sensitive details from progress status text before it reaches Slack.
+ * Removes full file paths, command-line invocations, API URLs, and PowerShell
+ * commands that would leak internal structure to external channels.
+ */
+export function sanitizeProgressDetail(detail: string): string {
+    if (!detail) return '';
+    // Strip content that looks like a file path or command invocation.
+    // Approach: split on whitespace, redact tokens that look sensitive, rejoin.
+    const tokens = detail.split(/\s+/);
+    const safe = tokens.map(token => {
+        // Windows absolute path: C:\..., "C:\..."
+        if (/^"?[A-Z]:[\\/]/i.test(token)) return '…';
+        // Unix absolute path starting with sensitive dirs
+        if (/^\/(?:Users|home|tmp|var|etc|opt|usr|mnt|acclidge|Program)/i.test(token)) return '…';
+        // localhost URLs
+        if (/^https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(token)) return '…';
+        // Executable names with .exe suffix
+        if (/^"?(?:pwsh|powershell|bash|cmd|node)(?:\.exe)?"?$/i.test(token)) return '…';
+        return token;
+    });
+    // Remove consecutive redacted tokens
+    const deduped: string[] = [];
+    for (const t of safe) {
+        if (t === '…' && deduped[deduped.length - 1] === '…') continue;
+        deduped.push(t);
+    }
+    const cleaned = deduped.join(' ').trim();
+    return cleaned === '…' ? '' : cleaned;
 }
 
 export async function startSlackProgress(
