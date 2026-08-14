@@ -38,6 +38,7 @@ on:
       - 'tests/unit/wsl-installer-exec.test.ts'
       - 'src/core/install-integrity.ts'
       - 'scripts/install.ps1'
+      - 'tests/windows/install-ps1-contract.ps1'
       - 'scripts/postinstall-guard.cjs'
       - 'scripts/ensure-native-modules.cjs'
       - 'scripts/bundle-sidecar.sh'
@@ -86,6 +87,7 @@ on:
       - 'tests/unit/wsl-installer-exec.test.ts'
       - 'src/core/install-integrity.ts'
       - 'scripts/install.ps1'
+      - 'tests/windows/install-ps1-contract.ps1'
       - 'scripts/postinstall-guard.cjs'
       - 'scripts/ensure-native-modules.cjs'
       - 'scripts/bundle-sidecar.sh'
@@ -298,6 +300,12 @@ jobs:
         env:
           JAW_EXPECT_PLATFORM_KIND: windows-native
         run: npx tsx --test tests/unit/platform-kind-runtime.test.ts
+      - name: Validate installer contracts in PowerShell 7
+        shell: pwsh
+        run: ./tests/windows/install-ps1-contract.ps1
+      - name: Validate installer contracts in Windows PowerShell 5.1
+        shell: powershell
+        run: .\tests\windows\install-ps1-contract.ps1
 
       # NOTE: tests/unit/cli-detect.test.ts is intentionally NOT run here. Its
       # fixtures depend on the POSIX executable bit (chmod), which Windows does
