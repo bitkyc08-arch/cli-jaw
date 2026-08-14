@@ -100,7 +100,11 @@ export async function handleDashboardChat(argvFromSwitch: string[]): Promise<voi
                 process.exit(1);
         }
     } catch (err) {
-        console.error(`  ${(err as Error).message}`);
+        const msg = (err as Error).message;
+        console.error(`  ${msg}`);
+        if (msg.includes('unreachable')) {
+            console.error(`  Tip: for local-instance search, use: jaw chat search "<query>" --all-sessions`);
+        }
         process.exit(1);
     }
 }
