@@ -1057,6 +1057,15 @@ export function loadSettings() {
                 user: { ...defaults.avatar.user, ...(raw.avatar?.user || {}) },
             },
            messaging: {
+               // Spread the stored block FIRST. This object is rebuilt field by field,
+               // so anything not named here is dropped — and `enabledChannels` /
+               // `homeChannel` were not named. A v4 document therefore lost its gateway
+               // on every load, and migrateSettings then refilled it from the legacy
+               // `channel` key, which v4 had already deleted, so the fallback landed on
+               // telegram. The result was silent and self-inflicted: a Slack install
+               // read as telegram, no transport started, and the rewritten file made
+               // the corruption permanent on the next boot.
+               ...(raw.messaging || {}),
                latestSeen: { ...defaults.messaging.latestSeen, ...(raw.messaging?.latestSeen || {}) },
                lastActive: { ...defaults.messaging.lastActive, ...(raw.messaging?.lastActive || {}) },
            },
