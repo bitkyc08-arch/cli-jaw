@@ -14,6 +14,7 @@ type EvRec = Record<string, unknown>;
 export interface CodexAppEventResult {
     tool?: ToolEntry | undefined;
     text?: string | undefined;
+    channel?: string | undefined;
     sessionId?: string | undefined;
     tokens?: Record<string, number> | undefined;
     flushThinking?: boolean | undefined;
@@ -263,6 +264,12 @@ function handleItemStarted(params: EvRec): CodexAppEventResult | null {
             };
         }
         case 'agentMessage':
+        {
+            // Track the item-level channel so subsequent deltas inherit it
+            // when they do not carry their own channel field.
+            const itemChannel = fs(item, 'channel') || undefined;
+            return { channel: itemChannel };
+        }
         case 'userMessage':
         case 'hookPrompt':
             return null;
@@ -273,7 +280,10 @@ function handleItemStarted(params: EvRec): CodexAppEventResult | null {
 
 function handleAgentMessageDelta(params: EvRec): CodexAppEventResult | null {
     const delta = f(params, 'delta');
-    if (typeof delta === 'string') return { text: delta };
+    if (typeof delta === 'string') {
+        const channel = fs(params, 'channel') || undefined;
+        return { text: delta, channel };
+    }
     return null;
 }
 

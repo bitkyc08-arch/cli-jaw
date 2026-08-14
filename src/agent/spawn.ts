@@ -2099,17 +2099,32 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     heartbeatSent = false;
                 }
             }
+            // Track item-level channel (set by item/started for agentMessage items)
+            // so subsequent item/agentMessage/delta events inherit it when they don't
+            // carry their own channel field.
+            if (parsed.channel !== undefined) {
+                ctx.codexAppActiveChannel = parsed.channel;
+            }
     if (parsed.text) {
                 flushCodexAppThinking();
                 // codex-app streams item/agentMessage/delta at TOKEN granularity;
                 // the segment formatter would inject "\n- " between unjoined
                 // tokens ("이"+"지만" → "이\n- 지만"). Raw-append like the plain
                 // `claude` text_delta path (events/index.ts) instead.
-                const segment = appendAssistantRawText(ctx, parsed.text);
-                if (segment) {
-                    broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
-                    lastVisibleBroadcastTs = Date.now();
-                    heartbeatSent = false;
+                // Commentary-channel text is a transient progress update, not part
+                // of the durable response. Broadcast it for live UI preview but do
+                // NOT append to fullText — that way agent_done (and therefore
+                // Slack/Telegram/Discord delivery) contains only the final answer.
+                const effectiveChannel = parsed.channel || ctx.codexAppActiveChannel;
+                if (effectiveChannel === 'commentary') {
+                    broadcastAgentOutput(ctx, agentLabel, cli, parsed.text, empTag, traceAudience);
+                } else {
+                    const segment = appendAssistantRawText(ctx, parsed.text);
+                    if (segment) {
+                        broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
+                        lastVisibleBroadcastTs = Date.now();
+                        heartbeatSent = false;
+                    }
                 }
             }
             if (parsed.sessionId && !ctx.sessionId) {
