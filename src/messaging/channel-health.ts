@@ -7,6 +7,7 @@ import {
 } from './runtime.js';
 import { getIngressJournal, type IngressJournal } from './durable-ingress.js';
 import { snapshotMetrics, type MessagingMetricsSnapshot } from './metrics.js';
+import { getSlackScopeStatus, type SlackScopeStatus } from '../slack/scope-status.js';
 import type { MessengerChannel } from './types.js';
 
 export type TransportCapability = {
@@ -31,6 +32,13 @@ export type ChannelHealthSnapshot = {
     telegram: TransportCapability;
     discord: TransportCapability;
     slack: TransportCapability;
+    /**
+     * Additive, Slack-only, so it stays out of the shared TransportCapability
+     * shape that Telegram and Discord also use. External monitoring needs this
+     * because cli-jaw's own heartbeat runs INSIDE the process whose grant is
+     * wrong and therefore cannot report on it (#340).
+     */
+    slackScopes: SlackScopeStatus;
     /** Additive. Classic/Manager parsers ignore unknown keys. */
     ingress: IngressHealthSnapshot;
     metrics: MessagingMetricsSnapshot;
@@ -142,6 +150,7 @@ export function buildChannelHealthSnapshot(): ChannelHealthSnapshot {
         telegram: getTransportCapability('telegram'),
         discord: getTransportCapability('discord'),
         slack: getTransportCapability('slack'),
+        slackScopes: getSlackScopeStatus(),
         ingress: buildIngressHealthSnapshot(),
         metrics: snapshotMetrics(),
     };

@@ -735,6 +735,51 @@ if (headless) {
     });
 }
 
+// ─── Slack OAuth scope drift (#340) ─────────────────
+// Asks the RUNNING server rather than Slack directly, on purpose. doctor reads
+// the default home while the live instance may have been started with
+// --home elsewhere; querying Slack with doctor's own settings would report on
+// a config nobody is running. The degraded process is the one serving traffic,
+// so its /api/health is the authoritative answer.
+async function runSlackScopeDiagnostics(): Promise<void> {
+    const s = loadedSettings();
+    if (!s?.slack?.enabled) return;
+    const port = String(s["port" as keyof DoctorSettings] || '').trim();
+    if (!port) return;
+
+    type HealthPayload = {
+        channels?: {
+            slackScopes?: {
+                ok?: boolean; unknown?: boolean;
+                missingRequired?: string[]; missingCapabilities?: string[];
+                reinstallUrl?: string | null;
+            };
+        };
+    };
+    let payload: HealthPayload | null = null;
+    try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+            signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) payload = await res.json() as HealthPayload;
+    } catch {
+        payload = null;
+    }
+
+    check('Slack scopes', () => {
+        if (!payload) throw new Error('WARN: server not reachable — scope drift cannot be checked');
+        const sc = payload.channels?.slackScopes;
+        if (!sc || sc.unknown) throw new Error('WARN: not observed yet (no x-oauth-scopes seen since start)');
+        const missing = [...(sc.missingRequired ?? []), ...(sc.missingCapabilities ?? [])];
+        if (missing.length === 0) return 'granted set matches the shipped manifest';
+        const where = sc.reinstallUrl
+            ? `reinstall: ${sc.reinstallUrl}`
+            : 'add them under OAuth & Permissions, then reinstall the app';
+        const level = (sc.missingRequired ?? []).length > 0 ? '' : 'WARN: ';
+        throw new Error(`${level}missing: ${missing.join(', ')} — ${where}`);
+    });
+}
+
 // ─── macOS TCC diagnostics ──────────────────────────
 async function runTccDiagnostics(_opts: { fix: boolean; prime: boolean }) {
     if (process.platform !== 'darwin') return;
@@ -840,6 +885,12 @@ function buildSlackStatus() {
         degradedReasons,
     };
 }
+
+// Slack OAuth scope drift (#340). Deliberately NOT inside check(), whose
+// callback is `() => string`: returning a promise there would render as
+// [object Promise] and a rejection would escape its try/catch. Same async
+// shape as runTccDiagnostics above.
+await runSlackScopeDiagnostics();
 
 // macOS TCC diagnostics (--tcc, --fix, --prime)
 if (process.platform === 'darwin' && (values.tcc || values.fix || values.prime)) {

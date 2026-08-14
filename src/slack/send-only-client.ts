@@ -88,9 +88,9 @@ export async function sendSlackText(
                     options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
                 );
                 if (retried.ok) continue;
-                return slackFailure(describeSlackError(retried.error, retried.data), retried.status, retried.retryAfterMs);
+                return slackFailure(describeSlackError(retried.error, retried.data), retried.status, retried.retryAfterMs, retried.grantedScopes);
             }
-            return slackFailure(describeSlackError(result.error, result.data), result.status, result.retryAfterMs);
+            return slackFailure(describeSlackError(result.error, result.data), result.status, result.retryAfterMs, result.grantedScopes);
         }
     }
     return { ok: true };
