@@ -214,12 +214,148 @@ else
   git push origin HEAD:preview
 fi
 
-# ─── Dispatch publish workflow ─────────────────────────
+# ─── Wait for release CI, then dispatch publish ────────
 RELEASE_SHA="$(git rev-parse HEAD)"
 LIVE_SHA="$(git ls-remote origin refs/heads/preview | cut -f1)"
 
 if [ -z "$LIVE_SHA" ] || [ "$LIVE_SHA" != "$RELEASE_SHA" ]; then
   echo "❌ origin/preview moved after push (expected $RELEASE_SHA, got ${LIVE_SHA:-'(empty)'}). Aborting."
+  exit 1
+fi
+
+# Printed on every path that gives up before dispatching, so the operator can
+# resume the release without reconstructing the command from the workflow file.
+publish_dispatch_hint() {
+  echo ""
+  echo "Resume once the required runs are green:"
+  echo "  gh workflow run publish.yml --ref preview \\"
+  echo "    -f version=\"$VERSION\" -f tag=preview -f expected-sha=\"$RELEASE_SHA\" -f dry-run=false"
+}
+
+# publish.yml refuses to publish without a SUCCESSFUL PUSH run of test.yml for
+# this exact SHA -- and, when the installer surface changed, of
+# postinstall-platform.yml too. The push above is seconds old, so dispatching
+# immediately made the first attempt of every preview release fail by
+# construction: v2.4.0-preview (18e6337) needed three dispatches, 10:29:13
+# (Tests still running), 10:37:23 (Postinstall still running), 10:38:29 (green).
+# So wait for the evidence first, exactly as promote-to-main.sh already does for
+# the merged main SHA on the stable path.
+
+# publish.yml derives its range on a fetch-depth: 0 checkout and therefore sees
+# every tag. Match that view before deciding below, or a checkout missing the
+# newest stable tag answers a different question than the gate will.
+git fetch origin --tags --quiet || echo "⚠️  Could not refresh tags; using the local tag list."
+
+# postinstall-platform.yml carries `paths:` filters, so for a SHA that touches
+# no installer-sensitive path it never runs at all and waiting for it would burn
+# the whole deadline on a run that will never exist. publish.yml decides with
+# `require-release-evidence.mjs --changed-files-stdin` over the diff since the
+# last stable tag merged into the release SHA, so ask the same detector the same
+# question over the same range rather than guessing.
+PLATFORM_REQUIRED=false
+PREVIOUS_STABLE_TAG="$(git tag --merged "$RELEASE_SHA" --sort=-v:refname \
+  | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+if [ -z "$PREVIOUS_STABLE_TAG" ]; then
+  echo "ℹ️  No previous stable v* tag; publish.yml treats this as a first release and skips the platform gate."
+else
+  CHANGED_FILES="$(mktemp)"
+  git diff --name-only "$PREVIOUS_STABLE_TAG..$RELEASE_SHA" > "$CHANGED_FILES"
+  DETECTOR_STATUS=0
+  node scripts/require-release-evidence.mjs --changed-files-stdin < "$CHANGED_FILES" || DETECTOR_STATUS=$?
+  rm -f "$CHANGED_FILES"
+  case "$DETECTOR_STATUS" in
+    0)
+      echo "ℹ️  No installer-sensitive changes since $PREVIOUS_STABLE_TAG; platform checks are not required."
+      ;;
+    1)
+      PLATFORM_REQUIRED=true
+      ;;
+    *)
+      echo "ERROR: installer-sensitive path detector failed with status $DETECTOR_STATUS" >&2
+      publish_dispatch_hint
+      exit "$DETECTOR_STATUS"
+      ;;
+  esac
+fi
+
+echo "⏳ Waiting for preview Tests on $RELEASE_SHA..."
+deadline=$((SECONDS + 1200))
+PREVIEW_TESTS_URL=""
+while [ "$SECONDS" -lt "$deadline" ]; do
+  PREVIEW_TESTS_URL="$(gh run list \
+    --workflow test.yml \
+    --branch preview \
+    --commit "$RELEASE_SHA" \
+    --event push \
+    --status success \
+    --limit 1 --json url --jq '.[0].url // ""')"
+  [ -n "$PREVIEW_TESTS_URL" ] && break
+  # An empty result also covers "GitHub has not materialised the run yet", which
+  # is the normal state for the first seconds after a push, so keep polling.
+  failed="$(gh run list \
+    --workflow test.yml \
+    --branch preview \
+    --commit "$RELEASE_SHA" \
+    --event push \
+    --status completed \
+    --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
+  case "$failed" in
+    failure|cancelled|timed_out|startup_failure|action_required)
+      echo "ERROR: preview Tests completed with $failed" >&2
+      publish_dispatch_hint
+      exit 1
+      ;;
+  esac
+  sleep 10
+done
+if [ -z "$PREVIEW_TESTS_URL" ]; then
+  echo "ERROR: timed out waiting for successful preview Tests" >&2
+  publish_dispatch_hint
+  exit 1
+fi
+echo "✅ Tests: $PREVIEW_TESTS_URL"
+
+if [ "$PLATFORM_REQUIRED" = true ]; then
+  echo "⏳ Waiting for preview Postinstall Platform Checks on $RELEASE_SHA..."
+  deadline=$((SECONDS + 1200))
+  PREVIEW_PLATFORM_URL=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    PREVIEW_PLATFORM_URL="$(gh run list \
+      --workflow postinstall-platform.yml \
+      --branch preview \
+      --commit "$RELEASE_SHA" \
+      --event push \
+      --status success \
+      --limit 1 --json url --jq '.[0].url // ""')"
+    [ -n "$PREVIEW_PLATFORM_URL" ] && break
+    failed="$(gh run list \
+      --workflow postinstall-platform.yml \
+      --branch preview \
+      --commit "$RELEASE_SHA" \
+      --event push \
+      --status completed \
+      --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
+    case "$failed" in
+      failure|cancelled|timed_out|startup_failure|action_required)
+        echo "ERROR: preview Postinstall Platform Checks completed with $failed" >&2
+        publish_dispatch_hint
+        exit 1
+        ;;
+    esac
+    sleep 10
+  done
+  if [ -z "$PREVIEW_PLATFORM_URL" ]; then
+    echo "ERROR: timed out waiting for successful preview Postinstall Platform Checks" >&2
+    publish_dispatch_hint
+    exit 1
+  fi
+  echo "✅ Postinstall Platform Checks: $PREVIEW_PLATFORM_URL"
+fi
+
+LIVE_SHA="$(git ls-remote origin refs/heads/preview | cut -f1)"
+if [ "$LIVE_SHA" != "$RELEASE_SHA" ]; then
+  echo "ERROR: origin/preview moved while waiting for release CI" >&2
+  publish_dispatch_hint
   exit 1
 fi
 
@@ -239,7 +375,7 @@ RELEASE_BODY="## Preview Release v$VERSION
 $CHANGELOG
 
 ### Publish
-- npm preview publish runs from \`.github/workflows/publish.yml\` on the \`preview\` branch.
+- npm preview publish is dispatched by \`scripts/release-preview.sh\` into \`.github/workflows/publish.yml\` (\`workflow_dispatch\`), pinned to this commit, after preview CI is green.
 - npm dist-tag: \`preview\`
 - Install after the workflow succeeds: \`npm install -g cli-jaw@preview\`
 
@@ -270,4 +406,4 @@ echo "✅ Preview release queued: cli-jaw@$VERSION"
 echo "   Install: npm install -g cli-jaw@preview"
 echo "   Exact:   npm install -g cli-jaw@$VERSION"
 echo "   Release: https://github.com/lidge-jun/cli-jaw/releases/tag/v$VERSION"
-echo "   Workflow: https://github.com/lidge-jun/cli-jaw/actions/workflows/publish.yml?query=branch%3Apreview"
+echo "   Workflow: https://github.com/lidge-jun/cli-jaw/actions/workflows/publish.yml?query=event%3Aworkflow_dispatch"
