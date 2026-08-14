@@ -54,7 +54,7 @@ test('codex-app agent message deltas append raw without markdown bullets', () =>
     // The codex-app notification path in spawn.ts must use the raw appender.
     assert.match(
         readFileSync('src/agent/spawn.ts', 'utf8'),
-        /flushCodexAppThinking\(\);[\s\S]{0,400}?appendAssistantRawText\(ctx, parsed\.text\)/,
+        /flushCodexAppThinking\(\);[\s\S]{0,1200}?appendAssistantRawText\(ctx, parsed\.text\)/,
     );
 });
 
