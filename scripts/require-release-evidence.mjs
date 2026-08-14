@@ -8,38 +8,166 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 
-const installerSensitivePaths = [
-  '.github/workflows/postinstall-platform.yml',
+// ---------------------------------------------------------------------------
+// Installer-sensitive path set (issue #333 gap G1)
+//
+// This list used to be hand-maintained here, in parallel with the trigger list
+// in .github/workflows/postinstall-platform.yml. The two drifted: 21 paths the
+// platform workflow considers installer-sensitive were missing here, including
+// scripts/install.ps1, src/core/install-integrity.ts, scripts/postinstall-guard.cjs
+// and bin/cli-jaw.ts. A change touching only scripts/install.ps1 therefore
+// reached the npm `latest` dist-tag with zero platform CI evidence behind it.
+//
+// The workflow is now the single source of truth: its trigger paths are parsed
+// at runtime and unioned with a short, explicitly justified extras list below.
+// ---------------------------------------------------------------------------
+
+const PLATFORM_WORKFLOW_PATH = '.github/workflows/postinstall-platform.yml';
+
+// The platform workflow's trigger paths answer "does Postinstall Platform
+// Checks need to run?". These extra entries answer the wider release question
+// "does this change need fresh-machine install evidence?", and are deliberately
+// NOT in that workflow because none of them changes what the platform matrix
+// would execute.
+const EXTRA_SENSITIVE_PATHS = [
+  // The four READMEs carry the copy-pasteable install instructions users
+  // actually run. Editing them cannot change platform CI behaviour, but it can
+  // absolutely break a fresh install, so release evidence is still required.
   'README.md',
   'README.ko.md',
   'README.ja.md',
   'README.zh-CN.md',
-  'bin/postinstall.ts',
-  'src/core/claude-install.ts',
-  'src/core/cli-detect.ts',
-  'src/core/runtime-path.ts',
-  'scripts/install-risk-gate.mjs',
-  'scripts/install.sh',
-  'scripts/install-wsl.sh',
-  'scripts/fresh-install-smoke.ts',
-  'scripts/verify-fresh-install.sh',
-  'scripts/collect-fresh-install-evidence.sh',
-  'scripts/audit-fresh-install-evidence.mjs',
-  'scripts/verify-release-evidence.mjs',
-  'scripts/require-release-evidence.mjs',
+  // The release drivers themselves: they build, gate, tag, push and publish the
+  // artifact users install. They are not part of the installed surface the
+  // platform matrix exercises, so they do not belong in the workflow triggers,
+  // but a change to either one changes how a release is produced.
   'scripts/promote-to-main.sh',
   'scripts/release-preview.sh',
-  'tests/unit/cli-detect.test.ts',
-  'tests/unit/install-sh-exec.test.ts',
-  'tests/unit/fresh-evidence-audit.test.ts',
-  'tests/unit/safe-install.test.ts',
-  'tests/unit/service.test.ts',
-  'tests/unit/postinstall-strict-tools.test.ts',
-  'tests/unit/wsl-installer-doctor.test.ts',
-  'tests/unit/wsl-installer-exec.test.ts',
-  'package.json',
-  'package-lock.json',
 ];
+
+/**
+ * Minimal, deliberately strict reader for a GitHub Actions trigger `paths:`
+ * block.
+ *
+ * This script runs in .github/workflows/publish.yml BEFORE `npm ci`, so no
+ * dependency (including the `yaml` package already in package.json) is
+ * importable here. Hence a hand-rolled reader.
+ *
+ * It is strict on purpose: every unexpected shape throws. A detector that
+ * silently degrades to a short or empty path list fails OPEN, which is strictly
+ * worse than the drift bug it replaces.
+ */
+function parseWorkflowTriggerPaths(source, eventName) {
+  const fail = (message) => {
+    throw new Error(`${PLATFORM_WORKFLOW_PATH}: ${message} (on.${eventName}.paths)`);
+  };
+  const lines = source.split(/\r?\n/);
+  const ignorable = (line) => line.trim() === '' || line.trim().startsWith('#');
+  const indentOf = (line) => /^ */.exec(line)[0].length;
+
+  // Locate the top-level `on:` mapping. Note YAML 1.1 would fold a bare `on`
+  // key to the boolean `true`; GitHub keeps it literal, and so do we.
+  const onIndex = lines.findIndex((line) => line === 'on:');
+  if (onIndex === -1) fail('no top-level `on:` block found');
+
+  const blockEnd = (startIndex, parentIndent) => {
+    for (let i = startIndex; i < lines.length; i += 1) {
+      if (ignorable(lines[i])) continue;
+      if (lines[i].startsWith('\t')) fail(`tab indentation on line ${i + 1}`);
+      if (indentOf(lines[i]) <= parentIndent) return i;
+    }
+    return lines.length;
+  };
+
+  const findSoleKey = (from, to, key, minIndent) => {
+    const hits = [];
+    for (let i = from; i < to; i += 1) {
+      if (ignorable(lines[i])) continue;
+      if (lines[i].trim() !== `${key}:`) continue;
+      if (indentOf(lines[i]) <= minIndent) continue;
+      hits.push(i);
+    }
+    if (hits.length === 0) fail(`no \`${key}:\` key found`);
+    if (hits.length > 1) fail(`expected exactly one \`${key}:\` key, found ${hits.length}`);
+    return hits[0];
+  };
+
+  const onEnd = blockEnd(onIndex + 1, 0);
+  const eventIndex = findSoleKey(onIndex + 1, onEnd, eventName, 0);
+  const eventIndent = indentOf(lines[eventIndex]);
+  const eventEnd = blockEnd(eventIndex + 1, eventIndent);
+  const pathsIndex = findSoleKey(eventIndex + 1, eventEnd, 'paths', eventIndent);
+  const pathsIndent = indentOf(lines[pathsIndex]);
+
+  const collected = [];
+  for (let i = pathsIndex + 1; i < eventEnd; i += 1) {
+    const line = lines[i];
+    if (ignorable(line)) continue;
+    if (line.startsWith('\t')) fail(`tab indentation on line ${i + 1}`);
+    const indent = indentOf(line);
+    if (indent <= pathsIndent) break;
+    const item = /^ *- (.+?) *$/.exec(line);
+    if (!item) fail(`unexpected non-list line ${i + 1}: ${JSON.stringify(line)}`);
+    let value = item[1];
+    const quote = value[0];
+    if (quote === "'" || quote === '"') {
+      if (value.length < 2 || value[value.length - 1] !== quote) {
+        fail(`unterminated quoted entry on line ${i + 1}`);
+      }
+      value = value.slice(1, -1);
+      if (quote === "'") value = value.replace(/''/g, "'");
+    } else if (/[#'"]/.test(value)) {
+      // Bare scalars with quotes or trailing comments need real YAML rules.
+      fail(`entry on line ${i + 1} needs quoting: ${JSON.stringify(item[1])}`);
+    }
+    if (value === '') fail(`empty entry on line ${i + 1}`);
+    // Path matching here is exact string equality (stdin mode) and per-file git
+    // comparison (base-ref mode); neither can express a glob. Today no entry
+    // uses one. If that changes, refuse loudly instead of quietly under-matching.
+    if (/[*?[\]!]/.test(value)) {
+      fail(
+        `entry on line ${i + 1} uses a glob or negation (${JSON.stringify(value)}); `
+        + 'this detector only supports literal paths — teach it globs before adding one',
+      );
+    }
+    collected.push(value);
+  }
+
+  if (collected.length === 0) fail('trigger path list is empty');
+  return collected;
+}
+
+function deriveInstallerSensitivePaths() {
+  const workflowFile = path.join(repoRoot, PLATFORM_WORKFLOW_PATH);
+  let source;
+  try {
+    source = fs.readFileSync(workflowFile, 'utf8');
+  } catch (error) {
+    // Fail closed: an unreadable source of truth must never become an empty
+    // sensitive set.
+    throw new Error(`cannot read ${PLATFORM_WORKFLOW_PATH}: ${error.message}`);
+  }
+  // `push` is what actually determines whether platform evidence can exist:
+  // publish.yml looks for a successful `--event push` run of this workflow. The
+  // union of both trigger lists is used so a divergence errs toward requiring
+  // evidence rather than skipping it; a unit test asserts they stay identical.
+  const pushPaths = parseWorkflowTriggerPaths(source, 'push');
+  const pullRequestPaths = parseWorkflowTriggerPaths(source, 'pull_request');
+  return [...new Set([...pushPaths, ...pullRequestPaths, ...EXTRA_SENSITIVE_PATHS])];
+}
+
+let installerSensitivePaths;
+try {
+  installerSensitivePaths = deriveInstallerSensitivePaths();
+} catch (error) {
+  console.error('[release-evidence-required] FAIL cannot derive installer-sensitive paths');
+  console.error(`- ${error.message}`);
+  console.error(`- Fix ${PLATFORM_WORKFLOW_PATH} (or this reader) before releasing; refusing to guess.`);
+  // Exit 2, not 1: publish.yml treats 1 as "sensitive, require platform run"
+  // and anything else as a hard detector failure. A broken source of truth must
+  // stop the release outright rather than masquerade as a normal gate hit.
+  process.exit(2);
+}
 
 function usage() {
   console.log(`Usage: require-release-evidence.mjs [options]
@@ -49,7 +177,12 @@ Options:
   --changed-files-stdin
                     Read changed file paths from stdin and check whether any are installer-sensitive.
                     Cannot be combined with --base-ref.
+  --print-paths     Print the derived installer-sensitive path set as JSON and exit.
   -h, --help        Show this help.
+
+The installer-sensitive path set is derived from the trigger paths of
+${PLATFORM_WORKFLOW_PATH}, unioned with EXTRA_SENSITIVE_PATHS in this file.
+It is never hand-maintained here.
 
 If installer-sensitive files changed, this script requires:
   CLI_JAW_MACOS_EVIDENCE_DIR=/path/to/macos-evidence
@@ -61,12 +194,17 @@ Then it runs scripts/verify-release-evidence.mjs before publish/release can cont
 
 let baseRef = '';
 let changedFilesStdin = false;
+let printPaths = false;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
   if (arg === '-h' || arg === '--help') {
     usage();
     process.exit(0);
+  }
+  if (arg === '--print-paths') {
+    printPaths = true;
+    continue;
   }
   if (arg === '--changed-files-stdin') {
     changedFilesStdin = true;
@@ -82,6 +220,11 @@ for (let i = 0; i < args.length; i += 1) {
 
 if (baseRef && changedFilesStdin) {
   throw new Error('--changed-files-stdin cannot be combined with --base-ref');
+}
+
+if (printPaths) {
+  console.log(JSON.stringify(installerSensitivePaths, null, 2));
+  process.exit(0);
 }
 
 function readChangedFilesFromStdin() {
