@@ -14,6 +14,7 @@
 import { settings } from '../core/config.js';
 import { log } from '../core/logger.js';
 import { slackApi, describeSlackError, neededScopeFrom, type SlackFetch } from './api.js';
+import { getSlackScopeStatus } from './scope-status.js';
 import type { SlackMessageEvent } from './events.js';
 import { getSlackSendClient } from './send-only-client.js';
 import { EnrichmentCache, type Suppression } from './enrichment-cache.js';
@@ -256,8 +257,15 @@ function noteMissingScope(data: unknown): void {
     missingScopeWarned = true;
     // Once per process: this fires on every inbound message otherwise.
     const needed = neededScopeFrom(data) || 'users:read';
+    // The startup check (#340) already named the whole gap; this line only
+    // knows the ONE scope that just failed. Point at the reinstall URL when
+    // the app id is known so the operator does not have to go find it.
+    const reinstall = getSlackScopeStatus().reinstallUrl;
+    const where = reinstall
+        ? `reinstall: ${reinstall}`
+        : 'add it under OAuth & Permissions, then reinstall the app';
     log.warn(`[slack:identity] ${describeSlackError('missing_scope', data)} (needed: ${needed}) — `
-        + 'sender names degrade to raw ids until the app is reinstalled');
+        + `sender names degrade to raw ids until the app is reinstalled — ${where}`);
 }
 
 type IdentityLoad = { ok: true; value: SlackIdentity } | { ok: false; error: IdentityFailure };

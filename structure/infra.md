@@ -187,6 +187,272 @@ the cmd shim or direct Node entry point instead.
 
 ---
 
+## 릴리스 파이프라인과 부분 실패 복구 (preview → main → npm)
+
+Canonical release path is `feature → preview → main`, then an npm publish
+dispatched onto `main`. `dev` is the contributor integration base and is **not**
+part of the release path — nothing publishes from `dev`.
+
+Every command below is quoted from the file and line noted beside it. Read the
+source before improvising; a wrong command during a broken release is worse
+than no command.
+
+### 정상 경로 (normal flow)
+
+| 단계 | 실행 | 검증되는 SHA |
+| --- | --- | --- |
+| 1. preview 릴리스 | `bash scripts/release-preview.sh [--major\|--minor\|--patch\|<X.Y.Z>]` | the `origin/preview` head just pushed, re-read with `git ls-remote` and compared before dispatch (`scripts/release-preview.sh:212-218`) |
+| 2. 인증 (certification) | `.github/workflows/test.yml` push run on `preview` | the same preview SHA; promotion refuses to start without a successful run for it (`scripts/promote-to-main.sh:25-35`) |
+| 3. 승격 (promotion) | `bash scripts/promote-to-main.sh [<preview-sha>]` | the live `origin/preview` head; an explicit argument must equal it (`scripts/promote-to-main.sh:10-15`) |
+| 4. stable publish | `.github/workflows/publish.yml`, `workflow_dispatch` only (`publish.yml:3-4`) | `expected-sha` must equal the checked-out `GITHUB_SHA` (`publish.yml:54-65`) |
+
+**1 — preview.** `release-preview.sh` bumps `package.json` to
+`X.Y.Z-preview.TIMESTAMP` (`:131`), syncs the Electron version (`:167`), runs
+`npm run gate:all` (`:181`), commits (`:200`), pushes to `origin/preview`
+(`:204-209`), then dispatches:
+
+```bash
+gh workflow run publish.yml --ref preview \
+  -f version="$VERSION" -f tag=preview -f expected-sha="$RELEASE_SHA" -f dry-run=false
+```
+
+(`scripts/release-preview.sh:220-221`.) Note it does **not** pass
+`create-github-release`, so that input defaults to `false` (`publish.yml:27-31`);
+the GitHub *pre*release is created by the script itself (`:242-256`), not by the
+workflow.
+
+**2 — certification.** Nothing is promoted that does not already have a green
+`test.yml` push run on `preview` for that exact commit.
+
+**3 — promotion.** `promote-to-main.sh` requires `origin/main` to be an ancestor
+of the certified preview SHA (`:37-41`), builds a throwaway worktree at that SHA
+(`:50`), runs `npm version <stable>` (`:54`), `sync-electron-version` (`:55`),
+`npm run gate:all` (`:56`) and `require-release-evidence.mjs` (`:57`), commits
+`chore: promote vX.Y.Z` (`:59`), opens a PR against `main` (`:64-68`), waits on
+required checks (`:70`), merges (`:71`), then re-verifies the merged SHA
+(`:73-91`) and the merged version (`:92-97`), and finally waits for `test.yml`
+(`:99-128`) and `postinstall-platform.yml` (`:130-159`) to go green **on the
+merged `main` commit**.
+
+**4 — publish.** Only after all of that:
+
+```bash
+gh workflow run publish.yml \
+  --ref main \
+  -f version="$STABLE_VERSION" \
+  -f tag=latest \
+  -f expected-sha="$MERGED_MAIN_SHA" \
+  -f dry-run=false \
+  -f create-github-release=true
+```
+
+(`scripts/promote-to-main.sh:167-173`.)
+
+#### 승격된 커밋은 새 SHA다 — 같은 트리일 뿐이다
+
+The commit that lands on `main` is a **new commit with a new SHA**, because the
+promotion adds a version-bump commit and then merges a PR. What the pipeline
+guarantees is *same tree, re-validated on `main`* — not *same SHA*. The
+`v2.3.0` promotion is the worked example: promotion commit `6c36f33f` and merged
+`main` head `0e93a0ae` share the identical tree `0e847516`, and `main` was then
+re-certified by its own `test.yml` and `postinstall-platform.yml` push runs.
+
+> `promote-to-main.sh:71` asks for `gh pr merge --squash`, but the repo allows
+> merge, squash and rebase, and PR #343 (`v2.3.0`) actually landed as a
+> two-parent merge commit. Do not assume the shape of the promoted commit —
+> check `git log --graph --oneline origin/main` before choosing revert flags.
+
+### ⚠️ 승격 성공 후에는 스크립트를 다시 돌릴 수 없다
+
+`promote-to-main.sh` dispatches `publish.yml` at `:167-173`, prints one line at
+`:175`, and **exits without ever checking whether the publish run succeeded**.
+That is the single most important property of this pipeline: a green script exit
+means *the publish was requested*, never *the publish happened*.
+
+And the script cannot simply be re-run, because of the guard at
+`scripts/promote-to-main.sh:37-41`:
+
+```sh
+if ! git merge-base --is-ancestor "$MAIN_SHA" "$PREVIEW_SHA"; then
+  echo "ERROR: origin/main is not an ancestor of the certified preview SHA" >&2
+```
+
+After a successful promotion the new `main` head is a commit that does not exist
+in `preview`'s history, so it is not an ancestor of the preview SHA and this
+guard fails. (Verified against the live heads: `main` `0e93a0ae` is not an
+ancestor of `preview` `0e6bf08e`.) **Every recovery below is therefore manual.**
+
+### 복구 1 — git은 성공, npm은 실패
+
+Symptom: `main` carries the stable version, `npm view cli-jaw@<version>` finds
+nothing, and there is no `v<version>` GitHub release.
+
+Re-dispatch `publish.yml` by hand with the same inputs the script would have
+used. The correct `expected-sha` is the **merged `main` head**, read the same way
+the script reads it (`scripts/promote-to-main.sh:86`):
+
+```bash
+git fetch origin main
+MERGED_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+STABLE_VERSION="$(git show "$MERGED_MAIN_SHA:package.json" \
+  | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).version)')"
+
+gh workflow run publish.yml \
+  --ref main \
+  -f version="$STABLE_VERSION" \
+  -f tag=latest \
+  -f expected-sha="$MERGED_MAIN_SHA" \
+  -f dry-run=false \
+  -f create-github-release=true
+```
+
+All five inputs are the full set declared at `publish.yml:5-31`; `version`,
+`tag` and `expected-sha` are `required: true`, `dry-run` defaults to `true` and
+`create-github-release` defaults to `false`, so both must be passed explicitly
+for a real release.
+
+The workflow re-checks, and will refuse if any of these no longer hold:
+
+- `expected-sha` equals the checked-out `GITHUB_SHA` (`publish.yml:54-65`) — so
+  if `main` moved after the audit, the dispatch fails instead of publishing a
+  different tree.
+- a successful `test.yml` push run exists for that commit (`publish.yml:67-78`).
+- `postinstall-platform.yml` is green for that commit when the installer surface
+  changed since the previous stable tag (`publish.yml:80-120`).
+- `package.json` version equals `version` (`publish.yml:179-182`).
+- a real `latest` publish runs from `main` (`publish.yml:184-193`) and the
+  version is not a prerelease (`publish.yml:230-237`).
+
+Re-dispatching is safe when the version is already on npm: the run detects it
+and skips the publish rather than failing (`publish.yml:307-332`).
+
+### 복구 2 — npm은 게시됨, GitHub 릴리스가 없거나 잘못됨
+
+**Re-dispatching `publish.yml` will not fix this.** The `Create GitHub release`
+step is gated on `steps.registry.outputs.exists != 'true'`
+(`publish.yml:350-351`), and `registry.exists` becomes `true` the moment the
+version is visible on npm (`publish.yml:307-319`). Once the package is
+published, that step can never run again for that version. Backfill by hand,
+mirroring `publish.yml:395-410`:
+
+```bash
+# stable (latest)
+gh release create "v<version>" --target "<merged-main-sha>" \
+  --title "v<version>" --latest --notes-file <notes-file>
+
+# if a wrong release already exists, edit instead of create
+gh release edit "v<version>" --target "<merged-main-sha>" \
+  --title "v<version>" --latest --notes-file <notes-file>
+```
+
+For a preview release the workflow uses `--prerelease` and the title
+`v<version> (preview)` instead of `--latest` (`publish.yml:397-405`).
+
+### 복구 3 — 잘못된 버전이 npm `latest`에 도달함
+
+This is the real rollback case.
+
+**`npm unpublish` is not the normal remedy.** npm only permits unpublishing
+within a limited window after publish (documented as 72 hours), it breaks every
+consumer that already resolved the version, and **the version number can never
+be reused** — a republish of the same `X.Y.Z` will be rejected forever. Treat it
+as a last resort for a genuine secret leak or legal problem, not for a bad
+build. *(npm's unpublish policy is registry-side and has changed over time;
+confirm the current rules against npm's own documentation before relying on the
+72-hour figure. Additional restrictions apply when other packages depend on the
+version.)*
+
+**The normal remedy is to move the dist-tag back, then ship forward.**
+
+```bash
+npm dist-tag ls cli-jaw
+npm dist-tag add cli-jaw@<last-good-version> latest
+```
+
+(`npm dist-tag ls cli-jaw` is the same read the publish run does at
+`publish.yml:341`; `release-preview.sh:83` reads the moved tag back via
+`npm view cli-jaw dist-tags.latest`, so the next preview bump computes off the
+restored version.)
+
+What moving the tag **does** fix: `npm install -g cli-jaw`,
+`npm install -g cli-jaw@latest`, and new `Dockerfile` builds — which default to
+`ARG CLI_JAW_VERSION=latest` — resolve to the last good version again.
+
+What it **does not** fix:
+
+- `npm install cli-jaw@<bad-version>` still resolves. The tarball stays on the
+  registry; only the pointer moved.
+- users who already installed the bad version are not downgraded.
+- lockfiles that pinned the bad version keep resolving to it.
+- already-built Docker images keep the bad version baked in.
+- the `main` commit and the GitHub release are untouched.
+
+So also move the GitHub "Latest" pointer back, using the same flag the workflow
+uses (`publish.yml:402`, `:407`):
+
+```bash
+gh release edit "v<last-good-version>" --latest
+```
+
+The `preview` channel has the exact same shape:
+
+```bash
+npm dist-tag add cli-jaw@<last-good-preview-version> preview
+```
+
+Then ship a forward patch through the normal path — a new
+`release-preview.sh` run, certification, and `promote-to-main.sh`. The dist-tag
+move buys time; only a new version actually fixes users.
+
+### 복구 4 — 검증 실패한 커밋이 `main`에 도달함
+
+This is currently reachable. `main` has **no ruleset and no branch protection**
+(`gh api repos/lidge-jun/cli-jaw/rulesets` returns `[]`;
+`gh api repos/lidge-jun/cli-jaw/branches/main/protection` returns 404), so the
+`gh pr checks "$PR_URL" --required --watch --fail-fast` call at
+`scripts/promote-to-main.sh:70` has no required checks to block on. Installing a
+`main` ruleset with required checks needs repo-admin rights and is tracked in
+issue #333; until then, treat the post-merge `test.yml` /
+`postinstall-platform.yml` waits (`:99-159`) as the only real gate — and those
+run *after* the merge has already landed.
+
+Revert path:
+
+1. Determine the shape of the offending commit first — the merge method is not
+   guaranteed (see the note above):
+
+   ```bash
+   git fetch origin main
+   git log --graph --oneline origin/main -5
+   ```
+
+2. Revert on a branch, never by pushing to `main` directly:
+
+   ```bash
+   git checkout -b revert/<version> origin/main
+   git revert <sha>            # single-parent (squash) commit
+   git revert -m 1 <sha>       # two-parent merge commit — mainline is parent 1
+   git push -u origin revert/<version>
+   gh pr create --base main --title "revert: <version>"
+   ```
+
+3. If the bad commit already reached npm `latest`, the revert alone changes
+   nothing for users — do 복구 3 as well.
+
+4. Do not try to re-promote the same `preview` head afterwards; the ancestry
+   guard (`:37-41`) will reject it. Cut a fresh preview instead.
+
+### 하지 말 것
+
+- Do not push directly to `main` or `preview`.
+- Do not hand-edit a published npm tarball; publish a new version.
+- Do not re-run `promote-to-main.sh` to "retry" a failed publish — see the
+  ancestry guard above; re-dispatch `publish.yml` instead (복구 1).
+- Do not dispatch `publish.yml` with a stale `expected-sha`; it is the only
+  thing standing between a moved branch and a mismatched publish.
+
+---
+
 ## 시작 경로 안정성 계약 (start-path reliability)
 
 `jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면. 유닛: `devlog/_fin/260803_runtime_stability_hardening/`.

@@ -49,6 +49,7 @@ on:
       - 'structure/infra.md'
       - 'tests/unit/install-integrity.test.ts'
       - 'tests/unit/scriptless-install-contract.test.ts'
+      - 'tests/unit/installer-sensitive-path-parity.test.ts'
       - 'package.json'
       - 'package-lock.json'
   pull_request:
@@ -96,6 +97,7 @@ on:
       - 'structure/infra.md'
       - 'tests/unit/install-integrity.test.ts'
       - 'tests/unit/scriptless-install-contract.test.ts'
+      - 'tests/unit/installer-sensitive-path-parity.test.ts'
       - 'package.json'
       - 'package-lock.json'
   workflow_dispatch:

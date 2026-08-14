@@ -17,6 +17,18 @@ export type SlackApiResult<T = Record<string, unknown>> = {
     error?: string;
     status?: number;
     retryAfterMs?: number;
+    /**
+     * Raw `x-oauth-scopes` response header when the transport exposed one.
+     * Slack returns the token's whole granted set on every Web API response,
+     * so a scope-drift check costs no extra call.
+     *
+     * `undefined` means "not observed" — NOT "no scopes". Test fetch mocks
+     * routinely omit headers, and a proxy could strip them, so consumers must
+     * treat absence as unknown rather than as a gap. See
+     * `missingSlackScopes()`, which returns [] for a missing header for the
+     * same reason.
+     */
+    grantedScopes?: string;
     data?: T;
 };
 
@@ -106,12 +118,14 @@ export function slackFailure(
     error: string,
     status?: number,
     retryAfterMs?: number,
-): { ok: false; error: string; status?: number; retryAfterMs?: number } {
+    grantedScopes?: string,
+): { ok: false; error: string; status?: number; retryAfterMs?: number; grantedScopes?: string } {
     return {
         ok: false,
         error,
         ...(status !== undefined ? { status } : {}),
         ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+        ...(grantedScopes !== undefined ? { grantedScopes } : {}),
     };
 }
 
@@ -165,6 +179,9 @@ export async function slackApi<T = Record<string, unknown>>(
         const retryAfterMs = response.headers
             ? parseRetryAfterMs(response.headers)
             : undefined;
+        // Same defensive read as retry-after: mocks and non-standard fetch
+        // implementations may not carry headers at all.
+        const grantedScopes = response.headers?.get?.('x-oauth-scopes') ?? undefined;
         const text = await response.text();
         let parsed: Record<string, unknown> = {};
         try {
@@ -175,6 +192,7 @@ export async function slackApi<T = Record<string, unknown>>(
                 error: 'invalid_json_response',
                 status: response.status,
                 ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+                ...(grantedScopes !== undefined ? { grantedScopes } : {}),
             };
         }
         // Slack signals application errors with HTTP 200 + ok:false.
@@ -186,6 +204,7 @@ export async function slackApi<T = Record<string, unknown>>(
                 error: err,
                 status: response.status,
                 ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+                ...(grantedScopes !== undefined ? { grantedScopes } : {}),
                 data: parsed as T,
             };
         }
@@ -193,9 +212,11 @@ export async function slackApi<T = Record<string, unknown>>(
             ok: true,
             status: response.status,
             ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+            ...(grantedScopes !== undefined ? { grantedScopes } : {}),
             data: parsed as T,
         };
     } catch (error) {
+        // A network-level throw has no response, so there is no header to read.
         return {
             ok: false,
             error: redactSlackTokens((error as Error).message),

@@ -21,6 +21,12 @@ import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-targ
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildMediaPromptMany } from '../agent/spawn.js';
 import { slackApi } from './api.js';
+import {
+    recordSlackScopeObservation,
+    getSlackScopeStatus,
+    describeSlackScopeGap,
+    resetSlackScopeStatus,
+} from './scope-status.js';
 import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
 import { createHash } from 'node:crypto';
 import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
@@ -738,6 +744,20 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
         return transportNotStarted('failed', 'auth_test_failed');
     }
     selfUserId = auth.data?.user_id || null;
+    // The grant is whatever the app was installed with, not whatever the
+    // current manifest asks for. Record it here — auth.test already ran, so
+    // this costs nothing — and say the whole gap once instead of leaking one
+    // scope per failed call from identity.ts (#340).
+    //
+    // Deliberately behind the earlier returns: an unconfigured, outbound-only,
+    // non-attach or superseded init has either no token to ask with or no
+    // ownership of this workspace. Outbound-only is the one real gap; it still
+    // makes Web API calls but never reaches here, and moving auth.test above
+    // that return would make an unconfigured channel hit the network on every
+    // start. Documented as a known limitation rather than silently ignored.
+    recordSlackScopeObservation(auth.grantedScopes, null);
+    const scopeGap = describeSlackScopeGap(getSlackScopeStatus());
+    if (scopeGap) log.warn(`[slack:scopes] ${scopeGap}`);
     if (auth.data?.team_id && !sc.teamId) sc.teamId = auth.data.team_id;
     // The team id namespaces every ingress dedup key, and `slackEventKey`
     // degrades an empty one to the literal 'unknown' — so two workspaces,
@@ -786,6 +806,10 @@ export async function shutdownSlack(): Promise<void> {
  */
 async function disposeSlackRuntime(): Promise<void> {
     await resetSlackIngress();
+    // A re-init can authenticate against a different workspace, whose app has
+    // its own grant. Carrying the previous observation forward would report
+    // the old workspace's scopes for the new one.
+    resetSlackScopeStatus();
     // Identity is cached per (team, id). A re-init can authenticate against a
     // different workspace, so the cache must not outlive the runtime that filled it.
     resetSlackIdentityCache();

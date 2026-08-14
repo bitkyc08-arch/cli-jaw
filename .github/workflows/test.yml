@@ -12,35 +12,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # This workflow carries no `paths-ignore` on purpose. A required status check
+  # that is never produced for docs-only pull requests leaves them stuck on
+  # "Expected — Waiting for status" forever, so the workflow always starts and
+  # the cost is controlled by skipping the expensive job below instead.
   changes:
+    name: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       code: ${{ steps.scope.outputs.code }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          # Full history: the push range and the pull-request merge base below
+          # both need commits that a shallow clone does not have.
           fetch-depth: 0
 
       - name: Determine code changes
         id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        # `-e` is off so every fallback below can be reached; each git call that
+        # is allowed to fail is checked explicitly.
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-            head="${{ github.event.pull_request.head.sha }}"
+          set -uo pipefail
+
+          # Fail CLOSED. Every path that cannot *prove* the change is docs-only
+          # reports code=true and runs the full suite. A wrong "docs-only"
+          # verdict silently skips every release gate; a wrong "code" verdict
+          # only costs runner minutes.
+          emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "resolved code=$1"; }
+
+          range_base=""
+          range_head=""
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            range_head="$PR_HEAD_SHA"
+            # Diff against the merge base rather than the base branch tip, so
+            # commits that landed on the base after this PR opened are not
+            # attributed to this PR.
+            if [ -n "$PR_BASE_SHA" ] && git rev-parse --verify --quiet "$PR_BASE_SHA^{commit}" >/dev/null; then
+              range_base="$(git merge-base "$PR_BASE_SHA" "$range_head" 2>/dev/null || true)"
+            fi
+            if [ -z "$range_base" ] && [ -n "$PR_BASE_REF" ]; then
+              git fetch --no-tags origin "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF" || true
+              range_base="$(git merge-base "refs/remotes/origin/$PR_BASE_REF" "$range_head" 2>/dev/null || true)"
+            fi
           else
-            base="${{ github.event.before }}"
-            head="${{ github.sha }}"
+            range_head="$HEAD_SHA"
+            # github.event.before is the all-zeros SHA for the first push to a
+            # ref (branch creation), where there is no previous commit to diff.
+            case "$PUSH_BEFORE" in
+              ''|0000000000000000000000000000000000000000)
+                range_base=""
+                ;;
+              *)
+                if git rev-parse --verify --quiet "$PUSH_BEFORE^{commit}" >/dev/null; then
+                  range_base="$PUSH_BEFORE"
+                fi
+                ;;
+            esac
           fi
-          changed=$(git diff --name-only "$base".."$head" || true)
-          non_doc=$(echo "$changed" | grep -vE '^README.*\.md$|^docs/' || true)
-          if [ -z "$non_doc" ]; then
-            echo "code=false" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$range_base" ] || [ -z "$range_head" ]; then
+            echo "::notice::no usable diff range (base='$range_base' head='$range_head') — running the full suite"
+            emit true
+            exit 0
+          fi
+
+          if ! changed="$(git diff --name-only "$range_base" "$range_head")"; then
+            echo "::notice::git diff $range_base..$range_head failed — running the full suite"
+            emit true
+            exit 0
+          fi
+
+          echo "changed files ($range_base..$range_head):"
+          echo "$changed"
+
+          if [ -z "$changed" ]; then
+            # An empty diff is not evidence of a docs-only change; it usually
+            # means the range was wrong. Run the suite.
+            echo "::notice::empty diff for a real range — running the full suite"
+            emit true
+            exit 0
+          fi
+
+          # Same set the old `paths-ignore` carried: top-level README*.md and
+          # everything under docs/. Anything else — including this workflow —
+          # counts as code.
+          non_doc="$(echo "$changed" | grep -vE '^README[^/]*\.md$|^docs/' || true)"
+          if [ -n "$non_doc" ]; then
+            emit true
           else
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            emit false
           fi
 
   node-tests:
+    name: node-tests
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -190,17 +265,64 @@ jobs:
         env:
           NODE_ENV: test
 
-  tests:
+  # The single required status check for the `main` ruleset.
+  #
+  # The check name is the job `name:` below and is load-bearing: the branch
+  # ruleset and the publish gate both match on the literal string
+  # `ci-aggregate`. Renaming this job silently detaches both of them, so the
+  # name is pinned explicitly instead of being inherited from the job id.
+  #
+  # It runs on every event this workflow accepts — including docs-only pull
+  # requests, where `node-tests` is legitimately skipped — so a required check
+  # always has a run to wait for.
+  ci-aggregate:
+    name: ci-aggregate
     needs: [changes, node-tests]
+    # `always()` rather than the default success() semantics: the point of this
+    # job is to report on upstream failures, so it must still run after one.
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Verify producers
         env:
-          RESULTS: ${{ toJSON(needs) }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          NODE_TESTS_RESULT: ${{ needs.node-tests.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
         run: |
-          count=$(echo "$RESULTS" | jq '[.[] | select(.result != "success" and .result != "skipped")] | length')
-          if [ "$count" -ne 0 ]; then
-            echo "$RESULTS" | jq '.'
+          set -uo pipefail
+          failed=0
+
+          # `success` and `skipped` pass; `failure`, `cancelled`, an empty
+          # result, and anything unrecognised fail. Skipped and failed are
+          # deliberately NOT collapsed together: a docs-only change skips
+          # node-tests on purpose, a broken one does not.
+          check() {
+            job="$1"
+            result="$2"
+            case "$result" in
+              success)  echo "PASS  $job: success" ;;
+              skipped)  echo "PASS  $job: skipped (not required for this change)" ;;
+              failure)  echo "FAIL  $job: failure"; failed=1 ;;
+              cancelled) echo "FAIL  $job: cancelled"; failed=1 ;;
+              '')       echo "FAIL  $job: no result reported"; failed=1 ;;
+              *)        echo "FAIL  $job: unexpected result '$result'"; failed=1 ;;
+            esac
+          }
+
+          check changes "$CHANGES_RESULT"
+          check node-tests "$NODE_TESTS_RESULT"
+
+          # A skip is only legitimate when change detection actually said the
+          # change was docs-only. If it said "code" and the suite still did not
+          # run, something dropped the job and the check must not go green.
+          if [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "true" ] && [ "$NODE_TESTS_RESULT" = "skipped" ]; then
+            echo "FAIL  node-tests was skipped even though change detection reported code changes"
+            failed=1
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::ci-aggregate failed — see the per-job results above"
             exit 1
           fi
+          echo "ci-aggregate: all required jobs succeeded or were legitimately skipped"
