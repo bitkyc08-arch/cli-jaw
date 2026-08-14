@@ -82,6 +82,93 @@ for (const scriptPath of ['scripts/release-preview.sh']) {
             'release script must invoke gh release create',
         );
     });
+
+    test(`${scriptPath} waits for the runs publish.yml gates on before dispatching publish`, () => {
+        // publish.yml refuses to publish without a SUCCESSFUL PUSH run of
+        // test.yml for the exact release SHA, plus postinstall-platform.yml when
+        // the installer surface changed. This script pushes and then dispatches,
+        // so without a wait the FIRST dispatch of every preview release fails by
+        // construction. v2.4.0-preview (18e6337) needed three: 10:29:13 died on
+        // "Require successful Tests for this commit" (Tests still running),
+        // 10:37:23 died on "Require platform checks when installer surface
+        // changed" (Postinstall still running), 10:38:29 finally published.
+        const script = read(scriptPath);
+        // Collapse backslash-continuations so the multi-line gh invocations can
+        // be matched as the single commands they are.
+        const flat = script.replace(/\\\r?\n\s*/g, ' ').replace(/[ \t]+/g, ' ');
+
+        assert.ok(
+            flat.includes('gh run list --workflow test.yml --branch preview --commit "$RELEASE_SHA" --event push --status success'),
+            'release script must wait for a successful PUSH run of test.yml on the exact release SHA',
+        );
+        assert.ok(
+            flat.includes('gh run list --workflow postinstall-platform.yml --branch preview --commit "$RELEASE_SHA" --event push --status success'),
+            'release script must wait for a successful PUSH run of postinstall-platform.yml on the exact release SHA',
+        );
+
+        const waitIndex = script.indexOf('Waiting for preview Tests');
+        // The real dispatch sits at column 0; the resume hint echoes an indented
+        // copy of the same command, which must not be mistaken for it.
+        const dispatchIndex = script.indexOf('\ngh workflow run publish.yml --ref preview');
+        assert.ok(waitIndex !== -1, 'release script must announce the CI wait');
+        assert.ok(dispatchIndex !== -1, 'release script must dispatch publish.yml');
+        assert.ok(
+            waitIndex < dispatchIndex,
+            'release script must wait for release CI BEFORE dispatching publish.yml',
+        );
+
+        // Mirrors the two wait loops in scripts/promote-to-main.sh.
+        assert.ok(script.includes('deadline=$((SECONDS + 1200))'), 'CI wait must be bounded by the same 1200s deadline as promote-to-main.sh');
+        assert.ok(script.includes('while [ "$SECONDS" -lt "$deadline" ]'), 'CI wait must poll against the deadline');
+        assert.ok(script.includes('sleep 10'), 'CI wait must poll on the promote-to-main.sh interval');
+        assert.ok(
+            script.includes('failure|cancelled|timed_out|startup_failure|action_required'),
+            'CI wait must abort on a failed conclusion instead of polling to the deadline',
+        );
+        assert.ok(
+            script.includes('[ -n "$PREVIEW_TESTS_URL" ] && break'),
+            'CI wait must treat an empty result as "run not created yet" and keep polling',
+        );
+        assert.ok(
+            script.includes('ERROR: origin/preview moved while waiting for release CI'),
+            'release script must re-check that preview did not move while waiting',
+        );
+
+        // postinstall-platform.yml carries `paths:` filters, so it never runs at
+        // all for a SHA that touches no installer-sensitive path. Waiting
+        // unconditionally would burn the full deadline on a run that will never
+        // exist, so the wait is gated on the same detector publish.yml uses.
+        assert.ok(
+            flat.includes('node scripts/require-release-evidence.mjs --changed-files-stdin'),
+            'platform wait must be decided by the shared installer-sensitive path detector',
+        );
+        assert.ok(
+            script.includes('if [ "$PLATFORM_REQUIRED" = true ]'),
+            'platform wait must be conditional, not unconditional',
+        );
+
+        assert.ok(
+            script.includes('publish_dispatch_hint'),
+            'every give-up path must print the exact resume dispatch command',
+        );
+    });
+
+    test(`${scriptPath} describes the dispatch-triggered publish, not the removed push trigger`, () => {
+        const script = read(scriptPath);
+
+        assert.ok(
+            !script.includes('runs from \\`.github/workflows/publish.yml\\` on the \\`preview\\` branch'),
+            'prerelease body must not claim publish is triggered by the preview branch push',
+        );
+        assert.ok(
+            !script.includes('publish.yml?query=branch%3Apreview'),
+            'publish.yml has no push trigger, so a branch-filtered actions URL lists nothing',
+        );
+        assert.ok(
+            script.includes('publish.yml?query=event%3Aworkflow_dispatch'),
+            'the workflow link must filter on the dispatch event that actually publishes',
+        );
+    });
 }
 
 test('desktop release workflow uploads OS matrix artifacts only after GitHub release publication', () => {
