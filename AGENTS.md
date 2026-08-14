@@ -80,6 +80,8 @@ npm run build:frontend  # public/js·public/manager 변경 시 (→ public/dist)
 - 프론트엔드(`public/js/*.ts`, `public/manager/src/**`)는 `build:frontend`만으로 충분하며 서버 재시작 없이 브라우저 새로고침으로 반영된다 (`public/dist` 정적 서빙).
 - 반영 여부 검증: `grep <new-symbol> dist/...` 또는 해당 엔드포인트 curl로 확인 후 안내.
 
+이건 로컬 빌드/재시작 계약이고, 배포(release)는 별개다. 릴리스 경로는 `feature → preview → main` 뒤 `workflow_dispatch` npm publish이며 `dev`는 릴리스 경로가 아니다. `scripts/promote-to-main.sh`는 publish를 dispatch한 뒤 결과를 확인하지 않고 종료하며, 승격 성공 후에는 다시 실행할 수 없다. 부분 실패·롤백 복구 절차는 `structure/infra.md` § 릴리스 파이프라인과 부분 실패 복구를 따를 것.
+
 ### Test Scope (`npm test`는 전체가 아니다)
 
 `npm test`는 root와 `tests/unit/`만 실행한다 (`tests/run.mts`의 파일 수집). `tests/integration/`은

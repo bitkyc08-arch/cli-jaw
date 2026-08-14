@@ -298,6 +298,10 @@ CLI_JAW_WSL_EVIDENCE_DIR=/path/to/wsl-evidence \
 bash scripts/promote-to-main.sh
 ```
 
+`scripts/promote-to-main.sh` promotes **only an already-certified `preview` head**. It refuses to start unless a successful `test.yml` push run exists for that exact `preview` SHA. With no argument it promotes the live `origin/preview` head; an optional SHA argument must equal that same head, so it acts as an assertion rather than a way to promote an older commit.
+
+The script dispatches the npm publish and then exits without checking whether the publish succeeded, and it cannot be re-run afterwards. Recovery for a partially completed release — npm publish missing, GitHub release missing, a bad version on `latest`, or a red commit on `main` — is documented in [`structure/infra.md` § 릴리스 파이프라인과 부분 실패 복구](structure/infra.md#릴리스-파이프라인과-부분-실패-복구-preview--main--npm).
+
 </details>
 
 <details>
