@@ -31,6 +31,37 @@
 const INVISIBLE_CHARS = /[\p{Cc}\p{Cf}\u034F\u17B4\u17B5\u180B-\u180E\uFE00-\uFE0F]/gu;
 
 /**
+ * Characters the fold has walked, across every round, since the last reset.
+ *
+ * The twin of `redactionCopyWork` in redact.ts, and it exists for the same
+ * reason: the test that guards this cost cannot use wall-clock time. A 300 ms
+ * budget on a 43 KB fixture failed CI at 307 ms and then passed on re-run with
+ * identical code, on a runner whose own job time moved between 4m50s and 7m28s.
+ * Milliseconds measure the runner; this counts the work the algorithm actually
+ * does, so it reads the same on every machine and under any load.
+ *
+ * It is charged exactly where the budget is charged, because the budget IS the
+ * bound being asserted: `decodeBudgetFor` caps total work at 8x the input, so
+ * folding is linear by construction. Bounding ROUNDS instead — the shape this
+ * module was fixed away from — leaves each round rescanning the whole string,
+ * which is quadratic in nesting depth and is what the guard has to catch.
+ *
+ * Incrementing one integer per round costs nothing measurable and is never
+ * read in production.
+ */
+let charsFolded = 0;
+
+/** Read the fold-work counter; test-only introspection. */
+export function foldWork(): number {
+    return charsFolded;
+}
+
+/** Reset the fold-work counter; test-only introspection. */
+export function resetFoldWork(): void {
+    charsFolded = 0;
+}
+
+/**
  * A folded string plus, for each of its characters, the offset in the ORIGINAL
  * that produced it.
  *
@@ -70,6 +101,7 @@ export function canonicalize(input: string): FoldedText {
         origin: Array.from({ length: input.length }, (_, i) => i),
         end: Array.from({ length: input.length }, (_, i) => i + 1),
     };
+    charsFolded += input.length; // the initial strip walks the whole input
     current = stripInvisible(current);
     // Fold to a FIXED POINT. Decoding strictly shrinks — an escape is always
     // longer than the character it denotes — so this terminates on its own,
@@ -82,6 +114,7 @@ export function canonicalize(input: string): FoldedText {
     for (;;) {
         if (budget <= 0) return { ...current, exhausted: true };
         budget -= current.text.length;
+        charsFolded += current.text.length; // every round rescans the whole string
         const next = stripInvisible(decodeOnce(current));
         if (next.text === current.text) break;
         current = next;
