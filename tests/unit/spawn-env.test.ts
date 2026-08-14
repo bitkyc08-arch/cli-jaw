@@ -51,6 +51,47 @@ test('moves bun-installed opencode to the front when it already exists later in 
     assert.equal(parts.filter(part => part === bun).length, 1);
 });
 
+test('preserves native Windows PATH entries when prepending the opencode bin', () => {
+    const next = applyCliEnvDefaults(
+        'opencode',
+        {},
+        { Path: String.raw`C:\Windows\System32;C:\Program Files\nodejs` },
+        'win32',
+    );
+    assert.deepEqual(next.PATH?.split(';').slice(1), [
+        String.raw`C:\Windows\System32`,
+        String.raw`C:\Program Files\nodejs`,
+    ]);
+});
+
+test('normalizes a mixed Git Bash PATH into a native Windows PATH', () => {
+    const next = applyCliEnvDefaults(
+        'opencode',
+        {},
+        { PATH: String.raw`/mingw64/bin:/usr/bin:C:\Users\jun\AppData\Roaming\npm` },
+        'win32',
+    );
+    assert.deepEqual(next.PATH?.split(';').slice(1), [
+        '/mingw64/bin',
+        '/usr/bin',
+        String.raw`C:\Users\jun\AppData\Roaming\npm`,
+    ]);
+});
+
+test('deduplicates Windows PATH entries case-insensitively and emits one PATH key', () => {
+    const bun = getOpencodePreferredBinDir();
+    const next = applyCliEnvDefaults(
+        'opencode',
+        { Path: `C:\\Tools;${bun.toUpperCase()}` },
+        {},
+        'win32',
+    );
+    const parts = next.PATH?.split(';') || [];
+    assert.equal(parts[0], bun);
+    assert.equal(parts.filter(part => part.toLowerCase() === bun.toLowerCase()).length, 1);
+    assert.equal(Object.keys(next).filter(key => key.toLowerCase() === 'path').length, 1);
+});
+
 test('does not modify non-opencode env', () => {
     assert.deepEqual(
         applyCliEnvDefaults('claude', { OTHER_FLAG: '1' }, {}),

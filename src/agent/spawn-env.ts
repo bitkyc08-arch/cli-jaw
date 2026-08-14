@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import { dirname, join } from 'path';
+import { splitPathList } from '../core/runtime-path.js';
 
 const OPENCODE_CONFIG_SCHEMA = 'https://opencode.ai/config.json';
 const OPENCODE_ALLOW_PERMISSIONS = [
@@ -24,16 +25,39 @@ const OPENCODE_ALLOW_PERMISSIONS = [
     'websearch',
 ] as const;
 
+function readPathValue(env: Record<string, string | undefined>): string {
+    for (const [key, value] of Object.entries(env)) {
+        if (key.toLowerCase() === 'path' && value) return value;
+    }
+    return '';
+}
+
+function withoutPathKeys(env: Record<string, string>): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(env).filter(([key]) => key.toLowerCase() !== 'path'),
+    );
+}
+
+function normalizePathEntry(entry: string, platform: NodeJS.Platform): string {
+    const withoutTrailingSeparators = entry.replace(/[\\/]+$/, '');
+    return platform === 'win32'
+        ? withoutTrailingSeparators.toLowerCase()
+        : withoutTrailingSeparators;
+}
+
 function prependPathDir(
     extraEnv: Record<string, string>,
     inheritedEnv: NodeJS.ProcessEnv,
     dir: string,
+    platform: NodeJS.Platform,
 ): Record<string, string> {
-    const currentPath = extraEnv["PATH"] ?? inheritedEnv["PATH"] ?? '';
-    const parts = currentPath.split(':').filter(Boolean).filter(part => part !== dir);
+    const currentPath = readPathValue(extraEnv) || readPathValue(inheritedEnv);
+    const normalizedDir = normalizePathEntry(dir, platform);
+    const parts = splitPathList(currentPath, platform)
+        .filter(part => normalizePathEntry(part, platform) !== normalizedDir);
     return {
-        ...extraEnv,
-        PATH: [dir, ...parts].join(':'),
+        ...withoutPathKeys(extraEnv),
+        PATH: [dir, ...parts].join(platform === 'win32' ? ';' : ':'),
     };
 }
 
@@ -45,6 +69,7 @@ export function applyCliEnvDefaults(
     cli: string,
     extraEnv: Record<string, string> = {},
     inheritedEnv: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
 ): Record<string, string> {
 
     if (cli === 'agy' || cli === 'kiro-code' || cli === 'grok') {
@@ -55,7 +80,7 @@ export function applyCliEnvDefaults(
     }
 
     if (cli !== 'opencode') return extraEnv;
-    const withPath = prependPathDir(extraEnv, inheritedEnv, getOpencodePreferredBinDir());
+    const withPath = prependPathDir(extraEnv, inheritedEnv, getOpencodePreferredBinDir(), platform);
     if (withPath["OPENCODE_ENABLE_EXA"] !== undefined) return withPath;
     if (inheritedEnv["OPENCODE_ENABLE_EXA"] !== undefined) return withPath;
     return {
