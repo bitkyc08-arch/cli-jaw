@@ -270,6 +270,9 @@ else
     1)
       PLATFORM_REQUIRED=true
       ;;
+    3)
+      echo "ℹ️  Changed files are release-driver extras only; platform checks are not required."
+      ;;
     *)
       echo "ERROR: installer-sensitive path detector failed with status $DETECTOR_STATUS" >&2
       publish_dispatch_hint

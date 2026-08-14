@@ -350,9 +350,19 @@ if (changedFilesStdin) {
     console.log('[release-evidence-required] SKIP no installer-sensitive paths in stdin');
     process.exit(0);
   }
+  // Distinguish workflow-trigger changes (need platform CI) from extra-only changes.
+  // Exit 1 = platform CI required, exit 3 = sensitive but platform CI not triggered.
+  const workflowPaths = installerSensitivePaths.filter((p) => !EXTRA_SENSITIVE_PATHS.includes(p));
+  const workflowMatched = matched.filter((file) => workflowPaths.includes(file));
   console.error(`[release-evidence-required] CHANGED installer-sensitive files (${matched.length}, ${shortHash(matched)})`);
   for (const file of matched) {
-    console.error(`- ${file}`);
+    const isExtra = EXTRA_SENSITIVE_PATHS.includes(file) && !workflowPaths.includes(file);
+    console.error(`- ${file}${isExtra ? ' (release-driver only, no platform CI trigger)' : ''}`);
+  }
+  if (workflowMatched.length === 0) {
+    console.error('[release-evidence-required] all changed files are release-driver extras, not installer surface');
+    console.error('[release-evidence-required] platform CI is not required for these changes');
+    process.exit(3);
   }
   process.exit(1);
 }

@@ -113,6 +113,9 @@ jobs:
               fi
               echo "platform certified by: $platform_url"
               ;;
+            3)
+              echo "::notice::Installer-sensitive changes are release-driver extras only (no platform CI trigger). Platform checks not required."
+              ;;
             *)
               echo "::error::installer-sensitive path detector failed with status $detector_status"
               exit "$detector_status"
