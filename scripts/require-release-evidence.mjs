@@ -195,6 +195,7 @@ Then it runs scripts/verify-release-evidence.mjs before publish/release can cont
 let baseRef = '';
 let changedFilesStdin = false;
 let printPaths = false;
+let acceptCiEvidence = false;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
@@ -208,6 +209,10 @@ for (let i = 0; i < args.length; i += 1) {
   }
   if (arg === '--changed-files-stdin') {
     changedFilesStdin = true;
+    continue;
+  }
+  if (arg === '--accept-ci-evidence') {
+    acceptCiEvidence = true;
     continue;
   }
   if (arg === '--base-ref') {
@@ -385,6 +390,28 @@ if (changed.length > 30) {
 }
 
 if (!macosEvidence || !wslEvidence) {
+  // Option A from #355: accept CI postinstall-platform pass as equivalent evidence.
+  if (acceptCiEvidence) {
+    const headSha = requireGit(['rev-parse', 'HEAD'], 'resolve HEAD for CI evidence');
+    console.log(`[release-evidence-required] checking CI postinstall-platform for ${headSha.slice(0, 12)}...`);
+    const ciCheck = spawnSync('gh', [
+      'run', 'list',
+      '--workflow', 'postinstall-platform.yml',
+      '--commit', headSha,
+      '--event', 'push',
+      '--status', 'success',
+      '--limit', '1',
+      '--json', 'url',
+      '--jq', '.[0].url // ""',
+    ], { cwd: repoRoot, encoding: 'utf8', shell: false });
+    const ciUrl = (ciCheck.stdout || '').trim();
+    if (ciUrl) {
+      console.log(`[release-evidence-required] PASS CI postinstall-platform evidence: ${ciUrl}`);
+      process.exit(0);
+    }
+    console.error('[release-evidence-required] no successful postinstall-platform CI run found for this SHA');
+    console.error('Falling back to local evidence requirement.');
+  }
   console.error('[release-evidence-required] FAIL');
   console.error('Strict fresh-machine evidence is required before git push or npm publish.');
   console.error('Set both variables and rerun:');

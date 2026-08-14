@@ -51,10 +51,11 @@ git worktree add -b "$PROMOTION_BRANCH" "$WORKTREE" "$PREVIEW_SHA"
 
 (
   cd "$WORKTREE"
+  npm ci --ignore-scripts
   npm version "$STABLE_VERSION" --no-git-tag-version --allow-same-version
   node scripts/sync-electron-version.cjs
   npm run gate:all
-  node scripts/require-release-evidence.mjs
+  node scripts/require-release-evidence.mjs --accept-ci-evidence
   git add package.json package-lock.json electron/package.json electron/package-lock.json
   git commit -m "chore: promote v$STABLE_VERSION"
   git push --set-upstream origin "$PROMOTION_BRANCH"
