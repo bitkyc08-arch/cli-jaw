@@ -5,10 +5,15 @@ import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import { isRemoteTarget, type MessengerChannel, type OutboundType, type RemoteTarget } from './types.js';
-import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
+import { getLastActiveTarget, getLatestSeenTarget, clearTargetState, getHomeChannel } from './runtime.js';
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
+import { log } from '../core/logger.js';
+
+export function stampOutboundSend(channel: MessengerChannel, ok: boolean): void {
+    log.event('outbound.send', { channel, result: ok ? 'ok' : 'error' });
+}
 
 // ─── Request Model ──────────────────────────────────
 
@@ -21,6 +26,10 @@ export type ChannelSendRequest = {
     target?: RemoteTarget;
     chatId?: string | number;
     reply_markup?: unknown;
+    /** Opt in to a lesser delivery when the channel cannot render the requested
+     *  fidelity. Absent means the caller would rather be told it is unsupported
+     *  than have the message quietly arrive as something else. */
+    interactiveFallback?: 'text';
 };
 
 // ─── Transport Send Registry ────────────────────────
@@ -49,6 +58,15 @@ function normalizeOutboundType(value: unknown): OutboundType {
         throw badRequest('invalid_outbound_type');
     }
     return type as OutboundType;
+}
+
+function normalizeInteractiveFallback(value: unknown): 'text' | undefined {
+    if (value == null || value === '') return undefined;
+    const fallback = String(value).trim().toLowerCase();
+    // Only one lesser delivery exists today. Accepting anything else would let a
+    // typo read as consent to a downgrade the caller did not ask for.
+    if (fallback !== 'text') throw badRequest('invalid_interactive_fallback');
+    return 'text';
 }
 
 function normalizeChannel(value: unknown): MessengerChannel | 'active' {
@@ -81,14 +99,26 @@ export function normalizeChannelSendRequest(body: Record<string, any>): ChannelS
         caption: body["caption"],
         target: body["target"],
         chatId: body["chat_id"] ?? body["chatId"],
+        // This normalizer is an allowlist, so an opt-in the caller sent would be
+        // dropped here and every HTTP keyboard send to a channel without
+        // interactive support would come back unsupported.
+        interactiveFallback: normalizeInteractiveFallback(
+            body["interactive_fallback"] ?? body["interactiveFallback"],
+        ),
     });
 }
 
 // ─── Resolve Target ─────────────────────────────────
 
 function resolveChannel(req: ChannelSendRequest): MessengerChannel {
+    if (req.target) {
+        if (req.channel && req.channel !== 'active' && req.channel !== req.target.channel) {
+            throw badRequest('channel_target_mismatch');
+        }
+        return req.target.channel;
+    }
     if (req.channel && req.channel !== 'active') return req.channel;
-    return (settings["channel"] as MessengerChannel) || 'telegram';
+    return getHomeChannel();
 }
 
 // ─── Send ───────────────────────────────────────────
@@ -268,8 +298,9 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     // straight into HTTP response bodies via res.json(result). Masking at each
     // call site was tried and missed several; masking here cannot be bypassed.
     const result = await sendFn(req);
-    if (result.ok === false && typeof result.error === 'string') {
-        return { ...result, error: redactChannelSecrets(result.error) };
-    }
-    return result;
+    const sanitized = result.ok === false && typeof result.error === 'string'
+        ? { ...result, error: redactChannelSecrets(result.error) }
+        : result;
+    stampOutboundSend(channel, sanitized.ok !== false);
+    return sanitized;
 }

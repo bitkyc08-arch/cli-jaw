@@ -25,6 +25,9 @@ const CMDLINE_HIDDEN = new Set([
     'browser',
     'prompt',
     'version',
+    'stop',
+    'approve',
+    'deny',
 ]);
 
 type SlashSurface = typeof SURFACES[number];

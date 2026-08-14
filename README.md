@@ -290,12 +290,12 @@ node scripts/verify-release-evidence.mjs --macos /path/to/macos-evidence --wsl /
 
 The matrix gate rejects evidence collected with stale collector, installer, or verifier scripts; archived evidence scripts must match the current package or checkout that runs the gate.
 
-When `scripts/release.sh`, `scripts/release-preview.sh`, or `npm publish` detects installer-sensitive changes since the previous tag, it runs this same matrix gate before any git push or npm publish. Set the evidence directories before starting a release:
+When `scripts/promote-to-main.sh`, `scripts/release-preview.sh`, or `npm publish` detects installer-sensitive changes since the previous tag, it runs this same matrix gate before any git push or npm publish. Set the evidence directories before starting a release:
 
 ```bash
 CLI_JAW_MACOS_EVIDENCE_DIR=/path/to/macos-evidence \
 CLI_JAW_WSL_EVIDENCE_DIR=/path/to/wsl-evidence \
-bash scripts/release.sh patch
+bash scripts/promote-to-main.sh
 ```
 
 </details>
@@ -633,6 +633,8 @@ Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/ph
 
 Same capabilities as Telegram — text, files, commands. Channel/thread routing, canonical `/api/channel/send`, and forwarder support for agent result broadcast. Setup via Web UI settings.
 
+You can enable multiple inbound channels at once. The manager and Web UI settings separate **enabled channels** from the **home channel**: enabled channels start their transport gateways; the home channel is the fallback for proactive sends and legacy `settings.channel` is a deprecated read-only alias for one major version.
+
 ### Slack
 
 Socket Mode bot with the same shared command catalog — mentions, DMs, slash commands, file/image relay, thread replies. Each Slack-triggered agent turn receives the current conversation ID and parent thread timestamp explicitly, so history/member lookups and targeted replies do not depend on parsing an internal session label or enabling multi-session.
@@ -684,6 +686,7 @@ jaw ask "question"                # one prompt, one answer — no TTY needed
 echo "question" | jaw ask -       # same, reading the prompt from stdin
 jaw doctor                        # installation and runtime diagnostics
 jaw slack setup                   # guided Slack app setup (manifest + token validation)
+jaw messaging ingress list        # inspect / replay the durable inbound journal
 
 # Instances
 jaw clone ~/project               # clone instance to new directory

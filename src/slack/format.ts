@@ -57,6 +57,10 @@ export function toMrkdwn(text: string): string {
  * Redaction happens here, as it does for Discord: every outbound Slack text
  * passes through this function, so there is one place to audit.
  */
-export function chunkSlackMessage(text: string, limit = 3900): string[] {
+/** Slack's practical per-message ceiling. Exported so the capability declaration is
+ *  derived from the limit that actually chunks, not a second copy of the number. */
+export const SLACK_MESSAGE_LIMIT = 3900;
+
+export function chunkSlackMessage(text: string, limit = SLACK_MESSAGE_LIMIT): string[] {
     return chunkFenceAware(redactOutboundText(text), limit);
 }

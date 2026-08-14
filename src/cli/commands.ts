@@ -9,7 +9,7 @@ import {
     thoughtHandler,
     clearHandler, purgeHandler, resetHandler, versionHandler, mcpHandler, memoryHandler,
     browserHandler, promptHandler, quitHandler, fileHandler, fallbackHandler,
-    steerHandler, queueHandler, flushHandler, forwardHandler, ideHandler, orchestrateHandler,
+    steerHandler, flushHandler, forwardHandler, ideHandler, orchestrateHandler,
     compactHandler,
     modelArgumentCompletions, cliArgumentCompletions, skillArgumentCompletions,
     employeeArgumentCompletions, browserArgumentCompletions, fallbackArgumentCompletions,
@@ -18,6 +18,7 @@ import {
 import { projectHandler } from './handlers-project.js';
 import { taskHandler } from './handlers-task.js';
 import { newSessionHandler, switchSessionHandler, sessionsListHandler, forkSessionHandler } from './handlers/session-handlers.js';
+import { remoteStopHandler, remoteQueueHandler, remoteApproveHandler, remoteDenyHandler } from './handlers/remote-session-commands.js';
 import { searchWorkflowHandler } from './handlers-search.js';
 import {
     planWorkflowHandler,
@@ -287,7 +288,10 @@ export const COMMANDS: SlashCommand[] = [
     // queue: TUI-only surface — the real work happens in the TUI intercept
     // (bin/commands/tui/queue-command.ts) against the existing
     // /api/orchestrate/queue/:id routes; this handler is the usage fallback.
-    { name: 'queue', descKey: '', desc: 'List/manage queued messages', args: '[steer|drop <n>]', category: 'session', interfaces: ['cli'], capability: { cli: 'full', web: 'hidden', telegram: 'hidden', discord: 'hidden', slack: 'hidden', cmdline: 'hidden' }, handler: queueHandler },
+    { name: 'queue', descKey: '', desc: 'List/manage queued messages', args: '[list|drop <n>]', category: 'session', interfaces: ['cli', 'telegram', 'discord', 'slack'], capability: { cli: 'full', web: 'hidden', telegram: 'full', discord: 'full', slack: 'full', cmdline: 'hidden' }, handler: remoteQueueHandler },
+    { name: 'stop', descKey: '', desc: 'Stop the current conversation run', category: 'session', interfaces: ['telegram', 'discord', 'slack'], capability: { cli: 'hidden', web: 'hidden', telegram: 'full', discord: 'full', slack: 'full', cmdline: 'hidden' }, handler: remoteStopHandler },
+    { name: 'approve', descKey: '', desc: 'Approve a pending dispatch', args: '<jti> <digest>', category: 'session', interfaces: ['telegram', 'discord', 'slack'], capability: { cli: 'hidden', web: 'hidden', telegram: 'full', discord: 'full', slack: 'full', cmdline: 'hidden' }, handler: remoteApproveHandler },
+    { name: 'deny', descKey: '', desc: 'Deny a pending dispatch', args: '<jti> <digest>', category: 'session', interfaces: ['telegram', 'discord', 'slack'], capability: { cli: 'hidden', web: 'hidden', telegram: 'full', discord: 'full', slack: 'full', cmdline: 'hidden' }, handler: remoteDenyHandler },
     { name: 'ide', descKey: 'cmd.ide.desc', desc: 'IDE diff view', args: '[pop|on|off]', category: 'tools', interfaces: ['cli'], handler: ideHandler },
     { name: 'orchestrate', aliases: ['pabcd'], descKey: '', desc: 'Enter PABCD orchestration', args: '[I|P|A|B|C|D|status|reset] [--attest <json>]', category: 'tools', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: orchestrateHandler },
     { name: 'project', aliases: ['proj'], descKey: '', desc: 'Manage project workspace directories', args: '[set|reset|clear|list] [paths...]', category: 'tools', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: projectHandler },

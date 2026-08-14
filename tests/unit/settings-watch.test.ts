@@ -6,6 +6,7 @@ import {
     getSettingsPersistenceShape,
     settings,
     replaceSettings,
+    SETTINGS_SCHEMA_VERSION,
 } from '../../src/core/config.ts';
 import { addBroadcastListener, removeBroadcastListener } from '../../src/core/bus.ts';
 import { reloadSettingsFromDisk, startSettingsWatch } from '../../src/core/settings-watch.ts';
@@ -99,7 +100,7 @@ test('SWA-006: external JSON cannot overwrite schema-owned fields but can update
     };
     replaceSettings({
         ...settings,
-        settingsSchemaVersion: 3,
+        settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
         runtimeDefaultMigration: migration,
         cli: 'codex-app',
     }, 'absent');
@@ -114,7 +115,7 @@ test('SWA-006: external JSON cannot overwrite schema-owned fields but can update
     assert.equal(reloaded, true);
     // The external document said 99. What matters is that the number in memory is the one
     // this process owns, not the one an outside writer asked for.
-    assert.equal(settings["settingsSchemaVersion"], 3);
+    assert.equal(settings["settingsSchemaVersion"], SETTINGS_SCHEMA_VERSION);
     assert.deepEqual(settings["runtimeDefaultMigration"], migration);
     assert.equal(settings["cli"], 'pi');
     const change = events.find(e => e.type === 'settings_change');

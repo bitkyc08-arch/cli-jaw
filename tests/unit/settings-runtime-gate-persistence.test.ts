@@ -34,7 +34,7 @@ function document(
         // multiplex gate is rewritten to disk, and a document below the current schema
         // would be rewritten by its own migration — which would answer the question
         // before the gate ever got a say.
-        settingsSchemaVersion: 3,
+        settingsSchemaVersion: 4,
         runtimeDefaultMigration: cli === 'claude' ? pending() : null,
         multiSessionDefaultMigration: null,
         multiSession: {
@@ -42,6 +42,10 @@ function document(
             maxConcurrent: 2,
             midRunPolicy: 'steer',
             channels: { telegram: false, discord: false, slack: true },
+        },
+        messaging: {
+            enabledChannels: ['telegram'],
+            homeChannel: 'telegram',
         },
         cli,
         ...(runtime ? { runtime } : {}),

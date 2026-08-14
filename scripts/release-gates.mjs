@@ -88,14 +88,24 @@ const GATES = {
         },
     },
     'truth-table-fresh': {
-        description: 'CAPABILITY_TRUTH_TABLE.md edited within 7 days OR matches code refs',
+        description: 'CAPABILITY_TRUTH_TABLE.md edited within 7 days OR matches code refs, AND its generated messaging channel matrix matches src/messaging/channel-capabilities.ts',
         check() {
             const rel = 'structure/CAPABILITY_TRUTH_TABLE.md';
             const abs = path.join(repoRoot, rel);
             if (!fs.existsSync(abs)) return { ok: false, detail: `${rel} missing` };
+            // The generated messaging block first: a stale matrix is a wrong claim
+            // regardless of the file's mtime, so freshness must not excuse it.
+            // node_modules/.bin/tsx directly — npx resolution is not a gate dependency.
+            const generated = run(path.join('node_modules', '.bin', 'tsx'), [
+                'scripts/generate-channel-capability-table.mts', '--check',
+            ], { timeout: 60_000 });
+            if (generated.status !== 0) {
+                const detail = [generated.stderr, generated.stdout].filter(Boolean).join('\n').trim();
+                return { ok: false, detail: `messaging capability matrix drift:\n${detail || `tsx exited with ${generated.status}`}` };
+            }
             const stat = fs.statSync(abs);
             const ageDays = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60 * 24);
-            if (ageDays <= 7) return { ok: true, detail: `truth table ${ageDays.toFixed(2)}d old` };
+            if (ageDays <= 7) return { ok: true, detail: `truth table ${ageDays.toFixed(2)}d old; messaging matrix in sync` };
             const text = readFile(rel);
             const required = ['action-intent', 'target-resolver', 'answer-artifact', 'source-audit'];
             for (const term of required) {
@@ -103,7 +113,7 @@ const GATES = {
                     return { ok: false, detail: `truth table stale (${ageDays.toFixed(1)}d) and missing ${term}` };
                 }
             }
-            return { ok: true, detail: `truth table ${ageDays.toFixed(1)}d old but matches required terms` };
+            return { ok: true, detail: `truth table ${ageDays.toFixed(1)}d old but matches required terms; messaging matrix in sync` };
         },
     },
     'mcp-scope-frozen': {
@@ -472,6 +482,50 @@ const GATES = {
                 return { ok: false, detail: [r.stdout, r.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }
             return { ok: true, detail: 'install-integrity + scriptless contract suites green' };
+        },
+    },
+    'messaging-conformance': {
+        description: 'Telegram/Slack/Discord durable ingress and command contract suites + functional certification artifact',
+        check() {
+            const publicDocs = ['README.md', 'README.ko.md', 'README.ja.md', 'README.zh-CN.md', 'AGENTS.md'];
+            for (const rel of publicDocs) {
+                const abs = path.join(repoRoot, rel);
+                if (!fs.existsSync(abs)) continue;
+                const text = fs.readFileSync(abs, 'utf8');
+                if (/exactly[- ]once/i.test(text)) {
+                    return { ok: false, detail: `${rel} claims exactly-once` };
+                }
+                if (/release-certified/i.test(text)) {
+                    return { ok: false, detail: `${rel} claims release-certified` };
+                }
+            }
+            const suites = [
+                'tests/unit/channel-contract-conformance.test.ts',
+                'tests/unit/messaging-command-parity.test.ts',
+                'tests/unit/messaging-durable-ingress.test.ts',
+                'tests/unit/telegram-ingress-journal.test.ts',
+                'tests/unit/discord-ingress-journal.test.ts',
+                'tests/unit/ingress-generation.test.ts',
+                'tests/unit/messaging-trace-context.test.ts',
+                'tests/unit/messaging-metrics.test.ts',
+            ];
+            const missing = suites.filter((rel) => !fs.existsSync(path.join(repoRoot, rel)));
+            if (missing.length > 0) {
+                return { ok: false, detail: `channel fixture missing: ${missing.join(', ')}` };
+            }
+            const tests = run('npx', ['tsx', '--experimental-test-module-mocks', 'tests/run.mts', ...suites], { timeout: 180_000 });
+            if (tests.status !== 0) {
+                return { ok: false, detail: [tests.stdout, tests.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            const written = run(path.join('node_modules', '.bin', 'tsx'), ['scripts/write-messaging-certification.mts'], { timeout: 30_000 });
+            if (written.status !== 0) {
+                return { ok: false, detail: [written.stdout, written.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            const validated = run(path.join('node_modules', '.bin', 'tsx'), ['scripts/validate-messaging-certification.mts'], { timeout: 30_000 });
+            if (validated.status !== 0) {
+                return { ok: false, detail: [validated.stdout, validated.stderr].filter(Boolean).join('\n').trim().slice(-800) };
+            }
+            return { ok: true, detail: 'three-channel messaging suites green; functional-certified artifact valid' };
         },
     },
     'gate-docs': {

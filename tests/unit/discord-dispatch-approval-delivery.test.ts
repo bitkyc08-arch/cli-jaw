@@ -14,3 +14,15 @@ test('Discord operator user id is opened as a DM before approval text is sent', 
     assert.deepEqual(calls[0]?.body, { recipient_id: 'USER9' });
     assert.deepEqual(calls[1]?.body, { content: 'digest payload' });
 });
+
+test('components ride on the same DM send', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), body: JSON.parse(String(init?.body || '{}')) });
+        const isOpen = String(url).endsWith('/users/@me/channels');
+        return new Response(JSON.stringify(isOpen ? { id: 'DM123' } : {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+    const extra = { components: [{ type: 1, components: [{ type: 2, style: 3, custom_id: 'appr:x', label: 'Approve' }] }] };
+    assert.equal((await sendDiscordDm('token', 'USER9', 'digest payload', fetchImpl, extra)).ok, true);
+    assert.deepEqual(calls[1]?.body, { content: 'digest payload', components: extra.components });
+});

@@ -5,7 +5,7 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 ## Documentation Map
 
 - Start at `structure/INDEX.md` for the current architecture map.
-- Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes.
+- Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes. Concurrent inbound gateway changes belong in `structure/INDEX.md`, `structure/infra.md`, `structure/telegram.md`, and the messaging runtime docs.
 - Do not use the old `devlog/structure/` path for architecture docs; the active folder is `structure/`.
 
 ## Build & Deploy Contract
@@ -37,7 +37,7 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 - Kiro (`kiro-code`) is a top-level runtime, not an `ai-e` provider. It runs through `kiro-cli chat --no-interactive`, resumes with `--resume-id <sessionId>`, passes `--model` and optional `--trust-all-tools`, parses plain-text stdout (ANSI stripped), emits `agent_tool` steps from Kiro tool progress lines, shows AGY-style working indicators while busy, and captures session ids from the kiro-cli v2 session store (`conversations_v2` in the kiro-cli data sqlite, keyed by the canonical cwd) — the legacy `~/.kiro/sessions/cli/*.json` files are not used by `chat --no-interactive`. Fresh Kiro turns include cli-jaw operational context + bounded history; resumed Kiro turns send only the current prompt because the native session already owns prior context. Live models come from `kiro-cli chat --list-models --format json`; quota uses reverse-engineered `AmazonCodeWhispererService.GetUsageLimits` with the Kiro CLI auth store token.
 - Claude E is the registry key `claude-e`; runtime telemetry uses `agent:claude-e:*`. Some persisted helper/session internals still use the historical `claude-i` bucket for compatibility.
 - Gemini full-access runs use `--skip-trust --approval-mode yolo` on both fresh and resume sessions.
-- `/api/channel/send` is the canonical outbound Telegram/Discord/Slack delivery endpoint.
+- `/api/channel/send` is the canonical outbound Telegram/Discord/Slack delivery endpoint. Concurrent inbound gateway: settings v4 uses `messaging.enabledChannels` (array) and `messaging.homeChannel`; legacy `settings.channel` is a deprecated read-only alias for one major version. Outbound resolution prefers `target.channel`, then explicit `channel`, then `homeChannel`.
 - Slack connection environment variables own their matching fields at runtime: `GET /api/settings` reports `slackEnvironmentVariables` while redacting values, Settings and CLI setup conservatively refuse connection editing while any are present, generic `PUT`s reject only env-owned paths, and persistence strips only those fields so environment values never enter `settings.json` or erase unrelated file-backed credentials. Full `POST /api/settings/slack/reset` still returns `409` while any connection env variable exists.
 - Slack-triggered Boss turns receive `channel_id` and parent `thread_ts` in the per-turn user prompt regardless of multi-session state; agents use that explicit context for Slack lookup/send APIs instead of parsing session labels.
 - Heartbeat schedules support `{ kind: "every", minutes }` and `{ kind: "cron", cron, timeZone? }`.

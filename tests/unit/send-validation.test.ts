@@ -461,3 +461,29 @@ test('chunkDiscordMessage splits 4000 chars into 2 chunks', async () => {
     assert.equal(chunks.length, 2);
     assert.ok(chunks.every(c => c.length <= 2000));
 });
+
+test('normalizeChannelSendRequest carries the interactive fallback opt-in', async () => {
+    const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
+    // The normalizer is an allowlist, so a field it does not name is dropped before
+    // the transport sees it. That silently turned every HTTP keyboard send to a
+    // channel without interactive support into an unsupported refusal.
+    const snake = normalizeChannelSendRequest({ type: 'keyboard', text: 'hi', interactive_fallback: 'text' });
+    assert.equal(snake.interactiveFallback, 'text');
+    const camel = normalizeChannelSendRequest({ type: 'keyboard', text: 'hi', interactiveFallback: 'TEXT' });
+    assert.equal(camel.interactiveFallback, 'text');
+});
+
+test('normalizeChannelSendRequest omits the opt-in when absent', async () => {
+    const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
+    const req = normalizeChannelSendRequest({ type: 'keyboard', text: 'hi' });
+    assert.equal('interactiveFallback' in req, false, 'absent must stay absent, not become a default');
+});
+
+test('normalizeChannelSendRequest rejects an unknown interactive fallback', async () => {
+    const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
+    // A typo must not read as consent to a downgrade the caller never asked for.
+    assert.throws(
+        () => normalizeChannelSendRequest({ type: 'keyboard', text: 'hi', interactiveFallback: 'blocks' }),
+        /invalid_interactive_fallback/,
+    );
+});

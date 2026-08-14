@@ -62,9 +62,12 @@ export async function sendDiscordTextRest(
     token: string,
     channelId: string,
     text: string,
+    extra?: { components?: unknown },
 ): Promise<DiscordRestSendResult> {
     const chunks = chunkDiscordMessage(text);
-    for (const chunk of chunks) {
+    for (const [index, chunk] of chunks.entries()) {
+        const body: Record<string, unknown> = { content: chunk };
+        if (index === 0 && extra?.components) body['components'] = extra.components;
         const result = await schedulerFor(token).schedule({
             method: 'POST',
             path: `/channels/${encodeURIComponent(channelId)}/messages`,
@@ -72,7 +75,7 @@ export async function sendDiscordTextRest(
             majorKey: channelId,
             makeInit: () => ({
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: chunk }),
+                body: JSON.stringify(body),
             }),
             parse: async () => undefined,
         });
@@ -98,13 +101,22 @@ export async function openDiscordDm(token: string, userId: string, fetchImpl?: t
     return { ok: true, channelId: result.value.id };
 }
 
-export async function sendDiscordDm(token: string, userId: string, text: string, fetchImpl?: typeof fetch): Promise<DiscordRestSendResult> {
+export async function sendDiscordDm(
+    token: string,
+    userId: string,
+    text: string,
+    fetchImpl?: typeof fetch,
+    extra?: { components?: unknown },
+): Promise<DiscordRestSendResult> {
     const dm = await openDiscordDm(token, userId, fetchImpl);
     if (!dm.ok) return { ok: false, failure: discordDeliveryError({ channel: 'discord', message: dm.error, dispatched: false }), error: dm.error };
-    if (!fetchImpl) return sendDiscordTextRest(token, dm.channelId, text);
+    if (!fetchImpl) return sendDiscordTextRest(token, dm.channelId, text, extra);
     const scheduler = new DiscordRestScheduler({ token, fetchImpl });
-    for (const chunk of chunkDiscordMessage(text)) {
-        const result = await scheduler.schedule({ method: 'POST', path: `/channels/${encodeURIComponent(dm.channelId)}/messages`, routeKey: 'POST:/channels/:channel/messages', majorKey: dm.channelId, makeInit: () => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: chunk }) }), parse: async () => undefined });
+    const chunks = chunkDiscordMessage(text);
+    for (const [index, chunk] of chunks.entries()) {
+        const body: Record<string, unknown> = { content: chunk };
+        if (index === 0 && extra?.components) body['components'] = extra.components;
+        const result = await scheduler.schedule({ method: 'POST', path: `/channels/${encodeURIComponent(dm.channelId)}/messages`, routeKey: 'POST:/channels/:channel/messages', majorKey: dm.channelId, makeInit: () => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), parse: async () => undefined });
         if (!result.ok) return sendResult(result);
     }
     return { ok: true };

@@ -9,7 +9,7 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 # src/cli/ — Slash Command Registry & Dispatcher
 
 > `commands.ts`(621L) + `handlers.ts`(448L) + `handlers-runtime.ts`(507L) + `handlers-completions.ts`(103L) + `handlers-workflows.ts`(505L) + `handlers-search.ts`(34L) + `handlers-skill-invoke.ts`(36L) + `api-auth.ts`(45L) + `command-context.ts`(144L) + `registry.ts`(254L) + `acp-client.ts`(382L) + `claude-models.ts`(84L) + `compact.ts`(143L)
-> slash registry는 52개 커맨드이며 non-hidden은 51개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 37 / Discord 37 / Slack 37이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, JWC external runtime helper는 `jwc.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
+> slash registry는 55개 커맨드이며 non-hidden은 54개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 41 / Discord 41 / Slack 41이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, JWC external runtime helper는 `jwc.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
 > 모델/CLI 선택은 `registry.ts` 단일 소스를 따른다. 현재 registry 런타임은 `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `grok`, `jwc`, `kiro-code`, `opencode`, `copilot` 13개다.
 
 ---
@@ -36,7 +36,7 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 
 ## Registry Snapshot
 
-### Command 목록 (52 total / 51 non-hidden)
+### Command 목록 (55 total / 54 non-hidden)
 
 ```text
 help, commands, settings, status, clear, purge, compact, reset,
@@ -73,7 +73,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 
 ## Root CLI Surface (`bin/cli-jaw.ts` + `bin/commands/*.ts`)
 
-소스 기준 entrypoint는 `bin/cli-jaw.ts`(284L)다. 현재 소스 트리에서 root command router는 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. 아래 표는 grouped subcommand(`chat search`, `browser web-ai`, dashboard federation 등)를 포함한 user-facing surface다. 파일 수 기준으로는 `browser-web-ai.ts`, `dashboard-memory.ts`, `dashboard-chat.ts`, `jwc.ts`, `dispatch-helpers.ts`, `dispatch-batch-summary.ts`, `task.ts`, `bgtask.ts` helper/command가 포함되어 `bin/commands/*.ts` top-level은 33개다.
+소스 기준 entrypoint는 `bin/cli-jaw.ts`(284L)다. 현재 소스 트리에서 root command router는 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. 아래 표는 grouped subcommand(`chat search`, `browser web-ai`, dashboard federation 등)를 포함한 user-facing surface다. 파일 수 기준으로는 `browser-web-ai.ts`, `dashboard-memory.ts`, `dashboard-chat.ts`, `jwc.ts`, `dispatch-helpers.ts`, `dispatch-batch-summary.ts`, `task.ts`, `bgtask.ts` helper/command가 포함되어 `bin/commands/*.ts` top-level은 40개다 (`messaging.ts` 포함).
 
 ### Global options
 
@@ -90,6 +90,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `serve` | `bin/commands/serve.ts` | `--port <port>`, `--host <host>`, `--no-open`, `--lan`, `--remote`, `--trust-proxy`, `--trust-forwarded` |
 | `init` | `bin/commands/init.ts` | `--help`, `--non-interactive`, `--safe`, `--dry-run`, `--force`, `--working-dir <path>`, `--cli <name>`, `--channel <telegram\|discord\|slack>`, `--telegram-token <t>`, `--allowed-chat-ids <ids>`, `--discord-token <t>`, `--discord-guild-id <id>`, `--discord-channel-ids <ids>`, `--slack-bot-token <t>`, `--slack-app-token <t>`, `--slack-team-id <id>`, `--slack-channel-ids <ids>`, `--skills-dir <path>`; Slack 환경변수 모드에서는 credential flags를 거부하고 연결값을 파일에 쓰지 않는다 |
 | `slack` | `bin/commands/slack.ts` | `manifest` (app manifest YAML 출력), `setup [--bot-token <t>] [--app-token <t>] [--team-id <id>] [--channel-ids <ids>] [--non-interactive] [--skip-validate]`, `history <channel> [--thread <ts>] [--limit N] [--json]`, `members <channel> [--limit N] [--json]`, `users [--limit N] [--include-bots] [--include-deleted] [--json]` (history/members/users는 실행 중인 서버를 경유하므로 CLI 프로세스가 봇 토큰을 만지지 않는다); guided Slack 앱 설정 — 매니페스트 생성 + auth.test/apps.connections.open 라이브 검증 + settings 병합(`channel` 미변경). Slack 연결 환경변수가 있으면 file/UI credentials와 혼용하지 않고 setup을 거부한다. Slack은 xapp- 토큰이 UI 전용이고 PKCE localhost 흐름이 bot scope를 거부하므로 OAuth 원클릭은 구조적으로 불가 (devlog 260803_slack_oauth_setup/000) |
+| `messaging` | `bin/commands/messaging.ts` | `ingress list [--channel --state --older-than --limit --json]`, `ingress show <channel> <accountId> <eventId> [--json]`, `ingress replay <channel> <accountId> <eventId> --reason <text> [--force]`, `ingress audit [--limit --json]`, `doctor [--json]`. Local process only. Replay marks the journal `received`; the next vendor redelivery is what re-runs the handler. `--reason` required. completed default-deny; discarded payload hard-deny. `doctor` reports local journal counts, not the server ring. |
 | `doctor` | `bin/commands/doctor.ts` | `--json`, `--repair-shared-paths`, `--tcc`, `--fix`, `--prime`; `--json` 페이로드는 `platform` (`windows-native\|wsl\|linux\|darwin\|other`, `src/core/platform-kind.ts` 판정)과 WSL 전용 `wsl` 객체를 포함 |
 | `jwc` | `bin/commands/jwc.ts` | `install [--prefix <dir>] [--package <pkg>] [--dry-run] [--json]`, `clean [--prefix <dir>] [--dry-run] [--json]`, `doctor [--prefix <dir>] [--json]`; optional external-only JWC runtime helper |
 | `provider` | `bin/commands/provider.ts` | provider registry/config helper root command |
@@ -130,6 +131,23 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jwc install` to install the optional external runtime, `jaw jwc doctor` to inspect `JWC_SDK_PATH` readiness, and `jaw jwc clean` to remove the external runtime prefix.
 
 ## Command Behavior Notes
+
+### Remote `/stop` `/queue` `/approve` `/deny`
+
+- `/new` `/status`는 기존처럼 세 채널 catalog에 있다. Slack 앱 매니페스트만 `/status`를 빼 둔다 — Slack이 그 이름을 예약한다. 파서/카탈로그에는 그대로 있다. M4-A1이 `/stop` `/queue` `/approve` `/deny`를 같은 catalog에 올린다.
+- `/stop`은 현재 conversation run만 interrupt한다. `quit`/프로세스 종료가 아니다.
+- `/queue` remote는 해당 session scope의 list/drop이다. TUI `/queue` intercept와 별개다.
+- `/approve` `/deny` 텍스트는 `<jti> <digest>`가 필요하고, `/deny`는 기존 `cancel` store transition이다. native 버튼은 M4-A2.
+- 이 네 이름만 messaging access-policy를 탄다. `/help` `/status`는 채널 allowlist만 탄다.
+
+### `jaw messaging ingress`
+
+- `jaw messaging doctor --json`은 같은 SQLite 파일의 ingress counts와 이 프로세스 ring의 `log.event`만 본다. 서버 메모리 메트릭은 `/api/health`에 있다.
+- 서버와 같은 SQLite journal(`ingress_events`)을 로컬 프로세스에서 읽는다. HTTP replay route는 없다.
+- `list` / `show` / `replay` / `audit`. `replay`는 `--reason`이 없으면 저널을 건드리지 않는다.
+- 성공한 replay는 row를 `received`로만 되돌린다. 이 프로세스 안에서 handler를 다시 돌리지 않는다. 실제 재실행은 Telegram offset / Slack retry / Discord resume 재전송이 `admitIngress`를 다시 탈 때다.
+- completed는 기본 거부. `--force`여도 completion이 `payload_json`을 지운 tombstone은 `payload_discarded`로 거부한다.
+- 성공 replay만 `$JAW_HOME/messaging-ingress-audit.jsonl`에 prior→new + reason을 append한다.
 
 ### `jaw service stop|restart`
 

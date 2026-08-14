@@ -19,6 +19,8 @@ import { readClaudeCreds } from '../../src/routes/quota.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord } from '../_http-client.js';
+import { getEnabledChannels, getHomeChannel } from '../../src/messaging/runtime.js';
+
 
 if (shouldShowHelp(process.argv)) printAndExit(`
   jaw doctor — diagnose installation and configuration
@@ -73,7 +75,13 @@ interface NetworkSettings {
 
 interface DoctorSettings {
     cli?: string;
+    /** @deprecated v3 alias, kept for one major as a read-only fallback. */
     channel?: string;
+    messaging?: {
+        enabledChannels?: unknown[];
+        homeChannel?: string;
+        [k: string]: unknown;
+    };
     skillsDir?: string;
     telegram?: MessagingSettings;
     discord?: DiscordSettings;
@@ -392,10 +400,17 @@ check('Claude auth', () => {
     return `${creds.source} (${quotaNote})`;
 });
 
-// 6a. Active channel
-check('Active channel', () => {
-    const ch = settings?.channel || 'telegram';
-    return ch;
+// 6a. Inbound gateways (legacy check name: Active channel)
+check('Inbound gateways', () => {
+    const enabled = getEnabledChannels(settings || {});
+    if (enabled.length === 0) throw new Error('WARN: no inbound gateways enabled');
+    return enabled.join(', ');
+});
+
+// 6a-b. Home channel
+check('Home channel', () => {
+    const home = getHomeChannel(settings || {});
+    return home;
 });
 
 // 6b. Telegram
@@ -443,15 +458,22 @@ check('Slack', () => {
 
 // 6e. Channel consistency
 check('Channel consistency', () => {
-    const ch = settings?.channel || 'telegram';
-    if (ch === 'discord' && !settings?.discord?.enabled) {
-        throw new Error('WARN: active channel is discord but Discord is not enabled');
+    const enabled = getEnabledChannels(settings || {});
+    if (enabled.length === 0) return 'no enabled channels';
+    const issues: string[] = [];
+    for (const ch of enabled) {
+        if (ch === 'telegram' && !settings?.telegram?.enabled) {
+            issues.push('active channel is telegram but Telegram is not enabled');
+        }
+        if (ch === 'discord' && !settings?.discord?.enabled) {
+            issues.push('active channel is discord but Discord is not enabled');
+        }
+        if (ch === 'slack' && !settings?.slack?.enabled) {
+            issues.push('active channel is slack but Slack is not enabled');
+        }
     }
-    if (ch === 'telegram' && !settings?.telegram?.enabled) {
-        throw new Error('WARN: active channel is telegram but Telegram is not enabled');
-    }
-    if (ch === 'slack' && !settings?.slack?.enabled) {
-        throw new Error('WARN: active channel is slack but Slack is not enabled');
+    if (issues.length > 0) {
+        throw new Error(`WARN: ${issues.join('; ')}`);
     }
     return 'consistent';
 });
@@ -764,9 +786,9 @@ function buildDiscordStatus() {
     else if (!tokenPresent) { status = 'missing_token'; degradedReasons.push('token missing'); }
     else if (!guildConfigured) { status = 'missing_guild_id'; degradedReasons.push('guild ID not configured'); }
     else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
-    // Check active channel consistency
-    const activeChannel = s?.channel || 'telegram';
-    const channelConsistent = activeChannel !== 'discord' || !!dc.enabled;
+    // Check enabled-gateway consistency: if discord is in the enabled list, it must also be enabled.
+    const enabledChannels = getEnabledChannels(s || {});
+    const channelConsistent = !enabledChannels.includes('discord') || !!dc.enabled;
     if (!channelConsistent) {
         degradedReasons.push('active channel is discord but Discord is not enabled');
     }
@@ -797,8 +819,8 @@ function buildSlackStatus() {
     else if (!appTokenPresent) { status = 'missing_app_token'; degradedReasons.push('app-level token missing — outbound only, no inbound events'); }
     else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
 
-    const activeChannel = s?.channel || 'telegram';
-    const channelConsistent = activeChannel !== 'slack' || !!sc.enabled;
+    const enabledChannels = getEnabledChannels(s || {});
+    const channelConsistent = !enabledChannels.includes('slack') || !!sc.enabled;
     if (!channelConsistent) {
         degradedReasons.push('active channel is slack but Slack is not enabled');
     }
@@ -872,10 +894,15 @@ if (values.json) {
     if (!isLoopbackJson && bh !== '0.0.0.0') {
         networkIssues.push(`bindHost=${bh} — specific interface, LAN accessibility depends on routing`);
     }
+    const snapshot = loadedSettings();
+    const homeChannel = getHomeChannel(snapshot);
+    const enabledChannels = getEnabledChannels(snapshot);
     const output: Record<string, unknown> = {
         checks: results,
         network: { bindHost: bh, lanBypass: lb, authTokenPersisted: !!process.env["JAW_AUTH_TOKEN"], issues: networkIssues },
-        activeChannel: loadedSettings().channel || 'telegram',
+        activeChannel: homeChannel,
+        enabledChannels,
+        homeChannel,
         discord: buildDiscordStatus(),
         slack: buildSlackStatus(),
         platform: resolvePlatformKind(),

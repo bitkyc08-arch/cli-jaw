@@ -3,7 +3,7 @@ import {
     retryAfterMs,
     type SendFailureKind,
 } from './retry.js';
-import type { MessengerChannel } from './types.js';
+import type { ChannelOperation, MessengerChannel } from './types.js';
 
 export type DeliveryFailureKind =
     | SendFailureKind
@@ -17,6 +17,49 @@ export interface DeliveryFailure {
     retryAfterMs: number;
     code?: string;
     message: string;
+}
+
+export type DeliveryStatus = 'sent' | 'failed' | 'unsupported';
+
+/** The single outbound result shape. `platformMessageId` is nullable rather than
+ *  optional so a caller cannot confuse "this transport issued no id" with "the
+ *  field was left off". A sent receipt always carries one. */
+export type DeliveryReceipt = {
+    channel: MessengerChannel;
+    accountId: string;
+    platformMessageId: string | null;
+    threadId?: string;
+    status: DeliveryStatus;
+    /** True when the transport cannot prove whether the send reached the vendor. */
+    ambiguous: boolean;
+    /** Milliseconds. Present only for a rate-limit failure carrying a vendor hint. */
+    retryAfter?: number;
+    failure?: DeliveryFailure;
+    unsupported?: {
+        operation: ChannelOperation;
+        reason: 'capability_not_declared' | 'transport_not_implemented';
+    };
+    /** Set when a capability was absent but the caller opted into a lesser delivery
+     *  (Slack keyboard sent as plain text). The send happened; the fidelity did not. */
+    downgraded?: { operation: ChannelOperation; to: 'text' };
+};
+
+/** A refusal issued before any vendor call. Not a delivery failure: nothing was
+ *  dispatched, so `ambiguous` is false and no `DeliveryFailure` is attached. */
+export function unsupportedReceipt(
+    channel: MessengerChannel,
+    accountId: string,
+    operation: ChannelOperation,
+    reason: 'capability_not_declared' | 'transport_not_implemented' = 'capability_not_declared',
+): DeliveryReceipt {
+    return {
+        channel,
+        accountId,
+        platformMessageId: null,
+        status: 'unsupported',
+        ambiguous: false,
+        unsupported: { operation, reason },
+    };
 }
 
 export interface DeliveryErrorInput {

@@ -132,9 +132,9 @@ const SHARED = path.join(ROOT, 'src/memory/shared.ts');
 
 test('SRH-007: messaging init is awaited before heartbeat starts', () => {
     const src = readSource(SERVER, 'utf8');
-    assert.match(src, /await initActiveMessagingRuntime\(\)/,
+    assert.match(src, /await initEnabledMessagingRuntimes\(\)/,
         'messaging init must be awaited, not fire-and-forget');
-    const awaitIdx = src.indexOf('await initActiveMessagingRuntime()');
+    const awaitIdx = src.indexOf('await initEnabledMessagingRuntimes()');
     const heartbeatIdx = src.indexOf('startHeartbeat();');
     assert.ok(awaitIdx < heartbeatIdx,
         'messaging must be initialized before heartbeat starts');

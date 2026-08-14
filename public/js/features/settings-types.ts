@@ -115,6 +115,11 @@ export function describeCliProbeAvailability(
 export function shouldHydrateRuntimeMigrationResponse(status: number): boolean {
     return status >= 200 && status < 300 || status === 409;
 }
+export interface MessagingConfig {
+    enabledChannels?: ('telegram' | 'discord' | 'slack')[];
+    homeChannel?: 'telegram' | 'discord' | 'slack';
+}
+
 export interface SettingsData {
     cli: string; workingDir: string; permissions: string; locale?: string; showReasoning?: boolean;
     perCli?: Record<string, PerCliConfig>;
@@ -123,7 +128,9 @@ export interface SettingsData {
     discord?: DiscordConfig;
     slack?: SlackConfig;
     slackEnvironmentVariables?: string[];
+    /** @deprecated Use messaging.homeChannel (response alias). */
     channel?: 'telegram' | 'discord' | 'slack';
+    messaging?: MessagingConfig;
     fallbackOrder?: string[];
     memory?: { cli?: string };
     projectDirs?: string[] | null;

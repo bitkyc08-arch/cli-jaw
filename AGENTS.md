@@ -51,7 +51,15 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 - Optimization/score-maximization goals follow the optimization-loop discipline (LOOP-PHASE-DEATH/CONTINUITY/CANDIDATE-ANCHOR/INSTANCE-CHECK + GATE-ORACLE-VALIDITY):
   classify candidate changes, ban a class after 3 consecutive discards, force evaluator-gate work on repeated D-phase deaths.
   Canonical: dev-pabcd §10, dev-testing §9.5; injected via orchestration template and goal continuation.
-- `structure/` reading map: start at `structure/INDEX.md`; depth — `telegram.md` (Hub), `prompt_flow.md` (attest/hooks/bounded search), `stream-events.md` (pause gate/SSE), `infra.md` (test scripts), `commands.md` + `server_api.md` (slash/API surfaces).
+- `structure/` reading map: start at `structure/INDEX.md`; depth — `telegram.md` (Hub), `prompt_flow.md` (attest/hooks/bounded search), `stream-events.md` (pause gate/SSE), `infra.md` (test scripts), `commands.md` + `server_api.md` (slash/API surfaces). Concurrent inbound gateway docs: `structure/INDEX.md` §gateway, `structure/infra.md` §`src/messaging/`, `structure/telegram.md` §common messaging layer; legacy `settings.channel` is a deprecated read-only alias for one major version.
+
+### Concurrent inbound gateway (M1)
+
+- Settings schema v4 replaces top-level `channel` with `messaging.enabledChannels` (array) and `messaging.homeChannel`. New installs start with an empty enabled set; existing v3 `channel` is migrated to a one-element enabled set and matching home channel, then deleted from persisted settings.
+- `/api/settings` still returns `channel` as a deprecated read-only alias of `messaging.homeChannel` for one major version. PUT `{channel}` is translated into `enabledChannels: [channel]` + `homeChannel: channel` with a `Deprecation` response header.
+- `src/messaging/runtime.ts` exposes `getEnabledChannels()`, `getHomeChannel()`, `initEnabledMessagingRuntimes()`, and per-channel `startMessagingTransport()`/`stopMessagingTransport()`. `restartMessagingRuntime()` restarts only channels affected by an enabled-set, per-channel config, or locale change; a home-only change does not restart transports.
+- `src/messaging/channel-health.ts` adds `activeInboundChannels` (running channels) while keeping the legacy scalar `activeInbound` as `homeChannel` for backward compatibility. Both Classic and Manager parsers prefer the new array and fall back to the legacy scalar.
+- Outbound routing in `src/messaging/send.ts` resolves `target.channel > explicit channel > homeChannel`; proactive sends with no target use `homeChannel`.
 
 ### Korean Content Skill Routing
 

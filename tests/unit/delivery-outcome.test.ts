@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { capabilitiesFor } from '../../src/messaging/channel-capabilities.ts';
+import { capabilitiesFor, CHANNEL_CAPABILITY_KEYS } from '../../src/messaging/channel-capabilities.ts';
+import { DISCORD_MESSAGE_LIMIT } from '../../src/discord/forwarder.ts';
+import { SLACK_MESSAGE_LIMIT } from '../../src/slack/format.ts';
+import { RICH_MESSAGE_LIMIT } from '../../src/telegram/rich-message.ts';
 import {
     discordDeliveryError,
     slackDeliveryError,
@@ -87,22 +90,47 @@ test('only explicit pre-dispatch evidence makes a transport failure transient', 
     assert.equal(discordDeliveryError({ ...refused, dispatched: true }).kind, 'ambiguous');
 });
 
-test('every MessengerChannel has the expected capabilities', () => {
+test('every MessengerChannel declares the closed capability key set, no more and no less', () => {
     const channels = ['telegram', 'discord', 'slack'] as const satisfies readonly MessengerChannel[];
-    const expected = {
-        telegram: 32_000,
-        discord: 2_000,
-        slack: 3_900,
-    } as const satisfies Record<MessengerChannel, number>;
+    const expectedKeys = [...CHANNEL_CAPABILITY_KEYS].sort();
 
     for (const channel of channels) {
-        assert.deepEqual(capabilitiesFor(channel), {
-            editMessages: true,
-            threads: true,
-            interactiveComponents: true,
-            fileUpload: true,
-            durableOffset: false,
-            maxMessageChars: expected[channel],
-        });
+        const declared = Object.keys(capabilitiesFor(channel)).sort();
+        assert.deepEqual(declared, expectedKeys, `${channel} must declare exactly the closed key set`);
     }
+});
+
+test('capability declarations match what this tree can actually call', () => {
+    // These are not aspirations. Each false below has no call site in the tree, and
+    // each was verified by search when the closed set was introduced: Discord has no
+    // edit or delete call and no component handler, Slack routes interactive events to
+    // a log and uses edited progress instead of a typing indicator, and no channel
+    // calls a reaction API at all.
+    assert.deepEqual(capabilitiesFor('discord').editText, false);
+    assert.deepEqual(capabilitiesFor('discord').deleteMessage, false);
+    assert.deepEqual(capabilitiesFor('discord').interactiveActions, false);
+    assert.deepEqual(capabilitiesFor('slack').interactiveActions, false);
+    assert.deepEqual(capabilitiesFor('slack').typing, false);
+    for (const channel of ['telegram', 'discord', 'slack'] as const) {
+        assert.equal(capabilitiesFor(channel).reaction, false, `${channel} has no reaction call site`);
+        assert.equal(capabilitiesFor(channel).sendText, true);
+    }
+});
+
+test('durableIngress is declared only where dedupe survives a restart', () => {
+    // All three now record inbound events in the shared SQLite journal, so
+    // 'already handled' outlives the process that handled it.
+    assert.equal(capabilitiesFor('telegram').durableIngress, true);
+    assert.equal(capabilitiesFor('slack').durableIngress, true);
+    // Discord kept a TTL set in memory until M3d put its messages in the shared
+    // journal; a restart no longer forgets what it already handled.
+    assert.equal(capabilitiesFor('discord').durableIngress, true);
+});
+
+test('declared message limits are the limits the chunkers actually apply', () => {
+    // A declaration that drifts from the chunker is worse than no declaration: it
+    // reads as verified. Bind them here so changing one without the other fails.
+    assert.equal(capabilitiesFor('discord').maxMessageChars, DISCORD_MESSAGE_LIMIT);
+    assert.equal(capabilitiesFor('slack').maxMessageChars, SLACK_MESSAGE_LIMIT);
+    assert.equal(capabilitiesFor('telegram').maxMessageChars, RICH_MESSAGE_LIMIT);
 });

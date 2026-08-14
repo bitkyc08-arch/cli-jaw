@@ -41,6 +41,40 @@ export type CreatePendingDispatchInput = Omit<DispatchApprovalScope, 'taskDigest
     onApproved?: (record: DispatchApprovalRecord) => Promise<unknown>;
 };
 
+export type ApprovalCallbackAction = 'approve' | 'deny';
+
+export type ApprovalCallbackBinding = {
+    opaqueId: string;
+    jti: string;
+    digest: string;
+    actorId: string;
+    conversationKey: string;
+    sessionGeneration: number;
+    action: ApprovalCallbackAction;
+    expiresAt: number;
+    audience: string;
+};
+
+export type ApprovalCallbackIssueInput = {
+    actorId: string;
+    conversationKey: string;
+    sessionGeneration: number;
+    action: ApprovalCallbackAction;
+};
+
+export type ApprovalCallbackResolveRefuse =
+    | 'not_found'
+    | 'expired'
+    | 'generation_mismatch'
+    | 'actor_mismatch'
+    | 'conversation_mismatch'
+    | 'action_mismatch'
+    | 'restart_void';
+
+export type ApprovalCallbackResolveResult =
+    | { ok: true; binding: ApprovalCallbackBinding; record: DispatchApprovalRecord }
+    | { ok: false; reason: ApprovalCallbackResolveRefuse };
+
 function canonicalJson(value: unknown): string {
     if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
     if (value && typeof value === 'object') {
@@ -63,6 +97,7 @@ export class DispatchApprovalStore {
     readonly generation: string;
     readonly audience: string;
     private readonly records = new Map<string, PendingInternal>();
+    private readonly callbacks = new Map<string, ApprovalCallbackBinding>();
 
     constructor(
         private readonly now: () => number = Date.now,
@@ -157,6 +192,48 @@ export class DispatchApprovalStore {
             );
         }
         return { ok: true, record: publicRecord(record) };
+    }
+
+    issueApprovalCallback(jti: string, input: ApprovalCallbackIssueInput): string | null {
+        const record = this.records.get(jti);
+        if (!record || record.status !== 'pending') return null;
+        this.expire(record);
+        if (record.status !== 'pending') return null;
+        const opaqueId = randomUUID();
+        this.callbacks.set(opaqueId, {
+            opaqueId,
+            jti: record.jti,
+            digest: record.digest,
+            actorId: input.actorId,
+            conversationKey: input.conversationKey,
+            sessionGeneration: input.sessionGeneration,
+            action: input.action,
+            expiresAt: record.expiresAt,
+            audience: record.audience,
+        });
+        return opaqueId;
+    }
+
+    resolveApprovalCallback(
+        opaqueId: string,
+        presented: { actorId: string; conversationKey: string; sessionGeneration: number; action: ApprovalCallbackAction },
+    ): ApprovalCallbackResolveResult {
+        const binding = this.callbacks.get(opaqueId);
+        if (!binding) return { ok: false, reason: 'not_found' };
+        const record = this.records.get(binding.jti);
+        if (!record) return { ok: false, reason: 'not_found' };
+        this.expire(record);
+        if (record.generation !== this.generation || record.audience !== this.audience) {
+            return { ok: false, reason: 'restart_void' };
+        }
+        if (record.status === 'expired' || this.now() >= binding.expiresAt) {
+            return { ok: false, reason: 'expired' };
+        }
+        if (presented.actorId !== binding.actorId) return { ok: false, reason: 'actor_mismatch' };
+        if (presented.conversationKey !== binding.conversationKey) return { ok: false, reason: 'conversation_mismatch' };
+        if (presented.sessionGeneration !== binding.sessionGeneration) return { ok: false, reason: 'generation_mismatch' };
+        if (presented.action !== binding.action) return { ok: false, reason: 'action_mismatch' };
+        return { ok: true, binding, record: publicRecord(record) };
     }
 
     private expire(record: PendingInternal): void {

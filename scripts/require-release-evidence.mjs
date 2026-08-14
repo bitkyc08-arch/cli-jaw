@@ -27,7 +27,7 @@ const installerSensitivePaths = [
   'scripts/audit-fresh-install-evidence.mjs',
   'scripts/verify-release-evidence.mjs',
   'scripts/require-release-evidence.mjs',
-  'scripts/release.sh',
+  'scripts/promote-to-main.sh',
   'scripts/release-preview.sh',
   'tests/unit/cli-detect.test.ts',
   'tests/unit/install-sh-exec.test.ts',
@@ -46,6 +46,9 @@ function usage() {
 
 Options:
   --base-ref REF    Compare installer-sensitive files against REF instead of the latest v* tag.
+  --changed-files-stdin
+                    Read changed file paths from stdin and check whether any are installer-sensitive.
+                    Cannot be combined with --base-ref.
   -h, --help        Show this help.
 
 If installer-sensitive files changed, this script requires:
@@ -57,6 +60,7 @@ Then it runs scripts/verify-release-evidence.mjs before publish/release can cont
 }
 
 let baseRef = '';
+let changedFilesStdin = false;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
@@ -64,12 +68,28 @@ for (let i = 0; i < args.length; i += 1) {
     usage();
     process.exit(0);
   }
+  if (arg === '--changed-files-stdin') {
+    changedFilesStdin = true;
+    continue;
+  }
   if (arg === '--base-ref') {
     baseRef = args[++i] || '';
     if (!baseRef) throw new Error('missing value for --base-ref');
     continue;
   }
   throw new Error(`unknown option: ${arg}`);
+}
+
+if (baseRef && changedFilesStdin) {
+  throw new Error('--changed-files-stdin cannot be combined with --base-ref');
+}
+
+function readChangedFilesFromStdin() {
+  const input = fs.readFileSync(0, 'utf8');
+  return input
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\r$/, '').trim())
+    .filter((line) => line.length > 0);
 }
 
 function git(args, options = {}) {
@@ -173,6 +193,20 @@ function changedInstallerFiles(ref) {
 
 function shortHash(files) {
   return crypto.createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 12);
+}
+
+if (changedFilesStdin) {
+  const inputFiles = readChangedFilesFromStdin();
+  const matched = inputFiles.filter((file) => installerSensitivePaths.includes(file));
+  if (matched.length === 0) {
+    console.log('[release-evidence-required] SKIP no installer-sensitive paths in stdin');
+    process.exit(0);
+  }
+  console.error(`[release-evidence-required] CHANGED installer-sensitive files (${matched.length}, ${shortHash(matched)})`);
+  for (const file of matched) {
+    console.error(`- ${file}`);
+  }
+  process.exit(1);
 }
 
 if (!isGitRepo()) {

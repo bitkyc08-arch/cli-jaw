@@ -15,6 +15,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+if ! command -v gh &>/dev/null; then
+  echo "❌ gh CLI is required but not found in PATH."
+  exit 1
+fi
+
 # ─── Flag parsing ──────────────────────────────────────
 BUMP_KIND="patch"
 REQUIRE_EVIDENCE=false
@@ -202,6 +207,20 @@ else
   echo "ℹ️  Current branch is $CURRENT_BRANCH; pushing HEAD to origin/preview."
   git push origin HEAD:preview
 fi
+
+# ─── Dispatch publish workflow ─────────────────────────
+RELEASE_SHA="$(git rev-parse HEAD)"
+LIVE_SHA="$(git ls-remote origin refs/heads/preview | cut -f1)"
+
+if [ -z "$LIVE_SHA" ] || [ "$LIVE_SHA" != "$RELEASE_SHA" ]; then
+  echo "❌ origin/preview moved after push (expected $RELEASE_SHA, got ${LIVE_SHA:-'(empty)'}). Aborting."
+  exit 1
+fi
+
+gh workflow run publish.yml --ref preview \
+  -f version="$VERSION" -f tag=preview -f expected-sha="$RELEASE_SHA" -f dry-run=false
+
+echo "🚀 publish.yml workflow dispatched for preview v$VERSION (sha $RELEASE_SHA)"
 
 # ─── GitHub Prerelease stub ────────────────────────────
 echo "📋 Creating/updating GitHub prerelease stub..."

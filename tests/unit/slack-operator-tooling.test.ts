@@ -26,16 +26,15 @@ test('init declares the four slack flags', () => {
 
 test('init accepts --channel slack and says so in its error text', () => {
     const init = read('bin/commands/init.ts');
-    assert.match(init, /channelFlag !== 'slack'/, '--channel slack would be rejected');
-    assert.match(init, /Must be "telegram", "discord", or "slack"/, 'the error text still lists two channels');
+    assert.match(init, /if \(channelFlag && !isMessengerChannel\(channelFlag\)\)/, 'invalid --channel is rejected');
+    assert.match(init, /Must be telegram, discord, or slack/, 'the error text lists valid channels');
 });
 
 test('init requires a bot token for --channel slack but only warns without the app token', () => {
     const init = read('bin/commands/init.ts');
-    assert.match(init, /channelFlag === 'slack' && !slEnabled/);
-    assert.match(init, /requires --slack-bot-token/);
+    assert.match(init, /--channels slack requires --slack-bot-token/);
     // Outbound-only is a legitimate partial configuration.
-    assert.match(init, /slEnabled && !slAppToken/);
+    assert.match(init, /if \(slEnabled && !slAppToken\)/);
     assert.match(init, /outbound only, no inbound events/);
 });
 
@@ -50,18 +49,20 @@ test('init writes the slack settings block with Slack-correct defaults', () => {
 
 test('init infers the active channel only when slack alone is configured', () => {
     const init = read('bin/commands/init.ts');
-    assert.match(init, /slEnabled && !tgEnabled && !dcEnabled\) activeChannel = 'slack'/);
-    // The pre-existing arms must also exclude slack, or two configured
-    // channels would silently pick one.
-    assert.match(init, /dcEnabled && !tgEnabled && !slEnabled/);
-    assert.match(init, /tgEnabled && !dcEnabled && !slEnabled/);
+    assert.match(init, /if \(slEnabled\) messagingEnabledChannels\.push\('slack'\)/);
+    assert.match(init, /if \(dcEnabled\) messagingEnabledChannels\.push\('discord'\)/);
+    assert.match(init, /if \(tgEnabled\) messagingEnabledChannels\.push\('telegram'\)/);
+    assert.match(init, /if \(messagingEnabledChannels\.length > 0 && !messagingEnabledChannels\.includes\(homeChannel\)\)/);
+    assert.match(init, /homeChannel = messagingEnabledChannels\[0\]/);
 });
 
 test('init help lists the slack flags', () => {
     const init = read('bin/commands/init.ts');
     assert.match(init, /--slack-bot-token/);
     assert.match(init, /--slack-app-token/);
-    assert.match(init, /Active channel \(telegram, discord, or slack\)/);
+    assert.match(init, /--channels <list>/);
+    assert.match(init, /--home-channel <ch>/);
+    assert.match(init, /Deprecated alias for --channels/);
 });
 
 // ─── cli-jaw doctor ─────────────────────────────────
@@ -109,7 +110,7 @@ test('doctor --json emits a slack status object with the full ladder', () => {
 test('SoT docs document the slack channel', () => {
     assert.match(read('structure/INDEX.md'), /Slack/, 'INDEX.md does not mention Slack');
     assert.match(read('structure/server_api.md'), /\/api\/slack\/send/, 'the route is undocumented');
-    assert.match(read('structure/commands.md'), /Slack 37/, 'command visibility counts omit Slack');
+    assert.match(read('structure/commands.md'), /Slack 41/, 'command visibility counts omit Slack');
     assert.match(read('structure/telegram.md'), /Telegram\/Discord\/Slack/, 'the channel hub doc omits Slack');
     // The file tree renders paths as indented segments (`slack/`), not full
     // paths, so match the section header the way the document writes it.

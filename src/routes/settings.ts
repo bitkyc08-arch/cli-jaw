@@ -52,6 +52,7 @@ import {
     withMultiSessionDefaultMigrationLock,
     type MultiSessionDefaultMigrationAction,
 } from '../core/runtime-settings.js';
+import { isMessengerChannel } from '../core/config.js';
 
 const SERVER_OWNED_SETTINGS_KEYS = [
     'settingsSchemaVersion',
@@ -119,7 +120,18 @@ function redactRuntimeSettings<T extends Record<string, unknown>>(input: T): T {
             attachPort: '',
         };
     }
+    const messaging = safe["messaging"] as { homeChannel?: unknown } | undefined;
+    if (typeof messaging?.homeChannel === 'string') {
+        // Deprecated v3 response alias. Never persisted; remove in the next major.
+        (safe as Record<string, unknown>)["channel"] = messaging.homeChannel;
+    }
     return safe as T;
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
 }
 
 function mergePiProfile(piInput: unknown, profile: PiProfile, models: string[]) {
@@ -187,6 +199,20 @@ export function registerSettingsRoutes(
         const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
             ? req.body as Record<string, unknown>
             : {};
+        const normalizedBody = { ...body };
+        if ('channel' in normalizedBody) {
+            if (!isMessengerChannel(normalizedBody["channel"])) {
+                fail(res, 400, 'invalid_home_channel');
+                return;
+            }
+            normalizedBody["messaging"] = {
+                ...asPlainRecord(normalizedBody["messaging"]),
+                enabledChannels: [normalizedBody["channel"]],
+                homeChannel: normalizedBody["channel"],
+            };
+            delete normalizedBody["channel"];
+            res.setHeader('Deprecation', 'true');
+        }
         const wikiManagedPaths = wikiRouteManagedPatchPaths(body);
         if (wikiManagedPaths.length > 0) {
             fail(res, 409, 'wiki_configuration_requires_wiki_route', {
@@ -202,7 +228,7 @@ export function registerSettingsRoutes(
             });
             return;
         }
-        const sanitized = sanitizeSettingsInput(body, 'api');
+        const sanitized = sanitizeSettingsInput(normalizedBody, 'api');
         if (SERVER_OWNED_SETTINGS_KEYS.some((key) => key in body)
             || sanitized.serverOwnedPaths.length > 0) {
             res.status(400).json({ ok: false, error: 'server_owned_settings_field' });

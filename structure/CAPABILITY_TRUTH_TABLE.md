@@ -52,10 +52,12 @@ capability.
 - A `ready` claim in cli-jaw must reference the corresponding agbrowse source
   module (where applicable) and have a test file in `tests/unit/` or
   `tests/integration/`.
-- New capability ⇒ update both this file and
-  `agbrowse/structure/CAPABILITY_TRUTH_TABLE.md` in the same change set.
+- New **browser / web-AI** capability ⇒ update both the table above and
+  `agbrowse/structure/CAPABILITY_TRUTH_TABLE.md` in the same change set. This
+  mirror rule covers the browser section only; the messaging matrix below is
+  generated from cli-jaw source and never requires an agbrowse-side edit.
 - The `gate:truth-table-fresh` release gate enforces a ≤7 day staleness or a
-  matching code/tests checksum.
+  matching code/tests checksum, and separately fails on messaging-matrix drift.
 
 ## Forbidden Claims
 
@@ -72,3 +74,42 @@ capability.
 - agbrowse truth table: `agbrowse/structure/CAPABILITY_TRUTH_TABLE.md`
 - External CDP deferral: [../docs/EXTERNAL_CDP.md](../docs/EXTERNAL_CDP.md)
 - Phase 22 plan: [../devlog/_fin/260505_browser_runtime_phase22/22_agbrowse_parity_closeout.md](../devlog/_fin/260505_browser_runtime_phase22/22_agbrowse_parity_closeout.md)
+
+## Messaging ChannelAdapter Matrix
+
+아래 블록은 `scripts/generate-channel-capability-table.mts`가 소유합니다. 손으로
+고치지 말고 `npm run docs:channel-capabilities`로 다시 생성하세요.
+
+<!-- BEGIN GENERATED: messaging-channel-capabilities -->
+<!-- 이 블록은 생성됩니다. 손으로 고치지 마세요. -->
+<!-- 생성기: scripts/generate-channel-capability-table.mts · 소스: src/messaging/channel-capabilities.ts -->
+
+> **생성된 블록입니다 — 직접 수정하지 마세요.** `src/messaging/channel-capabilities.ts`의
+> 선언을 읽어 `npm run docs:channel-capabilities`가 다시 씁니다.
+> 손으로 고친 내용은 `gate:truth-table-fresh`에서 drift로 실패합니다.
+
+| Capability | telegram | discord | slack | 의미 |
+| --- | --- | --- | --- | --- |
+| `sendText` | ✅ | ✅ | ✅ | 텍스트 전송 |
+| `editText` | ✅ | ❌ | ✅ | 전송된 메시지 수정 |
+| `deleteMessage` | ✅ | ❌ | ✅ | 전송된 메시지 삭제 |
+| `reaction` | ❌ | ❌ | ❌ | 리액션 부착 |
+| `typing` | ✅ | ✅ | ❌ | 입력 중 표시 |
+| `fileUpload` | ✅ | ✅ | ✅ | 파일 업로드 |
+| `voice` | ✅ | ✅ | ✅ | 음성 파일 전달 (녹음 UI 아님) |
+| `threads` | ✅ | ✅ | ✅ | 스레드 타겟팅 |
+| `interactiveActions` | ✅ | ❌ | ❌ | 버튼 등 인터랙티브 액션 |
+| `durableIngress` | ✅ | ✅ | ✅ | 프로세스 재시작 후에도 유지되는 inbound 중복 제거 |
+| `replayableTransport` | ✅ | ✅ | ✅ | 미확인 프레임을 트랜스포트가 재전송 |
+| `maxMessageChars` | `32,000` | `2,000` | `3,900` | 단일 메시지 문자 상한 (chunker 상수) |
+
+출처와 검증 지점:
+
+- 선언 (SoT): [`src/messaging/channel-capabilities.ts`](../src/messaging/channel-capabilities.ts)
+- 어댑터 계약: [`src/messaging/channel-adapter.ts`](../src/messaging/channel-adapter.ts)
+- conformance test: `tests/unit/channel-contract-conformance.test.ts` — 이 스위트 통과가 `true` 선언의 유일한 근거
+- 생성기: [`scripts/generate-channel-capability-table.mts`](../scripts/generate-channel-capability-table.mts) (`--check`는 `gate:truth-table-fresh`가 실행)
+
+`true`는 이 트리에서 오늘 호출 가능한 동작만을 뜻합니다. 벤더 SDK가 제공한다는
+사실은 근거가 아닙니다 — conformance test가 통과할 때만 선언을 올립니다.
+<!-- END GENERATED: messaging-channel-capabilities -->

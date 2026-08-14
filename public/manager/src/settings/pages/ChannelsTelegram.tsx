@@ -1,7 +1,8 @@
 // Phase 3 — Channels (Telegram) page.
 //
 // Settings keys:
-//   channel                   (shared across telegram + discord pages)
+//   messaging.enabledChannels
+//   messaging.homeChannel
 //   telegram.enabled
 //   telegram.token            (SecretField, masked, never logged)
 //   telegram.allowedChatIds   (number[], rendered as numeric chips)
@@ -19,10 +20,15 @@ import {
     usePageSnapshot,
 } from './page-shell';
 import { expandPatch } from './path-utils';
-import { ActiveChannelToggle } from './components/ActiveChannelToggle';
-import type { ActiveChannel } from './components/ActiveChannelToggle';
 import { HealthBadge, interpretTelegramProbe } from './components/HealthBadge';
+import type { MessengerChannel } from './components/ChannelEnablementControl';
 import { TransportStatusChips } from './components/TransportStatusChips';
+import { ChannelEnablementControl } from './components/ChannelEnablementControl';
+
+type MessagingBlock = {
+    enabledChannels?: MessengerChannel[];
+    homeChannel?: MessengerChannel;
+};
 
 type TelegramBlock = {
     enabled?: boolean;
@@ -33,13 +39,15 @@ type TelegramBlock = {
 };
 
 type TelegramSnapshot = {
-    channel?: ActiveChannel;
+    channel?: MessengerChannel;
     telegram?: TelegramBlock;
+    messaging?: MessagingBlock;
     [key: string]: unknown;
 };
 
 const TELEGRAM_KEYS = [
-    'channel',
+    'messaging.enabledChannels',
+    'messaging.homeChannel',
     'telegram.enabled',
     'telegram.token',
     'telegram.allowedChatIds',
@@ -91,6 +99,8 @@ export function chipsToChatIds(chips: ReadonlyArray<string>): number[] {
 export default function ChannelsTelegram({ port, client, dirty, registerSave }: SettingsPageProps) {
     const { state, refresh, setData } = usePageSnapshot<TelegramSnapshot>(client, '/api/settings');
 
+    const [enabledChannels, setEnabledChannels] = useState<MessengerChannel[]>([]);
+    const [homeChannel, setHomeChannel] = useState<MessengerChannel>('telegram');
     const [enabled, setEnabled] = useState(false);
     const [token, setToken] = useState('');
     const [chips, setChips] = useState<string[]>([]);
@@ -99,6 +109,10 @@ export default function ChannelsTelegram({ port, client, dirty, registerSave }: 
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
+        const messaging = state.data.messaging || {};
+        const rawEnabled = Array.isArray(messaging.enabledChannels) ? messaging.enabledChannels : [];
+        setEnabledChannels(rawEnabled.filter(isMessengerChannel) as MessengerChannel[]);
+        setHomeChannel(isMessengerChannel(messaging.homeChannel) ? messaging.homeChannel : 'telegram');
         const tg = state.data.telegram || {};
         setEnabled(Boolean(tg.enabled));
         // Token field starts empty — we never seed the actual secret into the
@@ -126,8 +140,6 @@ export default function ChannelsTelegram({ port, client, dirty, registerSave }: 
         return state.data.telegram || {};
     }, [state]);
 
-    const originalChannel = state.kind === 'ready' ? state.data.channel : undefined;
-
     const onSave = useCallback(async () => {
         const bundle = dirty.saveBundle();
         if (Object.keys(bundle).length === 0) return;
@@ -138,6 +150,13 @@ export default function ChannelsTelegram({ port, client, dirty, registerSave }: 
             : updated) as TelegramSnapshot;
         dirty.clear();
         setData(fresh);
+        const freshMessaging = fresh.messaging || {};
+        setEnabledChannels(
+            Array.isArray(freshMessaging.enabledChannels)
+                ? freshMessaging.enabledChannels.filter(isMessengerChannel) as MessengerChannel[]
+                : [],
+        );
+        setHomeChannel(isMessengerChannel(freshMessaging.homeChannel) ? freshMessaging.homeChannel : 'telegram');
         const tg = fresh.telegram || {};
         setEnabled(Boolean(tg.enabled));
         setToken('');
@@ -174,10 +193,15 @@ export default function ChannelsTelegram({ port, client, dirty, registerSave }: 
         >
             <SettingsSection
                 title="Channels"
-                hint="Choose which channel receives inbound chat. Outbound send can still work on the other channel when configured."
+                hint="Choose which channels receive inbound chat. Outbound send can still work on any configured channel."
             >
-                <ActiveChannelToggle
-                    original={originalChannel}
+                <ChannelEnablementControl
+                    pageChannel="telegram"
+                    snapshot={state.kind === 'ready' ? state.data : {}}
+                    enabledChannels={enabledChannels}
+                    homeChannel={homeChannel}
+                    setEnabledChannels={setEnabledChannels}
+                    setHomeChannel={setHomeChannel}
                     dirty={dirty}
                     idPrefix="tg-channel"
                 />
@@ -276,4 +300,8 @@ export default function ChannelsTelegram({ port, client, dirty, registerSave }: 
             </SettingsSection>
         </form>
     );
+}
+
+function isMessengerChannel(value: unknown): value is MessengerChannel {
+    return value === 'telegram' || value === 'discord' || value === 'slack';
 }

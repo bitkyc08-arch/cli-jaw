@@ -8,22 +8,52 @@ import { refreshTransportStatusRow } from './transport-status-row.js';
 import { openSetupGuideIfUnconfigured } from './channel-setup-guide.js';
 import type { SettingsData } from './settings-types.js';
 
-export async function setActiveChannel(ch: 'telegram' | 'discord' | 'slack'): Promise<void> {
+export type MessengerChannel = 'telegram' | 'discord' | 'slack';
+const CHANNELS: MessengerChannel[] = ['telegram', 'discord', 'slack'];
+
+function readEnabledChannelsFromUi(): MessengerChannel[] {
+    // Classic UI does not yet expose a unified enabled-channel list.
+    // Returning [] means enabling a channel sends a singleton enabled set,
+    // which preserves the legacy single-active-channel behavior until the
+    // Classic UI gains per-channel enabled checkboxes.
+    return [];
+}
+
+export async function setChannelEnabled(ch: MessengerChannel, enabled: boolean): Promise<void> {
+    const current = readEnabledChannelsFromUi();
+    const enabledChannels = enabled
+        ? [...new Set([...current, ch])]
+        : current.filter(item => item !== ch);
+    await apiJson('/api/settings', 'PUT', { messaging: { enabledChannels } });
+    await refreshTransportStatusRow();
+}
+
+export async function setHomeChannel(ch: MessengerChannel): Promise<void> {
     document.getElementById('chTelegram')?.classList.toggle('active', ch === 'telegram');
     document.getElementById('chDiscord')?.classList.toggle('active', ch === 'discord');
     document.getElementById('chSlack')?.classList.toggle('active', ch === 'slack');
     document.getElementById('channelTelegramSettings')?.style.setProperty('display', ch === 'telegram' ? '' : 'none');
     document.getElementById('channelDiscordSettings')?.style.setProperty('display', ch === 'discord' ? '' : 'none');
     document.getElementById('channelSlackSettings')?.style.setProperty('display', ch === 'slack' ? '' : 'none');
-    await apiJson('/api/settings', 'PUT', { channel: ch });
+    await apiJson('/api/settings', 'PUT', { messaging: { homeChannel: ch } });
     await refreshTransportStatusRow();
-    // Switching to a channel with no credentials leaves a silently dead
-    // channel — open its setup guide right away.
+}
+
+/**
+ * @deprecated Use setChannelEnabled + setHomeChannel. Kept temporarily for
+ *             classic entry points that still bind the channel tabs.
+ */
+export async function setActiveChannel(ch: MessengerChannel): Promise<void> {
+    await setChannelEnabled(ch, true);
+    await setHomeChannel(ch);
     openSetupGuideIfUnconfigured(ch);
 }
 
 export function loadActiveChannel(s: SettingsData): void {
-    const ch = s.channel || 'telegram';
+    const messaging = s.messaging;
+    const ch: MessengerChannel = messaging?.homeChannel && CHANNELS.includes(messaging.homeChannel)
+        ? messaging.homeChannel
+        : 'telegram';
     document.getElementById('chTelegram')?.classList.toggle('active', ch === 'telegram');
     document.getElementById('chDiscord')?.classList.toggle('active', ch === 'discord');
     document.getElementById('chSlack')?.classList.toggle('active', ch === 'slack');

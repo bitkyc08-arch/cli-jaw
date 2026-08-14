@@ -1,4 +1,4 @@
-import { dispatchApprovalStore, type DispatchApprovalPlatform } from './dispatch-approval.js';
+import { dispatchApprovalStore, type ApprovalCallbackAction, type DispatchApprovalPlatform } from './dispatch-approval.js';
 import { settings } from './config.js';
 import { log } from './logger.js';
 export type DispatchApprovalTransport = { readonly platform: DispatchApprovalPlatform };
@@ -26,7 +26,16 @@ function isTrustedTransport(transport: DispatchApprovalTransport): boolean {
 function identity(transport: DispatchApprovalTransport, rawEvent: unknown): { senderId: string; bot: boolean; self: boolean } | null {
     const event = (rawEvent && typeof rawEvent === 'object' ? rawEvent : {}) as Record<string, unknown>;
     if (transport.platform === 'slack') {
-        return event['user'] ? { senderId: String(event['user']), bot: Boolean(event['bot_id'] || event['subtype'] === 'bot_message'), self: Boolean(event['__jawSelf']) } : null;
+        const user = event['user'];
+        const senderId = typeof user === 'string'
+            ? user
+            : (user && typeof user === 'object' && 'id' in user ? String((user as { id: unknown }).id) : '');
+        if (!senderId) return null;
+        return {
+            senderId,
+            bot: Boolean(event['bot_id'] || event['subtype'] === 'bot_message'),
+            self: Boolean(event['__jawSelf']),
+        };
     }
     if (transport.platform === 'telegram') {
         const message = event['message'] as Record<string, unknown> | undefined;
@@ -48,7 +57,7 @@ export function handleApprovalCommand(
     rawEvent: unknown,
     text: string,
 ): { handled: boolean; approved?: boolean; reason?: string } {
-    const match = /^\s*(approve|cancel)\s+([0-9a-f-]{36})\s+([0-9a-f]{64})\s*$/i.exec(text);
+    const match = /^\s*(approve|cancel|deny)\s+([0-9a-f-]{36})\s+([0-9a-f]{64})\s*$/i.exec(text);
     if (!match) return { handled: false };
     if (!transport || !isTrustedTransport(transport)) return { handled: true, approved: false, reason: 'untrusted_transport' };
     const actor = identity(transport, rawEvent);
@@ -56,10 +65,46 @@ export function handleApprovalCommand(
     if (actor.bot || actor.self) return { handled: true, approved: false, reason: actor.self ? 'self' : 'bot' };
     if (!allowed(transport.platform, actor.senderId)) return { handled: true, approved: false, reason: 'operator_not_allowed' };
     const [, command, jti, digest] = match;
-    if (command!.toLowerCase() === 'cancel') {
+    if (command!.toLowerCase() === 'cancel' || command!.toLowerCase() === 'deny') {
         const cancelled = dispatchApprovalStore.cancel(jti!, digest!);
         return { handled: true, approved: false, reason: cancelled ? 'cancelled' : 'cancel_rejected' };
     }
     const consumed = dispatchApprovalStore.consume({ jti: jti!, digest: digest!, platform: transport.platform, senderId: actor.senderId });
+    return { handled: true, approved: consumed.ok, ...(!consumed.ok ? { reason: consumed.reason } : {}) };
+}
+
+export function handleApprovalCallback(
+    transport: DispatchApprovalTransport | null | undefined,
+    rawEvent: unknown,
+    opaqueId: string,
+    action: ApprovalCallbackAction,
+    presented: { conversationKey: string; sessionGeneration: number },
+): { handled: true; approved?: boolean; reason?: string } {
+    if (!transport || !isTrustedTransport(transport)) {
+        return { handled: true, approved: false, reason: 'untrusted_transport' };
+    }
+    const actor = identity(transport, rawEvent);
+    if (!actor) return { handled: true, approved: false, reason: 'missing_sender' };
+    if (actor.bot || actor.self) return { handled: true, approved: false, reason: actor.self ? 'self' : 'bot' };
+    if (!allowed(transport.platform, actor.senderId)) {
+        return { handled: true, approved: false, reason: 'operator_not_allowed' };
+    }
+    const resolved = dispatchApprovalStore.resolveApprovalCallback(opaqueId, {
+        actorId: actor.senderId,
+        conversationKey: presented.conversationKey,
+        sessionGeneration: presented.sessionGeneration,
+        action,
+    });
+    if (!resolved.ok) return { handled: true, approved: false, reason: resolved.reason };
+    if (action === 'deny') {
+        const cancelled = dispatchApprovalStore.cancel(resolved.binding.jti, resolved.binding.digest);
+        return { handled: true, approved: false, reason: cancelled ? 'cancelled' : 'cancel_rejected' };
+    }
+    const consumed = dispatchApprovalStore.consume({
+        jti: resolved.binding.jti,
+        digest: resolved.binding.digest,
+        platform: transport.platform,
+        senderId: actor.senderId,
+    });
     return { handled: true, approved: consumed.ok, ...(!consumed.ok ? { reason: consumed.reason } : {}) };
 }

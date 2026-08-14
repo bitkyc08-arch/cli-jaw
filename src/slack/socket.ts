@@ -62,9 +62,18 @@ export type SlackSocketLike = {
     addEventListener(type: string, listener: (event: unknown) => void): void;
 };
 
+/** What the durable preflight decided about an envelope, before it is acknowledged. */
+export type SlackPreflightResult = 'committed' | 'duplicate' | 'ignored';
+
 export type SlackSocketOptions = {
     appToken: string;
     onEnvelope: (envelope: SlackEnvelope) => void | Promise<void>;
+    /**
+     * Runs BEFORE the ack and must reach durable storage. Returning normally is what
+     * permits the ack; throwing withholds it so Slack redelivers on a fresh socket.
+     * Absent means the old ack-first behaviour, which is what CLI and test callers get.
+     */
+    preflightEnvelope?: (envelope: SlackEnvelope) => Promise<SlackPreflightResult>;
     fetchImpl?: SlackFetch;
     /** Injected for tests; defaults to the global WebSocket (Node 22+). */
     socketFactory?: (url: string) => SlackSocketLike;
@@ -277,24 +286,50 @@ export class SlackSocketClient {
             return;
         }
 
-        // ACK FIRST — before any work, always within the 3s deadline. Any
-        // valid envelope is acked, including types we do not handle, so Slack
-        // stops retrying payloads we will never act on.
-        if (envelope.envelope_id) {
-            if (!this.ack(envelope.envelope_id)) {
-                // The ack did not reach Slack, so this delivery WILL be
-                // retried. Running the agent now would duplicate that work.
-                log.warn('[slack:socket] ack failed — skipping dispatch, awaiting Slack retry');
+        // An envelope this connection already saw is acked and dropped: the work
+        // was done, only our acknowledgement failed to land.
+        if (envelope.envelope_id && this.isDuplicate(envelope.envelope_id)) {
+            log.info(`[slack:socket] duplicate envelope ignored (retry_attempt=${envelope.retry_attempt ?? 0})`);
+            this.ack(envelope.envelope_id);
+            return;
+        }
+
+        // Types we never act on are acked immediately, as before, so Slack stops
+        // retrying payloads that have nowhere to go.
+        if (!HANDLED_ENVELOPE_TYPES.has(envelope.type)) {
+            if (envelope.envelope_id) this.ack(envelope.envelope_id);
+            return;
+        }
+
+        // Durable preflight BEFORE the ack. Acking first means an envelope whose
+        // record never reached disk is one Slack considers delivered: it will not be
+        // sent again, and a crash here loses the message with no trace. Withholding
+        // the ack turns that into a redelivery instead.
+        let preflight: SlackPreflightResult = 'committed';
+        if (this.options.preflightEnvelope) {
+            try {
+                preflight = await this.options.preflightEnvelope(envelope);
+            } catch (error) {
+                log.error(redactSlackTokens(
+                    '[slack:socket] durable preflight failed, withholding ack so Slack redelivers: '
+                    + (error as Error).message,
+                ));
                 this.recycleSocket();
-                return;
-            }
-            if (this.isDuplicate(envelope.envelope_id)) {
-                log.info(`[slack:socket] duplicate envelope ignored (retry_attempt=${envelope.retry_attempt ?? 0})`);
                 return;
             }
         }
 
-        if (!HANDLED_ENVELOPE_TYPES.has(envelope.type)) return;
+        if (envelope.envelope_id && !this.ack(envelope.envelope_id)) {
+            // The ack did not reach Slack, so this delivery WILL be retried. Running
+            // the agent now would duplicate that work.
+            log.warn('[slack:socket] ack failed — skipping dispatch, awaiting Slack retry');
+            this.recycleSocket();
+            return;
+        }
+
+        // Acked, but already handled on an earlier run: the ack is what Slack was
+        // still waiting for, and re-dispatching would repeat the work.
+        if (preflight !== 'committed') return;
 
         try {
             await this.options.onEnvelope(envelope);

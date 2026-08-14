@@ -183,7 +183,7 @@ the cmd shim or direct Node entry point instead.
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `pick-gyp-python.sh`, `release.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
+`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `promote-to-main.sh`, `pick-gyp-python.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
 
 ---
 
@@ -315,6 +315,13 @@ const REPEATABLE_TOOL_TYPES = new Set(['search', 'thinking']);
 `progress-semantics.test.ts`, `retry-side-effect-gate.test.ts`, `retry-stall-ordering.test.ts`.
 
 ---
+
+
+### session-generation.ts / access-policy.ts / remote-command-context.ts (M4-A0)
+
+M4-A2a adds opaque `issueApprovalCallback` / `resolveApprovalCallback` on the in-memory `DispatchApprovalStore`. Telegram operator DMs attach Approve/Deny buttons (`appr:`/`aprd:` opaque ids). Discord operator DMs attach Approve/Deny buttons (same `appr:`/`aprd:` ids). Slack operator DMs attach Approve/Deny Block Kit buttons (same `appr:`/`aprd:` ids). Generic Slack `keyboard` send stays unsupported (`interactiveActions: false`). HTTP still has no approve endpoint. Store `generation` is the process boot UUID (`restart_void`); callback `sessionGeneration` is `chat_sessions.generation`.
+
+`src/core/session-generation.ts` owns persistent `chat_sessions.generation` (additive PRAGMA/ALTER). This integer is not `src/agent/session-persistence.ts` process-local spawn ownership. `replaceRemoteSessionGeneration` rebinds one conversation onto one session in a single transaction because `remote_session_bindings.chat_session_id` is UNIQUE. `src/messaging/access-policy.ts` is default-deny substrate (`deny` / `allowlist` / `paired` / `all`) with no production caller until M4-A1. `src/messaging/remote-command-context.ts` names `{channel, actorId, conversationKey, chatSessionId, generation}` so the three transports cannot invent three shapes.
 
 ## src/core/ — runtime support cluster (30 files, 3803L)
 
@@ -542,7 +549,22 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ---
 
-## src/messaging/ — shared messaging runtime (13 files)
+## src/messaging/ — shared messaging runtime (22 files)
+
+### durable-ingress.ts / ingress-audit.ts
+
+`IngressJournal` rows stamp `session_generation`. A redelivery whose generation no longer matches is `stale_generation` and is not claimed. `IngressJournal` is the SQLite record of every inbound Telegram/Discord/Slack event. Transports call `admitIngress`/`settleIngress`; operators inspect and recover with `jaw messaging ingress list|show|replay|audit`. `requestReplay` is a state CAS back to `received`. Nothing in-process re-runs the handler — vendor redelivery does. Replay audit is append-only JSONL at `$JAW_HOME/messaging-ingress-audit.jsonl`.
+
+`admitIngress` enters that row's existing `trace_id` into `MessagingTraceContext` so a later `log.event` on the same turn can stamp it; it does not mint a second id.
+`/api/health` adds `channels.ingress` from `IngressJournal.counts()` and this-process `channels.metrics`; `jaw messaging doctor --json` reads the same SQLite file locally and cannot see the server ring.
+`gate:messaging-conformance` is the 22nd release gate: it re-runs the existing three-channel contract suites and writes a `functional-certified` artifact. It is not a chaos matrix and it is not `release-certified`.
+A file-backed restart is `tests/integration/messaging-ingress-restart.test.ts`: a second `IngressJournal` on the same `jaw.db` path. Completed stays `already_handled`; mid-flight keeps the stored `trace_id`.
+`append` treats a primary-key clash from a second connection as `duplicate`. A locked or full database still throws so Slack can refuse ACK.
+`src/messaging/effect-once.ts` owns `effect_claims`.
+`src/messaging/outbound-outbox.ts` owns `outbound_attempts`. A row is reserved before the vendor call. `ambiguous` is reachable only from `sending` and is terminal for the automatic path. Non-terminal and `ambiguous` attempts block the ingress retention sweep. A claim is held by `owner_id` + `claim_token`; an expired lease lets a new owner claim the row but never re-runs the effect body, and `manual` is the terminal hold for an outcome nobody can determine. Non-terminal claims block the ingress retention sweep.
+`sendSlackText` waits a short Slack `ratelimited`/429 and retries that chunk once. A long Retry-After still surfaces. The chunk loop does not restart.
+`sendChannelOutput` emits `outbound.send` on the current messaging ALS. Empty ALS stays empty — no second id.
+
 
 Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.
 
@@ -571,10 +593,11 @@ choke point로 모았다.
 | Function | 역할 |
 | --- | --- |
 | `registerTransport()` | 채널별 init/shutdown 등록 |
-| `getActiveChannel()` | 현재 활성 채널 반환 |
-| `initActiveMessagingRuntime()` | 활성 채널 transport init |
+| `getEnabledChannels()` | 현재 enabled 채널 목록 반환 |
+| `getHomeChannel()` | 현재 home 채널 반환 |
+| `initEnabledMessagingRuntimes()` | enabled 채널 각각 transport init |
 | `shutdownMessagingRuntime()` | 전체 transport shutdown |
-| `restartMessagingRuntime()` | active channel/active config가 바뀔 때만 restart |
+| `restartMessagingRuntime()` | enabled set, per-channel config, locale 변경 시 영향 채널만 restart (home-only 변경은 restart 없음) |
 | `setLastActiveTarget()` / `getLastActiveTarget()` | 마지막 활성 타겟 추적 |
 | `setLatestSeenTarget()` / `getLatestSeenTarget()` | 최신 관측 타겟 추적 |
 | `clearTargetState()` | stale target 제거 |
@@ -917,9 +940,9 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 
 > 서브커맨드 라우터 + `--home` flag 처리 (manual `indexOf`, NOT parseArgs)
 > `--home` → `process.env.CLI_JAW_HOME` 설정 후 config.ts 동적 import
-> known-command guard: `--home` 사용 시 알려진 명령어(`serve`, `init`, `doctor`, `chat`, `employee`, `reset`, `mcp`, `skill`, `status`, `browser`, `memory`, `launchd`, `clone`, `service`, `dashboard`, `orchestrate`, `dispatch`)와 경로 누락을 구분
+> known-command guard: `--home` 사용 시 알려진 명령어는 `bin/cli-jaw.ts`의 `_knownCmds`와 같다 (`serve` … `slack`, `messaging` 포함). 경로 누락과 서브커맨드를 구분한다
 
-현재 subcommand router에 실제 등록된 명령은 `serve`, `init`, `doctor`, `chat`, `employee`, `reset`, `mcp`, `skill`, `status`, `browser`, `memory`, `launchd`, `clone`, `orchestrate`, `dispatch`, `service`, `dashboard`다.
+현재 subcommand router는 `bin/cli-jaw.ts` switch와 같다. Messaging operator surface: `jaw messaging ingress list|show|replay|audit`.
 
 ### bin/commands/serve.ts
 

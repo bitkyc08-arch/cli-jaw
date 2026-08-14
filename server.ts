@@ -105,7 +105,11 @@ import { makeWebCommandCtx } from './src/cli/web-command-ctx.js';
 
 import './src/discord/register.js'; // side-effect: registers discord transport (bot.js + discord.js load lazily on first use)
 import './src/slack/register.js'; // side-effect: registers slack transport (send-handler.js loads lazily on first use)
-import { initActiveMessagingRuntime, shutdownMessagingRuntime, hydrateTargetsFromSettings } from './src/messaging/runtime.js';
+import { initEnabledMessagingRuntimes, shutdownMessagingRuntime, hydrateTargetsFromSettings, getEnabledChannels } from './src/messaging/runtime.js';
+import { initIngressJournal } from './src/messaging/durable-ingress.js';
+import { initEffectClaimStore } from './src/messaging/effect-once.js';
+import { initOutboundOutbox } from './src/messaging/outbound-outbox.js';
+import type { MessengerChannel } from './src/messaging/types.js';
 
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
 import { initAlertDelivery } from './src/agent/alert-escalation.js';
@@ -638,10 +642,29 @@ server.listen(PORT, bindHost, async () => {
     } catch (e: unknown) { console.error('[mcp-init]', (e as Error).message); }
 
     hydrateTargetsFromSettings(settings);
-    try {
-        await initActiveMessagingRuntime();
-    } catch (e: unknown) {
-        console.error('[messaging:boot]', (e as Error).message);
+    // Before any transport starts: the journal must exist for the first inbound event,
+    // and the connection is handed in rather than imported so the module stays testable
+    // against a temporary database.
+    initIngressJournal(db);
+    // Right after the journal, before any transport: the retention guard only learns
+    // about a child table when its owner registers a predicate, so a claim store
+    // created lazily on first use would leave a window in which the sweeper is
+    // allowed to delete the parent of a live claim.
+    initEffectClaimStore(db);
+    initOutboundOutbox(db);
+    const messagingBoot = await initEnabledMessagingRuntimes();
+    // Only `failed` is an incident. An outbound-only Slack install and a deliberate
+    // non-attach instance are operator choices; shouting `init failed` at them on
+    // every boot teaches people to skip this line when it finally matters.
+    for (const [channel, outcome] of Object.entries(messagingBoot)) {
+        if (outcome.started) continue;
+        if (!getEnabledChannels().includes(channel as MessengerChannel)) continue;
+        if (outcome.reason === 'failed') {
+            const detail = outcome.detail ? `: ${outcome.detail}` : '';
+            console.error(`[messaging:boot:${channel}] init failed${detail}; other gateways remain active`);
+        } else {
+            console.log(`[messaging:boot:${channel}] inbound not started (${outcome.reason})`);
+        }
     }
 
     try {

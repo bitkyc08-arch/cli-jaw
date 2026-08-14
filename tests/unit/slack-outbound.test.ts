@@ -18,7 +18,7 @@ import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
 
 type Captured = { url: string; init: RequestInit | undefined };
 
-function makeFetch(responses: Array<Record<string, unknown> | { __raw: true; ok: boolean; status: number }>) {
+function makeFetch(responses: Array<Record<string, unknown> | { __raw: true; ok: boolean; status: number; headers?: Record<string, string> }>) {
     const calls: Captured[] = [];
     let i = 0;
     const impl = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -26,12 +26,18 @@ function makeFetch(responses: Array<Record<string, unknown> | { __raw: true; ok:
         const spec = responses[Math.min(i, responses.length - 1)];
         i++;
         if (spec && '__raw' in spec) {
-            return { ok: spec.ok, status: spec.status, text: async () => '' } as unknown as Response;
+            const headers = new Headers(spec.headers ?? {});
+            return { ok: spec.ok, status: spec.status, headers, text: async () => '' } as unknown as Response;
         }
+        const record = (spec ?? { ok: true }) as Record<string, unknown>;
+        const headers = new Headers((record['__headers'] as Record<string, string> | undefined) ?? {});
+        const body = { ...record };
+        delete body['__headers'];
         return {
             ok: true,
-            status: 200,
-            text: async () => JSON.stringify(spec ?? { ok: true }),
+            status: typeof record['__status'] === 'number' ? record['__status'] : 200,
+            headers,
+            text: async () => JSON.stringify(body),
         } as unknown as Response;
     // justified: the capture harness implements only the Response surface these modules read
     }) as unknown as typeof fetch;
@@ -629,12 +635,25 @@ test('slackSendHandler rejects an unsupported outbound type', async () => {
     assert.match(String(result['error']), /unsupported_outbound_type/);
 });
 
-test('slackSendHandler degrades a keyboard request to text', async () => {
+test('slackSendHandler refuses a keyboard request the caller did not downgrade', async () => {
     // Slack's analogue is Block Kit, whose callbacks need interactive-envelope
-    // routing that v1 excludes. Sending the text beats dropping the message.
+    // routing this tree excludes, so `interactiveActions` is declared false. The old
+    // behaviour sent the text anyway and said nothing, which read as a full success.
     const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
-        slackSendHandler({ type: 'keyboard', target: slackTargetFromId('C1') }));
-    assert.equal(result['error'], 'empty_text', 'keyboard should route into the text branch');
+        slackSendHandler({ type: 'keyboard', text: 'pick one', target: slackTargetFromId('C1') }));
+    assert.equal(result.ok, false);
+    assert.equal(result['error'], 'interactive_actions_unsupported');
+    assert.equal(result['status'], 501);
+    assert.deepEqual(result['unsupported'], {
+        operation: 'interactiveActions',
+        reason: 'capability_not_declared',
+    });
+});
+
+test('slackSendHandler still validates text on an opted-in keyboard downgrade', async () => {
+    const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
+        slackSendHandler({ type: 'keyboard', interactiveFallback: 'text', target: slackTargetFromId('C1') }));
+    assert.equal(result['error'], 'empty_text', 'the opted-in downgrade routes into the text branch');
 });
 
 test('slackSendHandler requires a target', async () => {
@@ -673,8 +692,10 @@ test('slackSendHandler opens a DM for a U-id then posts to the D-id', async () =
     }
 });
 
-test('slackSendHandler posts the text of a keyboard request', async () => {
-    // The degrade branch must actually send, not just avoid crashing.
+test('slackSendHandler posts the text of an opted-in keyboard downgrade and records it', async () => {
+    // The downgrade branch must actually send, not just avoid crashing — and it must
+    // say on the result that the actions were dropped, which is the whole point of
+    // making the caller ask for it.
     const seen: string[] = [];
     const impl = (async (url: string | URL | Request, init?: RequestInit) => {
         seen.push(`${String(url)}|${String(init?.body)}`);
@@ -685,10 +706,55 @@ test('slackSendHandler posts the text of a keyboard request', async () => {
     globalThis.fetch = impl;
     try {
         const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
-            slackSendHandler({ type: 'keyboard', text: 'pick one', target: slackTargetFromId('C1') }));
+            slackSendHandler({
+                type: 'keyboard',
+                text: 'pick one',
+                interactiveFallback: 'text',
+                target: slackTargetFromId('C1'),
+            }));
         assert.equal(result.ok, true);
         assert.ok(seen.some(s => s.includes('chat.postMessage') && s.includes('pick one')), 'keyboard text was not posted');
+        assert.deepEqual(result['downgraded'], { operation: 'interactiveActions', to: 'text' });
     } finally {
         globalThis.fetch = priorFetch;
     }
+});
+
+test('blocks ride on the first sendSlackText chunk', async () => {
+    const { impl, calls } = makeFetch([{ ok: true }]);
+    const blocks = [{ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Approve' }, action_id: 'appr:x' }] }];
+    await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl, blocks });
+    const body = bodyOf(calls[0]!);
+    assert.equal(body['text'], 'hi');
+    assert.deepEqual(body['blocks'], blocks);
+});
+
+test('a short Slack rate limit retries the same chunk once', async () => {
+    const { impl, calls } = makeFetch([
+        { ok: false, error: 'ratelimited', __headers: { 'retry-after': '0.01' }, __status: 429 },
+        { ok: true },
+    ]);
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl });
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 2);
+    assert.equal(bodyOf(calls[0]!).text, 'hi');
+    assert.equal(bodyOf(calls[1]!).text, 'hi');
+});
+
+test('a long Slack rate limit is not waited out and is not retried', async () => {
+    const { impl, calls } = makeFetch([
+        { ok: false, error: 'ratelimited', __headers: { 'retry-after': '120' }, __status: 429 },
+    ]);
+    const started = Date.now();
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl });
+    assert.equal(result.ok, false);
+    assert.equal(calls.length, 1);
+    assert.ok(Date.now() - started < 1_000);
+});
+
+test('not_in_channel is not retried', async () => {
+    const { impl, calls } = makeFetch([{ ok: false, error: 'not_in_channel' }]);
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', { fetchImpl: impl });
+    assert.equal(result.ok, false);
+    assert.equal(calls.length, 1);
 });

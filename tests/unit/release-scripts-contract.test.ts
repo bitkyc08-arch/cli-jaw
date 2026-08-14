@@ -11,7 +11,7 @@ function read(path: string): string {
     return readFileSync(join(projectRoot, path), 'utf8');
 }
 
-for (const scriptPath of ['scripts/release.sh', 'scripts/release-preview.sh']) {
+for (const scriptPath of ['scripts/release-preview.sh']) {
     test(`${scriptPath} pushes the tree it just built, not a same-named local branch`, () => {
         // `git push origin main` pushes the LOCAL main branch, which is not
         // necessarily what was just built, committed and tagged: releases are
@@ -20,7 +20,7 @@ for (const scriptPath of ['scripts/release.sh', 'scripts/release-preview.sh']) {
         // would have published a tree three releases old, and the tag would
         // have pointed somewhere else entirely.
         const script = read(scriptPath);
-        const branch = scriptPath.includes('preview') ? 'preview' : 'main';
+        const branch = 'preview';
 
         assert.ok(
             new RegExp(`git push origin HEAD:${branch}`).test(script),
@@ -128,16 +128,14 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
 test('npm publish workflow uses dev/preview/main branch policy without release retargeting existing versions', () => {
     const workflow = read('.github/workflows/publish.yml');
 
-    assert.ok(workflow.includes('push:'), 'publish workflow must run from branch pushes');
-    assert.ok(workflow.includes('- preview'), 'publish workflow must bind the preview branch');
-    assert.ok(workflow.includes('- main'), 'publish workflow must bind the main branch');
     assert.ok(!workflow.includes('- master'), 'publish workflow must not bind the removed master branch');
     assert.ok(!workflow.includes('- dev'), 'publish workflow must not publish from the development branch');
     assert.ok(workflow.includes('id-token: write'), 'publish workflow must support npm Trusted Publishing OIDC');
-    assert.ok(workflow.includes('latest:main) ;;'), 'real latest publishes must run only from main');
+    assert.ok(workflow.includes('latest:main'), 'real latest publishes must run only from main');
     assert.ok(!workflow.includes('latest:master'), 'real latest publishes must not accept master');
-    assert.ok(workflow.includes('skip_publish="true"'), 'preview stable sync must set an explicit skip output');
-    assert.ok(workflow.includes('preview branch stable sync'), 'preview stable sync skip should be visible in the workflow logs');
+    assert.ok(workflow.includes('expected-sha'), 'publish dispatch must require the expected SHA');
+    assert.ok(workflow.includes('Verify dispatched SHA'), 'publish workflow must verify the dispatched SHA matches HEAD');
+    assert.ok(workflow.includes('Require successful Tests for this commit'), 'publish workflow must require a passing test run for the same commit');
     assert.ok(workflow.includes('Check registry package version'), 'publish workflow must detect already-published versions');
     assert.ok(workflow.includes('SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published'),
         'publish workflow must skip npm publish when the exact version already exists');
@@ -159,7 +157,7 @@ test('release branch policy is reflected in CI workflows, release script, instal
     const testWorkflow = read('.github/workflows/test.yml');
     const postinstallWorkflow = read('.github/workflows/postinstall-platform.yml');
     const pagesWorkflow = read('.github/workflows/pages.yml');
-    const releaseScript = read('scripts/release.sh');
+    const releaseScript = read('scripts/promote-to-main.sh');
     const installScript = read('scripts/install.sh');
     const installWslScript = read('scripts/install-wsl.sh');
     const collectorScript = read('scripts/collect-fresh-install-evidence.sh');
@@ -175,7 +173,7 @@ test('release branch policy is reflected in CI workflows, release script, instal
     ].join('\n');
 
     for (const workflow of [testWorkflow, postinstallWorkflow]) {
-        assert.ok(workflow.includes('- dev'), 'CI workflows must run on dev');
+        assert.ok(!workflow.includes('- dev'), 'CI workflows must not run on dev after M0');
         assert.ok(workflow.includes('- preview'), 'CI workflows must run on preview');
         assert.ok(workflow.includes('- main'), 'CI workflows must run on main');
         assert.ok(!workflow.includes('- master'), 'CI workflows must not run on removed master');
@@ -183,10 +181,14 @@ test('release branch policy is reflected in CI workflows, release script, instal
     assert.ok(pagesWorkflow.includes('branches: [main]'), 'Pages deploy must publish docs from main');
     assert.ok(!pagesWorkflow.includes('branches: [master]'), 'Pages deploy must not depend on master');
 
-    assert.ok(releaseScript.includes('git push origin main'), 'stable release script must push main');
-    assert.ok(!releaseScript.includes('git push origin master'), 'stable release script must not push master');
-    assert.ok(releaseScript.includes('branch%3Amain'), 'stable release script must link to main workflow runs');
-    assert.ok(!releaseScript.includes('branch%3Amaster'), 'stable release script must not link to master workflow runs');
+    assert.ok(
+        releaseScript.includes('git merge-base --is-ancestor "$MAIN_SHA" "$PREVIEW_SHA"'),
+        'stable promotion script must verify main is an ancestor of preview',
+    );
+    assert.ok(
+        releaseScript.includes('expected-sha="$MERGED_MAIN_SHA"'),
+        'stable promotion script must dispatch publish.yml with exact main SHA',
+    );
 
     assert.ok(installScript.includes('/cli-jaw/main/scripts/install.sh'), 'install.sh usage should use main raw URL');
     assert.ok(installWslScript.includes('/cli-jaw/main/scripts/install-wsl.sh'), 'install-wsl.sh usage should use main raw URL');

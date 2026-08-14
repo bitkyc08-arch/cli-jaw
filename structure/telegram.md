@@ -22,7 +22,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 - `registerTransport('telegram' | 'discord', ...)`로 각 transport의 init/shutdown을 등록한다
 - `settings.messaging.lastActive/latestSeen`를 저장하고, `hydrateTargetsFromSettings()`로 복원한다
-- `restartMessagingRuntime()`는 active channel 또는 active-channel config가 바뀔 때만 재시작한다
+- `restartMessagingRuntime()`는 enabled channel set, per-channel config, 또는 locale이 바뀔 때 영향받는 채널만 재시작한다. home channel만 바뀌면 transport를 재시작하지 않는다
 - `clearTargetState()`는 stale routing을 지우고, `send.ts`가 fallback target을 다시 계산하게 만든다
 - restart 전에 stale target을 비우므로 이전 thread/channel로 재전송되는 것을 막는다
 
@@ -31,6 +31,13 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 - `sendChannelOutput()`는 `explicit target → validated lastActive → validated latestSeen → configured fallback` 순으로 target을 고른다
 - `validateTarget()`는 Telegram allowedChatIds와 Discord channelIds / thread parent 허용을 둘 다 검사한다
 - `registerSendTransport()`로 채널별 outbound sender를 주입한다
+
+
+### `src/messaging/durable-ingress.ts`
+
+- 세 채널 inbound가 공유하는 SQLite journal. Telegram poller는 handler 전에 `admitIngress`, offset 전진 전에 `settleIngress`를 부른다.
+- 운영 조회/재생은 `jaw messaging ingress`. replay는 row를 `received`로 표시할 뿐이고, 재실행은 vendor 재전송이다.
+- 운영자 Telegram DM의 dispatch approval은 Approve/Deny 버튼(`appr:`/`aprd:` opaque id)을 붙인다. Discord·Slack 운영자 DM도 같은 opaque 버튼을 붙인다. Slack 일반 keyboard send는 여전히 unsupported다.
 
 ### `src/messaging/thread-target.ts`
 

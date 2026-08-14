@@ -24,6 +24,9 @@ const CMDLINE_HIDDEN = new Set([
     'browser',
     'prompt',
     'version',
+    'stop',
+    'approve',
+    'deny',
 ]);
 
 interface RegexCommand {

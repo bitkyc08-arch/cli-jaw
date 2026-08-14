@@ -53,6 +53,7 @@ import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbo
 import { recordDispatch } from '../goal-run/controller.js';
 import { log } from '../core/logger.js';
 import { dispatchApprovalStore, formatDispatchApprovalMessage, type DispatchApprovalRecord } from '../core/dispatch-approval.js';
+import { presentTelegramApproval, presentDiscordApproval, presentSlackApproval } from '../messaging/approval-presentation.js';
 import { getSlackSendClient, resolveSlackDmChannel, sendSlackText } from '../slack/send-only-client.js';
 import { sendTelegramText } from '../telegram/bot.js';
 import { getDiscordSendClient, sendDiscordDm } from '../discord/send-only-client.js';
@@ -161,14 +162,28 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         if (slack.token) for (const userId of operators.slack || []) deliveries.push((async () => {
             const dm = await resolveSlackDmChannel(slack.token!, String(userId));
             if (!dm.ok || !dm.channelId) throw new Error(dm.error || 'slack_dm_failed');
-            const sent = await sendSlackText(slack.token!, { channel: 'slack', targetKind: 'channel', targetId: dm.channelId, peerKind: 'direct' }, message);
+            const presented = presentSlackApproval(record, { actorId: String(userId), conversationKey: String(userId), sessionGeneration: 0 }, message);
+            const sent = await sendSlackText(
+                slack.token!,
+                { channel: 'slack', targetKind: 'channel', targetId: dm.channelId, peerKind: 'direct' },
+                presented.text,
+                presented.slackBlocks ? { blocks: presented.slackBlocks } : {},
+            );
             if (!sent.ok) throw new Error(sent.error || 'slack_dm_failed');
             return sent;
         })());
-        for (const userId of operators.telegram || []) deliveries.push(sendTelegramText(String(userId), message));
+        for (const userId of operators.telegram || []) deliveries.push((async () => {
+            const chatId = String(userId);
+            const presented = presentTelegramApproval(record, { actorId: chatId, conversationKey: chatId, sessionGeneration: 0 }, message);
+            return sendTelegramText(chatId, presented.text, presented.telegramKeyboard ? { reply_markup: presented.telegramKeyboard } : undefined);
+        })());
         const discord = getDiscordSendClient();
         if (discord.token) for (const userId of operators.discord || []) deliveries.push((async () => {
-            const sent = await sendDiscordDm(discord.token!, String(userId), message);
+            const presented = presentDiscordApproval(record, { actorId: String(userId), conversationKey: String(userId), sessionGeneration: 0 }, message);
+            const sent = await sendDiscordDm(
+                discord.token!, String(userId), presented.text, undefined,
+                presented.discordComponents ? { components: presented.discordComponents } : undefined,
+            );
             if (!sent.ok) throw new Error(sent.error);
             return sent;
         })());

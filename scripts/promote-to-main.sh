@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+command -v gh >/dev/null 2>&1 || { echo "ERROR: gh is required" >&2; exit 1; }
+gh auth status >/dev/null
+git fetch origin main preview --tags --prune
+
+LIVE_PREVIEW_SHA="$(git rev-parse refs/remotes/origin/preview^{commit})"
+PREVIEW_SHA="$(git rev-parse "${1:-$LIVE_PREVIEW_SHA}^{commit}")"
+if [ "$PREVIEW_SHA" != "$LIVE_PREVIEW_SHA" ]; then
+  echo "ERROR: requested SHA is not the live origin/preview head" >&2
+  exit 1
+fi
+
+PREVIEW_VERSION="$(git show "$PREVIEW_SHA:package.json" \
+  | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).version)')"
+if [[ ! "$PREVIEW_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-preview\.[0-9]+$ ]]; then
+  echo "ERROR: preview version must match X.Y.Z-preview.TIMESTAMP; got $PREVIEW_VERSION" >&2
+  exit 1
+fi
+STABLE_VERSION="${BASH_REMATCH[1]}"
+
+TESTS_URL="$(gh run list \
+  --workflow test.yml \
+  --branch preview \
+  --commit "$PREVIEW_SHA" \
+  --event push \
+  --status success \
+  --limit 1 --json url --jq '.[0].url // ""')"
+if [ -z "$TESTS_URL" ]; then
+  echo "ERROR: no successful Tests run for $PREVIEW_SHA on preview" >&2
+  exit 1
+fi
+
+MAIN_SHA="$(git rev-parse refs/remotes/origin/main^{commit})"
+if ! git merge-base --is-ancestor "$MAIN_SHA" "$PREVIEW_SHA"; then
+  echo "ERROR: origin/main is not an ancestor of the certified preview SHA" >&2
+  exit 1
+fi
+
+WORKTREE="$(mktemp -d "${TMPDIR:-/tmp}/cli-jaw-promote.XXXXXX")"
+PROMOTION_BRANCH="codex/promote-${STABLE_VERSION}-${PREVIEW_SHA:0:12}"
+cleanup() {
+  git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+  rmdir "$WORKTREE" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+git worktree add -b "$PROMOTION_BRANCH" "$WORKTREE" "$PREVIEW_SHA"
+
+(
+  cd "$WORKTREE"
+  npm version "$STABLE_VERSION" --no-git-tag-version --allow-same-version
+  node scripts/sync-electron-version.cjs
+  npm run gate:all
+  node scripts/require-release-evidence.mjs
+  git add package.json package-lock.json electron/package.json electron/package-lock.json
+  git commit -m "chore: promote v$STABLE_VERSION"
+  git push --set-upstream origin "$PROMOTION_BRANCH"
+)
+
+PROMOTION_COMMIT="$(git -C "$WORKTREE" rev-parse HEAD)"
+PR_URL="$(gh pr create \
+  --base main \
+  --head "$PROMOTION_BRANCH" \
+  --title "chore: promote v$STABLE_VERSION" \
+  --body "Promotes certified preview $PREVIEW_VERSION at $PREVIEW_SHA. Tests: $TESTS_URL")"
+
+gh pr checks "$PR_URL" --required --watch --fail-fast
+gh pr merge "$PR_URL" --squash --match-head-commit "$PROMOTION_COMMIT"
+
+MERGED_AT="$(gh pr view "$PR_URL" --json mergedAt --jq '.mergedAt // ""')"
+if [ -z "$MERGED_AT" ]; then
+  echo "ERROR: promotion PR did not merge" >&2
+  exit 1
+fi
+PR_MERGE_SHA="$(gh pr view "$PR_URL" --json mergeCommit --jq '.mergeCommit.oid // ""')"
+if [ -z "$PR_MERGE_SHA" ]; then
+  echo "ERROR: promotion PR has no merge commit SHA" >&2
+  exit 1
+fi
+
+git fetch origin main
+MERGED_MAIN_SHA="$(git rev-parse refs/remotes/origin/main^{commit})"
+LIVE_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+if [ -z "$LIVE_MAIN_SHA" ] || [ "$MERGED_MAIN_SHA" != "$LIVE_MAIN_SHA" ] \
+  || [ "$MERGED_MAIN_SHA" != "$PR_MERGE_SHA" ]; then
+  echo "ERROR: merged PR SHA, origin/main, and live main head do not match" >&2
+  exit 1
+fi
+MERGED_VERSION="$(git show "$MERGED_MAIN_SHA:package.json" \
+  | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).version)')"
+if [ "$MERGED_VERSION" != "$STABLE_VERSION" ]; then
+  echo "ERROR: merged main version is $MERGED_VERSION, expected $STABLE_VERSION" >&2
+  exit 1
+fi
+
+deadline=$((SECONDS + 1200))
+MAIN_TESTS_URL=""
+while [ "$SECONDS" -lt "$deadline" ]; do
+  MAIN_TESTS_URL="$(gh run list \
+    --workflow test.yml \
+    --branch main \
+    --commit "$MERGED_MAIN_SHA" \
+    --event push \
+    --status success \
+    --limit 1 --json url --jq '.[0].url // ""')"
+  [ -n "$MAIN_TESTS_URL" ] && break
+  failed="$(gh run list \
+    --workflow test.yml \
+    --branch main \
+    --commit "$MERGED_MAIN_SHA" \
+    --event push \
+    --status completed \
+    --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
+  case "$failed" in
+    failure|cancelled|timed_out|startup_failure|action_required)
+      echo "ERROR: main Tests completed with $failed" >&2
+      exit 1
+      ;;
+  esac
+  sleep 10
+done
+if [ -z "$MAIN_TESTS_URL" ]; then
+  echo "ERROR: timed out waiting for successful main Tests" >&2
+  exit 1
+fi
+
+deadline=$((SECONDS + 1200))
+MAIN_PLATFORM_URL=""
+while [ "$SECONDS" -lt "$deadline" ]; do
+  MAIN_PLATFORM_URL="$(gh run list \
+    --workflow postinstall-platform.yml \
+    --branch main \
+    --commit "$MERGED_MAIN_SHA" \
+    --event push \
+    --status success \
+    --limit 1 --json url --jq '.[0].url // ""')"
+  [ -n "$MAIN_PLATFORM_URL" ] && break
+  failed="$(gh run list \
+    --workflow postinstall-platform.yml \
+    --branch main \
+    --commit "$MERGED_MAIN_SHA" \
+    --event push \
+    --status completed \
+    --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
+  case "$failed" in
+    failure|cancelled|timed_out|startup_failure|action_required)
+      echo "ERROR: main Postinstall Platform Checks completed with $failed" >&2
+      exit 1
+      ;;
+  esac
+  sleep 10
+done
+if [ -z "$MAIN_PLATFORM_URL" ]; then
+  echo "ERROR: timed out waiting for successful main Postinstall Platform Checks" >&2
+  exit 1
+fi
+
+LIVE_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+if [ "$LIVE_MAIN_SHA" != "$MERGED_MAIN_SHA" ]; then
+  echo "ERROR: origin/main moved while waiting for release CI" >&2
+  exit 1
+fi
+
+gh workflow run publish.yml \
+  --ref main \
+  -f version="$STABLE_VERSION" \
+  -f tag=latest \
+  -f expected-sha="$MERGED_MAIN_SHA" \
+  -f dry-run=false \
+  -f create-github-release=true
+
+echo "stable publish dispatched: cli-jaw@$STABLE_VERSION from $MERGED_MAIN_SHA"

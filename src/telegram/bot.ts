@@ -20,13 +20,25 @@ import {
 } from '../agent/spawn.js';
 import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
+import { getActiveChatSession } from '../core/chat-sessions.js';
+import { authorizePrivilegedRemote, isPrivilegedRemoteCommand } from '../cli/handlers/remote-session-commands.js';
 import { getTelegramMenuCommands } from '../command-contract/policy.js';
 import { downloadTelegramFile, TELEGRAM_DOWNLOAD_LIMITS } from '../../lib/upload.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { handleVoice } from './voice.js';
-import { getLastActiveTarget, registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
+import {
+    getLastActiveTarget, registerTransport, setLastActiveTarget, setLatestSeenTarget,
+    transportNotStarted, transportStarted, type TransportStartOutcome,
+} from '../messaging/runtime.js';
+import {
+    admitIngress, getIngressJournal, settleIngress, type IngressAdmission,
+} from '../messaging/durable-ingress.js';
+import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
+import { createHash } from 'node:crypto';
+import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
+import type { InboundEnvelope } from '../messaging/types.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
@@ -59,7 +71,8 @@ import {
 } from './elicitation-buttons.js';
 import { redactOutboundPayload, redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { sendWithRetryPolicy } from '../messaging/retry.js';
-import { handleApprovalCommand, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
+import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -230,10 +243,19 @@ export function getTelegramTargetIds(): Array<string | number> {
         : ([...telegramActiveChatIds] as Array<string | number>);
 }
 
-export async function sendTelegramText(chatId: string, text: string) {
+export async function sendTelegramText(
+    chatId: string,
+    text: string,
+    extra?: { reply_markup?: import('@grammyjs/types').InlineKeyboardMarkup },
+) {
     const bot = resolveTelegramSendBot();
     if (!bot) throw new Error('Telegram not configured');
-    return bot.api.sendMessage(chatId, redactOutboundText(text));
+    const markup = extra?.reply_markup;
+    return bot.api.sendMessage(
+        chatId,
+        redactOutboundText(text),
+        markup ? { reply_markup: redactOutboundPayload(markup) } : undefined,
+    );
 }
 
 export type TelegramSendClientResult =
@@ -283,6 +305,65 @@ function buildTelegramTarget(ctx: Context): RemoteTarget {
             ? String(messageThreadId)
             : undefined,
     });
+}
+
+/**
+ * Pull the routing fields out of a raw update. The poller sees `Update`, not the
+ * grammY `Context` that `buildTelegramTarget` consumes, and only some update kinds
+ * carry a chat at all — a poll answer has no conversation to journal against.
+ * Returns null for those rather than inventing an identity for them.
+ */
+function telegramUpdateEnvelope(update: Record<string, unknown>): InboundEnvelope | null {
+    if (botUserId === null) return null;
+    const message = (update['message'] ?? update['edited_message'] ?? update['channel_post']
+        ?? update['edited_channel_post']) as Record<string, unknown> | undefined;
+    const callback = update['callback_query'] as Record<string, unknown> | undefined;
+    const carrier = message ?? (callback?.['message'] as Record<string, unknown> | undefined);
+    const chat = carrier?.['chat'] as Record<string, unknown> | undefined;
+    const from = (message?.['from'] ?? callback?.['from']) as Record<string, unknown> | undefined;
+    if (!chat || from?.['id'] === undefined) return null;
+
+    const chatType = chat['type'];
+    const isGroup = chatType === 'group' || chatType === 'supergroup';
+    const isTopicMessage = carrier?.['is_topic_message'] === true;
+    const threadId = isTopicMessage ? Number(carrier?.['message_thread_id']) : NaN;
+    const target: RemoteTarget = stripUndefined({
+        channel: 'telegram',
+        targetKind: 'channel',
+        peerKind: isGroup ? 'group' : 'direct',
+        targetId: String(chat['id']),
+        threadId: Number.isFinite(threadId) && threadId > 1 ? String(threadId) : undefined,
+    }) as RemoteTarget;
+
+    return telegramInboundEnvelope({
+        botUserId,
+        updateId: update['update_id'] as number,
+        chatId: chat['id'] as number,
+        fromId: from['id'] as number,
+        isTopicMessage,
+        messageThreadId: carrier?.['message_thread_id'] as number | undefined,
+        target,
+    });
+}
+
+/**
+ * Append the update before it is handled. The shared protocol in durable-ingress owns
+ * the ordering; this only supplies the Telegram-shaped envelope and digest.
+ */
+function admitTelegramUpdate(update: Record<string, unknown>): IngressAdmission {
+    const journal = getIngressJournal();
+    const envelope = journal ? telegramUpdateEnvelope(update) : null;
+    const admission = admitIngress(journal, envelope, telegramPayloadDigest(update), undefined, envelope ? currentGenerationForEnvelope(envelope) : 0);
+    if (!admission.admit) {
+        log.info(`[tg:ingress] update ${String(update['update_id'])} already handled — not re-running`);
+    }
+    return admission;
+}
+
+/** Identity of the update body, for detecting an edit that reuses an id. Never the
+ *  body itself: the journal is not a message archive. */
+function telegramPayloadDigest(update: Record<string, unknown>): string {
+    return createHash('sha256').update(JSON.stringify(update)).digest('hex');
 }
 
 async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
@@ -356,7 +437,10 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
 }
 
 // Register transport at module load time
-registerTransport('telegram', { init: initTelegram, shutdown: shutdownTelegram });
+registerTransport('telegram', {
+    init: () => initTelegram(),
+    shutdown: shutdownTelegram,
+});
 registerSendTransport('telegram', telegramSendHandler);
 installTelegramTargetReplyForwarder();
 
@@ -409,16 +493,16 @@ function makeTelegramCommandCtx() {
 
 // ─── Init ────────────────────────────────────────────
 
-export async function initTelegram() {
+export async function initTelegram(): Promise<TransportStartOutcome> {
     if (tgInitLock) {
         log.warn('[tg] initTelegram already in progress, skipping');
-        return;
+        return transportNotStarted('superseded');
     }
     tgInitLock = true;
-    try { await _initTelegramInner(); } finally { tgInitLock = false; }
+    try { return await _initTelegramInner(); } finally { tgInitLock = false; }
 }
 
-async function _initTelegramInner() {
+async function _initTelegramInner(): Promise<TransportStartOutcome> {
     // Dedupe retry timer — cancel pending retry if initTelegram called again
     if (tgRetryTimer) { clearTimeout(tgRetryTimer); tgRetryTimer = null; }
 
@@ -451,7 +535,7 @@ async function _initTelegramInner() {
 
     if (!settings["telegram"]?.enabled || !settings["telegram"]?.token) {
         log.info('[tg] ⏭️  Telegram pending (disabled or no token)');
-        return;
+        return transportNotStarted('not_configured');
     }
 
     // Pre-seed telegramActiveChatIds from persisted allowedChatIds
@@ -551,6 +635,24 @@ async function _initTelegramInner() {
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat?.id ?? ''}</code>`, { parse_mode: 'HTML' }));
 
     // Inline-keyboard elicitation answers (single_select fences → buttons).
+    bot.callbackQuery(/^(appr|aprd):/, async (ctx) => {
+        await ctx.answerCallbackQuery();
+        const data = ctx.callbackQuery.data ?? '';
+        const parsed = parseApprovalCallbackData(data);
+        const chatId = ctx.chat?.id !== undefined ? String(ctx.chat.id) : '';
+        if (!parsed || !chatId) return;
+        const result = handleApprovalCallback(
+            telegramApprovalIngress,
+            { message: { from: ctx.from } },
+            parsed.opaqueId,
+            parsed.action,
+            { conversationKey: chatId, sessionGeneration: 0 },
+        );
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => { });
+        const reply = result.approved ? 'approved' : (result.reason || 'rejected');
+        await ctx.reply(redactOutboundText(reply)).catch(() => { });
+    });
+
     bot.callbackQuery(/^elic:/, async (ctx) => {
         const cbChatId = ctx.chat?.id;
         if (!cbChatId) { await ctx.answerCallbackQuery(); return; }
@@ -785,6 +887,20 @@ async function _initTelegramInner() {
         if (text.startsWith('/')) {
             const parsed = parseCommand(text);
             if (!parsed) return;
+            const cmdName = parsed.type === 'known' ? (parsed.cmd?.name ?? parsed.name) : parsed.name;
+            if (isPrivilegedRemoteCommand(cmdName)) {
+                const fromId = ctx.from?.id;
+                const auth = authorizePrivilegedRemote(cmdName, {
+                    channel: 'telegram',
+                    ...(fromId !== undefined ? { actorId: String(fromId) } : {}),
+                    conversationKey: String(ctx.chat.id),
+                    chatSessionId: getActiveChatSession(),
+                });
+                if (!auth.ok) {
+                    await ctx.reply(redactOutboundText(auth.text));
+                    return;
+                }
+            }
             const result = await executeCommand(parsed, makeTelegramCommandCtx());
 
             // ── /steer special path: kill + re-orchestrate with full TG UX ──
@@ -894,7 +1010,7 @@ async function _initTelegramInner() {
     // when getMe cannot provide that identity.
     if (botUserId === null) {
         log.error(logErrorText('[tg] refusing to start durable polling: bot identity could not be read'));
-        return;
+        return transportNotStarted('failed', 'get_me_identity_unavailable');
     }
 
     // ─── Global Forwarding: non-Telegram responses → Telegram ───
@@ -911,12 +1027,23 @@ async function _initTelegramInner() {
         key: String(botUserId),
         store: telegramUpdateOffsets,
         handleUpdateThroughFinalDelivery: async (update) => {
+            // Journal before the handler and complete before returning, because the
+            // caller advances the offset only after this resolves. A throw from the
+            // append leaves the offset where it was and Telegram redelivers, which is
+            // the whole reason the ordering is this way round.
+            const admission = admitTelegramUpdate(update as unknown as Record<string, unknown>);
+            if (!admission.admit) return;
             try {
-                if (handleTelegramUpdate(update as unknown as Record<string, unknown>, telegramApprovalIngress)) return;
-                await bot.handleUpdate(update);
-                if (telegramFinalDeliveryFailures.has(update.update_id)) {
-                    throw new Error('telegram_final_delivery_failed');
+                if (!handleTelegramUpdate(update as unknown as Record<string, unknown>, telegramApprovalIngress)) {
+                    await bot.handleUpdate(update);
+                    if (telegramFinalDeliveryFailures.has(update.update_id)) {
+                        throw new Error('telegram_final_delivery_failed');
+                    }
                 }
+                settleIngress(getIngressJournal(), admission);
+            } catch (error) {
+                settleIngress(getIngressJournal(), admission, error);
+                throw error;
             } finally {
                 telegramFinalDeliveryFailures.delete(update.update_id);
             }
@@ -949,4 +1076,7 @@ async function _initTelegramInner() {
     });
     telegramBot = bot;
     log.info('[tg] Bot starting...');
+    // Accepted, not yet receiving: poller.start() above is deliberately not awaited so
+    // boot does not block on a Telegram round trip. Readiness is reported by health.
+    return transportStarted;
 }

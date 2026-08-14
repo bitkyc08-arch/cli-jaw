@@ -114,6 +114,11 @@ export function setActiveChatSession(sessionId: string): void {
     broadcast('session_switched', { sessionId }, 'public');
 }
 
+export function getRemoteBoundSessionId(remoteKey: string): string | null {
+    const found = getBindingStmt.get(remoteKey) as { chat_session_id: string } | undefined;
+    return found?.chat_session_id ?? null;
+}
+
 export function resolveOrCreateRemoteSession(remoteKey: string): string {
     return db.transaction(() => {
         const found = getBindingStmt.get(remoteKey) as { chat_session_id: string } | undefined;
