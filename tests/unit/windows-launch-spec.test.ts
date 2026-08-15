@@ -187,6 +187,10 @@ test('WLS-012: user argv is never re-parsed, whatever it contains', () => {
 
 test('WLS-013: the spawn path prefers shell-free resolution over shell:true', () => {
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    // TRANSITIONAL (020 stage 1). This asserts the compatibility fallback still exists.
+    // Stage 2 removes that fallback once the native Windows gate proves every classified
+    // runtime resolves — and this test must be deleted as part of that change, not left
+    // to quietly pin the insecure path in place.
     // windowsSpawnUsesShell must be gated on resolution FAILING. If the resolver
     // returns a spec, a shell must never be added to the same spawn.
     assert.match(spawnSrc, /windowsSpawnUsesShell = process\.platform === 'win32'\s*\n\s*&& !windowsLaunch/);
