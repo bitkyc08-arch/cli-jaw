@@ -88,3 +88,68 @@ test('RWP-005: no README still calls native Windows unsupported', () => {
     }
 });
 
+/** The visible region between the marker comments — what a reader actually sees. */
+function visibleBlock(text: string): string | null {
+    const start = text.indexOf('-->', text.indexOf('<!-- windows-support:start'));
+    const end = text.indexOf('<!-- windows-support:end -->');
+    if (start < 0 || end < 0 || end < start) return null;
+    return text.slice(start + 3, end);
+}
+
+test('RWP-006: the VISIBLE block states every canonical fact', () => {
+    // RWP-002 alone was false-green: it compared hidden metadata to the contract, so a
+    // README whose prose said 'fully stable' on ports 9999/8888 still passed. Readers
+    // do not read the comment. Assert the rendered text.
+    for (const file of READMES) {
+        const text = read(file);
+        const block = visibleBlock(text);
+        assert.ok(block, `${file} has no visible windows-support region`);
+        assert.ok(block!.includes(CONTRACT.installCommand), `${file}: installer command missing from the VISIBLE block`);
+        assert.ok(block!.includes(CONTRACT.recoveryCommand), `${file}: ${CONTRACT.recoveryCommand} missing from the VISIBLE block`);
+        assert.ok(block!.includes(CONTRACT.nodeFloor.replace(/\.0$/, '')), `${file}: Node floor missing from the VISIBLE block`);
+        assert.ok(block!.includes(String(CONTRACT.managerPort)), `${file}: manager port missing from the VISIBLE block`);
+        assert.ok(block!.includes(String(CONTRACT.runtimePort)), `${file}: runtime port missing from the VISIBLE block`);
+        // 'beta' and the no-registered-service limitation must be visible too.
+        assert.match(block!, /beta/i, `${file}: native status must be visible`);
+        assert.match(block!, /jaw service install/, `${file}: the service limitation must be visible`);
+    }
+});
+
+test('RWP-007: no README claims a wrong port or a stable native surface', () => {
+    // Catch the mutation class directly rather than by exact obsolete phrasing.
+    for (const file of READMES) {
+        const block = visibleBlock(read(file))!;
+        assert.doesNotMatch(block, /\b(9999|8888)\b/, `${file}: unexpected port in the Windows block`);
+        assert.doesNotMatch(block, /Set-ExecutionPolicy\s+(Unrestricted|Bypass)/i,
+            `${file}: must not recommend an unrestricted execution policy`);
+    }
+});
+
+test('RWP-008: ports are pinned to source, not just to each other', () => {
+    const config = read('src/core/config.ts');
+    assert.ok(
+        config.includes(String(CONTRACT.runtimePort)),
+        'runtime port in the contract must appear in src/core/config.ts',
+    );
+    const manager = read('src/manager/constants.ts');
+    assert.ok(
+        manager.includes(String(CONTRACT.managerPort)),
+        'manager port in the contract must appear in src/manager/constants.ts',
+    );
+});
+
+test('RWP-009: jaw service install is never advertised without an OS scope', () => {
+    // The block says native Windows has no registered backend; an unqualified
+    // 'jaw service install # auto-start on boot' elsewhere in the same file
+    // contradicts it. bin/commands/service.ts supports launchd/systemd/docker only.
+    for (const file of READMES) {
+        for (const line of read(file).split('\n')) {
+            if (!line.includes('jaw service install')) continue;
+            assert.match(
+                line, /macOS|Linux|launchd|systemd/,
+                `${file}: 'jaw service install' must name the platforms it supports — ${line.trim()}`,
+            );
+        }
+    }
+});
+

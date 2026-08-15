@@ -37,7 +37,7 @@ jaw init                              # 准备好后再交互式配置
      install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 -->
 
-**Windows 支持。** WSL 是推荐的稳定路径。原生 PowerShell 安装程序目前为 **beta**：
+**Windows 支持。** 推荐使用 WSL 路径，它是稳定的。原生 PowerShell 安装脚本也可以用，但仍处于 beta 阶段：
 
 ```powershell
 irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
@@ -45,13 +45,13 @@ irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1
 
 需要 Node.js 22.4+。
 
-管理面板运行在 **24576**，单个 agent 的 Web UI 运行在 **3457**。如果执行策略阻止了 `jaw.ps1`，请使用 `.cmd` 垫片，而不是放宽策略：
+管理面板在 **24576** 端口，每个 agent 的 Web UI 在 **3457** 端口。如果执行策略挡住了 `jaw.ps1`，不要放宽策略，直接用 `.cmd`：
 
 ```powershell
 jaw.cmd doctor
 ```
 
-原生 Windows **没有已注册的 `jaw service` 自启动后端** —— `jaw service install` 仅支持 macOS（launchd）和 Linux（systemd）。
+原生 Windows 目前没有可注册的开机自启后端。`jaw service install` 只在 macOS(launchd) 和 Linux(systemd) 上有效。
 
 <!-- windows-support:end -->
 
@@ -501,7 +501,7 @@ jaw doctor                        # 安装和运行时诊断
 # 实例
 jaw clone ~/project               # 克隆实例到新目录
 jaw --home ~/project serve --port 3458  # 运行第二个实例
-jaw service install               # 开机自启
+jaw service install               # 开机自启（macOS/Linux）
 jaw project set ~/repo            # 为 review/orchestration 设置 projectDirs
 jaw lock                          # 保护当前实例不被 stop-all 流程停止
 

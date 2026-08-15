@@ -37,7 +37,7 @@ jaw init                              # 준비되면 대화형 설정
      install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 -->
 
-**Windows 지원.** WSL이 권장되는 안정 경로입니다. 네이티브 PowerShell 설치 프로그램은 **베타**로 제공됩니다:
+**Windows 지원.** 안정적으로 쓰려면 WSL 경로를 권장합니다. 네이티브 PowerShell 설치 스크립트도 있지만 아직 beta 단계입니다:
 
 ```powershell
 irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
@@ -45,13 +45,13 @@ irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1
 
 Node.js 22.4+ 가 필요합니다.
 
-매니저 대시보드는 **24576**, 에이전트별 웹 UI는 **3457** 포트를 씁니다. 실행 정책 때문에 `jaw.ps1`이 막히면 정책을 완화하지 말고 `.cmd` 심을 쓰세요:
+매니저 대시보드는 **24576**, 에이전트별 웹 UI는 **3457** 포트를 씁니다. 실행 정책에 막혀 `jaw.ps1`이 안 돌아가면 정책을 풀지 말고 `.cmd` 쪽을 쓰세요:
 
 ```powershell
 jaw.cmd doctor
 ```
 
-네이티브 Windows에는 **등록형 `jaw service` 자동 시작 백엔드가 없습니다.** `jaw service install`은 macOS(launchd)와 Linux(systemd)만 지원합니다.
+네이티브 Windows에는 부팅 시 자동 실행을 등록하는 백엔드가 아직 없습니다. `jaw service install`은 macOS(launchd)와 Linux(systemd)에서만 동작합니다.
 
 <!-- windows-support:end -->
 
@@ -516,7 +516,7 @@ jaw slack setup                   # 가이드 Slack 앱 설정 (매니페스트 
 # 인스턴스
 jaw clone ~/project               # 인스턴스 복제
 jaw --home ~/project serve --port 3458  # 두 번째 인스턴스 실행
-jaw service install               # 부팅 시 자동 시작
+jaw service install               # 부팅 시 자동 시작 (macOS/Linux)
 jaw project set ~/repo            # review/orchestration용 projectDirs 설정
 jaw lock                          # stop-all 흐름에서 현재 인스턴스 보호
 

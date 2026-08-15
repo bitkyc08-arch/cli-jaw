@@ -720,7 +720,7 @@ jaw messaging ingress list        # inspect / replay the durable inbound journal
 # Instances
 jaw clone ~/project               # clone instance to new directory
 jaw --home ~/project serve --port 3458  # run second instance
-jaw service install               # auto-start on boot
+jaw service install               # auto-start on boot (macOS/Linux)
 jaw --home ~/project service restart --port 3458  # restart only this instance
 jaw --home ~/project service stop --port 3458     # stop only this instance
 jaw project set ~/repo            # set projectDirs for review/orchestration

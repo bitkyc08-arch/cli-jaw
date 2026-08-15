@@ -37,7 +37,7 @@ jaw init                              # 準備ができたら対話型セット�
      install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 -->
 
-**Windows サポート。** WSL が推奨される安定した経路です。ネイティブ PowerShell インストーラーは **beta** として提供されています:
+**Windows サポート。** 安定して使うなら WSL 経路をおすすめします。ネイティブ PowerShell 用のインストーラーもありますが、まだ beta です:
 
 ```powershell
 irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
@@ -45,25 +45,25 @@ irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1
 
 Node.js 22.4+ が必要です。
 
-マネージャーダッシュボードは **24576**、エージェントごとの Web UI は **3457** を使います。実行ポリシーで `jaw.ps1` がブロックされる場合は、ポリシーを緩めずに `.cmd` シムを使ってください:
+マネージャーダッシュボードは **24576**、エージェントごとの Web UI は **3457** を使います。実行ポリシーで `jaw.ps1` が動かない場合は、ポリシーを緩めずに `.cmd` を使ってください:
 
 ```powershell
 jaw.cmd doctor
 ```
 
-ネイティブ Windows には **登録型の `jaw service` 自動起動バックエンドがありません。** `jaw service install` は macOS(launchd) と Linux(systemd) のみ対応です。
+ネイティブ Windows には、起動時の自動実行を登録する仕組みがまだありません。`jaw service install` が動くのは macOS(launchd) と Linux(systemd) だけです。
 
 <!-- windows-support:end -->
 
 </details>
 
 ```bash
-# macOS / Linux / WSL、Node.js 22+ が既にある場合
+# macOS / Linux / WSL、Node.js 22.4+ が既にある場合
 npm install -g cli-jaw
 jaw dashboard
 ```
 
-これで完了です。**http://localhost:3457** を開けば、あなた専用の AI エージェントが使えます。[Node.js 22+](https://nodejs.org) が必要です。
+これで完了です。**http://localhost:3457** を開けば、あなた専用の AI エージェントが使えます。[Node.js 22.4+](https://nodejs.org) が必要です。
 
 > **初めてですか？** デフォルトの npm インストールは CLI-JAW の初期化とネイティブ Claude のセットアップを試みます。他の AI CLI は任意です。macOS/Linux で npm インストール時にすべて入れる場合は `CLI_JAW_INSTALL_CLI_TOOLS=1 npm install -g cli-jaw` を使ってください。Windows では下の WSL インストール手順を使ってください。
 
@@ -447,7 +447,7 @@ jaw slack setup                   # ガイド付き Slack アプリ設定（マ�
 # インスタンス
 jaw clone ~/project               # 新しいディレクトリにインスタンスを複製
 jaw --home ~/project serve --port 3458  # 2 つ目のインスタンスを起動
-jaw service install               # OS 起動時の自動スタート
+jaw service install               # OS 起動時の自動スタート (macOS/Linux)
 
 # AI & オーケストレーション
 jaw dispatch --agent "Backend" --task "..."  # Employee をディスパッチ
@@ -526,7 +526,7 @@ bash structure/check-doc-drift.sh
 | 症状 | 対処 |
 |---|---|
 | `cli-jaw: command not found` | `npm install -g cli-jaw` を再実行。macOS/Linux/WSL では `~/.local/bin` または `npm prefix -g` + `/bin` が `$PATH` に含まれているか確認。Windows PowerShell からは `wsl.exe -d Ubuntu -- bash -lc "jaw dashboard"` のように WSL login shell 経由で実行 |
-| `Error: node version` | Node.js 22+ にアップグレード：`nvm install 22` |
+| `Error: node version` | Node.js 22.4+ にアップグレード：`nvm install 22` |
 | `NODE_MODULE_VERSION` mismatch | `npm run ensure:native`（ネイティブモジュールの自動リビルド） |
 | `EADDRINUSE: port 3457` | 別のインスタンスが起動中。`--port 3458` で回避 |
 | Telegram / Discord 認証失敗 | `jaw doctor` を実行してから `jaw serve` を再起動 |
