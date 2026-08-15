@@ -225,6 +225,7 @@ exit /b 0
         Assert-True ($guidanceOutput -match 'SetEnvironmentVariable\(''Path'', \(\$entries -join') 'guidance must write the composed entries to the User target'
         Assert-True ($guidanceOutput -notmatch [regex]::Escape($machineSentinel)) 'guidance must not contain machine-only PATH entries'
         Assert-True ($guidanceOutput -notmatch '\$env:Path') 'guidance must not serialize the merged process PATH'
+
     }
 } finally {
     Remove-Item -LiteralPath $pathFixture -Recurse -Force -ErrorAction SilentlyContinue
