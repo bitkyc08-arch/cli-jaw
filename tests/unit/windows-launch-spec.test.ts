@@ -225,3 +225,13 @@ test('WLS-017: shebang quoting beyond the supported grammar fails closed', () =>
     // The supported shapes still parse.
     assert.equal(parseShebang('#!/usr/bin/env node\n')!.interpreter, 'node');
 });
+
+test('WLS-018: codex resume carries the prompt on stdin, not argv', () => {
+    const argsSrc = readFileSync(join(__dirname, '../../src/agent/args.ts'), 'utf8');
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    // Fresh and resume must have identical guarantees. Resume previously placed the
+    // same untrusted prompt in argv, where a .cmd shim would expose it to cmd.exe.
+    assert.match(argsSrc, /sessionId, '-', '--json'/);
+    assert.doesNotMatch(argsSrc, /sessionId, prompt \|\| '', '--json'/);
+    assert.match(spawnSrc, /cli === 'codex' && isResume/);
+});

@@ -2672,6 +2672,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ? `${historyBlock}\n\n[User Message]\n${prompt}`
             : `[User Message]\n${prompt}`;
         child.stdin.write(codexStdin);
+    } else if (cli === 'codex' && isResume) {
+        // Resume passes '-' in argv (see args.ts) so the prompt travels on stdin,
+        // matching the fresh path.
+        child.stdin.write(prompt || '');
     }
     child.stdin.end();
 
