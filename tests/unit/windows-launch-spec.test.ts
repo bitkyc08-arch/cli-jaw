@@ -244,7 +244,10 @@ test('WLS-017: shebang quoting beyond the supported grammar fails closed', () =>
     assert.equal(parseShebang('#!/usr/bin/env node\n')!.interpreter, 'node');
 });
 
-test('WLS-018: codex resume carries the prompt on stdin, not argv', () => {
+test('WLS-018 (source-shape, pending behavioral replacement): codex resume prompt is not in argv', () => {
+    // NOTE: this inspects source text. It cannot prove the prompt BYTES reach stdin or
+    // that stdin closes correctly — 020 tracks replacing it with an injected spawn test
+    // that captures argv and stdin. Do not cite it as behavioral evidence.
     const argsSrc = readFileSync(join(__dirname, '../../src/agent/args.ts'), 'utf8');
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     // Fresh and resume must have identical guarantees. Resume previously placed the
@@ -319,4 +322,35 @@ test('WLS-021: only real executables are treated as directly launchable', () => 
             bad + ' must not be reported as directly launchable',
         );
     }
+});
+
+test('WLS-022: the recursion bound fails closed on a shim chain', () => {
+    // 'resolved once, then fail closed' — a three-deep chain (or a cycle) must not be
+    // chased. Without a bound this is an unbounded read loop on hostile input.
+    const mk = (name: string) => 'C:\\npm\\' + name + '.cmd';
+    const tgt = (name: string) => pathWin32.resolve('C:\\npm', 'node_modules\\' + name + '\\entry.js');
+    const body = (name: string) => REAL_NODE_SHIM.replace('node_modules\\pkg\\entry.js', 'node_modules\\' + name + '\\entry.js');
+    const files: Record<string, string> = {
+        [mk('a')]: body('a'), [tgt('a')]: '#!/usr/bin/env b\n',
+        [mk('b')]: body('b'), [tgt('b')]: '#!/usr/bin/env c\n',
+        [mk('c')]: body('c'), [tgt('c')]: '#!/usr/bin/env node\n',
+    };
+    const spec = resolveWindowsLaunchSpec(mk('a'), [], {
+        readFile: (p: string) => { const f = files[p]; if (f === undefined) throw new Error('ENOENT'); return f; },
+        exists: (p: string) => files[p] !== undefined,
+        which: (cmd: string) => (files[mk(cmd)] ? mk(cmd) : (cmd === 'node' ? 'C:\\node.exe' : null)),
+    });
+    assert.equal(spec, null, 'a chain deeper than the bound must fail closed');
+});
+
+test('WLS-023: a self-referential shim cycle terminates', () => {
+    const shim = 'C:\\npm\\loop.cmd';
+    const target = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const files = { [shim]: REAL_NODE_SHIM, [target]: '#!/usr/bin/env loop\n' };
+    const spec = resolveWindowsLaunchSpec(shim, [], {
+        readFile: (p: string) => { const f = files[p]; if (f === undefined) throw new Error('ENOENT'); return f; },
+        exists: (p: string) => files[p] !== undefined,
+        which: (cmd: string) => (cmd === 'loop' ? shim : null),
+    });
+    assert.equal(spec, null);
 });
