@@ -37,9 +37,11 @@ test('IPS-001: every failure path routes through the catchable helper', () => {
     // fixture, not PowerShell, so it is excluded only when it is not commented out.
     const offenders = src
         .split('\n')
-        .map(l => l.replace(/#.*$/, ''))
-        // Strip quoted strings first: messages legitimately read "(exit $code)".
+        // Strip quoted strings BEFORE comments: a '#' inside a string would otherwise
+        // truncate the line and hide a following `exit`, e.g. `$x = '#'; exit $code`.
+        // Messages also legitimately read "(exit $code)", so strings must go first.
         .map(l => l.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''"))
+        .map(l => l.replace(/#.*$/, ''))
         .filter(l => /(^|[;{]|\bthen\b)\s*exit\b/.test(l) && !/exit \/b/.test(l))
         .map(l => l.trim());
     assert.deepEqual(offenders, [], 'exit N kills the caller under irm | iex: ' + offenders.join(' | '));
@@ -144,6 +146,14 @@ test('IPS-008: the Windows contract executes the three previously-unrun scenario
     assert.match(contract, /guidance must add the missing npm prefix/);
     assert.match(contract, /guidance must preserve the existing User PATH entries/);
     assert.match(contract, /guidance must write the composed entries to the User target/);
+    // PowerShell does not treat backslash as an interpolation escape, so a double-quoted
+    // regex containing $entries expands at construction time and dies under Set-StrictMode.
+    // Every regex naming a PowerShell variable must therefore be single-quoted.
+    for (const line of contract.split('\n')) {
+        if (!/-match "/.test(line)) continue;
+        assert.doesNotMatch(line, /-match "[^"]*\$[A-Za-z_]/,
+            `double-quoted regex interpolates a variable and fails under strict mode: ${line.trim()}`);
+    }
     assert.match(contract, /Set-ExecutionPolicy -Scope Process -ExecutionPolicy Restricted/, 'must exercise a restrictive policy');
     assert.match(contract, /jaw-cmd-ran/, 'must prove jaw.cmd runs under that policy');
     assert.match(contract, /guidance must not serialize the merged process PATH/);

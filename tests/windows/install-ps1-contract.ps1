@@ -193,7 +193,7 @@ exit /b 0
     # what must be ABSENT let a mutation that drops the prefix stay green.
     Assert-True ($guidanceOutput -match [regex]::Escape($sentinelPrefix)) 'guidance must add the missing npm prefix'
     Assert-True ($guidanceOutput -match '\$userPath -split') 'guidance must preserve the existing User PATH entries'
-    Assert-True ($guidanceOutput -match "SetEnvironmentVariable\('Path', \(\$entries -join") 'guidance must write the composed entries to the User target'
+    Assert-True ($guidanceOutput -match 'SetEnvironmentVariable\(''Path'', \(\$entries -join') 'guidance must write the composed entries to the User target'
     Assert-True ($guidanceOutput -notmatch [regex]::Escape($machineSentinel)) 'guidance must not contain machine-only PATH entries'
     Assert-True ($guidanceOutput -notmatch '\$env:Path') 'guidance must not serialize the merged process PATH'
 } finally {
