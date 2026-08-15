@@ -33,7 +33,7 @@ jaw init                              # 準備ができたら対話型セット�
      node-floor: 22.4.0
      manager-port: 24576
      runtime-port: 3457
-     registered-service: none
+     registered-service: windows-startup
      install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 -->
 
@@ -51,7 +51,7 @@ Node.js 22.4+ が必要です。
 jaw.cmd doctor
 ```
 
-ネイティブ Windows には、起動時の自動実行を登録する仕組みがまだありません。`jaw service install` が動くのは macOS(launchd) と Linux(systemd) だけです。
+ネイティブ Windows の自動起動は windows-startup バックエンドで登録されます。`jaw service install` は macOS(launchd) と Linux(systemd) でも動作します。
 
 <!-- windows-support:end -->
 

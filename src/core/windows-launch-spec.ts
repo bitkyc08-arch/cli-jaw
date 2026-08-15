@@ -35,7 +35,7 @@ export type ShebangInfo = {
     envDelta: Record<string, string>;
 };
 
-type ResolveDeps = {
+export type ResolveDeps = {
     readFile?: (path: string) => string;
     exists?: (path: string) => boolean;
     /**

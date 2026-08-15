@@ -11,7 +11,7 @@
   "nodeFloor": "22.4.0",
   "managerPort": 24576,
   "runtimePort": 3457,
-  "registeredService": "none",
+  "registeredService": "windows-startup",
   "installCommand": "irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex",
   "recoveryCommand": "jaw.cmd doctor"
 }

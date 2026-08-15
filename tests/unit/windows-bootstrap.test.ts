@@ -206,16 +206,19 @@ test('WB-018: the manifest records a real checksum source and no floating ref', 
     assert.match(manifest.git.tag, /^v\d+\.\d+\.\d+\.windows\.\d+$/);
 });
 
-test('WB-019: the installer exposes a real opt-in switch, not just a plan', () => {
-    // A reviewer correctly called the first draft 'disconnected groundwork': the
-    // helpers existed with no production call site, so 'opt-in' meant 'absent'.
+test('WB-019: bootstrap is ON by default with -NoBootstrap as the opt-out', () => {
+    // Stage 2 flipped the default: a fresh non-admin machine must reach a working
+    // install from the documented one-liner without manually installing Node.
     const src = readFileSync(join(root, 'scripts/install.ps1'), 'utf8');
-    assert.match(src, /\[switch\]\$BootstrapDependencies/);
+    assert.match(src, /\[switch\]\$NoBootstrap/);
+    assert.match(src, /\[switch\]\$BootstrapDependencies/, 'legacy alias kept for one release');
     assert.match(src, /\[switch\]\$WithPortableGit/);
     assert.match(src, /\[switch\]\$DryRun/);
-    // And it must actually gate the missing-Node branch.
-    assert.match(src, /if \(\$BootstrapDependencies -or \$DryRun\)/);
+    // The missing-Node branch must bootstrap by default (opt-out, not opt-in).
+    assert.match(src, /if \(-not \$NoBootstrap -or \$DryRun\)/);
     assert.match(src, /Install-BootstrapTool -Tool 'node'/);
+    // The embedded manifest must be present for irm | iex to work.
+    assert.match(src, /EmbeddedBootstrapManifest/);
 });
 
 test('WB-020: the download transaction verifies BEFORE it extracts', () => {

@@ -2,10 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import type { DashboardServiceState, DashboardLifecycleResult } from './types.js';
 
-export type ServiceBackend = 'launchd' | 'systemd' | 'none';
+export type ServiceBackend = 'launchd' | 'systemd' | 'windows' | 'none';
 
 export function detectBackend(): ServiceBackend {
     if (process.platform === 'darwin') return 'launchd';
+    if (process.platform === 'win32') return 'windows';
     if (process.platform === 'linux') {
         try {
             execFileSync('which', ['systemctl'], { stdio: 'pipe' });
@@ -30,6 +31,10 @@ export async function detectServiceState(port: number, home: string): Promise<Da
         const mod = await import('./launchd-service.js');
         return mod.detectLaunchdState(port, home);
     }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.detectWindowsServiceState(port, home);
+    }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');
         return mod.detectSystemdState(port, home);
@@ -45,6 +50,10 @@ export async function detectAllServiceStates(
         const mod = await import('./launchd-service.js');
         return mod.detectAllLaunchdStates(portRange, homeRoot);
     }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.detectAllWindowsServiceStates(portRange, homeRoot);
+    }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');
         return mod.detectAllSystemdStates(portRange, homeRoot);
@@ -56,6 +65,10 @@ export async function permInstance(port: number, home: string): Promise<Dashboar
     if (backend === 'launchd') {
         const mod = await import('./launchd-service.js');
         return mod.permInstance(port, home);
+    }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.permWindowsInstance(port, home);
     }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');
@@ -69,6 +82,10 @@ export async function unpermInstance(port: number, home: string): Promise<Dashbo
         const mod = await import('./launchd-service.js');
         return mod.unpermInstance(port, home);
     }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.unpermWindowsInstance(port, home);
+    }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');
         return mod.unpermInstance(port, home);
@@ -80,6 +97,10 @@ export async function stopServiceInstance(label: string): Promise<DashboardLifec
     if (backend === 'launchd') {
         const mod = await import('./launchd-service.js');
         return mod.stopLaunchdInstance(label);
+    }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.stopWindowsInstance(label);
     }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');
@@ -93,6 +114,10 @@ export async function startServiceInstance(label: string, unitPath: string): Pro
         const mod = await import('./launchd-service.js');
         return mod.startLaunchdInstance(label, unitPath);
     }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.startWindowsInstance(label, unitPath);
+    }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');
         return mod.startSystemdInstance(label);
@@ -104,6 +129,10 @@ export async function restartServiceInstance(label: string): Promise<DashboardLi
     if (backend === 'launchd') {
         const mod = await import('./launchd-service.js');
         return mod.restartLaunchdInstance(label);
+    }
+    if (backend === 'windows') {
+        const mod = await import('./windows-service.js');
+        return mod.restartWindowsInstance(label);
     }
     if (backend === 'systemd') {
         const mod = await import('./systemd-service.js');

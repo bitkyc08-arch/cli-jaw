@@ -26,7 +26,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execFileSync } from 'child_process';
-import { ensureSharedHomeSkillsLinks, initMcpConfig, copyDefaultSkills, propagateSkillsToInstances, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
+import { ensureSharedHomeSkillsLinks, initMcpConfig, copyDefaultSkills, propagateSkillsToInstances, migrateAllJawHomes, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
 import { resolveHomePath } from '../src/core/path-expand.js';
 import { launchSpec } from '../src/core/exec-name.js';
 
@@ -1048,6 +1048,22 @@ export async function runPostinstall() {
     // 6. Default skills (base) + propagate to all instances
     copyDefaultSkills();
     propagateSkillsToInstances();
+
+    // 6b. Sweep EVERY home for pre-jaw-* skill directories. Steps 6 and 6a only
+    // touch the homes they walk; an upgrade from a pre-rename version leaves
+    // other instances (manager, dashboard, per-port runtimes) on legacy names.
+    try {
+        for (const { home, result } of migrateAllJawHomes()) {
+            const parts: string[] = [];
+            if (result.renamed.length) parts.push(`${result.renamed.length} ref renamed`);
+            if (result.backedUp.length) parts.push(`${result.backedUp.length} backed up`);
+            if (result.linked.length) parts.push(`${result.linked.length} compat links`);
+            if (parts.length) console.log(`[jaw:skills] ${path.basename(home)}: ${parts.join(', ')}`);
+            for (const w of result.warnings) console.warn(`[jaw:skills] ${path.basename(home)}: ${w}`);
+        }
+    } catch (e) {
+        console.warn(`[jaw:skills] namespace migration skipped: ${(e as Error).message}`);
+    }
 
     // 7-9. Optional installs — collect errors, never abort.
     const warnings: string[] = [];

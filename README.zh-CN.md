@@ -33,7 +33,7 @@ jaw init                              # 准备好后再交互式配置
      node-floor: 22.4.0
      manager-port: 24576
      runtime-port: 3457
-     registered-service: none
+     registered-service: windows-startup
      install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 -->
 
@@ -51,7 +51,7 @@ irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1
 jaw.cmd doctor
 ```
 
-原生 Windows 目前没有可注册的开机自启后端。`jaw service install` 只在 macOS(launchd) 和 Linux(systemd) 上有效。
+原生 Windows 的开机自启通过 windows-startup 后端注册。`jaw service install` 同样支持 macOS(launchd) 和 Linux(systemd)。
 
 <!-- windows-support:end -->
 

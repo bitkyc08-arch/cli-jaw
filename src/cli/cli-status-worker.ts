@@ -1,5 +1,7 @@
 import { fork, spawn } from 'node:child_process';
 import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+import { decideShellFallback } from '../core/windows-shell-fallback.js';
+import { detectCliBinary } from '../core/cli-detect.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extname } from 'node:path';
 import { detectAllCli } from '../core/cli-detection.js';
@@ -145,10 +147,24 @@ export function runCommand(binary: string, args: string[], timeoutMs: number): P
         // Shell-free launch on Windows (#367): resolve an npm .cmd shim to its
         // interpreter rather than handing the command to cmd.exe. Falls back to the
         // legacy shell only when resolution fails, matching the staged contract.
-        const spec = process.platform === 'win32' ? resolveWindowsLaunchSpec(binary, args) : null;
+        //
+        // `which` matters here: a bare command name resolves to null without it, so the
+        // worker would take the shell for a CLI that PATHEXT could have found. Passing
+        // it strictly reduces shell usage.
+        const spec = process.platform === 'win32'
+            ? resolveWindowsLaunchSpec(binary, args, { which: (n) => detectCliBinary(n).path || null })
+            : null;
+        const wantsShell = process.platform === 'win32' && !spec && !binary.toLowerCase().endsWith('.exe');
+        // These argv are version/status flags rather than prompts, so the gate should not
+        // fire. It is wired because the gate also refuses anything that could split one
+        // command into two, and that property must not depend on today's argv.
+        if (wantsShell) {
+            const decision = decideShellFallback({ argv: args, command: binary });
+            if (!decision.allowed) throw new Error(decision.reason);
+        }
         const child = spawn(spec ? spec.command : binary, spec ? launchArgv(spec) : args, {
             detached: process.platform !== 'win32',
-            shell: process.platform === 'win32' && !spec && !binary.toLowerCase().endsWith('.exe'),
+            shell: wantsShell,
             stdio: ['ignore', 'pipe', 'pipe'],
             ...(spec && Object.keys(spec.envDelta).length ? { env: { ...process.env, ...spec.envDelta } } : {}),
         });

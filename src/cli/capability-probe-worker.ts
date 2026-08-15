@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
-import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+import { resolveWindowsLaunchSpec, launchArgv, type ResolveDeps } from '../core/windows-launch-spec.js';
+import { decideShellFallback } from '../core/windows-shell-fallback.js';
 import { writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { killProcessTree, killProcessTreeIfAlive } from '../agent/spawn/process-kill.js';
@@ -41,14 +42,30 @@ export interface CapabilitySpawnSpec {
 export function buildCapabilitySpawnSpec(
     request: CapabilityProbeRequest,
     env: NodeJS.ProcessEnv = process.env,
+    // Full resolver deps rather than just `which`: shim targets are Windows-shaped, so
+    // a cross-host test has to inject the filesystem as well as the discovery hook.
+    deps: ResolveDeps = {},
 ): CapabilitySpawnSpec {
     const platform = request.platform ?? process.platform;
     // Shell-free where possible (#367). The probe argv is fixed, but keeping one
     // launcher shape across runtimes is the point — a second path is a second set of
     // Windows quoting rules to get right.
     const probeArgs = ['app-server', '--help'];
-    const spec = platform === 'win32' ? resolveWindowsLaunchSpec(request.binary, probeArgs) : null;
+    // A bare command name must be DISCOVERED before it can be resolved. Without this,
+    // 'copilot' returns null from the resolver and falls through to the shell even
+    // though PATHEXT would have found copilot.cmd — so passing `which` strictly reduces
+    // how often the shell is used rather than adding a new refusal.
+    const spec = platform === 'win32'
+        ? resolveWindowsLaunchSpec(request.binary, probeArgs, deps)
+        : null;
     const isCmdShim = platform === 'win32' && !spec && !request.binary.toLowerCase().endsWith('.exe');
+    // The probe argv is fixed today. Wire the gate anyway: "this argv is fixed" is a
+    // statement about the line above it, not a property of the code path, and the gate
+    // independently refuses argv that could split one command into two.
+    if (isCmdShim) {
+        const decision = decideShellFallback({ argv: probeArgs, command: request.binary });
+        if (!decision.allowed) throw new Error(decision.reason);
+    }
     return {
         command: spec ? spec.command : request.binary,
         args: spec ? launchArgv(spec) : probeArgs,

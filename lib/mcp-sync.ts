@@ -63,6 +63,13 @@ export function ensureSharedHomeSkillsLinks(...args: Parameters<typeof _ensureSh
 
 // ─── skills-distribution ──────────────────────────
 export { copyDefaultSkills, propagateSkillsToInstances } from './mcp/skills-distribution.js';
+export {
+    migrateAllJawHomes,
+    hasPendingLegacySkillDirs,
+    discoverJawHomes,
+    normalizeSkillNamespace,
+} from './mcp/skills-migration.js';
+export type { LegacyMigrationResult, HomeMigrationReport } from './mcp/skills-migration.js';
 
 // ─── skills-reset ─────────────────────────────────
 export {

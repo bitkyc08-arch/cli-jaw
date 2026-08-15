@@ -3,6 +3,7 @@
 // over newline-delimited JSON-RPC (lite — no "jsonrpc" key in responses).
 
 import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+import { decideShellFallback } from '../core/windows-shell-fallback.js';
 import { detectCliBinary } from '../core/cli-detect.js';
 import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -367,6 +368,14 @@ export class CodexAppClient extends EventEmitter {
             ? resolveWindowsLaunchSpec(this.binary, launchArgs, { which: (n) => detectCliBinary(n).path || null })
             : null;
         const useShell = process.platform === 'win32' && !launchSpec && !this.binary.toLowerCase().endsWith('.exe');
+        // argv here is fixed ('app-server --listen stdio://') and the prompt travels over
+        // RPC, so this gate should never fire. It is wired anyway: "this argv is fixed" is
+        // true until someone makes it configurable, and a guard that depends on nobody
+        // editing the line above it is not a guard.
+        if (useShell) {
+            const decision = decideShellFallback({ argv: launchArgs, command: this.binary });
+            if (!decision.allowed) throw new Error(decision.reason);
+        }
         this.proc = spawn(
             launchSpec ? launchSpec.command : this.binary,
             launchSpec ? launchArgv(launchSpec) : launchArgs,

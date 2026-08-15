@@ -77,7 +77,12 @@ test('EG-003: ACP branch has acp.on(\'error\') listener', () => {
 
 test('EG-004: standard CLI spawn prefers shell-free resolution, shell only on failure', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 3000);
+    // Bounded by the NEXT branch marker rather than a byte count. The fixed 3000-char
+    // window broke the moment #367 stage 2 added its refusal path between the guard and
+    // the spawn call — a green-to-red flip that signalled nothing about behaviour. Anchor
+    // on structure so the window grows with the code it is describing.
+    const nextBranchIdx = spawnSrc.indexOf('// ─── ', stdBranchIdx + 1);
+    const block = spawnSrc.slice(stdBranchIdx, nextBranchIdx > 0 ? nextBranchIdx : undefined);
 
     // The old contract was "any non-.exe on Windows gets a shell". That is the #367
     // defect: it routes prompt argv through cmd.exe. The contract is now "resolve the

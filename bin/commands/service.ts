@@ -103,10 +103,10 @@ for (const key of Object.keys(opts)) {
 }
 
 // --backend whitelist validation
-const VALID_BACKENDS = new Set(['launchd', 'systemd', 'docker']);
+const VALID_BACKENDS = new Set(['launchd', 'systemd', 'windows', 'docker']);
 if (opts.backend && !VALID_BACKENDS.has(opts.backend as string)) {
     console.error(`❌ Unknown backend: ${opts.backend}`);
-    console.error('   Supported: launchd, systemd, docker');
+    console.error('   Supported: launchd, systemd, windows, docker');
     process.exit(1);
 }
 
@@ -169,10 +169,11 @@ const LOG_DIR = join(JAW_HOME, 'logs');
 
 // ─── Backend detection ───────────────────────────────
 
-type Backend = 'launchd' | 'systemd' | 'docker';
+type Backend = 'launchd' | 'systemd' | 'windows' | 'docker';
 
 function detectBackend(): Backend {
     if (process.platform === 'darwin') return 'launchd';
+    if (process.platform === 'win32') return 'windows';
 
     // Docker container detection
     if (existsSync('/.dockerenv')) return 'docker';
