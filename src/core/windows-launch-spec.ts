@@ -48,6 +48,22 @@ type ResolveDeps = {
 const WINDOWS_SHIM_EXTENSIONS = ['.cmd', '.bat'];
 
 /**
+ * Extensions Windows can execute directly through CreateProcess, with no interpreter
+ * and no shell.
+ *
+ * Anything else — .ps1, .js, .vbs, .sh, a vendor wrapper — is NOT directly launchable
+ * even though it has an extension. Treating those as "direct" would hand them to
+ * spawn() with shell:false, which fails, AND would skip the staged compatibility
+ * fallback that currently keeps them working.
+ */
+const WINDOWS_DIRECT_EXECUTABLE_EXTENSIONS = ['.exe', '.com'];
+
+function isDirectlyExecutable(command: string): boolean {
+    const lowered = command.toLowerCase();
+    return WINDOWS_DIRECT_EXECUTABLE_EXTENSIONS.some(ext => lowered.endsWith(ext));
+}
+
+/**
  * Extract the target path from an npm cmd-shim.
  *
  * This regex is npm's own, copied from `read-cmd-shim/lib/index.js` (extractPathFromCmd)
@@ -145,9 +161,12 @@ export function resolveWindowsLaunchSpec(
     }
 
     if (!isShim(resolved)) {
-        // An extension-less name we could not resolve is not provably safe to launch
-        // directly, because PATHEXT may still select a .cmd at spawn time.
-        if (!hasExtension(resolved)) return null;
+        // Only a real executable is launchable without an interpreter. An
+        // extension-less name is not provably safe (PATHEXT may still select a .cmd at
+        // spawn time), and neither is a .ps1/.js/.sh/vendor wrapper — claiming those
+        // are "direct" would both fail at spawn and skip the staged fallback that
+        // currently keeps them working.
+        if (!isDirectlyExecutable(resolved)) return null;
         return { command: resolved, target: null, baseArgs: [], userArgs: args, envDelta: {}, useShell: false, resolvedVia: 'direct' };
     }
     command = resolved;

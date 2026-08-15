@@ -257,28 +257,41 @@ test('WLS-018: codex resume carries the prompt on stdin, not argv', () => {
 test('WLS-019: a BARE shebang interpreter is discovered, not trusted', () => {
     // The same hole as WLS-014, one level down: `#!/usr/bin/env tool` where tool
     // resolves through PATHEXT to tool.cmd would otherwise skip inspection.
+    //
+    // The outer and nested targets MUST be distinct paths. An earlier version of this
+    // test used one path for both, so the second object key silently overwrote the
+    // first, `which('tool')` was never called, and the test passed without exercising
+    // recursion at all — a false positive.
     const outerShim = 'C:\\npm\\outer.cmd';
-    const outerTarget = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const outerTarget = pathWin32.resolve('C:\\npm', 'node_modules\\outer\\entry.js');
     const toolShim = 'C:\\npm\\tool.cmd';
-    const toolTarget = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const toolTarget = pathWin32.resolve('C:\\npm', 'node_modules\\tool\\entry.js');
+    const outerShimBody = REAL_NODE_SHIM.replace('node_modules\\pkg\\entry.js', 'node_modules\\outer\\entry.js');
+    const toolShimBody = REAL_NODE_SHIM.replace('node_modules\\pkg\\entry.js', 'node_modules\\tool\\entry.js');
     const files = {
-        [outerShim]: REAL_NODE_SHIM,
+        [outerShim]: outerShimBody,
         [outerTarget]: '#!/usr/bin/env tool\n',
-        [toolShim]: REAL_NODE_SHIM,
+        [toolShim]: toolShimBody,
         [toolTarget]: '#!/usr/bin/env node\n',
     };
+    const discovered: string[] = [];
     const spec = resolveWindowsLaunchSpec(outerShim, ['go'], {
         readFile: (p: string) => { const f = files[p]; if (f === undefined) throw new Error('ENOENT'); return f; },
         exists: (p: string) => files[p] !== undefined,
         which: (cmd: string) => {
+            discovered.push(cmd);
             if (cmd === 'tool') return toolShim;
             if (cmd === 'node') return 'C:\\Program Files\\nodejs\\node.exe';
             return null;
         },
     });
     assert.ok(spec, 'a bare interpreter resolving to a shim must still resolve');
+    // Prove the recursion actually happened rather than inferring it from the result.
+    assert.ok(discovered.includes('tool'), 'the bare interpreter must go through discovery');
     assert.equal(spec!.command, 'C:\\Program Files\\nodejs\\node.exe');
     assert.equal(spec!.useShell, false);
+    // Exact nested ordering: the tool's own script, then the outer target, then argv.
+    assert.deepEqual(launchArgv(spec!), [toolTarget, outerTarget, 'go']);
 });
 
 test('WLS-020: an undiscoverable shebang interpreter fails closed', () => {
@@ -291,4 +304,19 @@ test('WLS-020: an undiscoverable shebang interpreter fails closed', () => {
         which: () => null,
     });
     assert.equal(spec, null);
+});
+
+test('WLS-021: only real executables are treated as directly launchable', () => {
+    const deps = fixtureDeps({});
+    // .exe/.com are launchable by CreateProcess with no interpreter.
+    assert.equal(resolveWindowsLaunchSpec('C:\\t\\a.exe', [], deps)!.resolvedVia, 'direct');
+    assert.equal(resolveWindowsLaunchSpec('C:\\t\\a.com', [], deps)!.resolvedVia, 'direct');
+    // Everything else needs an interpreter we have not resolved. Claiming 'direct'
+    // here would fail at spawn AND skip the staged compatibility fallback.
+    for (const bad of ['a.ps1', 'a.js', 'a.vbs', 'a.sh', 'a.wrapper']) {
+        assert.equal(
+            resolveWindowsLaunchSpec('C:\\t\\' + bad, [], deps), null,
+            bad + ' must not be reported as directly launchable',
+        );
+    }
 });
