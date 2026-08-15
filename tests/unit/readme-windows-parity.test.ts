@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '../..');
+import { renderBlock } from '../../scripts/render-windows-support.mts';
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 
 const READMES = ['README.md', 'README.ko.md', 'README.zh-CN.md', 'README.ja.md'];
@@ -18,7 +19,7 @@ const CONTRACT = JSON.parse(read('scripts/windows-support-contract.json'));
  * English/Korean divergence in #373 survived.
  */
 function parseWindowsBlock(text: string): Record<string, string> | null {
-    const match = text.match(/<!-- windows-support:start\n([\s\S]*?)-->/);
+    const match = text.match(/<!-- windows-support:start[^\n]*\n([\s\S]*?)-->/);
     if (!match) return null;
     const out: Record<string, string> = {};
     for (const line of match[1]!.split('\n')) {
@@ -153,3 +154,41 @@ test('RWP-009: jaw service install is never advertised without an OS scope', () 
     }
 });
 
+test('RWP-010: every README block EQUALS the generated output', () => {
+    // This is the assertion that actually closes the oracle gap. RWP-006/007 could only
+    // check for tokens they anticipated, so an adversarial block could claim WSL was
+    // obsolete, native PowerShell stable, a wrong manager port, and Windows service
+    // support while still containing every required token — and pass.
+    //
+    // Byte equality against the generator admits no such block: any hand-edit that
+    // changes a fact, adds a contradictory sentence, or removes the limitation fails,
+    // because the only accepted content is what the contract renders.
+    const langs = { 'README.md': 'en', 'README.ko.md': 'ko', 'README.zh-CN.md': 'zh-CN', 'README.ja.md': 'ja' } as const;
+    for (const [file, lang] of Object.entries(langs)) {
+        const text = read(file);
+        const start = text.indexOf('<!-- windows-support:start');
+        const end = text.indexOf('<!-- windows-support:end -->');
+        assert.ok(start >= 0 && end > start, `${file}: markers missing`);
+        const actual = text.slice(start, end + '<!-- windows-support:end -->'.length);
+        assert.equal(
+            actual, renderBlock(lang as 'en' | 'ko' | 'zh-CN' | 'ja'),
+            `${file}: the Windows block was hand-edited — run 'npx tsx scripts/render-windows-support.mts'`,
+        );
+    }
+});
+
+test('RWP-011: no README states a dashboard port that contradicts the contract', () => {
+    // Outside the generated block, prose can still drift — Japanese told users to open
+    // the runtime port for the manager dashboard. Anything naming the dashboard must
+    // name the manager port.
+    for (const file of READMES) {
+        for (const line of read(file).split('\n')) {
+            if (!/dashboard|대시보드|ダッシュボード|管理面板/i.test(line)) continue;
+            if (!line.includes('localhost:')) continue;
+            assert.ok(
+                line.includes(String(CONTRACT.managerPort)),
+                `${file}: a dashboard line names a port other than ${CONTRACT.managerPort} — ${line.trim()}`,
+            );
+        }
+    }
+});

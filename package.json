@@ -62,6 +62,7 @@
     "check:deps": "tsx scripts/check-deps-offline.ts",
     "check:strict-baseline": "node scripts/check-strict-baseline.mjs",
     "docs:check": "tsx scripts/docs/check-docs.mts",
+    "docs:windows": "tsx scripts/render-windows-support.mts",
     "docs:channel-capabilities": "tsx scripts/generate-channel-capability-table.mts",
     "check:frontend-build-output": "tsx scripts/check-web-ui-build-output.ts",
     "i18n:registry": "tsx scripts/i18n-registry.ts",
