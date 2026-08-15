@@ -7,6 +7,7 @@ import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
 import { createTextStreamReader, sliceWithoutSplittingSurrogate } from './stream-text.js';
 import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+import { decideShellFallback } from '../core/windows-shell-fallback.js';
 
 /** Cap on retained stderr text used for error classification. */
 const STDERR_BUF_CAP = 4000;
@@ -2585,6 +2586,36 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const windowsSpawnUsesShell = process.platform === 'win32'
         && !windowsLaunch
         && !spawnCommand.toLowerCase().endsWith('.exe');
+    // Stage 2 of #367. Stage 1 removed the shell wherever the resolver succeeded but left
+    // the failure path handing argv to cmd.exe unconditionally. When that argv carries the
+    // prompt, cmd.exe reparses it and the prompt can start a second command — so refuse
+    // instead of launching. The check is on argv CONTENT, not on which CLI is spawning: a
+    // per-runtime allowlist fails open the moment a runtime starts passing the prompt
+    // positionally, and this cannot go stale that way.
+    if (windowsSpawnUsesShell) {
+        const decision = decideShellFallback({
+            argv: launchArgs,
+            prompt: promptForArgs,
+            sysPrompt,
+            command: spawnCommand,
+        });
+        if (!decision.allowed) {
+            // Settle through the normal pre-spawn failure lifecycle, exactly as the
+            // cliAvailable refusal above does. Throwing here would leave the reservation
+            // taken in activeMainProcesses: the caller would see one error and then every
+            // later request for this scope would be rejected as "already running".
+            console.error(`[jaw:${agentLabel}] ${decision.reason}`);
+            if (mainManaged) clearLiveRun(liveScope);
+            broadcast('agent_done', { text: `❌ ${decision.reason}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
+            resolve!({ text: '', code: 126 });
+            if (mainManaged) {
+                releaseMainRun(scopeKey, null, ownerGeneration);
+                void processQueue(scopeKey);
+            }
+            cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+            return { child: null, promise: resultPromise };
+        }
+    }
     const opencodeSpawnAudit = cli === 'opencode'
         ? buildOpencodeSpawnAudit({ args, cwd: spawnCwd, env: spawnEnv, binary: spawnCommand })
         : undefined;

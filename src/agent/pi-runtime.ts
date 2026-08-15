@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { join } from 'node:path';
 import { detectCliBinary } from '../core/cli-detect.js';
 import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+import { decideShellFallback } from '../core/windows-shell-fallback.js';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { JAW_HOME } from '../core/config.js';
@@ -311,11 +312,16 @@ export function parsePiModelList(output: string, profileId: string): string[] {
 /**
  * Resolve a Pi spawn without a shell on Windows (#367).
  *
- * These argv are trusted (fixed flags, a profile id, a model name) rather than user
- * prompt text, so this is not the injection boundary. It matters anyway: Node
- * deprecates `shell: true` with an args array, and leaving one runtime on the old
- * path keeps a second, differently-behaved launcher alive. Resolution failure keeps
- * the legacy shell until the native gate proves every classified runtime resolves.
+ * Pi sends its prompt over RPC stdin, so this is not the prompt-injection boundary the
+ * issue names. It is still an injection boundary: review found the shell fallback here
+ * carries a model name, an API key, and a session id, and those are only trimmed on the
+ * way in. A model identifier containing `&` splits one command into two just as well as
+ * a prompt does.
+ *
+ * So the fallback is now conditional. Argv that cmd.exe could read as command syntax
+ * refuses; everything else keeps the legacy path, which matters because that path is
+ * what keeps unusual installs working until the native gate proves resolution for every
+ * classified runtime.
  */
 function resolvePiSpawn(command: string, args: string[]): {
     command: string; args: string[]; useShell: boolean; envDelta: Record<string, string>;
@@ -328,7 +334,12 @@ function resolvePiSpawn(command: string, args: string[]): {
     // Dropping it launches the runtime with a different configuration than its own
     // shim asks for, which is a silent behavior change rather than a loud failure.
     if (spec) return { command: spec.command, args: launchArgv(spec), useShell: false, envDelta: spec.envDelta };
-    return { command, args, useShell: !command.toLowerCase().endsWith('.exe'), envDelta: {} };
+    const wantsShell = !command.toLowerCase().endsWith('.exe');
+    if (wantsShell) {
+        const decision = decideShellFallback({ argv: args, command });
+        if (!decision.allowed) throw new Error(decision.reason);
+    }
+    return { command, args, useShell: wantsShell, envDelta: {} };
 }
 export function listPiModels(piInput: unknown, profileId: string, options: { effort?: string; root?: string; timeoutMs?: number } = {}): Promise<string[]> {
     const dir = ensurePiRuntimeConfig(piInput, profileId, options.effort || '', options.root);
