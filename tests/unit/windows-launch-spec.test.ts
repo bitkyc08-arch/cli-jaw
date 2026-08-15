@@ -92,6 +92,17 @@ function fixtureDeps(files: Record<string, string>) {
             return found;
         },
         exists: (p: string) => files[p] !== undefined,
+        // Interpreters named in a shebang are bare names too, so they go through the
+        // same discovery as a bare top-level command. A test that omits this is
+        // asserting the undiscoverable case.
+        which: (cmd: string) => {
+            const known: Record<string, string> = {
+                node: 'C:\\Program Files\\nodejs\\node.exe',
+                sh: 'C:\\Program Files\\Git\\usr\\bin\\sh.exe',
+                bash: 'C:\\Program Files\\Git\\bin\\bash.exe',
+            };
+            return known[cmd] ?? null;
+        },
     };
 }
 
@@ -104,7 +115,7 @@ test('WLS-007: a real Node shim resolves to node + target, never a shell', () =>
     }));
     assert.ok(spec, 'a real npm shim must resolve');
     assert.equal(spec!.resolvedVia, 'shim-target');
-    assert.equal(spec!.command, 'node');
+    assert.equal(spec!.command, 'C:\\Program Files\\nodejs\\node.exe');
     assert.equal(spec!.target, target);
     assert.equal(spec!.useShell, false);
     // Ordering matters: interpreter args, then the script, then the caller's argv.
@@ -118,7 +129,7 @@ test('WLS-008: a shell-script shim resolves to sh, not node', () => {
         [shim]: REAL_NODE_SHIM,
         [target]: '#!/usr/bin/env sh\nset -eu\n',
     }));
-    assert.equal(spec!.command, 'sh');
+    assert.equal(spec!.command, 'C:\\Program Files\\Git\\usr\\bin\\sh.exe');
     assert.deepEqual(launchArgv(spec!), [target, 'go']);
 });
 
@@ -190,11 +201,14 @@ test('WLS-014: a bare name is resolved through PATHEXT discovery before deciding
     const target = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
     const deps = {
         ...fixtureDeps({ [shim]: REAL_NODE_SHIM, [target]: '#!/usr/bin/env node\n' }),
-        which: (cmd: string) => (cmd === 'copilot' ? shim : null),
+        which: (cmd: string) => {
+            if (cmd === 'copilot') return shim;
+            if (cmd === 'node') return 'C:\\Program Files\\nodejs\\node.exe';
+            return null;
+        },
     };
     const spec = resolveWindowsLaunchSpec('copilot', ['ask'], deps);
     assert.equal(spec!.resolvedVia, 'shim-target');
-    assert.equal(spec!.command, 'node');
     assert.equal(spec!.useShell, false);
 });
 
@@ -234,4 +248,43 @@ test('WLS-018: codex resume carries the prompt on stdin, not argv', () => {
     assert.match(argsSrc, /sessionId, '-', '--json'/);
     assert.doesNotMatch(argsSrc, /sessionId, prompt \|\| '', '--json'/);
     assert.match(spawnSrc, /cli === 'codex' && isResume/);
+});
+
+test('WLS-019: a BARE shebang interpreter is discovered, not trusted', () => {
+    // The same hole as WLS-014, one level down: `#!/usr/bin/env tool` where tool
+    // resolves through PATHEXT to tool.cmd would otherwise skip inspection.
+    const outerShim = 'C:\\npm\\outer.cmd';
+    const outerTarget = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const toolShim = 'C:\\npm\\tool.cmd';
+    const toolTarget = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const files = {
+        [outerShim]: REAL_NODE_SHIM,
+        [outerTarget]: '#!/usr/bin/env tool\n',
+        [toolShim]: REAL_NODE_SHIM,
+        [toolTarget]: '#!/usr/bin/env node\n',
+    };
+    const spec = resolveWindowsLaunchSpec(outerShim, ['go'], {
+        readFile: (p: string) => { const f = files[p]; if (f === undefined) throw new Error('ENOENT'); return f; },
+        exists: (p: string) => files[p] !== undefined,
+        which: (cmd: string) => {
+            if (cmd === 'tool') return toolShim;
+            if (cmd === 'node') return 'C:\\Program Files\\nodejs\\node.exe';
+            return null;
+        },
+    });
+    assert.ok(spec, 'a bare interpreter resolving to a shim must still resolve');
+    assert.equal(spec!.command, 'C:\\Program Files\\nodejs\\node.exe');
+    assert.equal(spec!.useShell, false);
+});
+
+test('WLS-020: an undiscoverable shebang interpreter fails closed', () => {
+    const shim = 'C:\\npm\\foo.cmd';
+    const target = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const files = { [shim]: REAL_NODE_SHIM, [target]: '#!/usr/bin/env mystery\n' };
+    const spec = resolveWindowsLaunchSpec(shim, [], {
+        readFile: (p: string) => { const f = files[p]; if (f === undefined) throw new Error('ENOENT'); return f; },
+        exists: (p: string) => files[p] !== undefined,
+        which: () => null,
+    });
+    assert.equal(spec, null);
 });

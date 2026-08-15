@@ -181,24 +181,22 @@ export function resolveWindowsLaunchSpec(
     const shebang = parseShebang(targetText);
     if (!shebang) return null;
 
-    if (isShim(shebang.interpreter)) {
-        const nested = resolveWindowsLaunchSpec(shebang.interpreter, args, deps, depth + 1);
-        if (!nested) return null;
-        return {
-            ...nested,
-            target,
-            baseArgs: [...nested.baseArgs, ...(nested.target ? [nested.target] : []), ...shebang.args],
-            envDelta: { ...nested.envDelta, ...shebang.envDelta },
-            resolvedVia: 'shim-target',
-        };
-    }
+    // The interpreter gets the SAME treatment as the top-level command. A bare
+    // interpreter name (`#!/usr/bin/env tool`) can resolve through PATHEXT to tool.cmd,
+    // which would slip past inspection exactly like a bare top-level name did — the
+    // identical hole, one level down. Recursing here handles bare names, .cmd
+    // interpreters, and plain executables through one path.
+    const nested = resolveWindowsLaunchSpec(shebang.interpreter, args, deps, depth + 1);
+    if (!nested) return null;
 
     return {
-        command: shebang.interpreter,
+        command: nested.command,
         target,
-        baseArgs: shebang.args,
+        // Order: the interpreter's own script (if any), then its shebang args, then
+        // this level's shebang args, then `target`, then the caller's argv.
+        baseArgs: [...nested.baseArgs, ...(nested.target ? [nested.target] : []), ...shebang.args],
         userArgs: args,
-        envDelta: shebang.envDelta,
+        envDelta: { ...nested.envDelta, ...shebang.envDelta },
         useShell: false,
         resolvedVia: 'shim-target',
     };
