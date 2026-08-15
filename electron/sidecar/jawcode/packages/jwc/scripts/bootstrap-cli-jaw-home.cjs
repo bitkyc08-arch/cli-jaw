@@ -257,13 +257,48 @@ function activateSkills() {
 
 /**
  * Same two stages as lib/mcp/skills-migration.ts, in CommonJS.
- * 1. A real legacy directory is MOVED to backups/skills-conflicts/<stamp>/ —
- *    never deleted, because it may contain the user's own edits.
+ * 1. A real legacy directory is RENAMED onto its jaw-* id when that name is
+ *    free, which carries an in-place user edit forward. If both ids exist the
+ *    canonical copy wins and the legacy one is MOVED to
+ *    backups/skills-conflicts/<stamp>/ — never deleted.
  * 2. skills/<legacy> -> jaw-<legacy> keeps literal paths in a customized
  *    A-1.md alive. Enumerators filter on isDirectory(), which is false for a
  *    symlink, so the link never registers as a second skill.
  */
+function migrateRefNamespace() {
+	// skills_ref/<legacy> -> skills_ref/jaw-<legacy>. Redistributable content,
+	// re-synced every pass, so renaming is safe. It is also required:
+	// activateSkills copies skills_ref/<id> -> skills/<id> by exact id, so a
+	// legacy reference tree keeps re-creating legacy active directories.
+	if (!fs.existsSync(refDir)) return;
+	let backupRoot = null;
+	for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {
+		const legacyPath = path.join(refDir, legacyId);
+		let stat = null;
+		try { stat = fs.lstatSync(legacyPath); } catch { continue; }
+		if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
+		try {
+			if (!fs.existsSync(path.join(refDir, canonicalId))) {
+				fs.renameSync(legacyPath, path.join(refDir, canonicalId));
+			} else {
+				if (!backupRoot) {
+					const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+					backupRoot = path.join(targetHome, "backups", "skills-conflicts", stamp);
+				}
+				ensureDir(backupRoot);
+				fs.renameSync(legacyPath, path.join(backupRoot, "skills_ref__" + legacyId));
+			}
+		} catch (e) {
+			console.warn(`[skills] could not migrate ref ${legacyId}: ${e.message}`);
+		}
+	}
+}
+
 function normalizeSkillNamespace() {
+	// The reference tree first: the active tree is populated FROM it, so
+	// migrating skills/ while skills_ref/ still holds legacy ids just lets the
+	// next sync put the legacy directories back.
+	migrateRefNamespace();
 	if (!fs.existsSync(activeDir)) return;
 	let backupRoot = null;
 	for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {
@@ -277,15 +312,22 @@ function normalizeSkillNamespace() {
 			try { fs.unlinkSync(legacyPath); } catch { /* leave it alone */ }
 		} else if (stat && stat.isDirectory()) {
 			try {
-				if (!backupRoot) {
-					const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-					backupRoot = path.join(targetHome, "backups", "skills-conflicts", stamp);
+				if (!fs.existsSync(path.join(activeDir, canonicalId))) {
+					// Free canonical name: rename, so an in-place user edit is
+					// carried forward instead of stranded in a backup.
+					fs.renameSync(legacyPath, path.join(activeDir, canonicalId));
+					console.log(`[skills] legacy skill migrated: ${legacyId} -> ${canonicalId}`);
+				} else {
+					if (!backupRoot) {
+						const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+						backupRoot = path.join(targetHome, "backups", "skills-conflicts", stamp);
+					}
+					ensureDir(backupRoot);
+					fs.renameSync(legacyPath, path.join(backupRoot, legacyId));
+					console.log(`[skills] legacy skill backed up: ${legacyId}`);
 				}
-				ensureDir(backupRoot);
-				fs.renameSync(legacyPath, path.join(backupRoot, legacyId));
-				console.log(`[skills] legacy skill backed up: ${legacyId}`);
 			} catch (e) {
-				console.warn(`[skills] could not back up ${legacyId}: ${e.message}`);
+				console.warn(`[skills] could not migrate ${legacyId}: ${e.message}`);
 				continue;
 			}
 		} else if (stat) {

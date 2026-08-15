@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
 import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
+import { migrateAllJawHomes, hasPendingLegacySkillDirs, discoverJawHomes } from '../../lib/mcp/skills-migration.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
 import { isWsl, isWindowsNative, resolvePlatformKind } from '../../src/core/platform-kind.js';
@@ -501,6 +502,26 @@ check('Skills directory', () => {
         );
     }
     return `${skillsDir} (${entries.length} active)`;
+});
+
+// 7a. jaw-* namespace migration. Active skill ids moved to jaw-* so they stop
+// colliding with Codex-native tool names; a home installed before that still
+// has real directories at the old names. --fix migrates every home on the box.
+check('Skill namespace (jaw-*)', () => {
+    if (!hasPendingLegacySkillDirs()) {
+        return `${discoverJawHomes(JAW_HOME).length} home(s) on jaw-* ids`;
+    }
+    if (!values.fix) {
+        throw new Error(
+            'WARN: legacy skill directories found (pre jaw-* namespace)\n'
+            + '     Run: jaw doctor --fix'
+        );
+    }
+    const reports = migrateAllJawHomes();
+    const renamed = reports.reduce((n, r) => n + r.result.renamed.length, 0);
+    const backedUp = reports.reduce((n, r) => n + r.result.backedUp.length, 0);
+    const linked = reports.reduce((n, r) => n + r.result.linked.length, 0);
+    return `migrated ${reports.length} home(s): ${renamed} ref renamed, ${backedUp} backed up, ${linked} compat links`;
 });
 
 // 7b. Shared path isolation (Issue #58)
