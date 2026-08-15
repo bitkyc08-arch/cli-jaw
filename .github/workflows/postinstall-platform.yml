@@ -51,6 +51,27 @@ on:
       - 'tests/unit/install-integrity.test.ts'
       - 'tests/unit/scriptless-install-contract.test.ts'
       - 'tests/unit/installer-sensitive-path-parity.test.ts'
+      # Windows-critical surfaces (#371). Without these, editing the shim resolver,
+      # the stream decoder, or the bootstrap manifest would NOT run the only job that
+      # executes them on a real Windows runner.
+      - 'src/agent/spawn.ts'
+      - 'src/agent/spawn-env.ts'
+      - 'src/agent/stream-text.ts'
+      - 'src/agent/args.ts'
+      - 'src/core/windows-launch-spec.ts'
+      - 'src/core/windows-bootstrap.ts'
+      - 'src/core/windows-shell.ts'
+      - 'src/core/instance-identity.ts'
+      - 'scripts/windows-bootstrap-manifest.json'
+      - 'scripts/windows-support-contract.json'
+      - 'scripts/render-windows-support.mts'
+      - 'tests/unit/spawn-env.test.ts'
+      - 'tests/unit/stream-decode-boundary.test.ts'
+      - 'tests/unit/windows-launch-spec.test.ts'
+      - 'tests/unit/windows-bootstrap.test.ts'
+      - 'tests/unit/instance-identity.test.ts'
+      - 'tests/unit/install-ps1-hardening.test.ts'
+      - 'tests/unit/readme-windows-parity.test.ts'
       - 'package.json'
       - 'package-lock.json'
   pull_request:
@@ -100,6 +121,27 @@ on:
       - 'tests/unit/install-integrity.test.ts'
       - 'tests/unit/scriptless-install-contract.test.ts'
       - 'tests/unit/installer-sensitive-path-parity.test.ts'
+      # Windows-critical surfaces (#371). Without these, editing the shim resolver,
+      # the stream decoder, or the bootstrap manifest would NOT run the only job that
+      # executes them on a real Windows runner.
+      - 'src/agent/spawn.ts'
+      - 'src/agent/spawn-env.ts'
+      - 'src/agent/stream-text.ts'
+      - 'src/agent/args.ts'
+      - 'src/core/windows-launch-spec.ts'
+      - 'src/core/windows-bootstrap.ts'
+      - 'src/core/windows-shell.ts'
+      - 'src/core/instance-identity.ts'
+      - 'scripts/windows-bootstrap-manifest.json'
+      - 'scripts/windows-support-contract.json'
+      - 'scripts/render-windows-support.mts'
+      - 'tests/unit/spawn-env.test.ts'
+      - 'tests/unit/stream-decode-boundary.test.ts'
+      - 'tests/unit/windows-launch-spec.test.ts'
+      - 'tests/unit/windows-bootstrap.test.ts'
+      - 'tests/unit/instance-identity.test.ts'
+      - 'tests/unit/install-ps1-hardening.test.ts'
+      - 'tests/unit/readme-windows-parity.test.ts'
       - 'package.json'
       - 'package-lock.json'
   workflow_dispatch:
@@ -300,6 +342,13 @@ jobs:
         env:
           JAW_EXPECT_PLATFORM_KIND: windows-native
         run: npx tsx --test tests/unit/platform-kind-runtime.test.ts
+      # These units are Windows-critical but were only ever exercised on Linux,
+      # where every win32 branch is taken via injected fixtures. Running them on a
+      # real windows-2022 runner is the only thing that proves the fixtures match
+      # the platform (#371).
+      - name: Run Windows-critical unit tests on native Windows
+        run: npx tsx --test tests/unit/spawn-env.test.ts tests/unit/stream-decode-boundary.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/windows-bootstrap.test.ts tests/unit/instance-identity.test.ts tests/unit/install-ps1-hardening.test.ts tests/unit/readme-windows-parity.test.ts
+
       - name: Validate installer contracts in PowerShell 7
         shell: pwsh
         run: ./tests/windows/install-ps1-contract.ps1
