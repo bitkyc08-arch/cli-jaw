@@ -192,3 +192,29 @@ test('RWP-011: no README states a dashboard port that contradicts the contract',
         }
     }
 });
+
+test('RWP-012: policy fields drive VISIBLE prose, not just hidden metadata', () => {
+    // A reviewer flipped preferredPath to native-powershell, regenerated, and all 11
+    // tests passed while every visible block still recommended WSL — the metadata said
+    // one thing and the prose said another. These assertions tie the rendered sentence
+    // to the policy value, so the two cannot drift apart again.
+    const block = renderBlock('en');
+    if (CONTRACT.preferredPath === 'wsl') {
+        assert.match(block, /WSL is the recommended, stable path/);
+    } else {
+        assert.match(block, /native PowerShell installer is the recommended path/i);
+    }
+    if (CONTRACT.registeredService === 'none') {
+        assert.match(block, /no registered autostart backend/);
+    } else {
+        assert.match(block, new RegExp(CONTRACT.registeredService));
+    }
+});
+
+test('RWP-013: the renderer rejects an unknown policy value', async () => {
+    // Without validation a typo silently selects the fallback branch and the rendered
+    // text stops matching the contract, which is exactly how the drift above hid.
+    const src = read('scripts/render-windows-support.mts');
+    assert.match(src, /preferredPath must be one of/);
+    assert.match(src, /registeredService must be one of/);
+});
