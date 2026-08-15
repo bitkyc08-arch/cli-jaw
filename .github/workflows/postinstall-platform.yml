@@ -342,10 +342,13 @@ jobs:
         env:
           JAW_EXPECT_PLATFORM_KIND: windows-native
         run: npx tsx --test tests/unit/platform-kind-runtime.test.ts
-      # These units are Windows-critical but were only ever exercised on Linux,
-      # where every win32 branch is taken via injected fixtures. Running them on a
-      # real windows-2022 runner is the only thing that proves the fixtures match
-      # the platform (#371).
+      # These units are Windows-critical but were only ever exercised on Linux.
+      # Running them here catches the failures that only a real Windows host shows:
+      # CRLF handling, path separators, case-insensitive filesystem behavior, and
+      # anything the Node build differs on. It does NOT prove real .cmd/PATHEXT or
+      # runtime launch behavior — several of these suites still use injected win32
+      # fixtures or inspect source. That gap is why #371 stays open until the
+      # native evidence collector and runtime matrix land (#371).
       - name: Run Windows-critical unit tests on native Windows
         run: npx tsx --test tests/unit/spawn-env.test.ts tests/unit/stream-decode-boundary.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/windows-bootstrap.test.ts tests/unit/instance-identity.test.ts tests/unit/install-ps1-hardening.test.ts tests/unit/readme-windows-parity.test.ts
 
