@@ -250,7 +250,13 @@ echo -e "${BOLD}📊 집계 항목${RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # public/ total lines (source/assets only; exclude Vite build output)
-a_pub_total=$(find public -type f ! -path 'public/dist/*' ! -path 'public/public/dist/*' | xargs wc -l | tail -1 | awk '{print $1}')
+# NUL-delimited on purpose: `xargs wc -l` splits on whitespace, so one tracked
+# filename containing a space makes wc fail, and under `set -euo pipefail` that
+# aborts the script before it prints its summary — surfacing as a phantom drift
+# failure instead of a filename problem. Counting newlines over concatenated
+# content also drops the dependency on wc's "total" line, which does not exist
+# when exactly one file matches.
+a_pub_total=$( (find public -type f ! -path 'public/dist/*' ! -path 'public/public/dist/*' -print0 | xargs -0 cat 2>/dev/null || true) | wc -l | tr -d ' ')
 d_pub_total=$( (rg '^├── public/.*~[0-9]+L' "$DOC" || true) | head -1 | rg -o '~[0-9]+L' | rg -o '[0-9]+' | tail -1 || true)
 if [[ -n "${d_pub_total:-}" ]]; then
   diff_pub_total=$((a_pub_total - d_pub_total))
@@ -338,19 +344,33 @@ if [[ -n "${d_bin_cmds:-}" ]]; then
 fi
 
 # public/dist build output
-# `|| true` matters: public/dist is BUILD OUTPUT, absent in a fresh clone. Without
-# it, find's non-zero exit trips `set -e` and the script dies before printing its
-# summary — reporting a drift failure on a tree that has none. That is what blocked
-# promote-to-main.sh, which runs gate:all in a clone before any frontend build.
-a_pub_dist=$( (find public/dist -type f 2>/dev/null || true) | wc -l | tr -d ' ')
+# public/dist is BUILD OUTPUT (`npm run build:frontend`), so it does not exist in a
+# fresh clone. Two distinct hazards live here, and both produced the same symptom:
+# a doc-drift failure on a tree with no drift.
+#
+# 1. A bare `find public/dist` exits non-zero when the directory is missing. Under
+#    `set -euo pipefail` that killed the script before its summary and before
+#    `exit $FAIL`, so the caller saw exit 1 with no ❌ line to explain it.
+# 2. Treating a missing directory as count 0 is wrong on its own terms. Absent
+#    build output means "not observable here", not "zero files were generated".
+#    Comparing 0 against a documented count would fail every promotion clone the
+#    moment str_func.md records this aggregate.
+#
+# promote-to-main.sh runs gate:all inside a clean clone after `npm ci` and before
+# any frontend build, so the unbuilt tree is the normal case there — not an error.
 d_pub_dist=$( (rg -n 'public/dist build output [0-9]+ files' "$DOC" || true) | head -1 | rg -o 'build output [0-9]+ files' | rg -o '[0-9]+' | head -1 || true)
 if [[ -n "${d_pub_dist:-}" ]]; then
-  if [[ "$a_pub_dist" == "$d_pub_dist" ]]; then
-    echo -e "  ${GREEN}✅ public/dist files — ${a_pub_dist}개${RESET}"
-    PASS=$((PASS + 1))
+  if [[ ! -d public/dist ]]; then
+    echo -e "  ${DIM}⏭️  public/dist files — 빌드 산출물 없음 (npm run build:frontend 전)${RESET}"
   else
-    echo -e "  ${RED}❌ public/dist files — 문서: ${d_pub_dist}개 → 실제: ${a_pub_dist}개${RESET}"
-    FAIL=$((FAIL + 1))
+    a_pub_dist=$( (find public/dist -type f || true) | wc -l | tr -d ' ')
+    if [[ "$a_pub_dist" == "$d_pub_dist" ]]; then
+      echo -e "  ${GREEN}✅ public/dist files — ${a_pub_dist}개${RESET}"
+      PASS=$((PASS + 1))
+    else
+      echo -e "  ${RED}❌ public/dist files — 문서: ${d_pub_dist}개 → 실제: ${a_pub_dist}개${RESET}"
+      FAIL=$((FAIL + 1))
+    fi
   fi
 fi
 
