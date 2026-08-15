@@ -354,3 +354,40 @@ test('WLS-023: a self-referential shim cycle terminates', () => {
     });
     assert.equal(spec, null);
 });
+
+test('WLS-024: every Windows spawn site routes through the shell-free resolver', () => {
+    // The failure this prevents: one runtime keeps the old `shell: true` path and
+    // quietly becomes a second launcher with different Windows quoting behavior.
+    // Any `shell: true` must be guarded by a FAILED resolution, never by a bare
+    // extension check.
+    const files = [
+        'src/agent/spawn.ts',
+        'src/agent/pi-runtime.ts',
+        'src/agent/codex-app-client.ts',
+        'src/cli/capability-probe-worker.ts',
+    ];
+    for (const file of files) {
+        const src = readFileSync(join(__dirname, '../../', file), 'utf8');
+        assert.match(src, /resolveWindowsLaunchSpec/, `${file} must use the resolver`);
+        for (const line of src.split('\n')) {
+            if (!line.includes('shell: true')) continue;
+            // Comments legitimately discuss `shell: true` — including the ones",
+            // explaining why it is being removed.
+            if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue;
+            // The guard variable must be derived from resolution failing.
+            assert.match(
+                line, /(useShell|windowsSpawnUsesShell|isCmdShim|launch\.useShell)/,
+                `${file}: unguarded shell:true — ${line.trim()}`,
+            );
+        }
+        // And the guard itself must consider the resolver result. Read the whole
+        // STATEMENT, not one line: the spawn.ts guard spans several lines, and a
+        // line-local check would report a false failure there.
+        for (const match of src.matchAll(/const (?:useShell|isCmdShim|windowsSpawnUsesShell)\s*=([\s\S]*?);/g)) {
+            assert.match(
+                match[1]!, /!spec|!launchSpec|!windowsLaunch|resolvePiSpawn/,
+                `${file}: the shell guard ignores resolution — ${match[0]!.replace(/\s+/g, ' ').trim()}`,
+            );
+        }
+    }
+});

@@ -276,9 +276,14 @@ test('Pi model discovery falls back to the offline Pi inventory', async () => {
     }
 });
 
-test('Pi list and both RPC spawns enable shell only for Windows command shims', async () => {
+test('Pi list and both RPC spawns resolve shell-free launches on Windows', async () => {
+    // Previously this pinned the exact `shell: true` guard that #367 removes: any
+    // non-.exe command on Windows got a shell. All three sites now route through
+    // resolvePiSpawn, which resolves an npm .cmd shim to its interpreter and only
+    // falls back to a shell when resolution FAILS.
     const source = await readFile(new URL('../../src/agent/pi-runtime.ts', import.meta.url), 'utf8');
-    const shimGuard = "process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe')";
-    assert.equal(source.split(shimGuard).length - 1, 3);
-    assert.equal(source.split("...(isCmdShim ? { shell: true } : {})").length - 1, 3);
+    assert.equal(source.split('resolvePiSpawn(cmd.command').length - 1, 3, 'all three spawns must resolve');
+    assert.equal(source.split('...(launch.useShell ? { shell: true } : {})').length - 1, 3);
+    // The old unconditional guard must be gone.
+    assert.doesNotMatch(source, /const isCmdShim = process\.platform === 'win32'/);
 });
