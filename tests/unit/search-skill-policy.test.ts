@@ -5,19 +5,19 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const searchSkillPath = join(__dirname, '../../skills_ref/search/SKILL.md');
-const devSkillPath = join(__dirname, '../../skills_ref/dev/SKILL.md');
-const devDebuggingSkillPath = join(__dirname, '../../skills_ref/dev-debugging/SKILL.md');
-const devSecuritySkillPath = join(__dirname, '../../skills_ref/dev-security/SKILL.md');
-const devDevopsSkillPath = join(__dirname, '../../skills_ref/dev-devops/SKILL.md');
-const devBackendSkillPath = join(__dirname, '../../skills_ref/dev-backend/SKILL.md');
-const devFrontendSkillPath = join(__dirname, '../../skills_ref/dev-frontend/SKILL.md');
-const devTestingSkillPath = join(__dirname, '../../skills_ref/dev-testing/SKILL.md');
-const devDataSkillPath = join(__dirname, '../../skills_ref/dev-data/SKILL.md');
-const devCodeReviewerSkillPath = join(__dirname, '../../skills_ref/dev-code-reviewer/SKILL.md');
-const devArchitectureSkillPath = join(__dirname, '../../skills_ref/dev-architecture/SKILL.md');
-const devScaffoldingSkillPath = join(__dirname, '../../skills_ref/dev-scaffolding/SKILL.md');
-const devUiuxDesignSkillPath = join(__dirname, '../../skills_ref/dev-uiux-design/SKILL.md');
+const searchSkillPath = join(__dirname, '../../skills_ref/jaw-search/SKILL.md');
+const devSkillPath = join(__dirname, '../../skills_ref/jaw-dev/SKILL.md');
+const devDebuggingSkillPath = join(__dirname, '../../skills_ref/jaw-dev-debugging/SKILL.md');
+const devSecuritySkillPath = join(__dirname, '../../skills_ref/jaw-dev-security/SKILL.md');
+const devDevopsSkillPath = join(__dirname, '../../skills_ref/jaw-dev-devops/SKILL.md');
+const devBackendSkillPath = join(__dirname, '../../skills_ref/jaw-dev-backend/SKILL.md');
+const devFrontendSkillPath = join(__dirname, '../../skills_ref/jaw-dev-frontend/SKILL.md');
+const devTestingSkillPath = join(__dirname, '../../skills_ref/jaw-dev-testing/SKILL.md');
+const devDataSkillPath = join(__dirname, '../../skills_ref/jaw-dev-data/SKILL.md');
+const devCodeReviewerSkillPath = join(__dirname, '../../skills_ref/jaw-dev-code-reviewer/SKILL.md');
+const devArchitectureSkillPath = join(__dirname, '../../skills_ref/jaw-dev-architecture/SKILL.md');
+const devScaffoldingSkillPath = join(__dirname, '../../skills_ref/jaw-dev-scaffolding/SKILL.md');
+const devUiuxDesignSkillPath = join(__dirname, '../../skills_ref/jaw-dev-uiux-design/SKILL.md');
 const registryPath = join(__dirname, '../../skills_ref/registry.json');
 const hasSearchSkill = fs.existsSync(searchSkillPath);
 const hasDevSkill = fs.existsSync(devSkillPath);
@@ -37,11 +37,11 @@ test('SSP-001: restored search skill is a registered unified search hub', { skip
     const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
     const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 
-    assert.match(searchSkill, /name: search/);
+    assert.match(searchSkill, /name: jaw-search/);
     assert.match(searchSkill, /Unified search hub/);
     assert.match(searchSkill, /4-tier escalation/);
-    assert.ok(registry.skills.search, 'registry should include search skill');
-    assert.equal(registry.skills.search.category, 'research');
+    assert.ok(registry.skills['jaw-search'], 'registry should include search skill');
+    assert.equal(registry.skills['jaw-search'].category, 'research');
 });
 
 test('SSP-002: search skill keeps four-tier escalation order', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {

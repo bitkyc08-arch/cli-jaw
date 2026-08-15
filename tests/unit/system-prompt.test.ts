@@ -80,7 +80,7 @@ test('system prompt routes ambiguous Korean search intent away from default code
         'system prompt should require focused query rewrites for Korean external searches');
     assert.ok(a1Src.includes('Native cli-jaw search is the default backend'),
         'system prompt should keep cli-jaw search native-first');
-    assert.ok(a1Src.includes('active `search` skill or existing search/web/official-docs retrieval tools'),
+    assert.ok(a1Src.includes('active `jaw-search` skill or existing search/web/official-docs retrieval tools'),
         'system prompt should route through existing cli-jaw search tools');
     assert.ok(a1Src.includes('agbrowse research plan --query "<request>" --json'),
         'system prompt should preserve optional agbrowse research planning');
@@ -127,13 +127,13 @@ test('system prompt keeps Project root until explicit change and handles stale r
 test('skills prompt prefers active search skill for external search intent', () => {
     assert.ok(skillsSrc.includes('Search intent override'),
         'skills prompt should include a search intent override');
-    assert.ok(skillsSrc.includes('prefer the active `search` skill or web/official-docs retrieval before local code Grep/Glob'),
+    assert.ok(skillsSrc.includes('prefer the active `jaw-search` skill or web/official-docs retrieval before local code Grep/Glob'),
         'skills prompt should prefer active search/web retrieval before local grep');
     assert.ok(skillsSrc.includes('first rewrite the request into 1-3 focused keyword queries'),
         'skills prompt should require query rewrite for Korean external search intent');
     assert.ok(skillsSrc.includes('Native cli-jaw search is the default backend'),
         'skills prompt should make cli-jaw native search the default backend');
-    assert.ok(skillsSrc.includes('active `search` skill or existing search/web/official-docs tools'),
+    assert.ok(skillsSrc.includes('active `jaw-search` skill or existing search/web/official-docs tools'),
         'skills prompt should use active search or existing native search tools');
     assert.ok(skillsSrc.includes('agbrowse research plan --query "<request>" --json'),
         'skills prompt should keep agbrowse as optional planning help');

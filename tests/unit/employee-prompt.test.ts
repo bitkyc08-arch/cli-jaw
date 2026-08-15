@@ -9,7 +9,7 @@ import { parseSubtasks } from '../../src/orchestrator/parser.ts';
 import { SKILLS_DIR } from '../../src/core/config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const reviewerPath = join(__dirname, '../../skills_ref/dev-code-reviewer/SKILL.md');
+const reviewerPath = join(__dirname, '../../skills_ref/jaw-dev-code-reviewer/SKILL.md');
 const hasSkillsRef = fs.existsSync(reviewerPath);
 
 // ─── getEmployeePrompt: export + 기본 구조 ─────────

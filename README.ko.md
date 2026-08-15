@@ -384,13 +384,13 @@ jaw memory search "API 인증은 어떻게 설정했지?"
 
 | 분류 | 스킬 | 할 수 있는 것 |
 |---|---|---|
-| **오피스** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | 문서 읽기, 생성, 편집. HWP/HWPX(한글 문서 형식) 네이티브 지원 |
-| **자동화** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome DevTools Protocol(CDP) 브라우저 제어, AI 좌표 클릭, macOS 스크린샷, Computer Use |
-| **미디어** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion 영상, OpenAI 이미지 생성, 강의 녹음 변환, 음성 합성 |
-| **연동** | `github`, `notion`, `telegram-send`, `memory` | Issue/PR/CI, Notion 페이지, Telegram 미디어 전송, 영구 메모리 |
-| **시각화** | `diagram` | SVG 다이어그램, 차트, 인터랙티브 시각화를 채팅 안에서 렌더링 |
+| **오피스** | `jaw-pdf`, `jaw-docx`, `jaw-xlsx`, `jaw-pptx`, `jaw-hwp` | 문서 읽기, 생성, 편집. HWP/HWPX(한글 문서 형식) 네이티브 지원 |
+| **자동화** | `jaw-browser`, `vision-click`, `jaw-screen-capture`, `jaw-desktop-control` | Chrome DevTools Protocol(CDP) 브라우저 제어, AI 좌표 클릭, macOS 스크린샷, Computer Use |
+| **미디어** | `jaw-video`, `imagegen`, `lecture-stt`, `tts` | Remotion 영상, OpenAI 이미지 생성, 강의 녹음 변환, 음성 합성 |
+| **연동** | `jaw-github`, `notion`, `jaw-telegram-send`, `jaw-memory` | Issue/PR/CI, Notion 페이지, Telegram 미디어 전송, 영구 메모리 |
+| **시각화** | `jaw-diagram` | SVG 다이어그램, 차트, 인터랙티브 시각화를 채팅 안에서 렌더링 |
 | **콘텐츠/글쓰기** | `k-writing` | 한국어 홍보·콘텐츠 작성: 쓰레드, 인스타 카드뉴스, 링크드인, 웹/블로그, 윤문을 필수 검색·훅 채점·AI 티 제거 검증으로 생성 |
-| **개발 가이드** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd` | 에이전트 프롬프트에 주입되는 엔지니어링 가이드라인 |
+| **개발 가이드** | `jaw-dev`, `jaw-dev-frontend`, `jaw-dev-backend`, `jaw-dev-data`, `jaw-dev-testing`, `jaw-dev-pabcd` | 에이전트 프롬프트에 주입되는 엔지니어링 가이드라인 |
 
 참조 스킬은 `skills_ref/`에 있으며 필요 시 활성화합니다.
 

@@ -355,11 +355,11 @@ export interface RolePreset {
 }
 
 export const ROLE_PRESETS: readonly RolePreset[] = [
-    { value: 'frontend', labelKey: 'role.label.frontend', label: 'Frontend', prompt: 'Frontend employee — UI/UX, CSS, components', skill: 'dev-frontend' },
-    { value: 'backend', labelKey: 'role.label.backend', label: 'Backend', prompt: 'Backend employee — API, DB, server logic', skill: 'dev-backend' },
-    { value: 'data', labelKey: 'role.label.data', label: 'Data', prompt: 'Data employee — data pipeline, analysis, ML', skill: 'dev-data' },
+    { value: 'frontend', labelKey: 'role.label.frontend', label: 'Frontend', prompt: 'Frontend employee — UI/UX, CSS, components', skill: 'jaw-dev-frontend' },
+    { value: 'backend', labelKey: 'role.label.backend', label: 'Backend', prompt: 'Backend employee — API, DB, server logic', skill: 'jaw-dev-backend' },
+    { value: 'data', labelKey: 'role.label.data', label: 'Data', prompt: 'Data employee — data pipeline, analysis, ML', skill: 'jaw-dev-data' },
     { value: 'docs', labelKey: 'role.label.docs', label: 'Docs', prompt: 'Docs employee — documentation, README, API docs', skill: 'documentation' },
-    { value: 'security', labelKey: 'role.label.security', label: 'Security', prompt: 'Security reviewer — auth, secrets, injection, destructive-command, sandbox, and data exposure risks', skill: 'dev-security' },
-    { value: 'testing', labelKey: 'role.label.testing', label: 'Testing', prompt: 'Testing reviewer — unit, integration, regression, smoke, and edge-case coverage', skill: 'dev-testing' },
+    { value: 'security', labelKey: 'role.label.security', label: 'Security', prompt: 'Security reviewer — auth, secrets, injection, destructive-command, sandbox, and data exposure risks', skill: 'jaw-dev-security' },
+    { value: 'testing', labelKey: 'role.label.testing', label: 'Testing', prompt: 'Testing reviewer — unit, integration, regression, smoke, and edge-case coverage', skill: 'jaw-dev-testing' },
     { value: 'custom', labelKey: 'role.label.custom', label: 'Custom...', prompt: '', skill: null },
 ] as const;

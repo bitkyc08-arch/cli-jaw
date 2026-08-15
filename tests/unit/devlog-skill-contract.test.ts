@@ -5,9 +5,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const devScaffoldingPath = join(root, 'skills_ref/dev-scaffolding/SKILL.md');
-const devPath = join(root, 'skills_ref/dev/SKILL.md');
-const devPabcdPath = join(root, 'skills_ref/dev-pabcd/SKILL.md');
+const devScaffoldingPath = join(root, 'skills_ref/jaw-dev-scaffolding/SKILL.md');
+const devPath = join(root, 'skills_ref/jaw-dev/SKILL.md');
+const devPabcdPath = join(root, 'skills_ref/jaw-dev-pabcd/SKILL.md');
 const devlogAgentsPath = join(root, 'devlog/AGENTS.md');
 
 const requiredDocs = [devScaffoldingPath, devPath, devPabcdPath, devlogAgentsPath];

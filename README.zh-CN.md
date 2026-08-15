@@ -384,13 +384,13 @@ jaw memory search "我们是怎么设置 API 认证的？"
 
 | 分类 | 技能 | 覆盖范围 |
 |---|---|---|
-| **办公** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | 读取、创建、编辑文档。HWP/HWPX（韩国文字处理器格式）原生支持 |
-| **自动化** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome DevTools Protocol（CDP）浏览器控制、AI 坐标点击、macOS 截屏、Computer Use |
-| **媒体** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion 视频、OpenAI 图像生成、讲座转录、文字转语音 |
-| **集成** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI、Notion 页面、Telegram 媒体发送、持久记忆 |
-| **可视化** | `diagram` | 在聊天中渲染 SVG 图表、图形、交互式可视化 |
+| **办公** | `jaw-pdf`, `jaw-docx`, `jaw-xlsx`, `jaw-pptx`, `jaw-hwp` | 读取、创建、编辑文档。HWP/HWPX（韩国文字处理器格式）原生支持 |
+| **自动化** | `jaw-browser`, `vision-click`, `jaw-screen-capture`, `jaw-desktop-control` | Chrome DevTools Protocol（CDP）浏览器控制、AI 坐标点击、macOS 截屏、Computer Use |
+| **媒体** | `jaw-video`, `imagegen`, `lecture-stt`, `tts` | Remotion 视频、OpenAI 图像生成、讲座转录、文字转语音 |
+| **集成** | `jaw-github`, `notion`, `jaw-telegram-send`, `jaw-memory` | Issues/PRs/CI、Notion 页面、Telegram 媒体发送、持久记忆 |
+| **可视化** | `jaw-diagram` | 在聊天中渲染 SVG 图表、图形、交互式可视化 |
 | **内容/写作** | `k-writing` | 韩语推广/内容写作：thread、Instagram 卡片新闻、LinkedIn、网站/博客和润色输出，包含强制搜索、钩子评分和去 AI 痕迹校验 |
-| **开发指南** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd` | 注入代理提示的工程指南 |
+| **开发指南** | `jaw-dev`, `jaw-dev-frontend`, `jaw-dev-backend`, `jaw-dev-data`, `jaw-dev-testing`, `jaw-dev-pabcd` | 注入代理提示的工程指南 |
 
 参考技能位于 `skills_ref/`，按需安装到活跃运行时。
 

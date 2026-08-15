@@ -166,7 +166,7 @@ snapshot에 남는다고 명시한다.
 
 지연된 employee 결과 replay도 boss context에 full stdout을 재주입하지 않는다. 원래 dispatch 연결이 끊긴 뒤 결과가 도착하면 다음 boss turn에는 bounded notice만 들어가며, notice는 agent/run identity, 짧은 preview, `cli-jaw worker status <runId>`, `cli-jaw worker read <runId> --tail 120` 복구 명령을 제공한다. 전체 raw output은 runId 기반 explicit read surface에서만 읽는다.
 
-추가로 `skills/dev-pabcd/SKILL.md`가 있으면 `## PABCD Orchestration Guide`가 이어 붙는다. 이 인라인 가이드는 loop/multi-pass 작업을 명시한다 — 큰/"loop" 작업은 work-phase(결과 슬라이스)마다 풀 PABCD 한 바퀴를 돌고, goal 모드에서 D 이후 D→IDLE→P로 다음 work-phase의 P에 재진입하며, 각 phase의 실제 작업을 충실히 수행한다(anti-skip). devlog/_fin/260624_goal_work_phase_pabcd_loop/ 참고.
+추가로 `skills/jaw-dev-pabcd/SKILL.md`가 있으면 `## PABCD Orchestration Guide`가 이어 붙는다. 이 인라인 가이드는 loop/multi-pass 작업을 명시한다 — 큰/"loop" 작업은 work-phase(결과 슬라이스)마다 풀 PABCD 한 바퀴를 돌고, goal 모드에서 D 이후 D→IDLE→P로 다음 work-phase의 P에 재진입하며, 각 phase의 실제 작업을 충실히 수행한다(anti-skip). devlog/_fin/260624_goal_work_phase_pabcd_loop/ 참고.
 
 ### PABCD evidence gate (`--attest`)
 
@@ -214,7 +214,7 @@ cli-jaw orchestrate D --attest '{"from":"C","to":"D","did":"ran checks","checkOu
 
 - Native Grep/Glob must start from one known file or narrow directory — no repo-wide/home/`node_modules` sweeps
 - Shell search: `timeout 20s rg … <narrow-path>` with output cap; timeout → do not widen
-- Korean/source-sensitive **external** search routes through active `search` skill (focused query rewrite + fetch original pages); `agbrowse research plan` is optional planning help only
+- Korean/source-sensitive **external** search routes through active `jaw-search` skill (focused query rewrite + fetch original pages); `agbrowse research plan` is optional planning help only
 - Enforced in A1 via `builder.ts`; aligns with AGENTS.md bounded-search rules (#255)
 
 ### Heartbeat
@@ -340,9 +340,9 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 1. `employee.md` 기본 템플릿
 2. static employee system patch와 declared skill inline injection(예: Control)
 3. 공통 `dev/SKILL.md`
-4. `dev-scaffolding`
-5. 역할별 skill (`dev-frontend`, `dev-backend`, `dev-data`, docs용 documentation 등)
-6. phase별 skill (phase 2 → `dev-code-reviewer`, phase 4 → `dev-testing`)
+4. `jaw-dev-scaffolding`
+5. 역할별 skill (`jaw-dev-frontend`, `jaw-dev-backend`, `jaw-dev-data`, docs용 documentation 등)
+6. phase별 skill (phase 2 → `jaw-dev-code-reviewer`, phase 4 → `jaw-dev-testing`)
 7. `worker-context.md`에서 추출한 phase별 worker context (`Phase 1~4` 중 phase 번호 매핑) + 실행 규칙
 8. employee delegation rules
 

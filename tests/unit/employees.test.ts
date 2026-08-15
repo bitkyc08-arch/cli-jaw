@@ -48,7 +48,7 @@ test('P37-CU-002: Control carries desktop-control + screen-capture + codex-image
     // low-level recipe. See 37_revisions_and_integration.md §G.
     const control = findStaticEmployee('control'); // case-insensitive
     assert.ok(control);
-    for (const skill of ['desktop-control', 'screen-capture', 'codex-imagegen']) {
+    for (const skill of ['jaw-desktop-control', 'jaw-screen-capture', 'codex-imagegen']) {
         assert.ok(control!.skills.includes(skill), `missing skill: ${skill}`);
     }
     assert.ok(!control!.skills.includes('vision-click'),
@@ -138,7 +138,7 @@ test('P37-CU-010: desktop-control skill includes control-workflow reference', as
     const fs = await import('node:fs');
     const path = await import('node:path');
     const refPath = path.join(
-        import.meta.dirname, '..', '..', 'skills_ref', 'desktop-control', 'reference', 'control-workflow.md',
+        import.meta.dirname, '..', '..', 'skills_ref', 'jaw-desktop-control', 'reference', 'control-workflow.md',
     );
     assert.ok(fs.existsSync(refPath), `missing: ${refPath}`);
     const content = fs.readFileSync(refPath, 'utf8');

@@ -337,13 +337,11 @@ function appendAnchorIfMissing(
  * markers, so replacing it destroys nothing. Anything else is treated as
  * user-authored and is preserved. Same pattern as KNOWN_A1_SOURCE_HASHES.
  *
- * To add the block you are about to replace, print its hash first:
- *   node -e "import('./dist/src/prompt/builder.js').then(async m=>{const fs=await import('fs');\
- *     const t=fs.readFileSync('src/prompt/templates/a1-system.md','utf8');\
- *     const o='<!-- anchor:desktop-control -->',c='<!-- /anchor:desktop-control -->';\
- *     console.log(m.hashAnchorBlock(t.slice(t.indexOf(o),t.indexOf(c)+c.length))))}"
- * The test pins the currently-shipped template block so this list cannot
- * silently go stale.
+ * To add the block you are about to replace, print its hash first: build, then
+ * load hashAnchorBlock from the built builder module and hand it the slice of
+ * src/prompt/templates/a1-system.md between the two desktop-control anchor
+ * markers (inclusive). The test pins the currently-shipped template block so
+ * this list cannot silently go stale.
  */
 const KNOWN_DESKTOP_CONTROL_ANCHOR_HASHES = new Set<string>([
     // 4ef0bc51 — the macOS-only contract shipped through v2.2.19, replaced by

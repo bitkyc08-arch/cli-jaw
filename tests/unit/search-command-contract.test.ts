@@ -34,8 +34,8 @@ test('/search steer prompt routes through search skill and browser-command bound
     // browser-command boundary, and carries the report-format contract.
     assert.match(searchWorkflowSrc, /User invoked \/search/);
     assert.match(searchWorkflowSrc, /MUST READ before searching/);
-    assert.match(searchWorkflowSrc, /skills\/search\/SKILL\.md/);
-    assert.match(searchWorkflowSrc, /skills\/browser\/SKILL\.md/);
+    assert.match(searchWorkflowSrc, /skills\/jaw-search\/SKILL\.md/);
+    assert.match(searchWorkflowSrc, /skills\/jaw-browser\/SKILL\.md/);
     assert.match(searchWorkflowSrc, /Known URL Reader/);
     assert.match(searchWorkflowSrc, /Adaptive-fetch ladder/);
     assert.match(searchWorkflowSrc, /cli-jaw browser fetch <url>/);

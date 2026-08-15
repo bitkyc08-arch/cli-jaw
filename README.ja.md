@@ -316,13 +316,13 @@ jaw memory search "API の認証はどう設定した？"
 
 | カテゴリ | スキル | 対応範囲 |
 |---|---|---|
-| **オフィス** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | ドキュメントの読み取り・作成・編集。HWP/HWPX（韓国語ワープロ形式）をネイティブサポート |
-| **自動化** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome DevTools Protocol（CDP）ブラウザ制御、AI 座標クリック、macOS スクリーンショット、Computer Use |
-| **メディア** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion 動画、OpenAI 画像生成、講義の文字起こし、テキスト読み上げ |
-| **連携** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI、Notion ページ、Telegram メディア配信、永続メモリ |
-| **ビジュアライゼーション** | `diagram` | チャット内で SVG ダイアグラム、チャート、インタラクティブ図をレンダリング |
+| **オフィス** | `jaw-pdf`, `jaw-docx`, `jaw-xlsx`, `jaw-pptx`, `jaw-hwp` | ドキュメントの読み取り・作成・編集。HWP/HWPX（韓国語ワープロ形式）をネイティブサポート |
+| **自動化** | `jaw-browser`, `vision-click`, `jaw-screen-capture`, `jaw-desktop-control` | Chrome DevTools Protocol（CDP）ブラウザ制御、AI 座標クリック、macOS スクリーンショット、Computer Use |
+| **メディア** | `jaw-video`, `imagegen`, `lecture-stt`, `tts` | Remotion 動画、OpenAI 画像生成、講義の文字起こし、テキスト読み上げ |
+| **連携** | `jaw-github`, `notion`, `jaw-telegram-send`, `jaw-memory` | Issues/PRs/CI、Notion ページ、Telegram メディア配信、永続メモリ |
+| **ビジュアライゼーション** | `jaw-diagram` | チャット内で SVG ダイアグラム、チャート、インタラクティブ図をレンダリング |
 | **コンテンツ/ライティング** | `k-writing` | 韓国語のプロモーション/コンテンツ作成: スレッド、Instagram カードニュース、LinkedIn、Web/ブログ、推敲を、必須検索・フック採点・AI っぽさ除去チェック付きで生成 |
-| **開発ガイド** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd` | エージェントプロンプトに注入されるエンジニアリングガイドライン |
+| **開発ガイド** | `jaw-dev`, `jaw-dev-frontend`, `jaw-dev-backend`, `jaw-dev-data`, `jaw-dev-testing`, `jaw-dev-pabcd` | エージェントプロンプトに注入されるエンジニアリングガイドライン |
 
 リファレンススキルは `skills_ref/` にあり、オンデマンドでアクティブランタイムにインストールされます。
 

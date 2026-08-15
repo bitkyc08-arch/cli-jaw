@@ -583,13 +583,13 @@ jaw memory search "how did we set up the API auth?"
 
 | Category | Skills | What they cover |
 |---|---|---|
-| **Office** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | Read, create, edit documents. HWP/HWPX (Korean word-processor formats) supported natively |
-| **Automation** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome DevTools Protocol (CDP) browser control, AI-powered coordinate click, macOS screenshots, Computer Use |
-| **Media** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion video, OpenAI image generation, lecture transcription, text-to-speech |
-| **Integration** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI, Notion pages, Telegram media delivery, persistent memory |
-| **Visualization** | `diagram` | SVG diagrams, charts, interactive visualizations rendered in chat |
+| **Office** | `jaw-pdf`, `jaw-docx`, `jaw-xlsx`, `jaw-pptx`, `jaw-hwp` | Read, create, edit documents. HWP/HWPX (Korean word-processor formats) supported natively |
+| **Automation** | `jaw-browser`, `vision-click`, `jaw-screen-capture`, `jaw-desktop-control` | Chrome DevTools Protocol (CDP) browser control, AI-powered coordinate click, macOS screenshots, Computer Use |
+| **Media** | `jaw-video`, `imagegen`, `lecture-stt`, `tts` | Remotion video, OpenAI image generation, lecture transcription, text-to-speech |
+| **Integration** | `jaw-github`, `notion`, `jaw-telegram-send`, `jaw-memory` | Issues/PRs/CI, Notion pages, Telegram media delivery, persistent memory |
+| **Visualization** | `jaw-diagram` | SVG diagrams, charts, interactive visualizations rendered in chat |
 | **Content / Writing** | `k-writing` | Korean promotional/content writing: thread, Instagram cardnews, LinkedIn, website/blog, and humanize outputs with mandatory search, hook scoring, and anti-AI checks |
-| **Dev Guides** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd` | Engineering guidelines injected into agent prompts |
+| **Dev Guides** | `jaw-dev`, `jaw-dev-frontend`, `jaw-dev-backend`, `jaw-dev-data`, `jaw-dev-testing`, `jaw-dev-pabcd` | Engineering guidelines injected into agent prompts |
 
 Reference skills live in `skills_ref/` and install into the active runtime on demand; active skills are loaded from the user runtime home.
 
@@ -610,7 +610,7 @@ jaw skill list              # see what's available
 | **Web-AI vendors** | `jaw browser web-ai --vendor chatgpt\|gemini\|grok` with session lifecycle, diagnostics, source-audit/answer-artifact support, and ChatGPT code-mode zip recovery |
 | **Diagram Skill** | Generate SVG diagrams and interactive visualizations, rendered inline in chat |
 
-Computer Use lets you control desktop apps — Finder, Safari, System Settings, Xcode on macOS; any window on Windows — through natural language. Point it at your localhost dev server in a browser and you get a full visual testing loop. The two hosts expose different APIs (macOS is app-scoped, Windows is window-scoped), and the `desktop-control` skill routes between them.
+Computer Use lets you control desktop apps — Finder, Safari, System Settings, Xcode on macOS; any window on Windows — through natural language. Point it at your localhost dev server in a browser and you get a full visual testing loop. The two hosts expose different APIs (macOS is app-scoped, Windows is window-scoped), and the `jaw-desktop-control` skill routes between them.
 
 ---
 

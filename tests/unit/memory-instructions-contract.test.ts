@@ -50,7 +50,7 @@ test('memory prompt templates describe dashboard embedding as default-off add-on
 });
 
 test('memory skill source documents L1/L2 scope without making embedding default', () => {
-    const skill = read('skills_ref/memory/SKILL.md');
+    const skill = read('skills_ref/jaw-memory/SKILL.md');
 
     assert.ok(skill.includes('## Scope: L1 vs L2'));
     assert.ok(skill.includes('L1 instance-local memory'));
