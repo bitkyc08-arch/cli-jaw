@@ -31,12 +31,16 @@ test('IPS-001: every failure path routes through the catchable helper', () => {
     const src = installer();
     assert.match(src, /function Stop-Install/);
     assert.match(src, /throw "CLI-JAW installation failed/);
-    // ANY `exit N` anywhere in the body defeats `irm | iex` — including inline forms
-    // like `if ($true) { exit 2 }`, which a line-anchored pattern would miss. Only
-    // `exit /b` inside a here-string fixture is legitimate (that is batch, not PS).
+    // ANY `exit` with an argument defeats `irm | iex` — including inline forms like
+    // `if ($true) { exit 2 }`, parenthesized `exit (2)`, and `exit $code`, all of which
+    // a numeric-literal pattern would miss. `exit /b` is batch inside a here-string
+    // fixture, not PowerShell, so it is excluded only when it is not commented out.
     const offenders = src
         .split('\n')
-        .filter(l => /(^|[;{(]|\bthen\b)\s*exit\s+\d+/.test(l) && !/exit \/b/.test(l))
+        .map(l => l.replace(/#.*$/, ''))
+        // Strip quoted strings first: messages legitimately read "(exit $code)".
+        .map(l => l.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''"))
+        .filter(l => /(^|[;{]|\bthen\b)\s*exit\b/.test(l) && !/exit \/b/.test(l))
         .map(l => l.trim());
     assert.deepEqual(offenders, [], 'exit N kills the caller under irm | iex: ' + offenders.join(' | '));
 });
@@ -85,6 +89,10 @@ test('IPS-005: the emitted PATH command never serializes the merged process PATH
         if (!line.includes("SetEnvironmentVariable('Path'")) continue;
         assert.doesNotMatch(line, /\$env:Path/, `merged process PATH written to the User target: ${line.trim()}`);
     }
+    // The criterion is "existing User PATH PLUS the missing npm prefix", so the append
+    // matters as much as the absences. Dropping it survived every absence-only check.
+    assert.match(src, /\+ '\$escapedGlobalBin'/, 'guidance must append the missing npm prefix');
+    assert.match(src, /\$userPath -split/, 'guidance must preserve existing User PATH entries');
 });
 
 test('IPS-006: the follow-up command actually emitted is the .cmd shim', () => {
@@ -131,6 +139,11 @@ test('IPS-008: the Windows contract executes the three previously-unrun scenario
     // The PATH branch must be EXECUTED without -Prefix, not inspected.
     assert.match(contract, /MACHINE-ONLY-SENTINEL/, 'PATH guidance must be checked against a machine-only sentinel');
     assert.match(contract, /guidance must not contain machine-only PATH entries/);
+    // The criterion is "existing User PATH PLUS the missing npm prefix". Asserting only
+    // absences let a mutation that drops the prefix append stay green.
+    assert.match(contract, /guidance must add the missing npm prefix/);
+    assert.match(contract, /guidance must preserve the existing User PATH entries/);
+    assert.match(contract, /guidance must write the composed entries to the User target/);
     assert.match(contract, /Set-ExecutionPolicy -Scope Process -ExecutionPolicy Restricted/, 'must exercise a restrictive policy');
     assert.match(contract, /jaw-cmd-ran/, 'must prove jaw.cmd runs under that policy');
     assert.match(contract, /guidance must not serialize the merged process PATH/);
