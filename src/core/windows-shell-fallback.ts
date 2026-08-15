@@ -102,13 +102,21 @@ export function decideShellFallback(input: {
     // and is only trimmed. Anything that could split one command into two is refused on
     // this path regardless of where it came from.
     const carriesSeparators = input.argv.some(arg => CMD_COMMAND_SEPARATORS.test(arg));
-    if (!carriesUntrusted && !carriesSeparators) {
+    // The command NAME is the third input, and it is the one that reaches cmd.exe first.
+    // Under `shell: true` Node builds `cmd.exe /d /s /c "<command> <argv...>"`, so a
+    // command containing `&` splits the line before any argument is even considered.
+    // Checking only argv left that open: a resolver failure on a path like
+    // `C:\tools\codex & calc.exe` would have been handed straight to the shell.
+    const commandCarriesSeparators = CMD_COMMAND_SEPARATORS.test(input.command);
+    if (!carriesUntrusted && !carriesSeparators && !commandCarriesSeparators) {
         return { allowed: true };
     }
     const metachars = argvHasCmdMetacharacters(input.argv);
     const cause = carriesUntrusted
         ? 'the prompt is passed in argv'
-        : 'the argv contains characters cmd.exe would read as command syntax';
+        : commandCarriesSeparators
+            ? 'the command name itself contains characters cmd.exe would read as command syntax'
+            : 'the argv contains characters cmd.exe would read as command syntax';
     return {
         allowed: false,
         reason:

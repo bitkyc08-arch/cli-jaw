@@ -8,6 +8,7 @@ import {
     argvCarriesUntrustedText,
     argvHasCmdMetacharacters,
 } from '../../src/core/windows-shell-fallback.js';
+import { buildCapabilitySpawnSpec } from '../../src/cli/capability-probe-worker.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -227,4 +228,76 @@ test('WSF-014: pi-runtime refuses a shell fallback carrying command syntax', () 
         command: 'pi.cmd',
     });
     assert.equal(clean.allowed, true, 'a normal Pi launch must still work');
+});
+
+test('WSF-015: the capability probe resolves through which instead of taking a shell', () => {
+    // Windows-shaped fixture paths with injected deps, matching the pattern from
+    // windows-launch-spec.test.ts (WLS-014). A real macOS temp dir cannot work because
+    // the resolver uses win32 path semantics for shim target resolution.
+    const shim = 'C:\\npm\\copilot.cmd';
+    const target = 'C:\\npm\\node_modules\\pkg\\entry.js';
+    // The REAL_NODE_SHIM body — the shape npm's cmd-shim actually generates.
+    const shimBody = [
+        '@ECHO off\r', 'GOTO start\r', ':find_dp0\r', 'SET dp0=%~dp0\r',
+        'EXIT /b\r', ':start\r', 'SETLOCAL\r', 'CALL :find_dp0\r', '\r',
+        'IF EXIST "%dp0%\\node.exe" (\r', '  SET "_prog=%dp0%\\node.exe"\r',
+        ') ELSE (\r', '  SET "_prog=node"\r',
+        '  SET PATHEXT=%PATHEXT:;.JS;=;%\r', ')\r', '\r',
+        'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\pkg\\entry.js" %*\r',
+    ].join('\n');
+    const files: Record<string, string> = {
+        [shim]: shimBody,
+        [target]: '#!/usr/bin/env node\n',
+    };
+    const spec = buildCapabilitySpawnSpec(
+        { cli: 'copilot', binary: 'copilot', timeoutMs: 1000, platform: 'win32' } as never,
+        { PATH: 'C:\\npm' },
+        {
+            readFile: (p: string) => { const f = files[p]; if (f === undefined) throw new Error('ENOENT'); return f; },
+            exists: (p: string) => files[p] !== undefined,
+            which: (name: string) => {
+                if (name === 'copilot') return shim;
+                if (name === 'node') return 'C:\\Program Files\\nodejs\\node.exe';
+                return null;
+            },
+        },
+    );
+    assert.equal(spec.options.shell, undefined, 'a resolvable shim must not take the shell');
+    assert.ok(spec.args.includes(target), 'the resolved script must be passed to the interpreter');
+});
+
+test('WSF-016: an unresolvable probe binary still consults the gate', () => {
+    // The probe argv is fixed today, so this must NOT refuse. The test exists to prove
+    // the gate is on the path at all: a mutation deleting the call keeps this green only
+    // because the argv is clean, which is why WSF-017 pairs with it.
+    const spec = buildCapabilitySpawnSpec(
+        { cli: 'codex', binary: 'codex', timeoutMs: 1000, platform: 'win32' } as never,
+        { PATH: '' },
+        {},
+    );
+    assert.equal(spec.options.shell, true, 'an unresolvable non-.exe still falls back');
+    assert.deepEqual(spec.args, ['app-server', '--help']);
+});
+
+test('WSF-017: a probe with command syntax in the binary PATH is refused', () => {
+    // Under shell:true Node builds `cmd.exe /d /s /c "<command> <argv>"`, so the command
+    // itself is parsed before any argument. The name must NOT end in .exe, or the shell
+    // is never enabled and the test passes for the wrong reason.
+    assert.throws(
+        () => buildCapabilitySpawnSpec(
+            { cli: 'codex', binary: 'C:\\tools\\codex & calc', timeoutMs: 1000, platform: 'win32' } as never,
+            { PATH: '' },
+            {},
+        ),
+        /Refusing to launch/,
+        'a command containing & must not reach cmd.exe',
+    );
+    // Ordinary Windows paths with parentheses must still launch — refusing on '(' would
+    // break every install under 'C:\\Program Files (x86)'.
+    const ok = buildCapabilitySpawnSpec(
+        { cli: 'codex', binary: 'C:\\Program Files (x86)\\codex\\codex', timeoutMs: 1000, platform: 'win32' } as never,
+        { PATH: '' },
+        {},
+    );
+    assert.equal(ok.options.shell, true, 'parentheses in a path are data, not syntax');
 });
