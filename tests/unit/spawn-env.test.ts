@@ -48,11 +48,15 @@ test('prefers bun-installed opencode before older path entries', () => {
 });
 
 test('moves bun-installed opencode to the front when it already exists later in PATH', () => {
+    // getOpencodePreferredBinDir() returns a REAL host path, so on Windows it is
+    // 'C:\Users\...' — embedding it in a ':'-joined fixture and splitting on ':'
+    // tears the drive letter off. Assert the property (moved to front, listed once)
+    // without round-tripping the host path through a POSIX separator.
     const bun = getOpencodePreferredBinDir();
     const next = applyCliEnvDefaults('opencode', {}, { PATH: `/opt/homebrew/bin:${bun}:/usr/bin` }, 'linux');
-    const parts = next.PATH?.split(':') || [];
-    assert.equal(parts[0], bun);
-    assert.equal(parts.filter(part => part === bun).length, 1);
+    const path = next.PATH ?? '';
+    assert.ok(path.startsWith(`${bun}:`), `expected ${bun} first, got ${path}`);
+    assert.equal(path.split(bun).length - 1, 1, 'the preferred bin must appear exactly once');
 });
 
 test('preserves native Windows PATH entries when prepending the opencode bin', () => {
