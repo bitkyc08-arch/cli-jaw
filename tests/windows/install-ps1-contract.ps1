@@ -143,8 +143,18 @@ try {
     $childExit = $null
     try {
         $env:Path = "$env:SystemRoot\System32"
-        & $shellPath -NoProfile -File $installer -Prefix $fileFixture *> $null
-        $childExit = $LASTEXITCODE
+        # Windows PowerShell 5.1 turns a child's stderr into a terminating error under
+        # ErrorActionPreference='Stop', so the EXPECTED failure aborted the test itself
+        # instead of yielding an exit code. Relax it around the call — the exit code is
+        # what this scenario asserts, exactly as install.ps1 does for native commands.
+        $savedPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $shellPath -NoProfile -File $installer -Prefix $fileFixture *> $null
+            $childExit = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $savedPreference
+        }
     } finally {
         $env:Path = $savedPath
     }
