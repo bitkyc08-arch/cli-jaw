@@ -48,15 +48,17 @@ test('prefers bun-installed opencode before older path entries', () => {
 });
 
 test('moves bun-installed opencode to the front when it already exists later in PATH', () => {
-    // getOpencodePreferredBinDir() returns a REAL host path, so on Windows it is
-    // 'C:\Users\...' — embedding it in a ':'-joined fixture and splitting on ':'
-    // tears the drive letter off. Assert the property (moved to front, listed once)
-    // without round-tripping the host path through a POSIX separator.
+    // Host-independent on purpose. getOpencodePreferredBinDir() returns a REAL path,
+    // and on Windows that is 'C:\\Users\\...', which a POSIX split reads as two
+    // entries — so the duplicate was never recognized and the count came back 2 on
+    // the native runner while passing on macOS. Use the win32 separator so the
+    // fixture parses the same way everywhere.
     const bun = getOpencodePreferredBinDir();
-    const next = applyCliEnvDefaults('opencode', {}, { PATH: `/opt/homebrew/bin:${bun}:/usr/bin` }, 'linux');
-    const path = next.PATH ?? '';
-    assert.ok(path.startsWith(`${bun}:`), `expected ${bun} first, got ${path}`);
-    assert.equal(path.split(bun).length - 1, 1, 'the preferred bin must appear exactly once');
+    const next = applyCliEnvDefaults('opencode', {}, { PATH: '/opt/homebrew/bin;' + bun + ';/usr/bin' }, 'win32');
+    const parts = (next.PATH ?? '').split(';');
+    assert.equal(parts[0], bun, 'the preferred bin must be prepended');
+    assert.equal(parts.filter(part => part === bun).length, 1, 'and must appear exactly once');
+    assert.ok(parts.includes('/opt/homebrew/bin') && parts.includes('/usr/bin'), 'other entries survive');
 });
 
 test('preserves native Windows PATH entries when prepending the opencode bin', () => {
