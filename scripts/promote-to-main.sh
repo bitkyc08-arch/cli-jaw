@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+# shellcheck source=scripts/promotion-checkout.sh
+source "$SCRIPT_DIR/promotion-checkout.sh"
 
 command -v gh >/dev/null 2>&1 || { echo "ERROR: gh is required" >&2; exit 1; }
 gh auth status >/dev/null
 git fetch origin main preview --tags --prune
 
-LIVE_PREVIEW_SHA="$(git rev-parse refs/remotes/origin/preview^{commit})"
+LIVE_PREVIEW_SHA="$(git rev-parse 'refs/remotes/origin/preview^{commit}')"
 PREVIEW_SHA="$(git rev-parse "${1:-$LIVE_PREVIEW_SHA}^{commit}")"
 if [ "$PREVIEW_SHA" != "$LIVE_PREVIEW_SHA" ]; then
   echo "ERROR: requested SHA is not the live origin/preview head" >&2
@@ -34,41 +37,34 @@ if [ -z "$TESTS_URL" ]; then
   exit 1
 fi
 
-MAIN_SHA="$(git rev-parse refs/remotes/origin/main^{commit})"
+MAIN_SHA="$(git rev-parse 'refs/remotes/origin/main^{commit}')"
 if ! git merge-base --is-ancestor "$MAIN_SHA" "$PREVIEW_SHA"; then
   echo "ERROR: origin/main is not an ancestor of the certified preview SHA" >&2
   exit 1
 fi
 
-WORKTREE="$(mktemp -d "${TMPDIR:-/tmp}/cli-jaw-promote.XXXXXX")"
+REMOTE_URL="$(git remote get-url origin)"
+PROMOTION_TMP_ROOT="$(promotion_tmp_root)"
+WORKTREE="$(mktemp -d "$PROMOTION_TMP_ROOT/cli-jaw-promote.XXXXXX")"
 PROMOTION_BRANCH="codex/promote-${STABLE_VERSION}-${PREVIEW_SHA:0:12}"
 cleanup() {
-  git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
-  rmdir "$WORKTREE" >/dev/null 2>&1 || true
+  if ! cleanup_promotion_checkout "$WORKTREE"; then
+    echo "WARNING: failed to clean promotion checkout: $WORKTREE" >&2
+  fi
 }
 trap cleanup EXIT
-git worktree add -b "$PROMOTION_BRANCH" "$WORKTREE" "$PREVIEW_SHA"
+prepare_promotion_checkout "$REMOTE_URL" "$PREVIEW_SHA" "$PROMOTION_BRANCH" "$WORKTREE"
 
 (
   cd "$WORKTREE"
   npm ci --ignore-scripts
   npm version "$STABLE_VERSION" --no-git-tag-version --allow-same-version
   node scripts/sync-electron-version.cjs
-  bash structure/verify-counts.sh --fix >/dev/null 2>&1 || true
-  git add structure/ 2>/dev/null || true
-  if [ -n "$(git diff --cached --name-only)" ]; then
-    git commit -m "chore(promote): sync doc line counts" --no-verify
-  fi
-  # Second pass: the commit itself may change str_func.md line counts (self-referential)
-  bash structure/verify-counts.sh --fix >/dev/null 2>&1 || true
-  if [ -n "$(git diff --name-only)" ]; then
-    git add structure/ 2>/dev/null || true
-    git commit -m "chore(promote): sync doc line counts (pass 2)" --no-verify
-  fi
   npm run gate:all
   node scripts/require-release-evidence.mjs --accept-ci-evidence
   git add package.json package-lock.json electron/package.json electron/package-lock.json
   git commit -m "chore: promote v$STABLE_VERSION"
+  assert_promotion_checkout_ready_to_push "$WORKTREE" "$PREVIEW_SHA" "$PROMOTION_BRANCH"
   git push --set-upstream origin "$PROMOTION_BRANCH"
 )
 
@@ -94,7 +90,7 @@ if [ -z "$PR_MERGE_SHA" ]; then
 fi
 
 git fetch origin main
-MERGED_MAIN_SHA="$(git rev-parse refs/remotes/origin/main^{commit})"
+MERGED_MAIN_SHA="$(git rev-parse 'refs/remotes/origin/main^{commit}')"
 LIVE_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
 if [ -z "$LIVE_MAIN_SHA" ] || [ "$MERGED_MAIN_SHA" != "$LIVE_MAIN_SHA" ] \
   || [ "$MERGED_MAIN_SHA" != "$PR_MERGE_SHA" ]; then
