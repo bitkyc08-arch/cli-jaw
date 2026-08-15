@@ -94,7 +94,13 @@ test('SAF-002b: README documents safe install/update before normal install', () 
     const normalPos = readmeSrc.indexOf('npm install -g cli-jaw');
     assert.ok(safePos >= 0, 'README should document macOS/Linux JAW_SAFE install');
     assert.equal(readmeSrc.includes('$env:JAW_SAFE="1"; npm install -g cli-jaw'), false, 'README must not present native PowerShell as a supported install path');
-    assert.ok(readmeSrc.includes('Windows users should use the WSL install path below'), 'README should scope Windows installs to WSL');
+    // The prose moved into the canonical windows-support block (#373). The contract is
+    // unchanged: WSL is the recommended path and native PowerShell is beta, not a
+    // supported JAW_SAFE install route.
+    assert.ok(
+        readmeSrc.includes('WSL is the recommended, stable path'),
+        'README should scope Windows installs to WSL',
+    );
     assert.ok(readmeSrc.includes('skips optional tool/runtime setup'), 'README should explain safe install boundary');
     assert.ok(safePos <= normalPos, 'safe install should appear before normal install example');
 });

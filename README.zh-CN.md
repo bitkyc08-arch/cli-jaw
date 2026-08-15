@@ -26,7 +26,34 @@ JAW_SAFE=1 npm install -g cli-jaw    # skips optional tool/runtime setup
 jaw init                              # 准备好后再交互式配置
 ```
 
-Windows 用户应使用下方的 WSL 安装路径。原生 PowerShell 不是 CLI-JAW 支持的安装目标。
+
+<!-- windows-support:start
+     native-status: beta
+     preferred-path: wsl
+     node-floor: 22.4.0
+     manager-port: 24576
+     runtime-port: 3457
+     registered-service: none
+     install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
+-->
+
+**Windows 支持。** WSL 是推荐的稳定路径。原生 PowerShell 安装程序目前为 **beta**：
+
+```powershell
+irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
+```
+
+需要 Node.js 22.4+。
+
+管理面板运行在 **24576**，单个 agent 的 Web UI 运行在 **3457**。如果执行策略阻止了 `jaw.ps1`，请使用 `.cmd` 垫片，而不是放宽策略：
+
+```powershell
+jaw.cmd doctor
+```
+
+原生 Windows **没有已注册的 `jaw service` 自启动后端** —— `jaw service install` 仅支持 macOS（launchd）和 Linux（systemd）。
+
+<!-- windows-support:end -->
 
 </details>
 

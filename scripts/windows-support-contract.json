@@ -1,0 +1,17 @@
+{
+  "$comment": [
+    "Canonical Windows support facts. The four READMEs render these in their own",
+    "language, but MUST agree on every value here. native-status and preferred-path",
+    "are policy: they cannot be derived from package.json or service.ts, which is why",
+    "they need one committed source instead of four prose copies.",
+    "Enforced by tests/unit/readme-windows-parity.test.ts (#373)."
+  ],
+  "nativeStatus": "beta",
+  "preferredPath": "wsl",
+  "nodeFloor": "22.4.0",
+  "managerPort": 24576,
+  "runtimePort": 3457,
+  "registeredService": "none",
+  "installCommand": "irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex",
+  "recoveryCommand": "jaw.cmd doctor"
+}

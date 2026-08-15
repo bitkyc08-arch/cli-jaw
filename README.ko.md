@@ -26,7 +26,34 @@ JAW_SAFE=1 npm install -g cli-jaw    # skips optional tool/runtime setup
 jaw init                              # 준비되면 대화형 설정
 ```
 
-Windows 사용자는 아래 WSL 설치 경로를 사용하세요. 네이티브 PowerShell은 지원되는 CLI-JAW 설치 대상이 아닙니다.
+
+<!-- windows-support:start
+     native-status: beta
+     preferred-path: wsl
+     node-floor: 22.4.0
+     manager-port: 24576
+     runtime-port: 3457
+     registered-service: none
+     install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
+-->
+
+**Windows 지원.** WSL이 권장되는 안정 경로입니다. 네이티브 PowerShell 설치 프로그램은 **베타**로 제공됩니다:
+
+```powershell
+irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
+```
+
+Node.js 22.4+ 가 필요합니다.
+
+매니저 대시보드는 **24576**, 에이전트별 웹 UI는 **3457** 포트를 씁니다. 실행 정책 때문에 `jaw.ps1`이 막히면 정책을 완화하지 말고 `.cmd` 심을 쓰세요:
+
+```powershell
+jaw.cmd doctor
+```
+
+네이티브 Windows에는 **등록형 `jaw service` 자동 시작 백엔드가 없습니다.** `jaw service install`은 macOS(launchd)와 Linux(systemd)만 지원합니다.
+
+<!-- windows-support:end -->
 
 </details>
 

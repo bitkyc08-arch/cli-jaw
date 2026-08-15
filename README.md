@@ -26,11 +26,36 @@ JAW_SAFE=1 npm install -g cli-jaw    # skips optional tool/runtime setup
 jaw init                              # interactive setup later when you're ready
 ```
 
-Windows users should use the WSL install path below. A native PowerShell installer exists as a **beta** surface:
+
+<!-- windows-support:start
+     native-status: beta
+     preferred-path: wsl
+     node-floor: 22.4.0
+     manager-port: 24576
+     runtime-port: 3457
+     registered-service: none
+     install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
+-->
+
+**Windows support.** WSL is the recommended, stable path. A native PowerShell installer exists as a **beta** surface:
 
 ```powershell
 irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 ```
+
+Requires Node.js 22.4+.
+
+The manager dashboard runs on **24576**, the per-agent web UI on **3457**. If a restrictive execution policy blocks `jaw.ps1`, use the `.cmd` shim instead of loosening the policy:
+
+```powershell
+jaw.cmd doctor
+```
+
+
+
+Native Windows has **no registered `jaw service` autostart backend** — `jaw service install` covers macOS (launchd) and Linux (systemd) only.
+
+<!-- windows-support:end -->
 
 Either way cli-jaw now tells the two apart precisely: `jaw doctor --json` reports
 `platform` as `windows-native` or `wsl`, and each gets its own diagnostics. Native
