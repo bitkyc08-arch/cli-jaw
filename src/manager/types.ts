@@ -150,7 +150,7 @@ export type DashboardServiceState = {
     pid: number | null;
     label: string;
     unitPath: string;
-    backend: 'launchd' | 'systemd' | 'none';
+    backend: 'launchd' | 'systemd' | 'windows' | 'none';
 };
 
 export type DashboardLifecycleExpectedState = 'online' | 'offline' | 'restart-detected';

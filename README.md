@@ -33,7 +33,7 @@ jaw init                              # interactive setup later when you're read
      node-floor: 22.4.0
      manager-port: 24576
      runtime-port: 3457
-     registered-service: none
+     registered-service: windows-startup
      install-command: irm https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.ps1 | iex
 -->
 
@@ -51,7 +51,7 @@ The manager dashboard runs on **24576**, and each agent web UI on **3457**. If a
 jaw.cmd doctor
 ```
 
-Native Windows has no registered autostart backend yet. `jaw service install` works on macOS (launchd) and Linux (systemd) only.
+Native Windows autostart is registered through the windows-startup backend. `jaw service install` also covers macOS (launchd) and Linux (systemd).
 
 <!-- windows-support:end -->
 
