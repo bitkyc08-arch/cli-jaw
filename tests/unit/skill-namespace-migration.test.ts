@@ -320,3 +320,29 @@ test('SNM-019: the Electron default set matches the runtime active set', () => {
     const expected = [...CODEX_ACTIVE, ...OPENCLAW_ACTIVE].sort();
     assert.deepEqual(ids, expected);
 });
+
+test('SNM-020: a user link aimed at another IN-TREE skill is still theirs', () => {
+    // 'somewhere inside the skill tree' is not ownership. Someone can point
+    // skills/jaw-browser at their own skills/my-browser; only a link already
+    // aimed at the id we are about to write is ours to clear.
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const active = join(home, 'skills');
+        makeSkill(active, 'my-browser', 'MY OWN SKILL\n');
+        fs.symlinkSync('my-browser', join(active, 'jaw-browser'), 'junction');
+        makeSkill(active, 'browser', 'LEGACY\n');
+
+        migrateAllJawHomes(home);
+
+        assert.equal(fs.readFileSync(join(active, 'jaw-browser', 'SKILL.md'), 'utf8'), 'MY OWN SKILL\n');
+        assert.equal(fs.existsSync(join(active, 'my-browser', 'SKILL.md')), true);
+    });
+});
+
+test('SNM-021: the Electron migrator clears a stray reference link', () => {
+    // TS removes it; CJS used to skip it, so the detector reported the same
+    // home pending forever.
+    assert.doesNotMatch(CJS, /if \(stat\.isSymbolicLink\(\) \|\| !stat\.isDirectory\(\)\) continue;/,
+        'a stray reference link must be removed, not skipped');
+});
+
