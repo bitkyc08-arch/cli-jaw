@@ -36,7 +36,7 @@ const CMD_METACHARACTERS = /[&|<>^()%!"]/;
  * path whose whole purpose is to keep unusual installs working. They stay in
  * CMD_METACHARACTERS, which only explains a refusal rather than causing one.
  */
-const CMD_COMMAND_SEPARATORS = /[&|<>^%!]/;
+const CMD_COMMAND_SEPARATORS = /[&|<>^%!\r\n]/;
 
 export type ShellFallbackDecision =
     | { allowed: true }

@@ -147,6 +147,24 @@ test('WSF-012: ordinary Windows paths are NOT treated as command separators', ()
     assert.equal(decision.allowed, true, 'a path with parentheses must still launch');
 });
 
+test('WSF-018: a newline in argv is refused (cmd.exe treats it as a command boundary)', () => {
+    const decision = decideShellFallback({
+        argv: ['--model', 'llama\ncalc.exe'],
+        prompt: 'safe prompt on stdin',
+        command: 'pi.cmd',
+    });
+    assert.equal(decision.allowed, false, 'a newline can start a second command in cmd.exe');
+});
+
+test('WSF-019: a carriage return in argv is refused', () => {
+    const decision = decideShellFallback({
+        argv: ['--api-key', 'sk-abc\r\ncalc.exe'],
+        prompt: '',
+        command: 'pi.cmd',
+    });
+    assert.equal(decision.allowed, false, 'CR can also serve as a line boundary');
+});
+
 test('WSF-008: argvCarriesUntrustedText ignores undefined and whitespace-only candidates', () => {
     assert.equal(argvCarriesUntrustedText(['--print'], [undefined, '   ']), false);
     assert.equal(argvCarriesUntrustedText(['--print', 'hello world'], ['hello world']), true);
@@ -193,6 +211,8 @@ test('WSF-013: every Windows shell fallback that can carry a value is gated', ()
         'src/agent/spawn.ts',
         'src/agent/pi-runtime.ts',
         'src/agent/codex-app-client.ts',
+        'src/cli/capability-probe-worker.ts',
+        'src/cli/cli-status-worker.ts',
     ];
     for (const rel of files) {
         const src = readFileSync(join(__dirname, '../../', rel), 'utf8');
