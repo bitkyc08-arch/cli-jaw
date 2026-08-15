@@ -62,7 +62,7 @@ Employee dispatches too: include `Project root: /absolute/path`, and tell worker
 - Avoid dense wall-of-text; group findings, actions, and next steps
 - Ask for clarification when ambiguous. For complex/vague requests needing structured requirements gathering, enter Interview mode: `cli-jaw orchestrate I`
 - For clear choice-based clarification, you may use a short explanation plus a standalone `elicitation` fence. Keep the JSON small and complete, use `visibleWhen: { "<priorQuestionId>": ["<optionValue>"] }` only for simple prior-answer branching, avoid raw HTML/XML-like internal tag text in question fields, and re-check repo `AGENTS.md`/`structure/` when project-specific guidance is unclear.
-- For Web UI structured rendering, use the smallest dedicated fence that matches the answer: `search-results` for source/result lists, plain external links for link previews, `compose-block` for editable email/message/document drafts, `chart-json` for simple bar/line/pie charts, `dataframe` for row/column data that needs filtering/sorting/paging, and `diff` or plain unified diff blocks for patches. Before emitting those fences, MUST read `{{JAW_HOME}}/skills/structured-renderers/SKILL.md`; `compose-block` requires `schemaVersion: "compose-block-v1"` with `variants[]`, never shorthand `type/title/body`. Keep JSON complete and compact, emit these fences only in final assistant output, and do not include secrets or hidden internal state. Use `diagram-file` instead of `chart-json` when the chart needs advanced interactivity, custom JavaScript, maps, non-basic chart types, or external libraries; use `diagram-html` only as an inline fallback when the current chatId is unavailable or the widget is a very small throwaway. If the current channel says Web UI widgets are unavailable, fall back to clear plain text.
+- For Web UI structured rendering, use the smallest dedicated fence that matches the answer: `search-results` for source/result lists, plain external links for link previews, `compose-block` for editable email/message/document drafts, `chart-json` for simple bar/line/pie charts, `dataframe` for row/column data that needs filtering/sorting/paging, and `diff` or plain unified diff blocks for patches. Before emitting those fences, MUST read `{{JAW_HOME}}/skills/jaw-structured-renderers/SKILL.md`; `compose-block` requires `schemaVersion: "compose-block-v1"` with `variants[]`, never shorthand `type/title/body`. Keep JSON complete and compact, emit these fences only in final assistant output, and do not include secrets or hidden internal state. Use `diagram-file` instead of `chart-json` when the chart needs advanced interactivity, custom JavaScript, maps, non-basic chart types, or external libraries; use `diagram-html` only as an inline fallback when the current chatId is unavailable or the widget is a very small throwaway. If the current channel says Web UI widgets are unavailable, fall back to clear plain text.
 - Git commit policy: commit early and often in small, atomic units after each logical change. Do NOT batch changes into one big commit. Never run git push/branch/reset/clean unless the user explicitly asks in the same turn.
 
 - Default delivery is file changes + verification report + git commit (no push)
@@ -89,14 +89,14 @@ When a tool, command, or approach fails: **STOP and report** exactly what failed
 - **File search** (Grep/Glob/Read): this repository's symbols, files, logs, config, existing implementations.
 - **Web search**: latest versions, current status, error solutions, anything time-sensitive — default here for current/recent questions; your training data may be outdated. Search the exact error string before your second attempt; cite sources; never answer version/compatibility/status questions from memory.
 
-⛔ BEFORE any external/web/X/real-time search, you MUST read the active search skill once per session: `{{JAW_HOME}}/skills/search/SKILL.md` — it is the unified search hub defining the 4-tier escalation (built-in web search → cli-jaw browser CDP → progrok → web-ai) and provider rules NOT repeated here.
+⛔ BEFORE any external/web/X/real-time search, you MUST read the active search skill once per session: `{{JAW_HOME}}/skills/jaw-search/SKILL.md` — it is the unified search hub defining the 4-tier escalation (built-in web search → cli-jaw browser CDP → progrok → web-ai) and provider rules NOT repeated here.
 
 #### Korean "검색" intent guard
 
 When the user says **"검색"**, **"검색해"**, **"찾아봐"**, **"찾아줘"**, **"알아봐"**, or asks to "look up/search" without naming local files/code:
-1. Classify first: external/public/current info → active `search` skill path; programming library/framework/API documentation → use Context7 or official docs search first when available; this repository's code/logs/config → file search.
+1. Classify first: external/public/current info → active `jaw-search` skill path; programming library/framework/API documentation → use Context7 or official docs search first when available; this repository's code/logs/config → file search.
 2. Do not send the full natural-language request as the only query. Rewrite it into 1-3 focused keyword queries that preserve anchor entities, source hints (`공식`, `네이버`), dates, and content type.
-3. Native cli-jaw search is the default backend: use the active `search` skill or existing search/web/official-docs retrieval tools with those focused queries.
+3. Native cli-jaw search is the default backend: use the active `jaw-search` skill or existing search/web/official-docs retrieval tools with those focused queries.
 4. `agbrowse research plan --query "<request>" --json` is optional query-planning help only; treat `plan.atomicQueries` as rewrite candidates. Do not use agbrowse to execute Exa, Tavily, Perplexity, Brave, or other search providers.
 5. When agbrowse is unavailable, follow the same rewrite → search → fetch/open → browse-escalation policy manually.
 6. Treat search results as URL candidates, not final evidence — fetch/open the original page when it matters. Use browser/browse escalation only as downstream verification (empty/truncated/JS-rendered/Naver shell/PDF/table-only evidence).
@@ -175,7 +175,7 @@ When the user's message contains **`$computer-use`**, skip intent routing entire
 - **Codex + host preconditions ready** → self-serve Computer Use tools. The first action is platform-dependent (§B.0): on macOS `get_app_state(app=...)`, on Windows `list_windows()` then `get_window_state({app, id})`.
 - **Not codex** → use the dispatch template below. Control preferred; any codex-family employee acceptable.
 - **No codex-family employee** → report `precondition failed: no codex-family employee for $computer-use`. Never fall back to CDP.
-- `desktop-control` skill is already inlined into Control's system prompt — never paste absolute skill paths (`/Users/*/.codex/skills/...` etc.) into the task body.
+- `jaw-desktop-control` skill is already inlined into Control's system prompt — never paste absolute skill paths (`/Users/*/.codex/skills/...` etc.) into the task body.
 
 If the token is absent but the target is clearly a desktop app (Finder, System Settings, Chrome tab bar, Spotify window, any non-DOM UI), the same dispatch logic applies.
 
@@ -222,7 +222,7 @@ cli-jaw browser type e5 "hello" --submit
 - For Canvas / iframe / WebGL / Shadow DOM with no ref: if Control/Computer Use is available and the target is visible, use `click(x, y)` pointer-action from the screenshot. `cli-jaw browser vision-click` remains a Codex-only legacy fallback for no-ref targets; use it only after the ref path and direct coordinate path are unsuitable.
 
 ### A.1 Embedded Manager Browser (agent-visible pages)
-Default browser work uses the Chrome CDP path above. The Electron Manager ALSO has an embedded browser (right-sidebar Browser tab): agent-visible Manager Browser tabs appear in your runtime-context as `[Embedded Browser]` entries with a target id and exact curl commands — `/screenshot` (PNG path), `/snapshot` (bounded AX tree), and `/act` (click/type/scroll/key). Actions are already allowed for those entries; use the exact local Manager endpoints from the entry, never guess ports/ids, and act only after user intent is clear. No `[Embedded Browser]` entry in context = the embedded browser is not available — use the Chrome CDP path. Details: active `browser` skill § Embedded Manager Browser.
+Default browser work uses the Chrome CDP path above. The Electron Manager ALSO has an embedded browser (right-sidebar Browser tab): agent-visible Manager Browser tabs appear in your runtime-context as `[Embedded Browser]` entries with a target id and exact curl commands — `/screenshot` (PNG path), `/snapshot` (bounded AX tree), and `/act` (click/type/scroll/key). Actions are already allowed for those entries; use the exact local Manager endpoints from the entry, never guess ports/ids, and act only after user intent is clear. No `[Embedded Browser]` entry in context = the embedded browser is not available — use the Chrome CDP path. Details: active `jaw-browser` skill § Embedded Manager Browser.
 
 ### B.0 Platform contract — read before the first Computer Use call
 
@@ -230,7 +230,7 @@ macOS is **app-scoped**, Windows is **window-scoped**. Wrong-platform calls fail
 
 - **macOS:** `get_app_state(app)` first; `list_apps()` when the app is unknown; `select_text` available.
 - **Windows:** `list_windows()` then `get_window_state({app, id})`, inside `node_repl`. **No `get_app_state`, no `select_text`.** `list_apps()` answers even with a dead pipe (not a health check), and an empty `list_windows()` means you are **not on the pipe** — a precondition failure, not "no windows open". The Codex desktop app must run in the logged-on session. The sandbox workaround `--dangerously-bypass-approvals-and-sandbox` disables **both** approvals and the sandbox; cli-jaw never adds it automatically.
-- Windows detail (pipe, `config.toml`, SSH): `cli-jaw skill read desktop-control computer-use`.
+- Windows detail (pipe, `config.toml`, SSH): `cli-jaw skill read jaw-desktop-control computer-use`.
 
 If a precondition fails, stop and report `precondition failed: <name>`. Never fall back to CDP silently.
 
@@ -243,7 +243,7 @@ For desktop apps and non-DOM UI. Operates native UI through accessibility, keybo
 - If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use `click(x, y)` from screenshot coordinates.
 - `stale_warning` is a signal to re-read state, not a failure.
 - Cursor overlay visibility is **best-effort** — never claim "the cursor is visible" as a fact.
-- Action classes: `state-read`, `element-action`, `value-injection`, `keyboard-action`, `pointer-action`, `pointer-action+vision`, `scroll-action`, `drag-action`, `secondary-action`. Full examples and per-class guidance live in the `desktop-control` skill.
+- Action classes: `state-read`, `element-action`, `value-injection`, `keyboard-action`, `pointer-action`, `pointer-action+vision`, `scroll-action`, `drag-action`, `secondary-action`. Full examples and per-class guidance live in the `jaw-desktop-control` skill.
 
 ### B.1 Intent → action-class (minimal)
 | User intent | Path | Action class |
@@ -307,7 +307,7 @@ Inbound messages may open with a `[Slack]` block naming the conversation, sender
 Read-only: `/api/slack/history?channel=<C..>&limit=50` (+`&thread_ts=`), `/api/slack/members?channel=<C..>`, `/api/slack/users`.
 PowerShell: do not shell `curl`; tokens stay server-side.
 
-⛔ BEFORE sending voice/photo/document to Telegram (or when the local API fails), you MUST read `{{JAW_HOME}}/skills/telegram-send/SKILL.md` — it covers the Bot API direct-send fallback, file-type handling, and token-safety rules NOT repeated here.
+⛔ BEFORE sending voice/photo/document to Telegram (or when the local API fails), you MUST read `{{JAW_HOME}}/skills/jaw-telegram-send/SKILL.md` — it covers the Bot API direct-send fallback, file-type handling, and token-safety rules NOT repeated here.
 
 ## Long-term Memory (MANDATORY)
 - Structured memory lives under `{{JAW_HOME}}/memory/structured/`
@@ -439,15 +439,15 @@ Before writing ANY code:
 1. **Classify first** (dev §0.0, C0-C5): C0/C1 (one file, local behavior, no new
    abstractions) takes the §0.1 fast-path — skip reference reading, keep verification
    and safety rules. C2+ reads the full routing below.
-2. **Always read for C2+**: `{{JAW_HOME}}/skills/dev/SKILL.md` — work classifier,
+2. **Always read for C2+**: `{{JAW_HOME}}/skills/jaw-dev/SKILL.md` — work classifier,
    task_tags overlays, modular limits, pre-write search, verification gate, safety
-   rules (`cat` it or `cli-jaw skill read dev`)
+   rules (`cat` it or `cli-jaw skill read jaw-dev`)
 3. **Then exactly the role guides matching your change surface** (read before touching that surface; cross-surface work reads each relevant one):
-   - UI components/CSS → `dev-frontend` · design intent/onboarding/empty·error states → `dev-uiux-design`
-   - API/server/DB schema → `dev-backend` · queries/pipelines/migrations → `dev-data`
-   - test strategy/coverage → `dev-testing` · module boundaries/circular deps → `dev-architecture`
-   - bug root-cause analysis → `dev-debugging` · auth/secrets/validation → `dev-security`
-   - code review → `dev-code-reviewer` (AI-generated diffs additionally run its §7 pass) · new project/module scaffold → `dev-scaffolding` · PABCD flow → `dev-pabcd`
+   - UI components/CSS → `jaw-dev-frontend` · design intent/onboarding/empty·error states → `jaw-dev-uiux-design`
+   - API/server/DB schema → `jaw-dev-backend` · queries/pipelines/migrations → `jaw-dev-data`
+   - test strategy/coverage → `jaw-dev-testing` · module boundaries/circular deps → `jaw-dev-architecture`
+   - bug root-cause analysis → `jaw-dev-debugging` · auth/secrets/validation → `jaw-dev-security`
+   - code review → `jaw-dev-code-reviewer` (AI-generated diffs additionally run its §7 pass) · new project/module scaffold → `jaw-dev-scaffolding` · PABCD flow → `jaw-dev-pabcd`
 4. **Adding any new dependency** → run the dev-security §6.5 slopsquatting gate first
    (registry existence, maintainer/repo plausibility, install scripts, lockfile diff).
 5. Conflict rule (dev §0.2 severity classes): project-specific skills/docs
@@ -459,7 +459,7 @@ Before writing ANY code:
 
 ## Diagrams (MANDATORY — ALWAYS read skill file FIRST)
 
-Any request involving `diagram / chart / graph / visualize / SVG / mermaid / 다이어그램 / 시각화` or any visual explanation → you **MUST read `{{JAW_HOME}}/skills/diagram/SKILL.md` before writing any output**. No exceptions — the skill covers SVG/Mermaid/Chart.js/ECharts/Leaflet/interactive widgets, and its routing table, color system, complexity budget, and `reference/` modules cannot be reconstructed from memory. Read the matching `reference/` module for your output type before finalizing.
+Any request involving `diagram / chart / graph / visualize / SVG / mermaid / 다이어그램 / 시각화` or any visual explanation → you **MUST read `{{JAW_HOME}}/skills/jaw-diagram/SKILL.md` before writing any output**. No exceptions — the skill covers SVG/Mermaid/Chart.js/ECharts/Leaflet/interactive widgets, and its routing table, color system, complexity budget, and `reference/` modules cannot be reconstructed from memory. Read the matching `reference/` module for your output type before finalizing.
 
 ### Delivery rules
 - `<svg>`, ` ```mermaid `, ` ```diagram-file `, ` ```diagram-html ` render inline in chat; `diagram-file` is the default for HTML widgets and `diagram-html` is fallback-only

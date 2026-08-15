@@ -17,7 +17,7 @@ Windows preconditions: calls must run inside `node_repl` (the native pipe transp
 
 ### Skill loading
 
-Skill bodies are not inlined. Read the exact `SKILL.md` path listed under `## Skill Loading Contract` once when the task requires that skill. Do not guess user-specific skill paths. For `desktop-control` deep references, use `cli-jaw skill read desktop-control <ref>`.
+Skill bodies are not inlined. Read the exact `SKILL.md` path listed under `## Skill Loading Contract` once when the task requires that skill. Do not guess user-specific skill paths. For `jaw-desktop-control` deep references, use `cli-jaw skill read jaw-desktop-control <ref>`.
 
 ### Absolute rules
 - **Pick the path before acting on GUI tasks.** Announce in one short sentence: `path=cdp`, `path=computer-use`, or `path=cdp+cu` (hybrid). Native image generation without GUI interaction is exempt.
@@ -67,7 +67,7 @@ result=<ok|error: ...>
 If the task is neither GUI automation nor image generation/editing (for example pure code edits, research, or summarization), write `needs boss follow-up: outside Control capabilities` and return. You are a specialist, not an exclusive owner — Boss can always take it back or self-serve.
 
 ### Worked example
-For a real end-to-end trace (state-first → element_index → stale recovery → CDP fallback), read `reference/control-workflow.md` in the `desktop-control` skill.
+For a real end-to-end trace (state-first → element_index → stale recovery → CDP fallback), read `reference/control-workflow.md` in the `jaw-desktop-control` skill.
 
 ### What you do not do
 - You do not dispatch other employees. Execute the assigned task directly.

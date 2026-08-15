@@ -78,7 +78,7 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 - reference skills는 `{{JAW_HOME}}/skills_ref/registry.json`
 - 둘 중 하나만 있어도 `Skills System` 섹션이 생성된다
 - `skills_ref`는 public/reference skill surface다. private local runtime skills such as `k-writing` (Korean promotional/content writing; retired label: `k-thread-gen`) and `lecture-stt` can be deployed under active `{{JAW_HOME}}/skills/` without being registered in `skills_ref/registry.json`. Korean promotional/content writing routes through active `k-writing`, not free-form prose or the retired label.
-- The active `search` skill is the default search backend. Korean/source-sensitive search guidance rewrites the request into focused queries, treats search results as URL candidates, verifies original pages with fetch/open, and uses `agbrowse research plan` only as optional query-planning help.
+- The active `jaw-search` skill is the default search backend. Korean/source-sensitive search guidance rewrites the request into focused queries, treats search results as URL candidates, verifies original pages with fetch/open, and uses `agbrowse research plan` only as optional query-planning help.
 - dev skill은 TS-first strict-compatible 기본값과 devlog convention discovery/source-of-truth proposal 규칙을 포함한다.
 - dev skill은 기존 `structure/`, `devlog/`, `docs/`, `plans/` 같은 SOT/log가 있으면 broad change 전에 먼저 읽도록 지시한다.
 - dev-scaffolding은 기존 repo convention 우선, `structure/`/`devlog/` 생성은 승인 기반으로 다룬다. Implementation-unit devlog 방식은 phase별 문서 분리와 diff-level plan 파일 저장을 기본으로 설명한다.
@@ -102,12 +102,12 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 
 `getEmployeePromptV2()`는 boss prompt와 별개로 직원용 추가 레이어를 쌓는다.
 
-- static employee system patch + declared skill inline injection (예: `Control` → `control-system.md` + `desktop-control` skill)
+- static employee system patch + declared skill inline injection (예: `Control` → `control-system.md` + `jaw-desktop-control` skill)
 - 공통 `dev/SKILL.md`
-- `dev-scaffolding`
-- role별 skill (`dev-frontend`, `dev-backend`, `dev-data`, `documentation`)
-- phase 2일 때 `dev-code-reviewer`
-- phase 4일 때 `dev-testing`
+- `jaw-dev-scaffolding`
+- role별 skill (`jaw-dev-frontend`, `jaw-dev-backend`, `jaw-dev-data`, `documentation`)
+- phase 2일 때 `jaw-dev-code-reviewer`
+- phase 4일 때 `jaw-dev-testing`
 - `worker-context.md`에서 phase별 worker context 추출 (Phase 1~4)
 - 실행 규칙 + delegation 규칙: `cli-jaw dispatch`와 subtask JSON은 금지지만, CLI 자체 sub-agent(Task/Agent tool)는 내부 병렬 작업용으로 명시적으로 허용
 - PABCD A/B/C 중 Approved Plan이 주입될 때 `Project root`와 path guard가 함께 들어가므로, 직원은 `Workspace Context`와 Approved Plan의 root를 기준으로 파일을 읽고 검증한다.
