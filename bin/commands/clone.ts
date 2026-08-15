@@ -10,6 +10,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
+import { normalizeSkillNamespace } from '../../lib/mcp/skills-migration.js';
 import { resolveHomePath } from '../../src/core/path-expand.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 
@@ -111,6 +112,19 @@ if (fs.existsSync(skillsRefSrc)) {
     } else {
         copyDirRecursive(skillsRefSrc, path.join(target, 'skills_ref'));
     }
+}
+
+// ── 5b. Normalize the clone onto jaw-* ids ──
+// The source may be a pre-rename home, and steps 4/5 copy it verbatim. Without
+// this the clone starts life holding legacy directories that nothing else will
+// ever visit. A symlinked skills_ref is skipped inside the migration itself:
+// that tree belongs to the source home and is migrated there.
+try {
+    const result = normalizeSkillNamespace(path.join(target, 'skills'), target);
+    const moved = result.renamed.length + result.backedUp.length;
+    if (moved > 0) console.log(`  ↻ migrated ${moved} legacy skill id(s) to jaw-*`);
+} catch (e) {
+    console.warn(`  ⚠ skill namespace migration skipped: ${(e as Error).message}`);
 }
 
 // ── 6. Optional memory ──

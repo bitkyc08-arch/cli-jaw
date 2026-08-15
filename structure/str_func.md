@@ -457,7 +457,7 @@ cli-jaw/
 │       ├── employee.ts       ← 직원 관리 (list/reset, REST API 호출, JSON/table 출력, 82L)
 │       ├── worker.ts         ← 직원 progress status/watch CLI + explicit raw `read <runId>` output reader + employee name/id/runId resolver + safe-summary printer (399L)
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션) (104L)
-│       ├── clone.ts          ← 인스턴스 복제 (--from, --with-memory, regenerateB) (189L)
+│       ├── clone.ts          ← 인스턴스 복제 (--from, --with-memory, regenerateB) (203L)
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init, --chat 통합검색) (199L)
 │       ├── launchd.ts        ← macOS LaunchAgent 관리 (243L)
 │       ├── service.ts        ← 크로스 플랫폼 서비스 관리 (systemd/launchd/docker, 289L)

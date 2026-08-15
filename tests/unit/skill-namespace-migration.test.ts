@@ -15,6 +15,7 @@ import {
     discoverJawHomes,
     normalizeSkillNamespace,
 } from '../../lib/mcp/skills-migration.ts';
+import { CODEX_ACTIVE, OPENCLAW_ACTIVE } from '../../lib/mcp/skills-utils.ts';
 
 function makeSkill(dir: string, id: string, body = ''): void {
     fs.mkdirSync(join(dir, id), { recursive: true });
@@ -138,4 +139,184 @@ test('SNM-007: a dangling compat link never eats the legacy directory', () => {
         assert.equal(st.isSymbolicLink(), false);
         assert.equal(fs.readFileSync(join(active, 'jaw-browser', 'SKILL.md'), 'utf8'), 'REAL CONTENT\n');
     });
+});
+
+test('SNM-008: a canonical link pointing back at the legacy dir still converges', () => {
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const active = join(home, 'skills');
+        makeSkill(active, 'browser', 'REAL\n');
+        fs.symlinkSync('browser', join(active, 'jaw-browser'), 'junction');
+
+        migrateAllJawHomes(home);
+
+        assert.equal(fs.readFileSync(join(active, 'jaw-browser', 'SKILL.md'), 'utf8'), 'REAL\n',
+            'the skill must still be usable, not just preserved somewhere');
+        assert.equal(hasPendingLegacySkillDirs(home), false);
+    });
+});
+
+test('SNM-009: a prefix-matching directory that is not a home is left alone', () => {
+    // A name is not evidence. `~/.cli-jaw-notes` could be the user's own folder,
+    // and the sweep must not write into it.
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const notAHome = join(root, '.cli-jaw-notes');
+        fs.mkdirSync(notAHome, { recursive: true });
+        fs.writeFileSync(join(notAHome, 'my.txt'), 'mine\n');
+
+        const found = discoverJawHomes(home).map(h => h.split('/').pop());
+        assert.deepEqual(found, ['.cli-jaw']);
+        assert.equal(fs.readFileSync(join(notAHome, 'my.txt'), 'utf8'), 'mine\n');
+    });
+});
+
+test('SNM-010: a symlinked prefix match is never followed', () => {
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const elsewhere = join(root, 'elsewhere');
+        fs.mkdirSync(join(elsewhere, 'skills'), { recursive: true });
+        fs.symlinkSync(elsewhere, join(root, '.cli-jaw-linked'), 'junction');
+
+        assert.deepEqual(discoverJawHomes(home).map(h => h.split('/').pop()), ['.cli-jaw'],
+            'a symlink must not decide what the sweep may modify');
+    });
+});
+
+
+test('SNM-011: a borrowed (symlinked) reference tree is left to its owner', () => {
+    // `jaw clone --link-ref` points a clone at the source home's skills_ref.
+    // Migrating through that link writes into a home this sweep does not own
+    // and drops backups under the wrong home.
+    withBox(root => {
+        const owner = makeHome(root, '.cli-jaw', { ref: ['browser'] });
+        const clone = join(root, '.cli-jaw-clone');
+        fs.mkdirSync(join(clone, 'skills'), { recursive: true });
+        fs.symlinkSync(join(owner, 'skills_ref'), join(clone, 'skills_ref'), 'junction');
+
+        migrateAllJawHomes(clone);
+
+        assert.equal(fs.existsSync(join(owner, 'skills_ref', 'browser')), true,
+            "the owner's tree must not be migrated through a borrowed link");
+        assert.equal(fs.existsSync(join(owner, 'skills_ref', 'jaw-browser')), false);
+
+        // and the clone must not keep reporting work it will never do
+        assert.equal(hasPendingLegacySkillDirs(clone), false,
+            'a borrowed tree must not leave the clone permanently pending');
+
+        // and the owner still migrates it when ITS home is swept
+        migrateAllJawHomes(owner);
+        assert.equal(fs.existsSync(join(owner, 'skills_ref', 'jaw-browser')), true);
+    });
+});
+
+test('SNM-012: a user-owned canonical symlink is never clobbered', () => {
+    // Someone may point skills/jaw-browser at their own checkout. Clearing it
+    // to make room for a rename would destroy their setup.
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const active = join(home, 'skills');
+        const mine = join(root, 'my-checkout');
+        fs.mkdirSync(mine, { recursive: true });
+        fs.writeFileSync(join(mine, 'SKILL.md'), 'MY CHECKOUT\n');
+        fs.symlinkSync(mine, join(active, 'jaw-browser'), 'junction');
+        makeSkill(active, 'browser', 'LEGACY\n');
+
+        migrateAllJawHomes(home);
+
+        assert.equal(fs.readFileSync(join(active, 'jaw-browser', 'SKILL.md'), 'utf8'), 'MY CHECKOUT\n',
+            'a link pointing outside the tree belongs to the user');
+        // the legacy copy is preserved, never silently dropped
+        let kept = 0;
+        const walk = (d: string) => {
+            for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+                const p = join(d, e.name);
+                if (e.isDirectory()) walk(p);
+                else if (e.isFile() && fs.readFileSync(p, 'utf8').includes('LEGACY')) kept++;
+            }
+        };
+        walk(join(home, 'backups'));
+        assert.equal(kept, 1);
+    });
+});
+
+test('SNM-013: a stale compat link is reported as pending, not silently skipped', () => {
+    // The detector has to agree with what the migrators repair, or doctor
+    // reports clean while skills/browser points at nothing.
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const active = join(home, 'skills');
+        makeSkill(active, 'jaw-browser');
+        fs.symlinkSync('nowhere', join(active, 'browser'), 'junction');
+
+        assert.equal(hasPendingLegacySkillDirs(home), true, 'a dangling compat link is work');
+        migrateAllJawHomes(home);
+        assert.equal(hasPendingLegacySkillDirs(home), false);
+        assert.equal(fs.readFileSync(join(active, 'browser', 'SKILL.md'), 'utf8').length > 0, true);
+    });
+});
+
+test('SNM-014: a correct compat link is stable across passes', () => {
+    // pointsAt resolves the target instead of string-comparing it. A literal
+    // compare breaks on Windows, where a junction reads back absolute, and the
+    // link would be unlinked and recreated on every single pass.
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        makeSkill(join(home, 'skills'), 'browser', 'X\n');
+        migrateAllJawHomes(home);
+
+        const link = join(home, 'skills', 'browser');
+        const before = fs.lstatSync(link);
+        assert.equal(before.isSymbolicLink(), true);
+        assert.equal(migrateAllJawHomes(home).length, 0, 'a settled home needs no work');
+        assert.equal(fs.lstatSync(link).isSymbolicLink(), true, 'the link must survive untouched');
+    });
+});
+
+// The desktop app ships its own CommonJS copy of this migration. It cannot be
+// imported (it runs as a process and needs packaging assets absent from a
+// source checkout), and it has drifted before — its default set was 14 of 17
+// ids. These pin the invariants that actually bit us, the same way
+// desktop-control-skill-contract.test.ts pins the shipped skill.
+const CJS = fs.readFileSync(join(
+    import.meta.dirname, '..', '..',
+    'electron/sidecar/jawcode/packages/jwc/scripts/bootstrap-cli-jaw-home.cjs',
+), 'utf8');
+
+test('SNM-015: the Electron migrator does the reference tree, and does it first', () => {
+    assert.match(CJS, /function migrateRefNamespace\(\)/,
+        'a legacy reference tree re-creates legacy active dirs forever');
+    const call = CJS.indexOf('migrateRefNamespace();');
+    const activeLoop = CJS.indexOf('for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {', call);
+    assert.ok(call > 0 && activeLoop > call,
+        'the reference tree must be migrated before the active tree');
+});
+
+test('SNM-016: the Electron migrator refuses a borrowed reference tree', () => {
+    const body = CJS.slice(CJS.indexOf('function migrateRefNamespace()'));
+    assert.match(body.slice(0, 700), /isSymbolicLink\(\)\) return;/,
+        'migrating through a symlinked skills_ref writes into another home');
+});
+
+test('SNM-017: the Electron migrator renames rather than always backing up', () => {
+    assert.match(CJS, /legacy skill migrated: \$\{legacyId\} -> \$\{canonicalId\}/,
+        'always backing up empties the active tree and strands in-place edits');
+    assert.match(CJS, /function canonicalIsBlocked\(/);
+    assert.match(CJS, /function isOwnedCompatLink\(/,
+        'a link pointing outside the tree belongs to the user');
+});
+
+test('SNM-018: the Electron migrator resolves link targets instead of string-comparing', () => {
+    assert.match(CJS, /function linkPointsAt\(/);
+    assert.doesNotMatch(CJS, /current === canonicalId/,
+        'a Windows junction reads back absolute, so a literal compare churns every pass');
+});
+
+test('SNM-019: the Electron default set matches the runtime active set', () => {
+    // It shipped with 14 of 17, so the desktop app activated 27 skills where
+    // the CLI activated 30.
+    const base = CJS.slice(CJS.indexOf('const BASE_AUTO_ACTIVATE'), CJS.indexOf(']);', CJS.indexOf('const BASE_AUTO_ACTIVATE')));
+    const ids = [...base.matchAll(/"(jaw-[a-z-]+)"/g)].map(m => m[1]).sort();
+    const expected = [...CODEX_ACTIVE, ...OPENCLAW_ACTIVE].sort();
+    assert.deepEqual(ids, expected);
 });

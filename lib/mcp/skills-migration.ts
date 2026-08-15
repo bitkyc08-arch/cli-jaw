@@ -23,7 +23,7 @@
  */
 import fs from 'fs';
 import os from 'os';
-import { basename, join } from 'path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'path';
 import { LEGACY_SKILL_ALIASES } from './skills-aliases.js';
 import { createBackupContext, movePathToBackup } from './skills-symlinks.js';
 
@@ -44,11 +44,40 @@ function emptyResult(): LegacyMigrationResult {
     return { backedUp: [], unlinked: [], linked: [], renamed: [], warnings: [] };
 }
 
-/** True when `p` is a symlink already pointing at `expectedTarget`. */
+/**
+ * True when `p` is a symlink that resolves to its sibling `expectedTarget`.
+ *
+ * The stored target cannot be compared literally. Windows junctions are
+ * normalized to an absolute path, so a link created with the relative id reads
+ * back absolute — a literal compare would call every correct link stale, and
+ * each pass would unlink and recreate it forever.
+ */
 function pointsAt(p: string, expectedTarget: string): boolean {
     try {
         if (!fs.lstatSync(p).isSymbolicLink()) return false;
-        return fs.readlinkSync(p) === expectedTarget;
+        const raw = fs.readlinkSync(p);
+        const resolved = isAbsolute(raw) ? resolve(raw) : resolve(dirname(p), raw);
+        return resolved === resolve(dirname(p), expectedTarget);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * True when the symlink at `p` is one of OURS: a compat link that resolves
+ * somewhere inside `ownerDir`.
+ *
+ * A user may point `skills/jaw-browser` at a checkout of their own. Clearing
+ * that to make room for a rename would destroy their setup, so only links that
+ * stay inside the skill tree are ever removed.
+ */
+function isOwnedCompatLink(p: string, ownerDir: string): boolean {
+    try {
+        if (!fs.lstatSync(p).isSymbolicLink()) return false;
+        const raw = fs.readlinkSync(p);
+        const resolved = isAbsolute(raw) ? resolve(raw) : resolve(dirname(p), raw);
+        const root = resolve(ownerDir);
+        return resolved === root || resolved.startsWith(root + sep);
     } catch {
         return false;
     }
@@ -66,14 +95,25 @@ function pathIsOccupied(p: string): boolean {
     try { fs.lstatSync(p); return true; } catch { return false; }
 }
 
-/** Move `legacyPath` onto `canonicalPath`, clearing a stale compat link first. */
-function renameOntoCanonical(legacyPath: string, canonicalPath: string): void {
-    // Only a symlink may be cleared here: a real directory means a genuine
-    // collision, which the caller resolves by backing the legacy copy up.
+/** Move `legacyPath` onto `canonicalPath`, clearing OUR stale link first. */
+function renameOntoCanonical(legacyPath: string, canonicalPath: string, ownerDir: string): void {
+    // Only a link we own may be cleared: a real directory is a genuine
+    // collision (the caller backs the legacy copy up), and a link pointing
+    // outside the tree belongs to the user.
     try {
-        if (fs.lstatSync(canonicalPath).isSymbolicLink()) fs.unlinkSync(canonicalPath);
+        if (isOwnedCompatLink(canonicalPath, ownerDir)) fs.unlinkSync(canonicalPath);
     } catch { /* nothing there */ }
     fs.renameSync(legacyPath, canonicalPath);
+}
+
+/** True when the canonical path must be treated as an immovable collision. */
+function canonicalIsBlocked(canonicalPath: string, ownerDir: string): boolean {
+    if (!pathIsOccupied(canonicalPath)) return false;
+    try {
+        if (!fs.lstatSync(canonicalPath).isSymbolicLink()) return true;
+    } catch { return false; }
+    // A symlink is only ours to clear when it resolves inside the skill tree.
+    return !isOwnedCompatLink(canonicalPath, ownerDir);
 }
 
 /**
@@ -117,12 +157,12 @@ export function migrateLegacySkillDirs(activeDir: string, jawHome: string): Lega
         try {
             const canonicalPath = join(activeDir, canonicalId);
             // lstat, not existsSync: a dangling compat link occupies the path.
-            if (pathIsOccupied(canonicalPath) && !fs.lstatSync(canonicalPath).isSymbolicLink()) {
+            if (canonicalIsBlocked(canonicalPath, activeDir)) {
                 backup ??= createBackupContext(jawHome);
                 const moved = movePathToBackup(legacyPath, backup);
                 result.backedUp.push(`${legacyId} -> ${moved}`);
             } else {
-                renameOntoCanonical(legacyPath, canonicalPath);
+                renameOntoCanonical(legacyPath, canonicalPath, activeDir);
                 result.renamed.push(`${legacyId} -> ${canonicalId}`);
             }
         } catch (e) {
@@ -190,6 +230,14 @@ export function migrateLegacyRefDirs(refDir: string, jawHome: string): LegacyMig
     const result = emptyResult();
     if (!fs.existsSync(refDir)) return result;
 
+    // A symlinked reference tree is BORROWED — `jaw clone --link-ref` points a
+    // clone at the source home's tree. Migrating through the link would write
+    // into a home this call does not own, and drop its backups under the wrong
+    // home. The owner migrates it when that home is swept.
+    try {
+        if (fs.lstatSync(refDir).isSymbolicLink()) return result;
+    } catch { return result; }
+
     let backup: { root: string } | null = null;
 
     for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {
@@ -212,12 +260,12 @@ export function migrateLegacyRefDirs(refDir: string, jawHome: string): LegacyMig
         if (!stat.isDirectory()) continue;
 
         try {
-            if (pathIsOccupied(canonicalPath) && !fs.lstatSync(canonicalPath).isSymbolicLink()) {
+            if (canonicalIsBlocked(canonicalPath, refDir)) {
                 backup ??= createBackupContext(jawHome);
                 const moved = movePathToBackup(legacyPath, backup);
                 result.backedUp.push(`skills_ref/${legacyId} -> ${moved}`);
             } else {
-                renameOntoCanonical(legacyPath, canonicalPath);
+                renameOntoCanonical(legacyPath, canonicalPath, refDir);
                 result.renamed.push(`skills_ref/${legacyId} -> ${canonicalId}`);
             }
         } catch (e) {
@@ -334,15 +382,35 @@ export function migrateAllJawHomes(baseHome?: string): HomeMigrationReport[] {
     return reports;
 }
 
-/** True when any home still has a real legacy directory to migrate. */
+/**
+ * True when any home still has migration work: a real legacy directory, or a
+ * legacy compat link that no longer resolves to its canonical sibling.
+ *
+ * This must agree with what the migrators actually repair. If it only looked
+ * for real directories, `doctor` would report clean while a stale link left
+ * `skills/browser` pointing at nothing.
+ */
 export function hasPendingLegacySkillDirs(baseHome?: string): boolean {
     const base = baseHome ?? defaultBaseHome();
     for (const home of discoverJawHomes(base)) {
         for (const sub of ['skills', 'skills_ref']) {
-            for (const legacyId of LEGACY_SKILL_ALIASES.keys()) {
-                try {
-                    if (fs.lstatSync(join(home, sub, legacyId)).isDirectory()) return true;
-                } catch { /* absent */ }
+            const subDir = join(home, sub);
+            // A borrowed (symlinked) reference tree is the owner's to migrate.
+            // Reporting it here would make `doctor --fix` announce work it
+            // deliberately will not do, every single run.
+            try { if (fs.lstatSync(subDir).isSymbolicLink()) continue; } catch { continue; }
+            const isRef = sub === 'skills_ref';
+            for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {
+                const p = join(subDir, legacyId);
+                let stat: fs.Stats;
+                try { stat = fs.lstatSync(p); } catch { continue; }
+                if (stat.isSymbolicLink()) {
+                    // The reference tree never carries compat links, and an
+                    // active link is only correct while it resolves.
+                    if (isRef || !pointsAt(p, canonicalId) || !fs.existsSync(p)) return true;
+                    continue;
+                }
+                if (stat.isDirectory()) return true;
             }
         }
     }

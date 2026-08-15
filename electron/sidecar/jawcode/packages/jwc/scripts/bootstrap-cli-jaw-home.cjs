@@ -265,12 +265,60 @@ function activateSkills() {
  *    A-1.md alive. Enumerators filter on isDirectory(), which is false for a
  *    symlink, so the link never registers as a second skill.
  */
+// ── jaw-* namespace helpers (mirror lib/mcp/skills-migration.ts) ──
+
+/** Resolve a link's target the way the filesystem does, relative or absolute. */
+function resolveLinkTarget(linkPath) {
+	const raw = fs.readlinkSync(linkPath);
+	return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(path.dirname(linkPath), raw);
+}
+
+/**
+ * True when the symlink at `p` is one of ours: it resolves inside `ownerDir`.
+ * A user may point skills/jaw-browser at their own checkout; that is theirs.
+ */
+function isOwnedCompatLink(p, ownerDir) {
+	try {
+		if (!fs.lstatSync(p).isSymbolicLink()) return false;
+		const resolved = resolveLinkTarget(p);
+		const root = path.resolve(ownerDir);
+		return resolved === root || resolved.startsWith(root + path.sep);
+	} catch { return false; }
+}
+
+/** True when the canonical path is an immovable collision. */
+function canonicalIsBlocked(canonicalPath, ownerDir) {
+	let stat = null;
+	// lstat, not existsSync: a dangling link still occupies the path.
+	try { stat = fs.lstatSync(canonicalPath); } catch { return false; }
+	if (!stat.isSymbolicLink()) return true;
+	return !isOwnedCompatLink(canonicalPath, ownerDir);
+}
+
+/** Remove a compat link we own so a rename can land on its path. */
+function clearOwnedLink(p, ownerDir) {
+	try { if (isOwnedCompatLink(p, ownerDir)) fs.unlinkSync(p); } catch { /* nothing there */ }
+}
+
+/** True when the link at `p` already resolves to its sibling `target`. */
+function linkPointsAt(p, target) {
+	try {
+		if (!fs.lstatSync(p).isSymbolicLink()) return false;
+		// Windows normalizes junction targets to absolute paths, so the stored
+		// string cannot be compared literally without churning every pass.
+		return resolveLinkTarget(p) === path.resolve(path.dirname(p), target);
+	} catch { return false; }
+}
+
 function migrateRefNamespace() {
 	// skills_ref/<legacy> -> skills_ref/jaw-<legacy>. Redistributable content,
 	// re-synced every pass, so renaming is safe. It is also required:
 	// activateSkills copies skills_ref/<id> -> skills/<id> by exact id, so a
 	// legacy reference tree keeps re-creating legacy active directories.
 	if (!fs.existsSync(refDir)) return;
+	// A symlinked reference tree is BORROWED from another home. Migrating
+	// through it writes into a home this process does not own.
+	try { if (fs.lstatSync(refDir).isSymbolicLink()) return; } catch { return; }
 	let backupRoot = null;
 	for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {
 		const legacyPath = path.join(refDir, legacyId);
@@ -278,7 +326,8 @@ function migrateRefNamespace() {
 		try { stat = fs.lstatSync(legacyPath); } catch { continue; }
 		if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
 		try {
-			if (!fs.existsSync(path.join(refDir, canonicalId))) {
+			if (!canonicalIsBlocked(path.join(refDir, canonicalId), refDir)) {
+				clearOwnedLink(path.join(refDir, canonicalId), refDir);
 				fs.renameSync(legacyPath, path.join(refDir, canonicalId));
 			} else {
 				if (!backupRoot) {
@@ -306,15 +355,16 @@ function normalizeSkillNamespace() {
 		let stat = null;
 		try { stat = fs.lstatSync(legacyPath); } catch { stat = null; }
 		if (stat && stat.isSymbolicLink()) {
-			let current = null;
-			try { current = fs.readlinkSync(legacyPath); } catch { current = null; }
-			if (current === canonicalId) continue;
+			// Resolve rather than string-compare: a Windows junction reads back
+			// absolute, so a literal compare would churn the link every pass.
+			if (linkPointsAt(legacyPath, canonicalId) && fs.existsSync(legacyPath)) continue;
 			try { fs.unlinkSync(legacyPath); } catch { /* leave it alone */ }
 		} else if (stat && stat.isDirectory()) {
 			try {
-				if (!fs.existsSync(path.join(activeDir, canonicalId))) {
+				if (!canonicalIsBlocked(path.join(activeDir, canonicalId), activeDir)) {
 					// Free canonical name: rename, so an in-place user edit is
 					// carried forward instead of stranded in a backup.
+					clearOwnedLink(path.join(activeDir, canonicalId), activeDir);
 					fs.renameSync(legacyPath, path.join(activeDir, canonicalId));
 					console.log(`[skills] legacy skill migrated: ${legacyId} -> ${canonicalId}`);
 				} else {
