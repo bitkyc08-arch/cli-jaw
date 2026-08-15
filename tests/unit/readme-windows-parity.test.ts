@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -211,10 +212,23 @@ test('RWP-012: policy fields drive VISIBLE prose, not just hidden metadata', () 
     }
 });
 
-test('RWP-013: the renderer rejects an unknown policy value', async () => {
-    // Without validation a typo silently selects the fallback branch and the rendered
-    // text stops matching the contract, which is exactly how the drift above hid.
-    const src = read('scripts/render-windows-support.mts');
-    assert.match(src, /preferredPath must be one of/);
-    assert.match(src, /registeredService must be one of/);
+test('RWP-013: the renderer EXECUTES its enum validation', () => {
+    // Source-phrase matching was not enough: replacing both validation conditions with
+    // `if (false)` left the phrases intact and this test still passed. Run the renderer
+    // against invalid contracts instead and require a nonzero exit.
+    const contractPath = join(root, 'scripts/windows-support-contract.json');
+    const original = readFileSync(contractPath, 'utf8');
+    try {
+        for (const [field, bad] of [['preferredPath', 'not-a-path'], ['registeredService', 'not-a-backend']]) {
+            const broken = { ...JSON.parse(original), [field]: bad };
+            writeFileSync(contractPath, JSON.stringify(broken, null, 2));
+            const run = spawnSync('npx', ['tsx', 'scripts/render-windows-support.mts', '--check'], {
+                cwd: root, encoding: 'utf8',
+            });
+            assert.notEqual(run.status, 0, `an invalid ${field} must abort the renderer`);
+            assert.match(`${run.stderr}${run.stdout}`, new RegExp(`${field} must be one of`));
+        }
+    } finally {
+        writeFileSync(contractPath, original);
+    }
 });
