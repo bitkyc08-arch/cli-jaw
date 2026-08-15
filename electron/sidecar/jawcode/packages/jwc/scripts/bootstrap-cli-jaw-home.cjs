@@ -274,30 +274,38 @@ function resolveLinkTarget(linkPath) {
 }
 
 /**
- * True when the symlink at `p` is one of ours: it resolves inside `ownerDir`.
- * A user may point skills/jaw-browser at their own checkout; that is theirs.
+ * True when the symlink at `p` is one WE created: it already aims at
+ * `expectedTarget`. "Inside the tree" is not ownership — a user can point
+ * skills/jaw-browser at their own skills/my-browser, and that link is theirs.
  */
-function isOwnedCompatLink(p, ownerDir) {
+function isOwnedCompatLink(p, expectedTarget) {
+	try { if (!fs.lstatSync(p).isSymbolicLink()) return false; } catch { return false; }
+	if (linkPointsAt(p, expectedTarget)) return true;
 	try {
-		if (!fs.lstatSync(p).isSymbolicLink()) return false;
-		const resolved = resolveLinkTarget(p);
-		const root = path.resolve(ownerDir);
-		return resolved === root || resolved.startsWith(root + path.sep);
+		return !fs.existsSync(p) && path.basename(fs.readlinkSync(p)) === path.basename(expectedTarget);
 	} catch { return false; }
 }
 
-/** True when the canonical path is an immovable collision. */
-function canonicalIsBlocked(canonicalPath, ownerDir) {
+/**
+ * True when the canonical path is an immovable collision. `legacyId` is passed
+ * because a link aimed at the directory we are migrating (jaw-browser ->
+ * browser) is ours too — leaving it strands a link whose target is moving.
+ */
+function canonicalIsBlocked(canonicalPath, canonicalId, legacyId) {
 	let stat = null;
 	// lstat, not existsSync: a dangling link still occupies the path.
 	try { stat = fs.lstatSync(canonicalPath); } catch { return false; }
 	if (!stat.isSymbolicLink()) return true;
-	return !isOwnedCompatLink(canonicalPath, ownerDir);
+	if (isOwnedCompatLink(canonicalPath, canonicalId)) return false;
+	if (legacyId && linkPointsAt(canonicalPath, legacyId)) return false;
+	return true;
 }
 
 /** Remove a compat link we own so a rename can land on its path. */
-function clearOwnedLink(p, ownerDir) {
-	try { if (isOwnedCompatLink(p, ownerDir)) fs.unlinkSync(p); } catch { /* nothing there */ }
+function clearOwnedLink(p, canonicalId, legacyId) {
+	try {
+		if (isOwnedCompatLink(p, canonicalId) || (legacyId && linkPointsAt(p, legacyId))) fs.unlinkSync(p);
+	} catch { /* nothing there */ }
 }
 
 /** True when the link at `p` already resolves to its sibling `target`. */
@@ -324,10 +332,16 @@ function migrateRefNamespace() {
 		const legacyPath = path.join(refDir, legacyId);
 		let stat = null;
 		try { stat = fs.lstatSync(legacyPath); } catch { continue; }
-		if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
+		if (stat.isSymbolicLink()) {
+			// The reference tree carries no compat links; a stray one is noise
+			// the detector would otherwise report pending on every run.
+			try { fs.unlinkSync(legacyPath); } catch { /* leave it */ }
+			continue;
+		}
+		if (!stat.isDirectory()) continue;
 		try {
-			if (!canonicalIsBlocked(path.join(refDir, canonicalId), refDir)) {
-				clearOwnedLink(path.join(refDir, canonicalId), refDir);
+			if (!canonicalIsBlocked(path.join(refDir, canonicalId), canonicalId, legacyId)) {
+				clearOwnedLink(path.join(refDir, canonicalId), canonicalId, legacyId);
 				fs.renameSync(legacyPath, path.join(refDir, canonicalId));
 			} else {
 				if (!backupRoot) {
@@ -361,10 +375,10 @@ function normalizeSkillNamespace() {
 			try { fs.unlinkSync(legacyPath); } catch { /* leave it alone */ }
 		} else if (stat && stat.isDirectory()) {
 			try {
-				if (!canonicalIsBlocked(path.join(activeDir, canonicalId), activeDir)) {
+				if (!canonicalIsBlocked(path.join(activeDir, canonicalId), canonicalId, legacyId)) {
 					// Free canonical name: rename, so an in-place user edit is
 					// carried forward instead of stranded in a backup.
-					clearOwnedLink(path.join(activeDir, canonicalId), activeDir);
+					clearOwnedLink(path.join(activeDir, canonicalId), canonicalId, legacyId);
 					fs.renameSync(legacyPath, path.join(activeDir, canonicalId));
 					console.log(`[skills] legacy skill migrated: ${legacyId} -> ${canonicalId}`);
 				} else {

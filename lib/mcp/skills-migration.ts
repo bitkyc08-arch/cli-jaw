@@ -23,7 +23,7 @@
  */
 import fs from 'fs';
 import os from 'os';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'path';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { LEGACY_SKILL_ALIASES } from './skills-aliases.js';
 import { createBackupContext, movePathToBackup } from './skills-symlinks.js';
 
@@ -64,20 +64,26 @@ function pointsAt(p: string, expectedTarget: string): boolean {
 }
 
 /**
- * True when the symlink at `p` is one of OURS: a compat link that resolves
- * somewhere inside `ownerDir`.
+ * True when the symlink at `p` is one WE created: a compat link that resolves
+ * to `expectedTarget`, or a dangling link that was aiming there.
  *
- * A user may point `skills/jaw-browser` at a checkout of their own. Clearing
- * that to make room for a rename would destroy their setup, so only links that
- * stay inside the skill tree are ever removed.
+ * "Somewhere inside the skill tree" is not ownership — a user can point
+ * `skills/jaw-browser` at their own `skills/my-browser`, and that link is
+ * theirs. Only a link already aimed at the exact id we are about to write may
+ * be cleared, because replacing it changes nothing the user chose.
  */
-function isOwnedCompatLink(p: string, ownerDir: string): boolean {
+function isOwnedCompatLink(p: string, expectedTarget: string): boolean {
     try {
         if (!fs.lstatSync(p).isSymbolicLink()) return false;
+    } catch {
+        return false;
+    }
+    if (pointsAt(p, expectedTarget)) return true;
+    // A link we wrote whose target has since gone missing still points at the
+    // id we own; anything else belongs to the user.
+    try {
         const raw = fs.readlinkSync(p);
-        const resolved = isAbsolute(raw) ? resolve(raw) : resolve(dirname(p), raw);
-        const root = resolve(ownerDir);
-        return resolved === root || resolved.startsWith(root + sep);
+        return !fs.existsSync(p) && basename(raw) === basename(expectedTarget);
     } catch {
         return false;
     }
@@ -96,24 +102,34 @@ function pathIsOccupied(p: string): boolean {
 }
 
 /** Move `legacyPath` onto `canonicalPath`, clearing OUR stale link first. */
-function renameOntoCanonical(legacyPath: string, canonicalPath: string, ownerDir: string): void {
-    // Only a link we own may be cleared: a real directory is a genuine
-    // collision (the caller backs the legacy copy up), and a link pointing
-    // outside the tree belongs to the user.
+function renameOntoCanonical(legacyPath: string, canonicalPath: string, canonicalId: string, legacyId?: string): void {
+    // Only a link we wrote may be cleared: a real directory is a genuine
+    // collision (the caller backs the legacy copy up), and a link the user
+    // aimed somewhere else is theirs.
     try {
-        if (isOwnedCompatLink(canonicalPath, ownerDir)) fs.unlinkSync(canonicalPath);
+        if (isOwnedCompatLink(canonicalPath, canonicalId)
+            || (legacyId && pointsAt(canonicalPath, legacyId))) fs.unlinkSync(canonicalPath);
     } catch { /* nothing there */ }
     fs.renameSync(legacyPath, canonicalPath);
 }
 
-/** True when the canonical path must be treated as an immovable collision. */
-function canonicalIsBlocked(canonicalPath: string, ownerDir: string): boolean {
+/**
+ * True when the canonical path must be treated as an immovable collision.
+ *
+ * `legacyId` is passed because a link aimed at the very directory we are
+ * migrating (`jaw-browser -> browser`) is ours too: leaving it would strand a
+ * link whose target is about to move, and the skill would stop resolving.
+ */
+function canonicalIsBlocked(canonicalPath: string, canonicalId: string, legacyId?: string): boolean {
     if (!pathIsOccupied(canonicalPath)) return false;
     try {
         if (!fs.lstatSync(canonicalPath).isSymbolicLink()) return true;
     } catch { return false; }
-    // A symlink is only ours to clear when it resolves inside the skill tree.
-    return !isOwnedCompatLink(canonicalPath, ownerDir);
+    // A symlink is only ours to clear when we are the one who aimed it —
+    // either at the canonical id, or back at the legacy directory itself.
+    if (isOwnedCompatLink(canonicalPath, canonicalId)) return false;
+    if (legacyId && pointsAt(canonicalPath, legacyId)) return false;
+    return true;
 }
 
 /**
@@ -157,12 +173,12 @@ export function migrateLegacySkillDirs(activeDir: string, jawHome: string): Lega
         try {
             const canonicalPath = join(activeDir, canonicalId);
             // lstat, not existsSync: a dangling compat link occupies the path.
-            if (canonicalIsBlocked(canonicalPath, activeDir)) {
+            if (canonicalIsBlocked(canonicalPath, canonicalId, legacyId)) {
                 backup ??= createBackupContext(jawHome);
                 const moved = movePathToBackup(legacyPath, backup);
                 result.backedUp.push(`${legacyId} -> ${moved}`);
             } else {
-                renameOntoCanonical(legacyPath, canonicalPath, activeDir);
+                renameOntoCanonical(legacyPath, canonicalPath, canonicalId, legacyId);
                 result.renamed.push(`${legacyId} -> ${canonicalId}`);
             }
         } catch (e) {
@@ -260,12 +276,12 @@ export function migrateLegacyRefDirs(refDir: string, jawHome: string): LegacyMig
         if (!stat.isDirectory()) continue;
 
         try {
-            if (canonicalIsBlocked(canonicalPath, refDir)) {
+            if (canonicalIsBlocked(canonicalPath, canonicalId, legacyId)) {
                 backup ??= createBackupContext(jawHome);
                 const moved = movePathToBackup(legacyPath, backup);
                 result.backedUp.push(`skills_ref/${legacyId} -> ${moved}`);
             } else {
-                renameOntoCanonical(legacyPath, canonicalPath, refDir);
+                renameOntoCanonical(legacyPath, canonicalPath, canonicalId, legacyId);
                 result.renamed.push(`skills_ref/${legacyId} -> ${canonicalId}`);
             }
         } catch (e) {
