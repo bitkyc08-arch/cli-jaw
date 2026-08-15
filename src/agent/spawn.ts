@@ -44,7 +44,7 @@ import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAll
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
-import { formatCliUnavailableMessage } from '../core/cli-detect.js';
+import { formatCliUnavailableMessage, detectCliBinary } from '../core/cli-detect.js';
 import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
@@ -2570,7 +2570,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // gate proves every classified runtime resolves. Until then, refusing here would
     // break working installs on a code path that has no local test coverage.
     const windowsLaunch = process.platform === 'win32'
-        ? resolveWindowsLaunchSpec(spawnCommand, args)
+        ? resolveWindowsLaunchSpec(spawnCommand, args, {
+            // A bare name must be discovered before we decide it is "direct": Windows
+            // would otherwise resolve e.g. 'copilot' to copilot.cmd through PATHEXT at
+            // spawn time, under a shell — the exact defect #367 removes.
+            which: (name) => detectCliBinary(name).path || null,
+        })
         : null;
     const launchCommand = windowsLaunch ? windowsLaunch.command : spawnCommand;
     const launchArgs = windowsLaunch ? launchArgv(windowsLaunch) : args;

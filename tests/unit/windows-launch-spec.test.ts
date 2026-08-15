@@ -181,3 +181,47 @@ test('WLS-013: the spawn path prefers shell-free resolution over shell:true', ()
     assert.match(spawnSrc, /windowsSpawnUsesShell = process\.platform === 'win32'\s*\n\s*&& !windowsLaunch/);
     assert.match(spawnSrc, /spawn\(launchCommand, launchArgs, \{/);
 });
+
+test('WLS-014: a bare name is resolved through PATHEXT discovery before deciding', () => {
+    // The dangerous case: 'copilot' has no extension, so treating it as direct would
+    // skip shim resolution and let Windows resolve it to copilot.cmd through PATHEXT —
+    // under a shell, which is exactly the #367 defect.
+    const shim = 'C:\\npm\\copilot.cmd';
+    const target = pathWin32.resolve('C:\\npm', 'node_modules\\pkg\\entry.js');
+    const deps = {
+        ...fixtureDeps({ [shim]: REAL_NODE_SHIM, [target]: '#!/usr/bin/env node\n' }),
+        which: (cmd: string) => (cmd === 'copilot' ? shim : null),
+    };
+    const spec = resolveWindowsLaunchSpec('copilot', ['ask'], deps);
+    assert.equal(spec!.resolvedVia, 'shim-target');
+    assert.equal(spec!.command, 'node');
+    assert.equal(spec!.useShell, false);
+});
+
+test('WLS-015: a bare name resolving to a real executable stays direct', () => {
+    const deps = {
+        ...fixtureDeps({}),
+        which: (cmd: string) => (cmd === 'node' ? 'C:\\Program Files\\nodejs\\node.exe' : null),
+    };
+    const spec = resolveWindowsLaunchSpec('node', ['-v'], deps);
+    assert.equal(spec!.resolvedVia, 'direct');
+    assert.equal(spec!.command, 'C:\\Program Files\\nodejs\\node.exe');
+    assert.equal(spec!.target, null);
+});
+
+test('WLS-016: an unresolvable bare name fails closed rather than launching blind', () => {
+    // Without discovery we cannot prove PATHEXT will not select a .cmd at spawn time,
+    // so 'probably an exe' is not good enough.
+    const deps = { ...fixtureDeps({}), which: () => null };
+    assert.equal(resolveWindowsLaunchSpec('mystery', [], deps), null);
+    assert.equal(resolveWindowsLaunchSpec('mystery', [], fixtureDeps({})), null);
+});
+
+test('WLS-017: shebang quoting beyond the supported grammar fails closed', () => {
+    // A naive whitespace split would turn these into wrong arguments. Refusing is
+    // safer than guessing, and the caller reports an unsupported shim.
+    assert.equal(parseShebang('#!/usr/bin/env -S NAME="two words" node\n'), null);
+    assert.equal(parseShebang('#!/usr/bin/env -S FOO=a\\ b node\n'), null);
+    // The supported shapes still parse.
+    assert.equal(parseShebang('#!/usr/bin/env node\n')!.interpreter, 'node');
+});

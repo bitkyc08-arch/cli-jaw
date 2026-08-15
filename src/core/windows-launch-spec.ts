@@ -38,6 +38,11 @@ export type ShebangInfo = {
 type ResolveDeps = {
     readFile?: (path: string) => string;
     exists?: (path: string) => boolean;
+    /**
+     * Resolve a bare command name to an absolute path, the way Windows PATHEXT would.
+     * Callers that already hold a resolved path never need this.
+     */
+    which?: (command: string) => string | null;
 };
 
 const WINDOWS_SHIM_EXTENSIONS = ['.cmd', '.bat'];
@@ -65,10 +70,19 @@ export function extractCmdShimTarget(shimText: string): string | null {
  * The target is NOT always Node. Observed in a real install: `claude-e` resolves to
  * `#!/usr/bin/env sh` and `cursor-agent` to `#!/usr/bin/env bash`. Assuming node here
  * would launch a shell script with the wrong interpreter.
+ *
+ * Grammar limit: this splits on whitespace, which is correct for every shebang shape
+ * observed in practice but NOT for `env -S` values containing quotes or escaped
+ * whitespace. Rather than mis-split those into wrong arguments, we fail closed and let
+ * the caller report an unsupported shim.
  */
 export function parseShebang(targetText: string): ShebangInfo | null {
     const firstLine = targetText.split(/\r?\n/, 1)[0] ?? '';
     if (!firstLine.startsWith('#!')) return null;
+
+    // Quoting/escaping exceeds the supported grammar — a naive split would silently
+    // produce the wrong argv.
+    if (/["'\\]/.test(firstLine)) return null;
 
     const tokens = firstLine.slice(2).trim().split(/\s+/).filter(Boolean);
     if (!tokens.length) return null;
@@ -96,6 +110,10 @@ function isShim(command: string): boolean {
     return WINDOWS_SHIM_EXTENSIONS.some(ext => lowered.endsWith(ext));
 }
 
+function hasExtension(command: string): boolean {
+    return /\.[A-Za-z0-9]+$/.test(pathWin32.basename(command));
+}
+
 /**
  * Build a shell-free launch plan.
  *
@@ -116,9 +134,23 @@ export function resolveWindowsLaunchSpec(
     const readFile = deps.readFile ?? ((path: string) => readFileSync(path, 'utf8'));
     const exists = deps.exists ?? existsSync;
 
-    if (!isShim(command)) {
-        return { command, target: null, baseArgs: [], userArgs: args, envDelta: {}, useShell: false, resolvedVia: 'direct' };
+    // A BARE name is the dangerous case: 'copilot' has no extension, so treating it as
+    // direct would skip shim resolution entirely and Windows would then resolve it
+    // through PATHEXT to copilot.cmd — with a shell, which is the #367 defect. Resolve
+    // the name to a real path FIRST, then decide.
+    let resolved = command;
+    if (!hasExtension(command) && deps.which) {
+        const found = deps.which(command);
+        if (found) resolved = found;
     }
+
+    if (!isShim(resolved)) {
+        // An extension-less name we could not resolve is not provably safe to launch
+        // directly, because PATHEXT may still select a .cmd at spawn time.
+        if (!hasExtension(resolved)) return null;
+        return { command: resolved, target: null, baseArgs: [], userArgs: args, envDelta: {}, useShell: false, resolvedVia: 'direct' };
+    }
+    command = resolved;
 
     // One level of indirection is legitimate (a shim whose interpreter is itself a
     // shim). Beyond that, stop rather than chase a possible cycle.
@@ -176,4 +208,3 @@ export function resolveWindowsLaunchSpec(
 export function launchArgv(spec: LaunchSpec): string[] {
     return [...spec.baseArgs, ...(spec.target ? [spec.target] : []), ...spec.userArgs];
 }
-
