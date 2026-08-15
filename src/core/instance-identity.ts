@@ -25,8 +25,19 @@ export function launchFingerprint(
     args: string[] = [],
 ): string {
     const parts = [canonicalHome, String(port), execPath, ...args];
-    const framed = parts.map(part => `${Buffer.byteLength(part, 'utf8')}:${part}`).join('');
-    return createHash('sha256').update(framed, 'utf8').digest('hex');
+    const hash = createHash('sha256');
+    for (const part of parts) {
+        // UTF-16LE, not UTF-8. The JS-string-to-UTF-8 conversion is NOT injective:
+        // an unpaired surrogate becomes U+FFFD, so '\uD800' and '\uD801' would hash
+        // identically — a real collision over Windows paths and command lines, which
+        // originate as UTF-16. utf16le round-trips every code unit.
+        const bytes = Buffer.from(part, 'utf16le');
+        const header = Buffer.alloc(4);
+        header.writeUInt32BE(bytes.length, 0);
+        hash.update(header);
+        hash.update(bytes);
+    }
+    return hash.digest('hex');
 }
 
 export type InstanceIdentity = {
@@ -40,6 +51,8 @@ export type IdentityDeps = {
     createExclusive(path: string, contents: string): void;
     now(): Date;
     randomId(): string;
+    /** Remove a file; used only to clear a corrupt record under the repair lock. */
+    remove?(path: string): void;
 };
 
 export function generateInstanceId(): string {
@@ -53,7 +66,11 @@ export function parseIdentity(raw: string): InstanceIdentity | null {
     try {
         const parsed = JSON.parse(raw) as Partial<InstanceIdentity>;
         if (typeof parsed.id !== 'string' || !/^[0-9a-f]{32}$/.test(parsed.id)) return null;
-        if (typeof parsed.createdAt !== 'string' || !parsed.createdAt) return null;
+        // ISO-8601, not any non-empty string: a receipt whose timestamp cannot be
+        // ordered is useless for deciding which of two records is current.
+        if (typeof parsed.createdAt !== 'string') return null;
+        if (!/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(parsed.createdAt)) return null;
+        if (Number.isNaN(Date.parse(parsed.createdAt))) return null;
         return { id: parsed.id, createdAt: parsed.createdAt };
     } catch {
         return null;
@@ -79,12 +96,50 @@ export function ensureInstanceIdentity(path: string, deps: IdentityDeps): Instan
     };
     try {
         deps.createExclusive(path, `${JSON.stringify(candidate, null, 2)}\n`);
-        return candidate;
-    } catch {
-        // Someone else won, or the file is unreadable/corrupt.
+        // Read back even on the winning path. Returning `candidate` unread would
+        // break the invariant this function exists to hold — the value on disk is
+        // what every other actor will compare against, so it is the only answer.
+        const persisted = tryRead(path, deps);
+        if (persisted) return persisted;
+        throw new Error(`instance identity at ${path} was created but is unreadable`);
+    } catch (error) {
         const afterRace = tryRead(path, deps);
         if (afterRace) return afterRace;
+        // Empty or corrupt. A crash between create and write leaves exactly this
+        // state, and both racers hitting it must not deadlock or both throw, so
+        // recovery is serialized through a lock whose winner repairs.
+        return repairCorruptIdentity(path, candidate, deps, error);
+    }
+}
+
+function repairCorruptIdentity(
+    path: string,
+    candidate: InstanceIdentity,
+    deps: IdentityDeps,
+    cause: unknown,
+): InstanceIdentity {
+    if (!deps.remove) {
         throw new Error(`instance identity at ${path} exists but is unreadable or corrupt`);
+    }
+    const lockPath = `${path}.lock`;
+    try {
+        deps.createExclusive(lockPath, `${deps.now().toISOString()}\n`);
+    } catch {
+        // Someone else is repairing. Re-read rather than racing them.
+        const repaired = tryRead(path, deps);
+        if (repaired) return repaired;
+        throw new Error(`instance identity at ${path} is being repaired by another process`);
+    }
+    try {
+        const late = tryRead(path, deps);
+        if (late) return late;
+        deps.remove(path);
+        deps.createExclusive(path, `${JSON.stringify(candidate, null, 2)}\n`);
+        const persisted = tryRead(path, deps);
+        if (persisted) return persisted;
+        throw new Error(`instance identity at ${path} could not be repaired`, { cause });
+    } finally {
+        try { deps.remove(lockPath); } catch { /* a stale lock must not block forever */ }
     }
 }
 
@@ -118,4 +173,3 @@ export function checkHealthOwnership(
     if (response.port !== expectedPort) return 'conflict';
     return 'owned';
 }
-
