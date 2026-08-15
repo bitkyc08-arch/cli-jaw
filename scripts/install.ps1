@@ -33,8 +33,9 @@ param(
     [string]$Prefix = '',
     [switch]$IgnoreScripts,
 
-    # Provision a pinned, hash-verified Node (and PortableGit) under LOCALAPPDATA
-    # when the system lacks a supported one. OFF by default: see #369.
+    # Bootstrap is ON by default (#369). -NoBootstrap opts out.
+    # -BootstrapDependencies is a no-op kept for one release.
+    [switch]$NoBootstrap,
     [switch]$BootstrapDependencies,
 
     # Also provision PortableGit, which unlike MinGit ships bash.
@@ -56,6 +57,29 @@ function Write-Ok([string]$Message) { Write-Host "  $Message" -ForegroundColor G
 function Write-Warn2([string]$Message) { Write-Host "  $Message" -ForegroundColor Yellow }
 
 function Stop-Install([string]$Message) {
+}
+
+function Add-UserPathEntry([string]$Directory) {
+    # Persist a directory to the User-scope PATH registry value if not already present.
+    # Uses Microsoft.Win32.Registry to preserve REG_EXPAND_SZ (the .NET
+    # SetEnvironmentVariable API rewrites it as REG_SZ, losing %VAR% expansion).
+    $regKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+    if (-not $regKey) { return $false }
+    try {
+        $current = $regKey.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+        $kind = $regKey.GetValueKind('Path')
+        $entries = @()
+        if ($current) { $entries = $current -split ';' | Where-Object { $_ -ne '' } }
+        $normalized = $Directory.TrimEnd('\')
+        foreach ($entry in $entries) {
+            if ($entry.TrimEnd('\') -ieq $normalized) { return $false }
+        }
+        $updated = (@($normalized) + $entries) -join ';'
+        $regKey.SetValue('Path', $updated, $kind)
+        return $true
+    } finally {
+        $regKey.Close()
+    }
     if ($Message) { Write-Warn2 $Message }
     # A terminating error makes `powershell -File` return non-zero without
     # killing the caller when the documented `irm ... | iex` form is used.
@@ -137,12 +161,73 @@ Write-Host ''
 # mechanism ships behind an explicit switch and the default installer behavior is
 # unchanged. Planning/verification logic lives in src/core/windows-bootstrap.ts
 # so it is unit-tested off-Windows; this function owns only the transaction.
-function Get-BootstrapManifest {
-    $manifestPath = Join-Path $PSScriptRoot 'windows-bootstrap-manifest.json'
-    if (-not (Test-Path -LiteralPath $manifestPath)) {
-        Stop-Install "bootstrap manifest not found: $manifestPath"
+# BEGIN EMBEDDED MANIFEST (generated from scripts/windows-bootstrap-manifest.json)
+$script:EmbeddedBootstrapManifest = @'
+{
+  "$comment": [
+    "Pinned bootstrap artifacts for the non-admin Windows installer (#369).",
+    "",
+    "Pinned by TAG + FILENAME + SHA-256 together. Never latest/download: a moving",
+    "URL means the hash below stops matching the thing being downloaded, and a",
+    "hash that cannot fail is not a gate.",
+    "",
+    "Node publishes SHASUMS256.txt per release, so these digests are reproducible:",
+    "  curl https://nodejs.org/dist/v24.19.0/SHASUMS256.txt | grep win-",
+    "Git for Windows publishes digests in the release BODY only — there is no",
+    "standalone checksum file — so those values are transcribed here and must be",
+    "re-verified against the release page when the pin moves.",
+    "",
+    "MinGit does NOT ship bash. PortableGit does, which is why the Git artifact is",
+    "PortableGit even though MinGit is smaller."
+  ],
+  "node": {
+    "version": "24.19.0",
+    "urlTemplate": "https://nodejs.org/dist/v{version}/node-v{version}-win-{arch}.zip",
+    "checksumUrl": "https://nodejs.org/dist/v{version}/SHASUMS256.txt",
+    "artifacts": {
+      "x64": {
+        "file": "node-v24.19.0-win-x64.zip",
+        "sha256": "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73"
+      },
+      "arm64": {
+        "file": "node-v24.19.0-win-arm64.zip",
+        "sha256": "8502f4a50b458d4cc38ed8f2001556c2cd239d464920f74017926ccb1e1c157f"
+      }
     }
-    return Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  },
+  "git": {
+    "version": "2.55.0.4",
+    "tag": "v2.55.0.windows.4",
+    "urlTemplate": "https://github.com/git-for-windows/git/releases/download/{tag}/{file}",
+    "checksumUrl": null,
+    "artifacts": {
+      "x64": {
+        "file": "PortableGit-2.55.0.4-64-bit.7z.exe",
+        "sha256": "016e84230a3767f0c6b3788e79ba0c58a17377086801719d46700fca4f7b36b5"
+      },
+      "arm64": {
+        "file": "PortableGit-2.55.0.4-arm64.7z.exe",
+        "sha256": "d69d0c6a3c5445553565ef74f1d9e22a9869f57c246111db347dd96c252b4da5"
+      }
+    }
+  }
+}
+'@
+# END EMBEDDED MANIFEST
+
+function Get-BootstrapManifest {
+    $embedded = $script:EmbeddedBootstrapManifest | ConvertFrom-Json
+    if ($PSScriptRoot) {
+        $siblingPath = Join-Path $PSScriptRoot 'windows-bootstrap-manifest.json'
+        if (Test-Path -LiteralPath $siblingPath) {
+            $sibling = Get-Content -LiteralPath $siblingPath -Raw | ConvertFrom-Json
+            $embJson = $embedded | ConvertTo-Json -Depth 10 -Compress
+            $sibJson = $sibling | ConvertTo-Json -Depth 10 -Compress
+            if ($embJson -eq $sibJson) { return $sibling }
+            Write-Warn2 'Sibling manifest differs from embedded; using embedded trust anchor.'
+        }
+    }
+    return $embedded
 }
 
 function Resolve-NativeArch {
@@ -255,7 +340,7 @@ function Install-BootstrapTool([string]$Tool, [switch]$DryRunOnly) {
 # --- 1. Node.js >= 22.4 --------------------------------------------------
 $nodePath = Resolve-CommandPath @('node.exe', 'node')
 if (-not $nodePath) {
-    if ($BootstrapDependencies -or $DryRun) {
+    if (-not $NoBootstrap -or $DryRun) {
         Write-Info 'Node.js not found — provisioning a pinned runtime (#369).'
         $nodeDir = Install-BootstrapTool -Tool 'node' -DryRunOnly:$DryRun
         if ($WithPortableGit -or $DryRun) {
@@ -265,7 +350,7 @@ if (-not $nodePath) {
             Write-Info '[dry-run] no files were written.'
             return
         }
-        # Current process only; User PATH persistence is printed, never forced.
+        # Persist to User PATH so a new terminal resolves the installed tools.
         $env:Path = "$nodeDir;$env:Path"
         $nodePath = Resolve-CommandPath @('node.exe', 'node')
         if (-not $nodePath) { Stop-Install 'bootstrap completed but node is still unresolvable.' }
@@ -273,11 +358,7 @@ if (-not $nodePath) {
         Write-Warn2 'Node.js not found on PATH.'
         Write-Warn2 'Install it first, then re-run this script:'
         Write-Warn2 '  winget install OpenJS.NodeJS.LTS'
-        Write-Warn2 'Or provision a pinned runtime automatically (download first —'
-        Write-Warn2 'the streamed form cannot take parameters, and bootstrap needs'
-        Write-Warn2 'windows-bootstrap-manifest.json beside the script):'
-        Write-Warn2 '  git clone --depth 1 https://github.com/lidge-jun/cli-jaw'
-        Write-Warn2 '  .\\cli-jaw\\scripts\\install.ps1 -BootstrapDependencies'
+        Write-Warn2 'Or remove -NoBootstrap to provision a pinned runtime automatically.'
         Stop-Install 'Node.js 22.4.0 or newer is required.'
     }
 }
@@ -292,9 +373,23 @@ try {
     Stop-Install "Could not parse Node.js version: $nodeVersionText"
 }
 if ($nodeVersion -lt $MinimumNodeVersion) {
-    Write-Warn2 "Node.js >= $MinimumNodeVersion required (current: v$nodeVersionText)."
-    Write-Warn2 '  winget install OpenJS.NodeJS.LTS'
-    Stop-Install 'Unsupported Node.js version.'
+    if (-not $NoBootstrap) {
+        Write-Info "Node.js v$nodeVersionText is below $MinimumNodeVersion -- provisioning a pinned runtime (#369)."
+        $nodeDir = Install-BootstrapTool -Tool 'node' -DryRunOnly:$DryRun
+        if (-not $DryRun) {
+            $env:Path = "$nodeDir;$env:Path"
+            Add-UserPathEntry $nodeDir | Out-Null
+            $nodePath = Resolve-CommandPath @('node.exe', 'node')
+            if (-not $nodePath) { Stop-Install 'bootstrap completed but node is still unresolvable.' }
+            $nodeProbe = Invoke-NativeCapture $nodePath @('--version')
+            $nodeVersionText = (Get-FirstOutputLine $nodeProbe) -replace '^v', ''
+            $nodeVersion = [version]$nodeVersionText
+        }
+    } else {
+        Write-Warn2 "Node.js >= $MinimumNodeVersion required (current: v$nodeVersionText)."
+        Write-Warn2 '  winget install OpenJS.NodeJS.LTS'
+        Stop-Install 'Unsupported Node.js version.'
+    }
 }
 Write-Ok "Node.js v$nodeVersionText"
 
