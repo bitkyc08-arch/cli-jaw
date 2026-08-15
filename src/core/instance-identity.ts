@@ -53,7 +53,20 @@ export type IdentityDeps = {
     randomId(): string;
     /** Remove a file; used only to clear a corrupt record under the repair lock. */
     remove?(path: string): void;
+    /** Bounded repair retries; a loser must not fail on a file about to become valid. */
+    lockAttempts?: number;
+    /** Age after which a lock is assumed abandoned by a crashed holder. */
+    staleLockMs?: number;
+    /** Optional backoff between repair attempts. */
+    sleep?(attempt: number): void;
 };
+
+/** Only EEXIST means "someone else got there first". */
+function isAlreadyExists(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code) return code === 'EEXIST';
+    return /EEXIST/i.test(String((error as Error)?.message ?? ''));
+}
 
 export function generateInstanceId(): string {
     // 128 bits, not a digest of (home, port): common Windows home paths form a small
@@ -69,8 +82,12 @@ export function parseIdentity(raw: string): InstanceIdentity | null {
         // ISO-8601, not any non-empty string: a receipt whose timestamp cannot be
         // ordered is useless for deciding which of two records is current.
         if (typeof parsed.createdAt !== 'string') return null;
-        if (!/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(parsed.createdAt)) return null;
-        if (Number.isNaN(Date.parse(parsed.createdAt))) return null;
+        // Exact round-trip, because Date.parse NORMALIZES impossible dates:
+        // '2026-02-30T00:00:00.000Z' silently rolls into March and would otherwise
+        // be accepted as a canonical timestamp.
+        const parsedDate = new Date(parsed.createdAt);
+        if (Number.isNaN(parsedDate.getTime())) return null;
+        if (parsedDate.toISOString() !== parsed.createdAt) return null;
         return { id: parsed.id, createdAt: parsed.createdAt };
     } catch {
         return null;
@@ -103,12 +120,28 @@ export function ensureInstanceIdentity(path: string, deps: IdentityDeps): Instan
         if (persisted) return persisted;
         throw new Error(`instance identity at ${path} was created but is unreadable`);
     } catch (error) {
+        // Adoption happens HERE so the common race costs one read, not a lock cycle.
+        // Removing this line is an equivalent mutant rather than a defect: the repair
+        // loop's first tryRead would adopt the same record. It is kept because taking
+        // the repair path for an ordinary race would allocate a lock unnecessarily.
         const afterRace = tryRead(path, deps);
         if (afterRace) return afterRace;
+        // Anything other than EEXIST is a real IO failure (EACCES, ENOSPC, ...).
+        // Treating it as contention would send a permissions problem into the
+        // repair path and report it as someone else repairing.
+        if (!isAlreadyExists(error)) throw error;
         // Empty or corrupt. A crash between create and write leaves exactly this
         // state, and both racers hitting it must not deadlock or both throw, so
         // recovery is serialized through a lock whose winner repairs.
         return repairCorruptIdentity(path, candidate, deps, error);
+    }
+}
+
+function tryRead(path: string, deps: IdentityDeps): InstanceIdentity | null {
+    try {
+        return parseIdentity(deps.readFile(path));
+    } catch {
+        return null;
     }
 }
 
@@ -122,32 +155,69 @@ function repairCorruptIdentity(
         throw new Error(`instance identity at ${path} exists but is unreadable or corrupt`);
     }
     const lockPath = `${path}.lock`;
-    try {
-        deps.createExclusive(lockPath, `${deps.now().toISOString()}\n`);
-    } catch {
-        // Someone else is repairing. Re-read rather than racing them.
-        const repaired = tryRead(path, deps);
-        if (repaired) return repaired;
-        throw new Error(`instance identity at ${path} is being repaired by another process`);
+
+    // Bounded retry rather than one look. A loser that reads at the exact instant
+    // before the repairer finishes would otherwise fail permanently on a file that
+    // is about to become valid.
+    const attempts = deps.lockAttempts ?? 5;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        const current = tryRead(path, deps);
+        if (current) return current;
+
+        let holdsLock = false;
+        try {
+            deps.createExclusive(lockPath, `${deps.now().toISOString()}\n`);
+            holdsLock = true;
+        } catch (lockError) {
+            if (!isAlreadyExists(lockError)) throw lockError;
+            // A lock whose owner died must not wedge every future run. Age it out.
+            if (isStaleLock(lockPath, deps)) {
+                try { deps.remove(lockPath); } catch { /* another actor cleared it */ }
+            }
+            deps.sleep?.(attempt);
+            continue;
+        }
+
+        try {
+            const late = tryRead(path, deps);
+            if (late) return late;
+            deps.remove(path);
+            try {
+                deps.createExclusive(path, `${JSON.stringify(candidate, null, 2)}\n`);
+            } catch (writeError) {
+                // Another creator slipped into the gap between remove and create.
+                // Their record is as valid as ours, so adopt it instead of failing.
+                if (!isAlreadyExists(writeError)) throw writeError;
+                const theirs = tryRead(path, deps);
+                if (theirs) return theirs;
+                throw writeError;
+            }
+            const persisted = tryRead(path, deps);
+            if (persisted) return persisted;
+            throw new Error(`instance identity at ${path} could not be repaired`, { cause });
+        } finally {
+            if (holdsLock) {
+                // A lock we cannot remove would block every later repair, so surface
+                // it rather than swallowing it.
+                deps.remove(lockPath);
+            }
+        }
     }
-    try {
-        const late = tryRead(path, deps);
-        if (late) return late;
-        deps.remove(path);
-        deps.createExclusive(path, `${JSON.stringify(candidate, null, 2)}\n`);
-        const persisted = tryRead(path, deps);
-        if (persisted) return persisted;
-        throw new Error(`instance identity at ${path} could not be repaired`, { cause });
-    } finally {
-        try { deps.remove(lockPath); } catch { /* a stale lock must not block forever */ }
-    }
+
+    const final = tryRead(path, deps);
+    if (final) return final;
+    throw new Error(`instance identity at ${path} is being repaired and did not settle`, { cause });
 }
 
-function tryRead(path: string, deps: IdentityDeps): InstanceIdentity | null {
+/** A lock older than the bound belongs to a process that died holding it. */
+function isStaleLock(lockPath: string, deps: IdentityDeps): boolean {
     try {
-        return parseIdentity(deps.readFile(path));
+        const written = Date.parse(deps.readFile(lockPath).trim());
+        if (Number.isNaN(written)) return true;
+        const ageMs = deps.now().getTime() - written;
+        return ageMs > (deps.staleLockMs ?? 30_000);
     } catch {
-        return null;
+        return false;
     }
 }
 

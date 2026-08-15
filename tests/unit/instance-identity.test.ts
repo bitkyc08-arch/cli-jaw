@@ -242,16 +242,102 @@ test('II-018: an empty identity file is repaired under a lock, not silently trus
     assert.deepEqual(ensureInstanceIdentity('p', deps), repaired);
 });
 
-test('II-019: a concurrent repairer is waited for, never raced', () => {
-    const files: Record<string, string> = { p: 'corrupt', 'p.lock': 'held' };
-    assert.throws(() => ensureInstanceIdentity('p', {
+test('II-019: a losing repairer WAITS and adopts the winner record', () => {
+    // The old version asserted immediate failure, which codified the defect: a loser
+    // that peeked once at the instant before the repairer finished failed permanently
+    // on a file that was about to become valid.
+    const winner = { id: '9'.repeat(32), createdAt: '2026-08-15T00:00:00.000Z' };
+    const files: Record<string, string> = { p: 'corrupt', 'p.lock': new Date().toISOString() };
+    let polls = 0;
+    const result = ensureInstanceIdentity('p', {
         readFile: (k) => { if (!(k in files)) throw new Error('ENOENT'); return files[k]!; },
-        createExclusive: (k) => { if (k in files) throw new Error('EEXIST'); files[k] = 'x'; },
+        createExclusive: (k) => { if (k in files) { const e: any = new Error('EEXIST'); e.code = 'EEXIST'; throw e; } files[k] = 'x'; },
         now: () => new Date(),
         randomId: () => 'd'.repeat(32),
         remove: (k) => { delete files[k]; },
-    }), /being repaired by another process/);
-    assert.equal(files['p'], 'corrupt', 'the other repairer\'s file must be untouched');
+        sleep: () => {
+            // The other repairer finishes while we back off.
+            if (++polls === 2) { files['p'] = JSON.stringify(winner); delete files['p.lock']; }
+        },
+    });
+    assert.deepEqual(result, winner, 'must adopt the record the other repairer wrote');
+    assert.notEqual(result.id, 'd'.repeat(32), 'must not mint its own id');
+});
+
+test('II-019b: a lock abandoned by a crashed holder is taken over', () => {
+    // finally does not run when a process dies, so a lock with no owner must age out
+    // or every later repair fails permanently.
+    const files: Record<string, string> = {
+        p: 'corrupt',
+        'p.lock': new Date(Date.now() - 120_000).toISOString(),
+    };
+    const result = ensureInstanceIdentity('p', {
+        readFile: (k) => { if (!(k in files)) throw new Error('ENOENT'); return files[k]!; },
+        createExclusive: (k, c) => { if (k in files) { const e: any = new Error('EEXIST'); e.code = 'EEXIST'; throw e; } files[k] = c; },
+        now: () => new Date(),
+        randomId: () => 'e'.repeat(32),
+        remove: (k) => { delete files[k]; },
+        staleLockMs: 30_000,
+        sleep: () => {},
+    });
+    assert.equal(result.id, 'e'.repeat(32), 'the stale lock must not block repair forever');
+    assert.ok(!('p.lock' in files), 'the lock must be released');
+});
+
+test('II-019c: a creator that slips into the repair gap is adopted, not rejected', () => {
+    // Between remove(path) and createExclusive(path) another ordinary caller can
+    // create the identity. Their record is as valid as ours, so failing with EEXIST
+    // would break 'every caller returns the id it read'.
+    const theirs = { id: '7'.repeat(32), createdAt: '2026-08-15T00:00:00.000Z' };
+    const files: Record<string, string> = { p: 'corrupt' };
+    let removed = false;
+    const result = ensureInstanceIdentity('p', {
+        readFile: (k) => { if (!(k in files)) throw new Error('ENOENT'); return files[k]!; },
+        createExclusive: (k, c) => {
+            if (k === 'p' && removed) { files['p'] = JSON.stringify(theirs); const e: any = new Error('EEXIST'); e.code = 'EEXIST'; throw e; }
+            if (k in files) { const e: any = new Error('EEXIST'); e.code = 'EEXIST'; throw e; }
+            files[k] = c;
+        },
+        now: () => new Date(),
+        randomId: () => '8'.repeat(32),
+        remove: (k) => { if (k === 'p') removed = true; delete files[k]; },
+        sleep: () => {},
+    });
+    assert.deepEqual(result, theirs, 'the interloper record must be adopted');
+});
+
+test('II-019d: a non-EEXIST failure keeps its cause instead of becoming contention', () => {
+    // EACCES is a permissions problem, not a race. Routing it into repair reports a
+    // misleading 'being repaired by another process'.
+    assert.throws(() => ensureInstanceIdentity('p', {
+        readFile: () => { throw new Error('ENOENT'); },
+        createExclusive: () => { const e: any = new Error('permission denied'); e.code = 'EACCES'; throw e; },
+        now: () => new Date(),
+        randomId: () => 'a'.repeat(32),
+        remove: () => {},
+    }), /permission denied/);
+});
+
+test('II-019e: an unreleasable lock surfaces rather than being swallowed', () => {
+    // Swallowing the removal failure returns success while leaving a lock that makes
+    // every future repair fail.
+    const files: Record<string, string> = { p: 'corrupt' };
+    assert.throws(() => ensureInstanceIdentity('p', {
+        readFile: (k) => { if (!(k in files)) throw new Error('ENOENT'); return files[k]!; },
+        createExclusive: (k, c) => { if (k in files) { const e: any = new Error('EEXIST'); e.code = 'EEXIST'; throw e; } files[k] = c; },
+        now: () => new Date(),
+        randomId: () => 'b'.repeat(32),
+        remove: (k) => { if (k === 'p.lock') throw new Error('lock is stuck'); delete files[k]; },
+        sleep: () => {},
+    }), /lock is stuck/);
+});
+
+test('II-019f: an impossible timestamp is rejected, not normalized', () => {
+    // Date.parse('2026-02-30') rolls into March and would otherwise pass.
+    const id = 'a'.repeat(32);
+    assert.equal(parseIdentity(JSON.stringify({ id, createdAt: '2026-02-30T00:00:00.000Z' })), null);
+    assert.equal(parseIdentity(JSON.stringify({ id, createdAt: '2026-08-15T25:00:00.000Z' })), null);
+    assert.ok(parseIdentity(JSON.stringify({ id, createdAt: '2026-08-15T00:00:00.000Z' })));
 });
 
 test('II-020: health identity comparison uses the FULL id and exact port', () => {
@@ -342,4 +428,44 @@ test('II-023: the TOCTOU loser adopts the winner id it could not see initially',
     // Falling into repair here is how a skipped re-read hid: repair happens to",
     // recover the same value, masking the missing adoption step.
     assert.deepEqual(createdPaths, ['p'], 'only the identity file may be created; no lock');
+});
+
+test('II-024: EACCES on create never reaches the repair path at all', () => {
+    // Removing the isAlreadyExists guard sends a permissions failure into repair,
+    // where the message becomes 'being repaired by another process'. Prove repair is
+    // never entered by making any repair-side call explode loudly.
+    let repairTouched = false;
+    assert.throws(() => ensureInstanceIdentity('p', {
+        readFile: () => { throw new Error('ENOENT'); },
+        createExclusive: (k) => {
+            if (k.endsWith('.lock')) { repairTouched = true; throw new Error('lock attempted'); }
+            const e: any = new Error('permission denied'); e.code = 'EACCES'; throw e;
+        },
+        now: () => new Date(),
+        randomId: () => 'a'.repeat(32),
+        remove: () => { repairTouched = true; },
+        sleep: () => { repairTouched = true; },
+    }), /permission denied/);
+    assert.equal(repairTouched, false, 'an IO failure must not be handled as contention');
+});
+
+test('II-025: the losing creator adopts WITHOUT the repair path rescuing it', () => {
+    // The adoption re-read in the catch branch is the property. Repair happens to
+    // recover the same value, which masked a skipped re-read — so deny repair here.
+    const winnerId = '6'.repeat(32);
+    const winnerRecord = JSON.stringify({ id: winnerId, createdAt: '2026-08-15T00:00:00.000Z' });
+    let visible = false;
+    const result = ensureInstanceIdentity('p', {
+        readFile: () => { if (!visible) throw new Error('ENOENT'); return winnerRecord; },
+        createExclusive: (k) => {
+            if (k.endsWith('.lock')) throw new Error('repair must not be needed');
+            visible = true;
+            const e: any = new Error('EEXIST'); e.code = 'EEXIST'; throw e;
+        },
+        now: () => new Date('2026-08-15T00:00:00.000Z'),
+        randomId: () => '0'.repeat(32),
+        remove: () => { throw new Error('repair must not be needed'); },
+        sleep: () => { throw new Error('repair must not be needed'); },
+    });
+    assert.equal(result.id, winnerId, 'the catch branch must adopt the persisted record');
 });
