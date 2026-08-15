@@ -714,7 +714,7 @@ export async function steerAgent(
 
 // ─── Helpers ─────────────────────────────────────────
 
-function makeCleanEnv(
+export function makeCleanEnv(
     extraEnv: Record<string, string> = {},
     inheritedEnv: NodeJS.ProcessEnv = process.env,
     platform: NodeJS.Platform = process.platform,

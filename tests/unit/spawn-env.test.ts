@@ -10,6 +10,7 @@ import {
     getOpencodePreferredBinDir,
     withOpencodeAlwaysAllowPermissions,
 } from '../../src/agent/spawn-env.ts';
+import { makeCleanEnv } from '../../src/agent/spawn.ts';
 
 function withoutPath(env: Record<string, string>): Record<string, string> {
     const { PATH: _path, ...rest } = env;
@@ -205,4 +206,40 @@ test('SE-012: only one PATH key survives regardless of inherited casing', () => 
     const pathKeys = Object.keys(result).filter(k => k.toLowerCase() === 'path');
     assert.deepEqual(pathKeys, ['PATH']);
     assert.ok(result["PATH"]!.includes(String.raw`C:\FromExtra`));
+});
+
+test('MCE-001: win32 collapses Path and PATH into one canonical key', () => {
+    const result = makeCleanEnv(
+        {},
+        { Path: String.raw`C:\Windows\System32`, USERPROFILE: String.raw`C:\Users\jun` },
+        'win32',
+    );
+    const pathKeys = Object.keys(result).filter(k => k.toLowerCase() === 'path');
+    assert.deepEqual(pathKeys, ['PATH'], `expected one canonical key, got ${pathKeys.join(',')}`);
+    assert.ok(result["PATH"]!.toLowerCase().includes('system32'));
+});
+
+test('MCE-002: win32 extraEnv PATH override wins over the inherited value', () => {
+    const result = makeCleanEnv(
+        { Path: String.raw`C:\FromExtra` },
+        { PATH: String.raw`C:\FromInherited` },
+        'win32',
+    );
+    const pathKeys = Object.keys(result).filter(k => k.toLowerCase() === 'path');
+    assert.deepEqual(pathKeys, ['PATH']);
+    // An explicit caller override must not be discarded just because it arrived
+    // spelled 'Path' rather than 'PATH'.
+    assert.ok(result["PATH"]!.includes(String.raw`C:\FromExtra`));
+});
+
+test('MCE-003: POSIX keeps Path and PATH as distinct variables', () => {
+    const result = makeCleanEnv(
+        {},
+        { PATH: '/usr/bin', Path: '/some/unrelated/value' },
+        'linux',
+    );
+    // On a case-sensitive platform these are two different variables, and deleting
+    // one would silently destroy caller data.
+    assert.equal(result["Path"], '/some/unrelated/value');
+    assert.ok(result["PATH"]!.includes('/usr/bin'));
 });
