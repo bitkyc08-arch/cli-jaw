@@ -53,8 +53,21 @@ function prependPathDir(
 ): Record<string, string> {
     const currentPath = readPathValue(extraEnv) || readPathValue(inheritedEnv);
     const normalizedDir = normalizePathEntry(dir, platform);
-    const parts = splitPathList(currentPath, platform)
-        .filter(part => normalizePathEntry(part, platform) !== normalizedDir);
+    const parts: string[] = [];
+    const seen = new Set<string>([normalizedDir]);
+    for (const part of splitPathList(currentPath, platform)) {
+        const key = normalizePathEntry(part, platform);
+        // Windows PATH lookup is case-insensitive, so 'C:\\Tools;c:\\tools' is one
+        // directory listed twice (#366). POSIX is case-sensitive and duplicate
+        // entries are the caller's business, so only dedupe the preferred dir there.
+        if (platform === 'win32') {
+            if (seen.has(key)) continue;
+            seen.add(key);
+        } else if (key === normalizedDir) {
+            continue;
+        }
+        parts.push(part);
+    }
     return {
         ...withoutPathKeys(extraEnv),
         PATH: [dir, ...parts].join(platform === 'win32' ? ';' : ':'),

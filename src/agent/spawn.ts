@@ -5,7 +5,10 @@ import os from 'os';
 import crypto from 'node:crypto';
 import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
-import { StringDecoder } from 'node:string_decoder';
+import { createTextStreamReader, sliceWithoutSplittingSurrogate } from './stream-text.js';
+
+/** Cap on retained stderr text used for error classification. */
+const STDERR_BUF_CAP = 4000;
 import { broadcast } from '../core/bus.js';
 import { publish as ssePublish } from '../core/event-bus.js';
 // Static: the registry depends only on the bus, so there is no cycle, and a
@@ -711,8 +714,12 @@ export async function steerAgent(
 
 // ─── Helpers ─────────────────────────────────────────
 
-function makeCleanEnv(extraEnv: Record<string, string> = {}) {
-    const env: NodeJS.ProcessEnv = { ...process.env };
+function makeCleanEnv(
+    extraEnv: Record<string, string> = {},
+    inheritedEnv: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+) {
+    const env: NodeJS.ProcessEnv = { ...inheritedEnv };
     delete env["CLAUDE_CODE_SSE_PORT"];
     // Phase 8: strip boss-only dispatch token from employee spawns so employees
     // cannot authenticate against /api/orchestrate/dispatch even via localhost.
@@ -721,12 +728,35 @@ function makeCleanEnv(extraEnv: Record<string, string> = {}) {
     if (extraEnv["JAW_EMPLOYEE_MODE"] === '1') {
         delete env["JAW_BOSS_TOKEN"];
     }
+    const isWindows = platform === 'win32';
+    // Windows treats 'Path' and 'PATH' as the same variable, so a child inheriting
+    // both gets whichever the runtime happens to read first (#366). Collapse them to
+    // one canonical key. On POSIX they are genuinely different variables and must
+    // both survive untouched.
+    const readCaseInsensitivePath = (source: Record<string, string | undefined>): string => {
+        for (const [key, value] of Object.entries(source)) {
+            if (key.toLowerCase() === 'path' && value) return value;
+        }
+        return '';
+    };
+    if (isWindows) {
+        const inheritedPath = readCaseInsensitivePath(env);
+        for (const key of Object.keys(env)) {
+            if (key.toLowerCase() === 'path') delete env[key];
+        }
+        env["PATH"] = inheritedPath;
+    }
     env["PATH"] = buildServicePath(env["PATH"] || '');
-    return {
-        ...env,
-        ...extraEnv,
-        PATH: buildServicePath(extraEnv["PATH"] || env["PATH"] || ''),
-    } as NodeJS.ProcessEnv;
+
+    const merged: NodeJS.ProcessEnv = { ...env, ...extraEnv };
+    const extraPath = isWindows ? readCaseInsensitivePath(extraEnv) : extraEnv["PATH"];
+    if (isWindows) {
+        for (const key of Object.keys(merged)) {
+            if (key.toLowerCase() === 'path') delete merged[key];
+        }
+    }
+    merged["PATH"] = buildServicePath(extraPath || env["PATH"] || '');
+    return merged;
 }
 
 function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
@@ -2823,15 +2853,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }, 30_000);
     }
 
-    const agyUtf8 = cli === 'agy' ? new StringDecoder('utf8') : null;
-    const kiroUtf8 = kiroPlainText ? new StringDecoder('utf8') : null;
+    // One reader per stream, never shared: stdout and stderr are independent byte
+    // streams and a UTF-8 code point can straddle any chunk boundary (#372).
+    // AGY and Kiro read the same stdout reader rather than owning private decoders,
+    // so their routing is preserved without decoding the same bytes twice.
+    const stdoutReader = createTextStreamReader();
+    const stderrReader = createTextStreamReader();
 
     child.stdout.on('data', (chunk) => {
         opts.lifecycle?.onActivity?.('stdout');
         lastOpencodeIoAt = Date.now();
         if (cli === 'agy') {
             ctx.agyLastActivitySource = 'stdout';
-            const rawText = agyUtf8!.write(chunk);
+            const rawText = stdoutReader.write(chunk);
             if (!rawText) return;
             ctx.stallWatchdog?.markProgress();
             // Defensive ANSI strip (belt-and-suspenders with NO_COLOR=1)
@@ -2886,7 +2920,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             return;
         }
         if (kiroPlainText) {
-            const text = kiroUtf8!.write(chunk);
+            const text = stdoutReader.write(chunk);
             if (!text) return;
             ctx.stallWatchdog?.markProgress();
             appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: text });
@@ -2896,7 +2930,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             return;
         }
-        buffer += chunk.toString();
+        buffer += stdoutReader.write(chunk);
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         const clampedPending = clampPendingLine(buffer);
@@ -2914,12 +2948,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         opts.lifecycle?.onActivity?.('stderr');
         clearAgyQuietCompletionTimer();
         lastOpencodeIoAt = Date.now();
-        const text = chunk.toString().trim();
+        // No per-chunk trim: trimming a chunk destroys legitimate leading/trailing
+        // whitespace and line boundaries that only exist across chunks (#372).
+        const text = stderrReader.write(chunk);
+        if (!text) return;
         if (cli === 'agy') ctx.agyLastActivitySource = 'stderr';
         if ((kiroPlainText || cli === 'agy') && text) ctx.stallWatchdog?.markProgress();
         appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
-        console.error(`[jaw:stderr:${agentLabel}] ${text}`);
-        if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += text + '\n';
+        console.error(`[jaw:stderr:${agentLabel}] ${text.trimEnd()}`);
+        if (ctx.stderrBuf.length < STDERR_BUF_CAP) {
+            // Slice rather than skip: one oversized chunk must not blow past the cap.
+            ctx.stderrBuf = sliceWithoutSplittingSurrogate(ctx.stderrBuf + text, STDERR_BUF_CAP);
+        }
         scheduleAgyQuietCompletion();
     });
 
@@ -2929,22 +2969,31 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         stallWatchdog.stop();
         releaseExitDrain();
         if (stdSettled) return;  // error handler already resolved
-        // [I1] Flush residual NDJSON buffer — last event may lack trailing newline
+        // [I1] Flush the decoders BEFORE dispatching the final line (#372): the last
+        // code point's residual bytes belong to that line, so ending the decoder
+        // afterwards would drop them permanently.
+        const stdoutResidual = stdoutReader.end();
+        if (stdoutResidual) {
+            if (cli === 'agy') {
+                appendAgyFullText(ctx, stdoutResidual);
+            } else if (kiroPlainText) {
+                emitKiroStreamEvents(processKiroStdoutChunk(ctx, stdoutResidual), ctx, agentLabel, cli, empTag, traceAudience);
+            } else {
+                buffer += stdoutResidual;
+            }
+        }
+        const stderrResidual = stderrReader.end();
+        if (stderrResidual && ctx.stderrBuf.length < STDERR_BUF_CAP) {
+            ctx.stderrBuf = sliceWithoutSplittingSurrogate(ctx.stderrBuf + stderrResidual, STDERR_BUF_CAP);
+        }
+        // Flush residual NDJSON buffer — last event may lack a trailing newline
         if (buffer.trim()) {
             dispatchNdjsonLine(buffer);
             buffer = '';
         }
         flushClaudeBuffers(ctx, agentLabel, empTag);  // flush any pending thinking/input buffers
         if (cli === 'opencode') flushOpenCodeBuffers(ctx, agentLabel, empTag);
-        if (agyUtf8) {
-            const remaining = agyUtf8.end();
-            if (remaining) appendAgyFullText(ctx, remaining);
-        }
-        if (kiroUtf8) {
-            const remaining = kiroUtf8.end();
-            if (remaining) {
-                emitKiroStreamEvents(processKiroStdoutChunk(ctx, remaining), ctx, agentLabel, cli, empTag, traceAudience);
-            }
+        if (kiroPlainText) {
             emitKiroStreamEvents(flushKiroStdoutContext(ctx), ctx, agentLabel, cli, empTag, traceAudience);
         }
         const agyTotalOutputLen = cli === 'agy' ? ctx.fullText.length : 0;

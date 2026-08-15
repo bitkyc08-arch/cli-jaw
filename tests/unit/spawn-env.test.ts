@@ -164,3 +164,45 @@ test('writes opencode always-allow permissions without dropping existing config'
     assert.equal(next.permission.question, 'allow');
     assert.deepEqual(next.provider, { lidge: { models: { test: true } } });
 });
+
+test('SE-010: Windows dedupes arbitrary entries case-insensitively', () => {
+    const result = applyCliEnvDefaults(
+        'opencode',
+        {},
+        { PATH: String.raw`C:\Tools;c:\tools\;C:\Windows\System32;C:\TOOLS` },
+        'win32',
+    );
+    const parts = result["PATH"]!.split(';');
+    const lowered = parts.map(p => p.toLowerCase().replace(/\\+$/, ''));
+    assert.equal(new Set(lowered).size, lowered.length, `duplicate entries survived: ${result["PATH"]}`);
+    // First spelling wins, and the real system directory is never dropped.
+    assert.ok(parts.includes(String.raw`C:\Tools`));
+    assert.ok(!parts.includes(String.raw`C:\TOOLS`));
+    assert.ok(parts.includes(String.raw`C:\Windows\System32`));
+});
+
+test('SE-011: POSIX keeps duplicate entries and is case-sensitive', () => {
+    const result = applyCliEnvDefaults(
+        'opencode',
+        {},
+        { PATH: '/usr/bin:/USR/BIN:/usr/bin' },
+        'linux',
+    );
+    const parts = result["PATH"]!.split(':');
+    // /usr/bin and /USR/BIN are different directories on a case-sensitive filesystem,
+    // so collapsing them would silently drop a real PATH entry.
+    assert.ok(parts.includes('/usr/bin'));
+    assert.ok(parts.includes('/USR/BIN'));
+});
+
+test('SE-012: only one PATH key survives regardless of inherited casing', () => {
+    const result = applyCliEnvDefaults(
+        'opencode',
+        { Path: String.raw`C:\FromExtra` },
+        { PATH: String.raw`C:\FromInherited` },
+        'win32',
+    );
+    const pathKeys = Object.keys(result).filter(k => k.toLowerCase() === 'path');
+    assert.deepEqual(pathKeys, ['PATH']);
+    assert.ok(result["PATH"]!.includes(String.raw`C:\FromExtra`));
+});

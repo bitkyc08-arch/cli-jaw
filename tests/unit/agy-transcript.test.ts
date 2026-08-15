@@ -99,9 +99,12 @@ test('AGY-TR-009: spawn captures AGY session id before final transcript drain', 
     const spawnSrc = fs.readFileSync(path.join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     const closeIdx = spawnSrc.indexOf("child.on('close', (code) => {");
     assert.ok(closeIdx >= 0);
-    const closeBlock = spawnSrc.slice(closeIdx, spawnSrc.indexOf('if (kiroPlainText)', closeIdx));
-    const sessionIdx = closeBlock.indexOf('ctx.sessionId = extractAgyConversationId');
-    const watcherStopIdx = closeBlock.indexOf('agyTranscriptWatcher?.stop()');
+    // Search forward from the close handler rather than slicing to an end anchor: the
+    // previous anchor ('if (kiroPlainText)') became ambiguous once decoder-residual
+    // routing was added to the close path (#372), and any end anchor is one refactor
+    // away from silently truncating the block it is supposed to check.
+    const sessionIdx = spawnSrc.indexOf('ctx.sessionId = extractAgyConversationId', closeIdx);
+    const watcherStopIdx = spawnSrc.indexOf('agyTranscriptWatcher?.stop()', closeIdx);
     assert.ok(sessionIdx >= 0, 'AGY close path must extract session id');
     assert.ok(watcherStopIdx > sessionIdx, 'AGY transcript final drain must run after session id extraction');
 });
