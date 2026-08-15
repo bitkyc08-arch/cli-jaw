@@ -40,13 +40,16 @@ test('preserves inherited opencode env when already set', () => {
 
 
 test('prefers bun-installed opencode before older path entries', () => {
-    const next = applyCliEnvDefaults('opencode', {}, { PATH: '/opt/homebrew/bin:/usr/bin' });
+    // Pin the platform: these fixtures are POSIX-shaped and assert a ':' separator,
+    // so inheriting the host platform made them fail on a real Windows runner where
+    // the joined PATH correctly uses ';'.
+    const next = applyCliEnvDefaults('opencode', {}, { PATH: '/opt/homebrew/bin:/usr/bin' }, 'linux');
     assert.ok(next.PATH?.startsWith(`${getOpencodePreferredBinDir()}:`));
 });
 
 test('moves bun-installed opencode to the front when it already exists later in PATH', () => {
     const bun = getOpencodePreferredBinDir();
-    const next = applyCliEnvDefaults('opencode', {}, { PATH: `/opt/homebrew/bin:${bun}:/usr/bin` });
+    const next = applyCliEnvDefaults('opencode', {}, { PATH: `/opt/homebrew/bin:${bun}:/usr/bin` }, 'linux');
     const parts = next.PATH?.split(':') || [];
     assert.equal(parts[0], bun);
     assert.equal(parts.filter(part => part === bun).length, 1);

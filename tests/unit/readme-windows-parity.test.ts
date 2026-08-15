@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '../..');
 import { renderBlock } from '../../scripts/render-windows-support.mts';
-const read = (p: string) => readFileSync(join(root, p), 'utf8');
+// Normalize CRLF: a Windows checkout can materialize these files with CRLF, and the
+// generator emits LF, so byte equality would fail for a line-ending difference that
+// says nothing about the content contract.
+const read = (p: string) => readFileSync(join(root, p), 'utf8').replace(/\r\n/g, '\n');
 
 const READMES = ['README.md', 'README.ko.md', 'README.zh-CN.md', 'README.ja.md'];
 const CONTRACT = JSON.parse(read('scripts/windows-support-contract.json'));
@@ -222,8 +225,11 @@ test('RWP-013: the renderer EXECUTES its enum validation', () => {
         for (const [field, bad] of [['preferredPath', 'not-a-path'], ['registeredService', 'not-a-backend']]) {
             const broken = { ...JSON.parse(original), [field]: bad };
             writeFileSync(contractPath, JSON.stringify(broken, null, 2));
+            // On Windows, 'npx' is npx.cmd and spawnSync cannot execute it directly —
+            // status and output both come back undefined, which made the assertion
+            // compare 'undefinedundefined'. Run it through the platform's shell there.
             const run = spawnSync('npx', ['tsx', 'scripts/render-windows-support.mts', '--check'], {
-                cwd: root, encoding: 'utf8',
+                cwd: root, encoding: 'utf8', shell: process.platform === 'win32',
             });
             assert.notEqual(run.status, 0, `an invalid ${field} must abort the renderer`);
             assert.match(`${run.stderr}${run.stdout}`, new RegExp(`${field} must be one of`));
