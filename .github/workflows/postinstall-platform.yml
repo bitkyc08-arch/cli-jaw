@@ -59,15 +59,18 @@ on:
       - 'src/agent/stream-text.ts'
       - 'src/agent/args.ts'
       - 'src/core/windows-launch-spec.ts'
+      - 'src/core/windows-shell-fallback.ts'
       - 'src/core/windows-bootstrap.ts'
       - 'src/core/windows-shell.ts'
       - 'src/core/instance-identity.ts'
+      - 'src/manager/windows-service.ts'
       - 'scripts/windows-bootstrap-manifest.json'
       - 'scripts/windows-support-contract.json'
       - 'scripts/render-windows-support.mts'
       - 'tests/unit/spawn-env.test.ts'
       - 'tests/unit/stream-decode-boundary.test.ts'
       - 'tests/unit/windows-launch-spec.test.ts'
+      - 'tests/unit/windows-shell-fallback.test.ts'
       - 'tests/unit/windows-bootstrap.test.ts'
       - 'tests/unit/instance-identity.test.ts'
       - 'tests/unit/install-ps1-hardening.test.ts'
@@ -129,8 +132,10 @@ on:
       - 'src/agent/stream-text.ts'
       - 'src/agent/args.ts'
       - 'src/core/windows-launch-spec.ts'
+      - 'src/core/windows-shell-fallback.ts'
       - 'src/core/windows-bootstrap.ts'
       - 'src/core/windows-shell.ts'
+      - 'src/manager/windows-service.ts'
       - 'src/core/instance-identity.ts'
       - 'scripts/windows-bootstrap-manifest.json'
       - 'scripts/windows-support-contract.json'
@@ -138,6 +143,7 @@ on:
       - 'tests/unit/spawn-env.test.ts'
       - 'tests/unit/stream-decode-boundary.test.ts'
       - 'tests/unit/windows-launch-spec.test.ts'
+      - 'tests/unit/windows-shell-fallback.test.ts'
       - 'tests/unit/windows-bootstrap.test.ts'
       - 'tests/unit/instance-identity.test.ts'
       - 'tests/unit/install-ps1-hardening.test.ts'
@@ -350,7 +356,7 @@ jobs:
       # fixtures or inspect source. That gap is why #371 stays open until the
       # native evidence collector and runtime matrix land (#371).
       - name: Run Windows-critical unit tests on native Windows
-        run: npx tsx --test tests/unit/spawn-env.test.ts tests/unit/stream-decode-boundary.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/windows-bootstrap.test.ts tests/unit/instance-identity.test.ts tests/unit/install-ps1-hardening.test.ts tests/unit/readme-windows-parity.test.ts
+        run: npx tsx --test tests/unit/spawn-env.test.ts tests/unit/stream-decode-boundary.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/windows-shell-fallback.test.ts tests/unit/windows-bootstrap.test.ts tests/unit/instance-identity.test.ts tests/unit/install-ps1-hardening.test.ts tests/unit/readme-windows-parity.test.ts
 
       - name: Validate installer contracts in PowerShell 7
         shell: pwsh
