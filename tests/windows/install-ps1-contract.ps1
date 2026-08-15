@@ -182,7 +182,18 @@ exit /b 0
     try {
         $env:Path = "$pathFixture;$env:SystemRoot\System32;$machineSentinel"
         # No -Prefix: this is the branch under test.
-        $guidanceOutput = (& $installer -TarballPath (Join-Path $pathFixture 'cli-jaw.tgz') -IgnoreScripts 2>&1 | Out-String)
+        # The installer prints guidance with Write-Host, which writes to the HOST and
+        # is NOT part of the success stream — '2>&1 | Out-String' captured nothing, so
+        # the assertion failed on output that was in fact correct. A transcript is the
+        # only way to observe Write-Host from inside the same process.
+        $transcript = Join-Path $pathFixture 'install-transcript.txt'
+        Start-Transcript -LiteralPath $transcript -Force | Out-Null
+        try {
+            & $installer -TarballPath (Join-Path $pathFixture 'cli-jaw.tgz') -IgnoreScripts *>&1 | Out-Null
+        } finally {
+            Stop-Transcript | Out-Null
+        }
+        $guidanceOutput = Get-Content -LiteralPath $transcript -Raw
     } catch {
         $guidanceOutput = "$guidanceOutput`n$($_.Exception.Message)"
     } finally {
