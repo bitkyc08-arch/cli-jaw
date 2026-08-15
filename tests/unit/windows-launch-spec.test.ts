@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { win32 as pathWin32 } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import {
     extractCmdShimTarget,
     parseShebang,
@@ -169,3 +174,10 @@ test('WLS-012: user argv is never re-parsed, whatever it contains', () => {
     assert.equal(launchArgv(spec!).at(-1), hostile);
 });
 
+test('WLS-013: the spawn path prefers shell-free resolution over shell:true', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    // windowsSpawnUsesShell must be gated on resolution FAILING. If the resolver
+    // returns a spec, a shell must never be added to the same spawn.
+    assert.match(spawnSrc, /windowsSpawnUsesShell = process\.platform === 'win32'\s*\n\s*&& !windowsLaunch/);
+    assert.match(spawnSrc, /spawn\(launchCommand, launchArgs, \{/);
+});

@@ -31,10 +31,12 @@ test('EG-001: spawnAgent calls detectCli() before any spawn', () => {
     const code127Idx = spawnSrc.indexOf('code: 127', detectIdx);
     assert.ok(code127Idx > detectIdx, 'should resolve with exit code 127 for missing CLI');
 
-    // Verify preflight comes before the standard CLI spawn
-    // Note: spawn uses spawnCommand (resolved path on non-Windows) instead of raw cli
-    const stdSpawnIdx = spawnSrc.indexOf("spawn(spawnCommand, args", spawnAgentIdx);
-    assert.ok(detectIdx < stdSpawnIdx, 'detectCli check must come before spawn(spawnCommand, args)');
+    // Verify preflight comes before the standard CLI spawn.
+    // Note: spawn takes launchCommand/launchArgs — on Windows those come from the
+    // shell-free shim resolver (#367), elsewhere they are the resolved path and argv.
+    const stdSpawnIdx = spawnSrc.indexOf("spawn(launchCommand, launchArgs", spawnAgentIdx);
+    assert.ok(stdSpawnIdx > 0, 'standard CLI spawn call must exist');
+    assert.ok(detectIdx < stdSpawnIdx, 'detectCli check must come before the standard spawn');
 });
 
 // ─── EG-002: standard CLI child.on('error') listener exists ───

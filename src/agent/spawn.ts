@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
 import { createTextStreamReader, sliceWithoutSplittingSurrogate } from './stream-text.js';
+import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
 
 /** Cap on retained stderr text used for error classification. */
 const STDERR_BUF_CAP = 4000;
@@ -2557,11 +2558,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     // ─── Standard CLI branch (claude/codex/opencode) ──────
-    // DIFF-B: Windows needs shell:true only when falling back to .cmd shims.
     const spawnCommand = cli === 'opencode' && process.platform !== 'win32'
         ? (resolvedOpencodeBinary || detected.path || cli)
         : (detected.path || cli);
+    // On Windows, resolve an npm .cmd shim to its interpreter + script so the child can
+    // be spawned WITHOUT a shell (#367). Passing shell:true here routes prompt argv
+    // through cmd.exe, where metacharacters stop being literal data.
+    //
+    // If resolution fails we currently keep the legacy shell path rather than refusing
+    // to launch: the fail-closed contract only becomes safe once the native Windows
+    // gate proves every classified runtime resolves. Until then, refusing here would
+    // break working installs on a code path that has no local test coverage.
+    const windowsLaunch = process.platform === 'win32'
+        ? resolveWindowsLaunchSpec(spawnCommand, args)
+        : null;
+    const launchCommand = windowsLaunch ? windowsLaunch.command : spawnCommand;
+    const launchArgs = windowsLaunch ? launchArgv(windowsLaunch) : args;
+    const launchEnv = windowsLaunch && Object.keys(windowsLaunch.envDelta).length
+        ? { ...spawnEnv, ...windowsLaunch.envDelta }
+        : spawnEnv;
     const windowsSpawnUsesShell = process.platform === 'win32'
+        && !windowsLaunch
         && !spawnCommand.toLowerCase().endsWith('.exe');
     const opencodeSpawnAudit = cli === 'opencode'
         ? buildOpencodeSpawnAudit({ args, cwd: spawnCwd, env: spawnEnv, binary: spawnCommand })
@@ -2575,9 +2592,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         kiroPlainText,
         isFreshMainRun: !isResume && !empSid,
         cwd: spawnCwd,
-        spawn: () => spawn(spawnCommand, args, {
+        spawn: () => spawn(launchCommand, launchArgs, {
             cwd: spawnCwd,
-            env: spawnEnv,
+            env: launchEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
             ...(windowsSpawnUsesShell ? { shell: true } : {}),
         }),
