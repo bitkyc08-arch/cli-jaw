@@ -275,3 +275,68 @@ test('WB-024: the native architecture is used, not the process architecture', ()
     const bootstrapFn = stripComments(src.slice(src.indexOf('function Install-BootstrapTool'), src.indexOf('# --- 1. Node.js')));
     assert.doesNotMatch(bootstrapFn, /PROCESSOR_ARCHITECTURE/);
 });
+
+test('WB-025: the installer never advertises an invalid streamed invocation', () => {
+    // `irm ... | iex -BootstrapDependencies` is not valid: Invoke-Expression has no
+    // such parameter, and the streamed form cannot pass arguments at all. Printing it
+    // would send users down a path that cannot work.
+    const src = readFileSync(join(root, 'scripts/install.ps1'), 'utf8');
+    assert.doesNotMatch(src, /iex\s+-Bootstrap/, 'iex cannot take installer parameters');
+    assert.doesNotMatch(src, /\|\s*iex\s+-/, 'the streamed form cannot pass parameters');
+});
+
+test('WB-026: -DryRun cannot reach a real npm install', () => {
+    // The early return only existed inside the missing-Node branch, so a machine that
+    // ALREADY had Node fell through to `npm install -g` despite -DryRun.
+    const src = readFileSync(join(root, 'scripts/install.ps1'), 'utf8').replace(/\r\n/g, '\n');
+    const npmInstallIdx = src.indexOf('$npmArgs');
+    const dryGuard = src.indexOf('if ($DryRun) {\n    #');
+    assert.ok(dryGuard > 0, 'a top-level DryRun guard must exist');
+    assert.ok(dryGuard < npmInstallIdx, 'the guard must precede any npm install');
+});
+
+test('WB-027: the promotion probe EXECUTES the binary', () => {
+    // Path existence would promote a corrupt, truncated, or wrong-architecture binary
+    // and then write a receipt declaring it complete.
+    const src = readFileSync(join(root, 'scripts/install.ps1'), 'utf8');
+    const fn = src.slice(src.indexOf('function Install-BootstrapTool'), src.indexOf('# --- 1. Node.js'));
+    assert.match(fn, /Invoke-NativeCapture \$probe @\('--version'\)/);
+    assert.match(fn, /binary failed to execute/);
+    const runIdx = fn.indexOf('Invoke-NativeCapture $probe');
+    const moveIdx = fn.indexOf('Move-Item -LiteralPath $extracted');
+    assert.ok(runIdx > 0 && runIdx < moveIdx, 'the binary must run before promotion');
+});
+
+test('WB-028: the receipt is published atomically and stale trees are discarded', () => {
+    const src = readFileSync(join(root, 'scripts/install.ps1'), 'utf8');
+    const fn = src.slice(src.indexOf('function Install-BootstrapTool'), src.indexOf('# --- 1. Node.js'));
+    // A crash mid-write must not leave a partial receipt a later run would trust.
+    assert.match(fn, /\$receiptPath\.tmp/);
+    assert.match(fn, /Move-Item -LiteralPath "\$receiptPath\.tmp"/);
+    // And the receipt must NEVER be written directly to its final path — otherwise the
+    // atomic rename is decoration and a partial file can still be published.
+    assert.doesNotMatch(fn, /Set-Content -LiteralPath \$receiptPath\b/,
+        'the receipt must be staged as .tmp and renamed, never written in place');
+    // A crash between promotion and receipt leaves an unproven tree; it must go.
+    assert.match(fn, /if \(Test-Path -LiteralPath \$installDir\) \{[\s\S]*Remove-Item -LiteralPath \$installDir -Recurse -Force/);
+});
+
+test('WB-029: provisioned PortableGit is discoverable by the runtime', () => {
+    // The bootstrap installs Git under a VERSIONED directory, so the fixed-path probe
+    // could never find it and cli-jaw would report bash missing after provisioning it.
+    const src = readFileSync(join(root, 'src/core/windows-shell.ts'), 'utf8');
+    assert.match(src, /'cli-jaw', 'runtimes', 'git'/);
+    assert.match(src, /'usr', 'bin', 'bash\.exe'/, 'both PortableGit bash layouts must be probed');
+    assert.match(src, /listSubdirectories/, 'versioned directories must be enumerated, not hardcoded');
+});
+
+test('WB-030: bash candidates are rooted by path segment, not string prefix', () => {
+    // 'C:\\one\\git-evil' starts with 'C:\\one\\git' as a string but is a different
+    // directory, so a startsWith check would accept a sibling path.
+    const candidates = bashCandidates('C:\\one\\git');
+    for (const candidate of candidates) {
+        const segments = candidate.split('\\');
+        assert.equal(segments.slice(0, 3).join('\\'), 'C:\\one\\git');
+        assert.ok(!candidate.startsWith('C:\\one\\git-'), 'must not resolve into a sibling directory');
+    }
+});

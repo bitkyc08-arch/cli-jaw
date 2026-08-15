@@ -219,8 +219,19 @@ function Install-BootstrapTool([string]$Tool, [switch]$DryRunOnly) {
         if (-not (Test-Path -LiteralPath $probe)) {
             Stop-Install "$Tool extraction did not produce the expected binary: $probe"
         }
+        # EXECUTE it. Existence alone would promote a corrupt, truncated, or
+        # wrong-architecture binary and then write a receipt calling it complete.
+        $probeRun = Invoke-NativeCapture $probe @('--version')
+        if ($probeRun.ExitCode -ne 0) {
+            Stop-Install "$Tool binary failed to execute (exit $($probeRun.ExitCode)): $probe"
+        }
 
         New-Item -ItemType Directory -Path (Split-Path -Parent $installDir) -Force | Out-Null
+        if (Test-Path -LiteralPath $installDir) {
+            # A previous run crashed between promotion and receipt. The tree has no
+            # receipt, so it is unproven — discard rather than trust it.
+            Remove-Item -LiteralPath $installDir -Recurse -Force
+        }
         Move-Item -LiteralPath $extracted -Destination $installDir
 
         # Receipt LAST, and only after the probe: its presence is what marks the
@@ -229,7 +240,10 @@ function Install-BootstrapTool([string]$Tool, [switch]$DryRunOnly) {
             tool = $Tool; version = $entry.version; arch = $arch
             installDir = $installDir; sha256 = $artifact.sha256; url = $url
             installedAt = (Get-Date).ToUniversalTime().ToString('o')
-        } | ConvertTo-Json | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+        } | ConvertTo-Json | Set-Content -LiteralPath "$receiptPath.tmp" -Encoding UTF8
+        # Atomic publish: a crash mid-write must not leave a partial receipt that a
+        # later run would trust as proof of a complete install.
+        Move-Item -LiteralPath "$receiptPath.tmp" -Destination $receiptPath -Force
         Write-Ok "$Tool $($entry.version) installed to $installDir"
         return $installDir
     } finally {
@@ -259,8 +273,11 @@ if (-not $nodePath) {
         Write-Warn2 'Node.js not found on PATH.'
         Write-Warn2 'Install it first, then re-run this script:'
         Write-Warn2 '  winget install OpenJS.NodeJS.LTS'
-        Write-Warn2 'Or provision a pinned runtime automatically:'
-        Write-Warn2 '  irm <installer-url> | iex -BootstrapDependencies'
+        Write-Warn2 'Or provision a pinned runtime automatically (download first —'
+        Write-Warn2 'the streamed form cannot take parameters, and bootstrap needs'
+        Write-Warn2 'windows-bootstrap-manifest.json beside the script):'
+        Write-Warn2 '  git clone --depth 1 https://github.com/lidge-jun/cli-jaw'
+        Write-Warn2 '  .\\cli-jaw\\scripts\\install.ps1 -BootstrapDependencies'
         Stop-Install 'Node.js 22.4.0 or newer is required.'
     }
 }
@@ -280,6 +297,15 @@ if ($nodeVersion -lt $MinimumNodeVersion) {
     Stop-Install 'Unsupported Node.js version.'
 }
 Write-Ok "Node.js v$nodeVersionText"
+
+if ($DryRun) {
+    # -DryRun promises to touch nothing. Without this guard a machine that ALREADY
+    # has Node would fall through to a real 'npm install -g'.
+    Write-Info '[dry-run] node present; no bootstrap needed.'
+    Write-Info '[dry-run] would install cli-jaw globally with npm.'
+    Write-Info '[dry-run] no files were written.'
+    return
+}
 
 # --- 2. npm allow-scripts support ---------------------------------------
 # Prefer npm.cmd so Restricted/RemoteSigned execution policy does not select
