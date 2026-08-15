@@ -57,6 +57,8 @@ function Write-Ok([string]$Message) { Write-Host "  $Message" -ForegroundColor G
 function Write-Warn2([string]$Message) { Write-Host "  $Message" -ForegroundColor Yellow }
 
 function Stop-Install([string]$Message) {
+    if ($Message) { Write-Warn2 $Message }
+    throw "CLI-JAW installation failed. $Message"
 }
 
 function Add-UserPathEntry([string]$Directory) {
@@ -80,10 +82,7 @@ function Add-UserPathEntry([string]$Directory) {
     } finally {
         $regKey.Close()
     }
-    if ($Message) { Write-Warn2 $Message }
-    # A terminating error makes `powershell -File` return non-zero without
-    # killing the caller when the documented `irm ... | iex` form is used.
-    throw "CLI-JAW installation failed. $Message"
+
 }
 
 function Resolve-CommandPath([string[]]$Candidates) {
