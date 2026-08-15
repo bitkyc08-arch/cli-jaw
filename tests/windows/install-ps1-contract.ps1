@@ -127,43 +127,70 @@ exit /b 0
 
 # 1. `powershell -File` must exit non-zero AND leave the caller alive.
 #    The inline `irm | iex` case is covered above; this is the other documented form.
+#    NOTE: this must FAIL CLOSED. An earlier version used -ErrorAction SilentlyContinue
+#    and skipped its assertion when Start-Process returned $null, so an unlaunchable
+#    shell produced a green test.
 $fileFixture = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fileFixture -Force | Out-Null
 try {
-    $shell = if ($PSVersionTable.PSVersion.Major -ge 6) { 'pwsh' } else { 'powershell' }
-    # An empty PATH plus System32 means Node is absent, so the installer must fail.
-    $child = Start-Process -FilePath $shell -PassThru -Wait -NoNewWindow -ArgumentList @(
-        '-NoProfile', '-File', $installer, '-Prefix', $fileFixture
-    ) -Environment @{ Path = "$env:SystemRoot\System32" } -ErrorAction SilentlyContinue
-    if ($null -ne $child) {
-        Assert-True ($child.ExitCode -ne 0) 'powershell -File must exit non-zero when the installer fails'
-    }
-    Assert-True $true 'caller survived the -File failure'
-} catch {
-    # Start-Process -Environment needs PS 7.4+; fall back to a PATH swap.
+    $shellName = if ($PSVersionTable.PSVersion.Major -ge 6) { 'pwsh' } else { 'powershell' }
+    $shellPath = (Get-Command $shellName -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1).Source
+    Assert-True ($null -ne $shellPath) "$shellName must be resolvable to launch the -File check"
+
+    # Node absent => the installer must fail. Swap PATH for the child only.
     $savedPath = $env:Path
+    $childExit = $null
     try {
         $env:Path = "$env:SystemRoot\System32"
-        & $shell -NoProfile -File $installer -Prefix $fileFixture *> $null
-        Assert-True ($LASTEXITCODE -ne 0) 'powershell -File must exit non-zero when the installer fails'
+        & $shellPath -NoProfile -File $installer -Prefix $fileFixture *> $null
+        $childExit = $LASTEXITCODE
     } finally {
         $env:Path = $savedPath
     }
+    Assert-True ($null -ne $childExit) 'the -File child must report an exit code'
+    Assert-True ($childExit -ne 0) "powershell -File must exit non-zero when the installer fails (got $childExit)"
+    # Reaching this line at all proves the caller survived the child's failure.
 } finally {
     Remove-Item -LiteralPath $fileFixture -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# 2. The PATH guidance branch must actually be reached and must print only the
-#    User PATH. Every previous fixture passed -Prefix, which SUPPRESSES this branch,
-#    so the emitted command was never observed.
+# 2. The PATH guidance branch must be REACHED and must print only the User PATH.
+#    Every earlier fixture passed -Prefix, which suppresses this branch entirely, so
+#    the emitted command was never observed. Run WITHOUT -Prefix and capture output.
 $pathFixture = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $pathFixture -Force | Out-Null
 try {
-    $guidance = Select-String -Path $installer -Pattern "SetEnvironmentVariable\('Path'" -AllMatches
-    Assert-True ($null -ne $guidance) 'installer must emit User PATH guidance'
-    foreach ($hit in $guidance) {
-        Assert-True ($hit.Line -notmatch '\$env:Path') 'PATH guidance must not serialize the merged process PATH'
+    $sentinelPrefix = Join-Path $pathFixture 'npm-prefix'
+    New-Item -ItemType Directory -Path $sentinelPrefix -Force | Out-Null
+    @"
+@echo off
+if "%1"=="--version" ( echo 11.16.0 & exit /b 0 )
+if "%1"=="prefix" ( echo $sentinelPrefix & exit /b 0 )
+exit /b 0
+"@ | Set-Content -LiteralPath (Join-Path $pathFixture 'npm.cmd') -Encoding Ascii
+    @'
+@echo off
+echo v22.4.0
+exit /b 0
+'@ | Set-Content -LiteralPath (Join-Path $pathFixture 'node.cmd') -Encoding Ascii
+
+    # A machine-only sentinel that must NEVER appear in the emitted guidance.
+    $machineSentinel = 'C:\MACHINE-ONLY-SENTINEL'
+    $savedPath = $env:Path
+    $guidanceOutput = ''
+    try {
+        $env:Path = "$pathFixture;$env:SystemRoot\System32;$machineSentinel"
+        # No -Prefix: this is the branch under test.
+        $guidanceOutput = (& $installer -TarballPath (Join-Path $pathFixture 'cli-jaw.tgz') -IgnoreScripts 2>&1 | Out-String)
+    } catch {
+        $guidanceOutput = "$guidanceOutput`n$($_.Exception.Message)"
+    } finally {
+        $env:Path = $savedPath
     }
+    Assert-True ($guidanceOutput -match "GetEnvironmentVariable\('Path', 'User'\)") 'guidance must read the User PATH'
+    Assert-True ($guidanceOutput -notmatch [regex]::Escape($machineSentinel)) 'guidance must not contain machine-only PATH entries'
+    Assert-True ($guidanceOutput -notmatch '\$env:Path') 'guidance must not serialize the merged process PATH'
 } finally {
     Remove-Item -LiteralPath $pathFixture -Recurse -Force -ErrorAction SilentlyContinue
 }

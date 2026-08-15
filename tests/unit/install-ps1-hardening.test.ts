@@ -31,11 +31,14 @@ test('IPS-001: every failure path routes through the catchable helper', () => {
     const src = installer();
     assert.match(src, /function Stop-Install/);
     assert.match(src, /throw "CLI-JAW installation failed/);
-    // ANY bare exit in the script body defeats `irm | iex`, not just `exit 1`.
-    const bare = src.split('\n').filter(l => /^\s*exit\s+\d+\s*(#.*)?$/.test(l));
-    assert.deepEqual(bare, [], `bare exit kills the caller under 'irm | iex': ${bare.join(' | ')}`);
-    // And the helper must actually be used.
-    assert.ok((src.match(/Stop-Install /g) ?? []).length >= 5, 'failure paths must call Stop-Install');
+    // ANY `exit N` anywhere in the body defeats `irm | iex` — including inline forms
+    // like `if ($true) { exit 2 }`, which a line-anchored pattern would miss. Only
+    // `exit /b` inside a here-string fixture is legitimate (that is batch, not PS).
+    const offenders = src
+        .split('\n')
+        .filter(l => /(^|[;{(]|\bthen\b)\s*exit\s+\d+/.test(l) && !/exit \/b/.test(l))
+        .map(l => l.trim());
+    assert.deepEqual(offenders, [], 'exit N kills the caller under irm | iex: ' + offenders.join(' | '));
 });
 
 test('IPS-002: the Node gate compares full versions, not the major component', () => {
@@ -119,9 +122,16 @@ test('IPS-008: the Windows contract executes the three previously-unrun scenario
     // the -File exit code was never observed, the PATH guidance branch was suppressed
     // by -Prefix in every fixture, and no test set a restrictive execution policy.
     const contract = read('tests/windows/install-ps1-contract.ps1');
-    assert.match(contract, /-NoProfile', '-File'|-NoProfile -File/, 'must invoke the installer via -File');
-    assert.match(contract, /ExitCode -ne 0|LASTEXITCODE -ne 0/, 'must assert a nonzero child exit code');
+    assert.match(contract, /-NoProfile -File \$installer/, 'must invoke the installer via -File');
+    assert.match(contract, /\$childExit -ne 0/, 'must assert a nonzero child exit code');
+    // Fail-closed: the shell must resolve and an exit code must exist, or the check is
+    // skipped and an unlaunchable shell greens the test.
+    assert.match(contract, /must be resolvable to launch the -File check/);
+    assert.match(contract, /the -File child must report an exit code/);
+    // The PATH branch must be EXECUTED without -Prefix, not inspected.
+    assert.match(contract, /MACHINE-ONLY-SENTINEL/, 'PATH guidance must be checked against a machine-only sentinel');
+    assert.match(contract, /guidance must not contain machine-only PATH entries/);
     assert.match(contract, /Set-ExecutionPolicy -Scope Process -ExecutionPolicy Restricted/, 'must exercise a restrictive policy');
     assert.match(contract, /jaw-cmd-ran/, 'must prove jaw.cmd runs under that policy');
-    assert.match(contract, /PATH guidance must not serialize the merged process PATH/);
+    assert.match(contract, /guidance must not serialize the merged process PATH/);
 });
