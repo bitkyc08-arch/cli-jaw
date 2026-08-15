@@ -338,7 +338,11 @@ if [[ -n "${d_bin_cmds:-}" ]]; then
 fi
 
 # public/dist build output
-a_pub_dist=$(find public/dist -type f 2>/dev/null | wc -l | tr -d ' ')
+# `|| true` matters: public/dist is BUILD OUTPUT, absent in a fresh clone. Without
+# it, find's non-zero exit trips `set -e` and the script dies before printing its
+# summary — reporting a drift failure on a tree that has none. That is what blocked
+# promote-to-main.sh, which runs gate:all in a clone before any frontend build.
+a_pub_dist=$( (find public/dist -type f 2>/dev/null || true) | wc -l | tr -d ' ')
 d_pub_dist=$( (rg -n 'public/dist build output [0-9]+ files' "$DOC" || true) | head -1 | rg -o 'build output [0-9]+ files' | rg -o '[0-9]+' | head -1 || true)
 if [[ -n "${d_pub_dist:-}" ]]; then
   if [[ "$a_pub_dist" == "$d_pub_dist" ]]; then
