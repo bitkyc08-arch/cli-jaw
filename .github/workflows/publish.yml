@@ -104,7 +104,6 @@ jobs:
                 --workflow postinstall-platform.yml \
                 --branch "$branch" \
                 --commit "$GITHUB_SHA" \
-                --event push \
                 --status success \
                 --limit 1 --json url --jq '.[0].url // ""')"
               if [ -z "$platform_url" ]; then
