@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { win32 as pathWin32 } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -355,39 +355,93 @@ test('WLS-023: a self-referential shim cycle terminates', () => {
     assert.equal(spec, null);
 });
 
-test('WLS-024: every Windows spawn site routes through the shell-free resolver', () => {
-    // The failure this prevents: one runtime keeps the old `shell: true` path and
-    // quietly becomes a second launcher with different Windows quoting behavior.
-    // Any `shell: true` must be guarded by a FAILED resolution, never by a bare
-    // extension check.
-    const files = [
-        'src/agent/spawn.ts',
-        'src/agent/pi-runtime.ts',
-        'src/agent/codex-app-client.ts',
-        'src/cli/capability-probe-worker.ts',
-    ];
+test('WLS-024: no source file may enable a Windows shell without a failed resolution', () => {
+    // DISCOVERED, not listed. A hardcoded file list is the wrong oracle: a reviewer
+    // found src/cli/cli-status-worker.ts had a live shell spawn the list simply did
+    // not name, so the guard read green while the gap was real. Walk the tree, and
+    // the next new spawn site is covered the day it lands.
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = join(dir, entry.name);
+            if (entry.isDirectory()) { walk(full); continue; }
+            if (!entry.name.endsWith('.ts')) continue;
+            const src = readFileSync(full, 'utf8');
+            const rel = full.slice(full.indexOf('/src/') + 1);
+            // Strip comments, then normalize whitespace so a value split across
+            // lines reads the same as an inline one.
+            const code = src
+                .split('\n')
+                .filter(l => !/^\s*(\*|\/\/)/.test(l))
+                .join('\n')
+                .replace(/\s+/g, ' ');
+            for (const match of code.matchAll(/shell\s*:\s*([^,}]+)/g)) {
+                const value = match[1]!.trim();
+                if (value === 'false') continue;
+                // A TYPE annotation ('shell: WindowsShellKind') is not a spawn option.
+                if (!/^(true|false|1|0)$/.test(value) && !/[?!&|.]/.test(value)) continue;
+                // The idiom is `...(guard ? { shell: true } : {})`, so the guard lives
+                // BEFORE the literal. Read the enclosing expression, not the literal.
+                // 160 chars was too tight: 'windowsSpawnUsesShell ? { shell: true }'
+                // sits further from the literal once the options object is spread across
+                // several properties. Read the whole enclosing spawn call.
+                const context = code.slice(Math.max(0, match.index! - 400), match.index!);
+                // Case-insensitive: the guard is spelled windowsSpawnUsesShell here and
+                // useShell elsewhere, and a case-sensitive match silently missed one.
+                if (/spec|windowslaunch|usesshell|useshell|iscmdshim|launch\.|platform/i.test(context + value)) continue;
+                offenders.push(`${rel}: shell: ${value.slice(0, 60)}`);
+            }
+        }
+    };
+    walk(join(__dirname, '../../src'));
+    assert.deepEqual(offenders, [], 'every Windows shell must be gated on resolution failing');
+});
+
+test('WLS-025: every shell guard consults the resolver and is never always-true', () => {
+    // Two escapes this closes: a guard that checks only the extension (ignoring the
+    // resolver entirely), and one short-circuited with '|| true', which a token
+    // search accepts because the resolver name is still present elsewhere.
+    const files = ['src/agent/spawn.ts', 'src/agent/pi-runtime.ts', 'src/agent/codex-app-client.ts',
+        'src/cli/capability-probe-worker.ts', 'src/cli/cli-status-worker.ts'];
     for (const file of files) {
         const src = readFileSync(join(__dirname, '../../', file), 'utf8');
-        assert.match(src, /resolveWindowsLaunchSpec/, `${file} must use the resolver`);
-        for (const line of src.split('\n')) {
-            if (!line.includes('shell: true')) continue;
-            // Comments legitimately discuss `shell: true` — including the ones",
-            // explaining why it is being removed.
-            if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue;
-            // The guard variable must be derived from resolution failing.
+        assert.match(src, /resolveWindowsLaunchSpec|resolvePiSpawn/, file + ' must consult the resolver');
+        const flat = src
+            .split('\n').filter(l => !/^\s*(\*|\/\/)/.test(l)).join('\n')
+            .replace(/\s+/g, ' ');
+        const guards: string[] = [];
+        for (const m of flat.matchAll(/const (?:useShell|isCmdShim|windowsSpawnUsesShell)\s*=\s*([^;]+);/g)) {
+            guards.push(m[1]!);
+        }
+        for (const m of flat.matchAll(/shell\s*:\s*([^,}]+)/g)) {
+            const value = m[1]!.trim();
+            if (value === 'true' || value === 'false') continue;   // literal inside a guarded spread
+            if (!/[?!&|.]/.test(value)) continue;                   // a type annotation
+            guards.push(value);
+        }
+        for (const guard of guards) {
+            assert.doesNotMatch(guard, /(\|\|\s*true\b|\btrue\s*\|\|)/, file + ': guard is always true — ' + guard.trim());
             assert.match(
-                line, /(useShell|windowsSpawnUsesShell|isCmdShim|launch\.useShell)/,
-                `${file}: unguarded shell:true — ${line.trim()}`,
+                guard, /!\s*(spec|launchSpec|windowsLaunch)|launch\./,
+                file + ': guard ignores the resolver result — ' + guard.trim(),
             );
         }
-        // And the guard itself must consider the resolver result. Read the whole
-        // STATEMENT, not one line: the spawn.ts guard spans several lines, and a
-        // line-local check would report a false failure there.
-        for (const match of src.matchAll(/const (?:useShell|isCmdShim|windowsSpawnUsesShell)\s*=([\s\S]*?);/g)) {
-            assert.match(
-                match[1]!, /!spec|!launchSpec|!windowsLaunch|resolvePiSpawn/,
-                `${file}: the shell guard ignores resolution — ${match[0]!.replace(/\s+/g, ' ').trim()}`,
-            );
-        }
+    }
+});
+
+test('WLS-026: resolved env assignments reach the child at every migrated site', () => {
+    // envDelta carries `env -S FOO=bar` from the target's shebang. Dropping it runs
+    // the runtime with a different configuration than its own shim asks for — a
+    // silent misconfiguration rather than a visible failure.
+    const sites: Array<[string, RegExp]> = [
+        ['src/agent/spawn.ts', /windowsLaunch\.envDelta/],
+        ['src/agent/pi-runtime.ts', /\.\.\.launch\.envDelta/],
+        ['src/agent/codex-app-client.ts', /launchSpec\.envDelta/],
+        ['src/cli/capability-probe-worker.ts', /spec\.envDelta/],
+        ['src/cli/cli-status-worker.ts', /spec\.envDelta/],
+    ];
+    for (const [file, pattern] of sites) {
+        const src = readFileSync(join(__dirname, '../../', file), 'utf8');
+        assert.match(src, pattern, `${file} must merge envDelta into the child env`);
     }
 });

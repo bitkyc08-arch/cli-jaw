@@ -53,7 +53,7 @@ export function buildCapabilitySpawnSpec(
         command: spec ? spec.command : request.binary,
         args: spec ? launchArgv(spec) : probeArgs,
         options: {
-            env,
+            env: spec ? { ...env, ...spec.envDelta } : env,
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: platform !== 'win32',
             ...(isCmdShim ? { shell: true } : {}),

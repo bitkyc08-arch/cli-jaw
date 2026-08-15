@@ -317,13 +317,18 @@ export function parsePiModelList(output: string, profileId: string): string[] {
  * path keeps a second, differently-behaved launcher alive. Resolution failure keeps
  * the legacy shell until the native gate proves every classified runtime resolves.
  */
-function resolvePiSpawn(command: string, args: string[]): { command: string; args: string[]; useShell: boolean } {
-    if (process.platform !== 'win32') return { command, args, useShell: false };
+function resolvePiSpawn(command: string, args: string[]): {
+    command: string; args: string[]; useShell: boolean; envDelta: Record<string, string>;
+} {
+    if (process.platform !== 'win32') return { command, args, useShell: false, envDelta: {} };
     const spec = resolveWindowsLaunchSpec(command, args, {
         which: (name) => detectCliBinary(name).path || null,
     });
-    if (spec) return { command: spec.command, args: launchArgv(spec), useShell: false };
-    return { command, args, useShell: !command.toLowerCase().endsWith('.exe') };
+    // envDelta carries `env -S FOO=bar` assignments from the target's shebang.
+    // Dropping it launches the runtime with a different configuration than its own
+    // shim asks for, which is a silent behavior change rather than a loud failure.
+    if (spec) return { command: spec.command, args: launchArgv(spec), useShell: false, envDelta: spec.envDelta };
+    return { command, args, useShell: !command.toLowerCase().endsWith('.exe'), envDelta: {} };
 }
 export function listPiModels(piInput: unknown, profileId: string, options: { effort?: string; root?: string; timeoutMs?: number } = {}): Promise<string[]> {
     const dir = ensurePiRuntimeConfig(piInput, profileId, options.effort || '', options.root);
@@ -331,7 +336,7 @@ export function listPiModels(piInput: unknown, profileId: string, options: { eff
     const launch = resolvePiSpawn(cmd.command, [...cmd.baseArgs, '--offline', '--list-models', profileId]);
     return new Promise((resolve, reject) => {
         const child = spawn(launch.command, launch.args, {
-            env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+            env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
             stdio: ['ignore', 'pipe', 'pipe'],
             ...(launch.useShell ? { shell: true } : {}),
         });
@@ -508,7 +513,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
     const launch = resolvePiSpawn(cmd.command, args);
     const child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+        env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(launch.useShell ? { shell: true } : {}),
     });
@@ -702,7 +707,7 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     const launch = resolvePiSpawn(cmd.command, args);
     const child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+        env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(launch.useShell ? { shell: true } : {}),
     });

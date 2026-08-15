@@ -372,7 +372,7 @@ export class CodexAppClient extends EventEmitter {
             launchSpec ? launchArgv(launchSpec) : launchArgs,
             {
             cwd: this.workDir,
-            env: this.spawnEnv,
+            env: launchSpec ? { ...this.spawnEnv, ...launchSpec.envDelta } : this.spawnEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
             ...(useShell ? { shell: true } : {}),
         });
