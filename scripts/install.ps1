@@ -31,7 +31,18 @@
 param(
     [string]$TarballPath = '',
     [string]$Prefix = '',
-    [switch]$IgnoreScripts
+    [switch]$IgnoreScripts,
+
+    # Provision a pinned, hash-verified Node (and PortableGit) under LOCALAPPDATA
+    # when the system lacks a supported one. OFF by default: see #369.
+    [switch]$BootstrapDependencies,
+
+    # Also provision PortableGit, which unlike MinGit ships bash.
+    [switch]$WithPortableGit,
+
+    # Print the full plan (urls, digests, targets, PATH delta) and exit without
+    # touching disk. This is the enterprise-review surface #369 asks for.
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
@@ -119,13 +130,139 @@ Write-Host ''
 Write-Host '  CLI-JAW Windows Installer (beta)' -ForegroundColor Cyan
 Write-Host ''
 
+
+# --- Optional dependency bootstrap (#369) --------------------------------
+# OFF by default. Enabling silent runtime downloads in a command users paste from
+# a README is a product decision that cannot be walked back per-user, so the
+# mechanism ships behind an explicit switch and the default installer behavior is
+# unchanged. Planning/verification logic lives in src/core/windows-bootstrap.ts
+# so it is unit-tested off-Windows; this function owns only the transaction.
+function Get-BootstrapManifest {
+    $manifestPath = Join-Path $PSScriptRoot 'windows-bootstrap-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        Stop-Install "bootstrap manifest not found: $manifestPath"
+    }
+    return Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+}
+
+function Resolve-NativeArch {
+    # NATIVE architecture, not the process one: an ARM64 host can run x64
+    # PowerShell under emulation, and PROCESSOR_ARCHITECTURE would then lie.
+    $osArch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+    switch ($osArch.ToLowerInvariant()) {
+        'x64'   { return 'x64' }
+        'arm64' { return 'arm64' }
+        default { Stop-Install "unsupported Windows architecture: $osArch" }
+    }
+}
+
+function Install-BootstrapTool([string]$Tool, [switch]$DryRunOnly) {
+    $manifest = Get-BootstrapManifest
+    $arch = Resolve-NativeArch
+    $entry = $manifest.$Tool
+    $artifact = $entry.artifacts.$arch
+    if (-not $artifact) { Stop-Install "$Tool has no pinned artifact for $arch" }
+
+    $url = $entry.urlTemplate.
+        Replace('{version}', $entry.version).
+        Replace('{tag}', $entry.tag).
+        Replace('{arch}', $arch).
+        Replace('{file}', $artifact.file)
+    $installDir = Join-Path $env:LOCALAPPDATA "cli-jaw\runtimes\$Tool\$($entry.version)\$arch"
+
+    if ($DryRunOnly) {
+        Write-Info "[dry-run] $Tool $($entry.version) ($arch)"
+        Write-Info "[dry-run]   url:    $url"
+        Write-Info "[dry-run]   sha256: $($artifact.sha256)"
+        Write-Info "[dry-run]   target: $installDir"
+        return $null
+    }
+
+    # Already provisioned and probed? Re-running must be a no-op.
+    $receiptPath = Join-Path $installDir 'cli-jaw-receipt.json'
+    if (Test-Path -LiteralPath $receiptPath) {
+        Write-Ok "$Tool $($entry.version) already provisioned"
+        return $installDir
+    }
+
+    # Stage on the SAME volume so the promotion below is a rename, not a copy.
+    $staging = Join-Path $env:LOCALAPPDATA "cli-jaw\.staging-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $staging -Force | Out-Null
+    try {
+        $archive = Join-Path $staging $artifact.file
+        Write-Info "Downloading $($artifact.file)..."
+        Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
+
+        # HASH BEFORE EXTRACT. Verifying after extraction would already have run
+        # attacker-controlled bytes through an archive parser.
+        $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+        if ($actual -ine $artifact.sha256) {
+            Stop-Install "$Tool checksum mismatch: expected $($artifact.sha256), got $actual"
+        }
+        Write-Ok "verified $($artifact.file)"
+
+        $extracted = Join-Path $staging 'unpacked'
+        New-Item -ItemType Directory -Path $extracted -Force | Out-Null
+        if ($artifact.file -like '*.zip') {
+            Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
+            # Node zips contain a single versioned top-level directory.
+            $inner = @(Get-ChildItem -LiteralPath $extracted -Directory)
+            if ($inner.Count -eq 1) { $extracted = $inner[0].FullName }
+        } else {
+            # PortableGit ships a self-extracting 7z archive.
+            $seExit = Invoke-NativeStreaming $archive @('-o', $extracted, '-y')
+            if ($seExit -ne 0) { Stop-Install "$Tool extraction failed (exit $seExit)" }
+        }
+
+        # Probe BEFORE promoting: a half-extracted tree must never be published.
+        $probe = if ($Tool -eq 'node') { Join-Path $extracted 'node.exe' } else { Join-Path $extracted 'cmd\git.exe' }
+        if (-not (Test-Path -LiteralPath $probe)) {
+            Stop-Install "$Tool extraction did not produce the expected binary: $probe"
+        }
+
+        New-Item -ItemType Directory -Path (Split-Path -Parent $installDir) -Force | Out-Null
+        Move-Item -LiteralPath $extracted -Destination $installDir
+
+        # Receipt LAST, and only after the probe: its presence is what marks the
+        # install complete, so it must never exist for a partial tree.
+        [pscustomobject]@{
+            tool = $Tool; version = $entry.version; arch = $arch
+            installDir = $installDir; sha256 = $artifact.sha256; url = $url
+            installedAt = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+        Write-Ok "$Tool $($entry.version) installed to $installDir"
+        return $installDir
+    } finally {
+        # Any failure leaves no half-claimed install: staging always goes away.
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # --- 1. Node.js >= 22.4 --------------------------------------------------
 $nodePath = Resolve-CommandPath @('node.exe', 'node')
 if (-not $nodePath) {
-    Write-Warn2 'Node.js not found on PATH.'
-    Write-Warn2 'Install it first, then re-run this script:'
-    Write-Warn2 '  winget install OpenJS.NodeJS.LTS'
-    Stop-Install 'Node.js 22.4.0 or newer is required.'
+    if ($BootstrapDependencies -or $DryRun) {
+        Write-Info 'Node.js not found — provisioning a pinned runtime (#369).'
+        $nodeDir = Install-BootstrapTool -Tool 'node' -DryRunOnly:$DryRun
+        if ($WithPortableGit -or $DryRun) {
+            Install-BootstrapTool -Tool 'git' -DryRunOnly:$DryRun | Out-Null
+        }
+        if ($DryRun) {
+            Write-Info '[dry-run] no files were written.'
+            return
+        }
+        # Current process only; User PATH persistence is printed, never forced.
+        $env:Path = "$nodeDir;$env:Path"
+        $nodePath = Resolve-CommandPath @('node.exe', 'node')
+        if (-not $nodePath) { Stop-Install 'bootstrap completed but node is still unresolvable.' }
+    } else {
+        Write-Warn2 'Node.js not found on PATH.'
+        Write-Warn2 'Install it first, then re-run this script:'
+        Write-Warn2 '  winget install OpenJS.NodeJS.LTS'
+        Write-Warn2 'Or provision a pinned runtime automatically:'
+        Write-Warn2 '  irm <installer-url> | iex -BootstrapDependencies'
+        Stop-Install 'Node.js 22.4.0 or newer is required.'
+    }
 }
 $nodeProbe = Invoke-NativeCapture $nodePath @('--version')
 if ($nodeProbe.ExitCode -ne 0) {
