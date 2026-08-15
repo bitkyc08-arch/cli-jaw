@@ -171,6 +171,17 @@ for (const scriptPath of ['scripts/release-preview.sh']) {
     });
 }
 
+test('stable promotion delegates checkout isolation and never auto-rewrites docs', () => {
+    const script = read('scripts/promote-to-main.sh');
+
+    assert.ok(script.includes('source "$SCRIPT_DIR/promotion-checkout.sh"'));
+    assert.ok(script.includes('prepare_promotion_checkout'));
+    assert.ok(script.includes('assert_promotion_checkout_ready_to_push'));
+    assert.ok(script.includes('cleanup_promotion_checkout'));
+    assert.ok(!script.includes('git worktree add'));
+    assert.ok(!script.includes('verify-counts.sh --fix'));
+});
+
 test('desktop release workflow uploads OS matrix artifacts only after GitHub release publication', () => {
     const workflow = read('.github/workflows/desktop-release.yml');
 

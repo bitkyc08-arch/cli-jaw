@@ -414,7 +414,11 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
                 '-c', `service_tier="${options.fastMode ? 'fast' : 'default'}"`,
                 ...(autoPerm ? ['--dangerously-bypass-approvals-and-sandbox'] : []),
                 '--skip-git-repo-check',
-                sessionId, prompt || '', '--json'];
+                // '-' reads the prompt from stdin. The fresh path already does this;
+                // keeping resume on argv left the SAME untrusted text exposed to
+                // cmd.exe parsing on Windows .cmd shims (#367), so the two paths now
+                // have identical guarantees.
+                sessionId, '-', '--json'];
         }
         case 'cursor': {
             const cursorModel = resolveCursorModelVariant(model, effort);

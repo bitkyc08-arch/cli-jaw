@@ -492,7 +492,7 @@ check('Skills directory', () => {
             + '     Then: jaw skill reset'
         );
     }
-    const required = ['dev', 'diagram'];
+    const required = ['jaw-dev', 'jaw-diagram'];
     const missing = required.filter(s => !fs.existsSync(path.join(skillsDir, s, 'SKILL.md')));
     if (missing.length > 0) {
         throw new Error(

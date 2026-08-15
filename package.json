@@ -1,6 +1,6 @@
 {
   "name": "cli-jaw",
-  "version": "2.4.4",
+  "version": "2.17.0",
   "description": "Personal AI assistant powered by Pi, Antigravity, AI-E, Claude, Claude E, Codex, Codex App, Cursor, Grok, Kiro, OpenCode, and Copilot — Web, Terminal, Telegram, and Discord interfaces with 107 built-in skills",
   "type": "module",
   "keywords": [
@@ -62,6 +62,7 @@
     "check:deps": "tsx scripts/check-deps-offline.ts",
     "check:strict-baseline": "node scripts/check-strict-baseline.mjs",
     "docs:check": "tsx scripts/docs/check-docs.mts",
+    "docs:windows": "tsx scripts/render-windows-support.mts",
     "docs:channel-capabilities": "tsx scripts/generate-channel-capability-table.mts",
     "check:frontend-build-output": "tsx scripts/check-web-ui-build-output.ts",
     "i18n:registry": "tsx scripts/i18n-registry.ts",

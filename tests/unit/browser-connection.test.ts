@@ -101,7 +101,7 @@ test('CDP-007: CLI --headless option exists', () => {
     );
 });
 
-// ─── DIFF-D: skills_ref/browser/SKILL.md ────────────
+// ─── DIFF-D: skills_ref/jaw-browser/SKILL.md ────────────
 
 test('CDP-008: skills_ref SKILL.md uses cli-jaw not cli-claw', { skip: !fs.existsSync(join(root, 'skills_ref', 'browser', 'SKILL.md')) && 'skills_ref submodule not checked out' }, () => {
     const skillPath = join(root, 'skills_ref', 'browser', 'SKILL.md');
@@ -109,7 +109,7 @@ test('CDP-008: skills_ref SKILL.md uses cli-jaw not cli-claw', { skip: !fs.exist
     assert.doesNotMatch(
         skillSrc,
         /cli-claw/,
-        'skills_ref/browser/SKILL.md should not contain cli-claw (old name)',
+        'skills_ref/jaw-browser/SKILL.md should not contain cli-claw (old name)',
     );
 });
 

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const browserSkillPath = join(__dirname, '../../skills_ref/browser/SKILL.md');
+const browserSkillPath = join(__dirname, '../../skills_ref/jaw-browser/SKILL.md');
 const visionSkillPath = join(__dirname, '../../skills_ref/vision-click/SKILL.md');
 const hasBrowserSkill = fs.existsSync(browserSkillPath);
 const hasVisionSkill = fs.existsSync(visionSkillPath);

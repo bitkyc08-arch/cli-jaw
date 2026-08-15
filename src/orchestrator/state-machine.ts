@@ -419,7 +419,7 @@ The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\`
 ## Catalog Discovery Sub-Mode (INTERVIEW-CATALOG-01)
 
 When the user names a vague domain but no features ("사주 앱 만들고 싶어", "앱 만들고 싶어"),
-enter catalog_discovery. Load the option ontology from \`skills_ref/dev-pabcd/references/catalog-discovery.yaml\`.
+enter catalog_discovery. Load the option ontology from \`skills_ref/jaw-dev-pabcd/references/catalog-discovery.yaml\`.
 
 **Hard barrier — design/UX LEADS (CATALOG-DESIGN-FIRST-01).** Iterate \`axis_order\` ascending by \`stage\`. Do NOT present a stage until every \`required\` entry of all earlier stages is answered:
 - Stage 1 (design): all 6 dials (mood/lightness/density/shape/typography/motion) via Product-Personality-Selection. Present \`question_options\` with trade-offs, then ask.

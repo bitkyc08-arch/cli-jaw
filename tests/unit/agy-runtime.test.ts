@@ -121,10 +121,13 @@ test('AGY-RT-006: AGY print-mode log file is used when stdout omits resume hints
 
 test('AGY-RT-007: AGY stdout strips ANSI before persistence and sanitized trace append', () => {
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
-    assert.match(spawnSrc, /rawText\s*=\s*agyUtf8!\.write\(chunk\)/);
+    // Decode correctness itself is now behavior-tested in stream-decode-boundary.test.ts
+    // (every byte-split boundary); these remaining assertions cover AGY-specific
+    // routing that only exists in this file.
+    assert.match(spawnSrc, /rawText\s*=\s*stdoutReader\.write\(chunk\)/);
     assert.match(spawnSrc, /rawText\.replace\(\/\\x1B/);
     assert.match(spawnSrc, /appendAgyFullText\(ctx,\s*text\)/);
-    const agyStdoutStart = spawnSrc.indexOf('const rawText = agyUtf8!.write(chunk)');
+    const agyStdoutStart = spawnSrc.indexOf('const rawText = stdoutReader.write(chunk)');
     assert.ok(agyStdoutStart >= 0, 'AGY stdout decoder block must exist');
     const agyStdoutBlock = spawnSrc.slice(
         agyStdoutStart,
@@ -155,22 +158,22 @@ test('AGY-RT-008: AGY print timeout is a hard cap while cli-jaw watchdog owns pr
 
 test('AGY-RT-008b: AGY and Kiro raw stdout/stderr activity marks watchdog progress', () => {
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
-    const agyStdoutStart = spawnSrc.indexOf('const rawText = agyUtf8!.write(chunk)');
+    const agyStdoutStart = spawnSrc.indexOf('const rawText = stdoutReader.write(chunk)');
     assert.ok(agyStdoutStart >= 0, 'AGY stdout decoder block must exist');
     const agyStdoutBlock = spawnSrc.slice(
         agyStdoutStart,
         spawnSrc.indexOf("if (kiroPlainText) {", agyStdoutStart),
     );
-    assert.match(agyStdoutBlock, /const rawText = agyUtf8!\.write\(chunk\);/);
+    assert.match(agyStdoutBlock, /const rawText = stdoutReader\.write\(chunk\);/);
     assert.match(agyStdoutBlock, /if \(!rawText\) return;\s*ctx\.stallWatchdog\?\.markProgress\(\);/);
 
     const kiroStdoutStart = spawnSrc.indexOf("if (kiroPlainText) {");
     assert.ok(kiroStdoutStart >= 0, 'Kiro stdout block must exist');
     const kiroStdoutBlock = spawnSrc.slice(
         kiroStdoutStart,
-        spawnSrc.indexOf('buffer += chunk.toString();', kiroStdoutStart),
+        spawnSrc.indexOf('buffer += stdoutReader.write(chunk);', kiroStdoutStart),
     );
-    assert.match(kiroStdoutBlock, /const text = kiroUtf8!\.write\(chunk\);/);
+    assert.match(kiroStdoutBlock, /const text = stdoutReader\.write\(chunk\);/);
     assert.match(kiroStdoutBlock, /if \(!text\) return;\s*ctx\.stallWatchdog\?\.markProgress\(\);/);
     assert.match(kiroStdoutBlock, /appendTraceEvent\(\{[\s\S]*raw:\s*text/);
 

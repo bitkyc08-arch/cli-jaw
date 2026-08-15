@@ -53,9 +53,10 @@ test('TMPISO-004: acp.createSession uses spawnCwd (both occurrences)', () => {
 
 test('TMPISO-005: child_process spawn uses spawnCwd', () => {
     const src = readSrc('../../src/agent/spawn.ts');
-    // Find the spawn() call options — should use spawnCwd for cwd
-    // Note: spawn uses spawnCommand (resolved path on non-Windows) instead of raw cli
-    const spawnSection = src.slice(src.indexOf('spawn(spawnCommand, args'));
+    // Find the spawn() call options — should use spawnCwd for cwd.
+    // Note: spawn takes launchCommand/launchArgs, which on Windows come from the
+    // shell-free shim resolver (#367).
+    const spawnSection = src.slice(src.indexOf('spawn(launchCommand, launchArgs'));
     assert.ok(spawnSection.includes('cwd: spawnCwd'));
 });
 

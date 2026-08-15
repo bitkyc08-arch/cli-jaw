@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const skillPath = join(root, 'skills_ref/web-ai/SKILL.md');
-const browserSkillPath = join(root, 'skills_ref/browser/SKILL.md');
+const browserSkillPath = join(root, 'skills_ref/jaw-browser/SKILL.md');
 
 test('WAIS-001: web-ai skill exists and documents structured prompt shape', () => {
     const skill = fs.readFileSync(skillPath, 'utf8');

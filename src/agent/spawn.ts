@@ -5,7 +5,11 @@ import os from 'os';
 import crypto from 'node:crypto';
 import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
-import { StringDecoder } from 'node:string_decoder';
+import { createTextStreamReader, sliceWithoutSplittingSurrogate } from './stream-text.js';
+import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+
+/** Cap on retained stderr text used for error classification. */
+const STDERR_BUF_CAP = 4000;
 import { broadcast } from '../core/bus.js';
 import { publish as ssePublish } from '../core/event-bus.js';
 // Static: the registry depends only on the bus, so there is no cycle, and a
@@ -40,7 +44,7 @@ import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAll
 import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
-import { formatCliUnavailableMessage } from '../core/cli-detect.js';
+import { formatCliUnavailableMessage, detectCliBinary } from '../core/cli-detect.js';
 import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
@@ -711,8 +715,12 @@ export async function steerAgent(
 
 // ─── Helpers ─────────────────────────────────────────
 
-function makeCleanEnv(extraEnv: Record<string, string> = {}) {
-    const env: NodeJS.ProcessEnv = { ...process.env };
+export function makeCleanEnv(
+    extraEnv: Record<string, string> = {},
+    inheritedEnv: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+) {
+    const env: NodeJS.ProcessEnv = { ...inheritedEnv };
     delete env["CLAUDE_CODE_SSE_PORT"];
     // Phase 8: strip boss-only dispatch token from employee spawns so employees
     // cannot authenticate against /api/orchestrate/dispatch even via localhost.
@@ -721,12 +729,35 @@ function makeCleanEnv(extraEnv: Record<string, string> = {}) {
     if (extraEnv["JAW_EMPLOYEE_MODE"] === '1') {
         delete env["JAW_BOSS_TOKEN"];
     }
+    const isWindows = platform === 'win32';
+    // Windows treats 'Path' and 'PATH' as the same variable, so a child inheriting
+    // both gets whichever the runtime happens to read first (#366). Collapse them to
+    // one canonical key. On POSIX they are genuinely different variables and must
+    // both survive untouched.
+    const readCaseInsensitivePath = (source: Record<string, string | undefined>): string => {
+        for (const [key, value] of Object.entries(source)) {
+            if (key.toLowerCase() === 'path' && value) return value;
+        }
+        return '';
+    };
+    if (isWindows) {
+        const inheritedPath = readCaseInsensitivePath(env);
+        for (const key of Object.keys(env)) {
+            if (key.toLowerCase() === 'path') delete env[key];
+        }
+        env["PATH"] = inheritedPath;
+    }
     env["PATH"] = buildServicePath(env["PATH"] || '');
-    return {
-        ...env,
-        ...extraEnv,
-        PATH: buildServicePath(extraEnv["PATH"] || env["PATH"] || ''),
-    } as NodeJS.ProcessEnv;
+
+    const merged: NodeJS.ProcessEnv = { ...env, ...extraEnv };
+    const extraPath = isWindows ? readCaseInsensitivePath(extraEnv) : extraEnv["PATH"];
+    if (isWindows) {
+        for (const key of Object.keys(merged)) {
+            if (key.toLowerCase() === 'path') delete merged[key];
+        }
+    }
+    merged["PATH"] = buildServicePath(extraPath || env["PATH"] || '');
+    return merged;
 }
 
 function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
@@ -2099,17 +2130,32 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     heartbeatSent = false;
                 }
             }
+            // Track item-level channel (set by item/started for agentMessage items)
+            // so subsequent item/agentMessage/delta events inherit it when they don't
+            // carry their own channel field.
+            if (parsed.channel !== undefined) {
+                ctx.codexAppActiveChannel = parsed.channel;
+            }
     if (parsed.text) {
                 flushCodexAppThinking();
                 // codex-app streams item/agentMessage/delta at TOKEN granularity;
                 // the segment formatter would inject "\n- " between unjoined
                 // tokens ("이"+"지만" → "이\n- 지만"). Raw-append like the plain
                 // `claude` text_delta path (events/index.ts) instead.
-                const segment = appendAssistantRawText(ctx, parsed.text);
-                if (segment) {
-                    broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
-                    lastVisibleBroadcastTs = Date.now();
-                    heartbeatSent = false;
+                // Commentary-channel text is a transient progress update, not part
+                // of the durable response. Broadcast it for live UI preview but do
+                // NOT append to fullText — that way agent_done (and therefore
+                // Slack/Telegram/Discord delivery) contains only the final answer.
+                const effectiveChannel = parsed.channel || ctx.codexAppActiveChannel;
+                if (effectiveChannel === 'commentary') {
+                    broadcastAgentOutput(ctx, agentLabel, cli, parsed.text, empTag, traceAudience);
+                } else {
+                    const segment = appendAssistantRawText(ctx, parsed.text);
+                    if (segment) {
+                        broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
+                        lastVisibleBroadcastTs = Date.now();
+                        heartbeatSent = false;
+                    }
                 }
             }
             if (parsed.sessionId && !ctx.sessionId) {
@@ -2512,11 +2558,32 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     // ─── Standard CLI branch (claude/codex/opencode) ──────
-    // DIFF-B: Windows needs shell:true only when falling back to .cmd shims.
     const spawnCommand = cli === 'opencode' && process.platform !== 'win32'
         ? (resolvedOpencodeBinary || detected.path || cli)
         : (detected.path || cli);
+    // On Windows, resolve an npm .cmd shim to its interpreter + script so the child can
+    // be spawned WITHOUT a shell (#367). Passing shell:true here routes prompt argv
+    // through cmd.exe, where metacharacters stop being literal data.
+    //
+    // If resolution fails we currently keep the legacy shell path rather than refusing
+    // to launch: the fail-closed contract only becomes safe once the native Windows
+    // gate proves every classified runtime resolves. Until then, refusing here would
+    // break working installs on a code path that has no local test coverage.
+    const windowsLaunch = process.platform === 'win32'
+        ? resolveWindowsLaunchSpec(spawnCommand, args, {
+            // A bare name must be discovered before we decide it is "direct": Windows
+            // would otherwise resolve e.g. 'copilot' to copilot.cmd through PATHEXT at
+            // spawn time, under a shell — the exact defect #367 removes.
+            which: (name) => detectCliBinary(name).path || null,
+        })
+        : null;
+    const launchCommand = windowsLaunch ? windowsLaunch.command : spawnCommand;
+    const launchArgs = windowsLaunch ? launchArgv(windowsLaunch) : args;
+    const launchEnv = windowsLaunch && Object.keys(windowsLaunch.envDelta).length
+        ? { ...spawnEnv, ...windowsLaunch.envDelta }
+        : spawnEnv;
     const windowsSpawnUsesShell = process.platform === 'win32'
+        && !windowsLaunch
         && !spawnCommand.toLowerCase().endsWith('.exe');
     const opencodeSpawnAudit = cli === 'opencode'
         ? buildOpencodeSpawnAudit({ args, cwd: spawnCwd, env: spawnEnv, binary: spawnCommand })
@@ -2530,9 +2597,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         kiroPlainText,
         isFreshMainRun: !isResume && !empSid,
         cwd: spawnCwd,
-        spawn: () => spawn(spawnCommand, args, {
+        spawn: () => spawn(launchCommand, launchArgs, {
             cwd: spawnCwd,
-            env: spawnEnv,
+            env: launchEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
             ...(windowsSpawnUsesShell ? { shell: true } : {}),
         }),
@@ -2605,6 +2672,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ? `${historyBlock}\n\n[User Message]\n${prompt}`
             : `[User Message]\n${prompt}`;
         child.stdin.write(codexStdin);
+    } else if (cli === 'codex' && isResume) {
+        // Resume passes '-' in argv (see args.ts) so the prompt travels on stdin,
+        // matching the fresh path.
+        child.stdin.write(prompt || '');
     }
     child.stdin.end();
 
@@ -2808,15 +2879,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }, 30_000);
     }
 
-    const agyUtf8 = cli === 'agy' ? new StringDecoder('utf8') : null;
-    const kiroUtf8 = kiroPlainText ? new StringDecoder('utf8') : null;
+    // One reader per stream, never shared: stdout and stderr are independent byte
+    // streams and a UTF-8 code point can straddle any chunk boundary (#372).
+    // AGY and Kiro read the same stdout reader rather than owning private decoders,
+    // so their routing is preserved without decoding the same bytes twice.
+    const stdoutReader = createTextStreamReader();
+    const stderrReader = createTextStreamReader();
 
     child.stdout.on('data', (chunk) => {
         opts.lifecycle?.onActivity?.('stdout');
         lastOpencodeIoAt = Date.now();
         if (cli === 'agy') {
             ctx.agyLastActivitySource = 'stdout';
-            const rawText = agyUtf8!.write(chunk);
+            const rawText = stdoutReader.write(chunk);
             if (!rawText) return;
             ctx.stallWatchdog?.markProgress();
             // Defensive ANSI strip (belt-and-suspenders with NO_COLOR=1)
@@ -2871,7 +2946,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             return;
         }
         if (kiroPlainText) {
-            const text = kiroUtf8!.write(chunk);
+            const text = stdoutReader.write(chunk);
             if (!text) return;
             ctx.stallWatchdog?.markProgress();
             appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: text });
@@ -2881,7 +2956,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             return;
         }
-        buffer += chunk.toString();
+        buffer += stdoutReader.write(chunk);
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         const clampedPending = clampPendingLine(buffer);
@@ -2899,12 +2974,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         opts.lifecycle?.onActivity?.('stderr');
         clearAgyQuietCompletionTimer();
         lastOpencodeIoAt = Date.now();
-        const text = chunk.toString().trim();
+        // No per-chunk trim: trimming a chunk destroys legitimate leading/trailing
+        // whitespace and line boundaries that only exist across chunks (#372).
+        const text = stderrReader.write(chunk);
+        if (!text) return;
         if (cli === 'agy') ctx.agyLastActivitySource = 'stderr';
         if ((kiroPlainText || cli === 'agy') && text) ctx.stallWatchdog?.markProgress();
         appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
-        console.error(`[jaw:stderr:${agentLabel}] ${text}`);
-        if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += text + '\n';
+        console.error(`[jaw:stderr:${agentLabel}] ${text.trimEnd()}`);
+        if (ctx.stderrBuf.length < STDERR_BUF_CAP) {
+            // Slice rather than skip: one oversized chunk must not blow past the cap.
+            ctx.stderrBuf = sliceWithoutSplittingSurrogate(ctx.stderrBuf + text, STDERR_BUF_CAP);
+        }
         scheduleAgyQuietCompletion();
     });
 
@@ -2914,22 +2995,31 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         stallWatchdog.stop();
         releaseExitDrain();
         if (stdSettled) return;  // error handler already resolved
-        // [I1] Flush residual NDJSON buffer — last event may lack trailing newline
+        // [I1] Flush the decoders BEFORE dispatching the final line (#372): the last
+        // code point's residual bytes belong to that line, so ending the decoder
+        // afterwards would drop them permanently.
+        const stdoutResidual = stdoutReader.end();
+        if (stdoutResidual) {
+            if (cli === 'agy') {
+                appendAgyFullText(ctx, stdoutResidual);
+            } else if (kiroPlainText) {
+                emitKiroStreamEvents(processKiroStdoutChunk(ctx, stdoutResidual), ctx, agentLabel, cli, empTag, traceAudience);
+            } else {
+                buffer += stdoutResidual;
+            }
+        }
+        const stderrResidual = stderrReader.end();
+        if (stderrResidual && ctx.stderrBuf.length < STDERR_BUF_CAP) {
+            ctx.stderrBuf = sliceWithoutSplittingSurrogate(ctx.stderrBuf + stderrResidual, STDERR_BUF_CAP);
+        }
+        // Flush residual NDJSON buffer — last event may lack a trailing newline
         if (buffer.trim()) {
             dispatchNdjsonLine(buffer);
             buffer = '';
         }
         flushClaudeBuffers(ctx, agentLabel, empTag);  // flush any pending thinking/input buffers
         if (cli === 'opencode') flushOpenCodeBuffers(ctx, agentLabel, empTag);
-        if (agyUtf8) {
-            const remaining = agyUtf8.end();
-            if (remaining) appendAgyFullText(ctx, remaining);
-        }
-        if (kiroUtf8) {
-            const remaining = kiroUtf8.end();
-            if (remaining) {
-                emitKiroStreamEvents(processKiroStdoutChunk(ctx, remaining), ctx, agentLabel, cli, empTag, traceAudience);
-            }
+        if (kiroPlainText) {
             emitKiroStreamEvents(flushKiroStdoutContext(ctx), ctx, agentLabel, cli, empTag, traceAudience);
         }
         const agyTotalOutputLen = cli === 'agy' ? ctx.fullText.length : 0;

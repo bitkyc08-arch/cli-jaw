@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import { join } from 'node:path';
+import { detectCliBinary } from '../core/cli-detect.js';
+import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { JAW_HOME } from '../core/config.js';
@@ -305,15 +307,38 @@ export function parsePiModelList(output: string, profileId: string): string[] {
     return [...models];
 }
 
+
+/**
+ * Resolve a Pi spawn without a shell on Windows (#367).
+ *
+ * These argv are trusted (fixed flags, a profile id, a model name) rather than user
+ * prompt text, so this is not the injection boundary. It matters anyway: Node
+ * deprecates `shell: true` with an args array, and leaving one runtime on the old
+ * path keeps a second, differently-behaved launcher alive. Resolution failure keeps
+ * the legacy shell until the native gate proves every classified runtime resolves.
+ */
+function resolvePiSpawn(command: string, args: string[]): {
+    command: string; args: string[]; useShell: boolean; envDelta: Record<string, string>;
+} {
+    if (process.platform !== 'win32') return { command, args, useShell: false, envDelta: {} };
+    const spec = resolveWindowsLaunchSpec(command, args, {
+        which: (name) => detectCliBinary(name).path || null,
+    });
+    // envDelta carries `env -S FOO=bar` assignments from the target's shebang.
+    // Dropping it launches the runtime with a different configuration than its own
+    // shim asks for, which is a silent behavior change rather than a loud failure.
+    if (spec) return { command: spec.command, args: launchArgv(spec), useShell: false, envDelta: spec.envDelta };
+    return { command, args, useShell: !command.toLowerCase().endsWith('.exe'), envDelta: {} };
+}
 export function listPiModels(piInput: unknown, profileId: string, options: { effort?: string; root?: string; timeoutMs?: number } = {}): Promise<string[]> {
     const dir = ensurePiRuntimeConfig(piInput, profileId, options.effort || '', options.root);
     const cmd = resolvePiCommand();
-    const isCmdShim = process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe');
+    const launch = resolvePiSpawn(cmd.command, [...cmd.baseArgs, '--offline', '--list-models', profileId]);
     return new Promise((resolve, reject) => {
-        const child = spawn(cmd.command, [...cmd.baseArgs, '--offline', '--list-models', profileId], {
-            env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+        const child = spawn(launch.command, launch.args, {
+            env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
             stdio: ['ignore', 'pipe', 'pipe'],
-            ...(isCmdShim ? { shell: true } : {}),
+            ...(launch.useShell ? { shell: true } : {}),
         });
         let stdout = '';
         let stderr = '';
@@ -485,12 +510,12 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         '--api-key', profile.apiKey || 'dummy',
         ...(options.sessionId ? ['--session-id', options.sessionId] : []),
     ];
-    const isCmdShim = process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe');
-    const child = spawn(cmd.command, args, {
+    const launch = resolvePiSpawn(cmd.command, args);
+    const child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+        env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
         stdio: ['pipe', 'pipe', 'pipe'],
-        ...(isCmdShim ? { shell: true } : {}),
+        ...(launch.useShell ? { shell: true } : {}),
     });
     const decoder = new StringDecoder('utf8');
     let buffer = '';
@@ -679,12 +704,12 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
         '--api-key', profile.apiKey || 'dummy',
         ...(options.sessionId ? ['--session-id', options.sessionId] : []),
     ];
-    const isCmdShim = process.platform === 'win32' && !cmd.command.toLowerCase().endsWith('.exe');
-    const child = spawn(cmd.command, args, {
+    const launch = resolvePiSpawn(cmd.command, args);
+    const child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+        env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
         stdio: ['pipe', 'pipe', 'pipe'],
-        ...(isCmdShim ? { shell: true } : {}),
+        ...(launch.useShell ? { shell: true } : {}),
     });
     const decoder = new StringDecoder('utf8');
     let buffer = '';

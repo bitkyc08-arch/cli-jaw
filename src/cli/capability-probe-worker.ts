@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
 import { writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { killProcessTree, killProcessTreeIfAlive } from '../agent/spawn/process-kill.js';
@@ -42,12 +43,17 @@ export function buildCapabilitySpawnSpec(
     env: NodeJS.ProcessEnv = process.env,
 ): CapabilitySpawnSpec {
     const platform = request.platform ?? process.platform;
-    const isCmdShim = platform === 'win32' && !request.binary.toLowerCase().endsWith('.exe');
+    // Shell-free where possible (#367). The probe argv is fixed, but keeping one
+    // launcher shape across runtimes is the point — a second path is a second set of
+    // Windows quoting rules to get right.
+    const probeArgs = ['app-server', '--help'];
+    const spec = platform === 'win32' ? resolveWindowsLaunchSpec(request.binary, probeArgs) : null;
+    const isCmdShim = platform === 'win32' && !spec && !request.binary.toLowerCase().endsWith('.exe');
     return {
-        command: request.binary,
-        args: ['app-server', '--help'],
+        command: spec ? spec.command : request.binary,
+        args: spec ? launchArgv(spec) : probeArgs,
         options: {
-            env,
+            env: spec ? { ...env, ...spec.envDelta } : env,
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: platform !== 'win32',
             ...(isCmdShim ? { shell: true } : {}),

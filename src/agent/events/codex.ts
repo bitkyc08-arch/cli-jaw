@@ -24,6 +24,26 @@ export function handleCodexEvent(
     if (evt.type === 'item.completed') {
         if (evt.item?.type === 'agent_message') {
             const text = String(evt.item.text || '');
+            const channel = evt.item?.['channel'] || (evt.item?.['annotations'] as Record<string, unknown> | undefined)?.['channel'];
+            // Commentary-channel messages are transient progress updates — do NOT
+            // persist them in fullText so they stay out of agent_done and therefore
+            // out of Slack/Telegram/Discord delivery.
+            if (channel === 'commentary') {
+                // Still emit as a tool indicator for live web UI
+                if (text.trim()) {
+                    const tool = stripUndefined({
+                        icon: '💬',
+                        label: buildPreview(text, 80) || 'working...',
+                        toolType: 'tool' as const,
+                        detail: text,
+                        status: 'done' as const,
+                    });
+                    ctx.toolLog.push(tool);
+                    syncLiveTools(ctx);
+                    emitAgentTool(ctx, agentLabel, tool, empTag);
+                }
+                return;
+            }
             const segment = appendAssistantTextSegment(ctx, text);
             ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
             if (segment.trim()) {

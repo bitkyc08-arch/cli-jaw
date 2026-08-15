@@ -86,7 +86,7 @@ test('P40-PROMPT-010: A1 gates external realtime lookup through active search sk
     assert.match(a1, /Search routing — file vs web/);
     assert.match(a1, /BEFORE any external\/web\/X\/real-time search/);
     assert.match(a1, /MUST read the active search skill once per session/);
-    assert.match(a1, /skills\/search\/SKILL\.md/);
+    assert.match(a1, /skills\/jaw-search\/SKILL\.md/);
     assert.match(a1, /provider rules NOT repeated here/);
 });
 

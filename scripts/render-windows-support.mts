@@ -1,0 +1,150 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * Render the canonical Windows-support block into every README (#373).
+ *
+ * Why generate instead of lint: a checker over free prose can only test for tokens it
+ * anticipates. An adversarial review proved that — a block claiming WSL was obsolete,
+ * native PowerShell stable, a wrong manager port, an unrestricted execution policy, and
+ * Windows service support passed every presence assertion, because each required token
+ * was still somewhere in the text. Generation removes the oracle problem: the block is
+ * not written by hand, so it cannot disagree with the contract.
+ *
+ *   npm run docs:windows              # rewrite the blocks
+ *   npm run docs:windows -- --check   # verify (CI / test)
+ */
+const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
+const c = JSON.parse(readFileSync(join(root, 'scripts/windows-support-contract.json'), 'utf8'));
+const nodeShort = String(c.nodeFloor).replace(/\.0$/, '');
+
+// Validate the enums that drive VISIBLE prose. Without this, a typo silently selects a
+// fallback branch and the rendered text stops matching the contract.
+const PREFERRED = ['wsl', 'native-powershell'] as const;
+const REGISTERED = ['none', 'windows-task', 'windows-startup'] as const;
+if (!PREFERRED.includes(c.preferredPath)) {
+    throw new Error(`preferredPath must be one of ${PREFERRED.join(' | ')}, got: ${c.preferredPath}`);
+}
+if (!REGISTERED.includes(c.registeredService)) {
+    throw new Error(`registeredService must be one of ${REGISTERED.join(' | ')}, got: ${c.registeredService}`);
+}
+const wslPreferred = c.preferredPath === 'wsl';
+const hasService = c.registeredService !== 'none';
+
+type Lang = 'en' | 'ko' | 'zh-CN' | 'ja';
+
+const FILES: Record<Lang, string> = {
+    en: 'README.md',
+    ko: 'README.ko.md',
+    'zh-CN': 'README.zh-CN.md',
+    ja: 'README.ja.md',
+};
+
+/** Localized prose. Every fact is interpolated from the contract, never retyped. */
+const PROSE: Record<Lang, string[]> = {
+    en: [
+        wslPreferred
+            ? '**Windows support.** WSL is the recommended, stable path. A native PowerShell installer also exists, but it is still **' + c.nativeStatus + '**:'
+            : '**Windows support.** The native PowerShell installer is the recommended path (**' + c.nativeStatus + '**). WSL remains supported:',
+        'Requires Node.js ' + nodeShort + '+.',
+        'The manager dashboard runs on **' + c.managerPort + '**, and each agent web UI on **' + c.runtimePort + '**. If a restrictive execution policy blocks `jaw.ps1`, use the `.cmd` entry point instead of loosening the policy:',
+        hasService
+            ? 'Native Windows autostart is registered through the ' + c.registeredService + ' backend. `jaw service install` also covers macOS (launchd) and Linux (systemd).'
+            : 'Native Windows has no registered autostart backend yet. `jaw service install` works on macOS (launchd) and Linux (systemd) only.',
+    ],
+    ko: [
+        wslPreferred
+            ? '**Windows 지원.** 안정적으로 쓰려면 WSL 경로를 권장합니다. 네이티브 PowerShell 설치 스크립트도 있지만 아직 ' + c.nativeStatus + ' 단계입니다:'
+            : '**Windows 지원.** 이제 네이티브 PowerShell 설치를 권장합니다 (' + c.nativeStatus + '). WSL 경로도 계속 지원합니다:',
+        'Node.js ' + nodeShort + '+ 가 필요합니다.',
+        '매니저 대시보드는 **' + c.managerPort + '**, 에이전트별 웹 UI는 **' + c.runtimePort + '** 포트를 씁니다. 실행 정책에 막혀 `jaw.ps1`이 안 돌아가면 정책을 풀지 말고 `.cmd` 쪽을 쓰세요:',
+        hasService
+            ? '네이티브 Windows 자동 실행은 ' + c.registeredService + ' 백엔드로 등록됩니다. `jaw service install`은 macOS(launchd), Linux(systemd)에서도 동작합니다.'
+            : '네이티브 Windows에는 부팅 시 자동 실행을 등록하는 백엔드가 아직 없습니다. `jaw service install`은 macOS(launchd)와 Linux(systemd)에서만 동작합니다.',
+    ],
+    'zh-CN': [
+        wslPreferred
+            ? '**Windows 支持。** 推荐使用 WSL 路径，它是稳定的。原生 PowerShell 安装脚本也可以用，但仍处于 ' + c.nativeStatus + ' 阶段：'
+            : '**Windows 支持。** 现在推荐使用原生 PowerShell 安装（' + c.nativeStatus + '）。WSL 路径仍然受支持：',
+        '需要 Node.js ' + nodeShort + '+。',
+        '管理面板在 **' + c.managerPort + '** 端口，每个 agent 的 Web UI 在 **' + c.runtimePort + '** 端口。如果执行策略挡住了 `jaw.ps1`，不要放宽策略，直接用 `.cmd`：',
+        hasService
+            ? '原生 Windows 的开机自启通过 ' + c.registeredService + ' 后端注册。`jaw service install` 同样支持 macOS(launchd) 和 Linux(systemd)。'
+            : '原生 Windows 目前没有可注册的开机自启后端。`jaw service install` 只在 macOS(launchd) 和 Linux(systemd) 上有效。',
+    ],
+    ja: [
+        wslPreferred
+            ? '**Windows サポート。** 安定して使うなら WSL 経路をおすすめします。ネイティブ PowerShell 用のインストーラーもありますが、まだ ' + c.nativeStatus + ' です:'
+            : '**Windows サポート。** 現在はネイティブ PowerShell でのインストールを推奨します(' + c.nativeStatus + ')。WSL 経路も引き続き利用できます:',
+        'Node.js ' + nodeShort + '+ が必要です。',
+        'マネージャーダッシュボードは **' + c.managerPort + '**、エージェントごとの Web UI は **' + c.runtimePort + '** を使います。実行ポリシーで `jaw.ps1` が動かない場合は、ポリシーを緩めずに `.cmd` を使ってください:',
+        hasService
+            ? 'ネイティブ Windows の自動起動は ' + c.registeredService + ' バックエンドで登録されます。`jaw service install` は macOS(launchd) と Linux(systemd) でも動作します。'
+            : 'ネイティブ Windows には、起動時の自動実行を登録する仕組みがまだありません。`jaw service install` が動くのは macOS(launchd) と Linux(systemd) だけです。',
+    ],
+};
+
+export function renderBlock(lang: Lang): string {
+    const [lead, nodeNote, portNote, serviceNote] = PROSE[lang];
+    return [
+        '<!-- windows-support:start GENERATED by scripts/render-windows-support.mts',
+        '     native-status: ' + c.nativeStatus,
+        '     preferred-path: ' + c.preferredPath,
+        '     node-floor: ' + c.nodeFloor,
+        '     manager-port: ' + c.managerPort,
+        '     runtime-port: ' + c.runtimePort,
+        '     registered-service: ' + c.registeredService,
+        '     install-command: ' + c.installCommand,
+        '-->',
+        '',
+        lead,
+        '',
+        '```powershell',
+        c.installCommand,
+        '```',
+        '',
+        nodeNote,
+        '',
+        portNote,
+        '',
+        '```powershell',
+        c.recoveryCommand,
+        '```',
+        '',
+        serviceNote,
+        '',
+        '<!-- windows-support:end -->',
+    ].join('\n');
+}
+
+const START = '<!-- windows-support:start';
+const END = '<!-- windows-support:end -->';
+
+export function replaceBlock(text: string, block: string): string {
+    const start = text.indexOf(START);
+    const end = text.indexOf(END);
+    if (start < 0 || end < 0) throw new Error('windows-support markers not found');
+    return text.slice(0, start) + block + text.slice(end + END.length);
+}
+
+function main(): void {
+    const check = process.argv.includes('--check');
+    const stale: string[] = [];
+    for (const [lang, file] of Object.entries(FILES) as [Lang, string][]) {
+        const path = join(root, file);
+        const current = readFileSync(path, 'utf8');
+        const next = replaceBlock(current, renderBlock(lang));
+        if (current === next) continue;
+        if (check) stale.push(file);
+        else writeFileSync(path, next);
+    }
+    if (check && stale.length) {
+        console.error('[windows-support] out of date: ' + stale.join(', '));
+        console.error('[windows-support] run: npm run docs:windows');
+        process.exit(1);
+    }
+    console.log(check ? '[windows-support] all READMEs match the contract' : '[windows-support] rendered');
+}
+
+if (process.argv[1] && process.argv[1].endsWith('render-windows-support.mts')) main();

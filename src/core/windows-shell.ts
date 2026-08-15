@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { win32 as pathWin32 } from 'node:path';
 
 export type WindowsShellKind = 'powershell5' | 'pwsh7' | 'cmd' | 'gitbash' | 'unknown';
@@ -29,6 +29,17 @@ const defaultProbes: WindowsShellProbes = {
     env: process.env,
 };
 
+/** Directory names under `parent`, or [] when it does not exist. */
+function listSubdirectories(parent: string): string[] {
+    try {
+        return readdirSync(parent, { withFileTypes: true })
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name);
+    } catch {
+        return [];
+    }
+}
+
 export function windowsGitBashPaths(env: NodeJS.ProcessEnv = process.env): string[] {
     const candidates = [
         env['ProgramW6432'],
@@ -42,6 +53,20 @@ export function windowsGitBashPaths(env: NodeJS.ProcessEnv = process.env): strin
 
     if (env['LOCALAPPDATA']) {
         candidates.push(pathWin32.join(env['LOCALAPPDATA'], 'Programs', 'Git', 'bin', 'bash.exe'));
+
+        // A cli-jaw-provisioned PortableGit (#369) lives under a VERSIONED directory,
+        // so a fixed path cannot find it — enumerate what the bootstrap installed.
+        // Both layouts are probed: PortableGit ships bash at bin\ or usr\bin\
+        // depending on packaging, and checking only one is why an installed Git can
+        // read as missing.
+        const runtimes = pathWin32.join(env['LOCALAPPDATA'], 'cli-jaw', 'runtimes', 'git');
+        for (const version of listSubdirectories(runtimes)) {
+            for (const arch of listSubdirectories(pathWin32.join(runtimes, version))) {
+                const root = pathWin32.join(runtimes, version, arch);
+                candidates.push(pathWin32.join(root, 'bin', 'bash.exe'));
+                candidates.push(pathWin32.join(root, 'usr', 'bin', 'bash.exe'));
+            }
+        }
     }
 
     return [...new Set(candidates)];

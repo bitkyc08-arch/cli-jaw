@@ -14,6 +14,7 @@ import { homedir } from 'node:os';
 import { execSync } from 'node:child_process';
 import { JAW_HOME, SKILLS_DIR } from '../../src/core/config.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
+import { resolveSkillId, legacySkillIdNotice } from '../../lib/mcp/skills-aliases.js';
 
 const CODEX_SKILLS = join(homedir(), '.codex', 'skills');
 const REF_DIR = join(JAW_HOME, 'skills_ref');
@@ -142,7 +143,16 @@ function installFromGithub(name: string) {
 
 // ─── CLI Routing ─────────────────────────────
 const sub = process.argv[3];
-const arg = process.argv[4];
+const rawArg = process.argv[4];
+
+// Old names still work for one major version. Resolve once, here, so every
+// subcommand below sees the canonical jaw-* id — and say so, once, so the
+// user learns the new name instead of silently depending on the alias.
+const arg = rawArg ? resolveSkillId(rawArg) : rawArg;
+if (rawArg && arg !== rawArg) {
+    const notice = legacySkillIdNotice(rawArg);
+    if (notice) console.log(`  ${c.dim}${notice}${c.reset}`);
+}
 
 switch (sub) {
     case 'install': {

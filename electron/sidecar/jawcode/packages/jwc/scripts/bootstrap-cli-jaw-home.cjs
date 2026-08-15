@@ -8,22 +8,42 @@ const path = require("node:path");
 const DEFAULT_SKILLS_REPO = "https://github.com/lidge-jun/cli-jaw-skills.git";
 const CLONE_COOLDOWN_MS = 10 * 60 * 1000;
 const CLONE_TIMEOUT_MS = 80_000;
+// Must mirror CODEX_ACTIVE + OPENCLAW_ACTIVE in lib/mcp/skills-utils.ts.
+// It drifted before: search, structured-renderers, and goal were missing, so
+// the desktop app activated 27 skills where the CLI activated 30.
 const BASE_AUTO_ACTIVATE = new Set([
-	"pdf",
-	"browser",
-	"memory",
-	"screen-capture",
-	"docx",
-	"xlsx",
-	"pptx",
-	"hwp",
-	"github",
-	"telegram-send",
-	"video",
-	"pdf-vision",
-	"diagram",
-	"desktop-control",
+	"jaw-pdf",
+	"jaw-browser",
+	"jaw-memory",
+	"jaw-search",
+	"jaw-screen-capture",
+	"jaw-docx",
+	"jaw-xlsx",
+	"jaw-pptx",
+	"jaw-hwp",
+	"jaw-github",
+	"jaw-telegram-send",
+	"jaw-video",
+	"jaw-pdf-vision",
+	"jaw-diagram",
+	"jaw-structured-renderers",
+	"jaw-desktop-control",
+	"jaw-goal",
 ]);
+
+// Pre-jaw-* names. A legacy directory is moved aside, never deleted (it may
+// hold the user's own edits), and a compatibility symlink keeps literal paths
+// in a customized A-1.md working for one major version.
+const LEGACY_SKILL_ALIASES = new Map(
+	[
+		"pdf", "browser", "memory", "search", "screen-capture", "docx", "xlsx",
+		"pptx", "hwp", "github", "telegram-send", "video", "pdf-vision",
+		"diagram", "structured-renderers", "desktop-control", "goal",
+		"dev", "dev-architecture", "dev-backend", "dev-code-reviewer", "dev-data",
+		"dev-debugging", "dev-devops", "dev-frontend", "dev-pabcd",
+		"dev-scaffolding", "dev-security", "dev-testing", "dev-uiux-design",
+	].map((id) => [id, "jaw-" + id]),
+);
 const IGNORED_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next", ".turbo"]);
 const IGNORED_FILES = new Set([".DS_Store"]);
 
@@ -231,7 +251,53 @@ function activateSkills() {
 		}
 		activeCount++;
 	}
+	normalizeSkillNamespace();
 	return activeCount;
+}
+
+/**
+ * Same two stages as lib/mcp/skills-migration.ts, in CommonJS.
+ * 1. A real legacy directory is MOVED to backups/skills-conflicts/<stamp>/ —
+ *    never deleted, because it may contain the user's own edits.
+ * 2. skills/<legacy> -> jaw-<legacy> keeps literal paths in a customized
+ *    A-1.md alive. Enumerators filter on isDirectory(), which is false for a
+ *    symlink, so the link never registers as a second skill.
+ */
+function normalizeSkillNamespace() {
+	if (!fs.existsSync(activeDir)) return;
+	let backupRoot = null;
+	for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {
+		const legacyPath = path.join(activeDir, legacyId);
+		let stat = null;
+		try { stat = fs.lstatSync(legacyPath); } catch { stat = null; }
+		if (stat && stat.isSymbolicLink()) {
+			let current = null;
+			try { current = fs.readlinkSync(legacyPath); } catch { current = null; }
+			if (current === canonicalId) continue;
+			try { fs.unlinkSync(legacyPath); } catch { /* leave it alone */ }
+		} else if (stat && stat.isDirectory()) {
+			try {
+				if (!backupRoot) {
+					const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+					backupRoot = path.join(targetHome, "backups", "skills-conflicts", stamp);
+				}
+				ensureDir(backupRoot);
+				fs.renameSync(legacyPath, path.join(backupRoot, legacyId));
+				console.log(`[skills] legacy skill backed up: ${legacyId}`);
+			} catch (e) {
+				console.warn(`[skills] could not back up ${legacyId}: ${e.message}`);
+				continue;
+			}
+		} else if (stat) {
+			continue;
+		}
+		if (!fs.existsSync(path.join(activeDir, canonicalId))) continue;
+		try {
+			fs.symlinkSync(canonicalId, legacyPath, "junction");
+		} catch (e) {
+			console.warn(`[skills] compat link ${legacyId} skipped: ${e.message}`);
+		}
+	}
 }
 
 function readCloneMeta() {

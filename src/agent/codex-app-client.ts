@@ -2,6 +2,8 @@
 // Communicates with `codex app-server --listen stdio://`
 // over newline-delimited JSON-RPC (lite — no "jsonrpc" key in responses).
 
+import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
+import { detectCliBinary } from '../core/cli-detect.js';
 import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { createInterface, type Interface as ReadlineInterface } from 'readline';
@@ -356,12 +358,23 @@ export class CodexAppClient extends EventEmitter {
 
     spawn(): void {
         this.assertReusable();
-        const isCmdShim = process.platform === 'win32' && !this.binary.toLowerCase().endsWith('.exe');
-        this.proc = spawn(this.binary, ['app-server', '--listen', 'stdio://'], {
+        // Shell-free launch on Windows (#367). This argv is fixed and trusted, but a
+        // second launcher on the deprecated shell path is a second behavior to keep
+        // correct, so it shares the resolver. Failure keeps the legacy path until the
+        // native gate proves resolution for every classified runtime.
+        const launchArgs = ['app-server', '--listen', 'stdio://'];
+        const launchSpec = process.platform === 'win32'
+            ? resolveWindowsLaunchSpec(this.binary, launchArgs, { which: (n) => detectCliBinary(n).path || null })
+            : null;
+        const useShell = process.platform === 'win32' && !launchSpec && !this.binary.toLowerCase().endsWith('.exe');
+        this.proc = spawn(
+            launchSpec ? launchSpec.command : this.binary,
+            launchSpec ? launchArgv(launchSpec) : launchArgs,
+            {
             cwd: this.workDir,
-            env: this.spawnEnv,
+            env: launchSpec ? { ...this.spawnEnv, ...launchSpec.envDelta } : this.spawnEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
-            ...(isCmdShim ? { shell: true } : {}),
+            ...(useShell ? { shell: true } : {}),
         });
 
         this.rl = createInterface({ input: this.proc.stdout! });

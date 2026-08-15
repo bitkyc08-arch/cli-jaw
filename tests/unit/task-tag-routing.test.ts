@@ -26,16 +26,16 @@ test('S2: frontend + task_tags ["tdd"] adds dev-testing, not dev-security', () =
     clearPromptCache();
     const prompt = getEmployeePromptV2(emp, 'frontend', 3, { taskTags: ['tdd'] });
     assert.ok(prompt.includes('## Task Tag Guides'), 'tag section present');
-    assert.ok(prompt.includes('dev-testing'), 'tdd loads dev-testing');
-    assert.ok(!prompt.includes('dev-security'), 'unrelated security guide absent');
+    assert.ok(prompt.includes('jaw-dev-testing'), 'tdd loads jaw-dev-testing');
+    assert.ok(!prompt.includes('jaw-dev-security'), 'unrelated security guide absent');
 });
 
 test('S3: backend + threat_model/migration_backfill adds security+data+testing', () => {
     clearPromptCache();
     const prompt = getEmployeePromptV2(emp, 'backend', 3, { taskTags: ['threat_model', 'migration_backfill'] });
-    assert.ok(prompt.includes('dev-security'), 'threat_model loads dev-security');
-    assert.ok(prompt.includes('dev-data'), 'migration_backfill loads dev-data');
-    assert.ok(prompt.includes('dev-testing'), 'migration_backfill loads dev-testing');
+    assert.ok(prompt.includes('jaw-dev-security'), 'threat_model loads jaw-dev-security');
+    assert.ok(prompt.includes('jaw-dev-data'), 'migration_backfill loads jaw-dev-data');
+    assert.ok(prompt.includes('jaw-dev-testing'), 'migration_backfill loads jaw-dev-testing');
     assert.ok(prompt.includes('your execution role stays "backend"'), 'role unchanged by tags');
 });
 
@@ -51,8 +51,8 @@ test('S4: legacy no-tag dispatch keeps existing shape (no tag section)', () => {
 test('S5: frontend_ui adds dev-uiux-design alongside frontend role guide', () => {
     clearPromptCache();
     const prompt = getEmployeePromptV2(emp, 'frontend', 3, { taskTags: ['frontend_ui'] });
-    assert.ok(prompt.includes('dev-uiux-design'), 'frontend_ui loads dev-uiux-design');
-    assert.ok(prompt.includes('Role guide: dev-frontend'), 'role guide intact');
+    assert.ok(prompt.includes('jaw-dev-uiux-design'), 'frontend_ui loads jaw-dev-uiux-design');
+    assert.ok(prompt.includes('Role guide: jaw-dev-frontend'), 'role guide intact');
 });
 
 test('normalizeTaskTags: trims, lowercases, dedups, sorts, drops junk', () => {

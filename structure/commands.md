@@ -59,9 +59,9 @@ effort, fast, context, tools, redraw, retry, export, resume, hotkeys
 ### 카테고리
 
 - `session`: `help`, `commands`, `status`, `clear`, `purge`, `compact`, `reset`, `steer`, `new`, `switch`, `sessions`, `fork`, `context`, `retry`, `export`, `resume`
-- `workflow`: `plan`, `interview`, `deliberate`, `planaudit`, `review`, `search`, `goal`, `goalplan`, `gd`, `team`
+- `workflow`: `plan`, `interview`, `deliberate`, `planaudit`, `review`, `jaw-search`, `jaw-goal`, `goalplan`, `gd`, `team`
 - `model`: `model`, `cli`, `fallback`, `forward`, `thought`, `flush`, `effort`, `fast`
-- `tools`: `skill`, `employee`, `mcp`, `memory`, `browser`, `prompt`, `ide`, `orchestrate`, `project`, `task`, `tools`
+- `tools`: `skill`, `employee`, `mcp`, `jaw-memory`, `jaw-browser`, `prompt`, `ide`, `orchestrate`, `project`, `task`, `tools`
 - `skills`: dynamic — all active skills exposed as `/skill:<id>` (cli/web only, hidden on telegram/discord)
 - `cli`: `settings`, `version`, `quit`, `file`, `redraw`, `hotkeys`
 
@@ -102,16 +102,16 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `mcp` | `bin/commands/mcp.ts` | `install <package> [--pypi\|--npm]`, `sync`, `reset [--force]`, `list` |
 | `skill` | `bin/commands/skill.ts` | `install <name> [--force]`, `remove <name>`, `info <name>`, `list`, `reset [hard\|--hard] [--force]` |
 | `status` | `bin/commands/status.ts` | `--port <port>`, `--json` |
-| `browser` | `bin/commands/browser.ts` | `start [--port <auto>] [--headless] [--agent]`, `stop`, `status`, `reset [--force]`, `fetch <url> [--json] [--trace] [--browser auto\|never\|required] [--allow-third-party-reader]`, `snapshot [--interactive]`, `screenshot [--full-page] [--ref <ref>]`, `click <ref> [--double]`, `mouse-click <x> <y> [--double]`, `vision-click <target> [--provider codex] [--double]`, `type <ref> <text> [--submit]`, `press <key>`, `hover <ref>`, `navigate <url>`, `open <url>`, `tabs`, `text [--format text\|html]`, `evaluate <js>` |
+| `jaw-browser` | `bin/commands/browser.ts` | `start [--port <auto>] [--headless] [--agent]`, `stop`, `status`, `reset [--force]`, `fetch <url> [--json] [--trace] [--browser auto\|never\|required] [--allow-third-party-reader]`, `snapshot [--interactive]`, `screenshot [--full-page] [--ref <ref>]`, `click <ref> [--double]`, `mouse-click <x> <y> [--double]`, `vision-click <target> [--provider codex] [--double]`, `type <ref> <text> [--submit]`, `press <key>`, `hover <ref>`, `navigate <url>`, `open <url>`, `tabs`, `text [--format text\|html]`, `evaluate <js>` |
 | `browser web-ai` | `bin/commands/browser-web-ai.ts` | `render`, `status`, `send`, `poll`, `query`, `watch`, `watchers`, `sessions`, `sessions-prune`, `resume`, `reattach`, `notifications`, `capabilities`, `stop`, `diagnose`/`doctor`, `context-dry-run`, `context-render`, `code`, `code-extract`; vendor는 `chatgpt\|gemini\|grok`, code/code-extract는 ChatGPT 전용 |
 | `design` | `bin/commands/design.ts` | design workspace command surface |
-| `memory` | `bin/commands/memory.ts` | `search <query> [--chat]`, `read <file> [--lines N-M]`, `save <file> <content>`, `list`, `init`, `context <file> [--window N]`, `reflect [--sinceDays N]`, `flush`, `cleanup [--days N]` |
+| `jaw-memory` | `bin/commands/memory.ts` | `search <query> [--chat]`, `read <file> [--lines N-M]`, `save <file> <content>`, `list`, `init`, `context <file> [--window N]`, `reflect [--sinceDays N]`, `flush`, `cleanup [--days N]` |
 | `hooks` | `bin/commands/hooks.ts` | pre-prompt context hooks management (+ `hooks policy`: runtime policy hooks/flags inspection) |
 | `launchd` | `bin/commands/launchd.ts` | `[--port PORT] [status\|unset\|cleanup]` |
 | `clone` | `bin/commands/clone.ts` | `<target-dir> [--from <source>] [--with-memory] [--link-ref]` |
 | `orchestrate` | `bin/commands/orchestrate.ts` | `[I\|P\|A\|B\|C\|D\|status\|reset] [--force] [--json] [--port <port>]` |
 | `dispatch` | `bin/commands/dispatch.ts` | `(--agent <name> \| --virtual <name>) --task <task> [--role <role>] [--cli <cli>] [--model <model>] [--mutable] [--scope <path>] [--port <port>] [--watch] [--quiet] [--json]`; human output follows bounded safe worker progress by default; `--quiet`/`--json` suppress live progress; `--batch --agents '<JSON array>'` where each entry accepts `agent` or `virtual` and prints grouped safe summaries with `runId` recovery commands instead of full worker text |
-| `goal` | `bin/commands/goal.ts` | `set <objective>`, `plan [hint]`, `refine <objective>`, `status`, `update <summary>`, `done [note]`, `cancel [reason]`, `pause`, `resume`, `clear`, `reset`, `history [limit]`; `--json`; plan-mode stores hints as `planHint` and requires refine before checkpoints; status exposes derived `pauseGate` when an agent pause audit is pending |
+| `jaw-goal` | `bin/commands/goal.ts` | `set <objective>`, `plan [hint]`, `refine <objective>`, `status`, `update <summary>`, `done [note]`, `cancel [reason]`, `pause`, `resume`, `clear`, `reset`, `history [limit]`; `--json`; plan-mode stores hints as `planHint` and requires refine before checkpoints; status exposes derived `pauseGate` when an agent pause audit is pending |
 | `worker` | `bin/commands/worker.ts` | `status [agent\|runId] [--recent N] [--json]`, `watch [agent\|runId] [--json]`, `read <runId> [--offset N] [--limit N] [--tail N] [--json]`, `--port <port>`; status/watch use safe summaries (`snapshot.workers` is running-only; `--recent` reads durable safe records), while read is the explicit raw worker-output surface backed by `/api/orchestrate/worker-runs/:runId/output` |
 | `service` | `bin/commands/service.ts` | `[--port PORT] [--backend launchd\|systemd\|docker] [status\|stop\|restart\|unset\|logs]`; standalone `serve`는 `<JAW_HOME>/jaw.pid.json` ownership 검증 후 해당 인스턴스만 제어하고, 등록된 launchd/systemd 인스턴스는 native service manager에 위임 |
 | `dashboard` | `bin/commands/dashboard.ts` | `serve [--port 24576] [--from 3457] [--count 50] [--no-open]`, `memory {search\|instances\|read\|config\|state\|estimate\|reindex\|help} [--instance <ids>] [--limit N] [--json] [--port <port>]`, `chat search "<query>" [--instance <ids>] [--limit N] [--days N] [--json]` |
@@ -316,7 +316,7 @@ help, clear, model, cli, fallback, status, reset,
 skill, employee, mcp, memory, browser, prompt, version
 ```
 
-Workflow category commands (`plan`, `interview`, `deliberate`, `planaudit`, `review`, `search`, `goal`, `goalplan`, `gd`, `team`)도 `cmdline`에서 hidden 처리된다.
+Workflow category commands (`plan`, `interview`, `deliberate`, `planaudit`, `review`, `jaw-search`, `jaw-goal`, `goalplan`, `gd`, `team`)도 `cmdline`에서 hidden 처리된다.
 
 ---
 

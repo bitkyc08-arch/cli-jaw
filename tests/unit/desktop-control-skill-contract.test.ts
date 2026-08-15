@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, '../..');
-const SKILL = path.join(ROOT, 'skills_ref/desktop-control/SKILL.md');
-const CU_REF = path.join(ROOT, 'skills_ref/desktop-control/reference/computer-use.md');
+const SKILL = path.join(ROOT, 'skills_ref/jaw-desktop-control/SKILL.md');
+const CU_REF = path.join(ROOT, 'skills_ref/jaw-desktop-control/reference/computer-use.md');
 const REGISTRY = path.join(ROOT, 'skills_ref/registry.json');
 
 const hasSkills = fs.existsSync(SKILL);
@@ -27,8 +27,8 @@ test('DCS-001: the skill no longer declares macOS as a hard system requirement',
 
 test('DCS-002: the registry entry does not require macOS', maybe, () => {
     const registry = JSON.parse(fs.readFileSync(REGISTRY, 'utf8'));
-    const entry = registry.skills['desktop-control'];
-    assert.ok(entry, 'desktop-control must exist in the registry');
+    const entry = registry.skills['jaw-desktop-control'];
+    assert.ok(entry, 'jaw-desktop-control must exist in the registry');
     assert.ok(!entry.requires.system.includes('macOS'),
         'requiring macOS here re-gates Windows hosts out of Computer Use');
     assert.ok(entry.requires.system.includes('Google Chrome'), 'the Chrome requirement stays');

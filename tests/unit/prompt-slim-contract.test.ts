@@ -14,14 +14,14 @@ const builderSrc = readFileSync(join(root, 'src/prompt/builder.ts'), 'utf8');
 const skillsSrc = readFileSync(join(root, 'src/prompt/templates/skills.md'), 'utf8');
 
 test('PSC-001: externalized sections carry strong MUST-READ skill stubs', () => {
-    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/search/SKILL.md'), 'search stub must point at the skill path');
+    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/jaw-search/SKILL.md'), 'search stub must point at the skill path');
     assert.ok(/BEFORE any external\/web\/X\/real-time search, you MUST read/.test(a1Src), 'search stub must force a read');
-    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/telegram-send/SKILL.md'), 'telegram stub must point at the skill path');
-    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/structured-renderers/SKILL.md'), 'structured renderer stub must point at the skill path');
+    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/jaw-telegram-send/SKILL.md'), 'telegram stub must point at the skill path');
+    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/jaw-structured-renderers/SKILL.md'), 'structured renderer stub must point at the skill path');
     assert.ok(a1Src.includes('compose-block-v1') && a1Src.includes('variants[]'), 'compose-block schema guard must stay in A-1');
     assert.ok(a1Src.includes('type/title/body'), 'compose-block shorthand drift guard must stay in A-1');
-    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/diagram/SKILL.md'), 'diagram stub must point at the skill path');
-    assert.ok(a1Src.includes('MUST read `{{JAW_HOME}}/skills/diagram/SKILL.md` before writing any output'), 'diagram read stays mandatory');
+    assert.ok(a1Src.includes('{{JAW_HOME}}/skills/jaw-diagram/SKILL.md'), 'diagram stub must point at the skill path');
+    assert.ok(a1Src.includes('MUST read `{{JAW_HOME}}/skills/jaw-diagram/SKILL.md` before writing any output'), 'diagram read stays mandatory');
 });
 
 test('PSC-002: retained backbone sections are untouched by the slim', () => {

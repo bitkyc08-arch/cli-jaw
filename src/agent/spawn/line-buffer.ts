@@ -10,6 +10,8 @@
  * The cap is generous enough that a legitimately long JSON line still parses,
  * and it is only reached when no newline has been seen at all.
  */
+import { sliceWithoutSplittingSurrogate } from '../stream-text.js';
+
 export const MAX_PENDING_LINE_CHARS = 8 * 1024 * 1024;
 
 export interface PendingLineResult {
@@ -31,5 +33,7 @@ export function clampPendingLine(
     maxChars: number = MAX_PENDING_LINE_CHARS,
 ): PendingLineResult {
     if (buffer.length <= maxChars) return { buffer, overflowed: false };
-    return { buffer: buffer.slice(0, maxChars), overflowed: true };
+    // Slice on a code-point boundary: a bare slice can cut between a high and low
+    // surrogate and emit half an emoji at the cap (#372).
+    return { buffer: sliceWithoutSplittingSurrogate(buffer, maxChars), overflowed: true };
 }

@@ -31,10 +31,12 @@ test('EG-001: spawnAgent calls detectCli() before any spawn', () => {
     const code127Idx = spawnSrc.indexOf('code: 127', detectIdx);
     assert.ok(code127Idx > detectIdx, 'should resolve with exit code 127 for missing CLI');
 
-    // Verify preflight comes before the standard CLI spawn
-    // Note: spawn uses spawnCommand (resolved path on non-Windows) instead of raw cli
-    const stdSpawnIdx = spawnSrc.indexOf("spawn(spawnCommand, args", spawnAgentIdx);
-    assert.ok(detectIdx < stdSpawnIdx, 'detectCli check must come before spawn(spawnCommand, args)');
+    // Verify preflight comes before the standard CLI spawn.
+    // Note: spawn takes launchCommand/launchArgs — on Windows those come from the
+    // shell-free shim resolver (#367), elsewhere they are the resolved path and argv.
+    const stdSpawnIdx = spawnSrc.indexOf("spawn(launchCommand, launchArgs", spawnAgentIdx);
+    assert.ok(stdSpawnIdx > 0, 'standard CLI spawn call must exist');
+    assert.ok(detectIdx < stdSpawnIdx, 'detectCli check must come before the standard spawn');
 });
 
 // ─── EG-002: standard CLI child.on('error') listener exists ───
@@ -71,25 +73,33 @@ test('EG-003: ACP branch has acp.on(\'error\') listener', () => {
     );
 });
 
-// ─── EG-004: Windows shell:true for .cmd shim resolution ───
+// ─── EG-004: Windows launches shell-free when a shim resolves (#367) ───
 
-test('EG-004: standard CLI spawn uses shell:true for Windows shims', () => {
+test('EG-004: standard CLI spawn prefers shell-free resolution, shell only on failure', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 2500);
+    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 3000);
 
+    // The old contract was "any non-.exe on Windows gets a shell". That is the #367
+    // defect: it routes prompt argv through cmd.exe. The contract is now "resolve the
+    // shim and launch its interpreter directly; a shell is a fallback for the
+    // unresolvable case only".
     assert.ok(
-        block.includes("process.platform === 'win32'") && block.includes("!spawnCommand.toLowerCase().endsWith('.exe')"),
-        'should use a shell only for non-executable Windows shims',
+        block.includes('resolveWindowsLaunchSpec(spawnCommand, args'),
+        'Windows should resolve a shell-free launch spec before spawning',
+    );
+    assert.ok(
+        block.includes('&& !windowsLaunch'),
+        'shell:true must be gated on shim resolution having FAILED',
     );
     assert.ok(
         block.includes('windowsSpawnUsesShell ? { shell: true } : {}'),
-        'should apply shell:true only when the Windows shim guard passes',
+        'the shell fallback stays behind the guard',
     );
 });
 
 test('EG-004b: Windows standard CLI spawn honors detected absolute paths before PATH shims', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 1400);
+    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 2000);
 
     assert.ok(
         block.includes('detected.path || cli'),
@@ -100,8 +110,8 @@ test('EG-004b: Windows standard CLI spawn honors detected absolute paths before 
         'Windows spawn must not ignore detected.path and fall back to raw PATH lookup',
     );
     assert.ok(
-        block.includes("!spawnCommand.toLowerCase().endsWith('.exe')"),
-        'Windows native .exe paths should not need shell:true shim resolution',
+        block.includes('which:'),
+        'a bare command name must be discovered before it is treated as directly launchable',
     );
 });
 

@@ -141,7 +141,7 @@ export function buildReviewSteerPrompt(flags: ReviewFlags, target: ReviewTargetC
         '   - Use git history/diffs as evidence for the conversation-selected work item; do not include unrelated commits merely because they are in `origin/master..HEAD`, a merge-base range, or the recent reflog.',
         '   - Select the important recent project changes to review from committed changes, uncommitted changes, and untracked files. Do not limit the review to `git diff HEAD` when recent context indicates relevant committed work.',
         '   - If no relevant committed changes, uncommitted changes, or untracked files can be identified after scope resolution, report "No project changes to review." and still save the Markdown report.',
-        '3. Read the dev-code-reviewer skill (`cat` the SKILL.md from skills/dev-code-reviewer/).',
+        '3. Read the dev-code-reviewer skill (`cat` the SKILL.md from skills/jaw-dev-code-reviewer/).',
         '4. Run pre-scan: `npx tsc --noEmit` (if TypeScript project). Note any errors.',
         '5. Review the selected scope following the skill methodology in order:',
         '   - Architecture: right layer, right abstraction?',

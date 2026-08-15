@@ -1,4 +1,5 @@
 import { fork, spawn } from 'node:child_process';
+import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extname } from 'node:path';
 import { detectAllCli } from '../core/cli-detection.js';
@@ -141,10 +142,15 @@ export const formatWorkerFailureForTest = formatWorkerFailure;
 
 export function runCommand(binary: string, args: string[], timeoutMs: number): Promise<{ code: number | null; output: string; timedOut: boolean; outputLimited: boolean }> {
     return new Promise((resolve) => {
-        const child = spawn(binary, args, {
+        // Shell-free launch on Windows (#367): resolve an npm .cmd shim to its
+        // interpreter rather than handing the command to cmd.exe. Falls back to the
+        // legacy shell only when resolution fails, matching the staged contract.
+        const spec = process.platform === 'win32' ? resolveWindowsLaunchSpec(binary, args) : null;
+        const child = spawn(spec ? spec.command : binary, spec ? launchArgv(spec) : args, {
             detached: process.platform !== 'win32',
-            shell: process.platform === 'win32' && !binary.toLowerCase().endsWith('.exe'),
+            shell: process.platform === 'win32' && !spec && !binary.toLowerCase().endsWith('.exe'),
             stdio: ['ignore', 'pipe', 'pipe'],
+            ...(spec && Object.keys(spec.envDelta).length ? { env: { ...process.env, ...spec.envDelta } } : {}),
         });
         let output = '';
         let bytes = 0;

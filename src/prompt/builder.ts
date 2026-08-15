@@ -5,6 +5,7 @@ import { join } from 'path';
 import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile, deriveCdpPort, DEFAULT_PORT } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { resolveSkillId } from '../../lib/mcp/skills-aliases.js';
 import { getEmployees } from '../core/db.js';
 import { getActiveChatSession, listChatSessions } from '../core/chat-sessions.js';
 import { currentSessionScope } from '../core/session-context.js';
@@ -43,12 +44,16 @@ function findFirstExistingPath(paths: string[]): string | null {
 }
 
 function findSkillPath(skillName: string): string | null {
-    return findFirstExistingPath([
-        join(SKILLS_DIR, skillName, 'SKILL.md'),
-        join(SKILLS_REF_DIR, skillName, 'SKILL.md'),
-        getRepoBundledSkillPath('skills', skillName, 'SKILL.md'),
-        getRepoBundledSkillPath('skills_ref', skillName, 'SKILL.md'),
-    ]);
+    // Canonical id first, then the caller's spelling — a legacy name still
+    // resolves, and a reference-only skill is unaffected.
+    const canonical = resolveSkillId(skillName);
+    const names = canonical === skillName ? [skillName] : [canonical, skillName];
+    return findFirstExistingPath(names.flatMap(n => [
+        join(SKILLS_DIR, n, 'SKILL.md'),
+        join(SKILLS_REF_DIR, n, 'SKILL.md'),
+        getRepoBundledSkillPath('skills', n, 'SKILL.md'),
+        getRepoBundledSkillPath('skills_ref', n, 'SKILL.md'),
+    ]));
 }
 
 function normalizeSkillDescription(description: unknown): string {
@@ -332,13 +337,20 @@ function appendAnchorIfMissing(
  * markers, so replacing it destroys nothing. Anything else is treated as
  * user-authored and is preserved. Same pattern as KNOWN_A1_SOURCE_HASHES.
  *
- * Regenerate with: node scripts/anchor-hash.mjs (see the test, which pins the
- * currently-shipped template block so this list cannot silently go stale).
+ * To add the block you are about to replace, print its hash first: build, then
+ * load hashAnchorBlock from the built builder module and hand it the slice of
+ * src/prompt/templates/a1-system.md between the two desktop-control anchor
+ * markers (inclusive). The test pins the currently-shipped template block so
+ * this list cannot silently go stale.
  */
 const KNOWN_DESKTOP_CONTROL_ANCHOR_HASHES = new Set<string>([
     // 4ef0bc51 — the macOS-only contract shipped through v2.2.19, replaced by
     // the darwin/win32 split in #308. This is the block installed users have.
     '0a819e06ac3e0b7f5b10eae6bc388eef',
+    // v2.4.x — the darwin/win32 block, before active skill ids moved to jaw-*.
+    // Without this, an install carrying the current stock block reads as
+    // user-edited and keeps pointing at skill paths that no longer exist.
+    '9158b57a4c1aeab8f50c347c8500da34',
 ]);
 
 export function hashAnchorBlock(block: string): string {
@@ -759,7 +771,7 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
 
             // PABCD orchestration: command summary stays inline; the full skill
             // body is a MUST-READ path contract (#prompt-cache — was 9.4KB inline).
-            const pabcdPath = join(SKILLS_DIR, 'dev-pabcd', 'SKILL.md');
+            const pabcdPath = join(SKILLS_DIR, 'jaw-dev-pabcd', 'SKILL.md');
             if (fs.existsSync(pabcdPath)) {
                 prompt += `\n\n## PABCD Orchestration Guide
 PABCD is the structured 5-phase development workflow: I(Interview) → P(Plan) → A(Plan Audit) → B(Build) → C(Check) → D(Done). Large/"loop" work runs as MULTIPLE passes — one full P→A→B→C→D per work-phase (a work-phase is an outcome slice, not a PABCD letter).
@@ -938,29 +950,29 @@ export function getEmployeePrompt(emp: { name: string; role?: string; id?: strin
 // Task-tag → skill routing (92_runtime_skill_routing_plan). Tags are normalized
 // task_tags from dispatch; they add skill pointers without changing the execution role.
 const TASK_TAG_SKILL_MAP: Record<string, string[]> = {
-    frontend_ui: ['dev-uiux-design'],
-    testing: ['dev-testing'],
-    tdd: ['dev-testing'],
-    bdd_acceptance: ['dev-testing', 'dev'],
-    security: ['dev-security'],
-    threat_model: ['dev-security'],
-    architecture: ['dev-architecture', 'dev-backend'],
-    ddd: ['dev-architecture', 'dev-backend'],
-    clean_arch: ['dev-architecture', 'dev-backend'],
-    hexagonal: ['dev-architecture', 'dev-backend'],
-    vertical_slice: ['dev-architecture', 'dev-backend', 'dev-frontend', 'dev-testing'],
-    adr_rfc: ['dev-architecture', 'dev-scaffolding'],
-    review: ['dev-code-reviewer'],
-    code_review: ['dev-code-reviewer'],
-    debugging: ['dev-debugging'],
-    debugging_rca: ['dev-debugging'],
-    observability: ['dev-backend'],
-    observability_pipeline: ['dev-backend', 'dev-data'],
-    migration_backfill: ['dev-data', 'dev-backend', 'dev-testing'],
-    product_discovery: ['dev'],
-    product_discovery_ui: ['dev', 'dev-uiux-design'],
-    release_cd: ['dev-testing', 'dev-backend', 'dev-scaffolding'],
-    crud_fullstack: ['dev-backend', 'dev-frontend', 'dev-testing'],
+    frontend_ui: ['jaw-dev-uiux-design'],
+    testing: ['jaw-dev-testing'],
+    tdd: ['jaw-dev-testing'],
+    bdd_acceptance: ['jaw-dev-testing', 'jaw-dev'],
+    security: ['jaw-dev-security'],
+    threat_model: ['jaw-dev-security'],
+    architecture: ['jaw-dev-architecture', 'jaw-dev-backend'],
+    ddd: ['jaw-dev-architecture', 'jaw-dev-backend'],
+    clean_arch: ['jaw-dev-architecture', 'jaw-dev-backend'],
+    hexagonal: ['jaw-dev-architecture', 'jaw-dev-backend'],
+    vertical_slice: ['jaw-dev-architecture', 'jaw-dev-backend', 'jaw-dev-frontend', 'jaw-dev-testing'],
+    adr_rfc: ['jaw-dev-architecture', 'jaw-dev-scaffolding'],
+    review: ['jaw-dev-code-reviewer'],
+    code_review: ['jaw-dev-code-reviewer'],
+    debugging: ['jaw-dev-debugging'],
+    debugging_rca: ['jaw-dev-debugging'],
+    observability: ['jaw-dev-backend'],
+    observability_pipeline: ['jaw-dev-backend', 'jaw-dev-data'],
+    migration_backfill: ['jaw-dev-data', 'jaw-dev-backend', 'jaw-dev-testing'],
+    product_discovery: ['jaw-dev'],
+    product_discovery_ui: ['jaw-dev', 'jaw-dev-uiux-design'],
+    release_cd: ['jaw-dev-testing', 'jaw-dev-backend', 'jaw-dev-scaffolding'],
+    crud_fullstack: ['jaw-dev-backend', 'jaw-dev-frontend', 'jaw-dev-testing'],
 };
 
 export function normalizeTaskTags(raw: unknown): string[] {
@@ -1012,22 +1024,22 @@ export function getEmployeePromptV2(
 
     // Skill bodies are intentionally not inlined. Each employee receives a
     // compact path contract and reads only the guide needed for the task.
-    const devCommonPath = findSkillPath('dev');
-    const scaffoldingPath = findSkillPath('dev-scaffolding');
+    const devCommonPath = findSkillPath('jaw-dev');
+    const scaffoldingPath = findSkillPath('jaw-dev-scaffolding');
 
     const ROLE_SKILL_NAME_MAP = {
-        frontend: 'dev-frontend',
-        backend: 'dev-backend',
-        data: 'dev-data',
-        docs: 'dev-scaffolding',
+        frontend: 'jaw-dev-frontend',
+        backend: 'jaw-dev-backend',
+        data: 'jaw-dev-data',
+        docs: 'jaw-dev-scaffolding',
         custom: null,
     };
 
     const roleSkillName = (ROLE_SKILL_NAME_MAP as Record<string, string | null>)[role] ?? null;
     const roleSkillPath = roleSkillName ? findSkillPath(roleSkillName) : null;
-    const pabcdPath = findSkillPath('dev-pabcd');
-    const reviewerPath = findSkillPath('dev-code-reviewer');
-    const testingPath = findSkillPath('dev-testing');
+    const pabcdPath = findSkillPath('jaw-dev-pabcd');
+    const reviewerPath = findSkillPath('jaw-dev-code-reviewer');
+    const testingPath = findSkillPath('jaw-dev-testing');
 
     prompt += `\n\n## Skill Loading Contract`;
     prompt += `\nSkill bodies are not preloaded. Read each guide once, only when the task requires it.`;

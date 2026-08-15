@@ -150,6 +150,10 @@ export interface SpawnContext {
   kiroHeartbeatSent?: boolean;
   /** Formatted assistant preview text; raw CLI stdout may live separately in fullText. */
   liveOutputText?: string;
+  /** Channel of the current codex-app agentMessage item ('commentary' | 'final' | undefined).
+   *  Set at item/started, consumed by item/agentMessage/delta to filter commentary
+   *  out of fullText so it stays out of agent_done and messaging-channel delivery. */
+  codexAppActiveChannel?: string;
   scheduleWakeup?: {
     delaySeconds: number;
     prompt: string;

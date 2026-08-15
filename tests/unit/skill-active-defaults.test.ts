@@ -26,10 +26,10 @@ function runNodeEval(code: string, env: NodeJS.ProcessEnv): string {
     });
 }
 
-test('active defaults include search, structured-renderers, and goal', () => {
-    assert.equal(OPENCLAW_ACTIVE.has('search'), true);
-    assert.equal(OPENCLAW_ACTIVE.has('structured-renderers'), true);
-    assert.equal(OPENCLAW_ACTIVE.has('goal'), true);
+test('active defaults include jaw-search, jaw-structured-renderers, and jaw-goal', () => {
+    assert.equal(OPENCLAW_ACTIVE.has('jaw-search'), true);
+    assert.equal(OPENCLAW_ACTIVE.has('jaw-structured-renderers'), true);
+    assert.equal(OPENCLAW_ACTIVE.has('jaw-goal'), true);
 });
 
 test('propagation activates defaults from instance skills_ref and preserves custom active skills', () => {
@@ -45,12 +45,12 @@ test('propagation activates defaults from instance skills_ref and preserves cust
         fs.mkdirSync(baseActive, { recursive: true });
         fs.mkdirSync(instActive, { recursive: true });
 
-        const refIds = ['search', 'structured-renderers', 'goal'];
+        const refIds = ['jaw-search', 'jaw-structured-renderers', 'jaw-goal'];
         makeRegistry(baseRef, refIds);
         for (const id of refIds) {
             makeSkill(baseRef, id, `---\nname: ${id}\ndescription: ${id} from ref\n---\n`);
         }
-        makeSkill(baseActive, 'search', 'active search should not be copied when ref exists\n');
+        makeSkill(baseActive, 'jaw-search', 'active search should not be copied when ref exists\n');
         makeSkill(baseActive, 'base-only', 'base-only fallback\n');
         makeSkill(instActive, 'custom-local', 'custom local skill\n');
 
@@ -69,7 +69,7 @@ test('propagation activates defaults from instance skills_ref and preserves cust
         for (const id of refIds) {
             assert.equal(fs.existsSync(join(instActive, id, 'SKILL.md')), true, `${id} should be active`);
         }
-        assert.match(fs.readFileSync(join(instActive, 'search', 'SKILL.md'), 'utf8'), /from ref/);
+        assert.match(fs.readFileSync(join(instActive, 'jaw-search', 'SKILL.md'), 'utf8'), /from ref/);
         assert.equal(fs.existsSync(join(instActive, 'custom-local', 'SKILL.md')), true, 'custom active skill should survive');
         assert.equal(fs.existsSync(join(instActive, 'base-only', 'SKILL.md')), true, 'base fallback should activate local-only defaults');
     } finally {
