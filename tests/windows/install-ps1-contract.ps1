@@ -107,7 +107,7 @@ exit /b 0
         try {
             $env:Path = "$fixture;$env:SystemRoot\System32;$env:SystemRoot"
             try {
-                & $installer -TarballPath (Join-Path $fixture 'cli-jaw.tgz') -Prefix $prefix -IgnoreScripts *> $null
+                & $installer -TarballPath (Join-Path $fixture 'cli-jaw.tgz') -Prefix $prefix -IgnoreScripts -NoBootstrap *> $null
             } catch {
                 $oldNodeRejected = $_.Exception.Message -match 'Unsupported Node\.js version'
             }

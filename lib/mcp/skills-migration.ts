@@ -55,6 +55,28 @@ function pointsAt(p: string, expectedTarget: string): boolean {
 }
 
 /**
+ * True when anything at all occupies `p` — including a DANGLING symlink.
+ *
+ * `fs.existsSync` follows links, so a compat link pointing at a target that
+ * does not exist yet reads as absent. Renaming onto that path would then
+ * silently destroy the source directory instead of moving it, so occupancy
+ * has to be decided with lstat.
+ */
+function pathIsOccupied(p: string): boolean {
+    try { fs.lstatSync(p); return true; } catch { return false; }
+}
+
+/** Move `legacyPath` onto `canonicalPath`, clearing a stale compat link first. */
+function renameOntoCanonical(legacyPath: string, canonicalPath: string): void {
+    // Only a symlink may be cleared here: a real directory means a genuine
+    // collision, which the caller resolves by backing the legacy copy up.
+    try {
+        if (fs.lstatSync(canonicalPath).isSymbolicLink()) fs.unlinkSync(canonicalPath);
+    } catch { /* nothing there */ }
+    fs.renameSync(legacyPath, canonicalPath);
+}
+
+/**
  * Migrate any real legacy skill directory in `activeDir` onto its jaw-* name.
  *
  * When the canonical name is free the directory is RENAMED. That carries the
@@ -94,12 +116,13 @@ export function migrateLegacySkillDirs(activeDir: string, jawHome: string): Lega
 
         try {
             const canonicalPath = join(activeDir, canonicalId);
-            if (fs.existsSync(canonicalPath)) {
+            // lstat, not existsSync: a dangling compat link occupies the path.
+            if (pathIsOccupied(canonicalPath) && !fs.lstatSync(canonicalPath).isSymbolicLink()) {
                 backup ??= createBackupContext(jawHome);
                 const moved = movePathToBackup(legacyPath, backup);
                 result.backedUp.push(`${legacyId} -> ${moved}`);
             } else {
-                fs.renameSync(legacyPath, canonicalPath);
+                renameOntoCanonical(legacyPath, canonicalPath);
                 result.renamed.push(`${legacyId} -> ${canonicalId}`);
             }
         } catch (e) {
@@ -189,12 +212,12 @@ export function migrateLegacyRefDirs(refDir: string, jawHome: string): LegacyMig
         if (!stat.isDirectory()) continue;
 
         try {
-            if (fs.existsSync(canonicalPath)) {
+            if (pathIsOccupied(canonicalPath) && !fs.lstatSync(canonicalPath).isSymbolicLink()) {
                 backup ??= createBackupContext(jawHome);
                 const moved = movePathToBackup(legacyPath, backup);
                 result.backedUp.push(`skills_ref/${legacyId} -> ${moved}`);
             } else {
-                fs.renameSync(legacyPath, canonicalPath);
+                renameOntoCanonical(legacyPath, canonicalPath);
                 result.renamed.push(`skills_ref/${legacyId} -> ${canonicalId}`);
             }
         } catch (e) {
@@ -246,6 +269,24 @@ export function normalizeSkillNamespace(
  * and each keeps its own `skills/` and `skills_ref/`. An upgrade that migrates
  * only the home it was invoked with leaves the rest on legacy names.
  */
+/**
+ * A directory is only a cli-jaw home if it carries a skill tree.
+ *
+ * Discovery matches on a name prefix, and a name is not evidence: a user may
+ * keep `~/.cli-jaw-notes` next to their install. Requiring `skills/` or
+ * `skills_ref/` keeps the sweep from writing into an unrelated directory.
+ * Symlinks are skipped outright — following one would let a link decide what
+ * this function is allowed to touch.
+ */
+function looksLikeJawHome(candidate: string): boolean {
+    try {
+        if (fs.lstatSync(candidate).isSymbolicLink()) return false;
+        if (!fs.statSync(candidate).isDirectory()) return false;
+    } catch { return false; }
+    return fs.existsSync(join(candidate, 'skills'))
+        || fs.existsSync(join(candidate, 'skills_ref'));
+}
+
 export function discoverJawHomes(baseHome: string): string[] {
     const homes = new Set<string>();
     if (fs.existsSync(baseHome)) homes.add(baseHome);
@@ -257,8 +298,10 @@ export function discoverJawHomes(baseHome: string): string[] {
         for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
             if (!entry.name.startsWith(prefix)) continue;
             const candidate = join(parent, entry.name);
-            // Follow a symlinked home, but only if it really is a directory.
-            try { if (!fs.statSync(candidate).isDirectory()) continue; } catch { continue; }
+            // Name prefix alone proves nothing — `.cli-jaw-notes` could be the
+            // user's own folder. Only a directory that actually carries a skill
+            // tree is a home we may modify.
+            if (!looksLikeJawHome(candidate)) continue;
             homes.add(candidate);
         }
     } catch { /* unreadable parent: the base home alone is still worth doing */ }

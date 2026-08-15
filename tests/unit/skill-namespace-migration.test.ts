@@ -120,3 +120,22 @@ test('SNM-006: migration is idempotent', () => {
     });
 });
 
+test('SNM-007: a dangling compat link never eats the legacy directory', () => {
+    // fs.existsSync FOLLOWS symlinks, so a compat link whose target does not
+    // exist yet reads as absent. Deciding occupancy with existsSync made
+    // renameSync overwrite the link and destroy the source directory.
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const active = join(home, 'skills');
+        makeSkill(active, 'browser', 'REAL CONTENT\n');
+        fs.symlinkSync('jaw-browser', join(active, 'jaw-browser'), 'junction');
+        assert.equal(fs.existsSync(join(active, 'jaw-browser')), false, 'precondition: link dangles');
+
+        migrateAllJawHomes(home);
+
+        const st = fs.lstatSync(join(active, 'jaw-browser'));
+        assert.equal(st.isDirectory(), true, 'the real directory must land on the canonical id');
+        assert.equal(st.isSymbolicLink(), false);
+        assert.equal(fs.readFileSync(join(active, 'jaw-browser', 'SKILL.md'), 'utf8'), 'REAL CONTENT\n');
+    });
+});
