@@ -15,6 +15,7 @@ import {
     loadRegistry, getSkillVersion, shouldUpdateSkillDirectory,
     isDiscoverableSkillDirName, isSkillSourceEntryName, shouldUseLocalSkillsSource,
 } from './skills-utils.js';
+import { normalizeSkillNamespace, type LegacyMigrationResult } from './skills-migration.js';
 
 type SkillRegistry = {
     skills?: Record<string, { category?: string }>;
@@ -228,7 +229,19 @@ export function copyDefaultSkills() {
     }
     if (autoCount > 0) console.log(`[skills] Total auto-activated/synced: ${autoCount}`);
 
+    reportNamespaceMigration(normalizeSkillNamespace(activeDir, JAW_HOME));
+
     return copied;
+}
+
+/** Log what the jaw-* namespace pass moved, linked, or could not do. */
+export function reportNamespaceMigration(result: LegacyMigrationResult): void {
+    for (const moved of result.backedUp) console.log(`[skills] legacy skill backed up: ${moved}`);
+    for (const id of result.unlinked) console.log(`[skills] stale compat link replaced: ${id}`);
+    if (result.linked.length > 0) {
+        console.log(`[skills] legacy-name compat links: ${result.linked.length}`);
+    }
+    for (const w of result.warnings) console.warn(`[skills] ${w}`);
 }
 
 /**
@@ -313,6 +326,10 @@ export function propagateSkillsToInstances() {
                 activeUpdated++;
             }
         }
+
+        // Each instance is its own home: legacy dirs back up inside it, and
+        // its own compat links get (re)created.
+        reportNamespaceMigration(normalizeSkillNamespace(instActive, instDir));
 
         const tag = basename(instDir);
         const parts: string[] = [];

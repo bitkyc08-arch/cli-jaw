@@ -21,7 +21,8 @@ import {
     createBackupContext,
     movePathToBackup,
 } from './skills-symlinks.js';
-import { copyDefaultSkills } from './skills-distribution.js';
+import { copyDefaultSkills, reportNamespaceMigration } from './skills-distribution.js';
+import { normalizeSkillNamespace } from './skills-migration.js';
 import { stripUndefined } from '../../src/core/strip-undefined.js';
 
 // ─── Types ─────────────────────────────────────────
@@ -163,6 +164,10 @@ export function softResetSkills() {
     if (tmpCloneDir && fs.existsSync(tmpCloneDir)) {
         fs.rmSync(tmpCloneDir, { recursive: true, force: true });
     }
+
+    // Legacy-named directories survive step 4 (their ref counterpart is gone,
+    // so they read as custom). Back them up and re-establish compat links.
+    reportNamespaceMigration(normalizeSkillNamespace(activeDir, JAW_HOME));
 
     console.log(`[skills:soft-reset] restored=${restored}, added=${added}, removed=${removed}`);
     return { restored, added };

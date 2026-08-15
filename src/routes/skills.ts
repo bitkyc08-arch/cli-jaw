@@ -4,6 +4,7 @@ import { httpStatus } from './_http-error.js';
 import fs from 'fs';
 import { join } from 'path';
 import { assertSkillId } from '../security/path-guards.js';
+import { resolveSkillId } from '../../lib/mcp/skills-aliases.js';
 import { SKILLS_DIR, SKILLS_REF_DIR } from '../core/config.js';
 import { getMergedSkills, regenerateB } from '../prompt/builder.js';
 
@@ -24,7 +25,7 @@ export function registerSkillRoutes(app: Express, requireAuth: AuthMiddleware, m
 
     app.post('/api/skills/enable', requireAuth, (req, res) => {
         try {
-            const id = assertSkillId(req.body?.id);
+            const id = resolveSkillId(assertSkillId(req.body?.id));
             const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
             const dstDir = join(SKILLS_DIR, id);
             const dstPath = join(dstDir, 'SKILL.md');
@@ -46,7 +47,7 @@ export function registerSkillRoutes(app: Express, requireAuth: AuthMiddleware, m
 
     app.post('/api/skills/disable', requireAuth, (req, res) => {
         try {
-            const id = assertSkillId(req.body?.id);
+            const id = resolveSkillId(assertSkillId(req.body?.id));
             const dstDir = join(SKILLS_DIR, id);
             if (!fs.existsSync(dstDir)) {
                 res.json({ ok: true, msg: 'already disabled' });
@@ -62,7 +63,7 @@ export function registerSkillRoutes(app: Express, requireAuth: AuthMiddleware, m
 
     app.get('/api/skills/:id', (req, res) => {
         try {
-            const id = assertSkillId(req.params.id);
+            const id = resolveSkillId(assertSkillId(req.params.id));
             const activePath = join(SKILLS_DIR, id, 'SKILL.md');
             const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
             const p = fs.existsSync(activePath) ? activePath : refPath;

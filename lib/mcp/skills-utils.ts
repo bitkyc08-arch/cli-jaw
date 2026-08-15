@@ -67,18 +67,22 @@ export function isSkillSourceEntryName(name: string): boolean {
 }
 
 // ─── Skill activation sets (shared by copyDefaultSkills / softResetSkills) ───
+// Active ids carry the jaw-* prefix so they cannot be mistaken for a
+// Codex-native tool or skill. Legacy names still resolve for one major
+// version — see lib/mcp/skills-aliases.ts.
 export const CODEX_ACTIVE = new Set([
-    'pdf',
+    'jaw-pdf',
 ]);
 
 export const OPENCLAW_ACTIVE = new Set([
-    // vision-click is absorbed into desktop-control (reference/vision-click.md)
+    // vision-click is absorbed into jaw-desktop-control (reference/vision-click.md)
     // and stays as a reference skill; users who want the low-level recipe
     // can opt in with: cli-jaw skill install vision-click
-    'browser', 'memory', 'search',
-    'screen-capture', 'docx', 'xlsx', 'pptx', 'hwp', 'github', 'telegram-send',
-    'video', 'pdf-vision', 'diagram', 'structured-renderers',
-    'desktop-control', 'goal',
+    'jaw-browser', 'jaw-memory', 'jaw-search',
+    'jaw-screen-capture', 'jaw-docx', 'jaw-xlsx', 'jaw-pptx', 'jaw-hwp',
+    'jaw-github', 'jaw-telegram-send',
+    'jaw-video', 'jaw-pdf-vision', 'jaw-diagram', 'jaw-structured-renderers',
+    'jaw-desktop-control', 'jaw-goal',
 ]);
 
 /** Walk up from current file to find package.json → package root */

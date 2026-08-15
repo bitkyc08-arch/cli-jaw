@@ -171,7 +171,16 @@ function copyDirRecursive(src: string, dest: string) {
     for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
         const srcPath = path.join(src, entry.name);
         const destPath = path.join(dest, entry.name);
-        if (entry.isDirectory()) {
+        if (entry.isSymbolicLink()) {
+            // Legacy-name compatibility links. copyFileSync on a directory
+            // symlink is ENOTSUP, and following it would resurrect the legacy
+            // name as a real duplicate skill. Recreate the link instead.
+            try {
+                const target = fs.readlinkSync(srcPath);
+                if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+                fs.symlinkSync(target, destPath, 'junction');
+            } catch { /* a clone without the link still has the canonical skill */ }
+        } else if (entry.isDirectory()) {
             copyDirRecursive(srcPath, destPath);
         } else {
             fs.copyFileSync(srcPath, destPath);

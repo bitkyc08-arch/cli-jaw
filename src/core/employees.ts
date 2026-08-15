@@ -164,13 +164,13 @@ export const VIRTUAL_ROLE_PRESETS: VirtualRolePreset[] = [
         value: 'security',
         label: 'Security',
         role: 'Security reviewer — auth, secrets, injection, destructive-command, sandbox, and data exposure risks',
-        skill: 'dev-security',
+        skill: 'jaw-dev-security',
     },
     {
         value: 'testing',
         label: 'Testing',
         role: 'Testing reviewer — unit, integration, regression, smoke, and edge-case coverage',
-        skill: 'dev-testing',
+        skill: 'jaw-dev-testing',
     },
 ];
 
@@ -240,7 +240,7 @@ export const STATIC_EMPLOYEES: StaticEmployee[] = [
         description: 'Desktop + browser automation specialist (NOT exclusive — Boss-as-codex may self-serve).',
         // vision-click is absorbed into desktop-control (reference/vision-click.md).
         // Keep skills minimal; screen-capture stays for non-Chrome OS capture.
-        skills: ['desktop-control', 'screen-capture', 'codex-imagegen'],
+        skills: ['jaw-desktop-control', 'jaw-screen-capture', 'codex-imagegen'],
         systemPromptPatchFile: 'control-system.md',
         runtimeHints: {
             // Computer Use runs on macOS (app-scoped API) and on Windows

@@ -3,6 +3,7 @@
 
 import { t } from '../core/i18n.js';
 import { getSkillCommandsCache } from '../core/skill-cache.js';
+import { resolveSkillId } from '../../lib/mcp/skills-aliases.js';
 import {
     unknownCommand, unsupportedCommand, normalizeResult,
     statusHandler, modelHandler, cliHandler, skillHandler, employeeHandler,
@@ -354,7 +355,8 @@ export function parseCommand(text: string): ParsedSlashCommand {
     const parts = tokenizeArgs(body);
     const name = (parts.shift() || '').toLowerCase();
     if (name.startsWith('skill:')) {
-        const skillId = name.slice(6);
+        // `/skill:browser` still reaches `jaw-browser` for one major version.
+        const skillId = resolveSkillId(name.slice(6));
         if (!skillId) return { type: 'unknown', name, args: parts, rawText: text };
         return { type: 'skill', skillId, name, args: parts, rawText: text };
     }
