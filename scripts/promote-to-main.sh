@@ -47,10 +47,35 @@ REMOTE_URL="$(git remote get-url origin)"
 PROMOTION_TMP_ROOT="$(promotion_tmp_root)"
 WORKTREE="$(mktemp -d "$PROMOTION_TMP_ROOT/cli-jaw-promote.XXXXXX")"
 PROMOTION_BRANCH="codex/promote-${STABLE_VERSION}-${PREVIEW_SHA:0:12}"
+# Guards for the remote-branch cleanup below. PROMOTION_BRANCH_PUSHED is proof
+# that THIS run created the remote ref: a re-run computes the same branch name
+# from the same version and preview SHA, so deleting by name alone could destroy
+# a branch another promotion is still using. PROMOTION_PR_MERGED hands the
+# success path back to the repo's delete_branch_on_merge setting.
+PROMOTION_BRANCH_PUSHED=0
+PROMOTION_PR_MERGED=0
 cleanup() {
+  local status=$?
   if ! cleanup_promotion_checkout "$WORKTREE"; then
     echo "WARNING: failed to clean promotion checkout: $WORKTREE" >&2
   fi
+  # Anything that aborts between the push and the merge would otherwise leave
+  # the promotion branch on origin forever; that is how codex/promote-2.3.0,
+  # -2.4.0, -2.4.1, -2.4.2 and -2.17.3-6f9165a680d5 accumulated. Delete first
+  # and classify afterwards, so a probe that cannot reach origin warns loudly
+  # instead of silently deciding the branch was already gone.
+  if [ "$PROMOTION_BRANCH_PUSHED" -eq 1 ] && [ "$PROMOTION_PR_MERGED" -eq 0 ]; then
+    if git push origin --delete "$PROMOTION_BRANCH" >/dev/null 2>&1; then
+      echo "cleaned up remote promotion branch after unfinished promotion: $PROMOTION_BRANCH"
+    elif ! git ls-remote --exit-code --heads origin "$PROMOTION_BRANCH" >/dev/null 2>&1; then
+      echo "remote promotion branch already absent: $PROMOTION_BRANCH"
+    else
+      echo "WARNING: failed to delete remote promotion branch: $PROMOTION_BRANCH (delete it manually)" >&2
+    fi
+  fi
+  # The trap runs on every exit, including the failure it is cleaning up after.
+  # Re-raise the original status so cleanup never rewrites the script's result.
+  exit "$status"
 }
 trap cleanup EXIT
 prepare_promotion_checkout "$REMOTE_URL" "$PREVIEW_SHA" "$PROMOTION_BRANCH" "$WORKTREE"
@@ -67,6 +92,10 @@ prepare_promotion_checkout "$REMOTE_URL" "$PREVIEW_SHA" "$PROMOTION_BRANCH" "$WO
   assert_promotion_checkout_ready_to_push "$WORKTREE" "$PREVIEW_SHA" "$PROMOTION_BRANCH"
   git push --set-upstream origin "$PROMOTION_BRANCH"
 )
+# A flag set inside the subshell cannot reach the trap, so it is set here. That
+# is equivalent to "immediately after the push" only while the push stays the
+# LAST command in the block above; keep it last (pinned by the contract test).
+PROMOTION_BRANCH_PUSHED=1
 
 PROMOTION_COMMIT="$(git -C "$WORKTREE" rev-parse HEAD)"
 PR_URL="$(gh pr create \
@@ -77,6 +106,10 @@ PR_URL="$(gh pr create \
 
 gh pr checks "$PR_URL" --required --watch --fail-fast
 gh pr merge "$PR_URL" --squash --match-head-commit "$PROMOTION_COMMIT"
+# From here the branch belongs to GitHub's delete_branch_on_merge. Racing that
+# auto-delete only produces confusing errors, and a later verification failure
+# is not a reason to remove a branch whose merge already landed.
+PROMOTION_PR_MERGED=1
 
 MERGED_AT="$(gh pr view "$PR_URL" --json mergedAt --jq '.mergedAt // ""')"
 if [ -z "$MERGED_AT" ]; then

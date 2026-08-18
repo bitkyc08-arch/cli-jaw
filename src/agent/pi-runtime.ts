@@ -9,6 +9,8 @@ import { JAW_HOME } from '../core/config.js';
 import { clampPendingLine } from './spawn/line-buffer.js';
 import { probeOpenCodexEndpointModels } from '../cli/opencodex-models.js';
 import { launchSpec } from '../core/exec-name.js';
+import { mergeEnvWindowsSafe } from './spawn-env.js';
+import { createTextStreamReader } from './stream-text.js';
 
 export type PiProfileMode = 'basic' | 'openai' | 'anthropic' | 'vertex';
 export type PiApiKind = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-vertex';
@@ -347,7 +349,7 @@ export function listPiModels(piInput: unknown, profileId: string, options: { eff
     const launch = resolvePiSpawn(cmd.command, [...cmd.baseArgs, '--offline', '--list-models', profileId]);
     return new Promise((resolve, reject) => {
         const child = spawn(launch.command, launch.args, {
-            env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
+            env: mergeEnvWindowsSafe({ ...process.env, PI_CODING_AGENT_DIR: dir }, launch.envDelta),
             stdio: ['ignore', 'pipe', 'pipe'],
             ...(launch.useShell ? { shell: true } : {}),
         });
@@ -357,14 +359,20 @@ export function listPiModels(piInput: unknown, profileId: string, options: { eff
             child.kill('SIGTERM');
             reject(Object.assign(new Error('pi model discovery timed out'), { statusCode: 504 }));
         }, options.timeoutMs ?? 20_000);
-        child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-        child.stderr.on('data', (chunk) => { if (stderr.length < 4000) stderr += chunk.toString(); });
-        child.on('error', (err) => {
+        // One reader per stream (#382): per-chunk toString() splits multi-byte
+        // CJK across chunk boundaries (stream-text.ts rule 1).
+        const stdoutReader = createTextStreamReader();
+        const stderrReader = createTextStreamReader();
+        child.stdout.on('data', (chunk) => { stdout += stdoutReader.write(chunk); });
+        child.stderr.on('data', (chunk) => { if (stderr.length < 4000) stderr += stderrReader.write(chunk); });
+       child.on('error', (err) => {
             clearTimeout(timer);
             reject(err);
         });
         child.on('close', (code) => {
             clearTimeout(timer);
+            stdout += stdoutReader.end();
+            stderr += stderrReader.end();
             if (code !== 0) {
                 reject(Object.assign(new Error(stderr.trim() || `pi list models failed with code ${code}`), { statusCode: 502 }));
                 return;
@@ -524,7 +532,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
     const launch = resolvePiSpawn(cmd.command, args);
     const child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
+        env: mergeEnvWindowsSafe({ ...process.env, PI_CODING_AGENT_DIR: dir }, launch.envDelta),
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(launch.useShell ? { shell: true } : {}),
     });
@@ -532,6 +540,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
     let buffer = '';
     let stderr = '';
     let seq = 1;
+    const stderrReader = createTextStreamReader();
     let activePrompt: PersistentPrompt | null = null;
     let abortWait: AbortWait | null = null;
     let closed = false;
@@ -679,7 +688,8 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         // Persistent RPC sessions live for the pool's idle window (15 min) and
         // longer under load, so an uncapped accumulator grows for the whole
         // session lifetime. Every sibling handler in this file caps at 4000.
-        if (stderr.length < PI_PERSISTENT_STDERR_MAX_CHARS) stderr += chunk.toString();
+        // Second reader, never the stdout decoder above (#382, rule 1).
+        if (stderr.length < PI_PERSISTENT_STDERR_MAX_CHARS) stderr += stderrReader.write(chunk);
     });
     child.on('error', (error) => rejectOutstanding(error));
     child.on('close', (code) => {
@@ -718,7 +728,7 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     const launch = resolvePiSpawn(cmd.command, args);
     const child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: { ...process.env, PI_CODING_AGENT_DIR: dir, ...launch.envDelta },
+        env: mergeEnvWindowsSafe({ ...process.env, PI_CODING_AGENT_DIR: dir }, launch.envDelta),
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(launch.useShell ? { shell: true } : {}),
     });
@@ -726,6 +736,7 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     let buffer = '';
     let stderr = '';
     let text = '';
+    const stderrReader = createTextStreamReader();
     let sessionId: string | null = null;
     let doneSettled = false;
     let seq = 1;
@@ -773,7 +784,7 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
             }
             for (const line of lines) if (line.trim()) dispatchLine(line.trim());
         });
-        child.stderr.on('data', (chunk) => { if (stderr.length < 4000) stderr += chunk.toString(); });
+        child.stderr.on('data', (chunk) => { if (stderr.length < 4000) stderr += stderrReader.write(chunk); });
         child.on('close', (code) => {
             if (buffer.trim()) dispatchLine(buffer.trim());
             finish(code ?? 0);

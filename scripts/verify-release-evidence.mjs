@@ -13,6 +13,10 @@ function usage() {
 Options:
   --macos DIR       Strict macOS fresh-machine evidence directory.
   --wsl DIR         Strict Windows-via-WSL fresh-machine evidence directory.
+  --windows DIR     Optional native-Windows evidence directory (plumbing lane,
+                    #384). Validates the directory and the archived install.ps1
+                    hash; the full native audit lands with the ps1 collector
+                    (auditor targets are macos|wsl|linux today).
   --auditor FILE    Auditor script path. Defaults to sibling audit-fresh-install-evidence.mjs.
   -h, --help        Show this help.
 
@@ -24,12 +28,14 @@ flags to the per-target auditor.
 const args = process.argv.slice(2);
 let macosDir = '';
 let wslDir = '';
+let windowsDir = '';
 let auditor = path.join(__dirname, 'audit-fresh-install-evidence.mjs');
 const currentScripts = {
   collector: path.join(__dirname, 'collect-fresh-install-evidence.sh'),
   verifier: path.join(__dirname, 'verify-fresh-install.sh'),
   macosInstaller: path.join(__dirname, 'install.sh'),
   wslInstaller: path.join(__dirname, 'install-wsl.sh'),
+  windowsInstaller: path.join(__dirname, 'install.ps1'),
 };
 
 for (let i = 0; i < args.length; i += 1) {
@@ -44,6 +50,10 @@ for (let i = 0; i < args.length; i += 1) {
   }
   if (arg === '--wsl') {
     wslDir = args[++i] || '';
+    continue;
+  }
+  if (arg === '--windows') {
+    windowsDir = args[++i] || '';
     continue;
   }
   if (arg === '--auditor') {
@@ -85,6 +95,10 @@ function requireFile(label, file) {
 
 requireDirectory('macOS', macosDir);
 requireDirectory('Windows-via-WSL', wslDir);
+// Optional lane (#384): mandatory would break the package.json script, the
+// README examples, and the literal-string tests. require-release-evidence
+// passes it only when CLI_JAW_WINDOWS_EVIDENCE_DIR is set.
+if (windowsDir) requireDirectory('Windows-native', windowsDir);
 requireFile('auditor', auditor);
 requireFile('current collector', currentScripts.collector);
 requireFile('current verifier', currentScripts.verifier);
@@ -145,6 +159,12 @@ if (!failures.length) {
   requireEvidenceScriptMatches('Windows-via-WSL', wslDir, '00-collector-script.sh', currentScripts.collector);
   requireEvidenceScriptMatches('Windows-via-WSL', wslDir, '02-installer-script.sh', currentScripts.wslInstaller);
   requireEvidenceScriptMatches('Windows-via-WSL', wslDir, '21-verifier-script.sh', currentScripts.verifier);
+  // Native-Windows plumbing lane (#384): hash-pin the archived installer to
+  // the shipped install.ps1. The full per-file audit needs a ps1 collector and
+  // auditor target support - recorded as its own unit, not silently skipped.
+  if (windowsDir) {
+    requireEvidenceScriptMatches('Windows-native', windowsDir, '02-installer-script.ps1', currentScripts.windowsInstaller);
+  }
 }
 
 if (failures.length) {

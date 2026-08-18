@@ -59,7 +59,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `test:events` | `tsx --test tests/events.test.ts` |
 | `test:telegram` | `tsx --test tests/telegram-forwarding.test.ts` |
 | `test:manager:browser` | `tsx --test tests/browser/manager-layout-smoke.test.ts` |
-| `test:smoke` | `TEST_PORT=3457 tsx --test tests/integration/api-smoke.test.ts` |
+| `test:smoke` | `node scripts/run-with-env.mjs TEST_PORT=3457 -- tsx --test tests/integration/api-smoke.test.ts` |
 | `smoke:opencode` | `tsx scripts/smoke/opencode-external-dir-smoke.ts` |
 | `verify:fresh-install` | `bash scripts/verify-fresh-install.sh` |
 | `collect:fresh-install-evidence` | `bash scripts/collect-fresh-install-evidence.sh` |

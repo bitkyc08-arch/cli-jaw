@@ -1,11 +1,11 @@
 import fs from 'fs';
-import { execFileSync } from 'child_process';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { CLI_KEYS, CLI_REGISTRY } from '../cli/registry.js';
 import { resolveHomePath } from './path-expand.js';
 import { detectCliBinary, listCliBinaryCandidates, selectSpawnableCliPath, type CliDetection } from './cli-detect.js';
+import { probeExec } from './probe-exec.js';
 
 function findPackageJson(): string {
     let dir = dirname(fileURLToPath(import.meta.url));
@@ -249,16 +249,8 @@ function selectCompatibleHelperPath(candidates: string[], helpArgs: string[]): C
 }
 
 function helperSupportsIdleTimeout(binaryPath: string, helpArgs: string[]): boolean {
-    try {
-        const output = execFileSync(binaryPath, helpArgs, {
-            encoding: 'utf8',
-            timeout: 3000,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        return output.includes('--idle-timeout-ms');
-    } catch {
-        return false;
-    }
+    const r = probeExec(binaryPath, helpArgs, { timeout: 3000 });
+    return r.status === 0 && r.stdout.includes('--idle-timeout-ms');
 }
 
 function getClaudeExecEmbeddedFallbackCandidates(projectDir = getProjectDir()): string[] {

@@ -390,6 +390,10 @@ if (!changed.length) {
 
 const macosEvidence = process.env.CLI_JAW_MACOS_EVIDENCE_DIR || process.env.MACOS_EVIDENCE_DIR || '';
 const wslEvidence = process.env.CLI_JAW_WSL_EVIDENCE_DIR || process.env.WSL_EVIDENCE_DIR || '';
+// Optional third lane (#384): native Windows evidence. WSL is a Linux
+// userland, so WSL evidence proves nothing about win32. The lane is optional
+// until the ps1 collector and auditor target support land.
+const windowsEvidence = process.env.CLI_JAW_WINDOWS_EVIDENCE_DIR || process.env.WINDOWS_EVIDENCE_DIR || '';
 
 console.error(`[release-evidence-required] installer-sensitive changes detected since ${ref || '(initial release)'} (${changed.length}, ${shortHash(changed)})`);
 for (const file of changed.slice(0, 30)) {
@@ -433,7 +437,9 @@ if (!macosEvidence || !wslEvidence) {
 }
 
 const gate = path.join(__dirname, 'verify-release-evidence.mjs');
-const result = spawnSync(process.execPath, [gate, '--macos', macosEvidence, '--wsl', wslEvidence], {
+const gateArgs = [gate, '--macos', macosEvidence, '--wsl', wslEvidence];
+if (windowsEvidence) gateArgs.push('--windows', windowsEvidence);
+const result = spawnSync(process.execPath, gateArgs, {
   cwd: repoRoot,
   env: process.env,
   encoding: 'utf8',

@@ -23,6 +23,28 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM')
 }
 
 /**
+ * Graceful-first tree termination for escalating owners (#382).
+ *
+ * On Windows, taskkill without /F posts WM_CLOSE, which GUI and some console
+ * hosts honor, letting the child flush session state before the /F hard kill
+ * that killProcessTreeIfAlive delivers after graceMs. Only OwnedProcess uses
+ * this: direct killProcessTree callers have no escalation behind them, so
+ * they keep unconditional /T /F semantics (a WM_CLOSE no-op would leak the
+ * process forever).
+ */
+export function killProcessTreeGraceful(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
+    if (process.platform === 'win32') {
+        if (signal === 'SIGKILL') {
+            killProcessTree(pid, signal);
+            return;
+        }
+        try { execFileSync('taskkill', ['/PID', String(pid), '/T'], { stdio: 'ignore' }); } catch { /* best effort */ }
+        return;
+    }
+    killProcessTree(pid, signal);
+}
+
+/**
  * Has this child already exited?
  *
  * `ChildProcess.killed` only records that a signal was delivered, so it is not a
@@ -129,14 +151,18 @@ export class OwnedProcess {
 
         const terminateTree = this.#options.terminateTree ?? killProcessTree;
         const policy = this.#options.policy?.(reason) ?? defaultPolicy(reason);
-        try { terminateTree(this.pid, policy.initialSignal); } catch { /* best effort */ }
-        if (policy.graceMs === null || policy.initialSignal === 'SIGKILL') return;
+        // Graceful initial attempt only when an escalation timer will follow;
+        // otherwise the initial signal is the only kill and must stay hard (#382).
+        const graceMs = policy.initialSignal === 'SIGKILL' ? null : policy.graceMs;
+        const initialKill = graceMs !== null && !this.#options.terminateTree ? killProcessTreeGraceful : terminateTree;
+        try { initialKill(this.pid, policy.initialSignal); } catch { /* best effort */ }
+        if (graceMs === null) return;
 
         const setTimer = this.#options.setTimer ?? setTimeout;
         this.#escalation = setTimer(() => {
             this.#escalation = null;
             killProcessTreeIfAlive(this.child, this.pid, terminateTree);
-        }, policy.graceMs);
+        }, graceMs);
         this.#escalation.unref?.();
     }
 

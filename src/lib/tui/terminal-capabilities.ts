@@ -48,13 +48,15 @@ export class TerminalInfo {
 }
 
 export function isNotificationSuppressed(): boolean {
-	const value = $env.PI_NOTIFICATIONS;
+	// $env is a function (utils-stub) - property access always read undefined,
+	// so PI_NOTIFICATIONS was inert on every platform (#383).
+	const value = $env("PI_NOTIFICATIONS");
 	if (!value) return false;
 	return value === "off" || value === "0" || value === "false";
 }
 
 function getForcedImageProtocol(): ImageProtocol | null | undefined {
-	const raw = $env.PI_FORCE_IMAGE_PROTOCOL?.trim().toLowerCase();
+	const raw = $env("PI_FORCE_IMAGE_PROTOCOL")?.trim().toLowerCase();
 	if (!raw) return undefined;
 	if (raw === "kitty") return ImageProtocol.Kitty;
 	if (raw === "iterm2" || raw === "iterm") return ImageProtocol.Iterm2;

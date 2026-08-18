@@ -4,6 +4,8 @@ import { decideShellFallback } from '../core/windows-shell-fallback.js';
 import { writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { killProcessTree, killProcessTreeIfAlive } from '../agent/spawn/process-kill.js';
+import { mergeEnvWindowsSafe } from '../agent/spawn-env.js';
+import { detectCliBinary } from '../core/cli-detect.js';
 
 export const CAPABILITY_PROBE_DEADLINE_MS = 1_500;
 export const CAPABILITY_PROBE_KILL_GRACE_MS = 250;
@@ -47,6 +49,10 @@ export function buildCapabilitySpawnSpec(
     deps: ResolveDeps = {},
 ): CapabilitySpawnSpec {
     const platform = request.platform ?? process.platform;
+    // Default the discovery hook when the caller supplied none (#382): a bare
+    // name without `which` falls through to the shell:true path this worker's
+    // own comment forbids. Copy - never mutate the caller's deps object.
+    const resolveDeps: ResolveDeps = deps.which ? deps : { which: (n) => detectCliBinary(n).path || null, ...deps };
     // Shell-free where possible (#367). The probe argv is fixed, but keeping one
     // launcher shape across runtimes is the point — a second path is a second set of
     // Windows quoting rules to get right.
@@ -56,7 +62,7 @@ export function buildCapabilitySpawnSpec(
     // though PATHEXT would have found copilot.cmd — so passing `which` strictly reduces
     // how often the shell is used rather than adding a new refusal.
     const spec = platform === 'win32'
-        ? resolveWindowsLaunchSpec(request.binary, probeArgs, deps)
+        ? resolveWindowsLaunchSpec(request.binary, probeArgs, resolveDeps)
         : null;
     const isCmdShim = platform === 'win32' && !spec && !request.binary.toLowerCase().endsWith('.exe');
     // The probe argv is fixed today. Wire the gate anyway: "this argv is fixed" is a
@@ -70,7 +76,7 @@ export function buildCapabilitySpawnSpec(
         command: spec ? spec.command : request.binary,
         args: spec ? launchArgv(spec) : probeArgs,
         options: {
-            env: spec ? { ...env, ...spec.envDelta } : env,
+            env: spec ? mergeEnvWindowsSafe(env, spec.envDelta) : env,
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: platform !== 'win32',
             ...(isCmdShim ? { shell: true } : {}),

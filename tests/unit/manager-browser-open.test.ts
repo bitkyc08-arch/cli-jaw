@@ -28,6 +28,29 @@ function read(path: string): string {
     return readFileSync(join(projectRoot, path), 'utf8');
 }
 
+test('native win32 opener uses cmd start with the URL as the fourth arg (#383)', () => {
+    assert.deepEqual(browserOpenCommand('http://localhost:24576', 'win32', {}, inertProbes), {
+        command: 'cmd',
+        args: ['/c', 'start', '', 'http://localhost:24576'],
+    });
+});
+
+test('native win32 opener escapes cmd metacharacters in multi-param URLs (#383)', () => {
+    // cmd.exe re-parses the start line, so an unescaped & splits the URL and
+    // truncates the query string - the exact token-bearing-link failure.
+    assert.deepEqual(browserOpenCommand('http://localhost:3457/?a=1&b=2', 'win32', {}, inertProbes), {
+        command: 'cmd',
+        args: ['/c', 'start', '', 'http://localhost:3457/?a=1^&b=2'],
+    });
+});
+
+test('WSL opener escapes cmd metacharacters too (#383)', () => {
+    const command = browserOpenCommand('http://localhost:24576/?x=1&y=2', 'linux', {
+        WSL_DISTRO_NAME: 'Ubuntu',
+    }, inertProbes);
+    assert.deepEqual(command.args, ['/c', 'start', '', 'http://localhost:24576/?x=1^&y=2']);
+});
+
 test('dashboard browser opener uses Windows shell from WSL', () => {
     const command = browserOpenCommand('http://localhost:24576', 'linux', {
         WSL_DISTRO_NAME: 'Ubuntu',

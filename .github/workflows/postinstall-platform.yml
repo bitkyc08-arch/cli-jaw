@@ -387,3 +387,41 @@ jobs:
           # from the installed root is the real scriptless proof on Windows.
           $pkgRoot = Join-Path $prefix "node_modules\cli-jaw"
           node -e "const {createRequire}=require('module');const r=createRequire(process.argv[1]+'/package.json');const D=r('better-sqlite3');const db=new D(':memory:');const v=r('sqlite-vec');v.load(db);console.log('native+vec OK', db.prepare('select vec_version() as x').get().x);db.close()" $pkgRoot
+
+  # Informational rollup only (#384). DO NOT make this a required check: the
+  # workflow-level paths: filters mean no run exists at all for PRs that touch
+  # none of the listed paths, so a branch ruleset requiring this name would
+  # leave those PRs waiting for a status forever. Release gates consume this
+  # workflow at run level (gh run list --workflow), which stays the contract.
+  platform-aggregate:
+    name: platform-aggregate
+    needs: [linux, macos-installer-risk, windows-wsl, windows-native]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify platform jobs
+        env:
+          LINUX_RESULT: ${{ needs.linux.result }}
+          MACOS_RESULT: ${{ needs.macos-installer-risk.result }}
+          WSL_RESULT: ${{ needs.windows-wsl.result }}
+          NATIVE_RESULT: ${{ needs.windows-native.result }}
+        run: |
+          failed=0
+          # None of the four jobs carries an if: today, so 'skipped' is
+          # unreachable; the branch exists for future conditional jobs.
+          check() {
+            case "$2" in
+              success|skipped) echo "$1: $2" ;;
+              *) echo "::error::$1: $2"; failed=1 ;;
+            esac
+          }
+          check linux "$LINUX_RESULT"
+          check macos-installer-risk "$MACOS_RESULT"
+          check windows-wsl "$WSL_RESULT"
+          check windows-native "$NATIVE_RESULT"
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::platform-aggregate failed - see the per-job results above"
+            exit 1
+          fi
+          echo "platform-aggregate: all platform jobs succeeded or were legitimately skipped"

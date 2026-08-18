@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PIDFILE_PATH } from './config.js';
 
 export interface ProcessStartTime {
@@ -46,8 +46,8 @@ export type OwnershipVerdict =
     | { status: 'unverifiable'; record: PidfileRecord; reason: string };
 
 const SOURCES = new Set(['linux-proc', 'macos-ps', 'windows-filetime']);
-function readPidfile(deps: LifecycleDeps): PidfileRecord | null {
-    const raw = deps.readFile(PIDFILE_PATH);
+function readPidfile(deps: LifecycleDeps, pidfilePath: string = PIDFILE_PATH): PidfileRecord | null {
+    const raw = deps.readFile(pidfilePath);
     if (raw === null) return null;
     try {
         const r = JSON.parse(raw) as Partial<PidfileRecord>;
@@ -64,7 +64,21 @@ function sameStartTime(a: ProcessStartTime, b: ProcessStartTime): boolean {
 }
 
 export function verifyOwnership(home: string, deps: LifecycleDeps): OwnershipVerdict {
-    const record = readPidfile(deps);
+    return verifyOwnershipOfPidfile(home, deps, PIDFILE_PATH);
+}
+
+/**
+ * Home-parameterized ownership check (#380): verifyOwnership reads the
+ * module-frozen PIDFILE_PATH, which only answers for our own home. The
+ * dashboard probes foreign homes (defaultHomeForPort), so it needs the
+ * pidfile that lives inside the probed home.
+ */
+export function verifyOwnershipAt(home: string, deps: LifecycleDeps): OwnershipVerdict {
+    return verifyOwnershipOfPidfile(home, deps, join(home, 'jaw.pid.json'));
+}
+
+function verifyOwnershipOfPidfile(home: string, deps: LifecycleDeps, pidfilePath: string): OwnershipVerdict {
+    const record = readPidfile(deps, pidfilePath);
     if (!record) return { status: 'no-pidfile' };
     if (record.home !== home) return { status: 'foreign', record, reason: `pidfile belongs to ${record.home}` };
     const probe = deps.probe(record.pid);
@@ -108,9 +122,27 @@ export function processStartedAt(pid: number): ProcessStartTime | null {
     try {
         if (process.platform === 'linux') return parseLinuxStartTime(fs.readFileSync(`/proc/${pid}/stat`, 'utf8'));
         if (process.platform === 'darwin') return parsePosixStartTime(execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } }));
-        if (process.platform === 'win32') return parseWindowsStartTime(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8' }));
+        if (process.platform === 'win32') return windowsStartTimeCached(pid);
     } catch { return null; }
     return null;
+}
+
+// Start time is immutable per OS process, and every consumer only compares it
+// for equality against a recorded value - a stale memo for a recycled PID
+// fails sameStartTime and yields the conservative 'stale' verdict, never a
+// false 'owned' (#382). The powershell probe costs ~200ms per call and had no
+// timeout, so a wedged PowerShell hung the CLI.
+const windowsStartTimes = new Map<number, ProcessStartTime | null>();
+function windowsStartTimeCached(pid: number): ProcessStartTime | null {
+    const cached = windowsStartTimes.get(pid);
+    if (cached !== undefined) return cached;
+    let value: ProcessStartTime | null = null;
+    try {
+        value = parseWindowsStartTime(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8', timeout: 5000 }));
+    } catch { value = null; }
+    // Do not memoize a dead-PID null: the PID could be spawned later.
+    if (value !== null) windowsStartTimes.set(pid, value);
+    return value;
 }
 
 export const defaultLifecycleDeps: LifecycleDeps = {

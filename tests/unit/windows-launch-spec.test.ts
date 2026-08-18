@@ -435,7 +435,9 @@ test('WLS-026: resolved env assignments reach the child at every migrated site',
     // silent misconfiguration rather than a visible failure.
     const sites: Array<[string, RegExp]> = [
         ['src/agent/spawn.ts', /windowsLaunch\.envDelta/],
-        ['src/agent/pi-runtime.ts', /\.\.\.launch\.envDelta/],
+        // #382: envDelta now flows through mergeEnvWindowsSafe instead of a
+        // bare spread, so assert the delta reaches the merge call.
+        ['src/agent/pi-runtime.ts', /mergeEnvWindowsSafe\([^)]*launch\.envDelta\)/],
         ['src/agent/codex-app-client.ts', /launchSpec\.envDelta/],
         ['src/cli/capability-probe-worker.ts', /spec\.envDelta/],
         ['src/cli/cli-status-worker.ts', /spec\.envDelta/],

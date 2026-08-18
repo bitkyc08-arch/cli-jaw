@@ -11,6 +11,8 @@ test('server EADDRINUSE diagnostics are non-destructive and actionable', () => {
 
     assert.match(source, /port \$\{PORT\} already in use/);
     assert.match(source, /lsof -nP -iTCP:\$\{PORT\} -sTCP:LISTEN/);
+    // #383: Windows users must get a command that exists on their machine.
+    assert.match(source, /netstat -ano -p tcp \| findstr LISTENING \| findstr :\$\{PORT\}/);
     assert.match(source, /no process was killed automatically/);
     assert.doesNotMatch(source, /EADDRINUSE[\s\S]{0,400}killProcessTree/);
 });
@@ -20,6 +22,7 @@ test('dashboard EADDRINUSE diagnostics are non-destructive and actionable', () =
 
     assert.match(source, /port \$\{port\} already in use/);
     assert.match(source, /lsof -nP -iTCP:\$\{port\} -sTCP:LISTEN/);
+    assert.match(source, /netstat -ano -p tcp \| findstr LISTENING \| findstr :\$\{port\}/);
     assert.match(source, /no process was killed automatically/);
     assert.doesNotMatch(source, /EADDRINUSE[\s\S]{0,400}killProcessTree/);
 });

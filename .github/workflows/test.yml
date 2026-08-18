@@ -267,6 +267,43 @@ jobs:
 
   # The single required status check for the `main` ruleset.
   #
+
+  # Fast Windows unit lane on every code PR (#384). Before this, Windows tests
+  # ran only in postinstall-platform.yml behind a literal paths: allowlist, so
+  # a PR touching Windows behavior in unlisted files merged with zero Windows
+  # CI. Explicit file list - pwsh does not expand globs. Windows flakes in
+  # these suites block merge by design; that is the lane's purpose.
+  windows-unit:
+    name: windows-unit
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # better-sqlite3 v13 ships prebuilds (win32-x64 included), so a source
+      # rebuild is unnecessary here -- and node-gyp cannot detect the VS 2026
+      # toolchain on windows-latest ("unknown version undefined"), so
+      # `npm rebuild` hard-fails. Verify loadability instead and rebuild only
+      # if the prebuild does not load, which is what the repo's own native
+      # doctor already does.
+      - name: Ensure native modules are loadable
+        run: node scripts/ensure-native-modules.cjs
+
+      - name: Run Windows-relevant unit tests
+        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/windows-service-esm.test.ts tests/unit/service-windows-branch.test.ts tests/unit/windows-service-lifecycle-honesty.test.ts tests/unit/windows-installer-shims.test.ts tests/unit/windows-spawn-primitives.test.ts tests/unit/manager-browser-open.test.ts tests/unit/eaddrinuse-diagnostics-contract.test.ts tests/unit/tui-env-flags.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/service-lifecycle-cli.test.ts
+
   # The check name is the job `name:` below and is load-bearing: the branch
   # ruleset and the publish gate both match on the literal string
   # `ci-aggregate`. Renaming this job silently detaches both of them, so the
@@ -277,7 +314,7 @@ jobs:
   # always has a run to wait for.
   ci-aggregate:
     name: ci-aggregate
-    needs: [changes, node-tests]
+    needs: [changes, node-tests, windows-unit]
     # `always()` rather than the default success() semantics: the point of this
     # job is to report on upstream failures, so it must still run after one.
     if: always()
@@ -288,6 +325,7 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           NODE_TESTS_RESULT: ${{ needs.node-tests.result }}
+          WINDOWS_UNIT_RESULT: ${{ needs.windows-unit.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
         run: |
           set -uo pipefail
@@ -312,12 +350,18 @@ jobs:
 
           check changes "$CHANGES_RESULT"
           check node-tests "$NODE_TESTS_RESULT"
+          check windows-unit "$WINDOWS_UNIT_RESULT"
 
           # A skip is only legitimate when change detection actually said the
           # change was docs-only. If it said "code" and the suite still did not
           # run, something dropped the job and the check must not go green.
           if [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "true" ] && [ "$NODE_TESTS_RESULT" = "skipped" ]; then
             echo "FAIL  node-tests was skipped even though change detection reported code changes"
+            failed=1
+          fi
+
+          if [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "true" ] && [ "$WINDOWS_UNIT_RESULT" = "skipped" ]; then
+            echo "FAIL  windows-unit was skipped even though change detection reported code changes"
             failed=1
           fi
 

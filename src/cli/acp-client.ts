@@ -6,6 +6,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
 import { createInterface } from 'readline';
 import { ownProcess, type OwnedProcess, type OwnedProcessOptions } from '../agent/spawn/process-kill.js';
+import { createTextStreamReader } from '../agent/stream-text.js';
 
 type AcpId = string | number;
 interface AcpRequest<P = unknown> { jsonrpc: '2.0'; id: AcpId; method: string; params?: P }
@@ -109,9 +110,10 @@ export class AcpClient extends EventEmitter {
         rl.on('line', (line: string) => this._handleLine(line));
 
         // Capture stderr for debugging + heartbeat + visibility
+        const stderrReader = createTextStreamReader();
         this.proc.stderr.on('data', (chunk: Buffer) => {
             this._activityPing?.();  // stderr activity = agent is alive
-            const text = chunk.toString().trim();
+            const text = stderrReader.write(chunk).trim();
             if (text) {
                 if (process.env["DEBUG"]) console.error(`[acp:stderr] ${text}`);
                 this.emit('stderr_activity', text);
