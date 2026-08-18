@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\].*?\x07|\x1b_.*?\x1b\\/g;
 function isWide(cp) {
     return (cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0x303E) ||
@@ -68,7 +69,10 @@ function bunWrite() { return Promise.resolve(0); }
 
 function bunPlugin() {}
 function bunSpawn() { return { exitCode: Promise.resolve(0), stdout: { toString() { return ''; } }, stderr: { toString() { return ''; } }, kill() {} }; }
-function bunWhich(cmd) { try { const { execSync } = require('node:child_process'); return execSync(`which ${cmd}`, { encoding: 'utf-8' }).trim(); } catch { return null; } }
+// #383: the old body called require() inside ESM (ReferenceError swallowed by
+// the catch -> null on EVERY platform) and shelled POSIX `which`, absent on
+// stock Windows. execFileSync with argv avoids both plus shell interpolation.
+function bunWhich(cmd) { try { const out = execFileSync(process.platform === 'win32' ? 'where' : 'which', [cmd], { encoding: 'utf-8' }); const first = out.split(/\r?\n/).find(l => l.trim()); return first ? first.trim() : null; } catch { return null; } }
 
 if (typeof globalThis.Bun === 'undefined') {
     globalThis.Bun = { env: process.env, stringWidth, stripANSI, hash, color: bunColor, file: bunFile, sleep: bunSleep, write: bunWrite, plugin: bunPlugin, spawn: bunSpawn, which: bunWhich, version: '0.0.0-node-shim', main: '', argv: process.argv, cwd: () => process.cwd() };

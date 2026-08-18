@@ -3,7 +3,7 @@ import type { AuthMiddleware } from './types.js';
 import { httpStatus, httpCode } from './_http-error.js';
 import fs from 'fs';
 import os from 'os';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { basename, dirname, extname, normalize, resolve } from 'path';
 import express from 'express';
 import { ok, fail } from '../http/response.js';
@@ -145,11 +145,17 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                     execFileSync('open', [target.openedPath]);
                 }
             } else if (process.platform === 'win32') {
-                if (target.strategy === 'reveal') {
-                    execFileSync('explorer', ['/select,', target.resolvedTarget]);
-                } else {
-                    execFileSync('explorer', [target.openedPath]);
-                }
+                // explorer.exe exits 1 even on success, so its exit code carries
+                // no information and execFileSync would always throw (#383).
+                // resolveOpenTarget already stat'ed the path, so a missing file
+                // was rejected with 404 before any spawn. /select, and the path
+                // must be ONE argv entry.
+                const arg = target.strategy === 'reveal'
+                    ? '/select,' + target.resolvedTarget
+                    : target.openedPath;
+                const child = spawn('explorer', [arg], { detached: true, stdio: 'ignore' });
+                child.once('error', () => { /* explorer missing is not actionable here */ });
+                child.unref();
             } else {
                 execFileSync('xdg-open', [target.openedPath]);
             }

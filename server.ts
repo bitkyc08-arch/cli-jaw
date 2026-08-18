@@ -561,7 +561,12 @@ const bindHost: string = lanMode ? '0.0.0.0'
 server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`[server] port ${PORT} already in use — exiting`);
-        console.error(`[server] diagnose: lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
+        // Platform-correct diagnostics (#383): lsof does not exist on Windows.
+        if (process.platform === 'win32') {
+            console.error(`[server] diagnose: netstat -ano -p tcp | findstr LISTENING | findstr :${PORT}`);
+        } else {
+            console.error(`[server] diagnose: lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
+        }
         console.error(`[server] if this is a stale cli-jaw process, stop that process and restart; no process was killed automatically`);
     } else {
         console.error('[server] listen error:', err.message);
