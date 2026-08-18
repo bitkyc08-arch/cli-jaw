@@ -52,7 +52,10 @@ export async function resolveControlNative(
     deps: NativeControlDeps,
 ): Promise<((action: 'stop' | 'restart') => Promise<ServiceLifecycleOutcome>) | null> {
     const state = await deps.detectServiceState(port, home);
-    if (!state.registered) return null;
+    // loaded, not registered (#380): autostart artifacts existing does not mean
+    // a native controller can stop a process. A registered-but-not-running (or
+    // Startup-wrapper) install falls through to the PID-verified path.
+    if (!state.loaded) return null;
     return action => (action === 'stop' ? deps.stopServiceInstance(state.label) : deps.restartServiceInstance(state.label))
         .then(result => nativeOutcome(action, result));
 }
