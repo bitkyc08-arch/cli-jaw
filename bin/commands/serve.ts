@@ -12,6 +12,7 @@ import { shouldOpenBrowserByDefault } from '../../src/core/browser-open-default.
 import fs from 'node:fs';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { resolveBundledNodePath } from '../../src/core/runtime-path.js';
+import { resolveTsxSpawn } from '../../src/core/tsx-spawn.js';
 
 loadSettings();
 
@@ -75,14 +76,12 @@ if (isDistMode) {
         }
     );
 } else {
-    // source mode: spawn tsx
-    const localTsx = join(projectRoot, 'node_modules', '.bin', 'tsx');
-    const tsxBin = fs.existsSync(localTsx) ? localTsx : 'tsx';
-    const tsxArgs: string[] = [];
-    if (fs.existsSync(envFile)) tsxArgs.push(`--env-file=${envFile}`);
-    tsxArgs.push(serverPath);
-    child = spawn(tsxBin,
-        tsxArgs,
+    // source mode: run tsx's JS entry through the current Node (#381) - never
+    // the node_modules/.bin shims, which are unrunnable or signal-lossy on
+    // Windows.
+    const spec = resolveTsxSpawn(projectRoot, serverPath, fs.existsSync(envFile) ? envFile : null);
+    child = spawn(spec.command,
+        spec.args,
         {
             stdio: 'inherit',
             env: { ...process.env, PORT: values.port as string, HOST: values.host as string, ...(values.open ? { JAW_OPEN_BROWSER: '1' } : {}), ...(values.lan ? { JAW_LAN_MODE: '1' } : {}), ...(values.remote ? { JAW_REMOTE_ACCESS_MODE: 'direct' } : {}), ...(values['trust-proxy'] ? { JAW_TRUST_PROXY: '1' } : {}), ...(values['trust-forwarded'] ? { JAW_TRUST_FORWARDED: '1' } : {}) },
