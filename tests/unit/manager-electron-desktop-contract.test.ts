@@ -95,6 +95,8 @@ test('Electron CLI installer rejects incomplete or partially installed sidecar c
     assert.ok(installCli.includes("buttons: ['Skip', 'Install']"), 'install prompt must make the non-invasive option first');
     assert.ok(installCli.includes('Existing terminal commands are not overwritten'), 'install prompt must disclose that existing commands are protected');
     assert.ok(installCli.includes("if (response === 1)"), 'install prompt must only install after the explicit Install choice');
+    assert.ok(installCli.includes('if (hasDeclinedInstallPrompt()) return'), 'install prompt must not re-ask after the user declined once');
+    assert.ok(installCli.includes('rememberDeclinedInstallPrompt()'), 'a Skip choice must be persisted so launches stop prompting');
     assert.ok(installCli.includes('Windows installer PATH entry'), 'Windows packaged installs must explain that NSIS owns PATH setup instead of symlinking');
     assert.equal(installCli.includes('Partial failures:'), false, 'installCli must not append partial failures to an ok:true success message');
 });
