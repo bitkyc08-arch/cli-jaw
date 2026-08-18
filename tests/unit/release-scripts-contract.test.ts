@@ -182,6 +182,122 @@ test('stable promotion delegates checkout isolation and never auto-rewrites docs
     assert.ok(!script.includes('verify-counts.sh --fix'));
 });
 
+test('stable promotion deletes the remote promotion branch it pushed when the promotion never merges', () => {
+    // The script mints codex/promote-<version>-<sha12>, pushes it to origin,
+    // opens a PR and squash-merges it, but its EXIT trap only removed the LOCAL
+    // checkout. Every abort between the push and the merge therefore leaked the
+    // branch on origin: codex/promote-2.3.0, -2.4.0, -2.4.1, -2.4.2 and
+    // -2.17.3-6f9165a680d5 all had to be deleted by hand, the last one after a
+    // promotion whose publish dispatch failed three times.
+    //
+    // The SUCCESS path is deliberately not this script's job: the repository has
+    // delete_branch_on_merge enabled, so GitHub removes the branch as the PR
+    // merges. Deleting it here too would only race that and print confusing
+    // errors. This pins the failure path, and only the failure path.
+    const script = read('scripts/promote-to-main.sh');
+    const cleanup = script.slice(script.indexOf('cleanup() {'), script.indexOf('trap cleanup EXIT'));
+
+    assert.ok(cleanup.includes('cleanup() {'), 'promotion script must still install a cleanup trap body');
+
+    // The pre-existing local checkout cleanup must survive untouched.
+    assert.ok(
+        cleanup.includes('if ! cleanup_promotion_checkout "$WORKTREE"; then'),
+        'cleanup must keep removing the local promotion checkout',
+    );
+    assert.ok(
+        cleanup.includes('WARNING: failed to clean promotion checkout'),
+        'cleanup must keep warning when the local checkout cannot be removed',
+    );
+
+    // cleanup() runs under `set -u`. Both flags must exist before the trap is
+    // installed, or a failure before the assignments would surface as an
+    // unbound-variable error instead of the real one.
+    const trapIndex = script.indexOf('trap cleanup EXIT');
+    const pushedInit = script.indexOf('PROMOTION_BRANCH_PUSHED=0');
+    const mergedInit = script.indexOf('PROMOTION_PR_MERGED=0');
+    assert.ok(pushedInit !== -1 && pushedInit < trapIndex, 'PROMOTION_BRANCH_PUSHED must be initialised before the trap is installed');
+    assert.ok(mergedInit !== -1 && mergedInit < trapIndex, 'PROMOTION_PR_MERGED must be initialised before the trap is installed');
+
+    // Deleting on the branch NAME alone would be worse than leaking: a re-run
+    // computes the same name from the same version and preview SHA, so the
+    // delete has to be gated on this run having actually created the ref.
+    assert.ok(
+        cleanup.includes('[ "$PROMOTION_BRANCH_PUSHED" -eq 1 ] && [ "$PROMOTION_PR_MERGED" -eq 0 ]'),
+        'the remote delete must require both "this run pushed it" and "the merge did not complete"',
+    );
+    assert.ok(
+        cleanup.includes('git push origin --delete "$PROMOTION_BRANCH"'),
+        'cleanup must delete the tracked promotion branch from origin',
+    );
+    assert.ok(
+        !/--delete\s+["']?codex\/promote/.test(cleanup),
+        'cleanup must never delete a literal or globbed promotion branch name',
+    );
+
+    // The push lives in a subshell, whose assignments cannot reach the trap, so
+    // the flag is set just outside it. That is only equivalent to "set right
+    // after a successful push" while the push stays the LAST command of the
+    // block -- anything appended after it would make the flag mean something else.
+    const pushIndex = script.indexOf('git push --set-upstream origin "$PROMOTION_BRANCH"');
+    assert.ok(pushIndex !== -1, 'promotion script must push the promotion branch');
+    assert.ok(
+        script.includes('  git push --set-upstream origin "$PROMOTION_BRANCH"\n)\n'),
+        'the push must remain the last command of the push subshell, or PROMOTION_BRANCH_PUSHED no longer tracks the push',
+    );
+    const pushedFlag = script.indexOf('PROMOTION_BRANCH_PUSHED=1');
+    const prCreateIndex = script.indexOf('gh pr create');
+    assert.ok(pushedFlag > pushIndex, 'PROMOTION_BRANCH_PUSHED must be set after the push succeeds');
+    assert.ok(pushedFlag < prCreateIndex, 'PROMOTION_BRANCH_PUSHED must be set before the PR exists, so a failed gh pr create still cleans up');
+
+    // Once the merge lands, GitHub owns the branch. Every later verification in
+    // this script can still exit 1, and none of those is a reason to delete a
+    // branch whose merge already happened.
+    const mergeIndex = script.indexOf('gh pr merge "$PR_URL"');
+    const mergedFlag = script.indexOf('PROMOTION_PR_MERGED=1');
+    assert.ok(mergeIndex !== -1, 'promotion script must squash-merge the promotion PR');
+    assert.ok(mergedFlag > mergeIndex, 'PROMOTION_PR_MERGED must be set once gh pr merge succeeds');
+    assert.ok(
+        mergedFlag < script.indexOf('MERGED_AT='),
+        'PROMOTION_PR_MERGED must be set before the post-merge verification that can still exit 1',
+    );
+
+    // The trap fires on the very failure it is cleaning up after, so it must not
+    // become the thing that decides the exit code.
+    assert.ok(
+        /cleanup\(\) \{\n  local status=\$\?\n/.test(script),
+        'cleanup must capture the original exit status before running anything else',
+    );
+    assert.ok(cleanup.includes('exit "$status"'), 'cleanup must re-raise the original exit status');
+
+    // Under `set -e` a bare failing command inside the trap aborts the trap and
+    // replaces the real exit code, so every fallible cleanup command has to sit
+    // in a condition.
+    for (const line of cleanup.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('#') || !/\bgit /.test(trimmed)) continue;
+        assert.ok(
+            /^(if|elif) /.test(trimmed),
+            `cleanup runs "${trimmed}" outside a condition: under set -e that aborts the trap and rewrites the exit code`,
+        );
+    }
+
+    // A failed delete is a warning naming the branch, never a hard error, and a
+    // successful delete says so -- a failed promotion must not mutate remote
+    // state silently.
+    assert.ok(
+        cleanup.includes('WARNING: failed to delete remote promotion branch: $PROMOTION_BRANCH (delete it manually)'),
+        'a failed delete must warn with the branch name so an operator can remove it by hand',
+    );
+    assert.ok(
+        /echo "cleaned up remote promotion branch[^"]*\$PROMOTION_BRANCH"/.test(cleanup),
+        'cleanup must announce the branch it deleted',
+    );
+    assert.ok(
+        cleanup.includes('git ls-remote --exit-code --heads origin "$PROMOTION_BRANCH"'),
+        'a failed delete must be classified against origin so an already-deleted branch is not reported as a failure',
+    );
+});
+
 test('desktop release workflow uploads OS matrix artifacts only after GitHub release publication', () => {
     const workflow = read('.github/workflows/desktop-release.yml');
 
