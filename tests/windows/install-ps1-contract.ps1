@@ -29,13 +29,20 @@ Assert-True (-not $installerText.Contains("`$env:Path + ';")) 'PATH guidance mus
 Assert-True ($installerText.Contains('jaw.cmd doctor')) 'follow-up guidance must survive restrictive PowerShell execution policy'
 
 # The documented inline form must throw without terminating the caller host.
+# Invoke through a scriptblock so -NoBootstrap can be passed: with bootstrap ON
+# (the #369 default) a networked machine provisions a pinned Node runtime and
+# the "unresolvable node" scenario SUCCEEDS after a multi-minute download --
+# observed both locally (real npm install -g mutating the host) and on CI.
+# The property under test is throw-vs-exit semantics, which a scriptblock
+# invocation preserves exactly.
 $oldPath = $env:Path
 $inlineThrew = $false
 $callerContinued = $false
 try {
     $env:Path = ''
     try {
-        Invoke-Expression $installerText
+        $installerBlock = [scriptblock]::Create($installerText)
+        & $installerBlock -NoBootstrap
     } catch {
         $inlineThrew = $true
     }
@@ -139,6 +146,11 @@ try {
     Assert-True ($null -ne $shellPath) "$shellName must be resolvable to launch the -File check"
 
     # Node absent => the installer must fail. Swap PATH for the child only.
+    # -NoBootstrap is load-bearing: bootstrap is ON by default (#369), so on a
+    # networked runner the installer would provision a pinned Node runtime and
+    # SUCCEED, turning this failure-path check into a real install (observed:
+    # exit 0 after a ~4 minute bootstrap on windows-latest). Opting out makes
+    # "node is unresolvable" a deterministic failure again.
     $savedPath = $env:Path
     $childExit = $null
     try {
@@ -150,7 +162,7 @@ try {
         $savedPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            & $shellPath -NoProfile -File $installer -Prefix $fileFixture *> $null
+            & $shellPath -NoProfile -File $installer -Prefix $fileFixture -NoBootstrap *> $null
             $childExit = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $savedPreference

@@ -292,8 +292,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Rebuild native modules
-        run: npm rebuild better-sqlite3
+      # better-sqlite3 v13 ships prebuilds (win32-x64 included), so a source
+      # rebuild is unnecessary here -- and node-gyp cannot detect the VS 2026
+      # toolchain on windows-latest ("unknown version undefined"), so
+      # `npm rebuild` hard-fails. Verify loadability instead and rebuild only
+      # if the prebuild does not load, which is what the repo's own native
+      # doctor already does.
+      - name: Ensure native modules are loadable
+        run: node scripts/ensure-native-modules.cjs
 
       - name: Run Windows-relevant unit tests
         run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/windows-service-esm.test.ts tests/unit/service-windows-branch.test.ts tests/unit/windows-service-lifecycle-honesty.test.ts tests/unit/windows-installer-shims.test.ts tests/unit/windows-spawn-primitives.test.ts tests/unit/manager-browser-open.test.ts tests/unit/eaddrinuse-diagnostics-contract.test.ts tests/unit/tui-env-flags.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/service-lifecycle-cli.test.ts
