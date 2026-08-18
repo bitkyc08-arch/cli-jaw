@@ -1,10 +1,40 @@
-import { existsSync, symlinkSync, unlinkSync, mkdirSync, lstatSync, realpathSync } from 'node:fs';
+import { existsSync, symlinkSync, unlinkSync, mkdirSync, lstatSync, realpathSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { execSync } from 'node:child_process';
 import { app, dialog } from 'electron';
 
 const CLI_BINS = ['jaw'] as const;
+
+// The launch prompt must ask at most once. Previously every app start re-asked
+// users who had already chosen Skip, which read as a nagging install alarm.
+// The tray menu keeps a manual install entry, so a declined prompt loses
+// nothing.
+const INSTALL_PROMPT_PREFS_FILENAME = 'cli-install-prompt.json';
+
+function installPromptPrefsPath(): string {
+  return join(app.getPath('userData'), INSTALL_PROMPT_PREFS_FILENAME);
+}
+
+function hasDeclinedInstallPrompt(): boolean {
+  try {
+    const parsed = JSON.parse(readFileSync(installPromptPrefsPath(), 'utf8')) as { declined?: unknown };
+    return parsed.declined === true;
+  } catch {
+    return false;
+  }
+}
+
+function rememberDeclinedInstallPrompt(): void {
+  try {
+    writeFileSync(
+      installPromptPrefsPath(),
+      JSON.stringify({ declined: true, declinedAt: new Date().toISOString() }, null, 2),
+    );
+  } catch {
+    // Best-effort: failing to persist only means the prompt may appear again.
+  }
+}
 
 const SYMLINK_DIR: Record<string, string> = {
   darwin: '/usr/local/bin',
@@ -126,6 +156,7 @@ export async function promptInstallCli(): Promise<void> {
   if (!app.isPackaged) return;
   if (isCliInstalled()) return;
   if (!getSidecarBinPath('jaw')) return;
+  if (hasDeclinedInstallPrompt()) return;
 
   const { response } = await dialog.showMessageBox({
     type: 'question',
@@ -143,5 +174,8 @@ export async function promptInstallCli(): Promise<void> {
       message: result.ok ? 'CLI Installed' : 'Installation Failed',
       detail: result.message,
     });
+    return;
   }
+
+  rememberDeclinedInstallPrompt();
 }
