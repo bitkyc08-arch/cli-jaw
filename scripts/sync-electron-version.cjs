@@ -19,7 +19,9 @@
  * wrote something else.
  */
 const { readFileSync } = require('node:fs');
+const { existsSync } = require('node:fs');
 const { join } = require('node:path');
+const { dirname } = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const repoRoot = join(__dirname, '..');
@@ -39,6 +41,28 @@ function readVersion(dir) {
     } catch (error) {
         throw new Error(`${file} is not valid JSON: ${error.message}`);
     }
+}
+
+/**
+ * Resolve npm as [bin, ...baseArgs] runnable via spawnSync WITHOUT a shell.
+ * On Windows the bare name 'npm' is npm.cmd, and Node's spawnSync refuses to
+ * run .cmd/.bat files without shell:true (EINVAL since the CVE-2024-27980
+ * hardening) -- so the sync silently failed on every native-Windows release.
+ * Running npm-cli.js under the current node binary sidesteps both the shim
+ * and the shell. Same resolution ladder as scripts/ensure-native-modules.cjs.
+ */
+function resolveNpmCommand() {
+    const nodeBinDir = dirname(process.execPath);
+    const candidates = [
+        process.env.npm_execpath,
+        join(nodeBinDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        join(nodeBinDir, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        join(dirname(nodeBinDir), 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+        if (existsSync(candidate)) return [process.execPath, candidate];
+    }
+    return [process.platform === 'win32' ? 'npm.cmd' : 'npm'];
 }
 
 function main() {
@@ -75,13 +99,20 @@ function main() {
     // both files directly means reimplementing the lockfile's shape, and
     // getting it subtly wrong surfaces later as unexplained churn in someone
     // else's dependency diff.
+    const [npmBin, ...npmBaseArgs] = resolveNpmCommand();
     const result = spawnSync(
-        'npm',
-        ['version', rootVersion, '--no-git-tag-version', '--allow-same-version'],
-        { cwd: electronDir, encoding: 'utf8', timeout: 60_000 },
+        npmBin,
+        [...npmBaseArgs, 'version', rootVersion, '--no-git-tag-version', '--allow-same-version'],
+        {
+            cwd: electronDir,
+            encoding: 'utf8',
+            timeout: 60_000,
+            // .cmd shims need a shell; the npm-cli.js path never takes this branch.
+            shell: npmBin.endsWith('.cmd'),
+        },
     );
     if (result.status !== 0) {
-        const detail = (result.stderr || result.stdout || '').trim();
+        const detail = (result.stderr || result.stdout || (result.error && result.error.message) || '').trim();
         console.error(`ERROR: npm version failed in electron/: ${detail}`);
         return 1;
     }
