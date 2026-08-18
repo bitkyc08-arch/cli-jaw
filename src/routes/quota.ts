@@ -1,9 +1,10 @@
 // ─── Quota / Usage readers (extracted from server.js) ─────
-import { execFileSync, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 import { resolveHomePath } from '../core/path-expand.js';
+import { probeGrokModels } from '../core/probe-exec.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 
 interface GrokSessionUsage {
@@ -511,15 +512,10 @@ async function fetchGrokBilling(): Promise<GrokBillingData | null> {
 export async function fetchGrokStatus(binary = 'grok') {
     let authenticated = false;
     let source = 'none';
-    try {
-        const out = execFileSync(binary, ['models'], {
-            encoding: 'utf8',
-            timeout: 5000,
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-        authenticated = out.includes('Available models') || out.includes('grok-build');
-        source = authenticated ? 'grok models' : 'none';
-    } catch { /* grok CLI may be missing or logged out */ }
+    if (probeGrokModels(binary) !== null) {
+        authenticated = true;
+        source = 'grok models';
+    }
     const billing = await fetchGrokBilling();
     const hasBilling = billing != null;
     return stripUndefined({

@@ -5,6 +5,8 @@
 import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
 import { decideShellFallback } from '../core/windows-shell-fallback.js';
 import { detectCliBinary } from '../core/cli-detect.js';
+import { mergeEnvWindowsSafe } from './spawn-env.js';
+import { createTextStreamReader } from './stream-text.js';
 import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { createInterface, type Interface as ReadlineInterface } from 'readline';
@@ -225,6 +227,8 @@ export class CodexAppClient extends EventEmitter {
     private binary: string;
     private workDir: string;
     private spawnEnv: NodeJS.ProcessEnv;
+    // Per-stream UTF-8 reader (#382): per-chunk toString() splits CJK.
+    private stderrReader = createTextStreamReader();
     private unknownNotificationPolicy: UnknownNotificationPolicy;
     private scopes = new Map<string, ScopeThreadState>();
     private threadToScope = new Map<string, string>();
@@ -381,7 +385,7 @@ export class CodexAppClient extends EventEmitter {
             launchSpec ? launchArgv(launchSpec) : launchArgs,
             {
             cwd: this.workDir,
-            env: launchSpec ? { ...this.spawnEnv, ...launchSpec.envDelta } : this.spawnEnv,
+            env: launchSpec ? mergeEnvWindowsSafe(this.spawnEnv, launchSpec.envDelta) : this.spawnEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
             ...(useShell ? { shell: true } : {}),
         });
@@ -391,7 +395,7 @@ export class CodexAppClient extends EventEmitter {
         this.rl.on('error', () => {});
 
         this.proc.stderr?.on('data', (chunk: Buffer) => {
-            this.emit('stderr', chunk.toString());
+            this.emit('stderr', this.stderrReader.write(chunk));
         });
 
         this.proc.on('error', (err) => { this.handleProcessError(err); });

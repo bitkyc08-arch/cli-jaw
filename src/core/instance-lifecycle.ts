@@ -122,9 +122,27 @@ export function processStartedAt(pid: number): ProcessStartTime | null {
     try {
         if (process.platform === 'linux') return parseLinuxStartTime(fs.readFileSync(`/proc/${pid}/stat`, 'utf8'));
         if (process.platform === 'darwin') return parsePosixStartTime(execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } }));
-        if (process.platform === 'win32') return parseWindowsStartTime(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8' }));
+        if (process.platform === 'win32') return windowsStartTimeCached(pid);
     } catch { return null; }
     return null;
+}
+
+// Start time is immutable per OS process, and every consumer only compares it
+// for equality against a recorded value - a stale memo for a recycled PID
+// fails sameStartTime and yields the conservative 'stale' verdict, never a
+// false 'owned' (#382). The powershell probe costs ~200ms per call and had no
+// timeout, so a wedged PowerShell hung the CLI.
+const windowsStartTimes = new Map<number, ProcessStartTime | null>();
+function windowsStartTimeCached(pid: number): ProcessStartTime | null {
+    const cached = windowsStartTimes.get(pid);
+    if (cached !== undefined) return cached;
+    let value: ProcessStartTime | null = null;
+    try {
+        value = parseWindowsStartTime(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8', timeout: 5000 }));
+    } catch { value = null; }
+    // Do not memoize a dead-PID null: the PID could be spawned later.
+    if (value !== null) windowsStartTimes.set(pid, value);
+    return value;
 }
 
 export const defaultLifecycleDeps: LifecycleDeps = {

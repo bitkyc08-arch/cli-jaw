@@ -1,5 +1,5 @@
-import { execFileSync } from 'child_process';
 import { detectAllCli } from '../core/config.js';
+import { probeExec, probeGrokModels } from '../core/probe-exec.js';
 import { readClaudeCreds, readCodexTokens } from '../routes/quota.js';
 import { hasCopilotAuthSync } from '../../lib/quota-copilot.js';
 import { CLI_KEYS, DEFAULT_CLI } from './registry.js';
@@ -85,47 +85,26 @@ export function getCliReadiness(dependencies: ReadinessDependencies = DEFAULT_DE
                     source = 'CURSOR_API_KEY';
                     break;
                 }
-                try {
-                    const out = execFileSync(info.path || 'cursor-agent', ['status'], {
-                        encoding: 'utf8',
-                        timeout: 5000,
-                        stdio: ['ignore', 'pipe', 'pipe'],
-                    });
-                    authenticated = /logged in|authenticated/i.test(out);
+                {
+                    const r = probeExec(info.path || 'cursor-agent', ['status']);
+                    authenticated = r.status === 0 && /logged in|authenticated/i.test(r.stdout);
                     source = authenticated ? 'cursor-agent status' : 'none';
-                } catch {
-                    authenticated = false;
-                    source = 'none';
                 }
                 break;
             }
             case 'kiro-code': {
-                try {
-                    const out = execFileSync(info.path || 'kiro-cli', ['whoami'], {
-                        encoding: 'utf8',
-                        timeout: 5000,
-                        stdio: ['ignore', 'pipe', 'pipe'],
-                    });
-                    authenticated = /logged in|email:/i.test(out);
+                {
+                    const r = probeExec(info.path || 'kiro-cli', ['whoami']);
+                    authenticated = r.status === 0 && /logged in|email:/i.test(r.stdout);
                     source = authenticated ? 'kiro-cli whoami' : 'none';
-                } catch {
-                    authenticated = false;
-                    source = 'none';
                 }
                 break;
             }
             case 'grok': {
-                try {
-                    const out = execFileSync(info.path || 'grok', ['models'], {
-                        encoding: 'utf8',
-                        timeout: 5000,
-                        stdio: ['ignore', 'pipe', 'ignore'],
-                    });
-                    authenticated = out.includes('grok-build') || out.includes('Available models');
+                {
+                    const out = probeGrokModels(info.path || 'grok');
+                    authenticated = out !== null;
                     source = authenticated ? 'grok models' : 'none';
-                } catch {
-                    authenticated = false;
-                    source = 'none';
                 }
                 break;
             }
