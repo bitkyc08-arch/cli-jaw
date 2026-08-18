@@ -15,11 +15,12 @@
  * - schtasks output is parsed via /QUERY /XML, not /FO CSV (locale-independent).
  */
 
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from 'node:fs';
+import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
+import { getJawPath } from '../core/instance.js';
 import type { DashboardServiceState, DashboardLifecycleResult, DashboardLifecycleAction } from './types.js';
 
 // ── Naming ─────────────────────────────────────────────
@@ -70,7 +71,7 @@ const LOG_MAX_BYTES = 16 * 1024 * 1024; // 16 MiB
 
 function rotateLog(logPath: string): void {
     try {
-        const stat = require('node:fs').statSync(logPath);
+        const stat = statSync(logPath);
         if (stat.size >= LOG_MAX_BYTES) {
             renameSync(logPath, logPath + '.1');
         }
@@ -95,7 +96,7 @@ function buildWrapper(name: string, home: string, port: number, logDir: string):
     const outLog = join(logDir, 'service-out.log');
     const errLog = join(logDir, 'service-err.log');
     const nodePath = process.execPath;
-    const jawPath = join(require.resolve('../../bin/cli-jaw.js'));
+    const jawPath = getJawPath();
     return [
         '@ECHO OFF',
         `REM cli-jaw autostart wrapper: ${name}`,
@@ -109,7 +110,7 @@ function buildWrapper(name: string, home: string, port: number, logDir: string):
 
 function tryCreateScheduledTask(name: string, home: string, port: number, _logDir: string): boolean {
     const nodePath = process.execPath;
-    const jawPath = join(require.resolve('../../bin/cli-jaw.js'));
+    const jawPath = getJawPath();
     const cmd = `"${nodePath}" "${jawPath}" --home "${home}" serve --port ${port} --no-open`;
     try {
         // Try creating as a LOGON trigger task
@@ -229,9 +230,8 @@ export async function permWindowsInstance(port: number, home: string): Promise<D
 
     // Start the server NOW (install means start + register for next logon)
     const nodePath = process.execPath;
-    const jawPath = join(require.resolve('../../bin/cli-jaw.js'));
+    const jawPath = getJawPath();
     try {
-        const { spawn: nodeSpawn } = require('node:child_process');
         const child = nodeSpawn(nodePath, [jawPath, '--home', home, 'serve', '--port', String(port), '--no-open'], {
             detached: true,
             stdio: 'ignore',

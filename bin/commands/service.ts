@@ -17,7 +17,7 @@ import { JAW_HOME } from '../../src/core/config.js';
 import { instanceId, getNodePath, getJawPath, sanitizeUnitName, buildServicePath } from '../../src/core/instance.js';
 import { defaultLifecycleDeps, verifyOwnership, type OwnershipVerdict } from '../../src/core/instance-lifecycle.js';
 import type { DashboardLifecycleResult, DashboardServiceState } from '../../src/manager/types.js';
-import { detectServiceState, restartServiceInstance, stopServiceInstance } from '../../src/manager/platform-service.js';
+import { detectServiceState, permInstance, restartServiceInstance, stopServiceInstance, unpermInstance } from '../../src/manager/platform-service.js';
 
 export type ServiceLifecycleOutcome = {
     action: 'stop' | 'restart';
@@ -107,6 +107,14 @@ const VALID_BACKENDS = new Set(['launchd', 'systemd', 'windows', 'docker']);
 if (opts.backend && !VALID_BACKENDS.has(opts.backend as string)) {
     console.error(`❌ Unknown backend: ${opts.backend}`);
     console.error('   Supported: launchd, systemd, windows, docker');
+    process.exit(1);
+}
+
+// --backend windows is only meaningful on win32: platform-service derives its
+// backend from process.platform at load, so honoring the flag elsewhere would
+// silently perform a different backend's install.
+if (opts.backend === 'windows' && process.platform !== 'win32') {
+    console.error('❌ --backend windows requires Windows (platform-service is platform-derived)');
     process.exit(1);
 }
 
@@ -239,9 +247,48 @@ if (backend === 'docker') {
     process.exit(0);
 }
 
+// ─── Windows: delegate to platform-service (#379) ───
+if (backend === 'windows') {
+    const subcommand = pos[0];
+    if (subcommand === 'status') {
+        const state: DashboardServiceState = await detectServiceState(portNum, JAW_HOME);
+        console.log('\u{1F988} Windows service status');
+        console.log('   registered: ' + (state.registered ? 'yes' : 'no'));
+        console.log('   loaded:     ' + (state.loaded ? 'yes' : 'no'));
+        console.log('   pid:        ' + (state.pid ?? '-'));
+        console.log('   label:      ' + state.label);
+        process.exit(state.registered ? 0 : 1);
+    }
+    if (subcommand === 'logs') {
+        const outLog = join(LOG_DIR, 'service-out.log');
+        const errLog = join(LOG_DIR, 'service-err.log');
+        console.log('\u{1F4C4} Windows service logs:\n');
+        console.log('   stdout: ' + outLog);
+        console.log('   stderr: ' + errLog + '\n');
+        console.log('   Get-Content -Tail 50 -Wait "' + outLog + '"');
+        process.exit(0);
+    }
+    if (subcommand === 'unset') {
+        const result = await unpermInstance(portNum, JAW_HOME);
+        console.log(result.message);
+        process.exit(result.ok ? 0 : 1);
+    }
+    // default: install (register autostart + start now)
+    const result = await permInstance(portNum, JAW_HOME);
+    console.log(result.message);
+    process.exit(result.ok ? 0 : 1);
+}
+
 // ═══════════════════════════════════════════════════════
 //  systemd backend
 // ═══════════════════════════════════════════════════════
+
+// Guard the systemd tail explicitly: a backend without its own branch above
+// must never fall through into sudo/systemd paths (#379).
+if (backend !== 'systemd') {
+    console.error('\u274c Unsupported backend fall-through: ' + backend);
+    process.exit(1);
+}
 
 const SAFE_INSTANCE = sanitizeUnitName(INSTANCE);
 const UNIT_NAME = `jaw-${SAFE_INSTANCE}`;
