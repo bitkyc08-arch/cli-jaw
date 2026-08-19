@@ -115,7 +115,7 @@ while true; do
   CHECKS_OUTPUT="$(gh pr checks "$PR_URL" --required --watch --fail-fast 2>&1)" || CHECKS_STATUS=$?
   printf '%s\n' "$CHECKS_OUTPUT"
   [ "$CHECKS_STATUS" -eq 0 ] && break
-  if printf '%s' "$CHECKS_OUTPUT" | grep -qi 'no checks reported' \
+  if printf '%s' "$CHECKS_OUTPUT" | grep -qiE 'no (required )?checks reported' \
     && [ "$SECONDS" -lt "$CHECKS_DEADLINE" ]; then
     sleep 15
     continue
