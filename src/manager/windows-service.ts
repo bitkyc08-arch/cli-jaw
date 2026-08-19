@@ -15,11 +15,13 @@
  * - schtasks output is parsed via /QUERY /XML, not /FO CSV (locale-independent).
  */
 
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from 'node:fs';
+import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
+import { getJawPath } from '../core/instance.js';
+import { defaultLifecycleDeps, verifyOwnershipAt } from '../core/instance-lifecycle.js';
 import type { DashboardServiceState, DashboardLifecycleResult, DashboardLifecycleAction } from './types.js';
 
 // ── Naming ─────────────────────────────────────────────
@@ -70,7 +72,7 @@ const LOG_MAX_BYTES = 16 * 1024 * 1024; // 16 MiB
 
 function rotateLog(logPath: string): void {
     try {
-        const stat = require('node:fs').statSync(logPath);
+        const stat = statSync(logPath);
         if (stat.size >= LOG_MAX_BYTES) {
             renameSync(logPath, logPath + '.1');
         }
@@ -95,9 +97,13 @@ function buildWrapper(name: string, home: string, port: number, logDir: string):
     const outLog = join(logDir, 'service-out.log');
     const errLog = join(logDir, 'service-err.log');
     const nodePath = process.execPath;
-    const jawPath = join(require.resolve('../../bin/cli-jaw.js'));
+    const jawPath = getJawPath();
     return [
         '@ECHO OFF',
+        // chcp must run before the REM lines below: they carry the home path,
+        // and cmd.exe parses a BOM-less batch file in the OEM codepage. A BOM
+        // is NOT an alternative - it fuses onto @ECHO OFF and dies 9009 (#380).
+        'chcp 65001 >nul',
         `REM cli-jaw autostart wrapper: ${name}`,
         `REM Home: ${home}`,
         `REM Port: ${port}`,
@@ -109,7 +115,7 @@ function buildWrapper(name: string, home: string, port: number, logDir: string):
 
 function tryCreateScheduledTask(name: string, home: string, port: number, _logDir: string): boolean {
     const nodePath = process.execPath;
-    const jawPath = join(require.resolve('../../bin/cli-jaw.js'));
+    const jawPath = getJawPath();
     const cmd = `"${nodePath}" "${jawPath}" --home "${home}" serve --port ${port} --no-open`;
     try {
         // Try creating as a LOGON trigger task
@@ -169,10 +175,15 @@ export function detectWindowsServiceState(port: number, home: string): Dashboard
     const registered = receipt !== null && receipt.taskName === name;
     const taskRegistered = isScheduledTaskRegistered(name);
     const wrapperExists = existsSync(wrapperPath(name));
+    // loaded means "a process is believed to run", not "autostart artifacts
+    // exist" (#380). A Startup .cmd owns no process, so derive loaded from
+    // pidfile ownership of the probed home; registered keeps artifact meaning.
+    const verdict = verifyOwnershipAt(resolve(home), defaultLifecycleDeps);
+    const owned = verdict.status === 'owned';
     return {
         registered: registered || taskRegistered || wrapperExists,
-        loaded: taskRegistered || wrapperExists,
-        pid: null, // PID comes from jaw.pid.json, not from our registration
+        loaded: owned,
+        pid: owned && verdict.status === 'owned' ? verdict.record.pid : null,
         label: name,
         unitPath: wrapperPath(name),
         backend: 'windows' as DashboardServiceState['backend'],
@@ -229,18 +240,30 @@ export async function permWindowsInstance(port: number, home: string): Promise<D
 
     // Start the server NOW (install means start + register for next logon)
     const nodePath = process.execPath;
-    const jawPath = join(require.resolve('../../bin/cli-jaw.js'));
+    const jawPath = getJawPath();
+    let spawnFailed = false;
     try {
-        const { spawn: nodeSpawn } = require('node:child_process');
         const child = nodeSpawn(nodePath, [jawPath, '--home', home, 'serve', '--port', String(port), '--no-open'], {
             detached: true,
             stdio: 'ignore',
         });
         child.unref();
-    } catch { /* best-effort start */ }
+    } catch { spawnFailed = true; }
 
+    // Confirm startup via pidfile ownership rather than asserting it (#380).
+    // /api/health is unattributable: on EADDRINUSE a foreign server answers 200.
+    let confirmed = false;
+    if (!spawnFailed) {
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+            if (verifyOwnershipAt(resolve(home), defaultLifecycleDeps).status === 'owned') { confirmed = true; break; }
+            await new Promise(r => setTimeout(r, 250));
+        }
+    }
     return makeResult('perm', port, home, true, 'permed',
-        `Registered via ${mechanism}. Server started on port ${port}.`);
+        confirmed
+            ? `Registered via ${mechanism}. Server started on port ${port}.`
+            : `Registered via ${mechanism}. Server did not confirm startup on port ${port} - check ${join(logDir, 'service-err.log')}.`);
 }
 
 export async function unpermWindowsInstance(port: number, home: string): Promise<DashboardLifecycleResult> {
@@ -261,10 +284,14 @@ export async function unpermWindowsInstance(port: number, home: string): Promise
 }
 
 export async function stopWindowsInstance(label: string): Promise<DashboardLifecycleResult> {
-    // Disable the task first so it cannot respawn
-    tryDisableScheduledTask(label);
+    // Disabling the task only prevents respawn at next logon; it never signals
+    // the process. Report honestly instead of claiming 'stopped' (#380) - the
+    // PID-verified path (jaw service stop) owns process termination.
+    const disabled = tryDisableScheduledTask(label);
     return makeResult('stop', 0, null as unknown as string, true, 'stopped',
-        'Disabled autostart. Use jaw service stop for PID-verified process termination.');
+        disabled
+            ? 'Disabled autostart task. No process was signalled - use jaw service stop for PID-verified termination.'
+            : 'No Scheduled Task to disable (Startup-wrapper install). No process was signalled - use jaw service stop.');
 }
 
 export async function startWindowsInstance(label: string, _unitPath: string): Promise<DashboardLifecycleResult> {
@@ -278,13 +305,14 @@ export async function startWindowsInstance(label: string, _unitPath: string): Pr
 }
 
 export async function restartWindowsInstance(label: string): Promise<DashboardLifecycleResult> {
-    tryDisableScheduledTask(label);
+    const hadTask = tryDisableScheduledTask(label);
     // Wait briefly for graceful shutdown
     await new Promise(resolve => setTimeout(resolve, 2000));
     tryEnableScheduledTask(label);
-    if (!tryRunScheduledTask(label)) {
+    if (!hadTask || !tryRunScheduledTask(label)) {
         return makeResult('restart', 0, null as unknown as string, false, 'error',
-            'Failed to restart via Scheduled Task.');
+            hadTask ? 'Failed to restart via Scheduled Task.'
+                : 'No Scheduled Task registered (Startup-wrapper install); nothing was restarted. Use jaw service restart.');
     }
     return makeResult('restart', 0, null as unknown as string, true, 'restarted', 'Restarted via Scheduled Task.');
 }

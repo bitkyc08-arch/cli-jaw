@@ -18,6 +18,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
 const picker = join(projectRoot, 'scripts', 'pick-gyp-python.sh');
 
+// The picker is a POSIX bash script consumed only by the electron-builder
+// launcher, which routes it through bash on every platform that packages
+// desktop builds. The execution-shaped tests below need chmod +x shims,
+// PATH=dir:/usr/bin:/bin colon-lists, and shell shebangs -- none of which
+// exist on native Windows (bash.exe here is a MinGW shim that resolves
+// Windows Store aliases like WindowsApps/python3 that cannot spawn). The
+// source-shaped assertions still run everywhere.
+const posixOnly = process.platform === 'win32' ? test.skip : test;
+
 const run = (env: NodeJS.ProcessEnv = {}) =>
     spawnSync('bash', [picker], {
         cwd: projectRoot,
@@ -36,7 +45,7 @@ function fakePython(dir: string, name: string, hasDistutils: boolean): string {
     return path;
 }
 
-test('picks an interpreter that can actually import distutils', () => {
+posixOnly('picks an interpreter that can actually import distutils', () => {
     const result = run();
     assert.equal(result.status, 0, result.stderr);
     const picked = result.stdout.trim();
@@ -58,7 +67,7 @@ test('an explicit PYTHON wins', () => {
     assert.equal(result.stdout.trim(), '/opt/deliberate/python3');
 });
 
-test('skips a python3 that lacks distutils and keeps looking', () => {
+posixOnly('skips a python3 that lacks distutils and keeps looking', () => {
     // This is the real-world shape: Homebrew python3 first on PATH at 3.14,
     // a usable interpreter further down. Verified against a machine where
     // `python3 --version` said 3.14.6 and the picker returned /usr/bin/python3.
@@ -80,7 +89,7 @@ test('skips a python3 that lacks distutils and keeps looking', () => {
     }
 });
 
-test('warns instead of failing silently when nothing has distutils', () => {
+posixOnly('warns instead of failing silently when nothing has distutils', () => {
     // Failing closed here would block a build node-gyp might still manage;
     // failing silently would produce a confusing gyp traceback. It prints the
     // fallback and explains the likely failure.

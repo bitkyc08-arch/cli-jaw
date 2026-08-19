@@ -78,6 +78,29 @@ export function getOpencodePreferredBinDir(): string {
     return join(os.homedir(), '.bun', 'bin');
 }
 
+/**
+ * Merge an env delta over a base env without reintroducing duplicate
+ * Path/PATH keys on Windows (#382, residual of #366). A plain spread of
+ * `{ ...base, ...extra }` where base carries 'Path' and extra carries 'PATH'
+ * leaves both keys in the object, and the child resolves whichever was
+ * written last. On POSIX the spread is returned unchanged (case-sensitive
+ * env, both keys are real variables).
+ */
+export function mergeEnvWindowsSafe(
+    base: NodeJS.ProcessEnv,
+    extra: Record<string, string>,
+    platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+    const merged: NodeJS.ProcessEnv = { ...base, ...extra };
+    if (platform !== 'win32') return merged;
+    const path = readPathValue(extra) || readPathValue(base);
+    for (const key of Object.keys(merged)) {
+        if (key.toLowerCase() === 'path') delete merged[key];
+    }
+    if (path) merged['PATH'] = path;
+    return merged;
+}
+
 export function applyCliEnvDefaults(
     cli: string,
     extraEnv: Record<string, string> = {},

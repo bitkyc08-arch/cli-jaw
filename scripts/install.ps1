@@ -243,13 +243,20 @@ function Resolve-NativeArch {
 function Install-BootstrapTool([string]$Tool, [switch]$DryRunOnly) {
     $manifest = Get-BootstrapManifest
     $arch = Resolve-NativeArch
+    # Strict mode throws on absent properties, so probe before dereferencing:
+    # a missing tool entry or per-arch artifact must reach the guarded errors
+    # below instead of dying with PropertyNotFoundException (#381).
+    if ($manifest.PSObject.Properties.Name -notcontains $Tool) { Stop-Install "$Tool is not in the bootstrap manifest" }
     $entry = $manifest.$Tool
-    $artifact = $entry.artifacts.$arch
+    $artifact = $null
+    if ($entry.artifacts.PSObject.Properties.Name -contains $arch) { $artifact = $entry.artifacts.$arch }
     if (-not $artifact) { Stop-Install "$Tool has no pinned artifact for $arch" }
+    $tagValue = ''
+    if ($entry.PSObject.Properties.Name -contains 'tag') { $tagValue = $entry.tag }
 
     $url = $entry.urlTemplate.
         Replace('{version}', $entry.version).
-        Replace('{tag}', $entry.tag).
+        Replace('{tag}', $tagValue).
         Replace('{arch}', $arch).
         Replace('{file}', $artifact.file)
     $installDir = Join-Path $env:LOCALAPPDATA "cli-jaw\runtimes\$Tool\$($entry.version)\$arch"
@@ -351,6 +358,7 @@ if (-not $nodePath) {
         }
         # Persist to User PATH so a new terminal resolves the installed tools.
         $env:Path = "$nodeDir;$env:Path"
+        Add-UserPathEntry $nodeDir | Out-Null
         $nodePath = Resolve-CommandPath @('node.exe', 'node')
         if (-not $nodePath) { Stop-Install 'bootstrap completed but node is still unresolvable.' }
     } else {

@@ -54,7 +54,7 @@ import {
     flushCycleCount as _flushCycleCount,
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
-import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions } from './spawn-env.js';
+import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions, mergeEnvWindowsSafe } from './spawn-env.js';
 import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
@@ -2581,7 +2581,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const launchCommand = windowsLaunch ? windowsLaunch.command : spawnCommand;
     const launchArgs = windowsLaunch ? launchArgv(windowsLaunch) : args;
     const launchEnv = windowsLaunch && Object.keys(windowsLaunch.envDelta).length
-        ? { ...spawnEnv, ...windowsLaunch.envDelta }
+        ? mergeEnvWindowsSafe(spawnEnv, windowsLaunch.envDelta)
         : spawnEnv;
     const windowsSpawnUsesShell = process.platform === 'win32'
         && !windowsLaunch

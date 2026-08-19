@@ -17,14 +17,52 @@ import { auditClaims, formatClaimAuditReport } from './claim-audit.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+/**
+ * Windows-safe command resolution for spawnSync.
+ * Bare 'npm'/'npx' resolve to .cmd shims on Windows, which Node refuses to
+ * spawn without shell:true (EINVAL since the CVE-2024-27980 hardening), so
+ * every gate that shelled out reported status=null with empty output on a
+ * native-Windows checkout. Run the CLI js entrypoints under the current node
+ * binary instead; POSIX resolution is unchanged.
+ */
+function resolveCliJs(name) {
+    const nodeBinDir = path.dirname(process.execPath);
+    const candidates = [
+        name === 'npm' ? process.env.npm_execpath : null,
+        path.join(nodeBinDir, 'node_modules', 'npm', 'bin', `${name}-cli.js`),
+        path.join(nodeBinDir, 'lib', 'node_modules', 'npm', 'bin', `${name}-cli.js`),
+        path.join(path.dirname(nodeBinDir), 'lib', 'node_modules', 'npm', 'bin', `${name}-cli.js`),
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
+}
+
+function windowsSafeCommand(cmd, args) {
+    if (cmd === 'npm' || cmd === 'npx') {
+        const cliJs = resolveCliJs(cmd);
+        if (cliJs) return [process.execPath, [cliJs, ...args]];
+        if (process.platform === 'win32') return [`${cmd}.cmd`, args, { shell: true }];
+        return [cmd, args];
+    }
+    return [cmd, args];
+}
+
 function run(cmd, args, opts = {}) {
-    return spawnSync(cmd, args, {
+    const [bin, finalArgs, extra] = windowsSafeCommand(cmd, args);
+    return spawnSync(bin, finalArgs, {
         cwd: repoRoot,
         stdio: opts.stdio || 'pipe',
         encoding: 'utf8',
+        ...(extra || {}),
         ...opts,
     });
 }
+
+// tsx's dist/cli.mjs run under node works identically on every platform;
+// node_modules/.bin/tsx is a bash script that Windows cannot execute.
+const tsxCli = path.resolve(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
 function readFile(rel) {
     return fs.readFileSync(path.join(repoRoot, rel), 'utf8');
@@ -98,7 +136,7 @@ const GATES = {
             // The generated messaging block first: a stale matrix is a wrong claim
             // regardless of the file's mtime, so freshness must not excuse it.
             // node_modules/.bin/tsx directly — npx resolution is not a gate dependency.
-            const generated = run(path.join('node_modules', '.bin', 'tsx'), [
+            const generated = run(process.execPath, [tsxCli, 
                 'scripts/generate-channel-capability-table.mts', '--check',
             ], { timeout: 60_000 });
             if (generated.status !== 0) {
@@ -189,9 +227,9 @@ const GATES = {
             try {
                 const { spawnSync } = await import('node:child_process');
                 const path = await import('node:path');
-                const tsxBin = path.resolve(repoRoot, 'node_modules/.bin/tsx');
-                const fixtureScript = `import { buildObserveActions, formatObserveActions } from '${path.resolve(repoRoot, 'src/browser/web-ai/observe-actions.ts').replace(/\\\\/g, '/')}';\nconst r = buildObserveActions({ snapshotId: 'gate-fixture', url: null, refs: { '@e1': { role: 'button', name: 'Sign in' }, '@e2': { role: 'textbox', name: 'Email' }, '@e3': { role: 'link', name: 'Forgot password?' } } }, 'click sign in');\nif (!r || !Array.isArray(r.candidates) || r.candidates.length < 3) { console.error('candidates<3'); process.exit(2); }\nif (r.candidates[0].ref !== '@e1' || r.candidates[0].action !== 'click') { console.error('rank-fail'); process.exit(3); }\nif (!r.candidates.every(c => c.args.snapshotId === 'gate-fixture')) { console.error('snapId-missing'); process.exit(4); }\nconst t = formatObserveActions(r); if (!t || typeof t !== 'string') { console.error('format-fail'); process.exit(5); }\nconsole.log('OK ' + r.candidates.length);`;
-                const res = spawnSync(tsxBin, ['--eval', fixtureScript], { encoding: 'utf8' });
+                const tsxBin = tsxCli;
+                const fixtureScript = `import { buildObserveActions, formatObserveActions } from '${path.resolve(repoRoot, 'src/browser/web-ai/observe-actions.ts').split(path.sep).join('/')}';\nconst r = buildObserveActions({ snapshotId: 'gate-fixture', url: null, refs: { '@e1': { role: 'button', name: 'Sign in' }, '@e2': { role: 'textbox', name: 'Email' }, '@e3': { role: 'link', name: 'Forgot password?' } } }, 'click sign in');\nif (!r || !Array.isArray(r.candidates) || r.candidates.length < 3) { console.error('candidates<3'); process.exit(2); }\nif (r.candidates[0].ref !== '@e1' || r.candidates[0].action !== 'click') { console.error('rank-fail'); process.exit(3); }\nif (!r.candidates.every(c => c.args.snapshotId === 'gate-fixture')) { console.error('snapId-missing'); process.exit(4); }\nconst t = formatObserveActions(r); if (!t || typeof t !== 'string') { console.error('format-fail'); process.exit(5); }\nconsole.log('OK ' + r.candidates.length);`;
+                const res = spawnSync(process.execPath, [tsxBin, '--eval', fixtureScript], { encoding: 'utf8' });
                 if (res.status !== 0) {
                     return { ok: false, detail: `observe-actions fixture failed: status=${res.status} stderr=${(res.stderr || '').trim()} stdout=${(res.stdout || '').trim()}` };
                 }
@@ -207,10 +245,10 @@ const GATES = {
             try {
                 const { spawnSync } = await import('node:child_process');
                 const path = await import('node:path');
-                const tsxBin = path.resolve(repoRoot, 'node_modules/.bin/tsx');
-                const modPath = path.resolve(repoRoot, 'src/browser/web-ai/observation-bundle.ts').replace(/\\\\/g, '/');
+                const tsxBin = tsxCli;
+                const modPath = path.resolve(repoRoot, 'src/browser/web-ai/observation-bundle.ts').split(path.sep).join('/');
                 const fixtureScript = `import { buildObservationBundle, OBSERVATION_BUNDLE_SCHEMA_VERSION } from '${modPath}';\nconst b = buildObservationBundle({ url: 'https://x.test/', viewport: { width: 800, height: 600 }, snapshotNodes: [{ ref: '@e1', role: 'button', name: 'Go' }, { ref: '...', role: 'note', name: 't' }], boxes: { '@e1': { x: 1, y: 2, width: 10, height: 20 } }, textSummary: 'hello' });\nif (b.schemaVersion !== OBSERVATION_BUNDLE_SCHEMA_VERSION) { console.error('schema-mismatch'); process.exit(2); }\nif (b.refs.length !== 1) { console.error('ref-filter-fail'); process.exit(3); }\nif (!b.refs[0].box || b.refs[0].box.width !== 10) { console.error('box-attach-fail'); process.exit(4); }\nif (b.stats.refCount !== 1 || b.stats.boxCount !== 1 || b.stats.textChars !== 5) { console.error('stats-fail'); process.exit(5); }\nconsole.log('OK refs=' + b.stats.refCount + ' boxes=' + b.stats.boxCount + ' text=' + b.stats.textChars + 'ch');`;
-                const res = spawnSync(tsxBin, ['--eval', fixtureScript], { encoding: 'utf8' });
+                const res = spawnSync(process.execPath, [tsxBin, '--eval', fixtureScript], { encoding: 'utf8' });
                 if (res.status !== 0) {
                     return { ok: false, detail: `observation-bundle fixture failed: status=${res.status} stderr=${(res.stderr || '').trim()} stdout=${(res.stdout || '').trim()}` };
                 }
@@ -226,10 +264,10 @@ const GATES = {
             try {
                 const { spawnSync } = await import('node:child_process');
                 const path = await import('node:path');
-                const tsxBin = path.resolve(repoRoot, 'node_modules/.bin/tsx');
-                const modPath = path.resolve(repoRoot, 'src/browser/web-ai/action-breadth.ts').replace(/\\\\/g, '/');
+                const tsxBin = tsxCli;
+                const modPath = path.resolve(repoRoot, 'src/browser/web-ai/action-breadth.ts').split(path.sep).join('/');
                 const fixtureScript = `import { BROWSER_PRIMITIVES, listPrimitiveCommands, BROWSER_PRIMITIVE_SCHEMA_VERSION, auditPrimitiveCoverage } from '${modPath}';\nif (BROWSER_PRIMITIVE_SCHEMA_VERSION !== 'browser-primitives-v1') { console.error('schema-mismatch'); process.exit(2); }\nif (BROWSER_PRIMITIVES.length < 18) { console.error('too-few'); process.exit(3); }\nconst cmds = new Set(listPrimitiveCommands());\nfor (const c of ['select','check','uncheck','upload','drag','scroll','wait-for']) { if (!cmds.has(c)) { console.error('missing:'+c); process.exit(4); } }\nconst fake = [...BROWSER_PRIMITIVES].map(p => 'case ' + JSON.stringify(p.command) + ':').join('\\n');\nconst r = auditPrimitiveCoverage(fake);\nif (!r.ok || r.missing.length !== 0) { console.error('audit-fail'); process.exit(5); }\nconsole.log('OK ' + BROWSER_PRIMITIVES.length + ' primitives');`;
-                const res = spawnSync(tsxBin, ['--eval', fixtureScript], { encoding: 'utf8' });
+                const res = spawnSync(process.execPath, [tsxBin, '--eval', fixtureScript], { encoding: 'utf8' });
                 if (res.status !== 0) {
                     return { ok: false, detail: `action-breadth fixture failed: status=${res.status} stderr=${(res.stderr || '').trim()} stdout=${(res.stdout || '').trim()}` };
                 }
@@ -245,10 +283,10 @@ const GATES = {
             try {
                 const { spawnSync } = await import('node:child_process');
                 const path = await import('node:path');
-                const tsxBin = path.resolve(repoRoot, 'node_modules/.bin/tsx');
-                const modPath = path.resolve(repoRoot, 'src/browser/web-ai/action-memory.ts').replace(/\\\\/g, '/');
+                const tsxBin = tsxCli;
+                const modPath = path.resolve(repoRoot, 'src/browser/web-ai/action-memory.ts').split(path.sep).join('/');
                 const fixtureScript = `import { createActionMemory, validateMemoryHit, ACTION_MEMORY_SCHEMA_VERSION } from '${modPath}';\nif (ACTION_MEMORY_SCHEMA_VERSION !== 'action-memory-v1') { console.error('schema-mismatch'); process.exit(2); }\nconst m = createActionMemory();\nm.put({ origin: 'https://x.test', intentId: 'i', signature: 'sig-A', ref: '@e1', hits: 0, validations: { ok: 0, fail: 0 }, lastGoodAt: '' });\nconst hit = m.get('https://x.test', 'i', 'sig-A');\nif (!hit || hit.ref !== '@e1') { console.error('miss-on-match'); process.exit(3); }\nif (m.get('https://x.test', 'i', 'sig-B') !== null) { console.error('hit-on-drift'); process.exit(4); }\nif (validateMemoryHit(hit, 'sig-B') !== null) { console.error('validate-allowed-drift'); process.exit(5); }\nm.clear();\nif (m.size() !== 0) { console.error('clear-failed'); process.exit(6); }\nconsole.log('OK hit-on-match miss-on-drift clear');`;
-                const res = spawnSync(tsxBin, ['--eval', fixtureScript], { encoding: 'utf8' });
+                const res = spawnSync(process.execPath, [tsxBin, '--eval', fixtureScript], { encoding: 'utf8' });
                 if (res.status !== 0) {
                     return { ok: false, detail: `action-memory fixture failed: status=${res.status} stderr=${(res.stderr || '').trim()} stdout=${(res.stdout || '').trim()}` };
                 }
@@ -519,11 +557,11 @@ const GATES = {
             if (tests.status !== 0) {
                 return { ok: false, detail: [tests.stdout, tests.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }
-            const written = run(path.join('node_modules', '.bin', 'tsx'), ['scripts/write-messaging-certification.mts'], { timeout: 30_000 });
+            const written = run(process.execPath, [tsxCli, 'scripts/write-messaging-certification.mts'], { timeout: 30_000 });
             if (written.status !== 0) {
                 return { ok: false, detail: [written.stdout, written.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }
-            const validated = run(path.join('node_modules', '.bin', 'tsx'), ['scripts/validate-messaging-certification.mts'], { timeout: 30_000 });
+            const validated = run(process.execPath, [tsxCli, 'scripts/validate-messaging-certification.mts'], { timeout: 30_000 });
             if (validated.status !== 0) {
                 return { ok: false, detail: [validated.stdout, validated.stderr].filter(Boolean).join('\n').trim().slice(-800) };
             }

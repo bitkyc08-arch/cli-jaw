@@ -925,7 +925,12 @@ server.on('error', (error: NodeJS.ErrnoException) => {
     void previewProxy.close();
     if (error.code === 'EADDRINUSE') {
         console.error(`[dashboard] port ${port} already in use`);
-        console.error(`[dashboard] diagnose: lsof -nP -iTCP:${port} -sTCP:LISTEN`);
+        // Platform-correct diagnostics (#383): lsof does not exist on Windows.
+        if (process.platform === 'win32') {
+            console.error(`[dashboard] diagnose: netstat -ano -p tcp | findstr LISTENING | findstr :${port}`);
+        } else {
+            console.error(`[dashboard] diagnose: lsof -nP -iTCP:${port} -sTCP:LISTEN`);
+        }
         console.error('[dashboard] stop the stale dashboard process or configure a different dashboard port; no process was killed automatically');
     } else {
         console.error(`[dashboard] listen error: ${error.message}`);

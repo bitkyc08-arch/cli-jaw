@@ -2,6 +2,7 @@ import { fork, spawn } from 'node:child_process';
 import { resolveWindowsLaunchSpec, launchArgv } from '../core/windows-launch-spec.js';
 import { decideShellFallback } from '../core/windows-shell-fallback.js';
 import { detectCliBinary } from '../core/cli-detect.js';
+import { mergeEnvWindowsSafe } from '../agent/spawn-env.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extname } from 'node:path';
 import { detectAllCli } from '../core/cli-detection.js';
@@ -166,7 +167,7 @@ export function runCommand(binary: string, args: string[], timeoutMs: number): P
             detached: process.platform !== 'win32',
             shell: wantsShell,
             stdio: ['ignore', 'pipe', 'pipe'],
-            ...(spec && Object.keys(spec.envDelta).length ? { env: { ...process.env, ...spec.envDelta } } : {}),
+            ...(spec && Object.keys(spec.envDelta).length ? { env: mergeEnvWindowsSafe(process.env, spec.envDelta) } : {}),
         });
         let output = '';
         let bytes = 0;

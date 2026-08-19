@@ -1,5 +1,5 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { probeExec } from '../core/probe-exec.js';
 
 export type AgyPrintFlag = '-p' | '--print' | '--prompt';
 
@@ -83,11 +83,9 @@ function binaryMtimeMs(binary: string): number {
 }
 
 function runAgyText(binary: string, args: string[]): string {
-    const result = spawnSync(binary, args, {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 3_000,
-    });
+    // probeExec keeps the spawnSync contract (combined output, no throw on
+    // nonzero exit) while routing .cmd shims through the #367 primitive (#382).
+    const result = probeExec(binary, args, { timeout: 3_000 });
     if (result.error) throw result.error;
     const text = `${result.stdout || ''}\n${result.stderr || ''}`;
     if (result.signal) throw new Error(`agy ${args.join(' ')} terminated by ${result.signal}`);

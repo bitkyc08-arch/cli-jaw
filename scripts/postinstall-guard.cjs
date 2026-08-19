@@ -121,15 +121,14 @@ async function runCompiledPostinstall() {
 
 // ─── 4. Dev clone: build with local tsc ─────────────
 if (!fs.existsSync(target)) {
-    // Check both unix and Windows (.cmd) shim paths
-    const binDir = path.join(root, 'node_modules', '.bin');
-    const localTsc = [
-        path.join(binDir, 'tsc'),
-        path.join(binDir, 'tsc.cmd'),
-        path.join(binDir, 'tsc.ps1'),
-    ].find(p => fs.existsSync(p));
+    // Run tsc's JS entry directly through the current Node (#381). npm's .bin
+    // shims are a trap on Windows: the extensionless one is a POSIX script and
+    // execFileSync on tsc.cmd fails EINVAL on Node 20.12+. Registry tarballs
+    // ship dist/, so this branch only runs for clones where devDeps exist.
+    let tscEntry = null;
+    try { tscEntry = require.resolve('typescript/bin/tsc', { paths: [root] }); } catch { /* not installed */ }
 
-    if (!localTsc) {
+    if (!tscEntry) {
         console.error('[jaw:init] ❌ dist/ not found and typescript not installed locally');
         console.error('           Run: npm install --ignore-scripts && npm run build && node dist/bin/postinstall.js');
         process.exit(1);
@@ -137,10 +136,9 @@ if (!fs.existsSync(target)) {
 
     console.log('[jaw:init] dist/ not found, building...');
     try {
-        // execFileSync avoids shell parsing issues with spaces in paths
-        execFileSync(localTsc, [], { stdio: 'inherit', cwd: root, timeout: 60000 });
-    } catch {
-        console.error('[jaw:init] ❌ build failed — run manually:');
+        execFileSync(process.execPath, [tscEntry], { stdio: 'inherit', cwd: root, timeout: 60000 });
+    } catch (err) {
+        console.error(`[jaw:init] ❌ build failed (${err && err.message ? err.message : err}) — run manually:`);
         console.error('           npm run build && node dist/bin/postinstall.js');
         process.exit(1);
     }
