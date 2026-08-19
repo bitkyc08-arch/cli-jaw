@@ -21,9 +21,12 @@ function runGate(name: string): { status: number; stdout: string; stderr: string
 }
 
 function runGenerator(...args: string[]): { status: number; stdout: string; stderr: string } {
-    // node_modules/.bin/tsx, not npx: the gate resolves it the same way, and a
-    // test that used npx would pass while the gate failed offline.
-    const r = spawnSync(path.join(repoRoot, 'node_modules/.bin/tsx'), [
+    // tsx's dist/cli.mjs under the current node, not npx and not the .bin
+    // shim: the gate resolves it the same way, a test that used npx would
+    // pass while the gate failed offline, and node_modules/.bin/tsx is a bash
+    // script Windows cannot execute (spawnSync returned status null there).
+    const r = spawnSync(process.execPath, [
+        path.join(repoRoot, 'node_modules/tsx/dist/cli.mjs'),
         'scripts/generate-channel-capability-table.mts',
         ...args,
     ], { cwd: repoRoot, encoding: 'utf8' });

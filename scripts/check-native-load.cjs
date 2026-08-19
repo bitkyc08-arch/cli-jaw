@@ -65,9 +65,27 @@ if (!ptyRoot) {
     process.exit(EXIT_SKIPPED);
   }
 } else {
-  const binary = join(ptyRoot, 'build', 'Release', 'pty.node');
-  if (!existsSync(binary)) {
-    fail(`missing native binary: ${binary}`);
+  // Resolve the binary the way node-pty's own loadNativeModule does:
+  // build/Release, then build/Debug, then prebuilds/<platform>-<arch>.
+  // node-pty >= 1.1 ships prebuilds and skips the source build entirely when
+  // they match, so on Windows build/Release legitimately never contains
+  // pty.node -- hardcoding it failed the gate on every prebuild-only install.
+  const binaryName = process.platform === 'win32' ? 'conpty.node' : 'pty.node';
+  const candidates = [
+    join(ptyRoot, 'build', 'Release', binaryName),
+    join(ptyRoot, 'build', 'Debug', binaryName),
+    join(ptyRoot, 'prebuilds', `${process.platform}-${process.arch}`, binaryName),
+  ];
+  if (process.platform === 'win32') {
+    // winpty fallback binary: probe it too if conpty is somehow absent.
+    candidates.push(
+      join(ptyRoot, 'build', 'Release', 'pty.node'),
+      join(ptyRoot, 'prebuilds', `${process.platform}-${process.arch}`, 'pty.node'),
+    );
+  }
+  const binary = candidates.find((candidate) => existsSync(candidate));
+  if (!binary) {
+    fail(`missing native binary: none of\n   ${candidates.join('\n   ')}`);
   } else {
     // 1. The binary must actually dlopen under this runtime.
     try {
