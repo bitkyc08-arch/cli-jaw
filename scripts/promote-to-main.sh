@@ -157,66 +157,55 @@ if [ "$MERGED_VERSION" != "$STABLE_VERSION" ]; then
   exit 1
 fi
 
-deadline=$((SECONDS + 1200))
-MAIN_TESTS_URL=""
-while [ "$SECONDS" -lt "$deadline" ]; do
-  MAIN_TESTS_URL="$(gh run list \
-    --workflow test.yml \
-    --branch main \
-    --commit "$MERGED_MAIN_SHA" \
-    --event push \
-    --status success \
-    --limit 1 --json url --jq '.[0].url // ""')"
-  [ -n "$MAIN_TESTS_URL" ] && break
-  failed="$(gh run list \
-    --workflow test.yml \
-    --branch main \
-    --commit "$MERGED_MAIN_SHA" \
-    --event push \
-    --status completed \
-    --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
-  case "$failed" in
-    failure|cancelled|timed_out|startup_failure|action_required)
-      echo "ERROR: main Tests completed with $failed" >&2
-      exit 1
-      ;;
-  esac
-  sleep 10
-done
-if [ -z "$MAIN_TESTS_URL" ]; then
-  echo "ERROR: timed out waiting for successful main Tests" >&2
-  exit 1
-fi
-
-deadline=$((SECONDS + 1200))
-MAIN_PLATFORM_URL=""
-while [ "$SECONDS" -lt "$deadline" ]; do
-  MAIN_PLATFORM_URL="$(gh run list \
-    --workflow postinstall-platform.yml \
-    --branch main \
-    --commit "$MERGED_MAIN_SHA" \
-    --event push \
-    --status success \
-    --limit 1 --json url --jq '.[0].url // ""')"
-  [ -n "$MAIN_PLATFORM_URL" ] && break
-  failed="$(gh run list \
-    --workflow postinstall-platform.yml \
-    --branch main \
-    --commit "$MERGED_MAIN_SHA" \
-    --event push \
-    --status completed \
-    --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
-  case "$failed" in
-    failure|cancelled|timed_out|startup_failure|action_required)
-      echo "ERROR: main Postinstall Platform Checks completed with $failed" >&2
-      exit 1
-      ;;
-  esac
-  sleep 10
-done
-if [ -z "$MAIN_PLATFORM_URL" ]; then
-  echo "ERROR: timed out waiting for successful main Postinstall Platform Checks" >&2
-  exit 1
+# ─── Tree-identity fast path (260819 release-speed) ─────────────────────────
+# A squash merge onto an unmoved main produces a commit whose TREE equals the
+# promotion PR head's tree — the exact tree the PR's required checks already
+# certified (branch protection accepts PR-head evidence; strict=false). When
+# the trees match, the main push CI re-run carries no new information, so the
+# release does not wait for it. When they differ (main advanced between PR
+# creation and merge, so the squash re-applied onto a new base), that is a
+# tree nobody tested: fail closed into the original wait loops.
+git fetch origin "+refs/pull/*/head:refs/remotes/origin/pr/*" 2>/dev/null || true
+MERGED_TREE="$(git rev-parse "$MERGED_MAIN_SHA^{tree}")"
+CERTIFIED_TREE="$(git rev-parse "$PROMOTION_COMMIT^{tree}" 2>/dev/null || echo "")"
+CERTIFIED_SHA=""
+if [ -n "$CERTIFIED_TREE" ] && [ "$MERGED_TREE" = "$CERTIFIED_TREE" ]; then
+  CERTIFIED_SHA="$PROMOTION_COMMIT"
+  echo "tree-identity: merge $MERGED_MAIN_SHA tree matches certified PR head $PROMOTION_COMMIT; skipping the main CI wait"
+else
+  echo "tree-identity: MISMATCH (main advanced during promotion?) — falling back to the main CI wait"
+  wait_for_main_run() {
+    local workflow="$1" label="$2" url="" failed=""
+    local deadline=$((SECONDS + 1200))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      url="$(gh run list \
+        --workflow "$workflow" \
+        --branch main \
+        --commit "$MERGED_MAIN_SHA" \
+        --event push \
+        --status success \
+        --limit 1 --json url --jq '.[0].url // ""')"
+      [ -n "$url" ] && { echo "$label certified by: $url" >&2; return 0; }
+      failed="$(gh run list \
+        --workflow "$workflow" \
+        --branch main \
+        --commit "$MERGED_MAIN_SHA" \
+        --event push \
+        --status completed \
+        --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
+      case "$failed" in
+        failure|cancelled|timed_out|startup_failure|action_required)
+          echo "ERROR: main $label completed with $failed" >&2
+          return 1
+          ;;
+      esac
+      sleep 10
+    done
+    echo "ERROR: timed out waiting for successful main $label" >&2
+    return 1
+  }
+  wait_for_main_run test.yml "Tests"
+  wait_for_main_run postinstall-platform.yml "Postinstall Platform Checks"
 fi
 
 LIVE_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
@@ -230,6 +219,7 @@ gh workflow run publish.yml \
   -f version="$STABLE_VERSION" \
   -f tag=latest \
   -f expected-sha="$MERGED_MAIN_SHA" \
+  ${CERTIFIED_SHA:+-f certified-sha="$CERTIFIED_SHA"} \
   -f dry-run=false \
   -f create-github-release=true
 
