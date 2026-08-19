@@ -106,10 +106,13 @@ PR_URL="$(gh pr create \
 
 # GitHub materializes required checks on a fresh PR asynchronously; when
 # `--watch` lands in that window it exits immediately with "no checks
-# reported" and the whole promotion dies (observed: PR #386, killed seconds
-# after creation while its checks were still queueing). Retry the watch while
-# that specific startup condition holds; real check failures still fail fast.
-CHECKS_DEADLINE=$((SECONDS + 300))
+# reported" / "no required checks reported" and the whole promotion dies
+# (observed: PRs #386-#388, killed while checks were queueing). The required
+# context here is ci-aggregate, which is REPORTED ONLY AFTER node-tests
+# finishes (~7-8 min), so the deadline must comfortably exceed a full test.yml
+# run, not just the registration lag. Retry the watch while that startup
+# condition holds; real check failures still fail fast.
+CHECKS_DEADLINE=$((SECONDS + 1800))
 while true; do
   CHECKS_STATUS=0
   CHECKS_OUTPUT="$(gh pr checks "$PR_URL" --required --watch --fail-fast 2>&1)" || CHECKS_STATUS=$?
