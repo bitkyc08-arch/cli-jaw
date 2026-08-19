@@ -127,7 +127,12 @@ function main(): number {
     const check = process.argv.includes('--check');
     const abs = path.join(repoRoot, TABLE_REL);
     const original = fs.readFileSync(abs, 'utf8');
-    const located = locate(original);
+    // The repo stores this file with LF, but a core.autocrlf=true checkout
+    // (the git-for-windows default) hands us CRLF -- and the byte-for-byte
+    // comparison below then reported drift on line 1 ("\r" vs "") for a table
+    // that was in fact in sync. Normalize for comparison; writes still go
+    // through the normalized text, and git renormalizes on commit either way.
+    const located = locate(original.replace(/\r\n/g, '\n'));
     const expected = `\n${buildBlock()}\n`;
 
     if (check) {
@@ -147,7 +152,9 @@ function main(): number {
         console.log(`[unchanged] ${TABLE_REL}`);
         return 0;
     }
-    const next = original.slice(0, located.startIdx + START.length) + expected + original.slice(located.endIdx);
+    // Slice the same normalized text the indices came from; slicing the raw
+    // CRLF original with normalized indices would splice at shifted offsets.
+    const next = located.text.slice(0, located.startIdx + START.length) + expected + located.text.slice(located.endIdx);
     fs.writeFileSync(abs, next);
     console.log(`[written] ${TABLE_REL} messaging capability matrix regenerated from ${SOURCE_REL}`);
     return 0;

@@ -139,16 +139,31 @@ test('promotion checkout stays isolated when invoked from a submodule and fails 
         mkdirSync(symlinkTarget);
         writeFileSync(join(symlinkTarget, 'keep.txt'), 'keep\n');
         const symlinkCheckout = join(root, 'cli-jaw-promote.symlink');
-        symlinkSync(symlinkTarget, symlinkCheckout);
-        const symlinkRejected = bashHelper(
-            child,
-            root,
-            'cleanup_promotion_checkout "$2"',
-            [symlinkCheckout],
-            1,
-        );
-        assert.match(symlinkRejected.stderr, /refusing symlink promotion checkout path/);
-        assert.equal(existsSync(join(symlinkTarget, 'keep.txt')), true, 'symlink target must remain intact');
+        // Windows only grants CreateSymbolicLink to admins or Developer Mode;
+        // a junction would not trip bash's -L guard, so it cannot stand in.
+        // Skip just this scenario when the OS refuses the fixture -- the guard
+        // itself is POSIX bash either way.
+        let symlinkSupported = true;
+        try {
+            symlinkSync(symlinkTarget, symlinkCheckout);
+        } catch (error) {
+            if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') {
+                symlinkSupported = false;
+            } else {
+                throw error;
+            }
+        }
+        if (symlinkSupported) {
+            const symlinkRejected = bashHelper(
+                child,
+                root,
+                'cleanup_promotion_checkout "$2"',
+                [symlinkCheckout],
+                1,
+            );
+            assert.match(symlinkRejected.stderr, /refusing symlink promotion checkout path/);
+            assert.equal(existsSync(join(symlinkTarget, 'keep.txt')), true, 'symlink target must remain intact');
+        }
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
