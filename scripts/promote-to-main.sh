@@ -104,7 +104,24 @@ PR_URL="$(gh pr create \
   --title "chore: promote v$STABLE_VERSION" \
   --body "Promotes certified preview $PREVIEW_VERSION at $PREVIEW_SHA. Tests: $TESTS_URL")"
 
-gh pr checks "$PR_URL" --required --watch --fail-fast
+# GitHub materializes required checks on a fresh PR asynchronously; when
+# `--watch` lands in that window it exits immediately with "no checks
+# reported" and the whole promotion dies (observed: PR #386, killed seconds
+# after creation while its checks were still queueing). Retry the watch while
+# that specific startup condition holds; real check failures still fail fast.
+CHECKS_DEADLINE=$((SECONDS + 300))
+while true; do
+  CHECKS_STATUS=0
+  CHECKS_OUTPUT="$(gh pr checks "$PR_URL" --required --watch --fail-fast 2>&1)" || CHECKS_STATUS=$?
+  printf '%s\n' "$CHECKS_OUTPUT"
+  [ "$CHECKS_STATUS" -eq 0 ] && break
+  if printf '%s' "$CHECKS_OUTPUT" | grep -qi 'no checks reported' \
+    && [ "$SECONDS" -lt "$CHECKS_DEADLINE" ]; then
+    sleep 15
+    continue
+  fi
+  exit "$CHECKS_STATUS"
+done
 gh pr merge "$PR_URL" --squash --match-head-commit "$PROMOTION_COMMIT"
 # From here the branch belongs to GitHub's delete_branch_on_merge. Racing that
 # auto-delete only produces confusing errors, and a later verification failure
