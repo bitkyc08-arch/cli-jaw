@@ -412,12 +412,18 @@ if (!macosEvidence || !wslEvidence) {
       'run', 'list',
       '--workflow', 'postinstall-platform.yml',
       '--commit', headSha,
-      '--event', 'push',
       '--status', 'success',
       '--limit', '1',
       '--json', 'url',
       '--jq', '.[0].url // ""',
     ], { cwd: repoRoot, encoding: 'utf8', shell: false });
+    // No --event filter, mirroring bc7c19ba which already made publish.yml
+    // accept any-event Postinstall Platform Checks. A merge commit whose diff
+    // is empty (e.g. main merged back into preview after a promotion) never
+    // produces a push run for its own SHA, so requiring the push event made
+    // this gate unpassable for exactly the SHA a promotion certifies. Any
+    // successful run of the pinned workflow on this commit is the same
+    // evidence regardless of the event that started it.
     const ciUrl = (ciCheck.stdout || '').trim();
     if (ciUrl) {
       console.log(`[release-evidence-required] PASS CI postinstall-platform evidence: ${ciUrl}`);
