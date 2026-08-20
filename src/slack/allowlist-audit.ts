@@ -49,6 +49,23 @@ export function classifyAllowlistChange(next: unknown, current: unknown): Allowl
 }
 
 /**
+ * One narrowing reaches BOTH recorders: `jaw slack setup --channel-ids` writes
+ * settings.json and then hot-notifies, so the file watcher and the route each
+ * see the same move and each used to append a row — one change reading as two
+ * security events under two different actors.
+ *
+ * Collapsed on the transition within a short window, not forever: the two doors
+ * are milliseconds apart, while a narrowing repeated hours later is a real
+ * second event and must still be recorded.
+ */
+const AUDIT_DEDUP_WINDOW_MS = 5000;
+let lastRecorded: { transition: string; at: number } | null = null;
+
+export function resetAllowlistAuditDedupForTest(): void {
+    lastRecorded = null;
+}
+
+/**
  * Log and record a narrowing. Non-fatal by contract: an audit write that fails
  * must not take down the settings change it is describing.
  *
@@ -59,6 +76,14 @@ export function classifyAllowlistChange(next: unknown, current: unknown): Allowl
  */
 export function recordAllowlistNarrowing(change: AllowlistChange | null, actor: string): void {
     if (change?.kind !== 'narrow') return;
+    const transition = `${change.from.join(',')}>${change.to.join(',')}`;
+    const now = Date.now();
+    if (lastRecorded
+        && lastRecorded.transition === transition
+        && now - lastRecorded.at < AUDIT_DEDUP_WINDOW_MS) {
+        return;
+    }
+    lastRecorded = { transition, at: now };
     try {
         log.warn(`[slack:allowlist] narrowed to ${change.to.length} channel(s): `
             + `${change.to.join(', ')} — conversations outside this list will be ignored`);

@@ -303,6 +303,36 @@ test('classifyAllowlistChange names the direction of a channelIds write', async 
     assert.equal(classifyAllowlistChange([''], ['A']), null);
 });
 
+// `jaw slack setup --channel-ids` writes settings.json and then hot-notifies, so
+// one narrowing reaches BOTH recorders. Two audit rows under two actors read as
+// two separate security events on a single change.
+test('the same narrowing is recorded once, whichever doors it passes through', async () => {
+    const { classifyAllowlistChange } = await import('../../src/routes/settings.js');
+    const { recordAllowlistNarrowing, resetAllowlistAuditDedupForTest } =
+        await import('../../src/slack/allowlist-audit.js');
+    const { log } = await import('../../src/core/logger.js');
+
+    const lines: string[] = [];
+    const previousWarn = log.warn;
+    (log as { warn: unknown }).warn = (...args: unknown[]) => { lines.push(args.join(' ')); };
+    try {
+        resetAllowlistAuditDedupForTest();
+        const change = classifyAllowlistChange(['C_A'], ['C_A', 'C_B']);
+
+        recordAllowlistNarrowing(change, 'settings.json');   // the watcher
+        recordAllowlistNarrowing(change, '127.0.0.1');       // the hot-notify PUT
+        assert.equal(lines.length, 1, `one change, one record; saw: ${JSON.stringify(lines)}`);
+
+        // A further narrowing is a new event and must still be recorded.
+        recordAllowlistNarrowing(classifyAllowlistChange([], ['C_A']), '127.0.0.1');
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B', 'C_C']), '127.0.0.1');
+        assert.equal(lines.length, 2, 'a different narrowing is a different event');
+    } finally {
+        (log as { warn: unknown }).warn = previousWarn;
+        resetAllowlistAuditDedupForTest();
+    }
+});
+
 
 // A non-array channelIds is not a no-op: the gate reads it as "no allowlist",
 // which means EVERY conversation. Letting it through would silently widen an
@@ -348,6 +378,12 @@ test('a malformed channelIds write is refused instead of applied', async () => {
 // the whole point: nobody could tell what had happened (#406).
 test('a narrowing write succeeds and leaves an audit entry naming both lists', async () => {
     auditEntries.length = 0;
+    // These routes run against a mocked applySettings that never mutates
+    // settings, so an earlier test in this file can leave the identical
+    // transition inside the dedup window. In a real server the second write
+    // would not classify as a narrowing at all — the state already moved.
+    const { resetAllowlistAuditDedupForTest } = await import('../../src/slack/allowlist-audit.js');
+    resetAllowlistAuditDedupForTest();
     const patches: Record<string, unknown>[] = [];
     const put = registerRouteApp(
         allowAuth,

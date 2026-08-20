@@ -11,6 +11,7 @@ import {
 import { addBroadcastListener, removeBroadcastListener } from '../../src/core/bus.ts';
 import { reloadSettingsFromDisk, startSettingsWatch } from '../../src/core/settings-watch.ts';
 import { log } from '../../src/core/logger.ts';
+import { resetAllowlistAuditDedupForTest } from '../../src/slack/allowlist-audit.ts';
 
 type Captured = { type: string; data: Record<string, unknown> };
 
@@ -285,6 +286,7 @@ test('SWA-SLACK-01: a narrowing that arrives through the file is still recorded'
     const previousWarn = log.warn;
     (log as { warn: unknown }).warn = (...args: unknown[]) => { lines.push(args.join(' ')); };
     try {
+        resetAllowlistAuditDedupForTest();
         replaceSettings(
             { ...settings, slack: { ...(settings['slack'] || {}), channelIds: ['C_A', 'C_B'] } },
             getSettingsPersistenceShape(),
@@ -310,5 +312,6 @@ test('SWA-SLACK-01: a narrowing that arrives through the file is still recorded'
         assert.deepEqual(lines.filter(l => l.includes('[slack:allowlist]')), []);
     } finally {
         (log as { warn: unknown }).warn = previousWarn;
+        resetAllowlistAuditDedupForTest();
     }
 }));
