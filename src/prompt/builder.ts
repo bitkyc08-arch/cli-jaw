@@ -630,6 +630,24 @@ export function shouldIncludeVisionClickHint(activeCli?: string | null): boolean
     return activeCli === 'codex';
 }
 
+/**
+ * The settings an agent must not narrow, because they are how it is reached.
+ *
+ * An agent asked to set up a heartbeat for one channel narrowed
+ * `slack.channelIds` to that channel and cut off every other conversation,
+ * including the one it would have needed to be told (#406). Nothing in the
+ * prompt said that list was its own inbound surface.
+ */
+export function getInboundSurfaceContract(): string {
+    return [
+        '## Inbound Surface (do not narrow it)',
+        '- `slack.channelIds` is the allowlist of conversations this instance can HEAR. An empty list means every conversation; a non-empty list means only those.',
+        '- Narrowing it silences every conversation outside the list, including the one you are being spoken to in. You cannot undo that from inside Slack.',
+        '- Work that targets one channel belongs in that request\'s `target`, never in the allowlist.',
+        '- Only change `slack.channelIds` when the user explicitly asks to change which conversations the bot listens to.',
+    ].join('\n');
+}
+
 export function getBoundedLocalSearchContract(): string {
     return [
         '## Bounded Local Search Contract',
@@ -893,6 +911,7 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
     }
 
     prompt += '\n\n---\n' + getBoundedLocalSearchContract();
+    prompt += '\n\n' + getInboundSurfaceContract();
 
     // ─── Delegation rules: jaw employees vs CLI sub-agents ───
     // Always-injected guard block (survives user-edited A-1.md overrides).

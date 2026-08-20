@@ -164,6 +164,22 @@ export function classifyAllowlistChange(next: unknown, current: unknown): Allowl
     return null;
 }
 
+/**
+ * Reject a `slack.channelIds` write that is not a list of ids.
+ *
+ * The settings merge does not type-check channel blocks, and the gate reads a
+ * non-array as "no allowlist" — which means every conversation. So a write of
+ * `"C1"` or `[1,2]` would not narrow anything, it would silently WIDEN an
+ * existing allowlist to everything, and `classifyAllowlistChange` would not even
+ * see it as a change. Failing open on a malformed value is the one outcome this
+ * whole area exists to prevent (#406).
+ */
+export function invalidSlackChannelIds(value: unknown): boolean {
+    if (value === undefined) return false;
+    if (!Array.isArray(value)) return true;
+    return value.some(id => typeof id !== 'string' || id.trim() === '');
+}
+
 function mergePiProfile(piInput: unknown, profile: PiProfile, models: string[]) {
     const pi = normalizePiSettings(piInput);
     const profiles = pi.profiles.filter((entry) => entry.id !== profile.id);
@@ -269,8 +285,16 @@ export function registerSettingsRoutes(
             return;
         }
         // Captured before the write, because afterwards the previous list is gone.
+        const incomingSlack = asPlainRecord((sanitized.value as Record<string, unknown>)["slack"]);
+        if (invalidSlackChannelIds(incomingSlack["channelIds"])) {
+            fail(res, 400, 'invalid_slack_channel_ids', {
+                hint: 'slack.channelIds must be an array of conversation id strings. '
+                    + 'Use [] to allow every conversation.',
+            });
+            return;
+        }
         const allowlistChange = classifyAllowlistChange(
-            asPlainRecord((sanitized.value as Record<string, unknown>)["slack"])["channelIds"],
+            incomingSlack["channelIds"],
             settings["slack"]?.channelIds,
         );
         const result = await applySettings(sanitized.value) as Record<string, unknown>;

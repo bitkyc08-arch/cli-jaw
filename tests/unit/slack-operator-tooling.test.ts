@@ -165,3 +165,47 @@ test('the operator runbook exists and covers the setup essentials', {
     assert.match(runbook, /message\.im/, 'the DM subscription gotcha is undocumented');
     assert.match(runbook, /Troubleshooting/i);
 });
+
+// The gate stays silent about the one drop reason that means a human
+// configured us out of a conversation. Without this line an allowlist mistake
+// reads as a dead bot: preflight drops the event, nothing reaches dispatch,
+// and dispatch is the only consumer that logs (#406).
+test('the preflight gate names a conversation it was configured out of', () => {
+    const bot = read('src/slack/bot.ts');
+    const preflight = bot.slice(bot.indexOf('export async function preflightSlackEnvelope'));
+    const body = preflight.slice(0, preflight.indexOf('\nexport '));
+
+    assert.match(
+        body,
+        /decision\.reason === 'channel_not_allowed'/,
+        'preflight must recognise the allowlist drop',
+    );
+    assert.match(body, /\[slack:gate\] dropped/, 'the drop must reach the log');
+
+    // Ordinary traffic must stay quiet, or the signal drowns.
+    for (const quiet of ['self_message', 'mention_via_app_mention', 'bot_message']) {
+        assert.doesNotMatch(
+            body,
+            new RegExp(`\\[slack:gate\\][^\\n]*${quiet}`),
+            `${quiet} is ordinary traffic and must not be logged per event`,
+        );
+    }
+});
+
+test('the agent prompt names the inbound allowlist as something not to narrow', async () => {
+    const { getInboundSurfaceContract } = await import('../../src/prompt/builder.js');
+    const contract = getInboundSurfaceContract();
+
+    assert.match(contract, /slack\.channelIds/, 'the setting must be named');
+    assert.match(
+        contract,
+        /HEAR|listens/i,
+        'the prompt must say this list is how the agent is reached',
+    );
+    assert.match(
+        contract,
+        /target/,
+        'the prompt must point channel-scoped work at target instead',
+    );
+});
+

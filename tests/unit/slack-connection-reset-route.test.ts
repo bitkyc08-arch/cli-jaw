@@ -279,3 +279,43 @@ test('classifyAllowlistChange names the direction of a channelIds write', async 
     assert.equal(classifyAllowlistChange(undefined, ['A']), null);
 });
 
+
+// A non-array channelIds is not a no-op: the gate reads it as "no allowlist",
+// which means EVERY conversation. Letting it through would silently widen an
+// existing allowlist to everything while classifyAllowlistChange saw no change
+// at all — failing open on a malformed value (#406).
+test('invalidSlackChannelIds rejects anything that is not a list of ids', async () => {
+    const { invalidSlackChannelIds } = await import('../../src/routes/settings.js');
+
+    assert.equal(invalidSlackChannelIds(undefined), false, 'absent is not a write');
+    assert.equal(invalidSlackChannelIds([]), false, 'empty means every conversation');
+    assert.equal(invalidSlackChannelIds(['C1', 'C2']), false);
+
+    assert.equal(invalidSlackChannelIds('C1'), true, 'a bare string would read as no allowlist');
+    assert.equal(invalidSlackChannelIds([1, 2]), true);
+    assert.equal(invalidSlackChannelIds(['C1', '']), true);
+    assert.equal(invalidSlackChannelIds(['C1', '   ']), true);
+    assert.equal(invalidSlackChannelIds({ 0: 'C1' }), true);
+});
+
+test('a malformed channelIds write is refused instead of applied', async () => {
+    const patches: Record<string, unknown>[] = [];
+    const put = registerRouteApp(
+        allowAuth,
+        async (patch) => { patches.push(patch); return patch; },
+        'PUT',
+        '/api/settings',
+    );
+
+    const bad = await routeRequest(put, { slack: { channelIds: 'C1' } });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'invalid_slack_channel_ids');
+    assert.equal(patches.length, 0, 'a malformed allowlist must not reach applySettings');
+
+    // jaw slack setup --channel-ids reaches the server through this same PUT,
+    // so a well-formed narrowing write must still succeed.
+    const good = await routeRequest(put, { slack: { channelIds: ['C1'] } });
+    assert.equal(good.status, 200);
+    assert.equal(patches.length, 1);
+});
+
