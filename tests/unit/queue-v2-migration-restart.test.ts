@@ -347,12 +347,39 @@ test('QBD-002: drainRecoveredQueue starts every recovered scope', async () => {
     );
 });
 
-// "Both items eventually ran" does not prove the contract: `processQueue` walks
-// the whole queue and schedules its own successor, so a single kick would drain
-// both and QBD-002 would pass either way. What the per-scope kick buys is
-// PARALLEL lanes, and that is observable: two conversations must be in flight at
-// the same time rather than queued single-file behind whichever went first.
-test('QBD-002b: recovered scopes drain in parallel, not single-file', async () => {
+// These three assert the behaviour the boot path owes, not the shape of the
+// loop that produces it. Measured, not assumed: `processQueue` ignores its scope
+// argument when choosing a candidate and schedules its own successor, so a
+// single kick already drains every scope in parallel. Replacing the per-scope
+// loop with one `processQueue('default')` keeps all three green. The loop stays
+// because it says plainly what the drain intends, but it is belt-and-braces —
+// no test here can claim otherwise, and pretending one does would be a green
+// light for a contract the queue does not actually keep.
+test('QBD-002b: a blocked scope does not strand the scopes beside it', async () => {
+    queueRow('queue-v2-boot-j', 'jaw:slack:channel:CJ', 1);
+    queueRow('queue-v2-boot-k', 'jaw:slack:channel:CK', 2);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    const ctrl = makeController({ busy: () => false, runs });
+    // A hold makes CJ unpickable. Its lane never runs, so it never schedules the
+    // successor that would have carried CK — only a kick aimed at CK can.
+    // Two args on purpose: the one-arg form is the legacy shape and holds
+    // 'default', which would hold nothing here.
+    ctrl.setQueueHold('jaw:slack:channel:CJ', 'hold-cj');
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    assert.deepEqual(
+        runs.map(r => r.prompt),
+        ['queue-v2-boot-k'],
+        'the unheld scope must start on its own kick, not wait on a held neighbour',
+    );
+    ctrl.clearQueueHold('jaw:slack:channel:CJ', 'hold-cj', { resume: false });
+});
+
+// The parallelism the drain is meant to preserve: two conversations in flight at
+// once rather than single-file behind whichever went first.
+test('QBD-002c: recovered scopes drain in parallel, not single-file', async () => {
     queueRow('queue-v2-boot-g', 'jaw:slack:channel:CG', 1);
     queueRow('queue-v2-boot-h', 'jaw:slack:channel:CH', 2);
 

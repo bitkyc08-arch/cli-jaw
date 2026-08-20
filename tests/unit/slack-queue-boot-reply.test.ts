@@ -57,6 +57,7 @@ test('SQB-001: a queued result with no live requester still reaches its conversa
         text: 'answer for a conversation nobody is waiting in',
         origin: 'slack',
         requestId: 'req-boot-drain',
+        fromQueue: true,
         target: slackTarget('C_BOOT', '1710000000.000100'),
     });
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -66,20 +67,41 @@ test('SQB-001: a queued result with no live requester still reaches its conversa
     assert.equal(sent[0]!.threadId, '1710000000.000100', 'and into the thread it came from');
 });
 
+// The dispatch path posts an ordinary reply itself while still awaiting it. If
+// the fallback fires for those too, EVERY Slack answer goes out twice — a worse
+// bug than the one it fixes, and invisible to a test that only ever broadcasts
+// queued events.
+test('SQB-001b: an ordinary reply is not posted a second time', async () => {
+    sent.length = 0;
+    const { broadcast } = await import('../../src/core/bus.ts');
+
+    broadcast('orchestrate_done', {
+        text: 'ordinary reply, already posted by the dispatch path',
+        origin: 'slack',
+        requestId: 'req-ordinary',
+        target: slackTarget('C_BOOT', '1710000000.000200'),
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.deepEqual(sent, [], `a non-queued completion must not be echoed; saw ${JSON.stringify(sent)}`);
+});
+
 test('SQB-002: a result addressed to another channel is not answered here', async () => {
     sent.length = 0;
     const { broadcast } = await import('../../src/core/bus.ts');
 
     broadcast('orchestrate_done', {
         text: 'telegram answer', origin: 'telegram', requestId: 'req-tg',
+        fromQueue: true,
         target: { channel: 'telegram', targetKind: 'user', peerKind: 'direct', targetId: '123' },
     });
     // No target at all: nowhere to send, and the last-active fallback belongs to
     // the ordinary forwarder, not to this one.
-    broadcast('orchestrate_done', { text: 'targetless', origin: 'slack', requestId: 'req-none' });
+    broadcast('orchestrate_done', { text: 'targetless', origin: 'slack', requestId: 'req-none', fromQueue: true });
     // An error result already reaches the user through its own path.
     broadcast('orchestrate_done', {
         text: '[error] boom', error: true, origin: 'slack', requestId: 'req-err',
+        fromQueue: true,
         target: slackTarget('C_BOOT'),
     });
     await new Promise(resolve => setTimeout(resolve, 20));

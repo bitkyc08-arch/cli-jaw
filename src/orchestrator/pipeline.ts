@@ -264,6 +264,12 @@ export async function orchestrate(
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
     const userText = String(prompt || '').trim();
+    // Set only by the queue controller. A queued turn's reply rides a listener
+    // armed by the request that was queued, and a restart destroys it — so a
+    // boot-drained turn (#407) needs a standing forwarder instead. That
+    // forwarder must fire for THESE turns only, or an ordinary reply, which the
+    // dispatch path already posts, would go out twice.
+    const fromQueue = meta["_fromQueue"] === true;
     const scope = meta["scope"] || resolveOrcScope({
         origin, target, chatId, persistedScopeId: meta["remoteKey"],
         multiSessionEnabled: settings["multiSession"]?.enabled === true,
@@ -308,6 +314,7 @@ export async function orchestrate(
             target,
             requestId,
             replyViaTarget,
+            ...(fromQueue ? { fromQueue: true } : {}),
             ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
         settleOnce(requestId, 'completed', { scope });
@@ -644,6 +651,7 @@ export async function orchestrate(
         target,
         requestId,
         replyViaTarget,
+        ...(fromQueue ? { fromQueue: true } : {}),
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         ...(typeof result['agyPlannerOnly'] === 'boolean' ? { agyPlannerOnly: result['agyPlannerOnly'] } : {}),
         ...(typeof result['agyCheckpointSeen'] === 'boolean' ? { agyCheckpointSeen: result['agyCheckpointSeen'] } : {}),
@@ -684,6 +692,7 @@ export async function orchestrateContinue(
         target,
         requestId,
         replyViaTarget,
+        ...(meta["_fromQueue"] === true ? { fromQueue: true } : {}),
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
     settleOnce(requestId, 'completed', { scope, text: 'No pending work to continue.' });
@@ -727,6 +736,7 @@ export async function orchestrateReset(
             target,
             requestId,
             replyViaTarget,
+            ...(meta["_fromQueue"] === true ? { fromQueue: true } : {}),
             ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
         settleOnce(requestId, 'completed', { scope, text: 'Reset complete.' });
@@ -741,6 +751,7 @@ export async function orchestrateReset(
         target,
         requestId,
         replyViaTarget,
+        ...(meta["_fromQueue"] === true ? { fromQueue: true } : {}),
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
     settleOnce(requestId, 'completed', { scope, text: 'Reset complete.' });

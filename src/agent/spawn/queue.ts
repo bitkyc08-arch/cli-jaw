@@ -531,6 +531,11 @@ export function createQueueController(
                     chatSessionId: effectiveSessionId,
                     ...(item.remoteKey ? { remoteKey: item.remoteKey } : {}),
                     overrides, replyViaTarget, _skipInsert: true,
+                    // Marks the completion so a channel can answer a turn whose
+                    // original requester is gone — a boot-drained item has no
+                    // listener left (#407). Ordinary turns must NOT carry this,
+                    // or the dispatch path and the fallback both post.
+                    _fromQueue: true,
                 });
                 const task = isResetIntent(combined)
                     ? orchestrateReset(scopedMeta)
@@ -543,7 +548,7 @@ export function createQueueController(
                 } catch (err: unknown) {
                     const msg = (err as Error).message;
                     console.error('[queue:orchestrate]', msg);
-                    deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, ...(eventScope || {}) });
+                    deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, fromQueue: true, ...(eventScope || {}) });
                     // The pipeline threw before reaching its own settle site, so
                     // this is the last place that can answer the caller.
                     settleOnce(requestId, 'failed', { error: msg });
@@ -554,7 +559,7 @@ export function createQueueController(
             if (!inserted) {
                 messageQueue.unshift(...runItems);
             } else {
-                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget,
+                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget, fromQueue: true,
                     ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
                 // Re-queued items settle on their eventual run; these do not get
                 // another chance, so answer the caller here.

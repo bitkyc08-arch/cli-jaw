@@ -136,6 +136,9 @@ function installDiscordTargetReplyForwarder(): void {
     addBroadcastListener((type, data) => {
         if (type !== 'orchestrate_done' || data["origin"] !== 'discord' || !data["text"]) return;
         if (data["error"]) return;
+        // Queued turns only: an ordinary reply is posted by the dispatch path
+        // that is still awaiting it, and answering here too would double-post.
+        if (data["fromQueue"] !== true) return;
         const target = data["target"] as RemoteTarget | undefined;
         if (!target || target.channel !== 'discord' || !target.targetId) return;
         if (data["requestId"] && pendingQueueRequestIds.has(String(data["requestId"]))) return;
