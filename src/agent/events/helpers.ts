@@ -50,7 +50,19 @@ export function emitAgentTool(
     tool: object,
     empTag: Record<string, unknown>,
 ): void {
-    const payload = { agentId: agentLabel, ...tool, ...empTag, startedAt: ctx.runStartedAt };
+    const payload = {
+        agentId: agentLabel,
+        ...tool,
+        ...empTag,
+        startedAt: ctx.runStartedAt,
+        // Who this event belongs to. A subscriber that cannot answer that question
+        // has to take every agent_tool on the bus, which is how one channel's
+        // command lines ended up in another channel's progress message (#398).
+        // Stamped here rather than left to bus.ts: that stamp needs multi-session
+        // ON and a live ALS frame, and a child's stdout callback guarantees neither.
+        ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+        ...(ctx.origin ? { origin: ctx.origin } : {}),
+    };
     if (agentLabel && empTag["isEmployee"] === true) {
         updateWorkerTools(agentLabel, ctx.toolLog);
     }

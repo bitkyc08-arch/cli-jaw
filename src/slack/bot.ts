@@ -157,7 +157,16 @@ async function slackOrchestrate(
                 ).catch(() => null);
                 const progressHandler = (type: string, data: Record<string, unknown>) => {
                     if (!progress || type !== 'agent_tool') return;
-                    if (data['origin'] && data['origin'] !== 'slack') return;
+                    // Only this run's events. The old test was `origin !== 'slack'`,
+                    // which every concurrent Slack run passes, so two channels each
+                    // received the other's tool log — and a tool log carries command
+                    // lines and paths, so that crossed a channel boundary people set
+                    // up precisely to separate access (#398).
+                    //
+                    // An event with no requestId cannot prove which run it belongs to.
+                    // Letting it through would restore the old behaviour, so it is
+                    // dropped; emitAgentTool and the jwc mapper both stamp the field.
+                    if (data['requestId'] !== ctx.requestId) return;
                     const line = statusFromToolEvent(data, t('slack.progress.working', {}, currentLocale()));
                     if (line) progress.update(line);
                 };
