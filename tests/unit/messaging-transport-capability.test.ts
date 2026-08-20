@@ -65,3 +65,29 @@ test('classic settings surface references transport status row outside hidden pa
     assert.ok(settingsChannel.includes('refreshTransportStatusRow'), 'settings channel loader must refresh transport row');
     assert.ok(transportRow.includes("t('settings.channel.sendCapable')"), 'transport row must render send-capable label');
 });
+
+// The malformed sentinel is one element long, so a bare .length check read it as
+// a configured target: /api/health answered sendCapable:true while an untargeted
+// send died with "No target available for slack" (#406).
+test('an unreadable slack allowlist is not a send target', async () => {
+    const { settings } = await import('../../src/core/config.js');
+    const previousSlack = settings.slack;
+    const previousMessaging = settings.messaging;
+    try {
+        settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
+        for (const bad of ['C_ESCAPE', null, ['']]) {
+            settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: bad };
+            const cap = getTransportCapability('slack');
+            assert.equal(
+                cap.sendCapable, false,
+                `health must not vouch for an allowlist the gate denies: ${JSON.stringify(bad)}`,
+            );
+        }
+        // A readable list is still a target.
+        settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: ['C_REAL'] };
+        assert.equal(getTransportCapability('slack').sendCapable, true);
+    } finally {
+        settings.slack = previousSlack;
+        settings.messaging = previousMessaging;
+    }
+});

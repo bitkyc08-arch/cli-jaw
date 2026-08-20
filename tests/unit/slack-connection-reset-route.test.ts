@@ -348,4 +348,3 @@ test('a narrowing write succeeds and leaves an audit entry naming both lists', a
     assert.deepEqual(narrow['to'], ['C1']);
     assert.ok(Array.isArray(narrow['from']), 'the entry must carry the previous list');
 });
-

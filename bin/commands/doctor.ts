@@ -897,6 +897,14 @@ function buildSlackStatus() {
     if (!sc.enabled) { status = 'disabled'; }
     else if (!botTokenPresent) { status = 'missing_bot_token'; degradedReasons.push('bot token missing'); }
     else if (!appTokenPresent) { status = 'missing_app_token'; degradedReasons.push('app-level token missing — outbound only, no inbound events'); }
+    else if (channelScope === 'malformed') {
+        // Not a missing setting — a present one the gate cannot read, so it
+        // denies every channel. Tokens alone used to carry this to status "ok",
+        // which is the same silence #406 is about: the bot hears nothing and
+        // doctor says it is fine.
+        status = 'malformed_channel_ids';
+        degradedReasons.push('slack.channelIds is not a list of conversation ids — every channel is denied; set it to [] to allow all conversations');
+    }
 
     const enabledChannels = getEnabledChannels(s || {});
     const channelConsistent = !enabledChannels.includes('slack') || !!sc.enabled;

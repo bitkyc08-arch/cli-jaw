@@ -1,5 +1,5 @@
 import { settings } from '../core/config.js';
-import { readSlackAllowlist, shouldAttachSlack } from '../slack/events.js';
+import { MALFORMED_SLACK_ALLOWLIST, readSlackAllowlist, shouldAttachSlack } from '../slack/events.js';
 import {
     getHomeChannel,
     getRunningMessagingTransports,
@@ -66,7 +66,13 @@ function slackHasSendTarget(): boolean {
     const sc = settings["slack"];
     // Through the gate's reader: a raw string like "C1" has a truthy .length and
     // used to read as a configured target the gate was refusing outright (#406).
-    if (readSlackAllowlist(sc?.channelIds).length) return true;
+    //
+    // The sentinel has a truthy .length too, and it is not a conversation. Health
+    // would answer sendCapable:true while an untargeted send died with "No target
+    // available for slack", so the malformed case falls through to the
+    // last-active slot instead of vouching for a channel nobody can address.
+    const ids = readSlackAllowlist(sc?.channelIds);
+    if (ids.length && ids[0] !== MALFORMED_SLACK_ALLOWLIST) return true;
     const messaging = settings["messaging"] as Record<string, unknown> | undefined;
     const last = messaging?.['lastActive'] as Record<string, unknown> | undefined;
     const slackLast = last?.['slack'] as { targetId?: string } | undefined;

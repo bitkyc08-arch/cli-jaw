@@ -140,6 +140,13 @@ test('doctor no longer degrades on an empty slack allowlist', () => {
         /channelIdsConfigured: channelIds\.length > 0/,
         'channelIdsConfigured must survive as a derived alias, not be dropped silently',
     );
+    // A present-but-unreadable list denies every channel. Carrying that to
+    // status "ok" on tokens alone is the same silence #406 is about.
+    assert.match(
+        block,
+        /channelScope === 'malformed'/,
+        'the status ladder must not pass an allowlist the gate cannot read',
+    );
 });
 
 // ─── source-of-truth docs ───────────────────────────
@@ -224,6 +231,12 @@ test('every allowlist reader agrees with the gate', async () => {
     const atLimit = Array.from({ length: SLACK_ALLOWLIST_MAX }, (_, i) => `C${i}`);
     assert.equal(readSlackAllowlist(atLimit).length, SLACK_ALLOWLIST_MAX);
     assert.deepEqual(readSlackAllowlist([...atLimit, 'C_OVER']), [MALFORMED_SLACK_ALLOWLIST]);
+
+    // The sentinel is a denial marker, not a conversation. It must not reach a
+    // reporting surface as if it were one.
+    for (const bad of [null, [''], 'C1']) {
+        assert.deepEqual(slackChannelScope(bad).ids, [], 'the sentinel must not leak into a report');
+    }
 });
 
 // The slash-command path used to parse the allowlist itself, so a malformed
