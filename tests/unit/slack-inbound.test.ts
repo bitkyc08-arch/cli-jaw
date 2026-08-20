@@ -736,11 +736,13 @@ test('readSlackAllowlist never widens on a malformed value', async () => {
 
     // Absent means 'every conversation' — the shipped default.
     assert.deepEqual(readSlackAllowlist(undefined), []);
-    assert.deepEqual(readSlackAllowlist(null), []);
     assert.equal(isConversationAllowed('C1', readSlackAllowlist(undefined), false), true);
 
     // Malformed must DENY channels, not allow them all.
-    for (const bad of ['C1', 42, { 0: 'C1' }, ['C1', 7]]) {
+    // `null` and an all-blank list belong here, not with absence: the route
+    // refuses to write either, so reading them as "every conversation" would be
+    // a widening from a value nobody was allowed to set.
+    for (const bad of ['C1', 42, null, { 0: 'C1' }, ['C1', 7], [''], ['   '], ['', '  ']]) {
         const ids = readSlackAllowlist(bad);
         assert.deepEqual(ids, [MALFORMED_SLACK_ALLOWLIST], `not parsed as a list: ${JSON.stringify(bad)}`);
         assert.equal(
@@ -759,6 +761,10 @@ test('readSlackAllowlist never widens on a malformed value', async () => {
 
     // Empty entries are dropped, not treated as a channel.
     assert.deepEqual(readSlackAllowlist(['C1', '', '   ']), ['C1']);
+
+    // An explicitly empty list is the one way to say 'every conversation'.
+    assert.deepEqual(readSlackAllowlist([]), []);
+    assert.equal(isConversationAllowed('C1', readSlackAllowlist([]), false), true);
 });
 
 
@@ -799,4 +805,3 @@ test('preflight logs the conversation the allowlist excluded', async () => {
         settings.slack = prevSlack;
     }
 });
-

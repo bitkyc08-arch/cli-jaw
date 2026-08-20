@@ -120,13 +120,13 @@ cli-jaw/
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
 │   ├── messaging/            ← 통합 메시징 런타임 (30 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
-│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (339L)
+│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (362L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
 │   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (124L) ✨
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (276L) ✨
 │   │   ├── redact.ts         ← 채널 크리덴셜 마스킹 (Slack/TG/Discord 토큰 + URL 경로 capability) (600L) ✨
 │   │   ├── chunk.ts          ← 공유 메시지 분할 (무손실 + 서로게이트 안전 + 펜스/언어태그 보존, 단 delimiter가 한도 이내일 때) (389L) ✨
-│   │   ├── channel-health.ts ← 채널 헬스 체크 helper + additive ingress/metrics snapshot (157L) ✨
+│   │   ├── channel-health.ts ← 채널 헬스 체크 helper + additive ingress/metrics snapshot (159L) ✨
 │   │   ├── channel-validate.ts ← 온보딩 마법사 라이브 크리덴셜 검증 (telegram getMe / discord users@me / slack auth.test+connections.open, 토큰 비로깅) (127L) ✨
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (49L)
@@ -259,7 +259,7 @@ cli-jaw/
 │   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (862L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (226L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (66L)
-│   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (272L)
+│   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (283L)
 │   │   ├── thread-tracker.ts ← 참여 스레드 영속 추적 (mention/봇응답 마킹, 캡드 셋, 무멘션 스레드 연속 대화 게이트 지원) (249L)
 │   │   ├── enrichment-cache.ts ← 공용 동시성 프리미티브 (TTL/cap 캐시, 원인별 억제, 능력 잠금 단일 재탐침, in-flight 합류, 집계 취소, 세대 무효화) (425L)
 │   │   ├── conversation.ts   ← 대화/스레드 컨텍스트 (conversations.info + replies, 참여자는 author 유도, method별 억제·시작률) (347L)

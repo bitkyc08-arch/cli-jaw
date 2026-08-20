@@ -141,7 +141,12 @@ export const MALFORMED_SLACK_ALLOWLIST = '\u0000malformed-slack-allowlist';
 export const SLACK_ALLOWLIST_MAX = 1000;
 
 export function readSlackAllowlist(raw: unknown): string[] {
-    if (raw === undefined || raw === null) return [];
+    // `undefined` is absence — the shipped default is an empty list, so nothing
+    // was ever configured and every conversation is allowed. `null` is not the
+    // same thing: it is a value someone wrote, the route refuses to write it
+    // (`invalidSlackChannelIds`), and reading it as "allow everything" is
+    // exactly the widening this reader exists to prevent (#406).
+    if (raw === undefined) return [];
     if (!Array.isArray(raw)) return [MALFORMED_SLACK_ALLOWLIST];
     if (raw.length > SLACK_ALLOWLIST_MAX) return [MALFORMED_SLACK_ALLOWLIST];
     const seen = new Set<string>();
@@ -156,6 +161,12 @@ export function readSlackAllowlist(raw: unknown): string[] {
         seen.add(id);
         ids.push(id);
     }
+    // A list that named conversations and resolved to none of them is not the
+    // empty default. `[""]` would collapse to "every conversation" — a WIDENING
+    // from a write the route rejects outright. Dropping blanks beside real ids
+    // stays safe because the result still narrows; only an all-blank list has to
+    // fail closed (#406).
+    if (raw.length > 0 && ids.length === 0) return [MALFORMED_SLACK_ALLOWLIST];
     return ids;
 }
 

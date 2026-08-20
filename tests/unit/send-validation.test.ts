@@ -487,3 +487,62 @@ test('normalizeChannelSendRequest rejects an unknown interactive fallback', asyn
         /invalid_interactive_fallback/,
     );
 });
+
+// ─── outbound reads the allowlist the way the gate does ──
+
+// The inbound gate refused every channel on a malformed allowlist while
+// validateTarget read `undefined.length`, called it "nothing configured", and
+// let an explicit target through. Two readers, two verdicts, on the same
+// setting (#406).
+test('a malformed slack allowlist denies outbound targets too', async () => {
+    const { settings } = await import('../../src/core/config.js');
+    const { validateTarget, validateExplicitChatId } = await import('../../src/messaging/send.js');
+    const previousSlack = settings.slack;
+    try {
+        for (const bad of ['C_ESCAPE', null, [''], Array.from({ length: 1001 }, (_, i) => `C${i}`)]) {
+            settings.slack = { ...(settings.slack || {}), channelIds: bad };
+            assert.equal(
+                validateExplicitChatId('slack', 'C_ESCAPE'), false,
+                `an unreadable allowlist must not admit a channel: ${JSON.stringify(bad)?.slice(0, 40)}`,
+            );
+            // DMs stay self-authorizing, as inbound does.
+            assert.equal(validateExplicitChatId('slack', 'D_USER'), true);
+            assert.equal(
+                validateTarget(
+                    { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ESCAPE' },
+                    'slack',
+                ),
+                false,
+            );
+        }
+    } finally {
+        settings.slack = previousSlack;
+    }
+});
+
+test('a malformed slack allowlist yields no configured fallback target', async () => {
+    const { settings } = await import('../../src/core/config.js');
+    const { sendChannelOutput, registerSendTransport } = await import('../../src/messaging/send.js');
+    const { clearTargetState } = await import('../../src/messaging/runtime.js');
+    const previousSlack = settings.slack;
+    const previousChannel = settings.channel;
+    const requests: Array<Record<string, any>> = [];
+    try {
+        clearTargetState();
+        settings.channel = 'slack';
+        // The sentinel is not a conversation id. Falling back to `ids[0]` without
+        // checking would have addressed it as one.
+        settings.slack = { ...(settings.slack || {}), channelIds: 'C_ESCAPE' };
+        registerSendTransport('slack', async req => {
+            requests.push(structuredClone(req));
+            return { ok: true };
+        });
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'hello' });
+        assert.equal(result.ok, false, 'an unreadable allowlist is not a send target');
+        assert.equal(requests.length, 0, 'nothing may reach the transport');
+    } finally {
+        clearTargetState();
+        settings.slack = previousSlack;
+        settings.channel = previousChannel;
+    }
+});

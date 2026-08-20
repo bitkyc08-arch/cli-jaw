@@ -1,5 +1,5 @@
 import { settings } from '../core/config.js';
-import { shouldAttachSlack } from '../slack/events.js';
+import { readSlackAllowlist, shouldAttachSlack } from '../slack/events.js';
 import {
     getHomeChannel,
     getRunningMessagingTransports,
@@ -64,7 +64,9 @@ function discordHasSendTarget(): boolean {
 
 function slackHasSendTarget(): boolean {
     const sc = settings["slack"];
-    if (sc?.channelIds?.length) return true;
+    // Through the gate's reader: a raw string like "C1" has a truthy .length and
+    // used to read as a configured target the gate was refusing outright (#406).
+    if (readSlackAllowlist(sc?.channelIds).length) return true;
     const messaging = settings["messaging"] as Record<string, unknown> | undefined;
     const last = messaging?.['lastActive'] as Record<string, unknown> | undefined;
     const slackLast = last?.['slack'] as { targetId?: string } | undefined;
