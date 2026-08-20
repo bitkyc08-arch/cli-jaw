@@ -329,7 +329,7 @@ cli-jaw/
 │   │   ├── traces.ts         ← public trace summary/events read routes (80L)
 │   │   └── browser.ts        ← 브라우저 API 라우트 + `cdpPort(req)` 포트 우선순위 + primitive/tab/debug/doctor/cleanup/web-ai routes (489L)
 │   ├── security/             ← 보안 입력 검증 (4 files)
-│   │   ├── path-guards.ts    ← assertSkillId, assertFilename, assertMemoryRelPath, assertSendFilePath, safeResolveUnder (323L)
+│   │   ├── path-guards.ts    ← assertSkillId, assertFilename, assertMemoryRelPath, assertSendFilePath, safeResolveUnder (330L)
 │   │   ├── decode.ts         ← decodeFilenameSafe (21L)
 │   │   ├── network-acl.ts    ← isPrivateIP, isAllowedHost, isAllowedOrigin, originMatchesHost, extractHost (131L)
 │   │   └── security-audit-log.ts ← SQLite-backed security audit event log (162L) ✨
@@ -451,7 +451,7 @@ cli-jaw/
 │       ├── history.ts        ← 채팅 히스토리 검색 CLI (65L)
 │       ├── init.ts           ← 초기화 마법사 + --safe/--dry-run + --help (516L)
 │       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (394L)
-│       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1124L)
+│       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1131L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
 │       ├── status.ts         ← 서버 상태 (--json) (86L)
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)

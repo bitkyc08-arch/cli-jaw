@@ -306,7 +306,7 @@ export function sendFileAllowedRoots(
         process.env["CLI_JAW_HOME"] || process.env["JAW_HOME"] || p.join(os.homedir(), '.cli-jaw'),
     );
     push(env.realpath(jawHome));
-    if (workingDir) push(env.realpath(p.resolve(workingDir)));
+    if (typeof workingDir === 'string' && workingDir) push(env.realpath(p.resolve(workingDir)));
     // Canonical-to-canonical. The previous form required
     // `realpath(dir) === resolve(dir)`, which silently dropped every project
     // root on Windows whose stored casing differed from the on-disk casing,
@@ -318,6 +318,13 @@ export function sendFileAllowedRoots(
     // candidate is already canonical, so both sides must be. A root that is a
     // symlink is therefore evaluated at its target, which is the location the
     // operator actually granted by configuring it.
-    for (const dir of projectDirs ?? []) push(env.realpath(p.resolve(dir)));
+    // Type-checked per entry, not trusted from the caller: these come from raw
+    // settings JSON, where an entry can be a number. `path.resolve(42)` throws,
+    // and this function is called from `jaw doctor` — the one command that has
+    // to keep working when the settings are broken (#404).
+    for (const dir of projectDirs ?? []) {
+        if (typeof dir !== 'string' || !dir) continue;
+        push(env.realpath(p.resolve(dir)));
+    }
     return roots;
 }

@@ -295,12 +295,13 @@ test('PG-026: the scope did not widen — JAW_HOME in, everything else out', () 
         // intact. Each expectation is asserted — a case listed but not checked
         // is a test that reports coverage it does not have.
         //
-        // `:hidden` is an alternate data stream only on Windows; on POSIX it is
-        // an ordinary filename that does not exist, so the honest expectation
-        // here is path_not_resolvable. The ADS rule has its own owner in
+        // `:hidden` is an alternate data stream only on Windows, where the guard
+        // rejects it up front as `path_stream_denied`. On POSIX it is an ordinary
+        // filename that does not exist, so the honest expectation is
+        // `path_not_resolvable`. The ADS rule has its own owner in
         // path-guards-windows.test.ts, where the platform is injected.
         const streamSuffixCase = process.platform === 'win32'
-            ? ['path_not_allowed', 403] as const
+            ? ['path_stream_denied', 403] as const
             : ['path_not_resolvable', 403] as const;
         for (const [input, expectedMessage, expectedStatus] of [
             [path.join(home, 'missing.png'), 'path_not_resolvable', 403],
@@ -332,7 +333,30 @@ test('PG-027: every guard refusal keeps its status and now names its code', () =
         try { run(); } catch (e) { thrown = e; }
         const err = thrown as { message?: string; statusCode?: number; code?: string } | undefined;
         assert.ok(err, `${code} case must throw`);
+        // The declared value, not `err.code === err.message`: comparing the
+        // object to itself passes even when both are wrong.
+        assert.equal(err!.code, code, 'the code must name this refusal');
+        assert.equal(err!.message, code, 'and match the message it has always had');
         assert.equal(err!.statusCode, status, `${code} must stay ${status}`);
-        assert.equal(err!.code, err!.message, 'code and message name the same refusal');
+    }
+});
+
+// The diagnostic has to survive the settings it is diagnosing. `projectDirs`
+// comes from raw JSON, and a numeric entry made `path.resolve` throw — taking
+// the whole `jaw doctor --json` report down with it (#404).
+test('PG-028: a malformed projectDirs entry is skipped, not thrown on', () => {
+    const good = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-pg028-'));
+    try {
+        const roots = sendFileAllowedRoots(
+            undefined,
+            [42, null, '', good] as unknown as string[],
+        );
+        assert.ok(roots.includes(fs.realpathSync(good)), 'the usable root still counts');
+        assert.equal(roots.length, 2, `only JAW_HOME and the good root; saw ${JSON.stringify(roots)}`);
+
+        // A non-string workingDir is the same hazard from the other argument.
+        assert.doesNotThrow(() => sendFileAllowedRoots(7 as unknown as string, null));
+    } finally {
+        fs.rmSync(good, { recursive: true, force: true });
     }
 });

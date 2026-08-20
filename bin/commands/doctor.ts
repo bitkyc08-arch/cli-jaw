@@ -972,15 +972,22 @@ function buildDiscordStatus() {
  */
 function buildMessagingSendScope() {
     const cfg = loadedSettings();
-    const sendRoots = sendFileAllowedRoots(cfg.workingDir, cfg.projectDirs ?? null);
-    const jawHomeRoot = sendFileAllowedRoots(undefined, null)[0];
-    return {
-        sendRoots,
-        // Identity, not just count: a lone wide `workingDir` is not the narrow
-        // shipped default, and calling it narrow would send someone looking for
-        // a problem that is not there.
-        sendScopeNarrow: sendRoots.length === 1 && sendRoots[0] === jawHomeRoot,
-    };
+    // This runs OUTSIDE check(), so an exception here takes down the whole JSON
+    // report rather than failing one line — and the settings it reads are the
+    // very thing a broken install would have mangled (#404).
+    try {
+        const sendRoots = sendFileAllowedRoots(cfg.workingDir, cfg.projectDirs ?? null);
+        const jawHomeRoot = sendFileAllowedRoots(undefined, null)[0];
+        return {
+            sendRoots,
+            // Identity, not just count: a lone wide `workingDir` is not the
+            // narrow shipped default, and calling it narrow would send someone
+            // looking for a problem that is not there.
+            sendScopeNarrow: sendRoots.length === 1 && sendRoots[0] === jawHomeRoot,
+        };
+    } catch (e) {
+        return { sendRoots: [], sendScopeNarrow: false, error: (e as Error).message };
+    }
 }
 
 function buildSlackStatus() {
