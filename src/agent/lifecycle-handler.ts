@@ -10,7 +10,7 @@ import { persistMainSession, type SessionOwnerToken } from './session-persistenc
 import { resolveSessionBucket } from './args.js';
 import { buildContinuationPrompt, type SmokeDetectionResult } from './smoke-detector.js';
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
-import { classifyExitError } from './error-classifier.js';
+import { classifyExitError, shouldAnnounceStallTruncation, STALL_TRUNCATION_NOTICE } from './error-classifier.js';
 import { backfillGrokTraceTools } from './grok-trace-backfill.js';
 import { shouldClearHighTurnSessionBucket, shouldUseTurnCountRefresh } from './spawn/resume.js';
 import { recordError, clearErrors } from './alert-escalation.js';
@@ -591,6 +591,27 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             finalContent = `⏹️ [interrupted]\n\n${finalContent}`;
             if (traceText) traceText = `⏹️ [interrupted]\n${traceText}`;
             console.log(`[jaw:steer] saving interrupted output (${finalContent.length} chars)`);
+        }
+
+        // A watchdog kill that produced PARTIAL output lands in this branch, not
+        // the stall branch below, so its reason never reached the channel: the
+        // reply simply stopped mid-thought and read as the model trailing off
+        // (#405).
+        //
+        // The condition is `stallReason` alone, not `stallReason && wasKilled`.
+        // The watchdog callback sets `stallReason` and kills the process but
+        // never writes `killReasons`, and `wasKilled` is computed purely from
+        // `consumeKillReason()` — so `wasKilled` is false for exactly the case
+        // this line exists to cover. `stallReason` has no other writer, which is
+        // what makes it sufficient by itself.
+        //
+        // The internal reason (`lastProgress=output x302`) stays out of it: that
+        // is our diagnostic, not something the reader can act on. The server log
+        // already has all of it.
+        if (shouldAnnounceStallTruncation({
+            stallReason: ctx.stallReason, wasSteer, mainManaged, internal: !!opts.internal,
+        })) {
+            finalContent = `${finalContent}\n\n${STALL_TRUNCATION_NOTICE}`;
         }
 
         if (mainManaged && !opts.internal) {

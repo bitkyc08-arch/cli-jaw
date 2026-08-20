@@ -89,6 +89,18 @@ interface DoctorSettings {
     discord?: DiscordSettings;
     slack?: SlackSettings;
     network?: NetworkSettings;
+    /**
+     * Watchdog deadlines. Per-CLI blocks live under the same object keyed by CLI
+     * name (`agentTimeout.cursor.absoluteMs`) and override the top level, which
+     * is why the index signature is here.
+     */
+    agentTimeout?: {
+        absoluteMs?: number;
+        firstProgressMs?: number;
+        idleMs?: number;
+        absoluteHardCapMs?: number;
+        [cli: string]: unknown;
+    };
 }
 
 const { values } = parseArgs({
@@ -487,6 +499,30 @@ check('Channel consistency', () => {
         throw new Error(`WARN: ${issues.join('; ')}`);
     }
     return 'consistent';
+});
+
+// 6f. Agent watchdog deadline
+check('에이전트 타임아웃', () => {
+    const activeCli = settings?.cli || '';
+    // Mirrors the runtime merge in src/agent/spawn.ts, both typeof guards
+    // included: these values come from raw settings JSON, where either level can
+    // be something other than an object.
+    const raw = (settings as Record<string, unknown> | undefined)?.['agentTimeout'];
+    const gCfg = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const cRaw = gCfg[activeCli];
+    const cCfg = cRaw && typeof cRaw === 'object' ? cRaw as Record<string, unknown> : {};
+    const merged = { ...gCfg, ...cCfg };
+    // Not `abs ? a : b`: a configured 0 would report as the default. The runtime
+    // does not clamp it, so doctor should not pretend it is unset.
+    const abs = typeof merged['absoluteMs'] === 'number' ? merged['absoluteMs'] : undefined;
+    // The watchdog ends a turn that stops reporting progress. Nothing told the
+    // operator this was tunable, so a 933s research turn read as the model
+    // giving up (#405). Reading the per-CLI override matters: an instance with
+    // only `agentTimeout.cursor.absoluteMs` set would otherwise be told "600s
+    // default", which is false.
+    return abs !== undefined
+        ? `${Math.round(abs / 1000)}초 (${activeCli || '전역'} 유효값, settings.agentTimeout)`
+        : '600초 (기본값) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정';
 });
 
 // 7. Skills directory

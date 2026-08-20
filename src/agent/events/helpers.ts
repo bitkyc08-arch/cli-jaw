@@ -378,3 +378,17 @@ export function extractText(content: unknown) {
     }
     return '';
 }
+/**
+ * Which runtimes report liveness through parsed stream-json rather than raw
+ * output.
+ *
+ * cursor was missing here, so its turns fell back to the watchdog's "more than
+ * ten bytes came out" heuristic — the same signal a progress bar produces. A
+ * real 933s turn died with `lastProgress=output x302`: three hundred weak
+ * signals and not one structured (#405).
+ */
+export function streamJsonMarksProgress(cli: string, effectiveProvider?: string): boolean {
+    return cli === 'cursor'
+        || cli === 'grok'
+        || (cli === 'ai-e' && effectiveProvider === 'grok');
+}

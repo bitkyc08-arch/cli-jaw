@@ -55,3 +55,35 @@ export function classifyExitError(
 
     return { is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, message };
 }
+
+/**
+ * The one line a reader gets when a watchdog kill produced partial output.
+ */
+export const STALL_TRUNCATION_NOTICE =
+    '⏱️ 시간이 초과되어 여기서 중단했습니다. 범위를 좁혀 다시 요청해 주세요.';
+
+/**
+ * Should a turn that DID produce output say it was cut short?
+ *
+ * A watchdog kill with partial output lands in the output branch of the exit
+ * handler, not the stall branch, so its reason never reached the channel: the
+ * reply stopped mid-thought and read as the model trailing off (#405).
+ *
+ * `stallReason` alone, deliberately — not `stallReason && wasKilled`. The
+ * watchdog callback sets `stallReason` and kills the process but never writes
+ * `killReasons`, while `wasKilled` is computed purely from
+ * `consumeKillReason()`, so `wasKilled` is false for exactly the case this
+ * covers. `stallReason` has no other writer, which is what makes it enough.
+ */
+export function shouldAnnounceStallTruncation(input: {
+    stallReason: string | null | undefined;
+    wasSteer: boolean;
+    mainManaged: boolean;
+    internal: boolean;
+}): boolean {
+    // A user who pressed stop knows why it stopped; that is not a timeout.
+    if (!input.stallReason) return false;
+    if (input.wasSteer) return false;
+    // Sub-agent and internal runs have no reader to tell.
+    return input.mainManaged && !input.internal;
+}

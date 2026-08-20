@@ -97,7 +97,7 @@ import {
     type AgyBootstrapEnvelope,
 } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
-import { appendAssistantRawText, appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
+import { appendAssistantRawText, appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace, streamJsonMarksProgress } from './events/helpers.js';
 import {
     captureKiroSessionIdAfterExit,
     finalizeKiroFullText,
@@ -2868,7 +2868,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             eventType: fieldString(asCliEventRecord(raw).type, '<no-type>'),
             raw,
         });
-        if (cli === 'grok' || (cli === 'ai-e' && ctx.effectiveProvider === 'grok')) {
+        // A parsed stream-json line is the runtime saying it is still working.
+        // Reached only after JSON.parse succeeded above, so this is a real event
+        // and not a heartbeat of bytes (#405).
+        if (streamJsonMarksProgress(cli, ctx.effectiveProvider)) {
             ctx.stallWatchdog?.markProgress();
         }
         // claude-e / ai-e Claude: intercept jaw_runtime events BEFORE discriminator
