@@ -10,6 +10,7 @@ import {
 } from '../../src/core/config.ts';
 import { addBroadcastListener, removeBroadcastListener } from '../../src/core/bus.ts';
 import { reloadSettingsFromDisk, startSettingsWatch } from '../../src/core/settings-watch.ts';
+import { log } from '../../src/core/logger.ts';
 
 type Captured = { type: string; data: Record<string, unknown> };
 
@@ -271,5 +272,43 @@ test('external reload strips wiki lifecycle fields, warns, and keeps promptDiges
         assert.ok((change?.data['changedKeys'] as string[]).includes('wiki'));
     } finally {
         console.warn = previousWarn;
+    }
+}));
+
+// `jaw slack setup --channel-ids` writes settings.json and THEN hot-notifies, so
+// on a 300ms debounce this reload can land before the PUT — after which the route
+// sees no change left to describe and the narrowing goes unrecorded. An agent
+// editing settings.json by hand never reaches the route at all, which is how
+// #406 happened with nothing in the log.
+test('SWA-SLACK-01: a narrowing that arrives through the file is still recorded', () => withCapturedBroadcasts(() => {
+    const lines: string[] = [];
+    const previousWarn = log.warn;
+    (log as { warn: unknown }).warn = (...args: unknown[]) => { lines.push(args.join(' ')); };
+    try {
+        replaceSettings(
+            { ...settings, slack: { ...(settings['slack'] || {}), channelIds: ['C_A', 'C_B'] } },
+            getSettingsPersistenceShape(),
+        );
+        const reloaded = reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({ slack: { channelIds: ['C_A'] } }),
+            lastSavedRaw: null,
+        });
+        assert.equal(reloaded, true);
+        assert.deepEqual(settings['slack'].channelIds, ['C_A']);
+        assert.ok(
+            lines.some(l => l.includes('[slack:allowlist]') && l.includes('C_A')),
+            `the narrowing must be logged; saw: ${JSON.stringify(lines)}`,
+        );
+
+        // A widening is not the failure mode this records, and logging every
+        // write would bury the one line that matters.
+        lines.length = 0;
+        reloadSettingsFromDisk({
+            readImpl: () => JSON.stringify({ slack: { channelIds: ['C_A', 'C_B'] } }),
+            lastSavedRaw: null,
+        });
+        assert.deepEqual(lines.filter(l => l.includes('[slack:allowlist]')), []);
+    } finally {
+        (log as { warn: unknown }).warn = previousWarn;
     }
 }));

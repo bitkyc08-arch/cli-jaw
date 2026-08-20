@@ -16,6 +16,7 @@ import {
 } from './config.js';
 import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
+import { classifyAllowlistChange, recordAllowlistNarrowing } from '../slack/allowlist-audit.js';
 
 export const SETTINGS_WATCH_DEBOUNCE_MS = 300;
 const SERVER_OWNED_SETTINGS_KEYS = [
@@ -112,9 +113,21 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
     }
     // Same normalize/migrate path as boot-time load; merge onto current
     // in-memory settings so runtime-only keys survive a partial file.
+    // Classified BEFORE the merge, while the previous list is still readable.
+    //
+    // The route records this too, but it cannot be the only place: `jaw slack
+    // setup --channel-ids` writes settings.json and THEN hot-notifies, so on a
+    // 300ms debounce this reload can land first and the route then finds nothing
+    // left to describe. An agent editing settings.json by hand never reaches the
+    // route at all — which is how #406 happened unrecorded.
+    const allowlistChange = classifyAllowlistChange(
+        (externalPatch["slack"] as Record<string, unknown> | undefined)?.["channelIds"],
+        settings["slack"]?.channelIds,
+    );
     const merged = mergeSettingsPatch(settings, externalPatch);
     merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
     replaceSettings(migrateSettings(merged), sanitized.persistenceShape);
+    recordAllowlistNarrowing(allowlistChange, 'settings.json');
     broadcast('settings_change', {
         changedKeys: Object.keys(externalPatch),
         cli: settings["cli"],

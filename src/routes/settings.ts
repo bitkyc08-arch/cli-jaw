@@ -31,7 +31,8 @@ import { getCachedCliStatus, getCachedCliStatusForced } from '../cli/cli-status.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
-import { MALFORMED_SLACK_ALLOWLIST, SLACK_ALLOWLIST_MAX, readSlackAllowlist } from '../slack/events.js';
+import { SLACK_ALLOWLIST_MAX } from '../slack/events.js';
+import { classifyAllowlistChange, recordAllowlistNarrowing } from '../slack/allowlist-audit.js';
 import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
 import { log } from '../core/logger.js';
@@ -135,50 +136,11 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
         : {};
 }
 
-export type AllowlistChange = {
-    kind: 'narrow' | 'widen' | 'clear';
-    from: string[];
-    to: string[];
-};
-
-
-/**
- * How a settings write moves `slack.channelIds`.
- *
- * That list is the inbound allowlist: empty allows every conversation, non-empty
- * allows exactly those. Narrowing it can cut off the surface the writer is
- * speaking through, and an agent did exactly that — after which nobody could
- * tell what had happened, because nothing recorded it (#406).
- *
- * Refusing the write is not an option: `jaw slack setup --channel-ids` reaches
- * the running server through this same PUT (slack/hot-notify.ts), so a block
- * here would break the supported way to narrow on purpose. Recording it is what
- * was missing.
- */
-export function classifyAllowlistChange(next: unknown, current: unknown): AllowlistChange | null {
-    if (!Array.isArray(next)) return null;
-    // Through the gate's reader, or the record names the wrong direction. Raw
-    // comparison called `[" C1 "] -> ["C1"]` a narrowing when the reach is
-    // identical, and — worse — called RECOVERY from a malformed value (which
-    // denies everything) a narrowing too, when it is the widest move there is.
-    const to = readSlackAllowlist(next);
-    const from = readSlackAllowlist(current);
-    const denied = (ids: string[]) => ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST;
-    if (denied(to)) {
-        // The route refuses such a write, so this is unreachable through PUT.
-        // Classifying it as a narrowing anyway would be wrong in the other
-        // direction — it denies every channel — so say nothing rather than lie.
-        return null;
-    }
-    // From "nothing gets through" every write is a widening, including one that
-    // names a single channel.
-    if (denied(from)) return { kind: 'widen', from: [], to };
-    if (to.length === 0) return from.length === 0 ? null : { kind: 'clear', from, to };
-    if (from.length === 0) return { kind: 'narrow', from, to };
-    if (from.some(id => !to.includes(id))) return { kind: 'narrow', from, to };
-    if (to.length > from.length) return { kind: 'widen', from, to };
-    return null;
-}
+// classifyAllowlistChange and recordAllowlistNarrowing live in
+// src/slack/allowlist-audit.ts: the settings FILE watcher records the same
+// change, and it must not import an Express route module to do it (#406).
+export { classifyAllowlistChange } from '../slack/allowlist-audit.js';
+export type { AllowlistChange } from '../slack/allowlist-audit.js';
 
 /**
  * Reject a `slack.channelIds` write that is not a list of ids.
@@ -318,17 +280,8 @@ export function registerSettingsRoutes(
         try {
             const keys = Object.keys(req.body || {}).filter(k => !['stt', 'jawCeo'].includes(k));
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), { keys });
-            if (allowlistChange?.kind === 'narrow') {
-                log.warn(`[slack:allowlist] narrowed to ${allowlistChange.to.length} channel(s): `
-                    + `${allowlistChange.to.join(', ')} — conversations outside this list will be ignored`);
-                getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
-                    keys: ['slack.channelIds'],
-                    action: 'narrow',
-                    from: allowlistChange.from,
-                    to: allowlistChange.to,
-                });
-            }
         } catch { /* non-fatal */ }
+        recordAllowlistNarrowing(allowlistChange, String(req.ip || 'local'));
         const safe = redactRuntimeSettings(result);
         ok(res, safe);
     }));

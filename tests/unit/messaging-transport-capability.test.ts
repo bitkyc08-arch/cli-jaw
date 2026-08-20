@@ -71,12 +71,14 @@ test('classic settings surface references transport status row outside hidden pa
 // send died with "No target available for slack" (#406).
 test('an unreadable slack allowlist is not a send target', async () => {
     const { settings } = await import('../../src/core/config.js');
+    const { setLastActiveTarget, clearTargetState } = await import('../../src/messaging/runtime.js');
     const previousSlack = settings.slack;
     const previousMessaging = settings.messaging;
     try {
         for (const bad of ['C_ESCAPE', null, ['']]) {
             settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: bad };
 
+            clearTargetState('slack');
             settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
             assert.equal(
                 getTransportCapability('slack').sendCapable, false,
@@ -116,12 +118,26 @@ test('an unreadable slack allowlist is not a send target', async () => {
                 getTransportCapability('slack').sendCapable, false,
                 'a malformed slot is not a DM target just because its id starts with D',
             );
+
+            // The runtime slot is what a send actually uses. It is set the moment
+            // a conversation speaks and only reaches settings 5s later, so
+            // reading the file alone called a live DM unreachable.
+            settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
+            setLastActiveTarget('slack', {
+                channel: 'slack', targetKind: 'user', peerKind: 'direct', targetId: 'D_LIVE',
+            });
+            assert.equal(
+                getTransportCapability('slack').sendCapable, true,
+                'a live DM target is reachable before it is ever persisted',
+            );
+            clearTargetState('slack');
         }
         settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
         // A readable list is still a target.
         settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: ['C_REAL'] };
         assert.equal(getTransportCapability('slack').sendCapable, true);
     } finally {
+        clearTargetState('slack');
         settings.slack = previousSlack;
         settings.messaging = previousMessaging;
     }

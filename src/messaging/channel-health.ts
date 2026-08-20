@@ -2,6 +2,7 @@ import { settings } from '../core/config.js';
 import { MALFORMED_SLACK_ALLOWLIST, readSlackAllowlist, shouldAttachSlack } from '../slack/events.js';
 import {
     getHomeChannel,
+    getLastActiveTarget,
     getRunningMessagingTransports,
     isMessagingTransportRunning,
 } from './runtime.js';
@@ -71,9 +72,15 @@ function slackHasSendTarget(): boolean {
     //
     // The sentinel has a truthy .length too, and it is not a conversation.
     const ids = readSlackAllowlist(sc?.channelIds);
+    // The runtime slot first, the persisted one only as a fallback.
+    // `setLastActiveTarget` updates the in-memory map immediately and writes
+    // settings 5s later, so reading the file alone reports a conversation the
+    // bot is talking in RIGHT NOW as unreachable — the same disagreement
+    // between a report and the live path that #406 is about.
     const messagingBlock = settings["messaging"] as Record<string, unknown> | undefined;
     const lastActive = messagingBlock?.['lastActive'] as Record<string, unknown> | undefined;
-    const lastSlack = lastActive?.['slack'] as { targetId?: string } | undefined;
+    const lastSlack = getLastActiveTarget('slack')
+        ?? (lastActive?.['slack'] as { targetId?: string } | undefined);
     if (ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST) {
         // An unreadable allowlist denies every CHANNEL target, including whatever
         // sits in the last-active slot. Falling through to that slot put health
