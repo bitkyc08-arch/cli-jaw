@@ -80,6 +80,14 @@ const pendingQueueRequestIds = new Set<string>();
 function hasPendingQueueWaiter(requestId: string): boolean {
     return pendingQueueRequestIds.has(requestId);
 }
+
+/** Stand in for a live queued-reply listener without opening a socket. */
+export function claimSlackQueueRequestForTest(requestId: string): void {
+    pendingQueueRequestIds.add(requestId);
+}
+export function releaseSlackQueueRequestForTest(requestId: string): void {
+    pendingQueueRequestIds.delete(requestId);
+}
 /**
  * Bumped by every init and shutdown. An `initSlack` suspended on an await
  * checks it afterwards, so a shutdown that races the auth round-trip cannot be

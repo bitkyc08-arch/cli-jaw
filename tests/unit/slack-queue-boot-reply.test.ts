@@ -121,3 +121,36 @@ test('SQB-003: a queued turn that failed still says so', async () => {
     assert.equal(sent.length, 1, `a failure must still reach the user; saw ${JSON.stringify(sent)}`);
     assert.match(sent[0]!.text, /\[error\] boom/);
 });
+
+// The other half of SQB-003: while a requester IS still waiting, the failure is
+// its to report. Delivering errors here was the fix for a restart, and it must
+// not turn every ordinary failure into two messages.
+test('SQB-003b: a failure with a live requester is reported once', async () => {
+    sent.length = 0;
+    const { broadcast, addBroadcastListener, removeBroadcastListener } = await import('../../src/core/bus.ts');
+    const bot = await import('../../src/slack/bot.ts');
+
+    // Stand in for the dispatch path's queued-reply listener: claim the id, post
+    // the result, release. This is the shape src/slack/bot.ts uses.
+    const requestId = 'req-live-err';
+    const posted: string[] = [];
+    const waiter = (type: string, data: Record<string, unknown>) => {
+        if (type !== 'orchestrate_done' || data["requestId"] !== requestId) return;
+        posted.push(String(data["text"]));
+    };
+    addBroadcastListener(waiter);
+    bot.claimSlackQueueRequestForTest(requestId);
+    try {
+        broadcast('orchestrate_done', {
+            text: '[error] boom', error: true, origin: 'slack', requestId,
+            fromQueue: true, target: slackTarget('C_BOOT'),
+        });
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        assert.equal(posted.length, 1, 'the live requester reports it');
+        assert.deepEqual(sent, [], `the fallback must stay out of it; saw ${JSON.stringify(sent)}`);
+    } finally {
+        removeBroadcastListener(waiter);
+        bot.releaseSlackQueueRequestForTest(requestId);
+    }
+});
