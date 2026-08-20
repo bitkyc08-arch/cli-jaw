@@ -7,6 +7,7 @@ import type { RemoteTarget } from '../messaging/types.js';
 import { slackApi, describeSlackError, slackFailure, type SlackFetch } from './api.js';
 import { chunkSlackMessage, toMrkdwn } from './format.js';
 import { MAX_INLINE_RATE_LIMIT_MS, classifySendFailure, retryAfterMs } from '../messaging/retry.js';
+import { redactOutboundPayload } from '../messaging/redact.js';
 
 export type SlackSendClientResult =
     | { token: string; reason?: never; status?: never }
@@ -50,6 +51,11 @@ export async function sendSlackText(
     options: { fetchImpl?: SlackFetch; blocks?: unknown } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number }> {
     const chunks = chunkSlackMessage(toMrkdwn(text));
+    // `text` is masked inside chunkSlackMessage(); `blocks` bypassed masking
+    // entirely (#408). Computed once, before the loop, so the first send and the
+    // rate-limit retry below carry the same value — masking only the first would
+    // put the original back on the wire the moment Slack throttled us.
+    const safeBlocks = options.blocks ? redactOutboundPayload(options.blocks) : undefined;
     for (const [index, chunk] of chunks.entries()) {
         const result = await slackApi(
             token,
@@ -59,7 +65,7 @@ export async function sendSlackText(
                 text: chunk,
                 // thread_ts is the PARENT ts (see slack-target.resolveSlackThreadTs)
                 ...(target.threadId ? { thread_ts: target.threadId } : {}),
-                ...(index === 0 && options.blocks ? { blocks: options.blocks } : {}),
+                ...(index === 0 && safeBlocks ? { blocks: safeBlocks } : {}),
             },
             options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
         );
@@ -83,7 +89,7 @@ export async function sendSlackText(
                         channel: target.targetId,
                         text: chunk,
                         ...(target.threadId ? { thread_ts: target.threadId } : {}),
-                        ...(index === 0 && options.blocks ? { blocks: options.blocks } : {}),
+                        ...(index === 0 && safeBlocks ? { blocks: safeBlocks } : {}),
                     },
                     options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
                 );

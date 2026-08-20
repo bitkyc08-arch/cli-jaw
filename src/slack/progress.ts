@@ -13,6 +13,7 @@ import { slackApi, describeSlackError, type SlackFetch } from './api.js';
 import { startDraftStream, type DraftStreamOptions, type DraftTransport } from '../messaging/draft-stream.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { toMrkdwn } from './format.js';
+import { redactOutboundText } from '../messaging/redact.js';
 
 /** Minimum gap between chat.update calls for one run (Slack tier limit). */
 const EDIT_INTERVAL_MS = 1200;
@@ -89,12 +90,19 @@ export async function startSlackProgress(
     const fetchOpts = options.fetchImpl ? { fetchImpl: options.fetchImpl } : {};
     const transport: DraftTransport = {
         async post(text) {
+            // The final-answer path masks inside chunkSlackMessage(); this
+            // transport calls slackApi directly and never did. Progress text
+            // mirrors what the agent actually RAN, so a curl carrying a bearer
+            // token reached the channel verbatim (#408).
+            //
+            // sanitizeProgressDetail below strips paths and commands, not
+            // credentials — different jobs, both needed.
             const result = await slackApi<{ ts?: string }>(
                 token,
                 'chat.postMessage',
                 {
                     channel: target.targetId,
-                    text,
+                    text: redactOutboundText(text),
                     ...(target.threadId ? { thread_ts: target.threadId } : {}),
                 },
                 fetchOpts,
@@ -102,9 +110,11 @@ export async function startSlackProgress(
             return result.ok && result.data?.ts ? result.data.ts : null;
         },
         async edit(ts, text) {
+            // Every edit too: progress is rewritten in place as tools run, so
+            // masking only the first post would leak on the second (#408).
             const result = await slackApi(
                 token, 'chat.update',
-                { channel: target.targetId, ts, text },
+                { channel: target.targetId, ts, text: redactOutboundText(text) },
                 fetchOpts,
             );
             if (!result.ok) {

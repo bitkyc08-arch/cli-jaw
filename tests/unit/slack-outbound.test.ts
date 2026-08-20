@@ -758,3 +758,72 @@ test('not_in_channel is not retried', async () => {
     assert.equal(result.ok, false);
     assert.equal(calls.length, 1);
 });
+
+// ─── credentials never reach the channel (#408) ─────
+//
+// `text` is masked inside chunkSlackMessage(). `blocks` rode alongside it
+// unmasked, and the rate-limit retry re-sent the same object — so masking only
+// the first send would put the original back on the wire the moment Slack
+// throttled us.
+
+// Structurally a token, not a real one.
+const FAKE_APP_TOKEN = `xapp-1-A01234567-${'1'.repeat(13)}-${'b'.repeat(64)}`;
+
+test('SOR-001: blocks are masked, including values nested inside them', async () => {
+    const { impl, calls } = makeFetch([{ ok: true }]);
+    await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', {
+        fetchImpl: impl,
+        blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: `run: curl -H "Authorization: Bearer ${FAKE_APP_TOKEN}"` },
+        }],
+    });
+    const sent = JSON.stringify(bodyOf(calls[0]!).blocks);
+    assert.ok(sent.length > 0, 'blocks must still be sent');
+    assert.ok(!sent.includes(FAKE_APP_TOKEN), `the token must not reach Slack; saw: ${sent}`);
+    assert.match(sent, /curl/, 'the surrounding text survives');
+});
+
+test('SOR-002: the rate-limit retry sends the masked blocks too', async () => {
+    // The leak had two exits. This is the second one: throttle the first send
+    // and check what actually goes out on the retry.
+    const { impl, calls } = makeFetch([
+        // 0.01s, matching the existing inline-retry test: a wait of exactly 0
+        // does not qualify for the inline retry, so the second send never
+        // happens and the assertion below would be vacuous.
+        { ok: false, error: 'ratelimited', __headers: { 'retry-after': '0.01' }, __status: 429 },
+        { ok: true },
+    ]);
+    const result = await sendSlackText('xoxb-t', slackTargetFromId('C1'), 'hi', {
+        fetchImpl: impl,
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `token ${FAKE_APP_TOKEN}` } }],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 2, 'the send must actually have been retried');
+    for (const [i, call] of calls.entries()) {
+        const sent = JSON.stringify(bodyOf(call).blocks);
+        assert.ok(!sent.includes(FAKE_APP_TOKEN), `call ${i} leaked the token: ${sent}`);
+    }
+});
+
+test('SOR-003: the paths that already masked still do', async () => {
+    // Regressions, not new behaviour: chunkSlackMessage covers the answer text,
+    // and sendSlackFile covers the caption.
+    assert.ok(!chunkSlackMessage(`see ${FAKE_APP_TOKEN}`).join('').includes(FAKE_APP_TOKEN));
+
+    const dir = mkdtempSync(join(tmpdir(), 'jaw-slack-redact-'));
+    const filePath = join(dir, 'note.txt');
+    writeFileSync(filePath, 'x');
+    const { impl, calls } = makeFetch([
+        { ok: true, upload_url: 'https://files.slack.com/upload', file_id: 'F1' },
+        { __raw: true, ok: true, status: 200 },
+        { ok: true, files: [{ id: 'F1' }] },
+    ]);
+    await sendSlackFile('xoxb-t', slackTargetFromId('C1'), filePath, 'document', {
+        fetchImpl: impl,
+        caption: `here: ${FAKE_APP_TOKEN}`,
+    });
+    const everything = calls.map(c => String(c.init?.body ?? '')).join('\n');
+    assert.ok(!everything.includes(FAKE_APP_TOKEN), `the caption leaked: ${everything}`);
+});
