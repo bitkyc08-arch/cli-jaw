@@ -43,6 +43,12 @@ export function scopeForChatSession(
     remoteKey?: string,
     gateEnabled = true,
 ): string {
+    // `sessionId === 'default'` collapsing to 'default' EVEN WITH a remoteKey is a
+    // deliberate contract, not an oversight (SSD-001a): the default session is the
+    // shared one, and giving it a conversation-specific scope would bind the shared
+    // session to one remote conversation. #399 is fixed where it is actually caused —
+    // the queue resolving a missing chatSessionId to 'default' instead of to the
+    // conversation's own binding — rather than by loosening this rule for everyone.
     if (!gateEnabled || sessionId === 'default') return 'default';
     if (remoteKey) return remoteKey;
     return `${LOCAL_SESSION_SCOPE_PREFIX}${sessionId}`;

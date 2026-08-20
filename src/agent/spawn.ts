@@ -27,7 +27,7 @@ import {
 } from '../core/db.js';
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
-import { getActiveChatSession } from '../core/chat-sessions.js';
+import { getActiveChatSession, getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { currentSessionScope } from '../core/session-context.js';
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { prependRemoteConversationContext } from '../prompt/conversation-context.js';
@@ -417,6 +417,9 @@ const queueCtrl = createQueueController({
     getWorkingDir: () => settings["workingDir"] || null,
     isMultiSessionEnabled: () => settings["multiSession"]?.enabled === true,
     isLocalSessionScopeEnabled: () => LOCAL_SESSION_SCOPE_ACTIVATION,
+    // Lookup only: draining a queue must never mint a session for a conversation
+    // that no longer has one.
+    resolveRemoteSession: (remoteKey: string) => getRemoteBoundSessionId(remoteKey),
 });
 
 export const {

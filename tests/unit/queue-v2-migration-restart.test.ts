@@ -10,7 +10,12 @@ import {
     migrateQueuedMessagesV1ToV2,
 } from '../../src/core/db.ts';
 import { createQueueController } from '../../src/agent/spawn/queue.ts';
-import { createChatSession, getSessionRunPolicy, setSessionRunPolicy } from '../../src/core/chat-sessions.ts';
+import {
+    createChatSession,
+    getRemoteBoundSessionId,
+    getSessionRunPolicy,
+    setSessionRunPolicy,
+} from '../../src/core/chat-sessions.ts';
 import { settings } from '../../src/core/config.ts';
 import { slackTargetFromId } from '../../src/messaging/slack-target.ts';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
@@ -56,6 +61,7 @@ function makeController(options: {
         getWorkingDir: () => null,
         isMultiSessionEnabled: () => true,
         isLocalSessionScopeEnabled: () => options.localSessionScopesEnabled === true,
+        resolveRemoteSession: (remoteKey: string) => getRemoteBoundSessionId(remoteKey),
     }, new SessionLanes(() => options.maxConcurrent ?? 2));
 }
 
@@ -242,3 +248,61 @@ test('session run policies survive reads and new sessions capture the current gl
         settings.multiSession = previous;
     }
 });
+
+// #399: a queued Slack message kept its channel in the queue's group key while its
+// rows landed in whatever session happened to be active. The payload still carried
+// remoteKey; only chatSessionId was missing, and the loader answered 'default' —
+// after which scopeForChatSession discarded the remoteKey too, so scope and
+// session_id named two different conversations.
+test('a queued remote item without a chatSessionId recovers its session from remoteKey (#399)', () => {
+    const remoteKey = 'jaw:slack:channel:CQV399:thread:1787194176.603639';
+    db.prepare("INSERT INTO chat_sessions (id, seq, label) VALUES ('queue-v2-r399', 899, 'remote')").run();
+    db.prepare('INSERT INTO remote_session_bindings (remote_key, chat_session_id) VALUES (?, ?)')
+        .run(remoteKey, 'queue-v2-r399');
+
+    // Exactly the shape that produced the bug: remoteKey present, chatSessionId absent.
+    insertQueuedMessage.run('queue-v2-r399-item', JSON.stringify({
+        schemaVersion: 2,
+        id: 'queue-v2-r399-item',
+        prompt: 'queue-v2-r399-prompt',
+        source: 'slack',
+        remoteKey,
+        target: slackTargetFromId('CQV399', { threadTs: '1787194176.603639' }),
+        ts: 1,
+    }));
+
+    const ctrl = makeController({ busy: () => false });
+    const item = ctrl.messageQueue.find(q => q.id === 'queue-v2-r399-item');
+
+    assert.ok(item, 'the queued item must load');
+    assert.equal(
+        item!.chatSessionId, 'queue-v2-r399',
+        'the conversation binding, not the globally active session',
+    );
+    assert.equal(
+        item!.scope, remoteKey,
+        'scope must keep naming the conversation rather than collapsing to default',
+    );
+
+    db.prepare('DELETE FROM remote_session_bindings WHERE remote_key = ?').run(remoteKey);
+});
+
+// The other half of the same rule: an item with no binding at all still belongs
+// nowhere in particular, and 'default' remains the honest answer for it.
+test('a queued item with no remote binding still resolves to default (#399)', () => {
+    insertQueuedMessage.run('queue-v2-r399-orphan', JSON.stringify({
+        schemaVersion: 2,
+        id: 'queue-v2-r399-orphan',
+        prompt: 'queue-v2-r399-orphan-prompt',
+        source: 'slack',
+        remoteKey: 'jaw:slack:channel:CGONE:thread:1.1',
+        ts: 1,
+    }));
+
+    const ctrl = makeController({ busy: () => false });
+    const item = ctrl.messageQueue.find(q => q.id === 'queue-v2-r399-orphan');
+
+    assert.ok(item);
+    assert.equal(item!.chatSessionId, 'default');
+});
+
