@@ -315,30 +315,54 @@ test('the same narrowing is recorded once, whichever doors it passes through', a
     const lines: string[] = [];
     const previousWarn = log.warn;
     (log as { warn: unknown }).warn = (...args: unknown[]) => { lines.push(args.join(' ')); };
+    const { settings } = await import('../../src/core/config.js');
+    const previousSlack = settings.slack;
+    // Both recorders run AFTER the change is applied, so the live allowlist is
+    // already the new list by the time a record is written. The dedup reads it
+    // to tell a genuine repeat from an echo, so the fixture must move with it.
+    const applied = (ids: string[]) => { settings.slack = { ...(settings.slack || {}), channelIds: ids }; };
     try {
         resetAllowlistAuditDedupForTest();
         const change = classifyAllowlistChange(['C_A'], ['C_A', 'C_B']);
 
+        applied(['C_A']);
         recordAllowlistNarrowing(change, 'settings.json');   // the watcher
         recordAllowlistNarrowing(change, '127.0.0.1');       // the hot-notify PUT
         assert.equal(lines.length, 1, `one change, one record; saw: ${JSON.stringify(lines)}`);
 
         // A further narrowing is a new event and must still be recorded.
+        applied([]);
         recordAllowlistNarrowing(classifyAllowlistChange([], ['C_A']), '127.0.0.1');
+        applied(['C_A']);
         recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B', 'C_C']), '127.0.0.1');
         assert.equal(lines.length, 2, 'a different narrowing is a different event');
 
         // Reopening the allowlist and narrowing it AGAIN is a second event, not
-        // an echo of the first: skipping the widening left the two narrowings
+        // an echo of the first: a time window alone left the two narrowings
         // looking like one repeated transition and swallowed the later one.
         lines.length = 0;
         resetAllowlistAuditDedupForTest();
+        applied(['C_A']);
         recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B']), '127.0.0.1');
-        recordAllowlistNarrowing(classifyAllowlistChange(['C_A', 'C_B'], ['C_A']), '127.0.0.1'); // widen
+        applied(['C_A', 'C_B']);   // reopened — the route classifies this too
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A', 'C_B'], ['C_A']), '127.0.0.1');
+        applied(['C_A']);          // and narrowed again
         recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B']), '127.0.0.1');
         assert.equal(lines.length, 2, 'a narrowing after a widening is its own event');
+
+        // A hand edit reaches neither recorder, so nothing announces the move.
+        // The dedup has to notice on its own that the list no longer stands
+        // where its last record left it.
+        lines.length = 0;
+        resetAllowlistAuditDedupForTest();
+        applied(['C_A']);
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], []), '127.0.0.1');
+        applied(['C_A', 'C_B']);   // edited by hand, unannounced
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], []), '127.0.0.1');
+        assert.equal(lines.length, 2, 'an unannounced move ends the previous record');
     } finally {
         (log as { warn: unknown }).warn = previousWarn;
+        settings.slack = previousSlack;
         resetAllowlistAuditDedupForTest();
     }
 });

@@ -12,6 +12,7 @@
 // Its own module because the settings FILE watcher has to record it too, and a
 // watcher must not import an Express route module to do so.
 
+import { settings } from '../core/config.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { log } from '../core/logger.js';
 import { MALFORMED_SLACK_ALLOWLIST, readSlackAllowlist } from './events.js';
@@ -58,13 +59,15 @@ export function classifyAllowlistChange(next: unknown, current: unknown): Allowl
  * are milliseconds apart, while a narrowing repeated hours later is a real
  * second event and must still be recorded.
  *
- * EVERY classified move updates this, not just the recorded ones. Skipping the
- * widenings left `[A,B]->[A]`, `[A]->[A,B]`, `[A,B]->[A]` looking like one
- * repeated transition, and the second narrowing — a genuine event, with the
- * allowlist reopened in between — went unrecorded.
- */
+ * The window alone is not enough, because a repeated transition is not always a
+ * repeated event: reopen the list in between and the second narrowing is real.
+ * So a record also remembers the list it left behind, and is only trusted while
+ * the live allowlist still matches it. Anything that moves the list — a widen, a
+ * clear, `POST /api/settings/slack/reset`, a hand edit — invalidates it without
+ * having to remember to say so.
+  */
 const AUDIT_DEDUP_WINDOW_MS = 5000;
-let lastRecorded: { transition: string; at: number } | null = null;
+let lastRecorded: { transition: string; to: string[]; at: number } | null = null;
 
 export function resetAllowlistAuditDedupForTest(): void {
     lastRecorded = null;
@@ -74,6 +77,10 @@ export function resetAllowlistAuditDedupForTest(): void {
  * Note a move that is not itself recorded (a widen or a clear). It still ends
  * the state the last record described, so a later narrowing back to the same
  * list is a new event rather than an echo of the old one.
+ *
+ * Rarely needed: `recordAllowlistNarrowing` re-checks the live allowlist and
+ * notices such a move on its own. Kept for callers that change the list without
+ * classifying it.
  */
 export function noteAllowlistMove(change: AllowlistChange | null): void {
     if (!change || change.kind === 'narrow') return;
@@ -96,12 +103,15 @@ export function recordAllowlistNarrowing(change: AllowlistChange | null, actor: 
     }
     const transition = `${change.from.join(',')}>${change.to.join(',')}`;
     const now = Date.now();
-    if (lastRecorded
-        && lastRecorded.transition === transition
-        && now - lastRecorded.at < AUDIT_DEDUP_WINDOW_MS) {
-        return;
+    if (lastRecorded && now - lastRecorded.at < AUDIT_DEDUP_WINDOW_MS) {
+        // Only an echo if nothing moved since: the same transition, and the list
+        // still standing where that record left it.
+        const live = readSlackAllowlist(settings["slack"]?.channelIds);
+        const undisturbed = live.length === lastRecorded.to.length
+            && live.every((id, i) => id === lastRecorded?.to[i]);
+        if (lastRecorded.transition === transition && undisturbed) return;
     }
-    lastRecorded = { transition, at: now };
+    lastRecorded = { transition, to: change.to, at: now };
     try {
         log.warn(`[slack:allowlist] narrowed to ${change.to.length} channel(s): `
             + `${change.to.join(', ')} — conversations outside this list will be ignored`);

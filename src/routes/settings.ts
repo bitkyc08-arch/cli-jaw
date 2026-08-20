@@ -32,7 +32,7 @@ import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-c
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { SLACK_ALLOWLIST_MAX } from '../slack/events.js';
-import { classifyAllowlistChange, recordAllowlistNarrowing } from '../slack/allowlist-audit.js';
+import { classifyAllowlistChange, noteAllowlistMove, recordAllowlistNarrowing } from '../slack/allowlist-audit.js';
 import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
 import { log } from '../core/logger.js';
@@ -306,6 +306,11 @@ export function registerSettingsRoutes(
                 attachPort: '',
             },
         }) as Record<string, unknown>;
+        // Reset clears the allowlist. That is a move like any other, and the
+        // audit dedup has to know: without it, narrowing to the same list again
+        // right after a reset read as a repeat of the first narrowing and went
+        // unrecorded (#406).
+        noteAllowlistMove({ kind: 'clear', from: [], to: [] });
         try {
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
                 keys: ['slack'],
