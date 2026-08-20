@@ -2,7 +2,7 @@
 // src/security/path-guards.js 가 생성되면 통과
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertSkillId, assertFilename, safeResolveUnder, assertSendFilePath } from '../../src/security/path-guards.ts';
+import { assertSkillId, assertFilename, safeResolveUnder, assertSendFilePath, sendFileAllowedRoots } from '../../src/security/path-guards.ts';
 import { expandHomePath } from '../../src/core/path-expand.ts';
 import path from 'node:path';
 import os from 'node:os';
@@ -212,4 +212,96 @@ test('PG-023: assertSendFilePath rejects home files outside allowed roots', () =
         fs.rmSync(testHome, { recursive: true, force: true });
         fs.rmSync(fakeHome, { recursive: true, force: true });
     }
+});
+
+// ─── #404: a refusal that says where "allowed" is ───
+//
+// Refusing was right; refusing anonymously was not. The allowed roots live in
+// settings the caller never reads, so six `path_not_allowed` errors landed in
+// stderr and the agent simply stopped producing the file.
+
+function withSendHome(run: (home: string) => void): void {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-detail-home-'));
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        run(fs.realpathSync(testHome));
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+    }
+}
+
+test('PG-024: a refused path carries the roots that would have worked', () => {
+    withSendHome((home) => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-detail-outside-'));
+        const file = path.join(outside, 'report.png');
+        try {
+            fs.writeFileSync(file, 'x');
+            let thrown: unknown;
+            try { assertSendFilePath(file); } catch (e) { thrown = e; }
+
+            assert.ok(thrown, 'the path must still be refused');
+            const err = thrown as { message: string; statusCode?: number; code?: string; detail?: Record<string, unknown> };
+            // The contract that must NOT change: this is a 403 with this code.
+            assert.equal(err.message, 'path_not_allowed');
+            assert.equal(err.statusCode, 403, 'a 403 must not become a 500');
+            assert.equal(err.code, 'path_not_allowed');
+
+            const roots = err.detail?.['allowedRoots'] as string[] | undefined;
+            assert.ok(Array.isArray(roots) && roots.length > 0, 'the refusal must name somewhere to go');
+            assert.ok(roots.includes(home), `JAW_HOME must be listed; saw ${JSON.stringify(roots)}`);
+        } finally {
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
+});
+
+test('PG-025: the reported roots are the roots the guard enforces', () => {
+    withSendHome((home) => {
+        const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-detail-project-'));
+        const missing = path.join(os.tmpdir(), 'jaw-send-detail-does-not-exist');
+        try {
+            const roots = sendFileAllowedRoots(undefined, [projectDir, missing]);
+            assert.ok(roots.includes(home));
+            assert.ok(roots.includes(fs.realpathSync(projectDir)), 'a configured project root is listed');
+            // The guard skips a root it cannot resolve, so a reporter that listed
+            // it would name a directory that grants nothing.
+            assert.ok(!roots.some(r => r.includes('does-not-exist')), 'an unresolvable root is omitted');
+
+            // Enforcement agrees: a file under the listed root is accepted.
+            const inProject = path.join(projectDir, 'ok.png');
+            fs.writeFileSync(inProject, 'x');
+            assert.equal(
+                assertSendFilePath(inProject, undefined, [projectDir]),
+                fs.realpathSync(inProject),
+            );
+        } finally {
+            fs.rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+});
+
+test('PG-026: the scope did not widen — JAW_HOME in, everything else out', () => {
+    withSendHome((home) => {
+        const inside = path.join(home, 'uploads');
+        fs.mkdirSync(inside, { recursive: true });
+        const okFile = path.join(inside, 'ok.png');
+        fs.writeFileSync(okFile, 'x');
+        assert.equal(assertSendFilePath(okFile), fs.realpathSync(okFile));
+
+        // And the other refusals still refuse, with their statuses intact.
+        for (const [input, expected] of [
+            [path.join(home, 'missing.png'), 'path_not_resolvable'],
+            [`${okFile}:hidden`, 'path_not_allowed'],
+        ] as const) {
+            let thrown: unknown;
+            try { assertSendFilePath(input); } catch (e) { thrown = e; }
+            const err = thrown as { message?: string; statusCode?: number } | undefined;
+            assert.ok(err, `${input} must be refused`);
+            assert.equal(err!.statusCode, 403, `${input} must stay a 403`);
+            if (expected === 'path_not_resolvable') assert.equal(err!.message, expected);
+        }
+    });
 });

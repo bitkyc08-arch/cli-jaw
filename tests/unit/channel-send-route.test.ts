@@ -38,3 +38,50 @@ test('POST /api/channel/send returns the stable invalid_channel envelope with an
         assert.doesNotMatch(body.error ?? '', /xox[baprs]-|C123ABC|lastActive|latestSeen/);
     });
 });
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// The guard refuses correctly; the question is whether the refusal survives the
+// route intact. `forbidden()` grew a `code` and a `detail`, and getting that
+// object shape wrong turns a 403 into a 500 — the top regression this guards
+// (#404). The unit tests cover the guard; only this covers the chain
+// forbidden → httpDetail → response JSON.
+test('POST /api/channel/send refuses a path outside the roots with a 403 that says where they are', async () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-route-home-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-route-outside-'));
+    const filePath = path.join(outside, 'report.png');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        // The file must exist: a missing one is refused earlier, as
+        // path_not_resolvable, and would not exercise this branch at all.
+        fs.writeFileSync(filePath, 'x');
+
+        await withMessagingServer(async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/channel/send`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    channel: 'slack', type: 'file', filePath,
+                    target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ROUTE' },
+                }),
+            });
+            const body = await response.json() as { code?: string; detail?: { allowedRoots?: string[] } };
+
+            assert.equal(response.status, 403, 'a refused path must not surface as a 500');
+            assert.equal(body.code, 'path_not_allowed');
+            const roots = body.detail?.allowedRoots;
+            assert.ok(Array.isArray(roots) && roots.length > 0, `the response must name the roots; saw ${JSON.stringify(body)}`);
+            assert.ok(
+                roots.includes(fs.realpathSync(testHome)),
+                `JAW_HOME must be among them; saw ${JSON.stringify(roots)}`,
+            );
+        });
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    }
+});

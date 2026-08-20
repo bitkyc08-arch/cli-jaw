@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
-import { httpStatus, httpCode } from './_http-error.js';
+import { httpStatus, httpCode, httpDetail } from './_http-error.js';
 import fs from 'fs';
 import os from 'os';
 import { execFileSync, spawn } from 'node:child_process';
@@ -276,7 +276,10 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
         } catch (e: unknown) {
             log.error('[telegram:send]', logErrorText(e));
             const statusCode = httpStatus(e, 500);
-            res.status(statusCode).json({ error: userErrorText(e), code: httpCode(e) });
+            res.status(statusCode).json({
+                error: userErrorText(e), code: httpCode(e),
+                ...(httpDetail(e) ? { detail: httpDetail(e) } : {}),
+            });
         }
     });
 
@@ -307,7 +310,12 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             res.json(result);
         } catch (e: unknown) {
             log.error('[channel:send]', logErrorText(e));
-            res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
+            // The refusal reason alone left the caller nowhere to go: the allowed
+            // roots live in settings an agent never reads (#404).
+            res.status(httpStatus(e, 500)).json({
+                error: userErrorText(e), code: httpCode(e),
+                ...(httpDetail(e) ? { detail: httpDetail(e) } : {}),
+            });
         }
     });
 
@@ -321,7 +329,10 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             res.json(result);
         } catch (e: unknown) {
             log.error('[discord:send]', logErrorText(e));
-            res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
+            res.status(httpStatus(e, 500)).json({
+                error: userErrorText(e), code: httpCode(e),
+                ...(httpDetail(e) ? { detail: httpDetail(e) } : {}),
+            });
         }
     });
 
@@ -335,7 +346,10 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             res.json(result);
         } catch (e: unknown) {
             log.error('[slack:send]', logErrorText(e));
-            res.status(httpStatus(e, 500)).json({ error: userErrorText(e), code: httpCode(e) });
+            res.status(httpStatus(e, 500)).json({
+                error: userErrorText(e), code: httpCode(e),
+                ...(httpDetail(e) ? { detail: httpDetail(e) } : {}),
+            });
         }
     });
 

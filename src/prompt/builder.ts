@@ -648,6 +648,25 @@ export function getInboundSurfaceContract(): string {
     ].join('\n');
 }
 
+/**
+ * Where a file has to live to be sendable.
+ *
+ * The guard's allowed roots come from settings the agent never reads, so a
+ * refusal was unactionable: six `path_not_allowed` errors landed in stderr and
+ * the turn just stopped producing the file (#404).
+ *
+ * The resolved absolute path, not `$JAW_HOME`: that variable does not exist in
+ * the shell (the code reads `CLI_JAW_HOME`, itself usually unset), so writing it
+ * here would expand to `/uploads/` and be refused for a second reason.
+ */
+export function getSendFileStagingContract(): string {
+    return [
+        '## Outbound Files',
+        `- Files you intend to send to a channel go under ${diskPromptPath(join(JAW_HOME, 'uploads'))}.`,
+        '- A path outside the allowed roots is refused with `path_not_allowed`; that response carries `detail.allowedRoots`, which lists the directories that would have worked.',
+    ].join('\n');
+}
+
 export function getBoundedLocalSearchContract(): string {
     return [
         '## Bounded Local Search Contract',
@@ -912,6 +931,7 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
 
     prompt += '\n\n---\n' + getBoundedLocalSearchContract();
     prompt += '\n\n' + getInboundSurfaceContract();
+    prompt += '\n\n' + getSendFileStagingContract();
 
     // ─── Delegation rules: jaw employees vs CLI sub-agents ───
     // Always-injected guard block (survives user-edited A-1.md overrides).

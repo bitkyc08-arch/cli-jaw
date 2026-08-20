@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
 import { slackChannelScope } from '../../src/slack/scope-status.js';
+import { sendFileAllowedRoots } from '../../src/security/path-guards.js';
 import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { migrateAllJawHomes, hasPendingLegacySkillDirs, discoverJawHomes } from '../../lib/mcp/skills-migration.js';
@@ -89,6 +90,8 @@ interface DoctorSettings {
     discord?: DiscordSettings;
     slack?: SlackSettings;
     network?: NetworkSettings;
+    workingDir?: string;
+    projectDirs?: string[];
     /**
      * Watchdog deadlines. Per-CLI blocks live under the same object keyed by CLI
      * name (`agentTimeout.cursor.absoluteMs`) and override the top level, which
@@ -499,6 +502,30 @@ check('Channel consistency', () => {
         throw new Error(`WARN: ${issues.join('; ')}`);
     }
     return 'consistent';
+});
+
+// 6e2. Outbound file-send scope
+check('파일 전송 허용 경로', () => {
+    const cfg = loadedSettings();
+    // Through the guard's own resolver, so this cannot call a path allowed that
+    // the guard then refuses (#404).
+    const roots = sendFileAllowedRoots(cfg.workingDir, cfg.projectDirs ?? null);
+    if (roots.length === 0) {
+        throw new Error('WARN: 허용 경로 없음 — 파일 전송이 전부 거절됩니다');
+    }
+    // The shipped default is workingDir = JAW_HOME with no projectDirs, which
+    // allows exactly one directory and never said so. Six refusals landed in
+    // stderr with no explanation because of it.
+    //
+    // Compared against the helper's own first element rather than a separately
+    // computed JAW_HOME: a second calculation is how a reporter drifts from
+    // enforcement. Checking identity, not just count — a single root that is a
+    // wide `workingDir` is not the narrow default.
+    const jawHomeRoot = sendFileAllowedRoots(undefined, null)[0];
+    if (roots.length === 1 && roots[0] === jawHomeRoot) {
+        throw new Error(`WARN: ${roots[0]} 1곳만 허용 — 이 밖(예: /tmp)에 만든 파일은 전송되지 않습니다`);
+    }
+    return `${roots.length}곳: ${roots.join(', ')}`;
 });
 
 // 6f. Agent watchdog deadline
@@ -938,6 +965,24 @@ function buildDiscordStatus() {
     };
 }
 
+/**
+ * Which directories an outbound file send will accept, as the guard resolves
+ * them. Built from `sendFileAllowedRoots` rather than assembled here, or a
+ * report could name a root the guard refuses (#404).
+ */
+function buildMessagingSendScope() {
+    const cfg = loadedSettings();
+    const sendRoots = sendFileAllowedRoots(cfg.workingDir, cfg.projectDirs ?? null);
+    const jawHomeRoot = sendFileAllowedRoots(undefined, null)[0];
+    return {
+        sendRoots,
+        // Identity, not just count: a lone wide `workingDir` is not the narrow
+        // shipped default, and calling it narrow would send someone looking for
+        // a problem that is not there.
+        sendScopeNarrow: sendRoots.length === 1 && sendRoots[0] === jawHomeRoot,
+    };
+}
+
 function buildSlackStatus() {
     const s = settings;
     const sc = s?.slack || {};
@@ -1060,6 +1105,7 @@ if (values.json) {
         homeChannel,
         discord: buildDiscordStatus(),
         slack: buildSlackStatus(),
+        messaging: buildMessagingSendScope(),
         platform: resolvePlatformKind(),
         wsl: isWSL() ? {
             sudoNonInteractive: canSudoNonInteractive(),
