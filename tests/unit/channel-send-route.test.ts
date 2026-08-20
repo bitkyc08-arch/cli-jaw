@@ -63,7 +63,7 @@ test('POST /api/channel/send refuses a path outside the roots with a 403 that sa
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
-                    channel: 'slack', type: 'file', filePath,
+                    channel: 'slack', type: 'photo', filePath,
                     target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ROUTE' },
                 }),
             });
@@ -86,6 +86,55 @@ test('POST /api/channel/send refuses a path outside the roots with a 403 that sa
     }
 });
 
+// The other half of the guard: a path INSIDE the roots must still go through.
+// Every test above asserts a refusal, so a change that refused everything would
+// have left them all green (#404).
+test('a path inside the allowed roots still reaches the transport', async () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-ok-home-'));
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        const uploads = path.join(testHome, 'uploads');
+        fs.mkdirSync(uploads, { recursive: true });
+        const filePath = path.join(uploads, 'report.png');
+        fs.writeFileSync(filePath, 'x');
+
+        const { registerSendTransport } = await import('../../src/messaging/send.ts');
+        const { settings } = await import('../../src/core/config.ts');
+        // The path guard is not the only gate: the target allowlist runs after
+        // it. Configure the channel so a pass here means the FILE was accepted,
+        // not that some later check happened to let it through.
+        const previousSlack = settings.slack;
+        settings.slack = { ...(settings.slack || {}), channelIds: ['C_OK'] };
+        const seen: Array<Record<string, unknown>> = [];
+        registerSendTransport('slack', async req => {
+            seen.push(req as unknown as Record<string, unknown>);
+            return { ok: true };
+        });
+
+        try {
+            await withMessagingServer(async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/channel/send`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    channel: 'slack', type: 'photo', filePath,
+                    target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_OK' },
+                }),
+            });
+            assert.equal(response.status, 200, `an allowed path must not be refused: ${await response.text()}`);
+            assert.equal(seen.length, 1, 'the transport must actually receive it');
+            });
+        } finally {
+            settings.slack = previousSlack;
+        }
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+    }
+});
+
 // The same guard sits behind the send routes, and each builds its own error
 // response. Covering only /api/channel/send would leave the copies free to
 // drift back to a bare 500 (#404).
@@ -105,11 +154,11 @@ test('every send route surfaces a refused path the same way', async () => {
         await withMessagingServer(async baseUrl => {
             for (const [route, body] of [
                 ['/api/slack/send', {
-                    type: 'file', filePath,
+                    type: 'photo', filePath,
                     target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ROUTE' },
                 }],
                 ['/api/discord/send', {
-                    type: 'file', filePath,
+                    type: 'photo', filePath,
                     target: { channel: 'discord', targetKind: 'channel', peerKind: 'channel', targetId: '123' },
                 }],
             ] as const) {

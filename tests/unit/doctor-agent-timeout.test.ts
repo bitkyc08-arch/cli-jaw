@@ -82,3 +82,28 @@ test('DAT-004: a configured zero is reported, not mistaken for unset', () => {
     const detail = doctorTimeoutDetail({ cli: 'cursor', agentTimeout: { absoluteMs: 0 } });
     assert.match(detail, /^0초/, `a configured 0 must not read as the default: ${detail}`);
 });
+
+// A diagnostic has to survive the settings it is diagnosing. `projectDirs`
+// comes from raw JSON, and a numeric entry made `path.resolve` throw — taking
+// the entire `--json` report down instead of reporting the broken config (#404).
+test('DAT-005: a malformed config still produces a report', () => {
+    assert.ok(existsSync(repoTsx), `repo-local tsx is required: ${repoTsx}`);
+    const home = mkdtempSync(join(tmpdir(), 'jaw-doctor-malformed-'));
+    try {
+        const settingsPath = join(home, 'settings.json');
+        writeFileSync(settingsPath, JSON.stringify({ projectDirs: [42, null, ''], workingDir: 7 }));
+        chmodSync(settingsPath, 0o600);
+        const run = spawnSync(repoTsx, [cliEntry, '--home', home, 'doctor', '--json'], {
+            cwd: repoRoot, encoding: 'utf8', timeout: 60000,
+            env: { ...process.env, NO_COLOR: '1' },
+        });
+        assert.ok(run.stdout, `doctor printed nothing: ${run.stderr || run.error}`);
+        const payload = JSON.parse(run.stdout);
+        assert.ok(Array.isArray(payload.checks), 'the report must still be a report');
+        // The usable root survives; the junk entries are skipped rather than fatal.
+        assert.ok(Array.isArray(payload.messaging?.sendRoots));
+        assert.equal(payload.messaging.sendRoots.length, 1, 'only JAW_HOME resolves here');
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
