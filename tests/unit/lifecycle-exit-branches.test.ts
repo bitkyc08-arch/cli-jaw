@@ -146,30 +146,36 @@ test('LEB-009: the P-phase plan save runs the text through that strip', () => {
 // replay, memory flush and compaction. A line telling a PERSON we ran out of
 // time reads as an instruction in every one of them, so it must never be stored
 // — stripping it downstream only covers the paths someone remembered (#405).
-test('LEB-010: the notice reaches the reader without entering durable storage', () => {
-    const src = readFileSync(
-        join(import.meta.dirname, '..', '..', 'src/agent/lifecycle-handler.ts'), 'utf8',
-    );
-    const branch = src.slice(
-        src.indexOf('shouldAnnounceStallTruncation({'),
-        src.indexOf('const { message: errMsg } = classifyExitError('),
-    );
+// Two readers of the same row want opposite things, and both were got wrong in
+// turn. A PERSON reopening the transcript must still see that the turn was cut
+// short — leaving the notice out of storage made it vanish on refresh, which is
+// the original complaint. A MODEL replaying that row as prior context must not
+// see it, or a sentence addressed to a person comes back as an instruction.
+//
+// So it is stored, and removed at the history-replay query boundary (#405).
+test('LEB-010: a stored notice survives for the reader and is stripped for replay', async () => {
+    const { getRecentMessages, getRecentMessagesLite, insertMessage, db } =
+        await import('../../src/core/db.ts');
+    const { STALL_TRUNCATION_NOTICE: NOTICE } = await import('../../src/agent/stall-notice.ts');
 
-    // finalContent is the durable row. It must NOT be rewritten here.
-    assert.doesNotMatch(
-        branch,
-        /finalContent = `\$\{finalContent\}[^`]*STALL_TRUNCATION_NOTICE/,
-        'the stored assistant message must not carry the notice',
-    );
-    // The reader gets it two ways: the resolved text, and the broadcast.
-    assert.match(branch, /ctx\.fullText = `\$\{ctx\.fullText\}\$\{stallNotice\}`/);
-    assert.match(branch, /stallNotice = `\\n\\n\$\{STALL_TRUNCATION_NOTICE\}`/);
+    const sessionId = `leb010-${Date.now()}`;
+    const body = 'partial answer that stopped mid-thought';
+    try {
+        insertMessage.run('assistant', `${body}\n\n${NOTICE}`, 'cursor', '', null, sessionId);
 
-    const insertIdx = src.indexOf("'assistant', finalContent, cli, model,");
-    assert.ok(insertIdx > 0, 'the durable insert must still store finalContent unchanged');
-    assert.match(
-        src.slice(insertIdx, insertIdx + 1200),
-        /text: `\$\{finalContent\}\$\{stallNotice\}`/,
-        'agent_done must carry the notice even though the stored row does not',
-    );
+        // Replay readers: the notice is gone, the answer is not.
+        for (const reader of [getRecentMessages, getRecentMessagesLite]) {
+            const rows = reader.all(null, sessionId, 5) as Array<{ content?: string }>;
+            const row = rows.find(r => typeof r.content === 'string' && r.content.includes(body));
+            assert.ok(row, 'the row must come back');
+            assert.equal(row!.content, body, 'replay context must not carry a line meant for a person');
+        }
+
+        // The transcript reader is the raw row, which still has it.
+        const raw = db.prepare('SELECT content FROM messages WHERE session_id = ?')
+            .get(sessionId) as { content: string };
+        assert.ok(raw.content.endsWith(NOTICE), 'refresh must still show the turn was cut short');
+    } finally {
+        db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
+    }
 });

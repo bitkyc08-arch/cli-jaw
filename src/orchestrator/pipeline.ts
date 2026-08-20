@@ -609,6 +609,9 @@ export async function orchestrate(
             // The timeout notice is addressed to a reader, not to the next turn.
             // Saved into the plan it would come back as an Approved Plan line and
             // read like an instruction (#405).
+            //
+            // Still needed despite the db.ts query boundary: this text is the
+            // LIVE result, not a row read back, so nothing has stripped it yet.
             const planText = stripStallTruncationNotice(String(result["text"] ?? ''));
             const newPlan = stripSubtaskJSON(planText) || planText || savedCtx.plan;
             if (newPlan) {

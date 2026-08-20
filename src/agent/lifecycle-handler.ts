@@ -613,19 +613,23 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         if (shouldAnnounceStallTruncation({
             stallReason: ctx.stallReason, wasSteer, mainManaged, internal: !!opts.internal,
         })) {
-            // Presentation only. It is NOT appended to `finalContent`, which is
-            // what the durable assistant row stores: history feeds the next
-            // turn's context, the resume fallback, AGY replay, memory flush and
-            // compaction, and a line telling a PERSON we ran out of time reads
-            // as an instruction in every one of them.
+            // Stored, not just broadcast. Leaving it out of the durable row made
+            // the notice vanish on refresh — the reader came back to a partial
+            // answer that looked complete, which is the original complaint
+            // (#405).
             //
-            // `ctx.fullText` is what `resolve()` hands back, and the dispatch
-            // paths answer from that rather than from the agent_done payload —
-            // appending to only one of the two showed the notice in the web
-            // transcript while the Slack reply still trailed off mid-thought
-            // (#405). The P-phase plan save strips it back out, since that text
-            // is read by the machine rather than by the reader.
+            // What reads this row back as INSTRUCTIONS (history replay, resume
+            // fallback, AGY replay, memory flush, compaction, the P-phase plan)
+            // goes through `stripStallTruncationNotice` at its query boundary in
+            // core/db.ts, so the line is removed once rather than at each of the
+            // five call sites that would otherwise have to remember.
+            //
+            // `ctx.fullText` gets it too: `resolve()` hands that back and the
+            // dispatch paths answer from it rather than from the agent_done
+            // payload, so appending to only one showed the notice in the web
+            // transcript while the Slack reply still trailed off mid-thought.
             stallNotice = `\n\n${STALL_TRUNCATION_NOTICE}`;
+            finalContent = `${finalContent}${stallNotice}`;
             ctx.fullText = `${ctx.fullText}${stallNotice}`;
         }
 
@@ -667,7 +671,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             );
             const messageId = Number(info.lastInsertRowid || 0);
             if (ctx.traceRunId && Number.isInteger(messageId) && messageId > 0) linkTraceRunToMessage(ctx.traceRunId, messageId);
-            broadcast('agent_done', { ...runTag(ctx), text: `${finalContent}${stallNotice}`, toolLog: sanitizedToolLog, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) });
+            broadcast('agent_done', { ...runTag(ctx), text: finalContent, toolLog: sanitizedToolLog, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) });
 
             if (opts._heartbeatAnchorId) {
                 try {

@@ -56,28 +56,10 @@ export function classifyExitError(
     return { is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, message };
 }
 
-/**
- * The one line a reader gets when a watchdog kill produced partial output.
- */
-export const STALL_TRUNCATION_NOTICE =
-    '⏱️ 시간이 초과되어 여기서 중단했습니다. 범위를 좁혀 다시 요청해 주세요.';
-
-/**
- * Remove that notice.
- *
- * It is addressed to a person reading a reply, so it must not survive into
- * anything the machine reads back later: a plan saved in P would carry it into
- * the next turn's Approved Plan, where it reads as an instruction (#405).
- */
-export function stripStallTruncationNotice(text: string): string {
-    // Only the suffix WE appended, and only at the end. Deleting every
-    // occurrence would eat the sentence out of a plan that legitimately quotes
-    // it, and a bare trimEnd() would take meaningful Markdown trailing spaces
-    // with it. Both were real: a plan reading "quote <notice> then document it"
-    // came back with the quote silently gone.
-    const appended = `\n\n${STALL_TRUNCATION_NOTICE}`;
-    return text.endsWith(appended) ? text.slice(0, -appended.length) : text;
-}
+// Lives in its own leaf module so `core/db` can strip it without importing the
+// exit classifier. Re-exported here because the callers that append it already
+// import from this file (#405).
+export { STALL_TRUNCATION_NOTICE, stripStallTruncationNotice } from './stall-notice.js';
 
 /**
  * Should a turn that DID produce output say it was cut short?
