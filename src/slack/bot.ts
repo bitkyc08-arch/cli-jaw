@@ -70,6 +70,17 @@ let slackInitLock = false;
  */
 const pendingQueueWaiters = new Set<() => void>();
 /**
+ * Request ids a live queued-reply listener is already waiting on. The
+ * target-reply forwarder checks this so a result does not get posted twice: once
+ * by the requester that is still here, once by the fallback that exists for the
+ * requester that is not (#407).
+ */
+const pendingQueueRequestIds = new Set<string>();
+
+function hasPendingQueueWaiter(requestId: string): boolean {
+    return pendingQueueRequestIds.has(requestId);
+}
+/**
  * Bumped by every init and shutdown. An `initSlack` suspended on an await
  * checks it afterwards, so a shutdown that races the auth round-trip cannot be
  * undone by the stale initialization resuming and resurrecting the transport.
@@ -118,6 +129,53 @@ function buildSlackTarget(event: SlackMessageEvent): RemoteTarget {
         ...(teamId ? { teamId: String(teamId) } : {}),
     });
 }
+
+/**
+ * Answer a queued turn nobody is waiting on any more.
+ *
+ * The ordinary queued reply rides a temporary listener armed by the request
+ * that was queued (see the `queued` branch below). A restart destroys it — and
+ * the boot drain (#407) runs exactly those messages. Without this the drain
+ * consumes the item, deletes its row, and the answer goes nowhere: the user
+ * loses the message instead of merely waiting for it.
+ *
+ * Installed once at module scope, like the Telegram equivalent
+ * (`installTelegramTargetReplyForwarder`), and keyed on the target the item
+ * carried through the queue rather than on whoever spoke most recently.
+ */
+let targetReplyForwarderInstalled = false;
+
+function installSlackTargetReplyForwarder(): void {
+    if (targetReplyForwarderInstalled) return;
+    targetReplyForwarderInstalled = true;
+    addBroadcastListener((type, data) => {
+        if (type !== 'orchestrate_done' || data["origin"] !== 'slack' || !data["text"]) return;
+        if (data["error"]) return;
+        const target = data["target"] as RemoteTarget | undefined;
+        if (!target || target.channel !== 'slack' || !target.targetId) return;
+        // A live requester is already listening for this exact result; posting
+        // here too would double-post it.
+        if (data["requestId"] && hasPendingQueueWaiter(String(data["requestId"]))) return;
+        const token = getSlackSendClient().token;
+        if (!token) return;
+        const text = String(data["text"]);
+        void (async () => {
+            try {
+                const result = await sendSlackText(token, target, text);
+                if (!result.ok) {
+                    log.error('[slack:target-reply]', logErrorText(result.error || 'send failed'));
+                    return;
+                }
+                if (target.threadId) markThreadParticipated(target.targetId, target.threadId);
+                await relaySlackImages(token, target, text);
+            } catch (e) {
+                log.error('[slack:target-reply]', logErrorText(e));
+            }
+        })();
+    });
+}
+
+installSlackTargetReplyForwarder();
 
 // ─── Dispatch (full reply path) ─────────────────────
 
@@ -216,6 +274,7 @@ async function slackOrchestrate(
             clearTimeout(queueTimeout);
             removeBroadcastListener(queueHandler);
             pendingQueueWaiters.delete(dispose);
+            if (requestId) pendingQueueRequestIds.delete(requestId);
         };
         const queueHandler = async (type: string, data: Record<string, unknown>) => {
             if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'slack'
@@ -236,6 +295,9 @@ async function slackOrchestrate(
         // would be missed entirely.
         addBroadcastListener(queueHandler);
         pendingQueueWaiters.add(dispose);
+        // Claim the id BEFORE the notice below: the fallback forwarder must see
+        // this waiter as live even if the result lands during that await.
+        if (requestId) pendingQueueRequestIds.add(requestId);
         queueTimeout = setTimeout(dispose, 300000);
         await sendSlackText(token, target, t('tg.queued', { count: result.pending }, currentLocale()));
         return;
@@ -856,6 +918,7 @@ async function disposeSlackRuntime(): Promise<void> {
     // 5-minute timeout against a transport that no longer exists.
     for (const dispose of [...pendingQueueWaiters]) dispose();
     pendingQueueWaiters.clear();
+    pendingQueueRequestIds.clear();
     socketClient?.stop();
     socketClient = null;
     selfUserId = null;

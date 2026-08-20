@@ -347,6 +347,61 @@ test('QBD-002: drainRecoveredQueue starts every recovered scope', async () => {
     );
 });
 
+// "Both items eventually ran" does not prove the contract: `processQueue` walks
+// the whole queue and schedules its own successor, so a single kick would drain
+// both and QBD-002 would pass either way. What the per-scope kick buys is
+// PARALLEL lanes, and that is observable: two conversations must be in flight at
+// the same time rather than queued single-file behind whichever went first.
+test('QBD-002b: recovered scopes drain in parallel, not single-file', async () => {
+    queueRow('queue-v2-boot-g', 'jaw:slack:channel:CG', 1);
+    queueRow('queue-v2-boot-h', 'jaw:slack:channel:CH', 2);
+
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const release: Array<() => void> = [];
+    const started: string[] = [];
+
+    const ctrl = createQueueController({
+        migrateQueuedMessagesV1ToV2,
+        isSpawnBusy: () => false,
+        hasBlockingWorkers: () => false,
+        hasPendingWorkerReplays: () => false,
+        insertMessage,
+        getActiveChatSession: () => 'default',
+        insertQueuedMessage,
+        deleteQueuedMessage,
+        listQueuedMessages: listQueuedMessages as unknown as { all(): Array<{ id: string; payload: string }> },
+        broadcast() { /* durable rows carry the assertions */ },
+        importPipeline: async () => ({
+            orchestrate: async (prompt: string) => {
+                started.push(prompt);
+                inFlight += 1;
+                peakInFlight = Math.max(peakInFlight, inFlight);
+                await new Promise<void>(resolve => release.push(resolve));
+                inFlight -= 1;
+            },
+            orchestrateContinue: async () => {},
+            orchestrateReset: async () => {},
+            isContinueIntent: () => false,
+            isResetIntent: () => false,
+            drainPendingReplays: async () => {},
+        }),
+        getWorkingDir: () => null,
+        isMultiSessionEnabled: () => true,
+        isLocalSessionScopeEnabled: () => false,
+        resolveRemoteSession: (remoteKey: string) => getRemoteBoundSessionId(remoteKey),
+    }, new SessionLanes(() => 2));
+
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    assert.equal(started.length, 2, `both lanes must start; saw ${JSON.stringify(started)}`);
+    assert.equal(peakInFlight, 2, 'the second conversation must not wait for the first to finish');
+
+    for (const resolve of release) resolve();
+    await new Promise(resolve => setTimeout(resolve, 20));
+});
+
 test('QBD-003: an empty queue drains to nothing', async () => {
     const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
     const ctrl = makeController({ busy: () => false, runs });

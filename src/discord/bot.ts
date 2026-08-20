@@ -25,7 +25,7 @@ import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js
 import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import type { ChannelSendRequest } from '../messaging/send.js';
+import { sendChannelOutput, type ChannelSendRequest } from '../messaging/send.js';
 import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
@@ -116,6 +116,39 @@ function markChannelActive(channelId: string) {
     discordActiveChannelIds.add(channelId);
 }
 
+/**
+ * Answer a queued turn nobody is waiting on any more.
+ *
+ * The ordinary queued reply rides a temporary listener armed by the request that
+ * was queued (see `dcOrchestrate`). A restart destroys it — and the boot drain
+ * (#407) runs exactly those messages. Without this the drain consumes the item,
+ * deletes its row, and the answer goes nowhere.
+ *
+ * Keyed on the target the item carried through the queue, not on whoever spoke
+ * most recently, and skipped when a live waiter would post the same result.
+ */
+const pendingQueueRequestIds = new Set<string>();
+let targetReplyForwarderInstalled = false;
+
+function installDiscordTargetReplyForwarder(): void {
+    if (targetReplyForwarderInstalled) return;
+    targetReplyForwarderInstalled = true;
+    addBroadcastListener((type, data) => {
+        if (type !== 'orchestrate_done' || data["origin"] !== 'discord' || !data["text"]) return;
+        if (data["error"]) return;
+        const target = data["target"] as RemoteTarget | undefined;
+        if (!target || target.channel !== 'discord' || !target.targetId) return;
+        if (data["requestId"] && pendingQueueRequestIds.has(String(data["requestId"]))) return;
+        void sendChannelOutput({ channel: 'discord', type: 'text', text: String(data["text"]), target })
+            .then(result => {
+                if (!result.ok) log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
+            })
+            .catch((e: unknown) => log.error('[discord:target-reply]', logErrorText(e)));
+    });
+}
+
+installDiscordTargetReplyForwarder();
+
 const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50 MiB
 
 async function downloadDiscordAttachment(attachment: Attachment): Promise<{ buffer: Buffer; name: string }> {
@@ -192,6 +225,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 && data["requestId"] === requestId) {
                 clearTimeout(queueTimeout);
                 removeBroadcastListener(queueHandler);
+                if (requestId) pendingQueueRequestIds.delete(requestId);
                 const chunks = chunkDiscordMessage(data["text"]);
                 const channel = asSendable(msg.channel);
                 if (!channel) {
@@ -207,7 +241,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             }
         };
         addBroadcastListener(queueHandler);
-        queueTimeout = setTimeout(() => removeBroadcastListener(queueHandler), 300000);
+        if (requestId) pendingQueueRequestIds.add(requestId);
+        queueTimeout = setTimeout(() => {
+            removeBroadcastListener(queueHandler);
+            if (requestId) pendingQueueRequestIds.delete(requestId);
+        }, 300000);
         return;
     }
 

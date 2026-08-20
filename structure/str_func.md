@@ -248,7 +248,7 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (7 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (626L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (664L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
 │   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (167L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
@@ -256,7 +256,7 @@ cli-jaw/
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)
 │   ├── slack/                ← Slack 인터페이스 (21 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (407L)
-│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (862L)
+│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (925L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (226L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (66L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (283L)
