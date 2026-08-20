@@ -57,11 +57,26 @@ export function classifyAllowlistChange(next: unknown, current: unknown): Allowl
  * Collapsed on the transition within a short window, not forever: the two doors
  * are milliseconds apart, while a narrowing repeated hours later is a real
  * second event and must still be recorded.
+ *
+ * EVERY classified move updates this, not just the recorded ones. Skipping the
+ * widenings left `[A,B]->[A]`, `[A]->[A,B]`, `[A,B]->[A]` looking like one
+ * repeated transition, and the second narrowing — a genuine event, with the
+ * allowlist reopened in between — went unrecorded.
  */
 const AUDIT_DEDUP_WINDOW_MS = 5000;
 let lastRecorded: { transition: string; at: number } | null = null;
 
 export function resetAllowlistAuditDedupForTest(): void {
+    lastRecorded = null;
+}
+
+/**
+ * Note a move that is not itself recorded (a widen or a clear). It still ends
+ * the state the last record described, so a later narrowing back to the same
+ * list is a new event rather than an echo of the old one.
+ */
+export function noteAllowlistMove(change: AllowlistChange | null): void {
+    if (!change || change.kind === 'narrow') return;
     lastRecorded = null;
 }
 
@@ -75,7 +90,10 @@ export function resetAllowlistAuditDedupForTest(): void {
  * land first and the route then sees no change left to describe.
  */
 export function recordAllowlistNarrowing(change: AllowlistChange | null, actor: string): void {
-    if (change?.kind !== 'narrow') return;
+    if (change?.kind !== 'narrow') {
+        noteAllowlistMove(change ?? null);
+        return;
+    }
     const transition = `${change.from.join(',')}>${change.to.join(',')}`;
     const now = Date.now();
     if (lastRecorded

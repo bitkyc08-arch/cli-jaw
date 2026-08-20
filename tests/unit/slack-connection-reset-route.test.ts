@@ -327,6 +327,16 @@ test('the same narrowing is recorded once, whichever doors it passes through', a
         recordAllowlistNarrowing(classifyAllowlistChange([], ['C_A']), '127.0.0.1');
         recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B', 'C_C']), '127.0.0.1');
         assert.equal(lines.length, 2, 'a different narrowing is a different event');
+
+        // Reopening the allowlist and narrowing it AGAIN is a second event, not
+        // an echo of the first: skipping the widening left the two narrowings
+        // looking like one repeated transition and swallowed the later one.
+        lines.length = 0;
+        resetAllowlistAuditDedupForTest();
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B']), '127.0.0.1');
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A', 'C_B'], ['C_A']), '127.0.0.1'); // widen
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B']), '127.0.0.1');
+        assert.equal(lines.length, 2, 'a narrowing after a widening is its own event');
     } finally {
         (log as { warn: unknown }).warn = previousWarn;
         resetAllowlistAuditDedupForTest();
