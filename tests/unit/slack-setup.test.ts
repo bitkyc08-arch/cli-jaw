@@ -96,7 +96,9 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
     };
     const { status, output, home } = runSlack([
         'setup', '--non-interactive', '--skip-validate', '--no-notify',
-        '--bot-token', 'xoxb-1-testbot', '--app-token', 'xapp-1-testapp',
+        // Realistic length: the wizard now rejects a short app token as truncated,
+        // which is what a partial copy out of Slack's scrolling field looks like.
+        '--bot-token', 'xoxb-1-testbot', '--app-token', SAMPLE_APP_TOKEN,
         '--team-id', 'T123', '--channel-ids', 'C1, C2',
     ], seed);
     t.after(() => rmSync(home, { recursive: true, force: true }));
@@ -105,7 +107,7 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
     const s = readSettings(home);
     assert.equal(s.slack.enabled, true);
     assert.equal(s.slack.botToken, 'xoxb-1-testbot');
-    assert.equal(s.slack.appToken, 'xapp-1-testapp');
+    assert.equal(s.slack.appToken, SAMPLE_APP_TOKEN);
     assert.equal(s.slack.teamId, 'T123');
     assert.deepEqual(s.slack.channelIds, ['C1', 'C2']);
     // One bot, one instance: the wizard claims the connection for the
@@ -163,3 +165,52 @@ test('failed validation aborts before writing settings', (t) => {
     assert.ok(!s.slack?.botToken, 'bot token must not be persisted after failed validation');
     assert.notEqual(s.slack?.enabled, true);
 });
+
+// A realistic app-level token. Slack's are far longer than the placeholder this
+// suite used to pass, and the wizard now treats a short one as a truncated copy.
+const SAMPLE_APP_TOKEN = 'xapp-1-A012345678-1234567890123-' + 'a'.repeat(40);
+
+test('setup rejects an app-level token that looks truncated (#396)', (t) => {
+    const { status, output, home } = runSlack([
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
+        '--bot-token', 'xoxb-1-testbot', '--app-token', 'xapp-1-A0123',
+    ]);
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+
+    assert.notEqual(status, 0);
+    assert.match(output, /truncated/i);
+    // Slack answers a short token with a plain invalid_auth, which sends people off
+    // regenerating a token that was never wrong. Say what actually happened instead.
+    assert.match(output, /Copy button/i);
+});
+
+test('setup accepts a full-length app-level token', (t) => {
+    const { status, output, home } = runSlack([
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
+        '--bot-token', 'xoxb-1-testbot', '--app-token', SAMPLE_APP_TOKEN,
+    ]);
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+
+    assert.equal(status, 0, output);
+    assert.equal(readSettings(home).slack.appToken, SAMPLE_APP_TOKEN);
+});
+
+
+test('manifest --url embeds the manifest Slack actually validates (#396)', (t) => {
+    const { status, output, home } = runSlack(['manifest', '--url']);
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+
+    assert.equal(status, 0, output);
+    const url = output.trim().split('\n').filter(Boolean).at(-1)!;
+    const parsed = new URL(url);
+    assert.equal(parsed.origin + parsed.pathname, 'https://api.slack.com/apps');
+    assert.equal(parsed.searchParams.get('new_app'), '1');
+
+    // The point of the flag: the page posts THIS parameter to
+    // apps.manifest.validate, not whatever is in the editor. Pasting into a plain
+    // ?new_app=1 page therefore validates {} and leaves Create disabled silently.
+    const manifest = JSON.parse(parsed.searchParams.get('manifest_json') || 'null');
+    assert.ok(manifest?.display_information?.name, 'display_information is the field Slack rejects {} for');
+    assert.equal(manifest.settings.socket_mode_enabled, true);
+});
+

@@ -61,6 +61,13 @@ export interface SpawnContext {
   /** Wall-clock run start; rides on agent_tool broadcasts so the web UI's elapsed
    * timer has one authoritative origin (WP3, zero-seconds bug). */
   runStartedAt?: number;
+  /** Identity of the request this run serves, stamped onto agent_tool so a
+   *  subscriber can tell its own run's events from a concurrent one's. The bus
+   *  cannot supply it: its scope stamp needs multi-session ON and a live ALS
+   *  frame, and a child's stdout callback has neither guarantee (#398). */
+  requestId?: string;
+  /** Transport this run came from, carried alongside requestId for the same reason. */
+  origin?: string;
   /** Stream-target offset where the current message's raw text deltas began —
    * consumed by the complete-block reconcile in handleClaudeEvent. */
   claudeStreamedTextStart?: number | undefined;

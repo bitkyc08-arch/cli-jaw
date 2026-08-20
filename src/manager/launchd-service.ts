@@ -4,7 +4,7 @@ import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { generateLaunchdPlist } from '../core/launchd-plist.js';
+import { generateLaunchdPlist, serviceRuntimeEnv } from '../core/launchd-plist.js';
 import { getNodePath, getJawPath, buildServicePath } from '../core/instance.js';
 import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from './constants.js';
 import type { DashboardServiceState, DashboardLifecycleResult } from './types.js';
@@ -134,6 +134,7 @@ export async function permInstance(port: number, home: string): Promise<Dashboar
         jawHome: home,
         logDir,
         servicePath,
+        extraEnv: serviceRuntimeEnv(),
     });
     writeFileSync(plistPath, plist);
 

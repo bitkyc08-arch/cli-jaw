@@ -20,29 +20,60 @@ import type { SessionOwnerToken } from '../agent/session-persistence.js';
 export const SLACK_THREADS_CAP = 500;
 
 let storePath = path.join(JAW_HOME, 'slack-threads.json');
-// key = `${channel}:${threadTs}` → last-marked epoch ms. thread_ts values are
+
+/**
+ * How the bot came to be in this thread.
+ *
+ * `owned` — the bot's own reply is the thread's parent, so the thread IS the
+ * conversation with the bot and every follow-up is addressed to it.
+ * `joined` — people were already talking and the bot was pulled in partway.
+ * The rest of that conversation is still theirs, so it needs a mention.
+ *
+ * Collapsing the two is what made one mention hand the bot the whole thread
+ * (#400): a live channel produced six replies to messages that named other
+ * people entirely.
+ */
+export type ThreadParticipation = 'owned' | 'joined';
+
+type ThreadRecord = { at: number; kind: ThreadParticipation };
+
+// key = `${channel}:${threadTs}` → participation record. thread_ts values are
 // only unique within a channel, so the channel is part of the key.
-let threads: Map<string, number> | null = null;
+let threads: Map<string, ThreadRecord> | null = null;
 
 export function threadKey(channel: string, threadTs: string): string {
     return `${channel}:${threadTs}`;
 }
 
-function load(): Map<string, number> {
+function load(): Map<string, ThreadRecord> {
     if (threads) return threads;
     threads = new Map();
     try {
         const raw = JSON.parse(fs.readFileSync(storePath, 'utf8'));
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
             for (const [key, value] of Object.entries(raw)) {
-                if (typeof value === 'number') threads.set(key, value);
+                // A bare number is a record from before this file distinguished the
+                // two cases. Which one it was is unknowable, so it reads as `joined`:
+                // that asks for a mention the bot may not have needed, whereas
+                // guessing `owned` would carry #400 forward for every existing user.
+                if (typeof value === 'number') {
+                    threads.set(key, { at: value, kind: 'joined' });
+                } else if (value && typeof value === 'object') {
+                    const record = value as Partial<ThreadRecord>;
+                    if (typeof record.at === 'number') {
+                        threads.set(key, {
+                            at: record.at,
+                            kind: record.kind === 'owned' ? 'owned' : 'joined',
+                        });
+                    }
+                }
             }
         }
     } catch { /* missing or corrupt file = empty set; participation is re-earned */ }
     return threads;
 }
 
-function save(map: Map<string, number>): void {
+function save(map: Map<string, ThreadRecord>): void {
     const tmp = storePath + '.tmp';
     try {
         fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(map)));
@@ -54,31 +85,55 @@ function save(map: Map<string, number>): void {
     }
 }
 
-export function markThreadParticipated(channel: string, threadTs: string): void {
+export function markThreadParticipated(
+    channel: string,
+    threadTs: string,
+    kind: ThreadParticipation = 'joined',
+): void {
     if (!channel || !threadTs) return;
     const map = load();
     const key = threadKey(channel, threadTs);
-    const isNew = !map.has(key);
-    map.set(key, Date.now());
+    const existing = map.get(key);
+    const isNew = !existing;
+    // Ownership is decided when the thread is first seen and never upgraded
+    // afterwards. A reply the bot posts INTO someone else's thread is exactly
+    // what `joined` describes, so letting that reply promote the thread to
+    // `owned` would hand the bot the conversation it was only invited into.
+    const kindToStore: ThreadParticipation = existing?.kind === 'owned' ? 'owned' : kind;
+    map.set(key, { at: Date.now(), kind: kindToStore });
     let trimmed = false;
     if (map.size > SLACK_THREADS_CAP) {
         // Trim the least-recently-marked half, like Hermes' 500-cap tracker.
         // Sorted by stored timestamp, not Map insertion order, because
         // re-marking an existing key refreshes its value without moving it.
-        const entries = [...map.entries()].sort((a, b) => a[1] - b[1]);
+        const entries = [...map.entries()].sort((a, b) => a[1].at - b[1].at);
         for (const [staleKey] of entries.slice(0, Math.floor(map.size / 2))) {
             map.delete(staleKey);
         }
         trimmed = true;
     }
-    // Persist on new participation or cap trim; refreshing a timestamp alone
-    // is not worth a disk write per thread reply.
-    if (isNew || trimmed) save(map);
+    // Persist on new participation, a kind change, or a cap trim; refreshing a
+    // timestamp alone is not worth a disk write per thread reply.
+    if (isNew || trimmed || existing?.kind !== kindToStore) save(map);
 }
 
 export function isThreadParticipated(channel: string, threadTs: string): boolean {
     if (!channel || !threadTs) return false;
     return load().has(threadKey(channel, threadTs));
+}
+
+/**
+ * How the bot is in this thread, or null when it is not in it at all.
+ *
+ * The mention gate asks THIS rather than `isThreadParticipated`: presence alone
+ * never meant the whole thread was addressed to the bot.
+ */
+export function threadParticipationKind(
+    channel: string,
+    threadTs: string,
+): ThreadParticipation | null {
+    if (!channel || !threadTs) return null;
+    return load().get(threadKey(channel, threadTs))?.kind ?? null;
 }
 
 // ─── Prefetch claims ────────────────────────────────

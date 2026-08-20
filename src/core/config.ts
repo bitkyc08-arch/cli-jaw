@@ -440,19 +440,24 @@ export function freshInstallSchemaFields(): {
 //
 // The list errs toward "established" on purpose. Calling a new home established costs a
 // question the user did not need to answer; calling an established home new turns a
-// feature on for someone who was never asked. Those are not the same mistake. That is
-// also why the postinstall-created directories stay in the list even though they can
-// precede a first boot.
+// feature on for someone who was never asked. Those are not the same mistake.
+//
+// But erring that way only works if every entry is something postinstall CANNOT leave
+// behind. `skills/`, `uploads/` and `heartbeat.json` failed that test: a plain
+// `npm i -g cli-jaw` writes all three before anyone has run anything (postinstall.ts
+// creates the two directories and seeds an empty `{ jobs: [] }`). With them in the list
+// the very next `jaw init` asked this function whether the home was new, and the answer
+// was drawn from files the installer had just written — so EVERY new install read as
+// established and silently got the pre-v3 session defaults plus a pending marker asking
+// about a migration it never had (#401). A conservative test that always answers the
+// same way is not conservative, it is a constant.
 const ESTABLISHED_HOME_ARTIFACTS = [
     DB_PATH,
     MIGRATION_MARKER,
     PROMPTS_DIR,
-    UPLOADS_DIR,
-    // `jaw init` leaves all three, and an init-only home whose settings file was then
+    // `jaw init` leaves this behind, and an init-only home whose settings file was then
     // lost is exactly the case that must not read as new.
     join(JAW_HOME, SETUP_STATE_FILE),
-    HEARTBEAT_JOBS_PATH,
-    SKILLS_DIR,
     WIDGETS_DIR,
 ];
 

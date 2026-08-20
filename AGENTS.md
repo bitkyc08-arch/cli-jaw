@@ -11,6 +11,51 @@ lidge-jun/cli-jaw              ← public (this repo)
 └── .npmignore                 ← npm publish 시 submodules 제외
 ```
 
+### Remote / 브랜치 정책 (푸시 전 필수)
+
+`origin`은 `https://github.com/lidge-jun/cli-jaw.git` 이다. 체크아웃에 따라
+`bitkyc08-arch/cli-jaw` 로 남아 있을 수 있는데, 이건 **같은 저장소의 옛 이름**이라
+GitHub이 리다이렉트해 준다. 동작은 하지만 `gh`(항상 `lidge-jun/cli-jaw` 로 해석)와
+이름이 갈려서 "이슈는 A에, 푸시는 B에" 처럼 보이는 착시를 만든다. 발견하면 고칠 것:
+
+```bash
+git remote -v                                                    # 확인
+git remote set-url origin https://github.com/lidge-jun/cli-jaw.git
+```
+
+**작업은 전부 `dev` 에서 한다. `main` 과 `preview` 는 머지만 받는 브랜치다.**
+거기에 직접 커밋하지 않는다.
+
+**`dev` 는 항상 `main` 위에 fast-forward 가능한 상태로 유지한다.** merge 커밋으로
+main 을 끌어와 히스토리를 갈래지게 만들지 말고, rebase 로 main 바로 위에 올린다:
+
+```bash
+git fetch origin
+git branch -f backup/dev-pre-rebase-$(date +%y%m%d) HEAD   # 되돌릴 지점
+git rebase origin/main
+git merge-base --is-ancestor origin/main HEAD && echo ff-able
+git push --force-with-lease origin dev
+```
+
+rebase 중 만나는 충돌은 대개 두 종류이고 해소법이 정해져 있다.
+
+- **버전 파일**(`package.json`, `package-lock.json`, `electron/*`): main 쪽을 취한다
+  (`--theirs`). 이건 릴리스 장부이지 작업 산출물이 아니다. 오래된 preview 승격
+  커밋이 replay 되려 하면 `git rebase --skip` — 버전을 되돌리는 것 말고 하는 일이 없다.
+- **`structure/str_func.md`**: 어느 쪽도 고르지 말고 실제 트리에서 다시 만든다.
+  줄 수는 파생값이다 — `bash structure/verify-counts.sh --fix` 후 재검증.
+
+**`dev` 푸시는 CI를 돌리지 않는다.** `test.yml` 과 `postinstall-platform.yml` 은
+`preview`/`main` push와 `pull_request` 에만 반응한다. exact-head CI 증거가
+필요하면 **PR 을 열어야** 하며, `dev` 에 푸시해 두고 "CI 통과"를 주장하면 안 된다 —
+애초에 아무것도 돌지 않는다. 확인은 SHA 대조로 한다:
+
+```bash
+git rev-parse HEAD
+gh pr checks <n>
+gh run view <run-id> --json headSha,conclusion
+```
+
 ### Clone
 
 ```bash

@@ -190,3 +190,25 @@ test('the interactive channel prompts are gated identically for all three channe
         assert.ok(true, `${channel} uses requestedChannels gate`);
     }
 });
+
+test('init with no channel flags leaves the gateway set empty (#395)', () => {
+    // A clean install that configures no messenger must not come out of init with
+    // one already enabled. The bug was structural rather than a bad default: the
+    // home channel starts life as 'telegram', and an unconditional unshift pushed
+    // that seed into an empty enabled set. The summary then printed
+    // "Gateways: telegram" next to "Telegram: off" on the same screen, and that
+    // contradiction reached disk, where it blocked Slack inbound later on.
+    const { status, settings } = runInit([]);
+
+    assert.equal(status, 0);
+    assert.ok(settings, 'init must write a settings file');
+    const messaging = settings!['messaging'] as { enabledChannels?: unknown; homeChannel?: unknown };
+    assert.deepEqual(
+        messaging.enabledChannels, [],
+        'no gateway was configured, so none may be enabled',
+    );
+    // The home channel is a preference for proactive outbound and may keep its
+    // seed; what must not happen is that seed enabling a transport by itself.
+    assert.equal(messaging.homeChannel, 'telegram');
+});
+

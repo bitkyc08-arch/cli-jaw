@@ -14,8 +14,17 @@ test('Cursor effort resolves to model IDs instead of CLI flags', () => {
     assert.equal(resolveCursorModelVariant('gpt-5.3-codex', 'xhigh-fast'), 'gpt-5.3-codex-xhigh-fast');
     assert.equal(resolveCursorModelVariant('gpt-5.2', 'medium-fast'), 'gpt-5.2-fast');
     assert.equal(resolveCursorModelVariant('gpt-5.4-mini', 'high-fast'), 'gpt-5.4-mini-high');
-    assert.equal(resolveCursorModelVariant('grok-4.5', 'medium-fast'), 'grok-4.5-fast');
-    assert.equal(resolveCursorModelVariant('grok-4.5', 'medium'), 'grok-4.5');
+    // Grok resolves through the account's prefixed ids (#394). Picking the base
+    // `grok-4.5` used to yield `grok-4.5-fast`/`grok-4.5`, neither of which the
+    // account exposes, so the CLI silently ran something else.
+    assert.equal(resolveCursorModelVariant('grok-4.5', 'medium-fast'), 'cursor-grok-4.5-medium-fast');
+    assert.equal(resolveCursorModelVariant('grok-4.5', 'medium'), 'cursor-grok-4.5-medium');
+    // The reason the issue was filed: 4.6 was unreachable from the UI entirely.
+    assert.equal(resolveCursorModelVariant('grok-4.6', 'high'), 'cursor-grok-4.6-high');
+    assert.equal(resolveCursorModelVariant('grok-4.6', 'high-fast'), 'cursor-grok-4.6-high-fast');
+    assert.equal(resolveCursorModelVariant('grok-4.6', 'xhigh'), 'cursor-grok-4.6-xhigh');
+    // An id the account already spells out is passed through untouched.
+    assert.equal(resolveCursorModelVariant('cursor-grok-4.6-high', 'low'), 'cursor-grok-4.6-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-7-thinking', 'high'), 'claude-opus-4-7-thinking-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-8-thinking', 'high'), 'claude-opus-4-8-thinking-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-8', 'max'), 'claude-opus-4-8-max');
@@ -31,10 +40,14 @@ test('Cursor full model IDs stay unchanged', () => {
     assert.equal(resolveCursorModelVariant('gpt-5.5-medium', 'high-fast'), 'gpt-5.5-medium');
     assert.equal(isCursorFullModelId('grok-4.5-fast'), false);
     assert.equal(resolveCursorModelVariant('grok-4.5-fast', 'high'), 'grok-4.5-fast');
+    assert.equal(isCursorFullModelId('cursor-grok-4.6-high'), true);
 });
 
 test('Cursor model inventory mirrors observed cursor-agent list-models support', () => {
-    assert.equal(CURSOR_MODEL_IDS.length, 145);
+    // Checked against a live `cursor-agent models` run (2026-08-20): the account
+    // listed 204 ids, 92 of which this registry had never heard of. The count is
+    // kept as a regrowth guard, but the assertions below are what carry meaning.
+    assert.equal(CURSOR_MODEL_IDS.length, 237);
     assert.ok(CURSOR_MODEL_IDS.includes('composer-2.5-fast'));
     assert.ok(!CURSOR_MODEL_IDS.includes('grok-composer-2.5-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('gpt-5.5-extra-high-fast'));
@@ -50,10 +63,23 @@ test('Cursor model inventory mirrors observed cursor-agent list-models support',
         assert.ok(CURSOR_MODEL_IDS.includes(`claude-opus-5-${effort}`), `missing claude-opus-5-${effort}`);
         assert.ok(CURSOR_MODEL_IDS.includes(`claude-opus-5-${effort}-fast`), `missing claude-opus-5-${effort}-fast`);
     }
-    // Upstream lists no opus-5 thinking variant, unlike fable-5 / opus-4-8.
-    assert.ok(!CURSOR_MODEL_IDS.includes('claude-opus-5-thinking-high'));
+    // The live account DOES list opus-5 thinking variants, unlike the upstream
+    // static seed this file was previously written against.
+    assert.ok(CURSOR_MODEL_IDS.includes('claude-opus-5-thinking-high'));
+    // Legacy unprefixed Grok ids stay: a catalogue differs per plan, and removing
+    // one would break an account that still exposes it.
     assert.ok(CURSOR_MODEL_IDS.includes('grok-4.5'));
     assert.ok(CURSOR_MODEL_IDS.includes('grok-4.5-fast'));
+    // What the account actually exposes, and what #394 was about.
+    for (const effort of ['low', 'medium', 'high', 'xhigh']) {
+        assert.ok(CURSOR_MODEL_IDS.includes(`cursor-grok-4.6-${effort}`), `missing cursor-grok-4.6-${effort}`);
+        assert.ok(CURSOR_MODEL_IDS.includes(`cursor-grok-4.6-${effort}-fast`), `missing cursor-grok-4.6-${effort}-fast`);
+    }
+    assert.ok(CURSOR_REGISTRY_MODELS.includes('grok-4.6'), 'the UI must be able to offer 4.6');
+    // Other families the hand-maintained list had fallen behind on.
+    for (const model of ['gpt-5.6-sol-xhigh', 'gpt-5.6-terra-max', 'kimi-k3-high', 'gemini-3.7-flash-high', 'glm-5.2-max']) {
+        assert.ok(CURSOR_MODEL_IDS.includes(model), `missing ${model}`);
+    }
 });
 
 test('Cursor args use print mode, trust, stream-json, force only for auto permissions', () => {

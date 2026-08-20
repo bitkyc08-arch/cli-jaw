@@ -45,6 +45,12 @@ export interface JwcEventContext {
     /** Turn start (ms) — rides on agent_tool broadcasts so the web UI elapsed timer
      *  has an authoritative origin instead of client arrival time (WP4b). */
     runStartedAt?: number | undefined;
+    /** Identity of the request this turn serves. Rides on the same broadcasts so a
+     *  subscriber can filter to its own run; `sessionId` above is the jwc engine
+     *  session, which is a different thing entirely (#398). */
+    requestId?: string | undefined;
+    /** Transport this turn came from, carried for the same reason. */
+    origin?: string | undefined;
 }
 
 function toolLabel(name: string | undefined, args: unknown): { label: string; detail: string } {
@@ -89,7 +95,13 @@ function missingFinalSuffix(existing: string, finalText: string): string {
 /** Map a single engine event onto the bus. Public lane unless noted (113.2 §5). */
 export function mapAgentEventToBus(event: JwcAgentEvent, ctx: JwcEventContext): void {
     const agentId = ctx.agentId ?? 'jwc-main';
-    const base = { agentId, cli: 'jwc' as const, sessionId: ctx.sessionId };
+    const base = {
+        agentId,
+        cli: 'jwc' as const,
+        sessionId: ctx.sessionId,
+        ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+        ...(ctx.origin ? { origin: ctx.origin } : {}),
+    };
 
     switch (event.type) {
         case 'agent_start':

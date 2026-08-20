@@ -62,6 +62,13 @@ export interface QueueDeps {
     getWorkingDir(): string | null;
     isMultiSessionEnabled(): boolean;
     isLocalSessionScopeEnabled?(): boolean;
+    /**
+     * Chat session bound to a remote conversation key, when one exists.
+     *
+     * Injected rather than imported so the queue keeps its test seam, and
+     * optional so an embedder that has no remote bindings simply omits it.
+     */
+    resolveRemoteSession?(remoteKey: string): string | null;
 }
 
 export const FALLBACK_MAX_RETRIES = 3;
@@ -124,11 +131,26 @@ export function createQueueController(
             if (typeof parsed?.id !== 'string' || typeof parsed?.prompt !== 'string' || typeof parsed?.source !== 'string') {
                 return [];
             }
-            const chatSessionId = typeof parsed.chatSessionId === 'string' ? parsed.chatSessionId : 'default';
             const remoteKey = typeof parsed.remoteKey === 'string' ? parsed.remoteKey : undefined;
+            // A payload written before this field existed, or one whose id was
+            // dropped somewhere upstream, still knows WHICH conversation it came
+            // from. Falling straight to 'default' threw that away and the item
+            // was later inserted into whatever session happened to be active (#399).
+            const chatSessionId = typeof parsed.chatSessionId === 'string'
+                ? parsed.chatSessionId
+                : (remoteKey ? deps.resolveRemoteSession?.(remoteKey) ?? 'default' : 'default');
             const persistedScope = multiSessionEnabled && typeof parsed.scope === 'string' ? parsed.scope : 'default';
+            // `localSessionScopeEnabled` governs LOCAL scopes: whether a plain chat
+            // session gets a scope of its own. A remote conversation is not that, and
+            // passing the local flag as the gate made an unpersisted Slack item collapse
+            // to 'default' even though its remoteKey was right there (#399). Remote
+            // items are gated by multi-session being on at all.
             const scope = persistedScope === 'default'
-                ? scopeForChatSession(chatSessionId, remoteKey, localSessionScopeEnabled)
+                ? scopeForChatSession(
+                    chatSessionId,
+                    remoteKey,
+                    remoteKey ? multiSessionEnabled : localSessionScopeEnabled,
+                )
                 : persistedScope;
             return [stripUndefined({
                 ...(multiSessionEnabled ? { schemaVersion: 2 as const } : {}),
@@ -447,8 +469,14 @@ export function createQueueController(
         const origin: RuntimeOrigin = source || 'web';
         console.log(`[queue] processing message for ${groupKey}, ${messageQueue.length} remaining`);
 
+        // The globally active session is the right fallback for a local item and the
+        // wrong one for a remote item: "whoever is on screen right now" has nothing to
+        // do with the Slack thread this message came from.
+        const remoteSessionId = item.remoteKey
+            ? deps.resolveRemoteSession?.(item.remoteKey) ?? null
+            : null;
         const effectiveSessionId = multiSessionEnabled
-            ? (item.chatSessionId || deps.getActiveChatSession())
+            ? (item.chatSessionId || remoteSessionId || deps.getActiveChatSession())
             : deps.getActiveChatSession();
         let inserted = false;
         try {

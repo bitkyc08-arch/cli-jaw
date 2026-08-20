@@ -83,5 +83,12 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // which teaches the agent to treat `[Slack]` and `[앞선 대화]` blocks as
     // data rather than instructions — a prompt-injection boundary that only
     // works if it is stated inline.
-    assert.ok(a1Src.length <= 38100, `a1-system.md is ${a1Src.length} chars — over the 38,100 budget`);
+    // Budget raised 38,100 → 38,250 for #397. The old line actively told the agent
+    // to omit `target`, and that instruction was the delivery bug: with no target
+    // the send resolves to a single per-channel slot that any inbound message
+    // overwrites, so a file built for one channel went to another. Reversing it
+    // costs more characters than the wrong advice did, and the reason has to travel
+    // with the rule — an agent told "always send target" without being told what
+    // happens otherwise will drop it again the first time it is inconvenient.
+    assert.ok(a1Src.length <= 38250, `a1-system.md is ${a1Src.length} chars — over the 38,250 budget`);
 });

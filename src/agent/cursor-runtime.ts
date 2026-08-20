@@ -155,6 +155,109 @@ export const CURSOR_MODEL_IDS = [
     'gpt-5-mini',
     'glm-5.2',
     'kimi-k2.7-code',
+
+    // Live account catalogue (cursor-agent models, 2026-08-20).
+    // Grok is why #394 was filed: the account exposes it ONLY under a
+    // cursor- prefix, and the fast variants carry that prefix too — so the
+    // opencodex rule (prefix on non-fast only) does not transfer to the CLI
+    // --model surface this runtime actually uses.
+    // The other 78 were absent for the same reason nobody noticed Grok: the
+    // list was maintained by hand against release notes instead of against
+    // the account. Entries above that this account does not expose are left
+    // in place; catalogues differ per plan, and dropping one would break a
+    // user whose account still has it.
+    'claude-fable-5-high',
+    'claude-fable-5-low',
+    'claude-fable-5-max',
+    'claude-fable-5-medium',
+    'claude-fable-5-thinking-high',
+    'claude-fable-5-thinking-low',
+    'claude-fable-5-thinking-max',
+    'claude-fable-5-thinking-medium',
+    'claude-fable-5-thinking-xhigh',
+    'claude-fable-5-xhigh',
+    'claude-opus-5-thinking-high',
+    'claude-opus-5-thinking-high-fast',
+    'claude-opus-5-thinking-low',
+    'claude-opus-5-thinking-low-fast',
+    'claude-opus-5-thinking-max',
+    'claude-opus-5-thinking-max-fast',
+    'claude-opus-5-thinking-medium',
+    'claude-opus-5-thinking-medium-fast',
+    'claude-opus-5-thinking-xhigh',
+    'claude-opus-5-thinking-xhigh-fast',
+    'claude-sonnet-5-high',
+    'claude-sonnet-5-low',
+    'claude-sonnet-5-max',
+    'claude-sonnet-5-medium',
+    'claude-sonnet-5-thinking-high',
+    'claude-sonnet-5-thinking-low',
+    'claude-sonnet-5-thinking-max',
+    'claude-sonnet-5-thinking-medium',
+    'claude-sonnet-5-thinking-xhigh',
+    'claude-sonnet-5-xhigh',
+    'cursor-grok-4.5-high',
+    'cursor-grok-4.5-high-fast',
+    'cursor-grok-4.5-low',
+    'cursor-grok-4.5-low-fast',
+    'cursor-grok-4.5-medium',
+    'cursor-grok-4.5-medium-fast',
+    'cursor-grok-4.6-high',
+    'cursor-grok-4.6-high-fast',
+    'cursor-grok-4.6-low',
+    'cursor-grok-4.6-low-fast',
+    'cursor-grok-4.6-medium',
+    'cursor-grok-4.6-medium-fast',
+    'cursor-grok-4.6-xhigh',
+    'cursor-grok-4.6-xhigh-fast',
+    'gemini-3.6-flash-high',
+    'gemini-3.6-flash-low',
+    'gemini-3.6-flash-medium',
+    'gemini-3.6-flash-minimal',
+    'gemini-3.7-flash-high',
+    'gemini-3.7-flash-low',
+    'gemini-3.7-flash-medium',
+    'glm-5.2-high',
+    'glm-5.2-max',
+    'gpt-5.6-luna-high',
+    'gpt-5.6-luna-high-fast',
+    'gpt-5.6-luna-low',
+    'gpt-5.6-luna-low-fast',
+    'gpt-5.6-luna-max',
+    'gpt-5.6-luna-max-fast',
+    'gpt-5.6-luna-medium',
+    'gpt-5.6-luna-medium-fast',
+    'gpt-5.6-luna-none',
+    'gpt-5.6-luna-none-fast',
+    'gpt-5.6-luna-xhigh',
+    'gpt-5.6-luna-xhigh-fast',
+    'gpt-5.6-sol-high',
+    'gpt-5.6-sol-high-fast',
+    'gpt-5.6-sol-low',
+    'gpt-5.6-sol-low-fast',
+    'gpt-5.6-sol-max',
+    'gpt-5.6-sol-max-fast',
+    'gpt-5.6-sol-medium',
+    'gpt-5.6-sol-medium-fast',
+    'gpt-5.6-sol-none',
+    'gpt-5.6-sol-none-fast',
+    'gpt-5.6-sol-xhigh',
+    'gpt-5.6-sol-xhigh-fast',
+    'gpt-5.6-terra-high',
+    'gpt-5.6-terra-high-fast',
+    'gpt-5.6-terra-low',
+    'gpt-5.6-terra-low-fast',
+    'gpt-5.6-terra-max',
+    'gpt-5.6-terra-max-fast',
+    'gpt-5.6-terra-medium',
+    'gpt-5.6-terra-medium-fast',
+    'gpt-5.6-terra-none',
+    'gpt-5.6-terra-none-fast',
+    'gpt-5.6-terra-xhigh',
+    'gpt-5.6-terra-xhigh-fast',
+    'kimi-k3-high',
+    'kimi-k3-low',
+    'kimi-k3-max',
 ] as const;
 
 export const CURSOR_REGISTRY_MODELS = [
@@ -190,10 +293,18 @@ export const CURSOR_REGISTRY_MODELS = [
     'gemini-3-flash',
     'gemini-3-pro',
     'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    // Grok bases stay unprefixed here — this is the UI's vocabulary. The
+    // `cursor-` prefix belongs to the wire id and is applied in
+    // resolveCursorModelVariant, so a user picks "grok-4.6" and the runtime
+    // sends `cursor-grok-4.6-high` (#394).
     'grok-4.5',
+    'grok-4.6',
     'gpt-5-mini',
     'glm-5.2',
     'kimi-k2.7-code',
+    'kimi-k3',
 ] as const;
 
 const CURSOR_EFFORT_SUFFIX: Record<string, string> = {
@@ -259,5 +370,17 @@ export function resolveCursorModelVariant(model: string, effort: string): string
         const baseSuffix = cursorEffortSuffix(base, baseEffort);
         if (baseSuffix) candidates.push(`${base}-${baseSuffix}`);
     }
-    return candidates.find((candidate) => CURSOR_MODEL_ID_SET.has(candidate)) || base;
+    // Grok is the one family the account names with a `cursor-` prefix, and it
+    // applies to fast variants too. The UI vocabulary stays unprefixed, so the
+    // prefixed form is tried for each candidate before falling back — without
+    // this, picking grok-4.6 produced `grok-4.6-high`, which the account does
+    // not have, and the resolver silently degraded to the bare base (#394).
+    const withPrefix = candidates.flatMap((candidate) => (
+        candidate.startsWith('grok-') ? [`cursor-${candidate}`, candidate] : [candidate]
+    ));
+    const resolved = withPrefix.find((candidate) => CURSOR_MODEL_ID_SET.has(candidate));
+    if (resolved) return resolved;
+    return base.startsWith('grok-') && CURSOR_MODEL_ID_SET.has(`cursor-${base}`)
+        ? `cursor-${base}`
+        : base;
 }

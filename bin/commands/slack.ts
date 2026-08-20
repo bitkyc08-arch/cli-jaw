@@ -20,7 +20,7 @@ import {
 } from '../../src/core/config.js';
 import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { slackApi } from '../../src/slack/api.js';
-import { slackManifestYaml } from '../../src/slack/manifest.js';
+import { slackManifestYaml, slackManifestCreateUrl } from '../../src/slack/manifest.js';
 import { notifyRunningServer, type HotReload } from '../../src/slack/hot-notify.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 
@@ -46,6 +46,9 @@ if (shouldShowHelp(process.argv)) printAndExit(`
   Subcommands:
     manifest              Print the Slack app manifest YAML to stdout.
                           Pipe it: jaw slack manifest | pbcopy
+    manifest --url        Print an app-creation URL with the manifest embedded.
+                          Slack validates that URL parameter, not what you paste
+                          into the editor, so this is the form that succeeds.
     setup                 Guided setup: prints the manifest, validates the two
                           tokens live, writes settings, hot-reloads the server.
     history <channel>     Read recent channel messages (or one thread) through
@@ -116,12 +119,16 @@ const { values, positionals } = parseArgs({
         'json': { type: 'boolean', default: false },
         'include-bots': { type: 'boolean', default: false },
         'include-deleted': { type: 'boolean', default: false },
+        // `manifest` subcommand flag.
+        'url': { type: 'boolean', default: false },
     },
     allowPositionals: true,
 });
 
 if (sub === 'manifest') {
-    process.stdout.write(slackManifestYaml());
+    // `--url` is the form that actually works in Slack's UI: the page validates the
+    // manifest_json query parameter, not the editor contents (#396).
+    process.stdout.write(values['url'] ? `${slackManifestCreateUrl()}\n` : slackManifestYaml());
 } else if (sub === 'setup') {
     await runSetup();
 } else if (sub === 'history') {
@@ -174,9 +181,12 @@ async function runSetup(): Promise<void> {
   Until then senders show as raw ids and messaging is unaffected.
 
   Step 1 — create the app
-    Open  https://api.slack.com/apps?new_app=1
-    Choose "From a manifest", pick your workspace, paste this:
+    Open the URL below. It carries the manifest with it — do NOT paste into the
+    editor at plain ?new_app=1: Slack validates the URL's manifest_json parameter,
+    not the editor, so pasting leaves Create disabled with no error shown (#396).
 `);
+        console.log(`    ${slackManifestCreateUrl()}\n`);
+        console.log('    Manifest, for reference:');
         console.log(slackManifestYaml().split('\n').map(l => `    ${l}`).join('\n'));
 
         // Best-effort conveniences: copy the manifest to the macOS clipboard
@@ -187,7 +197,7 @@ async function runSetup(): Promise<void> {
                 const pbcopy = execFile('pbcopy', [], () => { });
                 pbcopy.stdin?.end(slackManifestYaml());
                 console.log('    (manifest copied to clipboard via pbcopy)');
-                execFile('open', ['https://api.slack.com/apps?new_app=1'], () => { });
+                execFile('open', [slackManifestCreateUrl()], () => { });
             }
             await ask('Press Enter once the app is created and installed to the workspace…');
         }
@@ -228,6 +238,17 @@ async function runSetup(): Promise<void> {
         const appToken = values['app-token'] ?? await ask('App-level token (xapp-..., Enter to skip)', existing.appToken || '');
         if (appToken && !appToken.startsWith('xapp-')) {
             console.error(`  ❌ Slack app-level token should start with "xapp-" (got "${appToken.slice(0, 5)}…"). Did you swap it with the bot token?`);
+            process.exitCode = 1;
+            return;
+        }
+        // The Slack UI shows app-level tokens in a narrow field, and a partial copy
+        // out of it produces a well-formed prefix with a truncated body. That reaches
+        // apps.connections.open as a plain `invalid_auth`, which reads as a wrong
+        // token rather than a short one, and people re-generate instead of re-copying
+        // (#396). A real xapp- token runs well past 50 characters.
+        if (appToken && appToken.length < 50) {
+            console.error(`  ❌ That app-level token is only ${appToken.length} characters — it looks truncated.`);
+            console.error('     Slack\'s token field scrolls; use its Copy button rather than selecting the text.');
             process.exitCode = 1;
             return;
         }

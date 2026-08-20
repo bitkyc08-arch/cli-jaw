@@ -153,7 +153,11 @@ test('a home that has been used before is not treated as a new install', () => {
 // A home where `jaw init` ran but nothing else did leaves no database. It is still not a
 // new install, and the second audit reproduced exactly this: run init, delete the
 // settings file, come back to sessions on.
-for (const artifact of ['.setup-state.json', 'heartbeat.json'] as const) {
+//
+// `heartbeat.json` used to be in this list and is deliberately no longer: postinstall
+// seeds it on every plain `npm i -g`, so it cannot tell a used home from a freshly
+// installed one (#401). It is covered by the fresh-install case below instead.
+for (const artifact of ['.setup-state.json'] as const) {
     test(`a home carrying ${artifact} is not treated as a new install`, () => {
         try { fs.unlinkSync(SETTINGS_PATH); } catch { /* expected */ }
         try { fs.rmSync(DB_PATH); } catch { /* not there */ }
@@ -168,6 +172,36 @@ for (const artifact of ['.setup-state.json', 'heartbeat.json'] as const) {
         fs.unlinkSync(join(JAW_HOME, artifact));
     });
 }
+
+// The regression #401 was actually reported for: `npm i -g cli-jaw` runs postinstall,
+// which creates skills/, uploads/ and heartbeat.json. If those count as evidence of a
+// used home, the install that just created them reads as established, and the first
+// `jaw init` writes the pre-v3 session defaults plus a marker asking about a migration
+// this home never had. Nobody ever saw the new defaults.
+test('a home holding only postinstall artifacts is still a new install (#401)', () => {
+    try { fs.unlinkSync(SETTINGS_PATH); } catch { /* expected */ }
+    try { fs.rmSync(DB_PATH); } catch { /* not there */ }
+    try { fs.rmSync(join(JAW_HOME, '.migrated-v1')); } catch { /* not there */ }
+    try { fs.rmSync(join(JAW_HOME, 'prompts'), { recursive: true }); } catch { /* not there */ }
+    try { fs.rmSync(join(JAW_HOME, 'widgets'), { recursive: true }); } catch { /* not there */ }
+    try { fs.unlinkSync(join(JAW_HOME, '.setup-state.json')); } catch { /* not there */ }
+
+    // Exactly what bin/postinstall.ts leaves behind, and nothing else.
+    fs.mkdirSync(join(JAW_HOME, 'skills'), { recursive: true });
+    fs.mkdirSync(join(JAW_HOME, 'uploads'), { recursive: true });
+    fs.writeFileSync(join(JAW_HOME, 'heartbeat.json'), JSON.stringify({ jobs: [] }), 'utf8');
+
+    const s = load();
+
+    assert.equal(s["multiSession"].enabled, true, 'a brand-new install gets the current defaults');
+    assert.equal(s["multiSession"].maxConcurrent, 2);
+    assert.equal(
+        s["multiSessionDefaultMigration"], null,
+        'there is nothing to migrate from, so there is nothing to ask about',
+    );
+
+    fs.unlinkSync(join(JAW_HOME, 'heartbeat.json'));
+});
 
 // The marker is the record of consent, so `pending` alongside enabled means the record
 // is lying. It can be produced without touching the accept route at all: an external
