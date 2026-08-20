@@ -820,10 +820,44 @@ test('SOR-003: the paths that already masked still do', async () => {
         { __raw: true, ok: true, status: 200 },
         { ok: true, files: [{ id: 'F1' }] },
     ]);
-    await sendSlackFile('xoxb-t', slackTargetFromId('C1'), filePath, 'document', {
+    await sendSlackFile('xoxb-t', slackTargetFromId('C1'), filePath, {
         fetchImpl: impl,
         caption: `here: ${FAKE_APP_TOKEN}`,
     });
     const everything = calls.map(c => String(c.init?.body ?? '')).join('\n');
     assert.ok(!everything.includes(FAKE_APP_TOKEN), `the caption leaked: ${everything}`);
+});
+
+// The filename rides along to Slack three times — the upload reservation, the
+// multipart part name, and the file's TITLE in the channel — and none of them
+// was masked while the caption beside them was. A credential-shaped basename
+// went out verbatim (#408).
+test('SOR-004: the filename is masked everywhere it reaches Slack', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jaw-slack-redact-name-'));
+    const filePath = join(dir, `${FAKE_APP_TOKEN}.txt`);
+    writeFileSync(filePath, 'x');
+    const { impl, calls } = makeFetch([
+        { ok: true, upload_url: 'https://files.slack.com/upload', file_id: 'F1' },
+        { __raw: true, ok: true, status: 200 },
+        { ok: true, files: [{ id: 'F1' }] },
+    ]);
+
+    const result = await sendSlackFile('xoxb-t', slackTargetFromId('C1'), filePath, { fetchImpl: impl });
+    assert.equal(result.ok, true, `the upload must still succeed: ${JSON.stringify(result)}`);
+
+    for (const [i, call] of calls.entries()) {
+        const body = call.init?.body;
+        const rendered = typeof body === 'string' ? body : String(body);
+        assert.ok(
+            !rendered.includes(FAKE_APP_TOKEN),
+            `call ${i} (${call.url}) leaked the filename: ${rendered.slice(0, 200)}`,
+        );
+    }
+
+    // And the title Slack shows in the channel is the masked one.
+    const complete = calls.find(c => c.url.includes('completeUploadExternal'));
+    assert.ok(complete, 'the attach step must have run');
+    const files = bodyOf(complete!).files as Array<{ title?: string }>;
+    assert.ok(files?.[0]?.title, 'the file must still have a title');
+    assert.ok(!files[0]!.title!.includes(FAKE_APP_TOKEN));
 });
