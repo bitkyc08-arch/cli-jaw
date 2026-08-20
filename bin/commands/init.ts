@@ -329,10 +329,24 @@ if (homeChannelFlag && isMessengerChannel(homeChannelFlag)) {
     const existingHome = settings.messaging?.homeChannel ?? settings.channel;
     if (isMessengerChannel(existingHome as unknown)) homeChannel = existingHome as MessengerChannel;
 }
+// Did the caller actually NAME a channel, or is `homeChannel` still carrying its
+// `'telegram'` seed? The old code could not tell, and unshifted either one into the
+// enabled set. For `--channel slack` that unshift is load-bearing: an environment-managed
+// Slack install has its credentials in env, so no `--slack-bot-token` is passed,
+// `slEnabled` stays false, and the enabled set is empty even though Slack is exactly what
+// was asked for. For a bare `init --non-interactive` the same line enabled telegram —
+// a channel nobody configured — and the summary printed "Gateways: telegram" beside
+// "Telegram: off" before writing that contradiction to disk (#395).
+const homeChannelRequested = Boolean(
+    (homeChannelFlag && isMessengerChannel(homeChannelFlag))
+    || (channelFlag && isMessengerChannel(channelFlag))
+    || flagEnabledChannels?.length,
+);
 if (messagingEnabledChannels.length > 0 && !messagingEnabledChannels.includes(homeChannel)) {
     homeChannel = messagingEnabledChannels[0] ?? 'telegram';
 }
-if (!messagingEnabledChannels.includes(homeChannel)) {
+// Only a named channel may enable itself this way. An unnamed default may not.
+if (homeChannelRequested && !messagingEnabledChannels.includes(homeChannel)) {
     messagingEnabledChannels.unshift(homeChannel);
 }
 
