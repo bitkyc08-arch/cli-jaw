@@ -31,6 +31,7 @@ import { getCachedCliStatus, getCachedCliStatusForced } from '../cli/cli-status.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
+import { SLACK_ALLOWLIST_MAX } from '../slack/events.js';
 import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
 import { log } from '../core/logger.js';
@@ -140,13 +141,6 @@ export type AllowlistChange = {
     to: string[];
 };
 
-/**
- * A ceiling on the allowlist, because `classifyAllowlistChange` compares the
- * two lists with `some(... includes ...)` — quadratic in the list length. A
- * request well under the 1 MB body limit could still hold tens of thousands of
- * ids and stall the event loop. No workspace has this many conversations.
- */
-export const SLACK_ALLOWLIST_MAX = 1000;
 
 /**
  * How a settings write moves `slack.channelIds`.
@@ -298,7 +292,7 @@ export function registerSettingsRoutes(
         if (invalidSlackChannelIds(incomingSlack["channelIds"])) {
             fail(res, 400, 'invalid_slack_channel_ids', {
                 hint: 'slack.channelIds must be an array of conversation id strings. '
-                    + 'Use [] to allow every conversation.',
+                    + `Use [] to allow every conversation. At most ${SLACK_ALLOWLIST_MAX} ids.`,
             });
             return;
         }

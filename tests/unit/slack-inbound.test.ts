@@ -761,3 +761,42 @@ test('readSlackAllowlist never widens on a malformed value', async () => {
     assert.deepEqual(readSlackAllowlist(['C1', '', '   ']), ['C1']);
 });
 
+
+// preflight is the only consumer that sees an allowlist drop: the dispatch path
+// never runs, so its log never fires. Without a line here the bot just goes
+// quiet and nothing in the log says why (#406).
+test('preflight logs the conversation the allowlist excluded', async () => {
+    const { initIngressJournal } = await import('../../src/messaging/durable-ingress.ts');
+    const { default: Database } = await import('better-sqlite3');
+    const { settings } = await import('../../src/core/config.ts');
+    const { log } = await import('../../src/core/logger.ts');
+
+    // preflight returns before the gate when there is no journal (bot.ts).
+    initIngressJournal(new Database(':memory:') as never);
+
+    const prevSlack = settings.slack;
+    const lines: string[] = [];
+    const originalInfo = log.info;
+    (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
+
+    try {
+        settings.slack = { ...(prevSlack || {}), enabled: true, teamId: 'T1', channelIds: ['C_ALLOWED'] };
+        const { preflightSlackEnvelope } = await import('../../src/slack/bot.ts');
+
+        const verdict = await preflightSlackEnvelope({
+            envelope_id: 'E-blocked',
+            type: 'events_api',
+            payload: { event: { type: 'message', channel: 'C_BLOCKED', ts: '10.1', user: 'U1', text: 'hi' } },
+        } as never);
+
+        assert.equal(verdict, 'ignored', 'an excluded conversation must not be journaled');
+        assert.ok(
+            lines.some(l => l.includes('[slack:gate]') && l.includes('C_BLOCKED')),
+            `the drop must name the conversation; saw: ${JSON.stringify(lines)}`,
+        );
+    } finally {
+        (log as { info: unknown }).info = originalInfo;
+        settings.slack = prevSlack;
+    }
+});
+

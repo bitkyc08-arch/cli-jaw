@@ -15,9 +15,15 @@ const slackEnvironmentVariables = [
 ] as const;
 for (const key of slackEnvironmentVariables) delete process.env[key];
 
+const auditEntries: Array<Record<string, unknown>> = [];
+
 mock.module('../../src/security/security-audit-log.ts', {
     namedExports: {
-        getSecurityAuditLog: () => ({ append: () => undefined }),
+        getSecurityAuditLog: () => ({
+            append: (_event: string, _actor: string, detail: Record<string, unknown>) => {
+                auditEntries.push(detail);
+            },
+        }),
     },
 });
 
@@ -317,5 +323,29 @@ test('a malformed channelIds write is refused instead of applied', async () => {
     const good = await routeRequest(put, { slack: { channelIds: ['C1'] } });
     assert.equal(good.status, 200);
     assert.equal(patches.length, 1);
+});
+
+// Narrowing the allowlist is recorded rather than refused, because jaw slack
+// setup --channel-ids reaches the server through this same PUT. The record is
+// the whole point: nobody could tell what had happened (#406).
+test('a narrowing write succeeds and leaves an audit entry naming both lists', async () => {
+    auditEntries.length = 0;
+    const patches: Record<string, unknown>[] = [];
+    const put = registerRouteApp(
+        allowAuth,
+        async (patch) => { patches.push(patch); return patch; },
+        'PUT',
+        '/api/settings',
+    );
+
+    const res = await routeRequest(put, { slack: { channelIds: ['C1'] } });
+    assert.equal(res.status, 200);
+    assert.equal(patches.length, 1);
+
+    const narrow = auditEntries.find(d => d['action'] === 'narrow');
+    assert.ok(narrow, 'a narrowing write must leave an audit entry');
+    assert.deepEqual(narrow['keys'], ['slack.channelIds']);
+    assert.deepEqual(narrow['to'], ['C1']);
+    assert.ok(Array.isArray(narrow['from']), 'the entry must carry the previous list');
 });
 

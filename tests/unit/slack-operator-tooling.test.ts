@@ -188,31 +188,46 @@ test('the agent prompt names the inbound allowlist as something not to narrow', 
 // configured us out of a conversation. Without this the allowlist mistake reads
 // as a dead bot: preflight drops the event, nothing reaches dispatch, and
 // dispatch is the only consumer that logs (#406).
-test('preflight logs the conversation it was configured out of', async () => {
-    const events = await import('../../src/slack/events.js');
-    const { log } = await import('../../src/core/logger.js');
 
-    const lines: string[] = [];
-    const original = log.info;
-    (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
-    try {
-        const config = {
-            selfUserId: 'U_SELF',
-            allowBots: false,
-            mentionOnly: false,
-            channelIds: events.readSlackAllowlist(['C_ALLOWED']),
-            threadRequireMention: false,
-            threadParticipation: () => null,
-        };
-        const decision = events.shouldProcessSlackEvent(
-            { type: 'message', channel: 'C_BLOCKED', ts: '1', user: 'U1', text: 'hi' } as never,
-            config as never,
-            'events_api',
-        );
-        assert.equal(decision.process, false);
-        assert.equal(decision.reason, 'channel_not_allowed');
-    } finally {
-        (log as { info: unknown }).info = original;
+// Reading it any other way is how the two paths drifted: a malformed value
+// blocked messages while slash commands still ran everywhere, and doctor
+// reported a reach the bot did not have (#406).
+test('every allowlist reader agrees with the gate', async () => {
+    const { readSlackAllowlist, MALFORMED_SLACK_ALLOWLIST, SLACK_ALLOWLIST_MAX } =
+        await import('../../src/slack/events.js');
+    const { slackChannelScope } = await import('../../src/slack/scope-status.js');
+
+    // Padding and duplicates: the gate matches one channel, so doctor must say one.
+    assert.deepEqual(readSlackAllowlist([' C1 ', 'C1', '']), ['C1']);
+    assert.equal(slackChannelScope([' C1 ', 'C1', '']).scope, 'allowlist_1');
+
+    // Malformed: the gate denies every channel, so doctor must not call it "all".
+    for (const bad of ['C1', ['C1', 7], { 0: 'C1' }]) {
+        assert.deepEqual(readSlackAllowlist(bad), [MALFORMED_SLACK_ALLOWLIST]);
+        assert.equal(slackChannelScope(bad).scope, 'malformed');
     }
+
+    // Empty means every conversation on both sides.
+    assert.deepEqual(readSlackAllowlist([]), []);
+    assert.equal(slackChannelScope([]).scope, 'all_conversations');
+    assert.equal(slackChannelScope(undefined).scope, 'all_conversations');
+
+    // The ceiling binds in the reader, not just the route, because settings also
+    // arrive from the file watcher and from a hand-edited settings.json.
+    const atLimit = Array.from({ length: SLACK_ALLOWLIST_MAX }, (_, i) => `C${i}`);
+    assert.equal(readSlackAllowlist(atLimit).length, SLACK_ALLOWLIST_MAX);
+    assert.deepEqual(readSlackAllowlist([...atLimit, 'C_OVER']), [MALFORMED_SLACK_ALLOWLIST]);
+});
+
+// The slash-command path used to parse the allowlist itself, so a malformed
+// value blocked ordinary messages while commands still ran in every channel.
+test('the slash command path reads the allowlist through the gate helper', () => {
+    const commands = read('src/slack/commands.ts');
+    assert.match(commands, /readSlackAllowlist\(settings\[.slack.\]\?\.channelIds\)/);
+    assert.doesNotMatch(
+        commands,
+        /Array\.isArray\(configured\)/,
+        'the slash path must not parse the allowlist on its own',
+    );
 });
 

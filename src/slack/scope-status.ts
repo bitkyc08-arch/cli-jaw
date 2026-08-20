@@ -1,3 +1,5 @@
+import { readSlackAllowlist, MALFORMED_SLACK_ALLOWLIST } from './events.js';
+
 // ─── Slack OAuth scope drift ────────────────────────
 // A Slack app created from an older cli-jaw manifest keeps its original grant
 // forever. Adding a scope to `manifest.ts` changes what NEW apps get; it does
@@ -120,7 +122,7 @@ export function describeSlackScopeGap(status: SlackScopeStatus): string | null {
 
 export type SlackChannelScope = {
     ids: string[];
-    scope: 'all_conversations' | `allowlist_${number}`;
+    scope: 'all_conversations' | 'malformed' | `allowlist_${number}`;
 };
 
 /**
@@ -135,7 +137,14 @@ export type SlackChannelScope = {
  * `bin/commands/doctor.ts`, which runs its whole diagnostic at import time.
  */
 export function slackChannelScope(channelIds: unknown): SlackChannelScope {
-    const ids = Array.isArray(channelIds) ? channelIds.map(String) : [];
+    // Read it the way the gate reads it. Counting the raw array instead was its
+    // own kind of silence: doctor would report allowlist_3 for [" C1 ","C1",""]
+    // while the gate matched one channel, and all_conversations for a malformed
+    // value the gate was refusing outright (#406).
+    const ids = readSlackAllowlist(channelIds);
+    if (ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST) {
+        return { ids: [], scope: 'malformed' };
+    }
     return {
         ids,
         scope: ids.length === 0 ? 'all_conversations' : `allowlist_${ids.length}`,

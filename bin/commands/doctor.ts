@@ -453,9 +453,18 @@ check('Slack', () => {
     if (attachPort && thisPort && attachPort !== thisPort) {
         throw new Error(`WARN: slack attach instance is :${attachPort} — this instance (:${thisPort}) must not connect`);
     }
-    const channelIds = settings.slack.channelIds;
-    if (!channelIds?.length) throw new Error('WARN: no channel IDs configured — all conversations allowed');
-    return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, channels=${channelIds.length}`;
+    // Read through the same helper the gate uses, or this line reports a reach
+    // the bot does not have (#406).
+    const { ids, scope } = slackChannelScope(settings.slack.channelIds);
+    if (scope === 'malformed') {
+        throw new Error('WARN: slack.channelIds is not a list of conversation ids — '
+            + 'every channel is being denied. Set it to [] to allow all conversations.');
+    }
+    if (scope === 'all_conversations') {
+        return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, 모든 대화 허용`;
+    }
+    return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, `
+        + `${ids.length}개 대화만 허용 (${ids.join(', ')}) — 이 밖의 대화는 무시됩니다`;
 });
 
 // 6e. Channel consistency

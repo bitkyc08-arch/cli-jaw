@@ -129,9 +129,22 @@ export function isConversationAllowed(
  */
 export const MALFORMED_SLACK_ALLOWLIST = '\u0000malformed-slack-allowlist';
 
+/**
+ * A ceiling on the allowlist. The dedup below is quadratic, and settings reach
+ * this reader from the file watcher and direct edits as well as the route, so a
+ * bound that lives only in the route does not bind. Measured on this reader:
+ * 1k ids ~0.8ms, 10k ~62ms — per event.
+ *
+ * No Slack workspace allowlists this many conversations on purpose, so a list
+ * this long is a mistake, and a mistake must not open access.
+ */
+export const SLACK_ALLOWLIST_MAX = 1000;
+
 export function readSlackAllowlist(raw: unknown): string[] {
     if (raw === undefined || raw === null) return [];
     if (!Array.isArray(raw)) return [MALFORMED_SLACK_ALLOWLIST];
+    if (raw.length > SLACK_ALLOWLIST_MAX) return [MALFORMED_SLACK_ALLOWLIST];
+    const seen = new Set<string>();
     const ids: string[] = [];
     for (const entry of raw) {
         if (typeof entry !== 'string') return [MALFORMED_SLACK_ALLOWLIST];
@@ -139,7 +152,9 @@ export function readSlackAllowlist(raw: unknown): string[] {
         // A padded id matches nothing, so keeping it verbatim would quietly
         // block the channel the operator meant to allow.
         if (!id) continue;
-        if (!ids.includes(id)) ids.push(id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
     }
     return ids;
 }
