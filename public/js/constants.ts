@@ -150,7 +150,8 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'claude-4.6-opus', 'claude-4.6-sonnet',
             'claude-4.5-opus-high', 'claude-4.5-sonnet', 'claude-4-sonnet',
             'gemini-3.1-pro', 'gemini-3-flash', 'gemini-3-pro', 'gemini-3.5-flash',
-            'grok-4.5', 'gpt-5-mini', 'glm-5.2', 'kimi-k2.7-code',
+            'grok-4.6', 'grok-4.5', 'gpt-5-mini', 'glm-5.2', 'kimi-k2.7-code', 'kimi-k3',
+            'gemini-3.6-flash', 'gemini-3.7-flash',
         ],
     },
     'kiro-code': {
