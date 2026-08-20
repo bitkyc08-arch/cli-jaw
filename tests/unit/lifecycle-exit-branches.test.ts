@@ -179,3 +179,29 @@ test('LEB-010: a stored notice survives for the reader and is stripped for repla
         db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
     }
 });
+
+// The query boundary covers the history readers, and compact does not use them
+// for this slot: it greps the messages table directly, and the notice came back
+// through grep_hits with everything else green (#405).
+test('LEB-011: compaction does not reintroduce the notice through its grep slot', async () => {
+    const { insertMessage, db } = await import('../../src/core/db.ts');
+    const { STALL_TRUNCATION_NOTICE: NOTICE } = await import('../../src/agent/stall-notice.ts');
+    const { harvestBootstrapSlots } = await import('../../src/core/compact.ts');
+
+    const sessionId = `leb011-${Date.now()}`;
+    // A distinctive keyword so the grep slot has something to match on.
+    const body = 'zephyrite calibration notes for the harvest';
+    try {
+        insertMessage.run('user', 'zephyrite calibration 조사해줘', 'web', '', null, sessionId);
+        insertMessage.run('assistant', `${body}\n\n${NOTICE}`, 'cursor', '', null, sessionId);
+
+        const slots = harvestBootstrapSlots({ workingDir: null, chatSessionId: sessionId });
+        const everything = Object.values(slots).map(v => String(v ?? '')).join('\n');
+        assert.ok(
+            !everything.includes(NOTICE),
+            'no bootstrap slot may carry a line addressed to a person',
+        );
+    } finally {
+        db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
+    }
+});
