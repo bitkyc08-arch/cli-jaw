@@ -291,17 +291,48 @@ test('PG-026: the scope did not widen — JAW_HOME in, everything else out', () 
         fs.writeFileSync(okFile, 'x');
         assert.equal(assertSendFilePath(okFile), fs.realpathSync(okFile));
 
-        // And the other refusals still refuse, with their statuses intact.
-        for (const [input, expected] of [
-            [path.join(home, 'missing.png'), 'path_not_resolvable'],
-            [`${okFile}:hidden`, 'path_not_allowed'],
+        // And the other refusals still refuse, with their reasons and statuses
+        // intact. Each expectation is asserted — a case listed but not checked
+        // is a test that reports coverage it does not have.
+        //
+        // `:hidden` is an alternate data stream only on Windows; on POSIX it is
+        // an ordinary filename that does not exist, so the honest expectation
+        // here is path_not_resolvable. The ADS rule has its own owner in
+        // path-guards-windows.test.ts, where the platform is injected.
+        const streamSuffixCase = process.platform === 'win32'
+            ? ['path_not_allowed', 403] as const
+            : ['path_not_resolvable', 403] as const;
+        for (const [input, expectedMessage, expectedStatus] of [
+            [path.join(home, 'missing.png'), 'path_not_resolvable', 403],
+            [`${okFile}:hidden`, streamSuffixCase[0], streamSuffixCase[1]],
         ] as const) {
             let thrown: unknown;
             try { assertSendFilePath(input); } catch (e) { thrown = e; }
-            const err = thrown as { message?: string; statusCode?: number } | undefined;
+            const err = thrown as { message?: string; statusCode?: number; code?: string } | undefined;
             assert.ok(err, `${input} must be refused`);
-            assert.equal(err!.statusCode, 403, `${input} must stay a 403`);
-            if (expected === 'path_not_resolvable') assert.equal(err!.message, expected);
+            assert.equal(err!.message, expectedMessage, `${input} must refuse for the stated reason`);
+            assert.equal(err!.statusCode, expectedStatus, `${input} must keep its status`);
+            assert.equal(err!.code, expectedMessage, 'the machine-readable code must match the reason');
         }
     });
+});
+
+// The top regression this change had to avoid: adding `code` and `detail` must
+// not move any existing status. badRequest is 400 and forbidden is 403, and a
+// mis-shaped object turns either into a 500 (#404).
+test('PG-027: every guard refusal keeps its status and now names its code', () => {
+    const cases: Array<{ run: () => unknown; code: string; status: number }> = [
+        { run: () => assertSkillId('../escape'), code: 'invalid_skill_id', status: 400 },
+        { run: () => assertSkillId('dev/x'), code: 'invalid_skill_id', status: 400 },
+        { run: () => assertFilename('../escape'), code: 'invalid_filename', status: 400 },
+        { run: () => safeResolveUnder('/tmp/jaw-pg027-root', '../escape'), code: 'path_escape', status: 403 },
+    ];
+    for (const { run, code, status } of cases) {
+        let thrown: unknown;
+        try { run(); } catch (e) { thrown = e; }
+        const err = thrown as { message?: string; statusCode?: number; code?: string } | undefined;
+        assert.ok(err, `${code} case must throw`);
+        assert.equal(err!.statusCode, status, `${code} must stay ${status}`);
+        assert.equal(err!.code, err!.message, 'code and message name the same refusal');
+    }
 });

@@ -85,3 +85,53 @@ test('POST /api/channel/send refuses a path outside the roots with a 403 that sa
         fs.rmSync(outside, { recursive: true, force: true });
     }
 });
+
+// The same guard sits behind the send routes, and each builds its own error
+// response. Covering only /api/channel/send would leave the copies free to
+// drift back to a bare 500 (#404).
+//
+// /api/telegram/send is not here: it requires a configured client and answers
+// 503 before the guard runs, so it cannot reach this branch without standing up
+// a Telegram transport. Its error shape is the same expression as the others.
+test('every send route surfaces a refused path the same way', async () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-routes-home-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-routes-outside-'));
+    const filePath = path.join(outside, 'report.png');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        fs.writeFileSync(filePath, 'x');
+
+        await withMessagingServer(async baseUrl => {
+            for (const [route, body] of [
+                ['/api/slack/send', {
+                    type: 'file', filePath,
+                    target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ROUTE' },
+                }],
+                ['/api/discord/send', {
+                    type: 'file', filePath,
+                    target: { channel: 'discord', targetKind: 'channel', peerKind: 'channel', targetId: '123' },
+                }],
+            ] as const) {
+                const response = await fetch(`${baseUrl}${route}`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const json = await response.json() as { code?: string; detail?: { allowedRoots?: string[] } };
+
+                assert.equal(response.status, 403, `${route} must refuse with 403, not 500`);
+                assert.equal(json.code, 'path_not_allowed', `${route} must name the refusal`);
+                assert.ok(
+                    Array.isArray(json.detail?.allowedRoots) && json.detail!.allowedRoots!.length > 0,
+                    `${route} must say where the roots are; saw ${JSON.stringify(json)}`,
+                );
+            }
+        });
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    }
+});

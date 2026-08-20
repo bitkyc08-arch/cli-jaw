@@ -265,7 +265,11 @@ export function assertSendFilePath(
     const canonical = env.realpath(resolved);
     if (!canonical) throw forbidden('path_not_resolvable');
 
-    for (const root of sendFileAllowedRoots(workingDir, projectDirs, env)) {
+    // Computed once and used for both the verdict and the explanation. Two calls
+    // would let a symlink or a directory change between them, so the refusal
+    // could name a list it did not actually enforce (#404).
+    const roots = sendFileAllowedRoots(workingDir, projectDirs, env);
+    for (const root of roots) {
         if (isUnderRoot(canonical, root, env)) return canonical;
     }
 
@@ -273,9 +277,7 @@ export function assertSendFilePath(
     // agent that can move the file and retry, but it has no way to learn where
     // "allowed" is — the roots live in settings it never reads. Six of these
     // landed in stderr with nothing else beside them (#404).
-    throw forbidden('path_not_allowed', {
-        allowedRoots: sendFileAllowedRoots(workingDir, projectDirs, env),
-    });
+    throw forbidden('path_not_allowed', { allowedRoots: roots });
 }
 
 /**
