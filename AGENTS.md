@@ -56,6 +56,61 @@ gh pr checks <n>
 gh run view <run-id> --json headSha,conclusion
 ```
 
+
+### 릴리스 절차 (dev → preview → main → npm)
+
+개발은 `dev` 에서만 한다. `preview` 와 `main` 은 이 절차를 통해서만 움직인다.
+
+```bash
+git checkout dev && git fetch origin
+git rebase origin/main                      # ff-able 유지
+bash scripts/release-preview.sh             # 버전 범프 + gate:all + preview 푸시 + preview publish
+git push origin dev                         # dev 를 preview head 와 같게 맞춘다  ★
+bash scripts/promote-to-main.sh             # preview CI 인증 확인 → main 승격 → stable publish
+```
+
+**★ 를 빼먹으면 다음 사이클이 어긋난다.** `release-preview.sh` 는 버전 범프를
+현재 브랜치에 커밋하고 `HEAD:preview` 로 푸시한다. 그 커밋을 `dev` 에도 올리지
+않으면 origin/dev 만 뒤처진 채 남는다.
+
+승격이 끝나면 `main` 에 승격 커밋이 하나 더 생기므로 `dev`/`preview` 를 그 위로
+다시 맞춘다. 내용은 같고 버전 장부만 다르므로 리셋이 안전하다:
+
+```bash
+git fetch origin
+git branch -f backup/dev-pre-align-$(date +%y%m%d) dev
+git reset --hard origin/main
+git push --force-with-lease origin dev
+git push --force-with-lease origin HEAD:preview
+```
+
+#### 게이트가 막을 때
+
+- **`origin/main is not an ancestor of the certified preview SHA`** — preview 를
+  force-push 해서 main 이 조상에서 빠졌거나, **승격이 이미 끝난 뒤 스크립트를 다시
+  돌린** 경우다. `git log --oneline origin/preview..origin/main` 으로 main 이 이미
+  그 버전을 갖고 있는지부터 볼 것. 갖고 있으면 승격은 성공한 것이고 재실행할 일이
+  아니다 — `promote-to-main.sh` 는 승격 후 재실행을 지원하지 않는다.
+- **`No successful Postinstall Platform Checks run found for certified <sha>`** —
+  승격 직후 stable publish 가 main 의 push CI 보다 먼저 dispatch 되면 난다. main
+  push 런이 끝나기를 기다렸다가 publish 만 다시 dispatch 하면 된다. 승격을 되돌릴
+  필요는 없다.
+
+#### 배포 확인은 npm 버전만으로 부족하다
+
+설치 호스트에서 **실행 중인 프로세스가 새 `dist/` 를 로드했는지**까지 본다.
+`npm i -g` 는 파일만 교체하고 서비스는 옛 코드를 계속 돌린다:
+
+```bash
+ssh <host> 'export PATH=~/.local/bin:$PATH; jaw --version'
+ssh <host> 'grep -c <new-symbol> ~/.local/lib/node_modules/cli-jaw/dist/src/<path>.js'
+ssh <host> 'export PATH=~/.local/bin:$PATH; jaw service restart'
+ssh <host> 'ps -o lstart= -p $(sed -n "s/.*pid.: *\\([0-9]*\\).*/\\1/p" ~/.cli-jaw/jaw.pid.json|head -1)'
+```
+
+프로세스 시작 시각이 `dist/` mtime 보다 이르면 아직 옛 코드가 돌고 있다는 뜻이다.
+비대화형 `ssh` 는 `.zshrc` 를 읽지 않으므로 PATH 를 직접 줘야 `jaw` 를 찾는다.
+
 ### Clone
 
 ```bash
