@@ -63,6 +63,18 @@ export const STALL_TRUNCATION_NOTICE =
     '⏱️ 시간이 초과되어 여기서 중단했습니다. 범위를 좁혀 다시 요청해 주세요.';
 
 /**
+ * Remove that notice.
+ *
+ * It is addressed to a person reading a reply, so it must not survive into
+ * anything the machine reads back later: a plan saved in P would carry it into
+ * the next turn's Approved Plan, where it reads as an instruction (#405).
+ */
+export function stripStallTruncationNotice(text: string): string {
+    if (!text.includes(STALL_TRUNCATION_NOTICE)) return text;
+    return text.split(STALL_TRUNCATION_NOTICE).join('').trimEnd();
+}
+
+/**
  * Should a turn that DID produce output say it was cut short?
  *
  * A watchdog kill with partial output lands in the output branch of the exit

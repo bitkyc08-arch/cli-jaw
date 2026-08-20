@@ -18,7 +18,7 @@ import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
 import { isWsl, isWindowsNative, resolvePlatformKind } from '../../src/core/platform-kind.js';
 import { readClaudeCreds } from '../../src/routes/quota.js';
-import { CLI_KEYS, DEFAULT_CLI } from '../../src/cli/registry.js';
+import { CLI_KEYS } from '../../src/cli/registry.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord } from '../_http-client.js';
 import { getEnabledChannels, getHomeChannel } from '../../src/messaging/runtime.js';
@@ -503,18 +503,19 @@ check('Channel consistency', () => {
 
 // 6f. Agent watchdog deadline
 check('에이전트 타임아웃', () => {
-    // `settings.cli` unset does not mean "no CLI": the runtime falls back to
-    // DEFAULT_CLI, so reading only settings would report the global default
-    // while an override for the CLI actually in use sat right there (#405).
-    // The per-request and per-session layers above this are not knowable from a
-    // CLI invocation, so the answer is labelled with the CLI it applies to.
-    const activeCli = settings?.cli || DEFAULT_CLI;
+    // Only `settings.cli` is knowable here. When it is unset the runtime picks
+    // the first ready CLI at load time — and falls back to claude on an
+    // unreadable file — neither of which this process can reproduce without
+    // probing every runtime. Naming DEFAULT_CLI anyway would report a per-CLI
+    // override for a CLI that may never run. So the unset case answers about the
+    // global setting and says which CLI it would need to be sure.
+    const activeCli = settings?.cli || '';
     // Mirrors the runtime merge in src/agent/spawn.ts, both typeof guards
     // included: these values come from raw settings JSON, where either level can
     // be something other than an object.
     const raw = (settings as Record<string, unknown> | undefined)?.['agentTimeout'];
     const gCfg = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-    const cRaw = gCfg[activeCli];
+    const cRaw = activeCli ? gCfg[activeCli] : undefined;
     const cCfg = cRaw && typeof cRaw === 'object' ? cRaw as Record<string, unknown> : {};
     const merged = { ...gCfg, ...cCfg };
     // Not `abs ? a : b`: a configured 0 would report as the default. The runtime
@@ -525,8 +526,14 @@ check('에이전트 타임아웃', () => {
     // giving up (#405). Reading the per-CLI override matters: an instance with
     // only `agentTimeout.cursor.absoluteMs` set would otherwise be told "600s
     // default", which is false.
+    const perCli = Object.keys(gCfg).filter(k => CLI_KEYS.includes(k as never));
+    const suffix = activeCli
+        ? `${activeCli} 유효값, settings.agentTimeout`
+        : perCli.length > 0
+            ? `전역값 — settings.cli 가 없어 실행 CLI를 알 수 없습니다. per-CLI 설정 있음: ${perCli.join(', ')}`
+            : '전역값, settings.agentTimeout';
     return abs !== undefined
-        ? `${Math.round(abs / 1000)}초 (${activeCli}${settings?.cli ? '' : ' 기본값'} 유효값, settings.agentTimeout)`
+        ? `${Math.round(abs / 1000)}초 (${suffix})`
         : '600초 (기본값) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정';
 });
 

@@ -16,6 +16,7 @@ import { withSessionScope } from '../core/session-context.js';
 
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
+import { stripStallTruncationNotice } from '../agent/error-classifier.js';
 import {
     createWorklog,
     readLatestWorklog,
@@ -605,7 +606,11 @@ export async function orchestrate(
     if (state === 'P' && !meta["_workerResult"]) {
         const savedCtx = getCtx(scope);
         if (savedCtx) {
-            const newPlan = stripSubtaskJSON(result["text"]) || result["text"] || savedCtx.plan;
+            // The timeout notice is addressed to a reader, not to the next turn.
+            // Saved into the plan it would come back as an Approved Plan line and
+            // read like an instruction (#405).
+            const planText = stripStallTruncationNotice(String(result["text"] ?? ''));
+            const newPlan = stripSubtaskJSON(planText) || planText || savedCtx.plan;
             if (newPlan) {
                 // Re-derive title from this scope's original prompt to avoid cross-scope worklog bleed
                 const title = pickWorklogSeed(savedCtx.originalPrompt);

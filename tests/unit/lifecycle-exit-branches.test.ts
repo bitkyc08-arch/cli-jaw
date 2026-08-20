@@ -102,3 +102,30 @@ test('LEB-007: the notice lands on the resolved text, not only the broadcast', (
     // is guarding a path that no longer carries the reply.
     assert.match(src, /resolve\(\{\s*\n?\s*text: ctx\.fullText/);
 });
+// The notice is written for a person reading a reply. Anything the MACHINE reads
+// back later must not carry it: in P the reply text becomes the authoritative
+// plan, persisted to the worklog and re-injected as the next turn's Approved
+// Plan — where "시간이 초과되어 여기서 중단했습니다" reads as an instruction (#405).
+test('LEB-008: the notice is stripped from anything read back as a plan', async () => {
+    const { stripStallTruncationNotice } = await import('../../src/agent/error-classifier.ts');
+
+    const plan = '1. 조사한다\n2. 정리한다';
+    assert.equal(stripStallTruncationNotice(`${plan}\n\n${STALL_TRUNCATION_NOTICE}`), plan);
+    // Untouched when it is not there, and no accidental trimming of real text.
+    assert.equal(stripStallTruncationNotice(plan), plan);
+    assert.equal(stripStallTruncationNotice(''), '');
+});
+
+test('LEB-009: the P-phase plan save runs the text through that strip', () => {
+    const src = readFileSync(
+        join(import.meta.dirname, '..', '..', 'src/orchestrator/pipeline.ts'), 'utf8',
+    );
+    const planSave = src.slice(
+        src.indexOf("if (state === 'P' && !meta[\"_workerResult\"])"),
+        src.indexOf('// Final safety strip'),
+    );
+    assert.ok(planSave.length > 0, 'the P-phase plan save must exist');
+    assert.match(planSave, /stripStallTruncationNotice\(/);
+    // And the stripped value is what newPlan is built from, not a parallel var.
+    assert.match(planSave, /const newPlan = stripSubtaskJSON\(planText\)/);
+});
