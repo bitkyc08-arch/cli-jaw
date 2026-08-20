@@ -11,6 +11,29 @@ lidge-jun/cli-jaw              ← public (this repo)
 └── .npmignore                 ← npm publish 시 submodules 제외
 ```
 
+### Remote / 브랜치 확인 (푸시 전 필수)
+
+`origin`은 `https://github.com/lidge-jun/cli-jaw.git` 이다. 체크아웃에 따라
+`bitkyc08-arch/cli-jaw` 로 남아 있을 수 있는데, 이건 **같은 저장소의 옛 이름**이라
+GitHub이 리다이렉트해 준다. 동작은 하지만 `gh`(항상 `lidge-jun/cli-jaw` 로 해석)와
+이름이 갈려서 "이슈는 A에, 푸시는 B에" 처럼 보이는 착시를 만든다. 발견하면 고칠 것:
+
+```bash
+git remote -v                                                    # 확인
+git remote set-url origin https://github.com/lidge-jun/cli-jaw.git
+```
+
+**원격에는 `dev` 브랜치가 없다.** 원격 브랜치는 `main`, `preview`, 그리고
+`archive/*`·`backup/*` 뿐이다. 로컬 `dev`가 `origin/dev` 를 추적하며
+"ahead N, behind M" 을 보고하더라도 stale ref일 수 있으니
+`git ls-remote --heads origin dev` 로 실재를 확인할 것.
+
+**`dev` 푸시는 CI를 돌리지 않는다.** `test.yml` 과 `postinstall-platform.yml` 은
+`preview`/`main` push와 `pull_request` 에만 반응한다. exact-head CI 증거가
+필요하면 PR을 열어야 하며, `dev` 에 푸시해 두고 "CI 통과"를 주장하면 안 된다 —
+애초에 아무것도 돌지 않는다.
+
+
 ### Clone
 
 ```bash
