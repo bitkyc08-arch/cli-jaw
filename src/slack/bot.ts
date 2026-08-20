@@ -34,7 +34,7 @@ import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js
 import { slackInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import {
-    isThreadParticipated, markThreadParticipated,
+    markThreadParticipated, threadParticipationKind,
     claimThreadPrefetch, commitThreadPrefetch,
     releaseThreadPrefetch, resetThreadPrefetchClaims,
 } from './thread-tracker.js';
@@ -105,7 +105,7 @@ function gateConfig() {
         // Thread continuation defaults ON (threadRequireMention=false):
         // once mentioned, a thread keeps flowing without re-mention.
         threadRequireMention: sc.threadRequireMention === true,
-        isParticipatedThread: isThreadParticipated,
+        threadParticipation: threadParticipationKind,
     };
 }
 
@@ -175,8 +175,10 @@ async function slackOrchestrate(
                     }),
                 ));
                 const sendResult = await sendSlackText(token, target, text);
-                // A successful reply into a thread makes that thread ours —
-                // future replies there need no mention (marking point b).
+                // A successful reply records presence, not ownership (marking
+                // point b). Replying into a thread we were invited to does not
+                // make the rest of that conversation ours; the default `joined`
+                // says so, and an already-`owned` thread keeps its kind (#400).
                 if (sendResult.ok && target.threadId) {
                     markThreadParticipated(target.targetId, target.threadId);
                 }
@@ -587,9 +589,14 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTrans
         ? getSessionOwnershipGeneration(preResolvedScope)
         : undefined;
     if (event.type === 'app_mention' && event.channel) {
-        // A mention inside a thread marks that thread; a top-level mention
-        // marks the thread this message would parent (marking point a).
-        markThreadParticipated(event.channel, event.thread_ts || event.ts || '');
+        // A top-level mention starts a thread the bot will parent, so the whole
+        // thread belongs to it. A mention INSIDE an existing thread is an
+        // invitation into someone else's conversation, and only that (#400).
+        markThreadParticipated(
+            event.channel,
+            event.thread_ts || event.ts || '',
+            event.thread_ts ? 'joined' : 'owned',
+        );
         if (!event.thread_ts && event.ts) {
             // A thread WE start needs no history: the parent mention and our
             // reply are already the session's own context. Spend the claim now

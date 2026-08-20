@@ -49,8 +49,12 @@ export type SlackGateConfig = {
     channelIds: string[];
     /** true = threads also require a mention (multi-bot escape hatch). */
     threadRequireMention: boolean;
-    /** Injected participation check so this module stays IO-free. */
-    isParticipatedThread: (channel: string, threadTs: string) => boolean;
+    /**
+     * How the bot is in this thread, injected so this module stays IO-free.
+     * `owned` = the bot's own message parents the thread; `joined` = it was
+     * pulled into a conversation already in progress; null = not in it.
+     */
+    threadParticipation: (channel: string, threadTs: string) => 'owned' | 'joined' | null;
 };
 
 export type SlackGateDecision =
@@ -150,15 +154,21 @@ export function shouldProcessSlackEvent(
     // channel need the gate. DMs always bypass it.
     if (config.mentionOnly && !dm && event.type !== 'app_mention') {
         if (!config.selfUserId || !mentionsUser(event.text || '', config.selfUserId)) {
-            // Thread continuation: a thread the bot already participates in
-            // (started by a mention, or the bot replied into it) keeps
-            // flowing without re-mention (Hermes thread_require_mention:false
-            // semantics — devlog 260806 unit). Ordering is intentional: the
-            // self-echo/bot/allowlist gates above already ran, so a
-            // participated thread never bypasses those.
+            // Thread continuation, but only for a thread the bot itself started:
+            // there, its reply is the parent and every follow-up is addressed to
+            // it, so re-mentioning would be noise (Hermes
+            // thread_require_mention:false semantics — devlog 260806 unit).
+            //
+            // A thread the bot was pulled INTO partway does not qualify. People
+            // were already talking there and keep talking to each other; reading
+            // one mention as consent for the rest of that conversation is how the
+            // bot answered six messages that named other people (#400).
+            //
+            // Ordering is intentional: the self-echo/bot/allowlist gates above
+            // already ran, so a participated thread never bypasses those.
             const inParticipatedThread = !config.threadRequireMention
                 && !!event.thread_ts
-                && config.isParticipatedThread(event.channel || '', event.thread_ts);
+                && config.threadParticipation(event.channel || '', event.thread_ts) === 'owned';
             if (!inParticipatedThread) {
                 return { process: false, reason: 'mention_required' };
             }
