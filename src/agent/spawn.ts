@@ -427,6 +427,9 @@ export const {
     enqueueMessage,
     removeQueuedMessage,
     processQueue,
+    // Called by the server once transports are up: this controller is built at
+    // module init, so a recovered queue cannot be drained here (#407).
+    drainRecoveredQueue,
     setQueueHold,
     clearQueueHold,
     getQueueHoldId,

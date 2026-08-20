@@ -94,7 +94,7 @@ import {
     initPromptFiles, regenerateB,
 } from './src/prompt/builder.js';
 
-import { killAllAgents } from './src/agent/spawn.js';
+import { killAllAgents, drainRecoveredQueue } from './src/agent/spawn.js';
 import { resetAllStaleStates } from './src/orchestrator/state-machine.js';
 
 import { submitMessage } from './src/orchestrator/gateway.js';
@@ -678,6 +678,12 @@ server.listen(PORT, bindHost, async () => {
             console.log(`[messaging:boot:${channel}] inbound not started (${outcome.reason})`);
         }
     }
+
+    // The transports are up and settings are loaded, so a message recovered from
+    // the previous run finally has somewhere to answer. Nothing on the boot path
+    // used to start the queue, so those messages waited for a NEW one to drag
+    // them out — from the outside, the bot had just gone quiet (#407).
+    drainRecoveredQueue();
 
     try {
         getSecurityAuditLog().append('service_start', 'server', { port: PORT, cli: settings["cli"] });

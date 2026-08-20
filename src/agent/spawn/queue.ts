@@ -91,6 +91,7 @@ export interface QueueController {
     enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: QueueMessageMeta): string;
     removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number };
     processQueue(scopeKey?: string): Promise<void>;
+    drainRecoveredQueue(): void;
     setQueueHold(scopeKey: string, idOrTimeout?: string | number, timeoutMs?: number): void;
     clearQueueHold(scopeKey?: string | null, idOrOpts?: string | { resume?: boolean }, opts?: { resume?: boolean }): void;
     getQueueHoldId(scopeKey?: string): string | null;
@@ -188,6 +189,31 @@ export function createQueueController(
     const messageQueue: QueueItem[] = loadPersistedQueue();
     if (messageQueue.length > 0) {
         console.log(`[queue] recovered ${messageQueue.length} persisted message(s) from previous session`);
+    }
+    /**
+     * Wake the queue we just recovered.
+     *
+     * Recovering is not delivering: nothing on the boot path called
+     * `processQueue`, so messages that arrived while the process was down sat in
+     * the queue until a NEW message happened to arrive and drag them out. From
+     * the outside the bot had simply gone quiet (#407).
+     *
+     * Not called here. This controller is built during module init
+     * (spawn.ts:405), before settings load (server.ts) and before the transports
+     * exist, so a turn started at construction has nowhere to answer. The server
+     * calls this once it is actually ready.
+     */
+    function drainRecoveredQueue(): void {
+        if (messageQueue.length === 0) return;
+        const scopes = new Set(messageQueue.map(item => normalizeScope(item.scope)));
+        console.log(`[queue] boot drain: ${messageQueue.length} message(s) across ${scopes.size} scope(s)`);
+        for (const scope of scopes) {
+            // One kick per scope. `processQueue` takes a single item and
+            // schedules its own successor, so this starts each lane rather than
+            // draining it here.
+            void processQueue(scope).catch(err =>
+                console.error('[queue:boot-drain]', (err as Error).message));
+        }
     }
     const QUEUE_HOLD_TIMEOUT_MS = 10_000;
     const drainingScopes = new Set<string>();
@@ -568,6 +594,7 @@ export function createQueueController(
         enqueueMessage,
         removeQueuedMessage,
         processQueue,
+        drainRecoveredQueue,
         setQueueHold,
         clearQueueHold,
         getQueueHoldId,

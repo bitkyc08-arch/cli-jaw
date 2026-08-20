@@ -306,3 +306,94 @@ test('a queued item with no remote binding still resolves to default (#399)', ()
     assert.equal(item!.chatSessionId, 'default');
 });
 
+// ─── boot drain (#407) ──────────────────────────────
+
+// Recovering a queue is not delivering it. Nothing on the boot path called
+// processQueue, so a message that arrived while the process was down waited for
+// a NEW message to drag it out — from the outside the bot had gone quiet (#407).
+
+function queueRow(id: string, scope: string, ts: number) {
+    insertQueuedMessage.run(id, JSON.stringify({
+        schemaVersion: 2, id, prompt: id, source: 'slack', scope, chatSessionId: 'default', ts,
+    }));
+}
+
+test('QBD-001: constructing the controller does not run the queue', async () => {
+    queueRow('queue-v2-boot-a', 'jaw:slack:channel:CA', 1);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    // Construction happens during module init, before settings load and before
+    // any transport exists. A turn started here has nowhere to answer.
+    const ctrl = makeController({ busy: () => false, runs });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.equal(runs.length, 0, 'nothing may run at construction');
+    assert.equal(ctrl.messageQueue.length, 1, 'the item is recovered, not consumed');
+});
+
+test('QBD-002: drainRecoveredQueue starts every recovered scope', async () => {
+    queueRow('queue-v2-boot-b', 'jaw:slack:channel:CB', 1);
+    queueRow('queue-v2-boot-c', 'jaw:slack:channel:CC', 2);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    const ctrl = makeController({ busy: () => false, runs });
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    assert.deepEqual(
+        runs.map(r => r.prompt).sort(),
+        ['queue-v2-boot-b', 'queue-v2-boot-c'],
+        'both scopes must drain without a new inbound message',
+    );
+});
+
+test('QBD-003: an empty queue drains to nothing', async () => {
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+    const ctrl = makeController({ busy: () => false, runs });
+
+    assert.equal(ctrl.messageQueue.length, 0);
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(runs.length, 0);
+});
+
+test('QBD-004: a busy spawn still holds the queue back', async () => {
+    queueRow('queue-v2-boot-d', 'jaw:slack:channel:CD', 1);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    // The existing guards are the reason this is safe to call at boot: draining
+    // must not barge past whatever is already running.
+    const ctrl = makeController({ busy: () => true, runs });
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.equal(runs.length, 0, 'a busy scope must not be drained');
+    assert.equal(ctrl.messageQueue.length, 1, 'the item stays queued');
+});
+
+test('QBD-005: items sharing a scope start that scope once', async () => {
+    queueRow('queue-v2-boot-e', 'jaw:slack:channel:CE', 1);
+    queueRow('queue-v2-boot-f', 'jaw:slack:channel:CE', 2);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+    const logged: string[] = [];
+    const previousLog = console.log;
+    console.log = (...args: unknown[]) => { logged.push(args.join(' ')); };
+
+    try {
+        const ctrl = makeController({ busy: () => false, runs });
+        ctrl.drainRecoveredQueue();
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const drainLine = logged.find(l => l.includes('[queue] boot drain'));
+        assert.ok(drainLine, `the drain must announce itself; saw: ${JSON.stringify(logged)}`);
+        assert.match(drainLine!, /2 message\(s\) across 1 scope\(s\)/);
+    } finally {
+        console.log = previousLog;
+    }
+
+    // processQueue schedules its own successor, so one kick drains the lane.
+    assert.deepEqual(
+        runs.map(r => r.prompt).sort(),
+        ['queue-v2-boot-e', 'queue-v2-boot-f'],
+    );
+});
