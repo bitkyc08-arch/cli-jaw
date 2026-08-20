@@ -80,10 +80,12 @@ test('LEB-006: the output branch uses the shared decision, not its own condition
 
 // The notice has to reach the READER, and the channels do not read the
 // agent_done payload — they answer from the text this handler resolves. A
-// notice appended only to `finalContent` showed up in the web transcript while
+// notice that reached only the broadcast showed up in the web transcript while
 // the Slack reply still trailed off mid-thought: the exact symptom, still there,
 // with everything above this line green (#405).
-test('LEB-007: the notice lands on the resolved text, not only the broadcast', () => {
+//
+// Where it must NOT go is LEB-010's subject.
+test('LEB-007: the notice lands on the resolved text', () => {
     const src = readFileSync(
         join(import.meta.dirname, '..', '..', 'src/agent/lifecycle-handler.ts'), 'utf8',
     );
@@ -93,10 +95,8 @@ test('LEB-007: the notice lands on the resolved text, not only the broadcast', (
     );
     assert.ok(branch.length > 0, 'the announce branch must exist');
 
-    // Both, not either: finalContent feeds the durable insert and agent_done,
     // ctx.fullText feeds resolve() and therefore every channel reply.
-    assert.match(branch, /finalContent = `\$\{finalContent\}[\s\S]*STALL_TRUNCATION_NOTICE/);
-    assert.match(branch, /ctx\.fullText = `\$\{ctx\.fullText\}[\s\S]*STALL_TRUNCATION_NOTICE/);
+    assert.match(branch, /ctx\.fullText = `\$\{ctx\.fullText\}[\s\S]*stallNotice/);
 
     // And resolve() must still be handing back ctx.fullText, or the line above
     // is guarding a path that no longer carries the reply.
@@ -114,6 +114,18 @@ test('LEB-008: the notice is stripped from anything read back as a plan', async 
     // Untouched when it is not there, and no accidental trimming of real text.
     assert.equal(stripStallTruncationNotice(plan), plan);
     assert.equal(stripStallTruncationNotice(''), '');
+
+    // Only the suffix we appended, and only at the end. Deleting every
+    // occurrence ate the sentence out of a plan that quoted it, and a bare
+    // trimEnd() took meaningful Markdown trailing spaces with it.
+    const quoting = `Plan: quote "${STALL_TRUNCATION_NOTICE}" then document it.`;
+    assert.equal(stripStallTruncationNotice(quoting), quoting, 'a quoted notice is content, not our suffix');
+    const twoSpaces = 'line one  \nline two  ';
+    assert.equal(stripStallTruncationNotice(twoSpaces), twoSpaces, 'Markdown line breaks survive');
+    assert.equal(
+        stripStallTruncationNotice(`${twoSpaces}\n\n${STALL_TRUNCATION_NOTICE}`), twoSpaces,
+        'removing the suffix leaves the rest byte-identical',
+    );
 });
 
 test('LEB-009: the P-phase plan save runs the text through that strip', () => {
@@ -128,4 +140,36 @@ test('LEB-009: the P-phase plan save runs the text through that strip', () => {
     assert.match(planSave, /stripStallTruncationNotice\(/);
     // And the stripped value is what newPlan is built from, not a parallel var.
     assert.match(planSave, /const newPlan = stripSubtaskJSON\(planText\)/);
+});
+
+// Durable history is read back by the next turn, the resume fallback, AGY
+// replay, memory flush and compaction. A line telling a PERSON we ran out of
+// time reads as an instruction in every one of them, so it must never be stored
+// — stripping it downstream only covers the paths someone remembered (#405).
+test('LEB-010: the notice reaches the reader without entering durable storage', () => {
+    const src = readFileSync(
+        join(import.meta.dirname, '..', '..', 'src/agent/lifecycle-handler.ts'), 'utf8',
+    );
+    const branch = src.slice(
+        src.indexOf('shouldAnnounceStallTruncation({'),
+        src.indexOf('const { message: errMsg } = classifyExitError('),
+    );
+
+    // finalContent is the durable row. It must NOT be rewritten here.
+    assert.doesNotMatch(
+        branch,
+        /finalContent = `\$\{finalContent\}[^`]*STALL_TRUNCATION_NOTICE/,
+        'the stored assistant message must not carry the notice',
+    );
+    // The reader gets it two ways: the resolved text, and the broadcast.
+    assert.match(branch, /ctx\.fullText = `\$\{ctx\.fullText\}\$\{stallNotice\}`/);
+    assert.match(branch, /stallNotice = `\\n\\n\$\{STALL_TRUNCATION_NOTICE\}`/);
+
+    const insertIdx = src.indexOf("'assistant', finalContent, cli, model,");
+    assert.ok(insertIdx > 0, 'the durable insert must still store finalContent unchanged');
+    assert.match(
+        src.slice(insertIdx, insertIdx + 1200),
+        /text: `\$\{finalContent\}\$\{stallNotice\}`/,
+        'agent_done must carry the notice even though the stored row does not',
+    );
 });

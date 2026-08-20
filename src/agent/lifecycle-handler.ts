@@ -585,6 +585,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         const displayText = stripInterviewTracker(cleaned || outputText || ctx.fullText.trim());
         let finalContent = displayText + costLine;
         let traceText = ctx.traceLog.join('\n');
+        /** Appended to what a reader sees, never to what is stored (#405). */
+        let stallNotice = '';
 
         // Tag interrupted output
         if (wasSteer && mainManaged && !opts.internal) {
@@ -611,14 +613,20 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         if (shouldAnnounceStallTruncation({
             stallReason: ctx.stallReason, wasSteer, mainManaged, internal: !!opts.internal,
         })) {
-            finalContent = `${finalContent}\n\n${STALL_TRUNCATION_NOTICE}`;
-            // Also onto ctx.fullText, which is what `resolve()` hands back at the
-            // end of this handler. The dispatch paths answer from the RESOLVED
-            // text, not from the agent_done payload, so appending only to
-            // `finalContent` would show the notice in the web transcript while
-            // the Slack reply still trailed off mid-thought — the exact symptom
-            // this line exists to remove (#405).
-            ctx.fullText = `${ctx.fullText}\n\n${STALL_TRUNCATION_NOTICE}`;
+            // Presentation only. It is NOT appended to `finalContent`, which is
+            // what the durable assistant row stores: history feeds the next
+            // turn's context, the resume fallback, AGY replay, memory flush and
+            // compaction, and a line telling a PERSON we ran out of time reads
+            // as an instruction in every one of them.
+            //
+            // `ctx.fullText` is what `resolve()` hands back, and the dispatch
+            // paths answer from that rather than from the agent_done payload —
+            // appending to only one of the two showed the notice in the web
+            // transcript while the Slack reply still trailed off mid-thought
+            // (#405). The P-phase plan save strips it back out, since that text
+            // is read by the machine rather than by the reader.
+            stallNotice = `\n\n${STALL_TRUNCATION_NOTICE}`;
+            ctx.fullText = `${ctx.fullText}${stallNotice}`;
         }
 
         if (mainManaged && !opts.internal) {
@@ -659,7 +667,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             );
             const messageId = Number(info.lastInsertRowid || 0);
             if (ctx.traceRunId && Number.isInteger(messageId) && messageId > 0) linkTraceRunToMessage(ctx.traceRunId, messageId);
-            broadcast('agent_done', { ...runTag(ctx), text: finalContent, toolLog: sanitizedToolLog, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) });
+            broadcast('agent_done', { ...runTag(ctx), text: `${finalContent}${stallNotice}`, toolLog: sanitizedToolLog, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) });
 
             if (opts._heartbeatAnchorId) {
                 try {

@@ -70,8 +70,13 @@ export const STALL_TRUNCATION_NOTICE =
  * the next turn's Approved Plan, where it reads as an instruction (#405).
  */
 export function stripStallTruncationNotice(text: string): string {
-    if (!text.includes(STALL_TRUNCATION_NOTICE)) return text;
-    return text.split(STALL_TRUNCATION_NOTICE).join('').trimEnd();
+    // Only the suffix WE appended, and only at the end. Deleting every
+    // occurrence would eat the sentence out of a plan that legitimately quotes
+    // it, and a bare trimEnd() would take meaningful Markdown trailing spaces
+    // with it. Both were real: a plan reading "quote <notice> then document it"
+    // came back with the quote silently gone.
+    const appended = `\n\n${STALL_TRUNCATION_NOTICE}`;
+    return text.endsWith(appended) ? text.slice(0, -appended.length) : text;
 }
 
 /**

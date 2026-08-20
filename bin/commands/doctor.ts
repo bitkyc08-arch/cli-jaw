@@ -527,14 +527,22 @@ check('에이전트 타임아웃', () => {
     // only `agentTimeout.cursor.absoluteMs` set would otherwise be told "600s
     // default", which is false.
     const perCli = Object.keys(gCfg).filter(k => CLI_KEYS.includes(k as never));
-    const suffix = activeCli
+    const scope = activeCli
         ? `${activeCli} 유효값, settings.agentTimeout`
         : perCli.length > 0
+            // The value shown is the global one, but a per-CLI override exists
+            // and we cannot tell which CLI will run: settings.cli is unset, and
+            // the runtime resolves it by probing readiness at load time. Saying
+            // which overrides exist beats naming a guess.
             ? `전역값 — settings.cli 가 없어 실행 CLI를 알 수 없습니다. per-CLI 설정 있음: ${perCli.join(', ')}`
             : '전역값, settings.agentTimeout';
+    // The unset-CLI caveat has to survive the no-global-value case too, or the
+    // instance most in need of it is the one told a bare "600s default".
     return abs !== undefined
-        ? `${Math.round(abs / 1000)}초 (${suffix})`
-        : '600초 (기본값) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정';
+        ? `${Math.round(abs / 1000)}초 (${scope})`
+        : perCli.length > 0
+            ? `600초 (기본값, ${scope}) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정`
+            : '600초 (기본값) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정';
 });
 
 // 7. Skills directory
