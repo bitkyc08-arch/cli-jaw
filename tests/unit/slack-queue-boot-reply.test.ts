@@ -98,7 +98,19 @@ test('SQB-002: a result addressed to another channel is not answered here', asyn
     // No target at all: nowhere to send, and the last-active fallback belongs to
     // the ordinary forwarder, not to this one.
     broadcast('orchestrate_done', { text: 'targetless', origin: 'slack', requestId: 'req-none', fromQueue: true });
-    // An error result already reaches the user through its own path.
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.deepEqual(sent, [], `nothing may be sent; saw ${JSON.stringify(sent)}`);
+});
+
+// A queued turn that FAILED has the same problem as one that succeeded: after a
+// restart no waiter is left to show the failure. Dropping it here does not route
+// it elsewhere — it means the user's message disappears with no reply at all,
+// which is the exact silence #407 is about.
+test('SQB-003: a queued turn that failed still says so', async () => {
+    sent.length = 0;
+    const { broadcast } = await import('../../src/core/bus.ts');
+
     broadcast('orchestrate_done', {
         text: '[error] boom', error: true, origin: 'slack', requestId: 'req-err',
         fromQueue: true,
@@ -106,5 +118,6 @@ test('SQB-002: a result addressed to another channel is not answered here', asyn
     });
     await new Promise(resolve => setTimeout(resolve, 20));
 
-    assert.deepEqual(sent, [], `nothing may be sent; saw ${JSON.stringify(sent)}`);
+    assert.equal(sent.length, 1, `a failure must still reach the user; saw ${JSON.stringify(sent)}`);
+    assert.match(sent[0]!.text, /\[error\] boom/);
 });

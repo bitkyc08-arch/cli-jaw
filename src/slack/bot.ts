@@ -150,10 +150,13 @@ function installSlackTargetReplyForwarder(): void {
     targetReplyForwarderInstalled = true;
     addBroadcastListener((type, data) => {
         if (type !== 'orchestrate_done' || data["origin"] !== 'slack' || !data["text"]) return;
-        if (data["error"]) return;
         // Queued turns only. An ordinary turn is posted by the dispatch path
         // that is still standing there awaiting it; answering that here too
         // would post every reply twice.
+        //
+        // Errors included: after a restart there is no waiter to show them, so
+        // dropping them here means the user's message vanishes without even a
+        // failure notice.
         if (data["fromQueue"] !== true) return;
         const target = data["target"] as RemoteTarget | undefined;
         if (!target || target.channel !== 'slack' || !target.targetId) return;

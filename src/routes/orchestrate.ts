@@ -363,6 +363,11 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             : getActiveChatSession();
         const steerMeta = stripUndefined({
             origin, target, chatId, requestId,
+            // This prompt came OUT of the queue, so its reply belongs to the
+            // queued path: the requester's own listener expires after five
+            // minutes, and after that only the standing per-channel forwarder
+            // can answer it (#407).
+            _fromQueue: true,
             ...(settings["multiSession"]?.enabled === true ? {
                 scope,
                 chatSessionId,
@@ -410,7 +415,9 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             } catch (err) {
                 const message = (err as Error).message;
                 log.error('[steer:orchestrate]', message);
-                broadcast('orchestrate_done', stripUndefined({ text: `[error] ${message}`, error: true, ...steerMeta }));
+                broadcast('orchestrate_done', stripUndefined({
+                    text: `[error] ${message}`, error: true, ...steerMeta, fromQueue: true,
+                }));
             } finally {
                 setSteerInProgress(scope, false);
             }

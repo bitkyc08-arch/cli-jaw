@@ -128,6 +128,13 @@ function markChannelActive(channelId: string) {
  * most recently, and skipped when a live waiter would post the same result.
  */
 const pendingQueueRequestIds = new Set<string>();
+/**
+ * Disposers for listeners waiting on a queued result. Tracked so shutdown can
+ * drop them at once instead of leaving them armed for their five-minute
+ * timeout, which would let a post-shutdown result fire against a dead channel
+ * and would keep a stale id blocking the standing forwarder.
+ */
+const pendingQueueWaiters = new Set<() => void>();
 let targetReplyForwarderInstalled = false;
 
 function installDiscordTargetReplyForwarder(): void {
@@ -135,9 +142,9 @@ function installDiscordTargetReplyForwarder(): void {
     targetReplyForwarderInstalled = true;
     addBroadcastListener((type, data) => {
         if (type !== 'orchestrate_done' || data["origin"] !== 'discord' || !data["text"]) return;
-        if (data["error"]) return;
         // Queued turns only: an ordinary reply is posted by the dispatch path
         // that is still awaiting it, and answering here too would double-post.
+        // Errors included: after a restart nothing else will show them.
         if (data["fromQueue"] !== true) return;
         const target = data["target"] as RemoteTarget | undefined;
         if (!target || target.channel !== 'discord' || !target.targetId) return;
@@ -223,12 +230,22 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // Listen for queued result — correlate by requestId (request-level isolation)
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
+        let disposed = false;
+        const dispose = () => {
+            if (disposed) return;
+            disposed = true;
+            clearTimeout(queueTimeout);
+            removeBroadcastListener(queueHandler);
+            pendingQueueWaiters.delete(dispose);
+            if (requestId) pendingQueueRequestIds.delete(requestId);
+        };
         const queueHandler = async (type: string, data: Record<string, any>) => {
             if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'discord'
                 && data["requestId"] === requestId) {
-                clearTimeout(queueTimeout);
-                removeBroadcastListener(queueHandler);
-                if (requestId) pendingQueueRequestIds.delete(requestId);
+                // Dispose FIRST: the standing forwarder checks this id, so
+                // releasing it before the send would let both post.
+                if (disposed) return;
+                dispose();
                 const chunks = chunkDiscordMessage(data["text"]);
                 const channel = asSendable(msg.channel);
                 if (!channel) {
@@ -245,10 +262,8 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         };
         addBroadcastListener(queueHandler);
         if (requestId) pendingQueueRequestIds.add(requestId);
-        queueTimeout = setTimeout(() => {
-            removeBroadcastListener(queueHandler);
-            if (requestId) pendingQueueRequestIds.delete(requestId);
-        }, 300000);
+        pendingQueueWaiters.add(dispose);
+        queueTimeout = setTimeout(dispose, 300000);
         return;
     }
 
@@ -579,6 +594,12 @@ export async function initDiscord(): Promise<TransportStartOutcome> {
 
 export async function shutdownDiscord() {
     discordActiveChannelIds.clear();
+    // Drop queued-result waiters immediately. Left armed, they would fire
+    // against a destroyed channel for the next five minutes, and their claimed
+    // request ids would keep the standing forwarder silent too.
+    for (const dispose of [...pendingQueueWaiters]) dispose();
+    pendingQueueWaiters.clear();
+    pendingQueueRequestIds.clear();
     const supervisor = gatewaySupervisor;
     gatewaySupervisor = null;
     if (supervisor) {
