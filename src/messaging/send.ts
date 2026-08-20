@@ -7,6 +7,8 @@ import { assertSendFilePath } from '../security/path-guards.js';
 import { isRemoteTarget, type MessengerChannel, type OutboundType, type RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState, getHomeChannel } from './runtime.js';
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
+import { buildRemoteBindingKey } from './session-key.js';
+import { getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
 import { log } from '../core/logger.js';
@@ -223,6 +225,25 @@ function sameSlackDestination(explicit: RemoteTarget, known: RemoteTarget): bool
     return true;
 }
 
+/**
+ * Does this conversation already own a chat session?
+ *
+ * A binding is written when the bot is addressed in a conversation, so its presence
+ * is evidence the bot belongs there — the same evidence the last-active slot carries,
+ * except it does not move when a different conversation speaks.
+ *
+ * The lookup is read-only on purpose: authorizing a send must never CREATE the
+ * binding that authorizes it.
+ */
+function isRemoteBoundConversation(target: RemoteTarget): boolean {
+    try {
+        return getRemoteBoundSessionId(buildRemoteBindingKey(target)) !== null;
+    } catch {
+        // No database (CLI paths, tests without a home) simply means no evidence.
+        return false;
+    }
+}
+
 function authorizeExplicitTarget(target: RemoteTarget, channel: MessengerChannel): RemoteTarget | null {
     if (!isRemoteTarget(target) || target.channel !== channel) return null;
     if (validateTarget(target, channel, { requireConfiguredAllowlist: true })) return target;
@@ -232,6 +253,18 @@ function authorizeExplicitTarget(target: RemoteTarget, channel: MessengerChannel
             return target.threadId == null && known.threadId != null ? known : target;
         }
     }
+    // With no configured allowlist, the two slots above are the only conversations
+    // this process can vouch for — and both hold whatever spoke MOST RECENTLY. So an
+    // agent that correctly addressed the channel it was actually working in got a 403
+    // as soon as another channel messaged the bot, while omitting the target
+    // succeeded and delivered to that other channel. The safe answer was rejected and
+    // the unsafe one accepted, which is why the prompt learned to omit it (#397).
+    //
+    // A conversation the bot is bound to is equally vouched for, and unlike the slots
+    // it does not change when someone else talks. Binding requires the bot to have
+    // been addressed there, so this widens nothing an allowlist would have closed;
+    // with a configured allowlist we never reach this line at all.
+    if (isRemoteBoundConversation(target)) return target;
     return null;
 }
 
