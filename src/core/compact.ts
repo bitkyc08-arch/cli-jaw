@@ -89,6 +89,7 @@ export function buildManagedCompactSummaryForTest(rows: MessageRow[], instructio
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { getRecentMessages, getRecentToolLogs, searchMessages } from './db.js';
+import { stripStallTruncationNotice } from '../agent/stall-notice.js';
 import { getActiveChatSession } from './chat-sessions.js';
 import { settings } from './config.js';
 import { expandHomePath } from './path-expand.js';
@@ -458,7 +459,11 @@ function harvestChatGrep(goal: string, session_id: string): string {
         for (const kw of keywords) {
             const rows = searchMessages.all({ q: kw, limit: 5, session_id, days: 7, recent: null }) as Array<Record<string, unknown>>;
             for (const row of rows) {
-                const snippet = String(row['content'] || '').slice(0, 120);
+                // Compact bootstrap is model context, so it needs the same
+                // treatment the history readers get. `searchMessages` is shared
+                // with the user-facing search route, which SHOULD keep the
+                // notice, so it comes off here rather than at the query (#405).
+                const snippet = stripStallTruncationNotice(String(row['content'] || '')).slice(0, 120);
                 lines.push(`- [${row['created_at']}] (${row['role']}) ${snippet}`);
                 if (lines.length >= 8) break;
             }

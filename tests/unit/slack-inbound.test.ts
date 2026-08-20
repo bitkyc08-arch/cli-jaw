@@ -725,3 +725,150 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.equal(calls.length - runsBefore, 1, 'a redelivery of the same ts must not run again');
 });
+
+// The gate is the one place every settings path passes through: the route, the
+// file watcher, direct runtime patches, and an agent editing settings.json by
+// hand. A value it cannot parse must not hand out MORE access than one it can
+// (#406).
+test('readSlackAllowlist never widens on a malformed value', async () => {
+    const { readSlackAllowlist, isConversationAllowed, MALFORMED_SLACK_ALLOWLIST } =
+        await import('../../src/slack/events.js');
+
+    // Absent means 'every conversation' — the shipped default.
+    assert.deepEqual(readSlackAllowlist(undefined), []);
+    assert.equal(isConversationAllowed('C1', readSlackAllowlist(undefined), false), true);
+
+    // Malformed must DENY channels, not allow them all.
+    // `null` and an all-blank list belong here, not with absence: the route
+    // refuses to write either, so reading them as "every conversation" would be
+    // a widening from a value nobody was allowed to set.
+    for (const bad of ['C1', 42, null, { 0: 'C1' }, ['C1', 7], [''], ['   '], ['', '  ']]) {
+        const ids = readSlackAllowlist(bad);
+        assert.deepEqual(ids, [MALFORMED_SLACK_ALLOWLIST], `not parsed as a list: ${JSON.stringify(bad)}`);
+        assert.equal(
+            isConversationAllowed('C1', ids, false), false,
+            'a value we cannot read must not allow every channel',
+        );
+        assert.equal(isConversationAllowed('D1', ids, true), true, 'DMs stay reachable');
+    }
+
+    // Padding matches nothing in Slack, so it is trimmed rather than kept verbatim.
+    assert.deepEqual(readSlackAllowlist([' C1 ', 'C2']), ['C1', 'C2']);
+    assert.equal(isConversationAllowed('C1', readSlackAllowlist([' C1 ']), false), true);
+
+    // Duplicates would make doctor report allowlist_3 for two channels.
+    assert.deepEqual(readSlackAllowlist(['C1', 'C1', 'C2']), ['C1', 'C2']);
+
+    // Empty entries are dropped, not treated as a channel.
+    assert.deepEqual(readSlackAllowlist(['C1', '', '   ']), ['C1']);
+
+    // An explicitly empty list is the one way to say 'every conversation'.
+    assert.deepEqual(readSlackAllowlist([]), []);
+    assert.equal(isConversationAllowed('C1', readSlackAllowlist([]), false), true);
+});
+
+
+// preflight is the only consumer that sees an allowlist drop: the dispatch path
+// never runs, so its log never fires. Without a line here the bot just goes
+// quiet and nothing in the log says why (#406).
+test('preflight logs the conversation the allowlist excluded', async () => {
+    const { initIngressJournal } = await import('../../src/messaging/durable-ingress.ts');
+    const { default: Database } = await import('better-sqlite3');
+    const { settings } = await import('../../src/core/config.ts');
+    const { log } = await import('../../src/core/logger.ts');
+
+    // preflight returns before the gate when there is no journal (bot.ts).
+    initIngressJournal(new Database(':memory:') as never);
+
+    const prevSlack = settings.slack;
+    const lines: string[] = [];
+    const originalInfo = log.info;
+    (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
+
+    try {
+        settings.slack = { ...(prevSlack || {}), enabled: true, teamId: 'T1', channelIds: ['C_ALLOWED'] };
+        const { preflightSlackEnvelope } = await import('../../src/slack/bot.ts');
+
+        const verdict = await preflightSlackEnvelope({
+            envelope_id: 'E-blocked',
+            type: 'events_api',
+            payload: { event: { type: 'message', channel: 'C_BLOCKED', ts: '10.1', user: 'U1', text: 'hi' } },
+        } as never);
+
+        assert.equal(verdict, 'ignored', 'an excluded conversation must not be journaled');
+        assert.ok(
+            lines.some(l => l.includes('[slack:gate]') && l.includes('C_BLOCKED')),
+            `the drop must name the conversation; saw: ${JSON.stringify(lines)}`,
+        );
+    } finally {
+        (log as { info: unknown }).info = originalInfo;
+        settings.slack = prevSlack;
+    }
+});
+
+// One reason logs, the rest do not. Self-echo and the app_mention twin are
+// ordinary traffic on a working bot: logging them would bury the one line that
+// says a human's setting excluded the conversation (#406).
+test('preflight stays quiet for the drops that are normal traffic', async () => {
+    const { initIngressJournal } = await import('../../src/messaging/durable-ingress.ts');
+    const { default: Database } = await import('better-sqlite3');
+    const { settings } = await import('../../src/core/config.ts');
+    const { log } = await import('../../src/core/logger.ts');
+
+    initIngressJournal(new Database(':memory:') as never);
+
+    const prevSlack = settings.slack;
+    const lines: string[] = [];
+    const originalInfo = log.info;
+    (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
+
+    // The gate reads a module-level selfUserId set at connect time, NOT
+    // settings.slack.selfUserId. Writing it into settings looks right and tests
+    // nothing: every event then falls to mention_required instead of reaching
+    // the branch under test.
+    const { setSlackSelfUserIdForTest, getSlackSelfUserId } = await import('../../src/slack/bot.ts');
+    const prevSelf = getSlackSelfUserId();
+    setSlackSelfUserIdForTest('U_SELF');
+
+    try {
+        settings.slack = { ...(prevSlack || {}), enabled: true, teamId: 'T1', channelIds: [] };
+        const { preflightSlackEnvelope } = await import('../../src/slack/bot.ts');
+
+        // Prove each event lands on the branch it is meant to exercise, or a
+        // silent gate reads as a pass for the wrong reason.
+        const { shouldProcessSlackEvent } = await import('../../src/slack/events.ts');
+        const reasonFor = (event: Record<string, unknown>) => shouldProcessSlackEvent(
+            event as never,
+            { selfUserId: 'U_SELF', allowBots: false, mentionOnly: true, channelIds: [],
+                threadRequireMention: false, threadParticipation: 'mention' } as never,
+            'events_api',
+        ).reason;
+
+        const selfEvent = { type: 'message', channel: 'C_OPEN', ts: '20.1', user: 'U_SELF', text: 'mine' };
+        const twinEvent = { type: 'message', channel: 'C_OPEN', ts: '20.2', user: 'U1', text: '<@U_SELF> hi' };
+        const botEvent = { type: 'message', channel: 'C_OPEN', ts: '20.3', bot_id: 'B1', text: 'beep' };
+        assert.equal(reasonFor(selfEvent), 'self_message');
+        assert.equal(reasonFor(twinEvent), 'mention_via_app_mention');
+        assert.equal(reasonFor(botEvent), 'bot_message');
+
+        // self_message: our own post arriving back as a message event.
+        // mention_via_app_mention: the message copy of a mention that also
+        // arrives as app_mention.
+        // bot_message: frequent on bot_profile traffic.
+        for (const [id, event] of [['E-self', selfEvent], ['E-twin', twinEvent], ['E-bot', botEvent]] as const) {
+            const verdict = await preflightSlackEnvelope({
+                envelope_id: id, type: 'events_api', payload: { event },
+            } as never);
+            assert.equal(verdict, 'ignored', `${id} must be dropped by the gate`);
+        }
+
+        assert.deepEqual(
+            lines.filter(l => l.includes('[slack:gate]')), [],
+            `only an allowlist drop may log; saw: ${JSON.stringify(lines)}`,
+        );
+    } finally {
+        setSlackSelfUserIdForTest(prevSelf);
+        (log as { info: unknown }).info = originalInfo;
+        settings.slack = prevSlack;
+    }
+});

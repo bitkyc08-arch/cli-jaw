@@ -8,12 +8,26 @@ import { resolveHomePath } from '../core/path-expand.js';
 const SKILL_ID_RE = /^[a-z0-9][a-z0-9._-]*$/;
 const FILE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
-function badRequest(code: string) {
-    return Object.assign(new Error(code), { statusCode: 400 });
+/**
+ * `statusCode` is what `routes/_http-error.ts` reads to pick the HTTP status;
+ * `code` is what it reads for the machine-readable error name, which used to
+ * come back undefined. `detail` is optional and additive — every existing
+ * caller passes nothing and behaves exactly as before (#404).
+ */
+function badRequest(code: string, detail?: Record<string, unknown>) {
+    return Object.assign(new Error(code), {
+        statusCode: 400,
+        code,
+        ...(detail ? { detail } : {}),
+    });
 }
 
-function forbidden(code: string) {
-    return Object.assign(new Error(code), { statusCode: 403 });
+function forbidden(code: string, detail?: Record<string, unknown>) {
+    return Object.assign(new Error(code), {
+        statusCode: 403,
+        code,
+        ...(detail ? { detail } : {}),
+    });
 }
 
 /**
@@ -251,34 +265,66 @@ export function assertSendFilePath(
     const canonical = env.realpath(resolved);
     if (!canonical) throw forbidden('path_not_resolvable');
 
-    // Allow anything under JAW_HOME
-    const jawHome = env.resolveHome(process.env["CLI_JAW_HOME"] || process.env["JAW_HOME"] || p.join(os.homedir(), '.cli-jaw'));
-    const canonJaw = env.realpath(jawHome);
-    if (canonJaw && isUnderRoot(canonical, canonJaw, env)) return canonical;
-
-    if (workingDir) {
-        const canonWd = env.realpath(p.resolve(workingDir));
-        if (canonWd && isUnderRoot(canonical, canonWd, env)) return canonical;
+    // Computed once and used for both the verdict and the explanation. Two calls
+    // would let a symlink or a directory change between them, so the refusal
+    // could name a list it did not actually enforce (#404).
+    const roots = sendFileAllowedRoots(workingDir, projectDirs, env);
+    for (const root of roots) {
+        if (isUnderRoot(canonical, root, env)) return canonical;
     }
 
-    if (projectDirs) {
-        for (const dir of projectDirs) {
-            // Compare canonical-to-canonical. The previous form required
-            // `realpath(dir) === resolve(dir)`, which silently dropped every
-            // project root on Windows whose stored casing differed from the
-            // on-disk casing, because native realpath restores real casing
-            // (verified on a Windows host: input `...\mixed` canonicalizes to
-            // `...\MiXeD`, so the equality never held).
-            //
-            // Resolving the root is also what makes containment meaningful: the
-            // candidate is already canonical, so both sides must be. A root
-            // that is a symlink is therefore evaluated at its target, which is
-            // the location the operator actually granted by configuring it.
-            const currentReal = env.realpath(p.resolve(dir));
-            if (!currentReal) continue;
-            if (isUnderRoot(canonical, currentReal, env)) return canonical;
-        }
-    }
+    // Refusing is correct; refusing anonymously is not. The caller is usually an
+    // agent that can move the file and retry, but it has no way to learn where
+    // "allowed" is — the roots live in settings it never reads. Six of these
+    // landed in stderr with nothing else beside them (#404).
+    throw forbidden('path_not_allowed', { allowedRoots: roots });
+}
 
-    throw forbidden('path_not_allowed');
+/**
+ * The roots `assertSendFilePath` will accept, canonicalized exactly the way it
+ * canonicalizes them.
+ *
+ * A reporter that builds this list itself drifts from enforcement — doctor
+ * calling a path "allowed" that the guard then refuses — so the guard and every
+ * reporter read it from here (#404).
+ *
+ * A root that does not resolve is omitted, matching the guard: it skipped a
+ * falsy realpath rather than comparing against a directory that is not there.
+ */
+export function sendFileAllowedRoots(
+    workingDir?: string,
+    projectDirs?: string[] | null,
+    env: PathEnvironment = hostPathEnvironment,
+): string[] {
+    const p = env.impl;
+    const roots: string[] = [];
+    const push = (value: string | null | undefined) => {
+        if (value && !roots.includes(value)) roots.push(value);
+    };
+
+    const jawHome = env.resolveHome(
+        process.env["CLI_JAW_HOME"] || process.env["JAW_HOME"] || p.join(os.homedir(), '.cli-jaw'),
+    );
+    push(env.realpath(jawHome));
+    if (typeof workingDir === 'string' && workingDir) push(env.realpath(p.resolve(workingDir)));
+    // Canonical-to-canonical. The previous form required
+    // `realpath(dir) === resolve(dir)`, which silently dropped every project
+    // root on Windows whose stored casing differed from the on-disk casing,
+    // because native realpath restores real casing (verified on a Windows host:
+    // input `...\mixed` canonicalizes to `...\MiXeD`, so the equality never
+    // held).
+    //
+    // Resolving the root is also what makes containment meaningful: the
+    // candidate is already canonical, so both sides must be. A root that is a
+    // symlink is therefore evaluated at its target, which is the location the
+    // operator actually granted by configuring it.
+    // Type-checked per entry, not trusted from the caller: these come from raw
+    // settings JSON, where an entry can be a number. `path.resolve(42)` throws,
+    // and this function is called from `jaw doctor` — the one command that has
+    // to keep working when the settings are broken (#404).
+    for (const dir of projectDirs ?? []) {
+        if (typeof dir !== 'string' || !dir) continue;
+        push(env.realpath(p.resolve(dir)));
+    }
+    return roots;
 }

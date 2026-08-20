@@ -2,7 +2,7 @@
 // src/security/path-guards.js 가 생성되면 통과
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertSkillId, assertFilename, safeResolveUnder, assertSendFilePath } from '../../src/security/path-guards.ts';
+import { assertSkillId, assertFilename, safeResolveUnder, assertSendFilePath, sendFileAllowedRoots } from '../../src/security/path-guards.ts';
 import { expandHomePath } from '../../src/core/path-expand.ts';
 import path from 'node:path';
 import os from 'node:os';
@@ -211,5 +211,152 @@ test('PG-023: assertSendFilePath rejects home files outside allowed roots', () =
         else process.env.CLI_JAW_HOME = previousCliHome;
         fs.rmSync(testHome, { recursive: true, force: true });
         fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+});
+
+// ─── #404: a refusal that says where "allowed" is ───
+//
+// Refusing was right; refusing anonymously was not. The allowed roots live in
+// settings the caller never reads, so six `path_not_allowed` errors landed in
+// stderr and the agent simply stopped producing the file.
+
+function withSendHome(run: (home: string) => void): void {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-detail-home-'));
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        run(fs.realpathSync(testHome));
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+    }
+}
+
+test('PG-024: a refused path carries the roots that would have worked', () => {
+    withSendHome((home) => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-detail-outside-'));
+        const file = path.join(outside, 'report.png');
+        try {
+            fs.writeFileSync(file, 'x');
+            let thrown: unknown;
+            try { assertSendFilePath(file); } catch (e) { thrown = e; }
+
+            assert.ok(thrown, 'the path must still be refused');
+            const err = thrown as { message: string; statusCode?: number; code?: string; detail?: Record<string, unknown> };
+            // The contract that must NOT change: this is a 403 with this code.
+            assert.equal(err.message, 'path_not_allowed');
+            assert.equal(err.statusCode, 403, 'a 403 must not become a 500');
+            assert.equal(err.code, 'path_not_allowed');
+
+            const roots = err.detail?.['allowedRoots'] as string[] | undefined;
+            assert.ok(Array.isArray(roots) && roots.length > 0, 'the refusal must name somewhere to go');
+            assert.ok(roots.includes(home), `JAW_HOME must be listed; saw ${JSON.stringify(roots)}`);
+        } finally {
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
+});
+
+test('PG-025: the reported roots are the roots the guard enforces', () => {
+    withSendHome((home) => {
+        const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-detail-project-'));
+        const missing = path.join(os.tmpdir(), 'jaw-send-detail-does-not-exist');
+        try {
+            const roots = sendFileAllowedRoots(undefined, [projectDir, missing]);
+            assert.ok(roots.includes(home));
+            assert.ok(roots.includes(fs.realpathSync(projectDir)), 'a configured project root is listed');
+            // The guard skips a root it cannot resolve, so a reporter that listed
+            // it would name a directory that grants nothing.
+            assert.ok(!roots.some(r => r.includes('does-not-exist')), 'an unresolvable root is omitted');
+
+            // Enforcement agrees: a file under the listed root is accepted.
+            const inProject = path.join(projectDir, 'ok.png');
+            fs.writeFileSync(inProject, 'x');
+            assert.equal(
+                assertSendFilePath(inProject, undefined, [projectDir]),
+                fs.realpathSync(inProject),
+            );
+        } finally {
+            fs.rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+});
+
+test('PG-026: the scope did not widen — JAW_HOME in, everything else out', () => {
+    withSendHome((home) => {
+        const inside = path.join(home, 'uploads');
+        fs.mkdirSync(inside, { recursive: true });
+        const okFile = path.join(inside, 'ok.png');
+        fs.writeFileSync(okFile, 'x');
+        assert.equal(assertSendFilePath(okFile), fs.realpathSync(okFile));
+
+        // And the other refusals still refuse, with their reasons and statuses
+        // intact. Each expectation is asserted — a case listed but not checked
+        // is a test that reports coverage it does not have.
+        //
+        // `:hidden` is an alternate data stream only on Windows, where the guard
+        // rejects it up front as `path_stream_denied`. On POSIX it is an ordinary
+        // filename that does not exist, so the honest expectation is
+        // `path_not_resolvable`. The ADS rule has its own owner in
+        // path-guards-windows.test.ts, where the platform is injected.
+        const streamSuffixCase = process.platform === 'win32'
+            ? ['path_stream_denied', 403] as const
+            : ['path_not_resolvable', 403] as const;
+        for (const [input, expectedMessage, expectedStatus] of [
+            [path.join(home, 'missing.png'), 'path_not_resolvable', 403],
+            [`${okFile}:hidden`, streamSuffixCase[0], streamSuffixCase[1]],
+        ] as const) {
+            let thrown: unknown;
+            try { assertSendFilePath(input); } catch (e) { thrown = e; }
+            const err = thrown as { message?: string; statusCode?: number; code?: string } | undefined;
+            assert.ok(err, `${input} must be refused`);
+            assert.equal(err!.message, expectedMessage, `${input} must refuse for the stated reason`);
+            assert.equal(err!.statusCode, expectedStatus, `${input} must keep its status`);
+            assert.equal(err!.code, expectedMessage, 'the machine-readable code must match the reason');
+        }
+    });
+});
+
+// The top regression this change had to avoid: adding `code` and `detail` must
+// not move any existing status. badRequest is 400 and forbidden is 403, and a
+// mis-shaped object turns either into a 500 (#404).
+test('PG-027: every guard refusal keeps its status and now names its code', () => {
+    const cases: Array<{ run: () => unknown; code: string; status: number }> = [
+        { run: () => assertSkillId('../escape'), code: 'invalid_skill_id', status: 400 },
+        { run: () => assertSkillId('dev/x'), code: 'invalid_skill_id', status: 400 },
+        { run: () => assertFilename('../escape'), code: 'invalid_filename', status: 400 },
+        { run: () => safeResolveUnder('/tmp/jaw-pg027-root', '../escape'), code: 'path_escape', status: 403 },
+    ];
+    for (const { run, code, status } of cases) {
+        let thrown: unknown;
+        try { run(); } catch (e) { thrown = e; }
+        const err = thrown as { message?: string; statusCode?: number; code?: string } | undefined;
+        assert.ok(err, `${code} case must throw`);
+        // The declared value, not `err.code === err.message`: comparing the
+        // object to itself passes even when both are wrong.
+        assert.equal(err!.code, code, 'the code must name this refusal');
+        assert.equal(err!.message, code, 'and match the message it has always had');
+        assert.equal(err!.statusCode, status, `${code} must stay ${status}`);
+    }
+});
+
+// The diagnostic has to survive the settings it is diagnosing. `projectDirs`
+// comes from raw JSON, and a numeric entry made `path.resolve` throw — taking
+// the whole `jaw doctor --json` report down with it (#404).
+test('PG-028: a malformed projectDirs entry is skipped, not thrown on', () => {
+    const good = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-pg028-'));
+    try {
+        const roots = sendFileAllowedRoots(
+            undefined,
+            [42, null, '', good] as unknown as string[],
+        );
+        assert.ok(roots.includes(fs.realpathSync(good)), 'the usable root still counts');
+        assert.equal(roots.length, 2, `only JAW_HOME and the good root; saw ${JSON.stringify(roots)}`);
+
+        // A non-string workingDir is the same hazard from the other argument.
+        assert.doesNotThrow(() => sendFileAllowedRoots(7 as unknown as string, null));
+    } finally {
+        fs.rmSync(good, { recursive: true, force: true });
     }
 });

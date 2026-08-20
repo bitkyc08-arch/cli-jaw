@@ -88,3 +88,43 @@ test('a failed placeholder post degrades to no-op instead of throwing', async ()
     progress.update('anything');
     await progress.finish();
 });
+
+// ─── credentials never reach the channel (#408) ─────
+//
+// The final answer is masked inside chunkSlackMessage(). This transport calls
+// slackApi directly and was not, so progress — which mirrors what the agent
+// actually RAN — carried a bearer token to the channel verbatim.
+
+// Structurally a token, not a real one: xoxb + the digit-group shape the
+// redactor matches on.
+const FAKE_BOT_TOKEN = `xoxb-${'1'.repeat(13)}-${'2'.repeat(13)}-${'a'.repeat(24)}`;
+
+test('SPR-001: the placeholder post is masked', async () => {
+    const { calls, fetchImpl } = fakeSlack();
+    const progress = await startSlackProgress('xoxb-1', target, `curl -H "Authorization: Bearer ${FAKE_BOT_TOKEN}"`, { fetchImpl });
+    const posted = String(calls[0]?.body['text'] ?? '');
+    assert.ok(!posted.includes(FAKE_BOT_TOKEN), `the token must not reach Slack; saw: ${posted}`);
+    assert.match(posted, /curl/, 'the rest of the status survives');
+    await progress.finish();
+});
+
+test('SPR-002: every edit is masked, not just the first post', async () => {
+    const { calls, fetchImpl } = fakeSlack();
+    const progress = await startSlackProgress('xoxb-1', target, 'start', { fetchImpl });
+    progress.update(`Bash — curl -H "Authorization: Bearer ${FAKE_BOT_TOKEN}" https://api`);
+    await new Promise(r => setTimeout(r, 60));
+    const edited = String(calls.find(c => c.method === 'chat.update')?.body['text'] ?? '');
+    assert.ok(edited, 'an edit must have happened');
+    assert.ok(!edited.includes(FAKE_BOT_TOKEN), `the token must not reach Slack; saw: ${edited}`);
+    await progress.finish();
+});
+
+test('SPR-003: ordinary Korean progress text is not mangled', async () => {
+    // Over-masking is the failure mode on the other side: a status line the
+    // reader cannot read is its own bug.
+    const { calls, fetchImpl } = fakeSlack();
+    const status = '파일 3개 읽는 중 — src/app.ts, src/index.ts';
+    const progress = await startSlackProgress('xoxb-1', target, status, { fetchImpl });
+    assert.equal(calls[0]?.body['text'], status);
+    await progress.finish();
+});

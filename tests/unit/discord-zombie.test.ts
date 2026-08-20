@@ -19,7 +19,10 @@ test('DZ-002: initDiscord wraps body in try/finally for lock release', () => {
 test('DZ-003: shutdownDiscord waits after destroy failure', () => {
     const sdIdx = botSrc.indexOf('async function shutdownDiscord');
     assert.ok(sdIdx >= 0, 'shutdownDiscord must exist');
-    const block = botSrc.slice(sdIdx, sdIdx + 600);
+    // Sized to the function, not a byte count: the window used to be 600 chars
+    // and silently stopped covering the destroy path as soon as shutdown grew a
+    // waiter-cleanup preamble (#407).
+    const block = botSrc.slice(sdIdx, botSrc.indexOf('\nexport ', sdIdx + 1));
     assert.ok(block.includes('await old.destroy()'), 'must call old.destroy()');
     assert.ok(block.includes('setTimeout(r, 2000)'), 'must wait 2s after destroy failure');
 });

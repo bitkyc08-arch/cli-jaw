@@ -91,6 +91,7 @@ export interface QueueController {
     enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: QueueMessageMeta): string;
     removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number };
     processQueue(scopeKey?: string): Promise<void>;
+    drainRecoveredQueue(): void;
     setQueueHold(scopeKey: string, idOrTimeout?: string | number, timeoutMs?: number): void;
     clearQueueHold(scopeKey?: string | null, idOrOpts?: string | { resume?: boolean }, opts?: { resume?: boolean }): void;
     getQueueHoldId(scopeKey?: string): string | null;
@@ -188,6 +189,31 @@ export function createQueueController(
     const messageQueue: QueueItem[] = loadPersistedQueue();
     if (messageQueue.length > 0) {
         console.log(`[queue] recovered ${messageQueue.length} persisted message(s) from previous session`);
+    }
+    /**
+     * Wake the queue we just recovered.
+     *
+     * Recovering is not delivering: nothing on the boot path called
+     * `processQueue`, so messages that arrived while the process was down sat in
+     * the queue until a NEW message happened to arrive and drag them out. From
+     * the outside the bot had simply gone quiet (#407).
+     *
+     * Not called here. This controller is built during module init
+     * (spawn.ts:405), before settings load (server.ts) and before the transports
+     * exist, so a turn started at construction has nowhere to answer. The server
+     * calls this once it is actually ready.
+     */
+    function drainRecoveredQueue(): void {
+        if (messageQueue.length === 0) return;
+        const scopes = new Set(messageQueue.map(item => normalizeScope(item.scope)));
+        console.log(`[queue] boot drain: ${messageQueue.length} message(s) across ${scopes.size} scope(s)`);
+        for (const scope of scopes) {
+            // One kick per scope. `processQueue` takes a single item and
+            // schedules its own successor, so this starts each lane rather than
+            // draining it here.
+            void processQueue(scope).catch(err =>
+                console.error('[queue:boot-drain]', (err as Error).message));
+        }
     }
     const QUEUE_HOLD_TIMEOUT_MS = 10_000;
     const drainingScopes = new Set<string>();
@@ -505,6 +531,11 @@ export function createQueueController(
                     chatSessionId: effectiveSessionId,
                     ...(item.remoteKey ? { remoteKey: item.remoteKey } : {}),
                     overrides, replyViaTarget, _skipInsert: true,
+                    // Marks the completion so a channel can answer a turn whose
+                    // original requester is gone — a boot-drained item has no
+                    // listener left (#407). Ordinary turns must NOT carry this,
+                    // or the dispatch path and the fallback both post.
+                    _fromQueue: true,
                 });
                 const task = isResetIntent(combined)
                     ? orchestrateReset(scopedMeta)
@@ -517,7 +548,7 @@ export function createQueueController(
                 } catch (err: unknown) {
                     const msg = (err as Error).message;
                     console.error('[queue:orchestrate]', msg);
-                    deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, ...(eventScope || {}) });
+                    deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget, fromQueue: true, ...(eventScope || {}) });
                     // The pipeline threw before reaching its own settle site, so
                     // this is the last place that can answer the caller.
                     settleOnce(requestId, 'failed', { error: msg });
@@ -528,7 +559,7 @@ export function createQueueController(
             if (!inserted) {
                 messageQueue.unshift(...runItems);
             } else {
-                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget,
+                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget, fromQueue: true,
                     ...(multiSessionEnabled ? { scope: item.scope, sessionId: effectiveSessionId } : {}) });
                 // Re-queued items settle on their eventual run; these do not get
                 // another chance, so answer the caller here.
@@ -568,6 +599,7 @@ export function createQueueController(
         enqueueMessage,
         removeQueuedMessage,
         processQueue,
+        drainRecoveredQueue,
         setQueueHold,
         clearQueueHold,
         getQueueHoldId,

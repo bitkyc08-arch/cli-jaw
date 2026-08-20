@@ -1,13 +1,16 @@
 import { settings } from '../core/config.js';
-import { shouldAttachSlack } from '../slack/events.js';
+import { MALFORMED_SLACK_ALLOWLIST, readSlackAllowlist, shouldAttachSlack } from '../slack/events.js';
 import {
     getHomeChannel,
+    getLastActiveTarget,
     getRunningMessagingTransports,
     isMessagingTransportRunning,
 } from './runtime.js';
 import { getIngressJournal, type IngressJournal } from './durable-ingress.js';
 import { snapshotMetrics, type MessagingMetricsSnapshot } from './metrics.js';
 import { getSlackScopeStatus, type SlackScopeStatus } from '../slack/scope-status.js';
+import { slackPeerKind } from './slack-target.js';
+import { isRemoteTarget } from './types.js';
 import type { MessengerChannel } from './types.js';
 
 export type TransportCapability = {
@@ -64,11 +67,38 @@ function discordHasSendTarget(): boolean {
 
 function slackHasSendTarget(): boolean {
     const sc = settings["slack"];
-    if (sc?.channelIds?.length) return true;
-    const messaging = settings["messaging"] as Record<string, unknown> | undefined;
-    const last = messaging?.['lastActive'] as Record<string, unknown> | undefined;
-    const slackLast = last?.['slack'] as { targetId?: string } | undefined;
-    return Boolean(slackLast?.targetId);
+    // Through the gate's reader: a raw string like "C1" has a truthy .length and
+    // used to read as a configured target the gate was refusing outright (#406).
+    //
+    // The sentinel has a truthy .length too, and it is not a conversation.
+    const ids = readSlackAllowlist(sc?.channelIds);
+    // The runtime slot first, the persisted one only as a fallback.
+    // `setLastActiveTarget` updates the in-memory map immediately and writes
+    // settings 5s later, so reading the file alone reports a conversation the
+    // bot is talking in RIGHT NOW as unreachable — the same disagreement
+    // between a report and the live path that #406 is about.
+    const messagingBlock = settings["messaging"] as Record<string, unknown> | undefined;
+    const lastActive = messagingBlock?.['lastActive'] as Record<string, unknown> | undefined;
+    const lastSlack = getLastActiveTarget('slack')
+        ?? (lastActive?.['slack'] as { targetId?: string } | undefined);
+    if (ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST) {
+        // An unreadable allowlist denies every CHANNEL target, including whatever
+        // sits in the last-active slot. Falling through to that slot put health
+        // back where it started: sendCapable:true while `validateTarget` refused
+        // the very target it was vouching for.
+        //
+        // A DM is the exception on both sides — `validateTarget` lets D.../U...
+        // through before it ever reads the allowlist — so reporting false for a
+        // DM slot would understate a send that does work.
+        //
+        // The shape has to hold up too: `hydrateTargetsFromSettings` drops a slot
+        // that is not a full RemoteTarget, so a bare `{targetId:"D_..."}` is a
+        // target no send can actually use.
+        return isRemoteTarget(lastSlack) && lastSlack.channel === 'slack'
+            && slackPeerKind(lastSlack.targetId) === 'direct';
+    }
+    if (ids.length) return true;
+    return Boolean(lastSlack?.targetId);
 }
 
 export function getTransportCapability(channel: MessengerChannel): TransportCapability {

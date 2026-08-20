@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { slackChannelScope } from '../../src/slack/scope-status.js';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
@@ -95,7 +98,7 @@ test('doctor --json emits a slack status object with the full ladder', () => {
     const doctor = read('bin/commands/doctor.ts');
     assert.match(doctor, /function buildSlackStatus\(\)/);
     assert.match(doctor, /slack: buildSlackStatus\(\),/, 'the JSON output has no slack member');
-    for (const status of ['missing_bot_token', 'missing_app_token', 'missing_channel_ids']) {
+    for (const status of ['missing_bot_token', 'missing_app_token']) {
         assert.match(doctor, new RegExp(status), `status ladder is missing ${status}`);
     }
     // Shape parity with Discord so JSON consumers can treat channels uniformly.
@@ -103,6 +106,121 @@ test('doctor --json emits a slack status object with the full ladder', () => {
     for (const field of ['enabled', 'channelConsistent', 'runtimeReady', 'degradedReasons']) {
         assert.match(block, new RegExp(field), `buildSlackStatus omits ${field}`);
     }
+});
+
+// An empty allowlist means "every conversation" — the shipped default. doctor
+// used to call that `missing_channel_ids` and degrade on it, which is why it
+// passed during the incident it should have caught: the list had exactly one
+// entry, so it read as configured while every other conversation was dropped
+// (#406). Asserting the judgment rather than the source text, per AGENTS.md.
+test('slackChannelScope reports width instead of treating "all" as missing', () => {
+    assert.deepEqual(slackChannelScope([]), { ids: [], scope: 'all_conversations' });
+    assert.deepEqual(slackChannelScope(undefined), { ids: [], scope: 'all_conversations' });
+    assert.deepEqual(
+        slackChannelScope(['C0BJW306TE3']),
+        { ids: ['C0BJW306TE3'], scope: 'allowlist_1' },
+    );
+    assert.equal(slackChannelScope(['A', 'B', 'C']).scope, 'allowlist_3');
+});
+
+test('doctor no longer degrades on an empty slack allowlist', () => {
+    const doctor = read('bin/commands/doctor.ts');
+    // Scoped to buildSlackStatus on purpose: Discord keeps its own
+    // missing_channel_ids ladder, and whether that judgment is right is a
+    // separate question from #406.
+    const block = doctor.slice(doctor.indexOf('function buildSlackStatus'));
+    assert.doesNotMatch(
+        block,
+        /missing_channel_ids/,
+        'an empty allowlist is "every conversation", not a missing setting',
+    );
+    assert.match(block, /channelScope/, 'buildSlackStatus must expose the allowlist width');
+    // The old field stays one major version rather than vanishing from a public
+    // --json payload, but it now derives from the same gate reading (#406).
+    assert.match(
+        block,
+        /channelIdsConfigured: channelIds\.length > 0/,
+        'channelIdsConfigured must survive as a derived alias, not be dropped silently',
+    );
+    // A present-but-unreadable list denies every channel. Carrying that to
+    // status "ok" on tokens alone is the same silence #406 is about.
+    assert.match(
+        block,
+        /channelScope === 'malformed'/,
+        'the status ladder must not pass an allowlist the gate cannot read',
+    );
+});
+
+// Everything above reads the source. That proves the code says the right thing,
+// not that `jaw doctor --json` prints it — and the whole point of #406 is that a
+// reporting surface disagreed with the gate. So run the real command.
+//
+// Through the repo's own tsx and an isolated --home: a global `jaw` would be
+// ENOENT on clean CI and would check the INSTALLED build on a dev host, which is
+// a false green either way (the multi-instance integration test's pattern).
+test('doctor --json reports the allowlist width the gate enforces', () => {
+    const repoTsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
+    const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
+    // No conditional skip. A nested `test.skip()` marks an inner test skipped and
+    // lets the OUTER one pass, so the check that matters would report green in
+    // exactly the environment where it never ran. tsx is a devDependency; if it
+    // is missing, the install is broken and this should say so.
+    assert.ok(existsSync(repoTsx), `repo-local tsx is required to run the CLI: ${repoTsx}`);
+
+    const runDoctor = (channelIds: unknown) => {
+        const home = mkdtempSync(join(tmpdir(), 'jaw-slack-scope-'));
+        try {
+            const settingsPath = join(home, 'settings.json');
+            writeFileSync(settingsPath, JSON.stringify({
+                slack: {
+                    enabled: true,
+                    botToken: 'xoxb-doctor-json-fixture',
+                    appToken: 'xapp-doctor-json-fixture',
+                    teamId: 'T_FIXTURE',
+                    channelIds,
+                },
+            }));
+            chmodSync(settingsPath, 0o600);
+            // Not execFileSync: doctor exits non-zero whenever ANY check is
+            // warn/error, and a throwaway home has several (no db, no skills
+            // dir). That says nothing about the Slack block, which is printed
+            // either way — so read stdout on its own terms.
+            const run = spawnSync(repoTsx, [cliEntry, '--home', home, 'doctor', '--json'], {
+                cwd: repoRoot, encoding: 'utf8', timeout: 60000,
+                // The Slack connection fields are env-owned when these are set,
+                // which would override the fixture and silently test nothing.
+                env: {
+                    ...process.env, NO_COLOR: '1',
+                    SLACK_BOT_TOKEN: '', SLACK_APP_TOKEN: '', SLACK_CHANNEL_IDS: '', SLACK_TEAM_ID: '',
+                },
+            });
+            assert.ok(run.stdout, `doctor printed nothing: ${run.stderr || run.error}`);
+            return JSON.parse(run.stdout).slack;
+        } finally {
+            rmSync(home, { recursive: true, force: true });
+        }
+    };
+
+    // Empty is 'every conversation', the shipped default — not a defect.
+    const all = runDoctor([]);
+    assert.equal(all.channelScope, 'all_conversations');
+    assert.notEqual(all.status, 'missing_channel_ids');
+    assert.equal(all.channelIdsConfigured, false);
+
+    // A narrowed list reports its width, which is what the incident needed.
+    const narrowed = runDoctor(['C0BJW306TE3']);
+    assert.equal(narrowed.channelScope, 'allowlist_1');
+    assert.deepEqual(narrowed.channelIds, ['C0BJW306TE3']);
+    assert.equal(narrowed.channelIdsConfigured, true);
+
+    // A value the gate cannot read denies every channel, so doctor must not
+    // answer ok on tokens alone.
+    const malformed = runDoctor('C0BJW306TE3');
+    assert.equal(malformed.channelScope, 'malformed');
+    assert.equal(malformed.status, 'malformed_channel_ids');
+    assert.equal(malformed.runtimeReady, false);
+    // The denial sentinel is not a conversation and must not be printed as one.
+    assert.deepEqual(malformed.channelIds, []);
 });
 
 // ─── source-of-truth docs ───────────────────────────
@@ -134,4 +252,75 @@ test('the operator runbook exists and covers the setup essentials', {
     assert.match(runbook, /invite @cli-jaw/, 'the invite step is missing');
     assert.match(runbook, /message\.im/, 'the DM subscription gotcha is undocumented');
     assert.match(runbook, /Troubleshooting/i);
+});
+
+// An agent narrowed slack.channelIds while setting up a channel heartbeat and
+// cut off every other conversation, including the one it would have needed to
+// be told. Nothing in the prompt said that list was its own inbound surface (#406).
+test('the agent prompt names the inbound allowlist as something not to narrow', async () => {
+    const { getSystemPrompt } = await import('../../src/prompt/builder.js');
+
+    // The assembled runtime prompt, not the helper: an agent only ever sees
+    // what getSystemPrompt returns, and cursor spawns with forDisk:false.
+    const runtime = getSystemPrompt({ forDisk: false });
+    assert.match(runtime, /slack\.channelIds/, 'the setting must be named in the runtime prompt');
+    assert.match(runtime, /HEAR|listens/i, 'the prompt must say this list is how the agent is reached');
+    assert.match(runtime, /target/, 'the prompt must point channel-scoped work at target instead');
+
+    // The disk prompt (AGENTS.md) is a different branch and must carry it too.
+    const disk = getSystemPrompt({ forDisk: true });
+    assert.match(disk, /slack\.channelIds/, 'AGENTS.md must carry the same warning');
+});
+
+// The gate stays silent about the one drop reason that means a human
+// configured us out of a conversation. Without this the allowlist mistake reads
+// as a dead bot: preflight drops the event, nothing reaches dispatch, and
+// dispatch is the only consumer that logs (#406).
+
+// Reading it any other way is how the two paths drifted: a malformed value
+// blocked messages while slash commands still ran everywhere, and doctor
+// reported a reach the bot did not have (#406).
+test('every allowlist reader agrees with the gate', async () => {
+    const { readSlackAllowlist, MALFORMED_SLACK_ALLOWLIST, SLACK_ALLOWLIST_MAX } =
+        await import('../../src/slack/events.js');
+    const { slackChannelScope } = await import('../../src/slack/scope-status.js');
+
+    // Padding and duplicates: the gate matches one channel, so doctor must say one.
+    assert.deepEqual(readSlackAllowlist([' C1 ', 'C1', '']), ['C1']);
+    assert.equal(slackChannelScope([' C1 ', 'C1', '']).scope, 'allowlist_1');
+
+    // Malformed: the gate denies every channel, so doctor must not call it "all".
+    for (const bad of ['C1', ['C1', 7], { 0: 'C1' }]) {
+        assert.deepEqual(readSlackAllowlist(bad), [MALFORMED_SLACK_ALLOWLIST]);
+        assert.equal(slackChannelScope(bad).scope, 'malformed');
+    }
+
+    // Empty means every conversation on both sides.
+    assert.deepEqual(readSlackAllowlist([]), []);
+    assert.equal(slackChannelScope([]).scope, 'all_conversations');
+    assert.equal(slackChannelScope(undefined).scope, 'all_conversations');
+
+    // The ceiling binds in the reader, not just the route, because settings also
+    // arrive from the file watcher and from a hand-edited settings.json.
+    const atLimit = Array.from({ length: SLACK_ALLOWLIST_MAX }, (_, i) => `C${i}`);
+    assert.equal(readSlackAllowlist(atLimit).length, SLACK_ALLOWLIST_MAX);
+    assert.deepEqual(readSlackAllowlist([...atLimit, 'C_OVER']), [MALFORMED_SLACK_ALLOWLIST]);
+
+    // The sentinel is a denial marker, not a conversation. It must not reach a
+    // reporting surface as if it were one.
+    for (const bad of [null, [''], 'C1']) {
+        assert.deepEqual(slackChannelScope(bad).ids, [], 'the sentinel must not leak into a report');
+    }
+});
+
+// The slash-command path used to parse the allowlist itself, so a malformed
+// value blocked ordinary messages while commands still ran in every channel.
+test('the slash command path reads the allowlist through the gate helper', () => {
+    const commands = read('src/slack/commands.ts');
+    assert.match(commands, /readSlackAllowlist\(settings\[.slack.\]\?\.channelIds\)/);
+    assert.doesNotMatch(
+        commands,
+        /Array\.isArray\(configured\)/,
+        'the slash path must not parse the allowlist on its own',
+    );
 });

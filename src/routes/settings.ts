@@ -31,6 +31,8 @@ import { getCachedCliStatus, getCachedCliStatusForced } from '../cli/cli-status.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
+import { SLACK_ALLOWLIST_MAX } from '../slack/events.js';
+import { classifyAllowlistChange, noteAllowlistMove, recordAllowlistNarrowing } from '../slack/allowlist-audit.js';
 import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
 import { log } from '../core/logger.js';
@@ -132,6 +134,29 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
     return !!value && typeof value === 'object' && !Array.isArray(value)
         ? value as Record<string, unknown>
         : {};
+}
+
+// classifyAllowlistChange and recordAllowlistNarrowing live in
+// src/slack/allowlist-audit.ts: the settings FILE watcher records the same
+// change, and it must not import an Express route module to do it (#406).
+export { classifyAllowlistChange } from '../slack/allowlist-audit.js';
+export type { AllowlistChange } from '../slack/allowlist-audit.js';
+
+/**
+ * Reject a `slack.channelIds` write that is not a list of ids.
+ *
+ * The settings merge does not type-check channel blocks, and the gate reads a
+ * non-array as "no allowlist" — which means every conversation. So a write of
+ * `"C1"` or `[1,2]` would not narrow anything, it would silently WIDEN an
+ * existing allowlist to everything, and `classifyAllowlistChange` would not even
+ * see it as a change. Failing open on a malformed value is the one outcome this
+ * whole area exists to prevent (#406).
+ */
+export function invalidSlackChannelIds(value: unknown): boolean {
+    if (value === undefined) return false;
+    if (!Array.isArray(value)) return true;
+    if (value.length > SLACK_ALLOWLIST_MAX) return true;
+    return value.some(id => typeof id !== 'string' || id.trim() === '');
 }
 
 function mergePiProfile(piInput: unknown, profile: PiProfile, models: string[]) {
@@ -238,11 +263,25 @@ export function registerSettingsRoutes(
             res.status(400).json({ ok: false, error: 'invalid_settings_field' });
             return;
         }
+        // Captured before the write, because afterwards the previous list is gone.
+        const incomingSlack = asPlainRecord((sanitized.value as Record<string, unknown>)["slack"]);
+        if (invalidSlackChannelIds(incomingSlack["channelIds"])) {
+            fail(res, 400, 'invalid_slack_channel_ids', {
+                hint: 'slack.channelIds must be an array of conversation id strings. '
+                    + `Use [] to allow every conversation. At most ${SLACK_ALLOWLIST_MAX} ids.`,
+            });
+            return;
+        }
+        const allowlistChange = classifyAllowlistChange(
+            incomingSlack["channelIds"],
+            settings["slack"]?.channelIds,
+        );
         const result = await applySettings(sanitized.value) as Record<string, unknown>;
         try {
             const keys = Object.keys(req.body || {}).filter(k => !['stt', 'jawCeo'].includes(k));
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), { keys });
         } catch { /* non-fatal */ }
+        recordAllowlistNarrowing(allowlistChange, String(req.ip || 'local'));
         const safe = redactRuntimeSettings(result);
         ok(res, safe);
     }));
@@ -267,6 +306,11 @@ export function registerSettingsRoutes(
                 attachPort: '',
             },
         }) as Record<string, unknown>;
+        // Reset clears the allowlist. That is a move like any other, and the
+        // audit dedup has to know: without it, narrowing to the same list again
+        // right after a reset read as a repeat of the first narrowing and went
+        // unrecorded (#406).
+        noteAllowlistMove({ kind: 'clear', from: [], to: [] });
         try {
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
                 keys: ['slack'],

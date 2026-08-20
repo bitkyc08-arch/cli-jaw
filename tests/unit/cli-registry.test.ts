@@ -347,7 +347,10 @@ test('buildModelChoicesByCli returns independent copies', () => {
 
 test('doctor CLI checks are driven by canonical registry keys', () => {
     const doctorSrc = fs.readFileSync(join(__dirname, '../../bin/commands/doctor.ts'), 'utf8');
-    assert.match(doctorSrc, /import \{ CLI_KEYS \}/);
+    // Matched on the imported name, not the exact brace contents: doctor now
+    // also imports DEFAULT_CLI from the same module, and a punctuation-exact
+    // match failed on that without anything actually being wrong.
+    assert.match(doctorSrc, /import \{[^}]*\bCLI_KEYS\b[^}]*\} from '\.\.\/\.\.\/src\/cli\/registry\.js'/);
     assert.match(doctorSrc, /for \(const cli of CLI_KEYS\)/);
     assert.doesNotMatch(doctorSrc, /for \(const cli of \['claude', 'codex', 'gemini', 'opencode', 'copilot'\]\)/);
 });

@@ -53,7 +53,7 @@ import { buildRemoteBindingKey, type SessionScope } from '../messaging/session-k
 import { channelGateOn, scopeForChatSession } from '../orchestrator/scope.js';
 import { setLastActiveTarget } from '../messaging/runtime.js';
 import { getSlackSendClient, sendSlackText } from './send-only-client.js';
-import { isConversationAllowed } from './events.js';
+import { isConversationAllowed, readSlackAllowlist } from './events.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 
 function makeSlackCommandCtx() {
@@ -85,8 +85,10 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
     // Same allowlist gate as the message path. Without this, a slash command
     // from a non-allowlisted channel reaches orchestration while an ordinary
     // message from the same channel is blocked.
-    const configured = settings["slack"]?.channelIds;
-    const channelIds = Array.isArray(configured) ? configured as string[] : [];
+    // Read through the same helper as the message gate. Parsing it separately is
+    // how the two paths drifted: a malformed value blocked messages while slash
+    // commands still ran everywhere (#406).
+    const channelIds = readSlackAllowlist(settings["slack"]?.channelIds);
     const isDm = channelId.toUpperCase().startsWith('D')
         || payload['channel_name'] === 'directmessage';
     if (!isConversationAllowed(channelId, channelIds, isDm)) {

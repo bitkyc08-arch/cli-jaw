@@ -306,3 +306,176 @@ test('a queued item with no remote binding still resolves to default (#399)', ()
     assert.equal(item!.chatSessionId, 'default');
 });
 
+// ─── boot drain (#407) ──────────────────────────────
+
+// Recovering a queue is not delivering it. Nothing on the boot path called
+// processQueue, so a message that arrived while the process was down waited for
+// a NEW message to drag it out — from the outside the bot had gone quiet (#407).
+
+function queueRow(id: string, scope: string, ts: number) {
+    insertQueuedMessage.run(id, JSON.stringify({
+        schemaVersion: 2, id, prompt: id, source: 'slack', scope, chatSessionId: 'default', ts,
+    }));
+}
+
+test('QBD-001: constructing the controller does not run the queue', async () => {
+    queueRow('queue-v2-boot-a', 'jaw:slack:channel:CA', 1);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    // Construction happens during module init, before settings load and before
+    // any transport exists. A turn started here has nowhere to answer.
+    const ctrl = makeController({ busy: () => false, runs });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.equal(runs.length, 0, 'nothing may run at construction');
+    assert.equal(ctrl.messageQueue.length, 1, 'the item is recovered, not consumed');
+});
+
+test('QBD-002: drainRecoveredQueue starts every recovered scope', async () => {
+    queueRow('queue-v2-boot-b', 'jaw:slack:channel:CB', 1);
+    queueRow('queue-v2-boot-c', 'jaw:slack:channel:CC', 2);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    const ctrl = makeController({ busy: () => false, runs });
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    assert.deepEqual(
+        runs.map(r => r.prompt).sort(),
+        ['queue-v2-boot-b', 'queue-v2-boot-c'],
+        'both scopes must drain without a new inbound message',
+    );
+});
+
+// These three assert the behaviour the boot path owes, not the shape of the
+// loop that produces it. Measured, not assumed: `processQueue` ignores its scope
+// argument when choosing a candidate and schedules its own successor, so a
+// single kick already drains every scope in parallel. Replacing the per-scope
+// loop with one `processQueue('default')` keeps all three green. The loop stays
+// because it says plainly what the drain intends, but it is belt-and-braces —
+// no test here can claim otherwise, and pretending one does would be a green
+// light for a contract the queue does not actually keep.
+test('QBD-002b: a blocked scope does not strand the scopes beside it', async () => {
+    queueRow('queue-v2-boot-j', 'jaw:slack:channel:CJ', 1);
+    queueRow('queue-v2-boot-k', 'jaw:slack:channel:CK', 2);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    const ctrl = makeController({ busy: () => false, runs });
+    // A hold makes CJ unpickable. Its lane never runs, so it never schedules the
+    // successor that would have carried CK — only a kick aimed at CK can.
+    // Two args on purpose: the one-arg form is the legacy shape and holds
+    // 'default', which would hold nothing here.
+    ctrl.setQueueHold('jaw:slack:channel:CJ', 'hold-cj');
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    assert.deepEqual(
+        runs.map(r => r.prompt),
+        ['queue-v2-boot-k'],
+        'the unheld scope must start on its own kick, not wait on a held neighbour',
+    );
+    ctrl.clearQueueHold('jaw:slack:channel:CJ', 'hold-cj', { resume: false });
+});
+
+// The parallelism the drain is meant to preserve: two conversations in flight at
+// once rather than single-file behind whichever went first.
+test('QBD-002c: recovered scopes drain in parallel, not single-file', async () => {
+    queueRow('queue-v2-boot-g', 'jaw:slack:channel:CG', 1);
+    queueRow('queue-v2-boot-h', 'jaw:slack:channel:CH', 2);
+
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const release: Array<() => void> = [];
+    const started: string[] = [];
+
+    const ctrl = createQueueController({
+        migrateQueuedMessagesV1ToV2,
+        isSpawnBusy: () => false,
+        hasBlockingWorkers: () => false,
+        hasPendingWorkerReplays: () => false,
+        insertMessage,
+        getActiveChatSession: () => 'default',
+        insertQueuedMessage,
+        deleteQueuedMessage,
+        listQueuedMessages: listQueuedMessages as unknown as { all(): Array<{ id: string; payload: string }> },
+        broadcast() { /* durable rows carry the assertions */ },
+        importPipeline: async () => ({
+            orchestrate: async (prompt: string) => {
+                started.push(prompt);
+                inFlight += 1;
+                peakInFlight = Math.max(peakInFlight, inFlight);
+                await new Promise<void>(resolve => release.push(resolve));
+                inFlight -= 1;
+            },
+            orchestrateContinue: async () => {},
+            orchestrateReset: async () => {},
+            isContinueIntent: () => false,
+            isResetIntent: () => false,
+            drainPendingReplays: async () => {},
+        }),
+        getWorkingDir: () => null,
+        isMultiSessionEnabled: () => true,
+        isLocalSessionScopeEnabled: () => false,
+        resolveRemoteSession: (remoteKey: string) => getRemoteBoundSessionId(remoteKey),
+    }, new SessionLanes(() => 2));
+
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    assert.equal(started.length, 2, `both lanes must start; saw ${JSON.stringify(started)}`);
+    assert.equal(peakInFlight, 2, 'the second conversation must not wait for the first to finish');
+
+    for (const resolve of release) resolve();
+    await new Promise(resolve => setTimeout(resolve, 20));
+});
+
+test('QBD-003: an empty queue drains to nothing', async () => {
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+    const ctrl = makeController({ busy: () => false, runs });
+
+    assert.equal(ctrl.messageQueue.length, 0);
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(runs.length, 0);
+});
+
+test('QBD-004: a busy spawn still holds the queue back', async () => {
+    queueRow('queue-v2-boot-d', 'jaw:slack:channel:CD', 1);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+
+    // The existing guards are the reason this is safe to call at boot: draining
+    // must not barge past whatever is already running.
+    const ctrl = makeController({ busy: () => true, runs });
+    ctrl.drainRecoveredQueue();
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.equal(runs.length, 0, 'a busy scope must not be drained');
+    assert.equal(ctrl.messageQueue.length, 1, 'the item stays queued');
+});
+
+test('QBD-005: items sharing a scope start that scope once', async () => {
+    queueRow('queue-v2-boot-e', 'jaw:slack:channel:CE', 1);
+    queueRow('queue-v2-boot-f', 'jaw:slack:channel:CE', 2);
+    const runs: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+    const logged: string[] = [];
+    const previousLog = console.log;
+    console.log = (...args: unknown[]) => { logged.push(args.join(' ')); };
+
+    try {
+        const ctrl = makeController({ busy: () => false, runs });
+        ctrl.drainRecoveredQueue();
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const drainLine = logged.find(l => l.includes('[queue] boot drain'));
+        assert.ok(drainLine, `the drain must announce itself; saw: ${JSON.stringify(logged)}`);
+        assert.match(drainLine!, /2 message\(s\) across 1 scope\(s\)/);
+    } finally {
+        console.log = previousLog;
+    }
+
+    // processQueue schedules its own successor, so one kick drains the lane.
+    assert.deepEqual(
+        runs.map(r => r.prompt).sort(),
+        ['queue-v2-boot-e', 'queue-v2-boot-f'],
+    );
+});

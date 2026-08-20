@@ -630,6 +630,43 @@ export function shouldIncludeVisionClickHint(activeCli?: string | null): boolean
     return activeCli === 'codex';
 }
 
+/**
+ * The settings an agent must not narrow, because they are how it is reached.
+ *
+ * An agent asked to set up a heartbeat for one channel narrowed
+ * `slack.channelIds` to that channel and cut off every other conversation,
+ * including the one it would have needed to be told (#406). Nothing in the
+ * prompt said that list was its own inbound surface.
+ */
+export function getInboundSurfaceContract(): string {
+    return [
+        '## Inbound Surface (do not narrow it)',
+        '- `slack.channelIds` is the allowlist of conversations this instance can HEAR. An empty list means every conversation; a non-empty list means only those.',
+        '- Narrowing it silences every conversation outside the list, including the one you are being spoken to in. You cannot undo that from inside Slack.',
+        '- Work that targets one channel belongs in that request\'s `target`, never in the allowlist.',
+        '- Only change `slack.channelIds` when the user explicitly asks to change which conversations the bot listens to.',
+    ].join('\n');
+}
+
+/**
+ * Where a file has to live to be sendable.
+ *
+ * The guard's allowed roots come from settings the agent never reads, so a
+ * refusal was unactionable: six `path_not_allowed` errors landed in stderr and
+ * the turn just stopped producing the file (#404).
+ *
+ * The resolved absolute path, not `$JAW_HOME`: that variable does not exist in
+ * the shell (the code reads `CLI_JAW_HOME`, itself usually unset), so writing it
+ * here would expand to `/uploads/` and be refused for a second reason.
+ */
+export function getSendFileStagingContract(): string {
+    return [
+        '## Outbound Files',
+        `- Files you intend to send to a channel go under ${diskPromptPath(join(JAW_HOME, 'uploads'))}.`,
+        '- A path outside the allowed roots is refused with `path_not_allowed`; that response carries `detail.allowedRoots`, which lists the directories that would have worked.',
+    ].join('\n');
+}
+
 export function getBoundedLocalSearchContract(): string {
     return [
         '## Bounded Local Search Contract',
@@ -893,6 +930,8 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
     }
 
     prompt += '\n\n---\n' + getBoundedLocalSearchContract();
+    prompt += '\n\n' + getInboundSurfaceContract();
+    prompt += '\n\n' + getSendFileStagingContract();
 
     // ─── Delegation rules: jaw employees vs CLI sub-agents ───
     // Always-injected guard block (survives user-edited A-1.md overrides).

@@ -16,6 +16,7 @@ import { withSessionScope } from '../core/session-context.js';
 
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
+import { stripStallTruncationNotice } from '../agent/error-classifier.js';
 import {
     createWorklog,
     readLatestWorklog,
@@ -264,6 +265,12 @@ export async function orchestrate(
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
     const userText = String(prompt || '').trim();
+    // Set only by the queue controller. A queued turn's reply rides a listener
+    // armed by the request that was queued, and a restart destroys it — so a
+    // boot-drained turn (#407) needs a standing forwarder instead. That
+    // forwarder must fire for THESE turns only, or an ordinary reply, which the
+    // dispatch path already posts, would go out twice.
+    const fromQueue = meta["_fromQueue"] === true;
     const scope = meta["scope"] || resolveOrcScope({
         origin, target, chatId, persistedScopeId: meta["remoteKey"],
         multiSessionEnabled: settings["multiSession"]?.enabled === true,
@@ -308,6 +315,7 @@ export async function orchestrate(
             target,
             requestId,
             replyViaTarget,
+            ...(fromQueue ? { fromQueue: true } : {}),
             ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
         settleOnce(requestId, 'completed', { scope });
@@ -598,7 +606,14 @@ export async function orchestrate(
     if (state === 'P' && !meta["_workerResult"]) {
         const savedCtx = getCtx(scope);
         if (savedCtx) {
-            const newPlan = stripSubtaskJSON(result["text"]) || result["text"] || savedCtx.plan;
+            // The timeout notice is addressed to a reader, not to the next turn.
+            // Saved into the plan it would come back as an Approved Plan line and
+            // read like an instruction (#405).
+            //
+            // Still needed despite the db.ts query boundary: this text is the
+            // LIVE result, not a row read back, so nothing has stripped it yet.
+            const planText = stripStallTruncationNotice(String(result["text"] ?? ''));
+            const newPlan = stripSubtaskJSON(planText) || planText || savedCtx.plan;
             if (newPlan) {
                 // Re-derive title from this scope's original prompt to avoid cross-scope worklog bleed
                 const title = pickWorklogSeed(savedCtx.originalPrompt);
@@ -644,6 +659,7 @@ export async function orchestrate(
         target,
         requestId,
         replyViaTarget,
+        ...(fromQueue ? { fromQueue: true } : {}),
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         ...(typeof result['agyPlannerOnly'] === 'boolean' ? { agyPlannerOnly: result['agyPlannerOnly'] } : {}),
         ...(typeof result['agyCheckpointSeen'] === 'boolean' ? { agyCheckpointSeen: result['agyCheckpointSeen'] } : {}),
@@ -684,6 +700,7 @@ export async function orchestrateContinue(
         target,
         requestId,
         replyViaTarget,
+        ...(meta["_fromQueue"] === true ? { fromQueue: true } : {}),
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
     settleOnce(requestId, 'completed', { scope, text: 'No pending work to continue.' });
@@ -727,6 +744,7 @@ export async function orchestrateReset(
             target,
             requestId,
             replyViaTarget,
+            ...(meta["_fromQueue"] === true ? { fromQueue: true } : {}),
             ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         });
         settleOnce(requestId, 'completed', { scope, text: 'Reset complete.' });
@@ -741,6 +759,7 @@ export async function orchestrateReset(
         target,
         requestId,
         replyViaTarget,
+        ...(meta["_fromQueue"] === true ? { fromQueue: true } : {}),
         ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
     });
     settleOnce(requestId, 'completed', { scope, text: 'Reset complete.' });

@@ -14,12 +14,15 @@ test('GROK-WD-001: Grok NDJSON activity marks watchdog progress before event fil
     const block = spawnSrc.slice(start, spawnSrc.indexOf("if (cli === 'opencode')", start));
 
     assert.match(block, /appendTraceEvent\(\{\s*runId: ctx\.traceRunId,\s*source: 'cli_raw',/);
+    // The runtime list moved into streamJsonMarksProgress() so cursor could join
+    // it and be unit-tested (#405). WHICH runtimes qualify is asserted there;
+    // what matters here is that the mark still happens, and where.
     assert.match(
         block,
-        /if \(cli === 'grok' \|\| \(cli === 'ai-e' && ctx\.effectiveProvider === 'grok'\)\) \{\s*ctx\.stallWatchdog\?\.markProgress\(\);\s*\}/,
+        /if \(streamJsonMarksProgress\(cli, ctx\.effectiveProvider\)\) \{\s*ctx\.stallWatchdog\?\.markProgress\(\);\s*\}/,
     );
 
-    const markerIdx = block.indexOf("if (cli === 'grok' || (cli === 'ai-e' && ctx.effectiveProvider === 'grok'))");
+    const markerIdx = block.indexOf('if (streamJsonMarksProgress(cli, ctx.effectiveProvider))');
     const discriminateIdx = block.indexOf('const event = discriminate(dispatchCli, raw);');
     const unknownIdx = block.indexOf("pushTrace(ctx, `[cli:unknown-event]");
     assert.ok(markerIdx > block.indexOf('appendTraceEvent({'), 'marker should run after raw trace append');
@@ -27,4 +30,13 @@ test('GROK-WD-001: Grok NDJSON activity marks watchdog progress before event fil
     assert.ok(markerIdx < unknownIdx, 'marker should run before unknown-event return path');
 
     assert.doesNotMatch(block, /ctx\.stallWatchdog\?\.markProgress\(\);\s*const dispatchCli/);
+});
+
+// The list this test used to spell out inline. Kept as a behaviour check so the
+// grok wiring cannot be dropped while refactoring the runtime set (#405).
+test('GROK-WD-002: grok still counts as structured stream-json progress', async () => {
+    const { streamJsonMarksProgress } = await import('../../src/agent/events/helpers.ts');
+    assert.equal(streamJsonMarksProgress('grok'), true);
+    assert.equal(streamJsonMarksProgress('ai-e', 'grok'), true);
+    assert.equal(streamJsonMarksProgress('ai-e', 'anthropic'), false);
 });

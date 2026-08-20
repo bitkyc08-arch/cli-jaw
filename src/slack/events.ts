@@ -113,6 +113,63 @@ export function isConversationAllowed(
     return channelIds.includes(conversationId);
 }
 
+/**
+ * The allowlist as the gate must read it: trimmed, deduplicated, and never
+ * silently widened by a malformed value.
+ *
+ * An empty list means every conversation, so a non-array — or an array holding
+ * non-strings — used to collapse to "allow everything". That is backwards: a
+ * value we cannot parse should not hand out MORE access than the one we can.
+ * The route rejects such a write, but settings also arrive from the file
+ * watcher and from direct runtime patches, and an agent can edit settings.json
+ * itself. This is the one place every path passes through (#406).
+ *
+ * A malformed value is treated as a single unmatchable id, which denies every
+ * channel while still letting DMs through — visible immediately, and safe.
+ */
+export const MALFORMED_SLACK_ALLOWLIST = '\u0000malformed-slack-allowlist';
+
+/**
+ * A ceiling on the allowlist. The dedup below is quadratic, and settings reach
+ * this reader from the file watcher and direct edits as well as the route, so a
+ * bound that lives only in the route does not bind. Measured on this reader:
+ * 1k ids ~0.8ms, 10k ~62ms — per event.
+ *
+ * No Slack workspace allowlists this many conversations on purpose, so a list
+ * this long is a mistake, and a mistake must not open access.
+ */
+export const SLACK_ALLOWLIST_MAX = 1000;
+
+export function readSlackAllowlist(raw: unknown): string[] {
+    // `undefined` is absence — the shipped default is an empty list, so nothing
+    // was ever configured and every conversation is allowed. `null` is not the
+    // same thing: it is a value someone wrote, the route refuses to write it
+    // (`invalidSlackChannelIds`), and reading it as "allow everything" is
+    // exactly the widening this reader exists to prevent (#406).
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw)) return [MALFORMED_SLACK_ALLOWLIST];
+    if (raw.length > SLACK_ALLOWLIST_MAX) return [MALFORMED_SLACK_ALLOWLIST];
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const entry of raw) {
+        if (typeof entry !== 'string') return [MALFORMED_SLACK_ALLOWLIST];
+        const id = entry.trim();
+        // A padded id matches nothing, so keeping it verbatim would quietly
+        // block the channel the operator meant to allow.
+        if (!id) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+    }
+    // A list that named conversations and resolved to none of them is not the
+    // empty default. `[""]` would collapse to "every conversation" — a WIDENING
+    // from a write the route rejects outright. Dropping blanks beside real ids
+    // stays safe because the result still narrows; only an all-blank list has to
+    // fail closed (#406).
+    if (raw.length > 0 && ids.length === 0) return [MALFORMED_SLACK_ALLOWLIST];
+    return ids;
+}
+
 export function shouldProcessSlackEvent(
     event: SlackMessageEvent,
     config: SlackGateConfig,

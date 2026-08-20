@@ -55,3 +55,34 @@ export function classifyExitError(
 
     return { is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, message };
 }
+
+// Lives in its own leaf module so `core/db` can strip it without importing the
+// exit classifier. Re-exported here because the callers that append it already
+// import from this file (#405).
+export { STALL_TRUNCATION_NOTICE, stripStallTruncationNotice } from './stall-notice.js';
+
+/**
+ * Should a turn that DID produce output say it was cut short?
+ *
+ * A watchdog kill with partial output lands in the output branch of the exit
+ * handler, not the stall branch, so its reason never reached the channel: the
+ * reply stopped mid-thought and read as the model trailing off (#405).
+ *
+ * `stallReason` alone, deliberately — not `stallReason && wasKilled`. The
+ * watchdog callback sets `stallReason` and kills the process but never writes
+ * `killReasons`, while `wasKilled` is computed purely from
+ * `consumeKillReason()`, so `wasKilled` is false for exactly the case this
+ * covers. `stallReason` has no other writer, which is what makes it enough.
+ */
+export function shouldAnnounceStallTruncation(input: {
+    stallReason: string | null | undefined;
+    wasSteer: boolean;
+    mainManaged: boolean;
+    internal: boolean;
+}): boolean {
+    // A user who pressed stop knows why it stopped; that is not a timeout.
+    if (!input.stallReason) return false;
+    if (input.wasSteer) return false;
+    // Sub-agent and internal runs have no reader to tell.
+    return input.mainManaged && !input.internal;
+}

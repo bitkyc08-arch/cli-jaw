@@ -10,6 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
+import { slackChannelScope } from '../../src/slack/scope-status.js';
+import { sendFileAllowedRoots } from '../../src/security/path-guards.js';
 import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { migrateAllJawHomes, hasPendingLegacySkillDirs, discoverJawHomes } from '../../lib/mcp/skills-migration.js';
@@ -88,6 +90,20 @@ interface DoctorSettings {
     discord?: DiscordSettings;
     slack?: SlackSettings;
     network?: NetworkSettings;
+    workingDir?: string;
+    projectDirs?: string[];
+    /**
+     * Watchdog deadlines. Per-CLI blocks live under the same object keyed by CLI
+     * name (`agentTimeout.cursor.absoluteMs`) and override the top level, which
+     * is why the index signature is here.
+     */
+    agentTimeout?: {
+        absoluteMs?: number;
+        firstProgressMs?: number;
+        idleMs?: number;
+        absoluteHardCapMs?: number;
+        [cli: string]: unknown;
+    };
 }
 
 const { values } = parseArgs({
@@ -452,9 +468,18 @@ check('Slack', () => {
     if (attachPort && thisPort && attachPort !== thisPort) {
         throw new Error(`WARN: slack attach instance is :${attachPort} — this instance (:${thisPort}) must not connect`);
     }
-    const channelIds = settings.slack.channelIds;
-    if (!channelIds?.length) throw new Error('WARN: no channel IDs configured — all conversations allowed');
-    return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, channels=${channelIds.length}`;
+    // Read through the same helper the gate uses, or this line reports a reach
+    // the bot does not have (#406).
+    const { ids, scope } = slackChannelScope(settings.slack.channelIds);
+    if (scope === 'malformed') {
+        throw new Error('WARN: slack.channelIds is not a list of conversation ids — '
+            + 'every channel is being denied. Set it to [] to allow all conversations.');
+    }
+    if (scope === 'all_conversations') {
+        return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, 모든 대화 허용`;
+    }
+    return `bot=...${botToken.slice(-6)}, app=...${appToken.slice(-6)}, `
+        + `${ids.length}개 대화만 허용 (${ids.join(', ')}) — 이 밖의 대화는 무시됩니다`;
 });
 
 // 6e. Channel consistency
@@ -477,6 +502,74 @@ check('Channel consistency', () => {
         throw new Error(`WARN: ${issues.join('; ')}`);
     }
     return 'consistent';
+});
+
+// 6e2. Outbound file-send scope
+check('파일 전송 허용 경로', () => {
+    const cfg = loadedSettings();
+    // Through the guard's own resolver, so this cannot call a path allowed that
+    // the guard then refuses (#404).
+    const roots = sendFileAllowedRoots(cfg.workingDir, cfg.projectDirs ?? null);
+    if (roots.length === 0) {
+        throw new Error('WARN: 허용 경로 없음 — 파일 전송이 전부 거절됩니다');
+    }
+    // The shipped default is workingDir = JAW_HOME with no projectDirs, which
+    // allows exactly one directory and never said so. Six refusals landed in
+    // stderr with no explanation because of it.
+    //
+    // Compared against the helper's own first element rather than a separately
+    // computed JAW_HOME: a second calculation is how a reporter drifts from
+    // enforcement. Checking identity, not just count — a single root that is a
+    // wide `workingDir` is not the narrow default.
+    const jawHomeRoot = sendFileAllowedRoots(undefined, null)[0];
+    if (roots.length === 1 && roots[0] === jawHomeRoot) {
+        throw new Error(`WARN: ${roots[0]} 1곳만 허용 — 이 밖(예: /tmp)에 만든 파일은 전송되지 않습니다`);
+    }
+    return `${roots.length}곳: ${roots.join(', ')}`;
+});
+
+// 6f. Agent watchdog deadline
+check('에이전트 타임아웃', () => {
+    // Only `settings.cli` is knowable here. When it is unset the runtime picks
+    // the first ready CLI at load time — and falls back to claude on an
+    // unreadable file — neither of which this process can reproduce without
+    // probing every runtime. Naming DEFAULT_CLI anyway would report a per-CLI
+    // override for a CLI that may never run. So the unset case answers about the
+    // global setting and says which CLI it would need to be sure.
+    const activeCli = settings?.cli || '';
+    // Mirrors the runtime merge in src/agent/spawn.ts, both typeof guards
+    // included: these values come from raw settings JSON, where either level can
+    // be something other than an object.
+    const raw = (settings as Record<string, unknown> | undefined)?.['agentTimeout'];
+    const gCfg = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const cRaw = activeCli ? gCfg[activeCli] : undefined;
+    const cCfg = cRaw && typeof cRaw === 'object' ? cRaw as Record<string, unknown> : {};
+    const merged = { ...gCfg, ...cCfg };
+    // Not `abs ? a : b`: a configured 0 would report as the default. The runtime
+    // does not clamp it, so doctor should not pretend it is unset.
+    const abs = typeof merged['absoluteMs'] === 'number' ? merged['absoluteMs'] : undefined;
+    // The watchdog ends a turn that stops reporting progress. Nothing told the
+    // operator this was tunable, so a 933s research turn read as the model
+    // giving up (#405). Reading the per-CLI override matters: an instance with
+    // only `agentTimeout.cursor.absoluteMs` set would otherwise be told "600s
+    // default", which is false.
+    const perCli = Object.keys(gCfg).filter(k => CLI_KEYS.includes(k as never));
+    const scope = activeCli
+        ? `${activeCli} 유효값, settings.agentTimeout`
+        : perCli.length > 0
+            // The value shown is the global one, but a per-CLI override exists
+            // and we cannot tell which CLI will run: settings.cli is unset, and
+            // the runtime resolves it by probing readiness at load time. Saying
+            // which overrides exist beats naming a guess.
+            ? `전역값 — settings.cli 가 없어 실행 CLI를 알 수 없습니다. per-CLI 설정 있음: ${perCli.join(', ')}`
+            : '전역값, settings.agentTimeout';
+    // The unset-CLI caveat has to survive the no-global-value case too, or the
+    // instance most in need of it is the one told a bare "600s default".
+    return abs !== undefined
+        ? `${Math.round(abs / 1000)}초 (${scope})`
+        : perCli.length > 0
+            ? `600초 (기본값, ${scope}) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정`
+            : '600초 (기본값) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정';
 });
 
 // 7. Skills directory
@@ -872,18 +965,54 @@ function buildDiscordStatus() {
     };
 }
 
+/**
+ * Which directories an outbound file send will accept, as the guard resolves
+ * them. Built from `sendFileAllowedRoots` rather than assembled here, or a
+ * report could name a root the guard refuses (#404).
+ */
+function buildMessagingSendScope() {
+    const cfg = loadedSettings();
+    // This runs OUTSIDE check(), so an exception here takes down the whole JSON
+    // report rather than failing one line — and the settings it reads are the
+    // very thing a broken install would have mangled (#404).
+    try {
+        const sendRoots = sendFileAllowedRoots(cfg.workingDir, cfg.projectDirs ?? null);
+        const jawHomeRoot = sendFileAllowedRoots(undefined, null)[0];
+        return {
+            sendRoots,
+            // Identity, not just count: a lone wide `workingDir` is not the
+            // narrow shipped default, and calling it narrow would send someone
+            // looking for a problem that is not there.
+            sendScopeNarrow: sendRoots.length === 1 && sendRoots[0] === jawHomeRoot,
+        };
+    } catch (e) {
+        return { sendRoots: [], sendScopeNarrow: false, error: (e as Error).message };
+    }
+}
+
 function buildSlackStatus() {
     const s = settings;
     const sc = s?.slack || {};
     const botTokenPresent = !!sc.botToken;
     const appTokenPresent = !!sc.appToken;
-    const channelIdsConfigured = !!(sc.channelIds?.length);
+    // An empty allowlist means "every conversation": the shipped default and a
+    // normal way to run. Treating it as a defect is why doctor passed during the
+    // 260820 incident — the list had exactly one entry, so it read as configured
+    // while every other conversation was silently dropped (#406).
+    const { ids: channelIds, scope: channelScope } = slackChannelScope(sc.channelIds);
     let status = 'ok';
     const degradedReasons: string[] = [];
     if (!sc.enabled) { status = 'disabled'; }
     else if (!botTokenPresent) { status = 'missing_bot_token'; degradedReasons.push('bot token missing'); }
     else if (!appTokenPresent) { status = 'missing_app_token'; degradedReasons.push('app-level token missing — outbound only, no inbound events'); }
-    else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
+    else if (channelScope === 'malformed') {
+        // Not a missing setting — a present one the gate cannot read, so it
+        // denies every channel. Tokens alone used to carry this to status "ok",
+        // which is the same silence #406 is about: the bot hears nothing and
+        // doctor says it is fine.
+        status = 'malformed_channel_ids';
+        degradedReasons.push('slack.channelIds is not a list of conversation ids — every channel is denied; set it to [] to allow all conversations');
+    }
 
     const enabledChannels = getEnabledChannels(s || {});
     const channelConsistent = !enabledChannels.includes('slack') || !!sc.enabled;
@@ -896,7 +1025,13 @@ function buildSlackStatus() {
         enabled: !!sc.enabled,
         botTokenPresent,
         appTokenPresent,
-        channelIdsConfigured,
+        channelIds,
+        channelScope,
+        // Deprecated alias, kept one major version so existing --json consumers
+        // do not break on a silent field removal. It now answers "is the reach
+        // narrowed" as the gate sees it, so a malformed value reads false where
+        // the old raw-array count read true. Prefer channelScope (#406).
+        channelIdsConfigured: channelIds.length > 0,
         channelConsistent,
         runtimeReady: status === 'ok' && channelConsistent,
         // C/G/D conversations only — mpim:history is not in the manifest, so
@@ -977,6 +1112,7 @@ if (values.json) {
         homeChannel,
         discord: buildDiscordStatus(),
         slack: buildSlackStatus(),
+        messaging: buildMessagingSendScope(),
         platform: resolvePlatformKind(),
         wsl: isWSL() ? {
             sudoNonInteractive: canSudoNonInteractive(),

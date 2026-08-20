@@ -46,12 +46,16 @@ export async function sendSlackFile(
         return slackFailure('Cannot upload an empty file to Slack', 400);
     }
     const filename = basename(filePath);
+    // The filename is attacker-or-agent-chosen text that lands in the channel as
+    // the file's title and upload name. The caption beside it was masked and
+    // this was not, so a credential-shaped basename went out verbatim (#408).
+    const safeFilename = redactOutboundText(filename);
 
     // Step 1 — reserve an upload URL (POST, form-encoded per Slack docs).
     const reserve = await slackApi<{ upload_url?: string; file_id?: string }>(
         token,
         'files.getUploadURLExternal',
-        { filename, length: fileStat.size },
+        { filename: safeFilename, length: fileStat.size },
         { fetchImpl: doFetch, form: true },
     );
     const uploadUrl = reserve.data?.upload_url;
@@ -64,7 +68,7 @@ export async function sendSlackFile(
     try {
         const buffer = await readFile(filePath);
         const form = new FormData();
-        form.append('file', new Blob([new Uint8Array(buffer)]), filename);
+        form.append('file', new Blob([new Uint8Array(buffer)]), safeFilename);
         const upload = await doFetch(uploadUrl, { method: 'POST', body: form });
         if (!upload.ok) {
             return { ok: false, error: `Slack upload failed (${upload.status})`, status: upload.status };
@@ -81,7 +85,7 @@ export async function sendSlackFile(
         token,
         'files.completeUploadExternal',
         {
-            files: [{ id: fileId, title: filename }],
+            files: [{ id: fileId, title: safeFilename }],
             channel_id: target.targetId,
             ...(target.threadId ? { thread_ts: target.threadId } : {}),
             ...(options.caption?.trim() ? { initial_comment: redactOutboundText(options.caption.trim()) } : {}),

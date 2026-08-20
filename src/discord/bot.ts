@@ -25,7 +25,7 @@ import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js
 import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import type { ChannelSendRequest } from '../messaging/send.js';
+import { sendChannelOutput, type ChannelSendRequest } from '../messaging/send.js';
 import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
@@ -116,6 +116,49 @@ function markChannelActive(channelId: string) {
     discordActiveChannelIds.add(channelId);
 }
 
+/**
+ * Answer a queued turn nobody is waiting on any more.
+ *
+ * The ordinary queued reply rides a temporary listener armed by the request that
+ * was queued (see `dcOrchestrate`). A restart destroys it — and the boot drain
+ * (#407) runs exactly those messages. Without this the drain consumes the item,
+ * deletes its row, and the answer goes nowhere.
+ *
+ * Keyed on the target the item carried through the queue, not on whoever spoke
+ * most recently, and skipped when a live waiter would post the same result.
+ */
+const pendingQueueRequestIds = new Set<string>();
+/**
+ * Disposers for listeners waiting on a queued result. Tracked so shutdown can
+ * drop them at once instead of leaving them armed for their five-minute
+ * timeout, which would let a post-shutdown result fire against a dead channel
+ * and would keep a stale id blocking the standing forwarder.
+ */
+const pendingQueueWaiters = new Set<() => void>();
+let targetReplyForwarderInstalled = false;
+
+function installDiscordTargetReplyForwarder(): void {
+    if (targetReplyForwarderInstalled) return;
+    targetReplyForwarderInstalled = true;
+    addBroadcastListener((type, data) => {
+        if (type !== 'orchestrate_done' || data["origin"] !== 'discord' || !data["text"]) return;
+        // Queued turns only: an ordinary reply is posted by the dispatch path
+        // that is still awaiting it, and answering here too would double-post.
+        // Errors included: after a restart nothing else will show them.
+        if (data["fromQueue"] !== true) return;
+        const target = data["target"] as RemoteTarget | undefined;
+        if (!target || target.channel !== 'discord' || !target.targetId) return;
+        if (data["requestId"] && pendingQueueRequestIds.has(String(data["requestId"]))) return;
+        void sendChannelOutput({ channel: 'discord', type: 'text', text: String(data["text"]), target })
+            .then(result => {
+                if (!result.ok) log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
+            })
+            .catch((e: unknown) => log.error('[discord:target-reply]', logErrorText(e)));
+    });
+}
+
+installDiscordTargetReplyForwarder();
+
 const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50 MiB
 
 async function downloadDiscordAttachment(attachment: Attachment): Promise<{ buffer: Buffer; name: string }> {
@@ -187,11 +230,22 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // Listen for queued result — correlate by requestId (request-level isolation)
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
+        let disposed = false;
+        const dispose = () => {
+            if (disposed) return;
+            disposed = true;
+            clearTimeout(queueTimeout);
+            removeBroadcastListener(queueHandler);
+            pendingQueueWaiters.delete(dispose);
+            if (requestId) pendingQueueRequestIds.delete(requestId);
+        };
         const queueHandler = async (type: string, data: Record<string, any>) => {
             if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'discord'
                 && data["requestId"] === requestId) {
-                clearTimeout(queueTimeout);
-                removeBroadcastListener(queueHandler);
+                // Dispose FIRST: the standing forwarder checks this id, so
+                // releasing it before the send would let both post.
+                if (disposed) return;
+                dispose();
                 const chunks = chunkDiscordMessage(data["text"]);
                 const channel = asSendable(msg.channel);
                 if (!channel) {
@@ -207,7 +261,9 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             }
         };
         addBroadcastListener(queueHandler);
-        queueTimeout = setTimeout(() => removeBroadcastListener(queueHandler), 300000);
+        if (requestId) pendingQueueRequestIds.add(requestId);
+        pendingQueueWaiters.add(dispose);
+        queueTimeout = setTimeout(dispose, 300000);
         return;
     }
 
@@ -538,6 +594,12 @@ export async function initDiscord(): Promise<TransportStartOutcome> {
 
 export async function shutdownDiscord() {
     discordActiveChannelIds.clear();
+    // Drop queued-result waiters immediately. Left armed, they would fire
+    // against a destroyed channel for the next five minutes, and their claimed
+    // request ids would keep the standing forwarder silent too.
+    for (const dispose of [...pendingQueueWaiters]) dispose();
+    pendingQueueWaiters.clear();
+    pendingQueueRequestIds.clear();
     const supervisor = gatewaySupervisor;
     gatewaySupervisor = null;
     if (supervisor) {

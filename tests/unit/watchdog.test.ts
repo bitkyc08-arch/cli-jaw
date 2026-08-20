@@ -220,3 +220,66 @@ test('stop prevents future stall callbacks', async () => {
     await sleep(60);
     assert.equal(called, false);
 });
+
+// ─── what the stall report says was keeping the turn alive (#405) ───
+//
+// The stall reason string is the only observable difference between "the
+// runtime kept telling us it was working" and "bytes kept appearing". It is
+// what the 933s incident was diagnosed from, so it is what these assert:
+// `outputOnlyProgress` is a local inside the watchdog and cannot be read.
+
+test('WDP-001: an unqualified markProgress() reports as structured', async () => {
+    const child = fakeChild();
+    let handle: WatchdogHandle | undefined;
+    const reason = await new Promise<string>((resolve) => {
+        handle = attachWatchdog(child, 'test', resolve, {
+            firstProgressMs: 1_000, idleMs: 1_000,
+            absoluteMs: 40, absoluteHardCapMs: 400, checkIntervalMs: 5,
+        });
+        // No argument, exactly as the stream-json path calls it.
+        handle.markProgress();
+    });
+    handle?.stop();
+
+    assert.match(reason, /lastProgress=structured/);
+    assert.doesNotMatch(reason, /x\d/, 'structured progress is not counted as repeated weak output');
+});
+
+test('WDP-002: raw output reports as output, and repeats are counted', async () => {
+    const child = fakeChild();
+    let handle: WatchdogHandle | undefined;
+    const stallPromise = new Promise<string>((resolve) => {
+        handle = attachWatchdog(child, 'test', resolve, {
+            firstProgressMs: 1_000, idleMs: 1_000,
+            absoluteMs: 40, absoluteHardCapMs: 400, checkIntervalMs: 5,
+        });
+    });
+    // Over ten characters, or observe() ignores it.
+    for (let i = 0; i < 3; i++) child.stdout?.emit('data', Buffer.from('ordinary output line\n'));
+    const reason = await stallPromise;
+    handle?.stop();
+
+    // This is the shape the incident produced: output x302, never structured.
+    assert.match(reason, /lastProgress=output x3/);
+});
+
+test('WDP-003: structured progress pushes the deadline, and stops pushing when it stops', async () => {
+    const child = fakeChild();
+    let handle: WatchdogHandle | undefined;
+    let stalled = false;
+    const stallPromise = new Promise<string>((resolve) => {
+        handle = attachWatchdog(child, 'test', resolve, {
+            firstProgressMs: 1_000, idleMs: 1_000,
+            absoluteMs: 40, absoluteHardCapMs: 1_000, checkIntervalMs: 5,
+        });
+    }).then(reason => { stalled = true; return reason; });
+
+    const ticking = setInterval(() => handle?.markProgress(), 10);
+    await sleep(120);
+    assert.equal(stalled, false, 'a runtime still reporting progress must not be killed at absoluteMs');
+
+    clearInterval(ticking);
+    const reason = await stallPromise;
+    handle?.stop();
+    assert.match(reason, /absolute timeout/, 'once progress stops, the deadline applies again');
+});

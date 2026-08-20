@@ -7,6 +7,7 @@ import { assertSendFilePath } from '../security/path-guards.js';
 import { isRemoteTarget, type MessengerChannel, type OutboundType, type RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState, getHomeChannel } from './runtime.js';
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
+import { readSlackAllowlist, MALFORMED_SLACK_ALLOWLIST } from '../slack/events.js';
 import { buildRemoteBindingKey } from './session-key.js';
 import { getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
@@ -15,6 +16,20 @@ import { log } from '../core/logger.js';
 
 export function stampOutboundSend(channel: MessengerChannel, ok: boolean): void {
     log.event('outbound.send', { channel, result: ok ? 'ok' : 'error' });
+}
+
+/**
+ * The outbound side of the same allowlist the inbound gate reads.
+ *
+ * Reading the raw array here was its own disagreement: the gate refused every
+ * channel on a malformed value while `validateTarget` saw `undefined.length`,
+ * treated it as "nothing configured", and let an explicit target through. One
+ * reader, one verdict (#406).
+ */
+function slackAllowlist(): { ids: string[]; malformed: boolean } {
+    const ids = readSlackAllowlist(settings["slack"]?.channelIds);
+    const malformed = ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST;
+    return { ids, malformed };
 }
 
 // ─── Request Model ──────────────────────────────────
@@ -151,9 +166,12 @@ function getConfiguredFallbackTarget(channel: MessengerChannel): RemoteTarget | 
             };
         }
     } else if (channel === 'slack') {
-        const channelIds = settings["slack"]?.channelIds;
-        if (channelIds?.length) {
-            return slackTargetFromId(String(channelIds[0]));
+        // A sentinel is not a conversation. Falling back to it would address a
+        // channel that does not exist; falling back to the raw first element of
+        // an unreadable list would address whatever happened to be there (#406).
+        const { ids, malformed } = slackAllowlist();
+        if (!malformed && ids.length) {
+            return slackTargetFromId(String(ids[0]));
         }
     }
     return null;
@@ -193,9 +211,11 @@ export function validateTarget(
         // forged `{peerKind:'direct', targetId:'C999'}` evade the channel
         // allowlist entirely.
         if (slackPeerKind(target.targetId) === 'direct') return true;
-        const allowed = settings["slack"]?.channelIds as string[] | undefined;
-        if (allowed?.length && !allowed.includes(target.targetId)) return false;
-        if (!allowed?.length && options.requireConfiguredAllowlist) return false;
+        // Through the gate's reader, so a malformed list denies here too instead
+        // of reading as "nothing configured" and admitting any target (#406).
+        const { ids: allowed } = slackAllowlist();
+        if (allowed.length && !allowed.includes(target.targetId)) return false;
+        if (!allowed.length && options.requireConfiguredAllowlist) return false;
     }
     return true;
 }
@@ -247,7 +267,10 @@ function isRemoteBoundConversation(target: RemoteTarget): boolean {
 function authorizeExplicitTarget(target: RemoteTarget, channel: MessengerChannel): RemoteTarget | null {
     if (!isRemoteTarget(target) || target.channel !== channel) return null;
     if (validateTarget(target, channel, { requireConfiguredAllowlist: true })) return target;
-    if (channel !== 'slack' || settings["slack"]?.channelIds?.length) return null;
+    // Same reading again: an unreadable allowlist is a configured one for this
+    // purpose, so the vouching path below stays closed rather than standing in
+    // for a list nobody can parse (#406).
+    if (channel !== 'slack' || slackAllowlist().ids.length) return null;
     for (const known of [getLastActiveTarget('slack'), getLatestSeenTarget('slack')]) {
         if (known && sameSlackDestination(target, known)) {
             return target.threadId == null && known.threadId != null ? known : target;

@@ -15,9 +15,15 @@ const slackEnvironmentVariables = [
 ] as const;
 for (const key of slackEnvironmentVariables) delete process.env[key];
 
+const auditEntries: Array<Record<string, unknown>> = [];
+
 mock.module('../../src/security/security-audit-log.ts', {
     namedExports: {
-        getSecurityAuditLog: () => ({ append: () => undefined }),
+        getSecurityAuditLog: () => ({
+            append: (_event: string, _actor: string, detail: Record<string, unknown>) => {
+                auditEntries.push(detail);
+            },
+        }),
     },
 });
 
@@ -253,4 +259,180 @@ test('generic settings writes reject only fields owned by configured Slack envir
     assert.deepEqual(owned.json.environmentVariables, ['SLACK_TEAM_ID']);
     assert.deepEqual(owned.json.managedPaths, ['slack.teamId']);
     assert.equal(patches.length, 1);
+});
+
+// The allowlist is the inbound surface: empty allows every conversation,
+// non-empty allows exactly those. An agent narrowed it to one channel and cut
+// itself off, and nothing recorded that it had happened (#406). Blocking the
+// write is not an option — `jaw slack setup --channel-ids` reaches the server
+// through this same PUT — so the classification is what the audit entry rides on.
+test('classifyAllowlistChange names the direction of a channelIds write', async () => {
+    const { classifyAllowlistChange } = await import('../../src/routes/settings.js');
+
+    // [] means "every conversation", so going to a list is a narrowing.
+    assert.deepEqual(classifyAllowlistChange(['A'], []), { kind: 'narrow', from: [], to: ['A'] });
+    assert.deepEqual(
+        classifyAllowlistChange(['A'], ['A', 'B']),
+        { kind: 'narrow', from: ['A', 'B'], to: ['A'] },
+    );
+
+    assert.equal(classifyAllowlistChange(['A', 'B'], ['A'])?.kind, 'widen');
+    assert.equal(classifyAllowlistChange([], ['A'])?.kind, 'clear');
+
+    // Nothing moved, and a non-array write is not a channelIds write at all.
+    assert.equal(classifyAllowlistChange(['A'], ['A']), null);
+    assert.equal(classifyAllowlistChange([], []), null);
+    assert.equal(classifyAllowlistChange(undefined, ['A']), null);
+
+    // Classified the way the gate reads it, or the record names the wrong
+    // direction. Padding does not change the reach, so it is not a change.
+    assert.equal(classifyAllowlistChange([' A ', 'A'], ['A']), null);
+
+    // A malformed current value denies EVERY channel, so writing a real list is
+    // the widest move there is. Raw comparison logged it as a narrowing.
+    for (const denied of ['A', null, [''], ['A', 7]]) {
+        assert.deepEqual(
+            classifyAllowlistChange(['A'], denied),
+            { kind: 'widen', from: [], to: ['A'] },
+            `recovery from ${JSON.stringify(denied)} is a widening`,
+        );
+    }
+
+    // The route refuses a malformed write, so there is no honest direction to
+    // record for one.
+    assert.equal(classifyAllowlistChange([''], ['A']), null);
+});
+
+// `jaw slack setup --channel-ids` writes settings.json and then hot-notifies, so
+// one narrowing reaches BOTH recorders. Two audit rows under two actors read as
+// two separate security events on a single change.
+test('the same narrowing is recorded once, whichever doors it passes through', async () => {
+    const { classifyAllowlistChange } = await import('../../src/routes/settings.js');
+    const { recordAllowlistNarrowing, resetAllowlistAuditDedupForTest } =
+        await import('../../src/slack/allowlist-audit.js');
+    const { log } = await import('../../src/core/logger.js');
+
+    const lines: string[] = [];
+    const previousWarn = log.warn;
+    (log as { warn: unknown }).warn = (...args: unknown[]) => { lines.push(args.join(' ')); };
+    const { settings } = await import('../../src/core/config.js');
+    const previousSlack = settings.slack;
+    // Both recorders run AFTER the change is applied, so the live allowlist is
+    // already the new list by the time a record is written. The dedup reads it
+    // to tell a genuine repeat from an echo, so the fixture must move with it.
+    const applied = (ids: string[]) => { settings.slack = { ...(settings.slack || {}), channelIds: ids }; };
+    try {
+        resetAllowlistAuditDedupForTest();
+        const change = classifyAllowlistChange(['C_A'], ['C_A', 'C_B']);
+
+        applied(['C_A']);
+        recordAllowlistNarrowing(change, 'settings.json');   // the watcher
+        recordAllowlistNarrowing(change, '127.0.0.1');       // the hot-notify PUT
+        assert.equal(lines.length, 1, `one change, one record; saw: ${JSON.stringify(lines)}`);
+
+        // A further narrowing is a new event and must still be recorded.
+        applied([]);
+        recordAllowlistNarrowing(classifyAllowlistChange([], ['C_A']), '127.0.0.1');
+        applied(['C_A']);
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B', 'C_C']), '127.0.0.1');
+        assert.equal(lines.length, 2, 'a different narrowing is a different event');
+
+        // Reopening the allowlist and narrowing it AGAIN is a second event, not
+        // an echo of the first: a time window alone left the two narrowings
+        // looking like one repeated transition and swallowed the later one.
+        lines.length = 0;
+        resetAllowlistAuditDedupForTest();
+        applied(['C_A']);
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B']), '127.0.0.1');
+        applied(['C_A', 'C_B']);   // reopened — the route classifies this too
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A', 'C_B'], ['C_A']), '127.0.0.1');
+        applied(['C_A']);          // and narrowed again
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], ['C_A', 'C_B']), '127.0.0.1');
+        assert.equal(lines.length, 2, 'a narrowing after a widening is its own event');
+
+        // A hand edit reaches neither recorder, so nothing announces the move.
+        // The dedup has to notice on its own that the list no longer stands
+        // where its last record left it.
+        lines.length = 0;
+        resetAllowlistAuditDedupForTest();
+        applied(['C_A']);
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], []), '127.0.0.1');
+        applied(['C_A', 'C_B']);   // edited by hand, unannounced
+        recordAllowlistNarrowing(classifyAllowlistChange(['C_A'], []), '127.0.0.1');
+        assert.equal(lines.length, 2, 'an unannounced move ends the previous record');
+    } finally {
+        (log as { warn: unknown }).warn = previousWarn;
+        settings.slack = previousSlack;
+        resetAllowlistAuditDedupForTest();
+    }
+});
+
+
+// A non-array channelIds is not a no-op: the gate reads it as "no allowlist",
+// which means EVERY conversation. Letting it through would silently widen an
+// existing allowlist to everything while classifyAllowlistChange saw no change
+// at all — failing open on a malformed value (#406).
+test('invalidSlackChannelIds rejects anything that is not a list of ids', async () => {
+    const { invalidSlackChannelIds } = await import('../../src/routes/settings.js');
+
+    assert.equal(invalidSlackChannelIds(undefined), false, 'absent is not a write');
+    assert.equal(invalidSlackChannelIds([]), false, 'empty means every conversation');
+    assert.equal(invalidSlackChannelIds(['C1', 'C2']), false);
+
+    assert.equal(invalidSlackChannelIds('C1'), true, 'a bare string would read as no allowlist');
+    assert.equal(invalidSlackChannelIds([1, 2]), true);
+    assert.equal(invalidSlackChannelIds(['C1', '']), true);
+    assert.equal(invalidSlackChannelIds(['C1', '   ']), true);
+    assert.equal(invalidSlackChannelIds({ 0: 'C1' }), true);
+});
+
+test('a malformed channelIds write is refused instead of applied', async () => {
+    const patches: Record<string, unknown>[] = [];
+    const put = registerRouteApp(
+        allowAuth,
+        async (patch) => { patches.push(patch); return patch; },
+        'PUT',
+        '/api/settings',
+    );
+
+    const bad = await routeRequest(put, { slack: { channelIds: 'C1' } });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'invalid_slack_channel_ids');
+    assert.equal(patches.length, 0, 'a malformed allowlist must not reach applySettings');
+
+    // jaw slack setup --channel-ids reaches the server through this same PUT,
+    // so a well-formed narrowing write must still succeed.
+    const good = await routeRequest(put, { slack: { channelIds: ['C1'] } });
+    assert.equal(good.status, 200);
+    assert.equal(patches.length, 1);
+});
+
+// Narrowing the allowlist is recorded rather than refused, because jaw slack
+// setup --channel-ids reaches the server through this same PUT. The record is
+// the whole point: nobody could tell what had happened (#406).
+test('a narrowing write succeeds and leaves an audit entry naming both lists', async () => {
+    auditEntries.length = 0;
+    // These routes run against a mocked applySettings that never mutates
+    // settings, so an earlier test in this file can leave the identical
+    // transition inside the dedup window. In a real server the second write
+    // would not classify as a narrowing at all — the state already moved.
+    const { resetAllowlistAuditDedupForTest } = await import('../../src/slack/allowlist-audit.js');
+    resetAllowlistAuditDedupForTest();
+    const patches: Record<string, unknown>[] = [];
+    const put = registerRouteApp(
+        allowAuth,
+        async (patch) => { patches.push(patch); return patch; },
+        'PUT',
+        '/api/settings',
+    );
+
+    const res = await routeRequest(put, { slack: { channelIds: ['C1'] } });
+    assert.equal(res.status, 200);
+    assert.equal(patches.length, 1);
+
+    const narrow = auditEntries.find(d => d['action'] === 'narrow');
+    assert.ok(narrow, 'a narrowing write must leave an audit entry');
+    assert.deepEqual(narrow['keys'], ['slack.channelIds']);
+    assert.deepEqual(narrow['to'], ['C1']);
+    assert.ok(Array.isArray(narrow['from']), 'the entry must carry the previous list');
 });

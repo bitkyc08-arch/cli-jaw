@@ -38,3 +38,149 @@ test('POST /api/channel/send returns the stable invalid_channel envelope with an
         assert.doesNotMatch(body.error ?? '', /xox[baprs]-|C123ABC|lastActive|latestSeen/);
     });
 });
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// The guard refuses correctly; the question is whether the refusal survives the
+// route intact. `forbidden()` grew a `code` and a `detail`, and getting that
+// object shape wrong turns a 403 into a 500 — the top regression this guards
+// (#404). The unit tests cover the guard; only this covers the chain
+// forbidden → httpDetail → response JSON.
+test('POST /api/channel/send refuses a path outside the roots with a 403 that says where they are', async () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-route-home-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-route-outside-'));
+    const filePath = path.join(outside, 'report.png');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        // The file must exist: a missing one is refused earlier, as
+        // path_not_resolvable, and would not exercise this branch at all.
+        fs.writeFileSync(filePath, 'x');
+
+        await withMessagingServer(async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/channel/send`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    channel: 'slack', type: 'photo', filePath,
+                    target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ROUTE' },
+                }),
+            });
+            const body = await response.json() as { code?: string; detail?: { allowedRoots?: string[] } };
+
+            assert.equal(response.status, 403, 'a refused path must not surface as a 500');
+            assert.equal(body.code, 'path_not_allowed');
+            const roots = body.detail?.allowedRoots;
+            assert.ok(Array.isArray(roots) && roots.length > 0, `the response must name the roots; saw ${JSON.stringify(body)}`);
+            assert.ok(
+                roots.includes(fs.realpathSync(testHome)),
+                `JAW_HOME must be among them; saw ${JSON.stringify(roots)}`,
+            );
+        });
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    }
+});
+
+// The other half of the guard: a path INSIDE the roots must still go through.
+// Every test above asserts a refusal, so a change that refused everything would
+// have left them all green (#404).
+test('a path inside the allowed roots still reaches the transport', async () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-ok-home-'));
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        const uploads = path.join(testHome, 'uploads');
+        fs.mkdirSync(uploads, { recursive: true });
+        const filePath = path.join(uploads, 'report.png');
+        fs.writeFileSync(filePath, 'x');
+
+        const { registerSendTransport } = await import('../../src/messaging/send.ts');
+        const { settings } = await import('../../src/core/config.ts');
+        // The path guard is not the only gate: the target allowlist runs after
+        // it. Configure the channel so a pass here means the FILE was accepted,
+        // not that some later check happened to let it through.
+        const previousSlack = settings.slack;
+        settings.slack = { ...(settings.slack || {}), channelIds: ['C_OK'] };
+        const seen: Array<Record<string, unknown>> = [];
+        registerSendTransport('slack', async req => {
+            seen.push(req as unknown as Record<string, unknown>);
+            return { ok: true };
+        });
+
+        try {
+            await withMessagingServer(async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/channel/send`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    channel: 'slack', type: 'photo', filePath,
+                    target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_OK' },
+                }),
+            });
+            assert.equal(response.status, 200, `an allowed path must not be refused: ${await response.text()}`);
+            assert.equal(seen.length, 1, 'the transport must actually receive it');
+            });
+        } finally {
+            settings.slack = previousSlack;
+        }
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+    }
+});
+
+// The same guard sits behind the send routes, and each builds its own error
+// response. Covering only /api/channel/send would leave the copies free to
+// drift back to a bare 500 (#404).
+//
+// /api/telegram/send is not here: it requires a configured client and answers
+// 503 before the guard runs, so it cannot reach this branch without standing up
+// a Telegram transport. Its error shape is the same expression as the others.
+test('every send route surfaces a refused path the same way', async () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-routes-home-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-routes-outside-'));
+    const filePath = path.join(outside, 'report.png');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        fs.writeFileSync(filePath, 'x');
+
+        await withMessagingServer(async baseUrl => {
+            for (const [route, body] of [
+                ['/api/slack/send', {
+                    type: 'photo', filePath,
+                    target: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_ROUTE' },
+                }],
+                ['/api/discord/send', {
+                    type: 'photo', filePath,
+                    target: { channel: 'discord', targetKind: 'channel', peerKind: 'channel', targetId: '123' },
+                }],
+            ] as const) {
+                const response = await fetch(`${baseUrl}${route}`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const json = await response.json() as { code?: string; detail?: { allowedRoots?: string[] } };
+
+                assert.equal(response.status, 403, `${route} must refuse with 403, not 500`);
+                assert.equal(json.code, 'path_not_allowed', `${route} must name the refusal`);
+                assert.ok(
+                    Array.isArray(json.detail?.allowedRoots) && json.detail!.allowedRoots!.length > 0,
+                    `${route} must say where the roots are; saw ${JSON.stringify(json)}`,
+                );
+            }
+        });
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    }
+});

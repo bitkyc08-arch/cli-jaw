@@ -107,7 +107,14 @@ test('Fix B: queued steer preserves routing metadata and rejects concurrent stee
     assert.ok(block.includes('orchestrateReset({ ...steerMeta, _skipInsert: true })'), 'reset branch must preserve metadata');
     assert.ok(block.includes('orchestrateContinue({ ...steerMeta, _skipInsert: true })'), 'continue branch must preserve metadata');
     assert.ok(block.includes('orchestrate(prompt, { ...steerMeta, _skipInsert: true, _skipReplayDrain: true })'), 'normal branch must preserve metadata');
-    assert.ok(block.includes("broadcast('orchestrate_done', stripUndefined({ text: `[error] ${message}`, error: true, ...steerMeta }))"), 'background errors must preserve metadata');
+    // Matched loosely on purpose: the exact call text changed when the queued
+    // steer began carrying `fromQueue` so a boot-drained failure can still be
+    // delivered (#407). What matters is that the error keeps its routing.
+    assert.match(
+        block,
+        /broadcast\('orchestrate_done',[\s\S]{0,200}error: true,[\s\S]{0,80}\.\.\.steerMeta/,
+        'background errors must preserve metadata',
+    );
 });
 
 // ─── Fix C1: stop should make scoped busy state false synchronously ──

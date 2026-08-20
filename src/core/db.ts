@@ -5,6 +5,7 @@ import { initSessionGeneration } from './session-generation.js';
 import fs from 'fs';
 import { dirname } from 'path';
 import { DB_PATH } from './config.js';
+import { stripStallTruncationNotice } from '../agent/stall-notice.js';
 
 function ensureDbDirExists(dbPath: string) {
     const dbDir = dirname(dbPath);
@@ -554,10 +555,38 @@ export const getRecentMessagesAllWithTrace = db.prepare('SELECT * FROM messages 
 export const getMessageCount = db.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ?');
 export const getLatestAssistantMessage = db.prepare("SELECT id, role, content, created_at FROM messages WHERE role = 'assistant' AND session_id = ? ORDER BY id DESC LIMIT 1");
 export const getLatestDashboardActivityMessage = db.prepare("SELECT id, role, substr(content, 1, 240) AS excerpt, created_at FROM messages WHERE role IN ('user', 'assistant') AND session_id = ? ORDER BY id DESC LIMIT 1");
-export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, tool_log, created_at FROM messages WHERE (working_dir = ? OR working_dir IS NULL) AND session_id = ? ORDER BY id DESC LIMIT ?');
+const recentMessagesStmt = db.prepare('SELECT id, role, content, cli, model, trace, tool_log, created_at FROM messages WHERE (working_dir = ? OR working_dir IS NULL) AND session_id = ? ORDER BY id DESC LIMIT ?');
 // Lightweight variant for per-turn callers that only read {role, content}.
 // Avoids loading the heavy trace/tool_log blobs that getRecentMessages carries.
-export const getRecentMessagesLite = db.prepare('SELECT role, content FROM messages WHERE (working_dir = ? OR working_dir IS NULL) AND session_id = ? ORDER BY id DESC LIMIT ?');
+const recentMessagesLiteStmt = db.prepare('SELECT role, content FROM messages WHERE (working_dir = ? OR working_dir IS NULL) AND session_id = ? ORDER BY id DESC LIMIT ?');
+
+/**
+ * These two are the history-replay readers: their rows are fed back to a model
+ * as prior turns (prompt history, resume fallback, AGY replay, memory flush,
+ * compaction, the P-phase plan). The stored text may end with the notice a
+ * watchdog-killed turn shows its READER, and that sentence reads as an
+ * instruction when it comes back as context — so it comes off here, once,
+ * rather than at each call site that would have to remember (#405).
+ *
+ * `/api/messages` deliberately does NOT go through this: the transcript is for
+ * a person, and leaving the notice out there is what made it vanish on refresh.
+ */
+function stripNoticeFromRows<T>(rows: T[]): T[] {
+    for (const row of rows) {
+        const record = row as { content?: unknown };
+        if (typeof record.content === 'string') {
+            record.content = stripStallTruncationNotice(record.content);
+        }
+    }
+    return rows;
+}
+
+export const getRecentMessages = {
+    all: (...args: unknown[]) => stripNoticeFromRows(recentMessagesStmt.all(...args as [])),
+};
+export const getRecentMessagesLite = {
+    all: (...args: unknown[]) => stripNoticeFromRows(recentMessagesLiteStmt.all(...args as [])),
+};
 export const getRecentToolLogs = db.prepare('SELECT id, tool_log, created_at FROM messages WHERE (working_dir = ? OR working_dir IS NULL) AND session_id = ? AND tool_log IS NOT NULL AND tool_log != \'\' ORDER BY id DESC LIMIT ?');
 export const clearMessages = db.prepare('DELETE FROM messages WHERE session_id = ?');
 export const clearMessagesBySession = db.prepare('DELETE FROM messages WHERE session_id = ?');

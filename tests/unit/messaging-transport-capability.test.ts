@@ -65,3 +65,80 @@ test('classic settings surface references transport status row outside hidden pa
     assert.ok(settingsChannel.includes('refreshTransportStatusRow'), 'settings channel loader must refresh transport row');
     assert.ok(transportRow.includes("t('settings.channel.sendCapable')"), 'transport row must render send-capable label');
 });
+
+// The malformed sentinel is one element long, so a bare .length check read it as
+// a configured target: /api/health answered sendCapable:true while an untargeted
+// send died with "No target available for slack" (#406).
+test('an unreadable slack allowlist is not a send target', async () => {
+    const { settings } = await import('../../src/core/config.js');
+    const { setLastActiveTarget, clearTargetState } = await import('../../src/messaging/runtime.js');
+    const previousSlack = settings.slack;
+    const previousMessaging = settings.messaging;
+    try {
+        for (const bad of ['C_ESCAPE', null, ['']]) {
+            settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: bad };
+
+            clearTargetState('slack');
+            settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, false,
+                `health must not vouch for an allowlist the gate denies: ${JSON.stringify(bad)}`,
+            );
+
+            // The slot is where the first fix leaked: health fell through to it
+            // and answered true for a channel validateTarget was refusing.
+            settings.messaging = {
+                ...(settings.messaging || {}),
+                lastActive: { slack: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_STALE' } },
+            };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, false,
+                'a last-active channel is denied by the same unreadable allowlist',
+            );
+
+            // A DM is self-authorizing on both sides, so reporting false here
+            // would understate a send that does work.
+            settings.messaging = {
+                ...(settings.messaging || {}),
+                lastActive: { slack: { channel: 'slack', targetKind: 'user', peerKind: 'direct', targetId: 'D_USER' } },
+            };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, true,
+                'DMs stay reachable, as validateTarget allows them before reading the allowlist',
+            );
+
+            // A slot that is not a full RemoteTarget is dropped by
+            // hydrateTargetsFromSettings, so vouching for it on the id prefix
+            // alone promises a send that dies with "No target available".
+            settings.messaging = {
+                ...(settings.messaging || {}),
+                lastActive: { slack: { targetId: 'D_FAKE' } },
+            };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, false,
+                'a malformed slot is not a DM target just because its id starts with D',
+            );
+
+            // The runtime slot is what a send actually uses. It is set the moment
+            // a conversation speaks and only reaches settings 5s later, so
+            // reading the file alone called a live DM unreachable.
+            settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
+            setLastActiveTarget('slack', {
+                channel: 'slack', targetKind: 'user', peerKind: 'direct', targetId: 'D_LIVE',
+            });
+            assert.equal(
+                getTransportCapability('slack').sendCapable, true,
+                'a live DM target is reachable before it is ever persisted',
+            );
+            clearTargetState('slack');
+        }
+        settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
+        // A readable list is still a target.
+        settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: ['C_REAL'] };
+        assert.equal(getTransportCapability('slack').sendCapable, true);
+    } finally {
+        clearTargetState('slack');
+        settings.slack = previousSlack;
+        settings.messaging = previousMessaging;
+    }
+});

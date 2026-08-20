@@ -18,7 +18,13 @@ test('backend agent_done DB and broadcast boundaries use sanitized tool logs', (
     assert.ok(!source.includes('liveRun.toolLog.length > ctx.toolLog.length ? liveRun.toolLog : ctx.toolLog'), 'pick-one ternary must be gone');
     assert.ok(source.includes('serializeSanitizedToolLog(sanitizedToolLog)'));
     // runTag(ctx) rides first since the replay-idempotency patch (260612 audit 08).
-    assert.ok(source.includes("broadcast('agent_done', { ...runTag(ctx), text: finalContent, toolLog: sanitizedToolLog"));
+    // The text expression grew a presentation-only suffix when a watchdog-killed
+    // turn started saying so (#405), so this matches the ORDER and the sanitized
+    // tool log rather than the literal text argument.
+    assert.match(
+        source,
+        /broadcast\('agent_done', \{ \.\.\.runTag\(ctx\), text: [^,]+, toolLog: sanitizedToolLog/,
+    );
 });
 
 test('message and orchestrate snapshot API boundaries sanitize before res.json', () => {
