@@ -725,3 +725,39 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.equal(calls.length - runsBefore, 1, 'a redelivery of the same ts must not run again');
 });
+
+// The gate is the one place every settings path passes through: the route, the
+// file watcher, direct runtime patches, and an agent editing settings.json by
+// hand. A value it cannot parse must not hand out MORE access than one it can
+// (#406).
+test('readSlackAllowlist never widens on a malformed value', async () => {
+    const { readSlackAllowlist, isConversationAllowed, MALFORMED_SLACK_ALLOWLIST } =
+        await import('../../src/slack/events.js');
+
+    // Absent means 'every conversation' — the shipped default.
+    assert.deepEqual(readSlackAllowlist(undefined), []);
+    assert.deepEqual(readSlackAllowlist(null), []);
+    assert.equal(isConversationAllowed('C1', readSlackAllowlist(undefined), false), true);
+
+    // Malformed must DENY channels, not allow them all.
+    for (const bad of ['C1', 42, { 0: 'C1' }, ['C1', 7]]) {
+        const ids = readSlackAllowlist(bad);
+        assert.deepEqual(ids, [MALFORMED_SLACK_ALLOWLIST], `not parsed as a list: ${JSON.stringify(bad)}`);
+        assert.equal(
+            isConversationAllowed('C1', ids, false), false,
+            'a value we cannot read must not allow every channel',
+        );
+        assert.equal(isConversationAllowed('D1', ids, true), true, 'DMs stay reachable');
+    }
+
+    // Padding matches nothing in Slack, so it is trimmed rather than kept verbatim.
+    assert.deepEqual(readSlackAllowlist([' C1 ', 'C2']), ['C1', 'C2']);
+    assert.equal(isConversationAllowed('C1', readSlackAllowlist([' C1 ']), false), true);
+
+    // Duplicates would make doctor report allowlist_3 for two channels.
+    assert.deepEqual(readSlackAllowlist(['C1', 'C1', 'C2']), ['C1', 'C2']);
+
+    // Empty entries are dropped, not treated as a channel.
+    assert.deepEqual(readSlackAllowlist(['C1', '', '   ']), ['C1']);
+});
+

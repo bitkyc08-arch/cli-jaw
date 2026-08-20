@@ -85,6 +85,12 @@ test.beforeEach(async () => {
     settings.slack.senderIdentity = true;
     settings.slack.mentionOnly = true;
     settings.slack.threadRequireMention = false;
+    // Every conversation. Stated rather than inherited: these tests share a
+    // process-wide settings object with whatever ran before them, and the
+    // inbound gate now denies on a value it cannot parse instead of falling
+    // open to "allow everything" (#406). A leftover allowlist would silently
+    // stop the envelope before admission.
+    settings.slack.channelIds = [];
     settings.multiSession.enabled = true;
     settings.multiSession.channels.slack = true;
 });

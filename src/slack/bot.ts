@@ -32,7 +32,7 @@ import { createHash } from 'node:crypto';
 import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
 import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { slackInboundEnvelope } from '../messaging/inbound-envelope.js';
-import { resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
+import { readSlackAllowlist, resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
 import {
     markThreadParticipated, threadParticipationKind,
     claimThreadPrefetch, commitThreadPrefetch,
@@ -101,7 +101,7 @@ function gateConfig() {
         selfUserId,
         allowBots: Boolean(sc.allowBots),
         mentionOnly: sc.mentionOnly !== false,
-        channelIds: Array.isArray(sc.channelIds) ? sc.channelIds as string[] : [],
+        channelIds: readSlackAllowlist(sc.channelIds),
         // Thread continuation defaults ON (threadRequireMention=false):
         // once mentioned, a thread keeps flowing without re-mention.
         threadRequireMention: sc.threadRequireMention === true,

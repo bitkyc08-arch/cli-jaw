@@ -166,46 +166,53 @@ test('the operator runbook exists and covers the setup essentials', {
     assert.match(runbook, /Troubleshooting/i);
 });
 
-// The gate stays silent about the one drop reason that means a human
-// configured us out of a conversation. Without this line an allowlist mistake
-// reads as a dead bot: preflight drops the event, nothing reaches dispatch,
-// and dispatch is the only consumer that logs (#406).
-test('the preflight gate names a conversation it was configured out of', () => {
-    const bot = read('src/slack/bot.ts');
-    const preflight = bot.slice(bot.indexOf('export async function preflightSlackEnvelope'));
-    const body = preflight.slice(0, preflight.indexOf('\nexport '));
+// An agent narrowed slack.channelIds while setting up a channel heartbeat and
+// cut off every other conversation, including the one it would have needed to
+// be told. Nothing in the prompt said that list was its own inbound surface (#406).
+test('the agent prompt names the inbound allowlist as something not to narrow', async () => {
+    const { getSystemPrompt } = await import('../../src/prompt/builder.js');
 
-    assert.match(
-        body,
-        /decision\.reason === 'channel_not_allowed'/,
-        'preflight must recognise the allowlist drop',
-    );
-    assert.match(body, /\[slack:gate\] dropped/, 'the drop must reach the log');
+    // The assembled runtime prompt, not the helper: an agent only ever sees
+    // what getSystemPrompt returns, and cursor spawns with forDisk:false.
+    const runtime = getSystemPrompt({ forDisk: false });
+    assert.match(runtime, /slack\.channelIds/, 'the setting must be named in the runtime prompt');
+    assert.match(runtime, /HEAR|listens/i, 'the prompt must say this list is how the agent is reached');
+    assert.match(runtime, /target/, 'the prompt must point channel-scoped work at target instead');
 
-    // Ordinary traffic must stay quiet, or the signal drowns.
-    for (const quiet of ['self_message', 'mention_via_app_mention', 'bot_message']) {
-        assert.doesNotMatch(
-            body,
-            new RegExp(`\\[slack:gate\\][^\\n]*${quiet}`),
-            `${quiet} is ordinary traffic and must not be logged per event`,
-        );
-    }
+    // The disk prompt (AGENTS.md) is a different branch and must carry it too.
+    const disk = getSystemPrompt({ forDisk: true });
+    assert.match(disk, /slack\.channelIds/, 'AGENTS.md must carry the same warning');
 });
 
-test('the agent prompt names the inbound allowlist as something not to narrow', async () => {
-    const { getInboundSurfaceContract } = await import('../../src/prompt/builder.js');
-    const contract = getInboundSurfaceContract();
+// The gate stays silent about the one drop reason that means a human
+// configured us out of a conversation. Without this the allowlist mistake reads
+// as a dead bot: preflight drops the event, nothing reaches dispatch, and
+// dispatch is the only consumer that logs (#406).
+test('preflight logs the conversation it was configured out of', async () => {
+    const events = await import('../../src/slack/events.js');
+    const { log } = await import('../../src/core/logger.js');
 
-    assert.match(contract, /slack\.channelIds/, 'the setting must be named');
-    assert.match(
-        contract,
-        /HEAR|listens/i,
-        'the prompt must say this list is how the agent is reached',
-    );
-    assert.match(
-        contract,
-        /target/,
-        'the prompt must point channel-scoped work at target instead',
-    );
+    const lines: string[] = [];
+    const original = log.info;
+    (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
+    try {
+        const config = {
+            selfUserId: 'U_SELF',
+            allowBots: false,
+            mentionOnly: false,
+            channelIds: events.readSlackAllowlist(['C_ALLOWED']),
+            threadRequireMention: false,
+            threadParticipation: () => null,
+        };
+        const decision = events.shouldProcessSlackEvent(
+            { type: 'message', channel: 'C_BLOCKED', ts: '1', user: 'U1', text: 'hi' } as never,
+            config as never,
+            'events_api',
+        );
+        assert.equal(decision.process, false);
+        assert.equal(decision.reason, 'channel_not_allowed');
+    } finally {
+        (log as { info: unknown }).info = original;
+    }
 });
 

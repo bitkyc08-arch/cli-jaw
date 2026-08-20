@@ -141,6 +141,14 @@ export type AllowlistChange = {
 };
 
 /**
+ * A ceiling on the allowlist, because `classifyAllowlistChange` compares the
+ * two lists with `some(... includes ...)` — quadratic in the list length. A
+ * request well under the 1 MB body limit could still hold tens of thousands of
+ * ids and stall the event loop. No workspace has this many conversations.
+ */
+export const SLACK_ALLOWLIST_MAX = 1000;
+
+/**
  * How a settings write moves `slack.channelIds`.
  *
  * That list is the inbound allowlist: empty allows every conversation, non-empty
@@ -177,6 +185,7 @@ export function classifyAllowlistChange(next: unknown, current: unknown): Allowl
 export function invalidSlackChannelIds(value: unknown): boolean {
     if (value === undefined) return false;
     if (!Array.isArray(value)) return true;
+    if (value.length > SLACK_ALLOWLIST_MAX) return true;
     return value.some(id => typeof id !== 'string' || id.trim() === '');
 }
 
