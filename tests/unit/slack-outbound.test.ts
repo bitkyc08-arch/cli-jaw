@@ -847,7 +847,16 @@ test('SOR-004: the filename is masked everywhere it reaches Slack', async () => 
 
     for (const [i, call] of calls.entries()) {
         const body = call.init?.body;
-        const rendered = typeof body === 'string' ? body : String(body);
+        // FormData stringifies to "[object FormData]", so `String(body)` would
+        // check nothing — the multipart leg would pass with the fix reverted.
+        // Read the part's filename off the entry instead.
+        const rendered = typeof body === 'string'
+            ? body
+            : body instanceof FormData
+                ? [...body.entries()]
+                    .map(([k, v]) => `${k}=${v instanceof File ? v.name : String(v)}`)
+                    .join('&')
+                : String(body);
         assert.ok(
             !rendered.includes(FAKE_APP_TOKEN),
             `call ${i} (${call.url}) leaked the filename: ${rendered.slice(0, 200)}`,
