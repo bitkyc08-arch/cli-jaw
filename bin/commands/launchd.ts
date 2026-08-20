@@ -20,7 +20,7 @@ if (process.argv[2] === 'launchd' && !process.env["_CLI_JAW_SERVICE_DELEGATE"]) 
     console.error('');
 }
 import { instanceId, getNodePath, getJawPath, buildServicePath } from '../../src/core/instance.js';
-import { generateLaunchdPlist } from '../../src/core/launchd-plist.js';
+import { generateLaunchdPlist, serviceRuntimeEnv } from '../../src/core/launchd-plist.js';
 import { findLegacyCliJawLabels } from '../../src/core/launchd-cleanup.js';
 
 // parseArgs is safe here — launchd is a leaf command (no subcommands to absorb)
@@ -64,6 +64,7 @@ function generatePlist(): string {
         jawHome: JAW_HOME,
         logDir: LOG_DIR,
         servicePath,
+        extraEnv: serviceRuntimeEnv(),
     });
 }
 

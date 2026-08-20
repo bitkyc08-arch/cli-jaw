@@ -67,3 +67,60 @@ test('P04C-008: plist sets CLI_JAW_HOME env var', () => {
     const plist = generateLaunchdPlist(defaults);
     assert.match(plist, /<key>CLI_JAW_HOME<\/key>\s*<string>\/Users\/u\/\.cli-jaw<\/string>/);
 });
+
+// #393: a macOS service is not started from a login shell, so anything the user put in
+// ~/.zshenv is absent. cursor-agent refuses to run on macOS when it also sees an
+// SSH-looking session and the default credential store, and tells the user to unlock a
+// keychain a background service cannot unlock. The result was a runtime that worked
+// under `jaw serve` and died under the service on the same machine.
+test('P04C-009: the plist carries the credential-store escape hatch on macOS', () => {
+    const rendered = generateLaunchdPlist({
+        label: 'com.cli-jaw.default',
+        port: '3457',
+        nodePath: '/usr/local/bin/node',
+        jawPath: '/usr/local/bin/jaw',
+        jawHome: '/Users/someone/.cli-jaw',
+        logDir: '/Users/someone/.cli-jaw/logs',
+        servicePath: '/usr/bin:/bin',
+        extraEnv: { AGENT_CLI_CREDENTIAL_STORE: 'file' },
+    });
+
+    assert.match(rendered, /<key>AGENT_CLI_CREDENTIAL_STORE<\/key>\s*<string>file<\/string>/);
+    // The keys it already carried must survive alongside it.
+    assert.match(rendered, /<key>CLI_JAW_HOME<\/key>/);
+    assert.match(rendered, /<key>CLI_JAW_RUNTIME<\/key>\s*<string>launchd<\/string>/);
+});
+
+test('P04C-010: no extra env renders exactly the previous dict', () => {
+    const base = {
+        label: 'com.cli-jaw.default',
+        port: '3457',
+        nodePath: '/usr/local/bin/node',
+        jawPath: '/usr/local/bin/jaw',
+        jawHome: '/Users/someone/.cli-jaw',
+        logDir: '/Users/someone/.cli-jaw/logs',
+        servicePath: '/usr/bin:/bin',
+    };
+
+    const withNone = generateLaunchdPlist(base);
+    const withEmpty = generateLaunchdPlist({ ...base, extraEnv: {} });
+
+    assert.equal(withNone, withEmpty, 'an empty map must not leave a stray line behind');
+    assert.ok(!withNone.includes('AGENT_CLI_CREDENTIAL_STORE'));
+});
+
+test('P04C-011: extra env values are XML-escaped like every other field', () => {
+    const rendered = generateLaunchdPlist({
+        label: 'com.cli-jaw.default',
+        port: '3457',
+        nodePath: '/usr/local/bin/node',
+        jawPath: '/usr/local/bin/jaw',
+        jawHome: '/Users/someone/.cli-jaw',
+        logDir: '/Users/someone/.cli-jaw/logs',
+        servicePath: '/usr/bin:/bin',
+        extraEnv: { WEIRD: 'a & b < c' },
+    });
+
+    assert.match(rendered, /<string>a &amp; b &lt; c<\/string>/);
+});
+
