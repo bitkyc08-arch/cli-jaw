@@ -132,3 +132,18 @@ export function slackManifestYaml(appName: string = DEFAULT_SLACK_APP_NAME): str
 export function slackManifestJson(appName: string = DEFAULT_SLACK_APP_NAME): string {
     return JSON.stringify(createSlackAppManifest(appName), null, 2);
 }
+
+/**
+ * App-creation URL with the manifest already in it.
+ *
+ * Slack's "From a manifest" editor is not what gets validated: the page posts the
+ * `manifest_json` query parameter to apps.manifest.validate. Arriving at plain
+ * `?new_app=1` therefore sends `{}` no matter what was pasted, and the only symptom
+ * is a Create button that never enables — no error, no banner, and a correct-looking
+ * manifest on screen (#396). Carrying it in the URL is the only way the flow works
+ * first time.
+ */
+export function slackManifestCreateUrl(appName: string = DEFAULT_SLACK_APP_NAME): string {
+    const manifest = encodeURIComponent(JSON.stringify(createSlackAppManifest(appName)));
+    return `https://api.slack.com/apps?new_app=1&manifest_json=${manifest}`;
+}
