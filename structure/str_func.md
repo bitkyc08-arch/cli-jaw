@@ -106,7 +106,8 @@ cli-jaw/
 │   │   ├── codex-app-client.ts ← Codex App stdio server client (1430L)
 │   │   ├── codex-host-pool.ts ← Codex App shared host generation + lane lease/FIFO/reaper/shutdown owner (494L)
 │   │   ├── codex-app-events.ts ← Codex App turn/tool/message event adapter (415L)
-│   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 (88L)
+│   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 + shouldAnnounceStallTruncation (부분 출력 워치독 종료를 독자에게 알릴지 판정) (88L)
+│   │   ├── stall-notice.ts   ← 워치독 중단 통지 문구 + 접미사 전용 제거 (사람에겐 보이고 모델 컨텍스트엔 안 들어가도록 db 조회 경계가 사용) (21L) ✨
 │   │   ├── grok-trace-backfill.ts ← Grok trace backfill helper (167L) ✨
 │   │   ├── live-run-state.ts ← active run snapshot / hydrate helper (108L)
 │   │   ├── memory-flush-controller.ts ← assistant 완료 후 메모리 flush lock + trigger 제어 (426L)
