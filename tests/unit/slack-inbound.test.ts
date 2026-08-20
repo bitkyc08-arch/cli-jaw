@@ -805,3 +805,58 @@ test('preflight logs the conversation the allowlist excluded', async () => {
         settings.slack = prevSlack;
     }
 });
+
+// One reason logs, the rest do not. Self-echo and the app_mention twin are
+// ordinary traffic on a working bot: logging them would bury the one line that
+// says a human's setting excluded the conversation (#406).
+test('preflight stays quiet for the drops that are normal traffic', async () => {
+    const { initIngressJournal } = await import('../../src/messaging/durable-ingress.ts');
+    const { default: Database } = await import('better-sqlite3');
+    const { settings } = await import('../../src/core/config.ts');
+    const { log } = await import('../../src/core/logger.ts');
+
+    initIngressJournal(new Database(':memory:') as never);
+
+    const prevSlack = settings.slack;
+    const lines: string[] = [];
+    const originalInfo = log.info;
+    (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
+
+    try {
+        settings.slack = {
+            ...(prevSlack || {}), enabled: true, teamId: 'T1',
+            channelIds: [], selfUserId: 'U_SELF', botUserId: 'U_SELF',
+        };
+        const { preflightSlackEnvelope } = await import('../../src/slack/bot.ts');
+
+        // self_message: our own post arriving back as a message event.
+        await preflightSlackEnvelope({
+            envelope_id: 'E-self',
+            type: 'events_api',
+            payload: { event: { type: 'message', channel: 'C_OPEN', ts: '20.1', user: 'U_SELF', text: 'mine' } },
+        } as never);
+
+        // mention_via_app_mention: the message copy of a mention that also
+        // arrives as app_mention.
+        await preflightSlackEnvelope({
+            envelope_id: 'E-twin',
+            type: 'events_api',
+            payload: { event: { type: 'message', channel: 'C_OPEN', ts: '20.2', user: 'U1', text: '<@U_SELF> hi' } },
+        } as never);
+
+        // bot_message: frequent on bot_profile traffic.
+        await preflightSlackEnvelope({
+            envelope_id: 'E-bot',
+            type: 'events_api',
+            payload: { event: { type: 'message', channel: 'C_OPEN', ts: '20.3', bot_id: 'B1', text: 'beep' } },
+        } as never);
+
+        assert.deepEqual(
+            lines.filter(l => l.includes('[slack:gate]')), [],
+            `only an allowlist drop may log; saw: ${JSON.stringify(lines)}`,
+        );
+    } finally {
+        (log as { info: unknown }).info = originalInfo;
+        settings.slack = prevSlack;
+    }
+});

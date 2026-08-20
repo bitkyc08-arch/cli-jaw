@@ -8,6 +8,7 @@ import {
 import { getIngressJournal, type IngressJournal } from './durable-ingress.js';
 import { snapshotMetrics, type MessagingMetricsSnapshot } from './metrics.js';
 import { getSlackScopeStatus, type SlackScopeStatus } from '../slack/scope-status.js';
+import { slackPeerKind } from './slack-target.js';
 import type { MessengerChannel } from './types.js';
 
 export type TransportCapability = {
@@ -67,16 +68,24 @@ function slackHasSendTarget(): boolean {
     // Through the gate's reader: a raw string like "C1" has a truthy .length and
     // used to read as a configured target the gate was refusing outright (#406).
     //
-    // The sentinel has a truthy .length too, and it is not a conversation. Health
-    // would answer sendCapable:true while an untargeted send died with "No target
-    // available for slack", so the malformed case falls through to the
-    // last-active slot instead of vouching for a channel nobody can address.
+    // The sentinel has a truthy .length too, and it is not a conversation.
     const ids = readSlackAllowlist(sc?.channelIds);
-    if (ids.length && ids[0] !== MALFORMED_SLACK_ALLOWLIST) return true;
-    const messaging = settings["messaging"] as Record<string, unknown> | undefined;
-    const last = messaging?.['lastActive'] as Record<string, unknown> | undefined;
-    const slackLast = last?.['slack'] as { targetId?: string } | undefined;
-    return Boolean(slackLast?.targetId);
+    const messagingBlock = settings["messaging"] as Record<string, unknown> | undefined;
+    const lastActive = messagingBlock?.['lastActive'] as Record<string, unknown> | undefined;
+    const lastSlack = lastActive?.['slack'] as { targetId?: string } | undefined;
+    if (ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST) {
+        // An unreadable allowlist denies every CHANNEL target, including whatever
+        // sits in the last-active slot. Falling through to that slot put health
+        // back where it started: sendCapable:true while `validateTarget` refused
+        // the very target it was vouching for.
+        //
+        // A DM is the exception on both sides — `validateTarget` lets D.../U...
+        // through before it ever reads the allowlist — so reporting false for a
+        // DM slot would understate a send that does work.
+        return slackPeerKind(lastSlack?.targetId || '') === 'direct';
+    }
+    if (ids.length) return true;
+    return Boolean(lastSlack?.targetId);
 }
 
 export function getTransportCapability(channel: MessengerChannel): TransportCapability {

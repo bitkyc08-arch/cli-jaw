@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { slackChannelScope } from '../../src/slack/scope-status.js';
 
@@ -147,6 +149,77 @@ test('doctor no longer degrades on an empty slack allowlist', () => {
         /channelScope === 'malformed'/,
         'the status ladder must not pass an allowlist the gate cannot read',
     );
+});
+
+// Everything above reads the source. That proves the code says the right thing,
+// not that `jaw doctor --json` prints it — and the whole point of #406 is that a
+// reporting surface disagreed with the gate. So run the real command.
+//
+// Through the repo's own tsx and an isolated --home: a global `jaw` would be
+// ENOENT on clean CI and would check the INSTALLED build on a dev host, which is
+// a false green either way (the multi-instance integration test's pattern).
+test('doctor --json reports the allowlist width the gate enforces', () => {
+    const repoTsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
+    const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
+    if (!existsSync(repoTsx)) {
+        test.skip('tsx binary not found');
+        return;
+    }
+
+    const runDoctor = (channelIds: unknown) => {
+        const home = mkdtempSync(join(tmpdir(), 'jaw-slack-scope-'));
+        try {
+            const settingsPath = join(home, 'settings.json');
+            writeFileSync(settingsPath, JSON.stringify({
+                slack: {
+                    enabled: true,
+                    botToken: 'xoxb-doctor-json-fixture',
+                    appToken: 'xapp-doctor-json-fixture',
+                    teamId: 'T_FIXTURE',
+                    channelIds,
+                },
+            }));
+            chmodSync(settingsPath, 0o600);
+            // Not execFileSync: doctor exits non-zero whenever ANY check is
+            // warn/error, and a throwaway home has several (no db, no skills
+            // dir). That says nothing about the Slack block, which is printed
+            // either way — so read stdout on its own terms.
+            const run = spawnSync(repoTsx, [cliEntry, '--home', home, 'doctor', '--json'], {
+                cwd: repoRoot, encoding: 'utf8', timeout: 60000,
+                // The Slack connection fields are env-owned when these are set,
+                // which would override the fixture and silently test nothing.
+                env: {
+                    ...process.env, NO_COLOR: '1',
+                    SLACK_BOT_TOKEN: '', SLACK_APP_TOKEN: '', SLACK_CHANNEL_IDS: '', SLACK_TEAM_ID: '',
+                },
+            });
+            assert.ok(run.stdout, `doctor printed nothing: ${run.stderr || run.error}`);
+            return JSON.parse(run.stdout).slack;
+        } finally {
+            rmSync(home, { recursive: true, force: true });
+        }
+    };
+
+    // Empty is 'every conversation', the shipped default — not a defect.
+    const all = runDoctor([]);
+    assert.equal(all.channelScope, 'all_conversations');
+    assert.notEqual(all.status, 'missing_channel_ids');
+    assert.equal(all.channelIdsConfigured, false);
+
+    // A narrowed list reports its width, which is what the incident needed.
+    const narrowed = runDoctor(['C0BJW306TE3']);
+    assert.equal(narrowed.channelScope, 'allowlist_1');
+    assert.deepEqual(narrowed.channelIds, ['C0BJW306TE3']);
+    assert.equal(narrowed.channelIdsConfigured, true);
+
+    // A value the gate cannot read denies every channel, so doctor must not
+    // answer ok on tokens alone.
+    const malformed = runDoctor('C0BJW306TE3');
+    assert.equal(malformed.channelScope, 'malformed');
+    assert.equal(malformed.status, 'malformed_channel_ids');
+    assert.equal(malformed.runtimeReady, false);
+    // The denial sentinel is not a conversation and must not be printed as one.
+    assert.deepEqual(malformed.channelIds, []);
 });
 
 // ─── source-of-truth docs ───────────────────────────

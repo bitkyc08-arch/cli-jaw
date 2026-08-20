@@ -74,15 +74,38 @@ test('an unreadable slack allowlist is not a send target', async () => {
     const previousSlack = settings.slack;
     const previousMessaging = settings.messaging;
     try {
-        settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
         for (const bad of ['C_ESCAPE', null, ['']]) {
             settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: bad };
-            const cap = getTransportCapability('slack');
+
+            settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
             assert.equal(
-                cap.sendCapable, false,
+                getTransportCapability('slack').sendCapable, false,
                 `health must not vouch for an allowlist the gate denies: ${JSON.stringify(bad)}`,
             );
+
+            // The slot is where the first fix leaked: health fell through to it
+            // and answered true for a channel validateTarget was refusing.
+            settings.messaging = {
+                ...(settings.messaging || {}),
+                lastActive: { slack: { channel: 'slack', targetKind: 'channel', peerKind: 'channel', targetId: 'C_STALE' } },
+            };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, false,
+                'a last-active channel is denied by the same unreadable allowlist',
+            );
+
+            // A DM is self-authorizing on both sides, so reporting false here
+            // would understate a send that does work.
+            settings.messaging = {
+                ...(settings.messaging || {}),
+                lastActive: { slack: { channel: 'slack', targetKind: 'user', peerKind: 'direct', targetId: 'D_USER' } },
+            };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, true,
+                'DMs stay reachable, as validateTarget allows them before reading the allowlist',
+            );
         }
+        settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
         // A readable list is still a target.
         settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: ['C_REAL'] };
         assert.equal(getTransportCapability('slack').sendCapable, true);
