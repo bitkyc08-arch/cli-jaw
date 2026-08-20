@@ -9,6 +9,7 @@ import { getIngressJournal, type IngressJournal } from './durable-ingress.js';
 import { snapshotMetrics, type MessagingMetricsSnapshot } from './metrics.js';
 import { getSlackScopeStatus, type SlackScopeStatus } from '../slack/scope-status.js';
 import { slackPeerKind } from './slack-target.js';
+import { isRemoteTarget } from './types.js';
 import type { MessengerChannel } from './types.js';
 
 export type TransportCapability = {
@@ -82,7 +83,12 @@ function slackHasSendTarget(): boolean {
         // A DM is the exception on both sides — `validateTarget` lets D.../U...
         // through before it ever reads the allowlist — so reporting false for a
         // DM slot would understate a send that does work.
-        return slackPeerKind(lastSlack?.targetId || '') === 'direct';
+        //
+        // The shape has to hold up too: `hydrateTargetsFromSettings` drops a slot
+        // that is not a full RemoteTarget, so a bare `{targetId:"D_..."}` is a
+        // target no send can actually use.
+        return isRemoteTarget(lastSlack) && lastSlack.channel === 'slack'
+            && slackPeerKind(lastSlack.targetId) === 'direct';
     }
     if (ids.length) return true;
     return Boolean(lastSlack?.targetId);

@@ -31,7 +31,7 @@ import { getCachedCliStatus, getCachedCliStatusForced } from '../cli/cli-status.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
-import { SLACK_ALLOWLIST_MAX } from '../slack/events.js';
+import { MALFORMED_SLACK_ALLOWLIST, SLACK_ALLOWLIST_MAX, readSlackAllowlist } from '../slack/events.js';
 import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
 import { log } from '../core/logger.js';
@@ -157,8 +157,22 @@ export type AllowlistChange = {
  */
 export function classifyAllowlistChange(next: unknown, current: unknown): AllowlistChange | null {
     if (!Array.isArray(next)) return null;
-    const to = next.map(String);
-    const from = Array.isArray(current) ? current.map(String) : [];
+    // Through the gate's reader, or the record names the wrong direction. Raw
+    // comparison called `[" C1 "] -> ["C1"]` a narrowing when the reach is
+    // identical, and — worse — called RECOVERY from a malformed value (which
+    // denies everything) a narrowing too, when it is the widest move there is.
+    const to = readSlackAllowlist(next);
+    const from = readSlackAllowlist(current);
+    const denied = (ids: string[]) => ids.length === 1 && ids[0] === MALFORMED_SLACK_ALLOWLIST;
+    if (denied(to)) {
+        // The route refuses such a write, so this is unreachable through PUT.
+        // Classifying it as a narrowing anyway would be wrong in the other
+        // direction — it denies every channel — so say nothing rather than lie.
+        return null;
+    }
+    // From "nothing gets through" every write is a widening, including one that
+    // names a single channel.
+    if (denied(from)) return { kind: 'widen', from: [], to };
     if (to.length === 0) return from.length === 0 ? null : { kind: 'clear', from, to };
     if (from.length === 0) return { kind: 'narrow', from, to };
     if (from.some(id => !to.includes(id))) return { kind: 'narrow', from, to };

@@ -822,40 +822,52 @@ test('preflight stays quiet for the drops that are normal traffic', async () => 
     const originalInfo = log.info;
     (log as { info: unknown }).info = (...args: unknown[]) => { lines.push(args.join(' ')); };
 
+    // The gate reads a module-level selfUserId set at connect time, NOT
+    // settings.slack.selfUserId. Writing it into settings looks right and tests
+    // nothing: every event then falls to mention_required instead of reaching
+    // the branch under test.
+    const { setSlackSelfUserIdForTest, getSlackSelfUserId } = await import('../../src/slack/bot.ts');
+    const prevSelf = getSlackSelfUserId();
+    setSlackSelfUserIdForTest('U_SELF');
+
     try {
-        settings.slack = {
-            ...(prevSlack || {}), enabled: true, teamId: 'T1',
-            channelIds: [], selfUserId: 'U_SELF', botUserId: 'U_SELF',
-        };
+        settings.slack = { ...(prevSlack || {}), enabled: true, teamId: 'T1', channelIds: [] };
         const { preflightSlackEnvelope } = await import('../../src/slack/bot.ts');
 
-        // self_message: our own post arriving back as a message event.
-        await preflightSlackEnvelope({
-            envelope_id: 'E-self',
-            type: 'events_api',
-            payload: { event: { type: 'message', channel: 'C_OPEN', ts: '20.1', user: 'U_SELF', text: 'mine' } },
-        } as never);
+        // Prove each event lands on the branch it is meant to exercise, or a
+        // silent gate reads as a pass for the wrong reason.
+        const { shouldProcessSlackEvent } = await import('../../src/slack/events.ts');
+        const reasonFor = (event: Record<string, unknown>) => shouldProcessSlackEvent(
+            event as never,
+            { selfUserId: 'U_SELF', allowBots: false, mentionOnly: true, channelIds: [],
+                threadRequireMention: false, threadParticipation: 'mention' } as never,
+            'events_api',
+        ).reason;
 
+        const selfEvent = { type: 'message', channel: 'C_OPEN', ts: '20.1', user: 'U_SELF', text: 'mine' };
+        const twinEvent = { type: 'message', channel: 'C_OPEN', ts: '20.2', user: 'U1', text: '<@U_SELF> hi' };
+        const botEvent = { type: 'message', channel: 'C_OPEN', ts: '20.3', bot_id: 'B1', text: 'beep' };
+        assert.equal(reasonFor(selfEvent), 'self_message');
+        assert.equal(reasonFor(twinEvent), 'mention_via_app_mention');
+        assert.equal(reasonFor(botEvent), 'bot_message');
+
+        // self_message: our own post arriving back as a message event.
         // mention_via_app_mention: the message copy of a mention that also
         // arrives as app_mention.
-        await preflightSlackEnvelope({
-            envelope_id: 'E-twin',
-            type: 'events_api',
-            payload: { event: { type: 'message', channel: 'C_OPEN', ts: '20.2', user: 'U1', text: '<@U_SELF> hi' } },
-        } as never);
-
         // bot_message: frequent on bot_profile traffic.
-        await preflightSlackEnvelope({
-            envelope_id: 'E-bot',
-            type: 'events_api',
-            payload: { event: { type: 'message', channel: 'C_OPEN', ts: '20.3', bot_id: 'B1', text: 'beep' } },
-        } as never);
+        for (const [id, event] of [['E-self', selfEvent], ['E-twin', twinEvent], ['E-bot', botEvent]] as const) {
+            const verdict = await preflightSlackEnvelope({
+                envelope_id: id, type: 'events_api', payload: { event },
+            } as never);
+            assert.equal(verdict, 'ignored', `${id} must be dropped by the gate`);
+        }
 
         assert.deepEqual(
             lines.filter(l => l.includes('[slack:gate]')), [],
             `only an allowlist drop may log; saw: ${JSON.stringify(lines)}`,
         );
     } finally {
+        setSlackSelfUserIdForTest(prevSelf);
         (log as { info: unknown }).info = originalInfo;
         settings.slack = prevSlack;
     }

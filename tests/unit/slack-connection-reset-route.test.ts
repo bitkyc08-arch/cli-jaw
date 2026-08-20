@@ -283,6 +283,24 @@ test('classifyAllowlistChange names the direction of a channelIds write', async 
     assert.equal(classifyAllowlistChange(['A'], ['A']), null);
     assert.equal(classifyAllowlistChange([], []), null);
     assert.equal(classifyAllowlistChange(undefined, ['A']), null);
+
+    // Classified the way the gate reads it, or the record names the wrong
+    // direction. Padding does not change the reach, so it is not a change.
+    assert.equal(classifyAllowlistChange([' A ', 'A'], ['A']), null);
+
+    // A malformed current value denies EVERY channel, so writing a real list is
+    // the widest move there is. Raw comparison logged it as a narrowing.
+    for (const denied of ['A', null, [''], ['A', 7]]) {
+        assert.deepEqual(
+            classifyAllowlistChange(['A'], denied),
+            { kind: 'widen', from: [], to: ['A'] },
+            `recovery from ${JSON.stringify(denied)} is a widening`,
+        );
+    }
+
+    // The route refuses a malformed write, so there is no honest direction to
+    // record for one.
+    assert.equal(classifyAllowlistChange([''], ['A']), null);
 });
 
 

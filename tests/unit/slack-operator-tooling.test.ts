@@ -161,10 +161,11 @@ test('doctor no longer degrades on an empty slack allowlist', () => {
 test('doctor --json reports the allowlist width the gate enforces', () => {
     const repoTsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
     const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
-    if (!existsSync(repoTsx)) {
-        test.skip('tsx binary not found');
-        return;
-    }
+    // No conditional skip. A nested `test.skip()` marks an inner test skipped and
+    // lets the OUTER one pass, so the check that matters would report green in
+    // exactly the environment where it never ran. tsx is a devDependency; if it
+    // is missing, the install is broken and this should say so.
+    assert.ok(existsSync(repoTsx), `repo-local tsx is required to run the CLI: ${repoTsx}`);
 
     const runDoctor = (channelIds: unknown) => {
         const home = mkdtempSync(join(tmpdir(), 'jaw-slack-scope-'));

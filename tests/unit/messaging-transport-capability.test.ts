@@ -104,6 +104,18 @@ test('an unreadable slack allowlist is not a send target', async () => {
                 getTransportCapability('slack').sendCapable, true,
                 'DMs stay reachable, as validateTarget allows them before reading the allowlist',
             );
+
+            // A slot that is not a full RemoteTarget is dropped by
+            // hydrateTargetsFromSettings, so vouching for it on the id prefix
+            // alone promises a send that dies with "No target available".
+            settings.messaging = {
+                ...(settings.messaging || {}),
+                lastActive: { slack: { targetId: 'D_FAKE' } },
+            };
+            assert.equal(
+                getTransportCapability('slack').sendCapable, false,
+                'a malformed slot is not a DM target just because its id starts with D',
+            );
         }
         settings.messaging = { ...(settings.messaging || {}), lastActive: {} };
         // A readable list is still a target.
