@@ -612,6 +612,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             stallReason: ctx.stallReason, wasSteer, mainManaged, internal: !!opts.internal,
         })) {
             finalContent = `${finalContent}\n\n${STALL_TRUNCATION_NOTICE}`;
+            // Also onto ctx.fullText, which is what `resolve()` hands back at the
+            // end of this handler. The dispatch paths answer from the RESOLVED
+            // text, not from the agent_done payload, so appending only to
+            // `finalContent` would show the notice in the web transcript while
+            // the Slack reply still trailed off mid-thought — the exact symptom
+            // this line exists to remove (#405).
+            ctx.fullText = `${ctx.fullText}\n\n${STALL_TRUNCATION_NOTICE}`;
         }
 
         if (mainManaged && !opts.internal) {

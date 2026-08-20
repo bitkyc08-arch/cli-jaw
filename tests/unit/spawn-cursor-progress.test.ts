@@ -29,3 +29,38 @@ test('CP-003: nothing else was widened', () => {
     assert.equal(streamJsonMarksProgress('claude'), false);
     assert.equal(streamJsonMarksProgress('opencode'), false);
 });
+
+// What this change does and does not buy, measured rather than asserted in prose.
+//
+// A stream-json line is longer than ten characters, so `observe()` already
+// called markProgress('output') for it and pushed the deadline by the same
+// absoluteMs. Marking it structured does not buy TIME — it buys a stall report
+// that distinguishes "the runtime was still working" from "bytes were
+// appearing", which is the difference the 933s incident turned on.
+test('CP-004: structured and output progress buy the same deadline, not the same story', async () => {
+    const { attachWatchdog } = await import('../../src/agent/watchdog.ts');
+    const { PassThrough } = await import('node:stream');
+
+    const run = (mark: 'structured' | 'output') => new Promise<{ reason: string; elapsed: number }>((resolve) => {
+        const child = { stdout: new PassThrough(), stderr: new PassThrough() } as never;
+        const startedAt = Date.now();
+        const handle = attachWatchdog(child, 'test', (reason: string) => {
+            handle.stop();
+            resolve({ reason, elapsed: Date.now() - startedAt });
+        }, { firstProgressMs: 1_000, idleMs: 1_000, absoluteMs: 60, absoluteHardCapMs: 600, checkIntervalMs: 5 });
+        if (mark === 'structured') handle.markProgress();
+        else (child as { stdout: InstanceType<typeof PassThrough> }).stdout
+            .emit('data', Buffer.from('a stream-json line, well over ten characters\n'));
+    });
+
+    const [structured, output] = await Promise.all([run('structured'), run('output')]);
+
+    // Same deadline: one mark, one absoluteMs extension, either way.
+    assert.ok(
+        Math.abs(structured.elapsed - output.elapsed) < 40,
+        `marking does not change WHEN it dies: ${structured.elapsed} vs ${output.elapsed}`,
+    );
+    // Different story, which is the whole point.
+    assert.match(structured.reason, /lastProgress=structured/);
+    assert.match(output.reason, /lastProgress=output/);
+});

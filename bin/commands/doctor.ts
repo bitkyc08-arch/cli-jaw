@@ -18,7 +18,7 @@ import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
 import { isWsl, isWindowsNative, resolvePlatformKind } from '../../src/core/platform-kind.js';
 import { readClaudeCreds } from '../../src/routes/quota.js';
-import { CLI_KEYS } from '../../src/cli/registry.js';
+import { CLI_KEYS, DEFAULT_CLI } from '../../src/cli/registry.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord } from '../_http-client.js';
 import { getEnabledChannels, getHomeChannel } from '../../src/messaging/runtime.js';
@@ -503,7 +503,12 @@ check('Channel consistency', () => {
 
 // 6f. Agent watchdog deadline
 check('에이전트 타임아웃', () => {
-    const activeCli = settings?.cli || '';
+    // `settings.cli` unset does not mean "no CLI": the runtime falls back to
+    // DEFAULT_CLI, so reading only settings would report the global default
+    // while an override for the CLI actually in use sat right there (#405).
+    // The per-request and per-session layers above this are not knowable from a
+    // CLI invocation, so the answer is labelled with the CLI it applies to.
+    const activeCli = settings?.cli || DEFAULT_CLI;
     // Mirrors the runtime merge in src/agent/spawn.ts, both typeof guards
     // included: these values come from raw settings JSON, where either level can
     // be something other than an object.
@@ -521,7 +526,7 @@ check('에이전트 타임아웃', () => {
     // only `agentTimeout.cursor.absoluteMs` set would otherwise be told "600s
     // default", which is false.
     return abs !== undefined
-        ? `${Math.round(abs / 1000)}초 (${activeCli || '전역'} 유효값, settings.agentTimeout)`
+        ? `${Math.round(abs / 1000)}초 (${activeCli}${settings?.cli ? '' : ' 기본값'} 유효값, settings.agentTimeout)`
         : '600초 (기본값) — settings.agentTimeout.absoluteMs 또는 agentTimeout.<cli>.absoluteMs 로 조정';
 });
 

@@ -386,6 +386,15 @@ export function extractText(content: unknown) {
  * ten bytes came out" heuristic — the same signal a progress bar produces. A
  * real 933s turn died with `lastProgress=output x302`: three hundred weak
  * signals and not one structured (#405).
+ *
+ * Measured, so the claim stays honest: this does NOT change when a turn dies.
+ * A cursor stream-json line is over ten characters, so `observe()` already
+ * called `markProgress('output')` for it and pushed the deadline by the same
+ * `absoluteMs`. What changes is the stall REPORT — `lastProgress=structured`
+ * instead of `output xN` — which is the difference between "the runtime was
+ * still working and we cut it off" and "bytes were appearing and we could not
+ * tell". The 933s turn was genuinely idle for its last 600s; the remedy for
+ * that is the deadline itself, which `jaw doctor` now shows how to raise.
  */
 export function streamJsonMarksProgress(cli: string, effectiveProvider?: string): boolean {
     return cli === 'cursor'

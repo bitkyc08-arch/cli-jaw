@@ -77,3 +77,28 @@ test('LEB-006: the output branch uses the shared decision, not its own condition
     assert.match(outputBranch, /shouldAnnounceStallTruncation\(\{/);
     assert.match(outputBranch, /STALL_TRUNCATION_NOTICE/);
 });
+
+// The notice has to reach the READER, and the channels do not read the
+// agent_done payload — they answer from the text this handler resolves. A
+// notice appended only to `finalContent` showed up in the web transcript while
+// the Slack reply still trailed off mid-thought: the exact symptom, still there,
+// with everything above this line green (#405).
+test('LEB-007: the notice lands on the resolved text, not only the broadcast', () => {
+    const src = readFileSync(
+        join(import.meta.dirname, '..', '..', 'src/agent/lifecycle-handler.ts'), 'utf8',
+    );
+    const branch = src.slice(
+        src.indexOf('shouldAnnounceStallTruncation({'),
+        src.indexOf('const { message: errMsg } = classifyExitError('),
+    );
+    assert.ok(branch.length > 0, 'the announce branch must exist');
+
+    // Both, not either: finalContent feeds the durable insert and agent_done,
+    // ctx.fullText feeds resolve() and therefore every channel reply.
+    assert.match(branch, /finalContent = `\$\{finalContent\}[\s\S]*STALL_TRUNCATION_NOTICE/);
+    assert.match(branch, /ctx\.fullText = `\$\{ctx\.fullText\}[\s\S]*STALL_TRUNCATION_NOTICE/);
+
+    // And resolve() must still be handing back ctx.fullText, or the line above
+    // is guarding a path that no longer carries the reply.
+    assert.match(src, /resolve\(\{\s*\n?\s*text: ctx\.fullText/);
+});
