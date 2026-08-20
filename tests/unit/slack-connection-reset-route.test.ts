@@ -254,3 +254,28 @@ test('generic settings writes reject only fields owned by configured Slack envir
     assert.deepEqual(owned.json.managedPaths, ['slack.teamId']);
     assert.equal(patches.length, 1);
 });
+
+// The allowlist is the inbound surface: empty allows every conversation,
+// non-empty allows exactly those. An agent narrowed it to one channel and cut
+// itself off, and nothing recorded that it had happened (#406). Blocking the
+// write is not an option — `jaw slack setup --channel-ids` reaches the server
+// through this same PUT — so the classification is what the audit entry rides on.
+test('classifyAllowlistChange names the direction of a channelIds write', async () => {
+    const { classifyAllowlistChange } = await import('../../src/routes/settings.js');
+
+    // [] means "every conversation", so going to a list is a narrowing.
+    assert.deepEqual(classifyAllowlistChange(['A'], []), { kind: 'narrow', from: [], to: ['A'] });
+    assert.deepEqual(
+        classifyAllowlistChange(['A'], ['A', 'B']),
+        { kind: 'narrow', from: ['A', 'B'], to: ['A'] },
+    );
+
+    assert.equal(classifyAllowlistChange(['A', 'B'], ['A'])?.kind, 'widen');
+    assert.equal(classifyAllowlistChange([], ['A'])?.kind, 'clear');
+
+    // Nothing moved, and a non-array write is not a channelIds write at all.
+    assert.equal(classifyAllowlistChange(['A'], ['A']), null);
+    assert.equal(classifyAllowlistChange([], []), null);
+    assert.equal(classifyAllowlistChange(undefined, ['A']), null);
+});
+

@@ -134,6 +134,36 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
         : {};
 }
 
+export type AllowlistChange = {
+    kind: 'narrow' | 'widen' | 'clear';
+    from: string[];
+    to: string[];
+};
+
+/**
+ * How a settings write moves `slack.channelIds`.
+ *
+ * That list is the inbound allowlist: empty allows every conversation, non-empty
+ * allows exactly those. Narrowing it can cut off the surface the writer is
+ * speaking through, and an agent did exactly that — after which nobody could
+ * tell what had happened, because nothing recorded it (#406).
+ *
+ * Refusing the write is not an option: `jaw slack setup --channel-ids` reaches
+ * the running server through this same PUT (slack/hot-notify.ts), so a block
+ * here would break the supported way to narrow on purpose. Recording it is what
+ * was missing.
+ */
+export function classifyAllowlistChange(next: unknown, current: unknown): AllowlistChange | null {
+    if (!Array.isArray(next)) return null;
+    const to = next.map(String);
+    const from = Array.isArray(current) ? current.map(String) : [];
+    if (to.length === 0) return from.length === 0 ? null : { kind: 'clear', from, to };
+    if (from.length === 0) return { kind: 'narrow', from, to };
+    if (from.some(id => !to.includes(id))) return { kind: 'narrow', from, to };
+    if (to.length > from.length) return { kind: 'widen', from, to };
+    return null;
+}
+
 function mergePiProfile(piInput: unknown, profile: PiProfile, models: string[]) {
     const pi = normalizePiSettings(piInput);
     const profiles = pi.profiles.filter((entry) => entry.id !== profile.id);
@@ -238,10 +268,25 @@ export function registerSettingsRoutes(
             res.status(400).json({ ok: false, error: 'invalid_settings_field' });
             return;
         }
+        // Captured before the write, because afterwards the previous list is gone.
+        const allowlistChange = classifyAllowlistChange(
+            asPlainRecord((sanitized.value as Record<string, unknown>)["slack"])["channelIds"],
+            settings["slack"]?.channelIds,
+        );
         const result = await applySettings(sanitized.value) as Record<string, unknown>;
         try {
             const keys = Object.keys(req.body || {}).filter(k => !['stt', 'jawCeo'].includes(k));
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), { keys });
+            if (allowlistChange?.kind === 'narrow') {
+                log.warn(`[slack:allowlist] narrowed to ${allowlistChange.to.length} channel(s): `
+                    + `${allowlistChange.to.join(', ')} — conversations outside this list will be ignored`);
+                getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), {
+                    keys: ['slack.channelIds'],
+                    action: 'narrow',
+                    from: allowlistChange.from,
+                    to: allowlistChange.to,
+                });
+            }
         } catch { /* non-fatal */ }
         const safe = redactRuntimeSettings(result);
         ok(res, safe);

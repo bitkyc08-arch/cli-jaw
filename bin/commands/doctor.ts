@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
+import { slackChannelScope } from '../../src/slack/scope-status.js';
 import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { migrateAllJawHomes, hasPendingLegacySkillDirs, discoverJawHomes } from '../../lib/mcp/skills-migration.js';
@@ -877,13 +878,16 @@ function buildSlackStatus() {
     const sc = s?.slack || {};
     const botTokenPresent = !!sc.botToken;
     const appTokenPresent = !!sc.appToken;
-    const channelIdsConfigured = !!(sc.channelIds?.length);
+    // An empty allowlist means "every conversation": the shipped default and a
+    // normal way to run. Treating it as a defect is why doctor passed during the
+    // 260820 incident — the list had exactly one entry, so it read as configured
+    // while every other conversation was silently dropped (#406).
+    const { ids: channelIds, scope: channelScope } = slackChannelScope(sc.channelIds);
     let status = 'ok';
     const degradedReasons: string[] = [];
     if (!sc.enabled) { status = 'disabled'; }
     else if (!botTokenPresent) { status = 'missing_bot_token'; degradedReasons.push('bot token missing'); }
     else if (!appTokenPresent) { status = 'missing_app_token'; degradedReasons.push('app-level token missing — outbound only, no inbound events'); }
-    else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
 
     const enabledChannels = getEnabledChannels(s || {});
     const channelConsistent = !enabledChannels.includes('slack') || !!sc.enabled;
@@ -896,7 +900,8 @@ function buildSlackStatus() {
         enabled: !!sc.enabled,
         botTokenPresent,
         appTokenPresent,
-        channelIdsConfigured,
+        channelIds,
+        channelScope,
         channelConsistent,
         runtimeReady: status === 'ok' && channelConsistent,
         // C/G/D conversations only — mpim:history is not in the manifest, so

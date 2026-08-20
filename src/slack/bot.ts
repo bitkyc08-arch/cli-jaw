@@ -485,7 +485,20 @@ export async function preflightSlackEnvelope(envelope: SlackEnvelope): Promise<S
     if (!event?.channel || !event?.ts) return 'committed';
 
     const decision = shouldProcessSlackEvent(event, gateConfig(), envelope.type);
-    if (!decision.process) return 'ignored';
+    if (!decision.process) {
+        // The dispatch consumer of this gate logs its reason (see the
+        // handleSlackEvent path below); this one did not. That asymmetry is why
+        // an allowlist mistake reads as "the bot is dead": preflight drops the
+        // event, nothing ever reaches dispatch, and nothing is logged (#406).
+        //
+        // Only channel_not_allowed. self_message, bot_message and the
+        // app_mention/message duplicate are ordinary traffic that would bury the
+        // one reason that means a human configured us out of a conversation.
+        if (decision.reason === 'channel_not_allowed') {
+            log.info(`[slack:gate] dropped ${event.channel} (channel_not_allowed)`);
+        }
+        return 'ignored';
+    }
 
     const inbound = slackInboundEnvelope({
         teamId: String(settings['slack']?.teamId || ''),

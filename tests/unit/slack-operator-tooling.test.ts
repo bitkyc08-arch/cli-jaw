@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { slackChannelScope } from '../../src/slack/scope-status.js';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
@@ -95,7 +96,7 @@ test('doctor --json emits a slack status object with the full ladder', () => {
     const doctor = read('bin/commands/doctor.ts');
     assert.match(doctor, /function buildSlackStatus\(\)/);
     assert.match(doctor, /slack: buildSlackStatus\(\),/, 'the JSON output has no slack member');
-    for (const status of ['missing_bot_token', 'missing_app_token', 'missing_channel_ids']) {
+    for (const status of ['missing_bot_token', 'missing_app_token']) {
         assert.match(doctor, new RegExp(status), `status ladder is missing ${status}`);
     }
     // Shape parity with Discord so JSON consumers can treat channels uniformly.
@@ -103,6 +104,35 @@ test('doctor --json emits a slack status object with the full ladder', () => {
     for (const field of ['enabled', 'channelConsistent', 'runtimeReady', 'degradedReasons']) {
         assert.match(block, new RegExp(field), `buildSlackStatus omits ${field}`);
     }
+});
+
+// An empty allowlist means "every conversation" — the shipped default. doctor
+// used to call that `missing_channel_ids` and degrade on it, which is why it
+// passed during the incident it should have caught: the list had exactly one
+// entry, so it read as configured while every other conversation was dropped
+// (#406). Asserting the judgment rather than the source text, per AGENTS.md.
+test('slackChannelScope reports width instead of treating "all" as missing', () => {
+    assert.deepEqual(slackChannelScope([]), { ids: [], scope: 'all_conversations' });
+    assert.deepEqual(slackChannelScope(undefined), { ids: [], scope: 'all_conversations' });
+    assert.deepEqual(
+        slackChannelScope(['C0BJW306TE3']),
+        { ids: ['C0BJW306TE3'], scope: 'allowlist_1' },
+    );
+    assert.equal(slackChannelScope(['A', 'B', 'C']).scope, 'allowlist_3');
+});
+
+test('doctor no longer degrades on an empty slack allowlist', () => {
+    const doctor = read('bin/commands/doctor.ts');
+    // Scoped to buildSlackStatus on purpose: Discord keeps its own
+    // missing_channel_ids ladder, and whether that judgment is right is a
+    // separate question from #406.
+    const block = doctor.slice(doctor.indexOf('function buildSlackStatus'));
+    assert.doesNotMatch(
+        block,
+        /missing_channel_ids/,
+        'an empty allowlist is "every conversation", not a missing setting',
+    );
+    assert.match(block, /channelScope/, 'buildSlackStatus must expose the allowlist width');
 });
 
 // ─── source-of-truth docs ───────────────────────────

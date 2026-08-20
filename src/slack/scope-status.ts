@@ -115,3 +115,29 @@ export function describeSlackScopeGap(status: SlackScopeStatus): string | null {
     return `Slack app grant is missing ${missing.length} scope(s) — `
         + `${severity}: ${missing.join(', ')} — ${where}`;
 }
+
+// ─── Inbound conversation scope ─────────────────────
+
+export type SlackChannelScope = {
+    ids: string[];
+    scope: 'all_conversations' | `allowlist_${number}`;
+};
+
+/**
+ * How wide the inbound allowlist is, as a value a reporter can print.
+ *
+ * An empty `channelIds` means "every conversation" — the shipped default and a
+ * normal way to run. doctor used to call that state `missing_channel_ids` and
+ * degrade on it, which is why it passed during the incident it should have
+ * caught: the list had exactly one entry, so it read as configured (#406).
+ *
+ * Kept as a pure function so tests can assert the judgment without importing
+ * `bin/commands/doctor.ts`, which runs its whole diagnostic at import time.
+ */
+export function slackChannelScope(channelIds: unknown): SlackChannelScope {
+    const ids = Array.isArray(channelIds) ? channelIds.map(String) : [];
+    return {
+        ids,
+        scope: ids.length === 0 ? 'all_conversations' : `allowlist_${ids.length}`,
+    };
+}
