@@ -911,6 +911,11 @@ function buildSlackStatus() {
         appTokenPresent,
         channelIds,
         channelScope,
+        // Deprecated alias, kept one major version so existing --json consumers
+        // do not break on a silent field removal. It now answers "is the reach
+        // narrowed" as the gate sees it, so a malformed value reads false where
+        // the old raw-array count read true. Prefer channelScope (#406).
+        channelIdsConfigured: channelIds.length > 0,
         channelConsistent,
         runtimeReady: status === 'ok' && channelConsistent,
         // C/G/D conversations only — mpim:history is not in the manifest, so

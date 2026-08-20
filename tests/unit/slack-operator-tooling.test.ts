@@ -133,6 +133,13 @@ test('doctor no longer degrades on an empty slack allowlist', () => {
         'an empty allowlist is "every conversation", not a missing setting',
     );
     assert.match(block, /channelScope/, 'buildSlackStatus must expose the allowlist width');
+    // The old field stays one major version rather than vanishing from a public
+    // --json payload, but it now derives from the same gate reading (#406).
+    assert.match(
+        block,
+        /channelIdsConfigured: channelIds\.length > 0/,
+        'channelIdsConfigured must survive as a derived alias, not be dropped silently',
+    );
 });
 
 // ─── source-of-truth docs ───────────────────────────
@@ -230,4 +237,3 @@ test('the slash command path reads the allowlist through the gate helper', () =>
         'the slash path must not parse the allowlist on its own',
     );
 });
-
