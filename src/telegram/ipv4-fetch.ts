@@ -69,14 +69,25 @@ export function createIpv4Fetch(deps: Ipv4FetchDeps = {}) {
                     : ((headersInit as Record<string, string>) || {}),
             };
             const req = request(opts, (res) => {
-                let data = '';
-                res.on('data', (c: string) => data += c);
-                res.on('end', () => resolve({
-                    ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
-                    status: res.statusCode,
-                    json: () => Promise.resolve(JSON.parse(data)),
-                    text: () => Promise.resolve(data),
-                }));
+                // Collect BYTES and decode once at the end. Concatenating
+                // per-chunk strings decodes each chunk in isolation, so a
+                // multi-byte UTF-8 character split across a chunk boundary is
+                // corrupted into replacement characters — and JSON.parse still
+                // SUCCEEDS on the result, so the damage travels silently into
+                // message text. Telegram payloads are routinely non-ASCII.
+                const chunks: Buffer[] = [];
+                res.on('data', (c: Buffer | string) => {
+                    chunks.push(typeof c === 'string' ? Buffer.from(c, 'utf8') : c);
+                });
+                res.on('end', () => {
+                    const data = Buffer.concat(chunks).toString('utf8');
+                    resolve({
+                        ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
+                        status: res.statusCode,
+                        json: () => Promise.resolve(JSON.parse(data)),
+                        text: () => Promise.resolve(data),
+                    });
+                });
             });
             req.on('error', reject);
             if (signal) {
@@ -93,4 +104,3 @@ export function createIpv4Fetch(deps: Ipv4FetchDeps = {}) {
         });
     };
 }
-
