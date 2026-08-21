@@ -19,6 +19,8 @@ import { hasContextPackaging, prepareContextForBrowser, summarizeContextPack } f
 export const GROK_CONTEXT_PACK_WARNING = 'grok-context-pack-not-recommended: prefer inline prompts plus optional --file uploads for Grok; ChatGPT or Gemini handle context packages more reliably.';
 import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
 import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
+import { classifyComposerInterstitial } from './composer-interstitial.js';
+import { isPageDeathError } from './interstitial.js';
 import type { WebAiFailureStage } from './diagnostics.js';
 import { attachLocalFileLive } from './chatgpt-attachments.js';
 import { captureCopiedResponseText, GROK_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
@@ -140,7 +142,13 @@ export async function grokSend(port: number, input: QuestionEnvelopeInput = {}):
 
     await openFreshGrokChat(page, warnings);
     const composerSel = await findFirstSelector(page, GROK_SELECTORS.composer, 10_000);
-    if (!composerSel) throw new Error('grok composer not visible');
+    if (!composerSel) {
+        // parity2 090 slice 1 (B5/C-12): interstitial re-classification before
+        // the generic composer error.
+        const composerError = new Error('grok composer not visible');
+        const interstitialError = await classifyComposerInterstitial(page, 'grok', composerError);
+        throw interstitialError ?? composerError;
+    }
     const selectedModel = await selectGrokModel(page, input.model);
 
     const assistantCount = await countGrokAssistantMessages(page);
@@ -200,15 +208,16 @@ function localFileInfo(filePath: string): { path: string; basename: string; size
 
 export async function grokPoll(port: number, input: { timeout?: number | string; session?: string; allowCopyMarkdownFallback?: boolean } = {}): Promise<WebAiOutput> {
     const tab = await getActiveTab(port);
-    if (!tab.tab) throw new Error('no active tab');
+    // parity2 090 slice 3 (E-06): typed errors so errorCode/retryHint consumers see them.
+    if (!tab.tab) throw new WebAiError({ errorCode: 'cdp.target-mismatch', stage: 'poll-timeout', vendor: 'grok', retryHint: 'open-grok', message: 'no active tab' });
     const page = await getActivePage(port);
-    if (!page) throw new Error('no active page');
-    if (!isGrokUrl(page.url())) throw new Error(`active tab is not grok.com (${page.url()})`);
+    if (!page) throw new WebAiError({ errorCode: 'cdp.target-mismatch', stage: 'poll-timeout', vendor: 'grok', retryHint: 'open-grok', message: 'no active page' });
+    if (!isGrokUrl(page.url())) throw new WebAiError({ errorCode: 'cdp.target-mismatch', stage: 'poll-timeout', vendor: 'grok', retryHint: 'open-grok', message: `active tab is not grok.com (${page.url()})` });
 
     const session = input.session ? getSession(input.session) : findSessionByTarget('grok', tab.tab.targetId);
     if (session) assertSameTarget(session, tab.tab.targetId);
     const baseline = getBaseline('grok', tab.tab.targetId);
-    if (!baseline) throw new Error('baseline required. Run web-ai send --vendor grok first.');
+    if (!baseline) throw new WebAiError({ errorCode: 'provider.baseline-missing', stage: 'poll-timeout', vendor: 'grok', retryHint: 'send-first', message: 'baseline required. Run web-ai send --vendor grok first.' });
 
     const timeoutMs = Math.max(1, Number(input.timeout || 600)) * 1000;
     // parity2 010 slice 1.1 (C-04): hard bound over the whole poll.
@@ -246,6 +255,8 @@ async function grokPollInner(
     let stableText = '';
     let stableSince = 0;
     while (Date.now() < deadline && !deadlineToken.expired) {
+        // parity2 090 slice 2 (E-03): crashed tab → typed recoverable outcome.
+        try {
         const answers = await readGrokAssistantMessages(page);
         const latest = answers.slice(baseline.assistantCount).at(-1) || '';
         const streaming = await isGrokStreaming(page);
@@ -288,6 +299,24 @@ async function grokPollInner(
             stableSince = 0;
         }
         await page.waitForTimeout(500).catch(() => undefined);
+        } catch (pollErr) {
+            if (isPageDeathError(pollErr)) {
+                if (session) updateSessionStatus(session.sessionId, 'crashed');
+                return {
+                    ok: false,
+                    vendor: 'grok',
+                    status: 'tab-crashed',
+                    url: page.url?.() || '',
+                    baseline,
+                    ...(session ? { sessionId: session.sessionId, next: 'poll' as const } : {}),
+                    usedFallbacks: [],
+                    warnings: ['tab-crashed-during-poll'],
+                    error: String((pollErr as Error)?.message || pollErr),
+                    recoverable: true,
+                } as WebAiOutput;
+            }
+            throw pollErr;
+        }
     }
     if (session) updateSessionStatus(session.sessionId, 'timeout');
     if (session) updateSessionResult({ sessionId: session.sessionId, status: 'timeout', url: page.url(), conversationUrl: page.url() });

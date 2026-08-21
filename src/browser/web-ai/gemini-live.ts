@@ -35,6 +35,9 @@ import { selectGeminiModel } from './gemini-model.js';
 import { geminiCapabilityStatus } from './gemini-capabilities.js';
 import { preflightAttachment } from './chatgpt-attachments.js';
 import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
+import { classifyComposerInterstitial } from './composer-interstitial.js';
+import { WebAiError } from './errors.js';
+import { isPageDeathError } from './interstitial.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
 const GEMINI_UPLOAD_SELECTORS = [
@@ -309,7 +312,13 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
 
     await openFreshGeminiChat(page, warnings);
     const inputSel = await findFirstSelector(page, GEMINI_DEEP_THINK_SELECTORS.input, 10_000);
-    if (!inputSel) throw new Error('gemini composer not visible');
+    if (!inputSel) {
+        // parity2 090 slice 1 (B5/C-12): before throwing the generic composer
+        // error, check whether an interstitial is the real reason.
+        const composerError = new Error('gemini composer not visible');
+        const interstitialError = await classifyComposerInterstitial(page, 'gemini', composerError);
+        throw interstitialError ?? composerError;
+    }
 
     const selectedModel = await selectGeminiModel(page, input.model);
     if (selectedModel) {
@@ -512,13 +521,14 @@ async function dismissBlockingOverlays(page: Page, warnings: string[]): Promise<
 
 export async function geminiPoll(port: number, input: { timeout?: number | string; session?: string; allowCopyMarkdownFallback?: boolean } = {}): Promise<WebAiOutput> {
     const tab = await getActiveTab(port);
-    if (!tab.tab) throw new Error('no active tab');
+    // parity2 090 slice 3 (E-06): typed errors for errorCode/retryHint consumers.
+    if (!tab.tab) throw new WebAiError({ errorCode: 'cdp.target-mismatch', stage: 'poll-timeout', vendor: 'gemini', retryHint: 'open-gemini', message: 'no active tab' });
     const page = await getActivePage(port);
-    if (!page) throw new Error('no active page');
+    if (!page) throw new WebAiError({ errorCode: 'cdp.target-mismatch', stage: 'poll-timeout', vendor: 'gemini', retryHint: 'open-gemini', message: 'no active page' });
     const session = input.session ? getSession(input.session) : findSessionByTarget('gemini', tab.tab.targetId);
     if (session) assertSameTarget(session, tab.tab.targetId);
     const baseline = getBaseline('gemini', tab.tab.targetId);
-    if (!baseline) throw new Error('baseline required. Run web-ai send --vendor gemini first.');
+    if (!baseline) throw new WebAiError({ errorCode: 'provider.baseline-missing', stage: 'poll-timeout', vendor: 'gemini', retryHint: 'send-first', message: 'baseline required. Run web-ai send --vendor gemini first.' });
     const timeoutMs = Math.max(
         GEMINI_DEEP_THINK_CONSTRAINTS.minimumWaitMs,
         Number(input.timeout || 1200) * 1000,
@@ -556,14 +566,28 @@ async function geminiPollInner(
     deadlineToken: PollDeadlineToken,
 ): Promise<WebAiOutput> {
     const deadline = Date.now() + timeoutMs;
-    const completionSel = GEMINI_DEEP_THINK_SELECTORS.completionSignal[0];
-    const responseSel = GEMINI_DEEP_THINK_SELECTORS.responseTurn[0];
+    // parity2 090 slice 2 (E-02): scan ALL selector alternatives — [0]-only
+    // reads break silently when Gemini ships the next DOM variant.
+    const completionSels = GEMINI_DEEP_THINK_SELECTORS.completionSignal;
+    const responseSels = GEMINI_DEEP_THINK_SELECTORS.responseTurn;
     const textSel = GEMINI_DEEP_THINK_SELECTORS.responseText[0];
     while (Date.now() < deadline && !deadlineToken.expired) {
-        const turns = await page.locator(responseSel).count().catch(() => 0);
+        // parity2 090 slice 2 (E-03): a crashed/closed tab surfaces as a typed
+        // recoverable outcome instead of an unhandled throw.
+        try {
+        let responseSel = responseSels[0]!;
+        let turns = 0;
+        for (const sel of responseSels) {
+            const count = await page.locator(sel).count().catch(() => 0);
+            if (count > 0) { responseSel = sel; turns = count; break; }
+        }
         if (turns > baseline.assistantCount) {
             const lastTurn = page.locator(responseSel).nth(turns - 1);
-            const completed = await lastTurn.locator(completionSel).count().catch(() => 0);
+            let completed = 0;
+            for (const sel of completionSels) {
+                completed = await lastTurn.locator(sel).count().catch(() => 0);
+                if (completed > 0) break;
+            }
             if (completed > 0) {
                 const text = await readGeminiResponseText(lastTurn, textSel);
                 if (text && text.trim()) {
@@ -601,6 +625,24 @@ async function geminiPollInner(
             }
         }
         await page.waitForTimeout(2_000).catch(() => undefined);
+        } catch (pollErr) {
+            if (isPageDeathError(pollErr)) {
+                if (session) updateSessionStatus(session.sessionId, 'crashed');
+                return {
+                    ok: false,
+                    vendor: 'gemini',
+                    status: 'tab-crashed',
+                    url: page.url?.() || '',
+                    baseline,
+                    ...(session ? { sessionId: session.sessionId, next: 'poll' as const } : {}),
+                    usedFallbacks: [],
+                    warnings: ['tab-crashed-during-poll'],
+                    error: String((pollErr as Error)?.message || pollErr),
+                    recoverable: true,
+                } as WebAiOutput;
+            }
+            throw pollErr;
+        }
     }
     if (session) updateSessionStatus(session.sessionId, 'timeout');
     if (session) updateSessionResult({ sessionId: session.sessionId, status: 'timeout', url: page.url(), conversationUrl: page.url() });

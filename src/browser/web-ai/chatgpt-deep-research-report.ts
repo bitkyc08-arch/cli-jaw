@@ -40,6 +40,33 @@ export function normalizeDeepResearchReportText(text: unknown): string {
     return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// parity2 090 (D-05, moved from 070): tool-call wrapper markers, incl. Polish.
+const DR_TOOL_CALL_MARKERS = [
+    'called tool',
+    'used tool',
+    'użyto narzędzia',
+    'narzędzie wywołane',
+];
+
+/**
+ * True when the text is a tool-call wrapper placeholder rather than a report.
+ * startsWith, never includes: a genuine report that MENTIONS "called tool"
+ * mid-body is still a report; and the marker must end at a token boundary so
+ * a report titled "Used Tools in Modern Oncology…" is not swallowed.
+ */
+export function looksLikeDeepResearchToolCallCapture(text: unknown): boolean {
+    const answer = normalizeDeepResearchReportText(text)
+        .replace(/^Answer:\s*/i, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    return DR_TOOL_CALL_MARKERS.some((marker) => {
+        if (!answer.startsWith(marker)) return false;
+        const next = answer.charAt(marker.length);
+        return next === '' || !/[\p{L}\p{N}]/u.test(next);
+    });
+}
+
 /**
  * True if the text is an incomplete Deep Research artifact — a planning card,
  * progress/status line, or too short to be a final report. A completed report is
@@ -48,6 +75,7 @@ export function normalizeDeepResearchReportText(text: unknown): string {
 export function isIncompleteDeepResearchText(text: unknown): boolean {
     const norm = normalizeDeepResearchReportText(text);
     if (norm.length < DR_MIN_REPORT_CHARS) return true;
+    if (looksLikeDeepResearchToolCallCapture(norm)) return true;
     const firstLine = (norm.split('\n', 1)[0] ?? '').trim();
     return DR_INCOMPLETE_MARKERS.some((re) => re.test(firstLine));
 }
