@@ -167,14 +167,15 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
         // merges. A PUT carrying {autoJoin:{enabled:false}} must not erase
         // maxJoinsPerRun, and {maxJoinsPerRun:-1} must not reach the runner.
         if (key === 'slack') {
-            const patchAutoJoin = (patchChannel as Record<string, any>)["autoJoin"];
+            const slackPatch = patchChannel as Record<string, unknown>;
+            const patchAutoJoin = slackPatch["autoJoin"];
             // Any mention of the key is repaired, including a malformed one.
             // Testing for a well-formed object would let {autoJoin:null} and
             // {autoJoin:'yes'} through the one-level spread above and survive
             // to disk, where the next boot reads them as "absent" and quietly
             // restores default-on. A patch that names the key gets a valid
             // block or nothing.
-            if ('autoJoin' in (patchChannel as Record<string, any>)) {
+            if ('autoJoin' in slackPatch) {
                 result[key] = {
                     ...result[key],
                     autoJoin: mergeSlackAutoJoin(currentChannel?.["autoJoin"], patchAutoJoin),

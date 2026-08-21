@@ -1107,7 +1107,7 @@ let autoJoinAbort: AbortController | null = null;
  * newer init. Cleanup is identity-guarded: a stale run that finishes late must
  * not clear the controller belonging to the run that superseded it.
  */
-function startSlackAutoJoin(sc: Record<string, any>, generation: number): void {
+function startSlackAutoJoin(sc: Record<string, unknown>, generation: number): void {
     const config = mergeSlackAutoJoin(undefined, sc?.["autoJoin"]);
     if (!config.enabled) return;
     const token = String(sc?.["botToken"] ?? '').trim();
@@ -1128,17 +1128,19 @@ function startSlackAutoJoin(sc: Record<string, any>, generation: number): void {
     }).then(result => {
         if (result.cancelled) return;
         if (result.joined.length || result.failed.length || result.abortedReason) {
-            log.info(`[slack:autojoin] scanned=${result.scanned} joined=${result.joined.length}`
+            log.info(redactOutboundText(
+                `[slack:autojoin] scanned=${result.scanned} joined=${result.joined.length}`
                 + ` skipped=${result.skipped} failed=${result.failed.length}`
                 + (result.budgetExhausted ? ' budget=exhausted' : '')
-                + (result.abortedReason ? ` stopped=${result.abortedReason}` : ''));
+                + (result.abortedReason ? ` stopped=${result.abortedReason}` : ''),
+            ));
         }
         if (result.abortedReason === 'missing_scope') {
             log.warn('[slack:autojoin] channels:join is not granted — add it under'
                 + ' OAuth & Permissions and reinstall the app to auto-join public channels');
         }
     }).catch(err => {
-        log.warn('[slack:autojoin] run failed:', (err as Error)?.message ?? String(err));
+        log.warn('[slack:autojoin] run failed:', logErrorText(err));
     }).finally(() => {
         if (autoJoinAbort === controller) autoJoinAbort = null;
     });

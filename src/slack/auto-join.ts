@@ -14,6 +14,7 @@
 // Design + audit history: devlog/_plan/260821_260821-slack-channel-reach/010.
 
 import { log } from '../core/logger.js';
+import { redactChannelSecrets } from '../messaging/redact.js';
 import {
     listSlackConversations,
     joinSlackConversation,
@@ -252,7 +253,7 @@ export async function runSlackAutoJoin(opts: SlackAutoJoinOptions): Promise<Slac
             if (!FATAL_ERRORS.has(page.error)) {
                 result.failed.push({ id: 'conversations.list', error: page.error });
             }
-            log.warn('[slack:autojoin] conversations.list failed: ' + page.error);
+            log.warn(redactChannelSecrets('[slack:autojoin] conversations.list failed: ' + page.error));
             return result;
         }
 
@@ -297,7 +298,7 @@ export async function runSlackAutoJoin(opts: SlackAutoJoinOptions): Promise<Slac
             }
             if (FATAL_ERRORS.has(joined.error)) {
                 result.abortedReason = joined.error;
-                log.warn('[slack:autojoin] stopping: ' + joined.error);
+                log.warn(redactChannelSecrets('[slack:autojoin] stopping: ' + joined.error));
                 return result;
             }
             // A channel-scoped refusal is normal (archived, converted to
@@ -309,8 +310,8 @@ export async function runSlackAutoJoin(opts: SlackAutoJoinOptions): Promise<Slac
                 if (consecutiveNoPermission >= MAX_CONSECUTIVE_NO_PERMISSION) {
                     result.abortedReason = joined.error;
                     result.failed.push({ id, error: joined.error });
-                    log.warn('[slack:autojoin] stopping after ' + consecutiveNoPermission
-                        + ' consecutive ' + joined.error + ' — workspace policy refuses joins');
+                    log.warn(redactChannelSecrets('[slack:autojoin] stopping after ' + consecutiveNoPermission
+                        + ' consecutive ' + joined.error + ' — workspace policy refuses joins'));
                     return result;
                 }
             } else {

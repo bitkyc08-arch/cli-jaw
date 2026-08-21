@@ -8,6 +8,14 @@
 > (`applyEnvOverrides`, `migrateSettings`, `saveSettings`). Narrowing it is a
 > config-module-wide change, not a one-signature fix, so the counter moves and
 > the narrowing stays a separate unit of work.
+> Raised 2026-08-21 to 103 (`allow` 4 -> 13) for the ACK-reaction / queue-notice
+> cycle that landed on `dev` between `7333106c` and `f9169b75`. Those commits were
+> never measured: `dev` pushes run no CI (`test.yml` reacts to `preview`/`main`
+> push and `pull_request` only), so the drift surfaced on the first PR opened
+> afterwards — #419, which is unrelated to it. Verified by checking out each
+> commit in that range and re-running the scanner: every one already reported
+> 103/0/13 while this file still said 100/0/4. Recorded rather than silently
+> absorbed; narrowing those signatures is its own unit of work.
 > AST-aware counts via `scripts/check-strict-baseline.mjs`.
 >
 > When a phase intentionally lowers a counter, update this file in the same PR.
@@ -22,7 +30,7 @@
 
 | dir | any | debt | allow |
 |-----|----:|-----:|------:|
-| src | 100 | 0 | 4 |
+| src | 103 | 0 | 13 |
 | bin | 0 | 0 | 0 |
 | lib | 0 | 0 | 0 |
 | public/js | 0 | 0 | 0 |
