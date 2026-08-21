@@ -62,11 +62,24 @@ async function readLatestAssistant(page: Page): Promise<string> {
     return last.innerText().catch(() => '');
 }
 
-async function isStreaming(page: Page): Promise<boolean> {
+/**
+ * parity2 070 slice D-04: tri-state stop probe — an unreadable probe is
+ * 'unknown', not "not streaming"; extraction requires a POSITIVE 'absent'.
+ */
+async function probeStopState(page: Page): Promise<'visible' | 'absent' | 'unknown'> {
+    let anyUninspected = false;
     for (const sel of STOP_SELECTORS) {
-        if (await page.locator(sel).first().isVisible().catch(() => false)) return true;
+        try {
+            if (await page.locator(sel).first().isVisible()) return 'visible';
+        } catch {
+            anyUninspected = true;
+        }
     }
-    return false;
+    return anyUninspected ? 'unknown' : 'absent';
+}
+
+async function isStreaming(page: Page): Promise<boolean> {
+    return (await probeStopState(page)) === 'visible';
 }
 
 async function hasProgressIndicator(page: Page): Promise<boolean> {
@@ -163,13 +176,18 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
     const { prompt, session, timeoutMs = 1_200_000, skipModeActivation = false } = opts;
     const warnings: string[] = [];
 
+    // parity2 070 slice C-03: persist the DR marker — chatgpt-archive's DR guard
+    // reads session.researchMode === 'deep' but nothing ever wrote it.
+    updateSessionResult({ sessionId: session.sessionId, status: session.status, researchMode: 'deep' });
+
     const modeActivated = skipModeActivation ? true : await activateDeepResearchMode(page);
     if (!modeActivated) {
         warnings.push('deep-research-mode-button-not-found-using-prompt-prefix');
     }
 
     if (await isAccountBlocked(page)) {
-        updateSessionStatus(session.sessionId, 'error');
+        // parity2 070 slice C-04: an account block is 'blocked', not a generic error.
+        updateSessionStatus(session.sessionId, 'blocked');
         return {
             ok: false,
             sessionId: session.sessionId,
@@ -209,7 +227,7 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
     const blockCheckDeadline = Date.now() + 15_000;
     while (Date.now() < blockCheckDeadline) {
         if (await isAccountBlocked(page)) {
-            updateSessionStatus(session.sessionId, 'error');
+            updateSessionStatus(session.sessionId, 'blocked');
             return {
                 ok: false,
                 sessionId: session.sessionId,
@@ -225,7 +243,6 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
         if (progress) researchActivityObserved = true;
         const streaming = await isStreaming(page);
         if (count > baselineCount || streaming || progress) {
-            if (streaming) researchActivityObserved = true;
             break;
         }
         await page.waitForTimeout(500);
@@ -238,12 +255,17 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
     while (Date.now() < deadline) {
         await page.waitForTimeout(2000);
 
-        const streaming = await isStreaming(page);
+        const stopState = await probeStopState(page);
         const progress = await hasProgressIndicator(page);
-        if (progress || streaming) researchActivityObserved = true;
+        // parity2 070 slice D-03: only PROGRESS-INDICATOR evidence counts as
+        // research activity. A normal streaming reply would otherwise defeat
+        // the deep-research-not-started gate and get returned as a "report".
+        if (progress) researchActivityObserved = true;
         const count = await countAssistants(page);
 
-        if (count > baselineCount && !streaming && !progress) {
+        // parity2 070 slice D-04: extraction requires POSITIVE stop-absent
+        // evidence — an unreadable probe must not extract a mid-generation report.
+        if (count > baselineCount && stopState === 'absent' && !progress) {
             const latest = (await readLatestAssistant(page)).trim();
             if (latest) {
                 if (latest === stableText) {

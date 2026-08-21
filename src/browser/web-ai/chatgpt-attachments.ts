@@ -8,6 +8,7 @@
  */
 
 import type { Page } from 'playwright-core';
+import { computeAttachmentTimeouts, setInputFilesResilient } from './chatgpt-upload-surface.js';
 
 export type AttachmentPolicyName = 'inline-only' | 'upload' | 'auto';
 
@@ -36,8 +37,14 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.he
 const SPREADSHEET_EXTENSIONS = new Set(['.csv', '.tsv', '.xls', '.xlsx']);
 
 // 104.12: uploads delay send-button enablement, so widen the resolved/scan click window when files are attached.
-export function sendButtonTimeoutMs(fileNames: readonly unknown[] = []): number {
-    return Array.isArray(fileNames) && fileNames.length > 0 ? 45_000 : 20_000;
+export function sendButtonTimeoutMs(fileNames: readonly unknown[] = [], totalSizeBytes = 0): number {
+    if (!Array.isArray(fileNames) || fileNames.length === 0) return 20_000;
+    // parity2 060 slices A-03/A-05 (agbrowse :216-219): size-aware — a large
+    // upload legitimately keeps the send button disabled longer than 45s.
+    const bytes = Number(totalSizeBytes) || 0;
+    const UPLOAD_RATE_BYTES_PER_SEC = 1_000_000; // conservative 1MB/s
+    const sizeMs = Math.ceil(bytes / UPLOAD_RATE_BYTES_PER_SEC) * 1000;
+    return Math.max(45_000, 45_000 + sizeMs);
 }
 
 export function preflightAttachment(file: { path: string; sizeBytes: number; basename: string }): AttachmentPreflightResult {
@@ -242,7 +249,22 @@ export async function attachLocalFileLive(
         };
     }
     try {
-        await page.locator(inputSel).first().setInputFiles(file.path, { timeout: 8_000 });
+        // parity2 060 slices A-05/C-11: 50MB-safe CDP-first injection with
+        // size-aware handoff budget.
+        const budgets = computeAttachmentTimeouts([file]);
+        const injected = await setInputFilesResilient(page, inputSel, file.path, {
+            timeoutMs: budgets.handoffMs,
+            totalBytes: budgets.totalBytes,
+            usedFallbacks,
+        });
+        if (!injected.ok) {
+            return {
+                ok: false,
+                stage: 'attachment-upload',
+                error: injected.error,
+                usedFallbacks,
+            };
+        }
     } catch (e) {
         usedFallbacks.push(`setInputFiles-failed:${(e as Error).message}`);
         return {
@@ -253,7 +275,8 @@ export async function attachLocalFileLive(
         };
     }
     // Wait for visible chip evidence (input-only success forbidden) — verify the SPECIFIC file (104.13).
-    const accepted = await waitForAttachmentAcceptedLive(page, { timeoutMs: 30_000, fileNames: [file.basename] });
+    // parity2 060: acceptance window scales with file size.
+    const accepted = await waitForAttachmentAcceptedLive(page, { timeoutMs: computeAttachmentTimeouts([file]).acceptanceMs, fileNames: [file.basename] });
     if (!accepted.ok) {
         return accepted;
     }

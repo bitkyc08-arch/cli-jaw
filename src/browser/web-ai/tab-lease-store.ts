@@ -125,24 +125,36 @@ function poolTtlMs(): number {
     return parseDuration(process.env["JAW_BROWSER_PROVIDER_POOL_TTL"] || process.env["AGBROWSE_PROVIDER_POOL_TTL"] || '15m');
 }
 
+/**
+ * parity2 010 slice 1.4 (C-23, mirrors agbrowse tab-lease-store.mjs cdf93ce):
+ * provider-limit envs accept ONLY plain decimal integers. `Number(...)` was too
+ * permissive — it admitted '1e3', '0x10', '  12  ', and Infinity-adjacent
+ * garbage — while genuinely malformed values silently became the default with
+ * no grammar at all. Digits-only, safe-integer, with an allowZero option.
+ */
+export function parseProviderLimitEnv(value: string | undefined, fallback: number, options: { allowZero?: boolean } = {}): number {
+    const text = String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) return fallback;
+    const parsed = Number(text);
+    if (!Number.isFinite(parsed) || !Number.isSafeInteger(parsed)) return fallback;
+    if (options.allowZero ? parsed < 0 : parsed <= 0) return fallback;
+    return parsed;
+}
+
 function poolMaxPerKey(): number {
-    const parsed = Number(process.env["JAW_BROWSER_PROVIDER_POOL_MAX_PER_KEY"] || process.env["AGBROWSE_PROVIDER_POOL_MAX_PER_KEY"] || DEFAULT_POOL_MAX_PER_KEY);
-    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_POOL_MAX_PER_KEY;
+    return parseProviderLimitEnv(process.env["JAW_BROWSER_PROVIDER_POOL_MAX_PER_KEY"] || process.env["AGBROWSE_PROVIDER_POOL_MAX_PER_KEY"], DEFAULT_POOL_MAX_PER_KEY, { allowZero: true });
 }
 
 function poolGlobalMax(): number {
-    const parsed = Number(process.env["JAW_BROWSER_PROVIDER_POOL_GLOBAL_MAX"] || process.env["AGBROWSE_PROVIDER_POOL_GLOBAL_MAX"] || DEFAULT_POOL_GLOBAL_MAX);
-    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_POOL_GLOBAL_MAX;
+    return parseProviderLimitEnv(process.env["JAW_BROWSER_PROVIDER_POOL_GLOBAL_MAX"] || process.env["AGBROWSE_PROVIDER_POOL_GLOBAL_MAX"], DEFAULT_POOL_GLOBAL_MAX, { allowZero: true });
 }
 
 function activeMaxPerKey(): number {
-    const parsed = Number(process.env["JAW_BROWSER_PROVIDER_ACTIVE_MAX_PER_KEY"] || process.env["AGBROWSE_PROVIDER_ACTIVE_MAX_PER_KEY"] || DEFAULT_ACTIVE_MAX_PER_KEY);
-    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_ACTIVE_MAX_PER_KEY;
+    return parseProviderLimitEnv(process.env["JAW_BROWSER_PROVIDER_ACTIVE_MAX_PER_KEY"] || process.env["AGBROWSE_PROVIDER_ACTIVE_MAX_PER_KEY"], DEFAULT_ACTIVE_MAX_PER_KEY);
 }
 
 function activeGlobalMax(): number {
-    const parsed = Number(process.env["JAW_BROWSER_PROVIDER_ACTIVE_GLOBAL_MAX"] || process.env["AGBROWSE_PROVIDER_ACTIVE_GLOBAL_MAX"] || DEFAULT_ACTIVE_GLOBAL_MAX);
-    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_ACTIVE_GLOBAL_MAX;
+    return parseProviderLimitEnv(process.env["JAW_BROWSER_PROVIDER_ACTIVE_GLOBAL_MAX"] || process.env["AGBROWSE_PROVIDER_ACTIVE_GLOBAL_MAX"], DEFAULT_ACTIVE_GLOBAL_MAX);
 }
 
 /**

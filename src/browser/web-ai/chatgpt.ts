@@ -32,6 +32,7 @@ import {
 } from './session.js';
 import { captureAssistantResponse } from './chatgpt-response.js';
 import { saveAssistantDownloadableFiles } from './chatgpt-files.js';
+import { collectImages } from './chatgpt-images.js';
 import { resolveTimeoutDefaultSec } from './tier-timeout.js';
 import { selectChatGptModel } from './chatgpt-model.js';
 import { withAnswerArtifact } from './answer-artifact.js';
@@ -53,6 +54,11 @@ import { detectInterstitial, isPageDeathError } from './interstitial.js';
 import { selectChatGptComposerTools } from './chatgpt-tools.js';
 import { sendDeepResearch } from './chatgpt-deep-research.js';
 import { sendMultiTurn } from './chatgpt-multi-turn.js';
+import { withPollDeadline } from './poll-deadline.js';
+import { probeTabAlive, isSafeChatGptConversationUrl } from './tab-recovery.js';
+import { probeCdpLiveness } from './cdp-liveness.js';
+import { detectChatGptComposerSurface } from './product-surfaces.js';
+import { withActiveCommand } from './active-command-store.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -193,9 +199,19 @@ async function withSessionPage<T>(port: number, sessionId: string, fn: (ctx: Ses
     async function resolvePage(forceRecover = false) {
         const current = getSession(sessionId);
         if (!current) throw new Error(`Session not found: ${sessionId}`);
-        const alive = current.targetId ? !!(await getPageByTargetId(port, current.targetId).catch(() => null)) : false;
-        if (!alive || forceRecover) {
-            const tab = await createTab(port, current.conversationUrl || current.url || 'https://chatgpt.com', { activate: false });
+        // parity2 020 slice 2.3 (B3/C-10): a probe failure is NOT death. The old
+        // catch(() => null) treated any transient CDP error as a dead tab and
+        // immediately rebound the session to a fresh one, abandoning a live
+        // conversation. Liveness is tri-state and UNKNOWN fails closed.
+        const liveness = await probeTabAlive(port, current.targetId);
+        if (liveness === 'unknown' && !forceRecover) {
+            throw new Error(`Session ${sessionId} tab liveness could not be verified (targetId ${current.targetId}); refusing to replace a possibly-live tab. Error: tab.liveness-unverified`);
+        }
+        if (liveness === 'dead' || forceRecover) {
+            const recoveryUrl = isSafeChatGptConversationUrl(current.conversationUrl)
+                ? (current.conversationUrl as string)
+                : 'https://chatgpt.com';
+            const tab = await createTab(port, recoveryUrl, { activate: false });
             const page = await waitForPageByTargetId(port, tab.targetId);
             updateSessionResult({ sessionId, status: current.status, tabState: { createdAt: current.tabState?.createdAt || new Date().toISOString(), lastActiveAt: new Date().toISOString(), recoveryCount: (current.tabState?.recoveryCount || 0) + 1, closeCount: current.tabState?.closeCount || 0 } });
             const recovered = getSession(sessionId);
@@ -249,6 +265,36 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             evidence: interstitial,
         });
     }
+    // parity2 080 slice 8a (C-03): Work/Chat surface preflight, fail-closed.
+    // On a Work-enabled account a chat prompt would otherwise silently land in
+    // the Work surface (whose submit/poll semantics differ — port pending, 8b).
+    // parity2 110 (final-audit F6): a THROWN probe must not silently skip a gate
+    // advertised as fail-closed — record the degradation so it is observable.
+    let surfaceProbeFailed: string | null = null;
+    const surfaceDetection = await detectChatGptComposerSurface(page).catch((err: unknown) => {
+        surfaceProbeFailed = String((err as Error)?.message || err);
+        return null;
+    });
+    if (surfaceDetection?.surface === 'ambiguous') {
+        throw new WebAiError({
+            errorCode: 'provider.surface-ambiguous',
+            stage: 'provider-surface',
+            vendor: 'chatgpt',
+            retryHint: 'retry',
+            message: 'ChatGPT Chat/Work surface state is ambiguous; refusing to send rather than guessing the surface',
+            evidence: surfaceDetection.evidence as unknown as Record<string, unknown>,
+        });
+    }
+    if (surfaceDetection?.surface === 'work') {
+        throw new WebAiError({
+            errorCode: 'provider.work-surface-unsupported',
+            stage: 'provider-surface',
+            vendor: 'chatgpt',
+            retryHint: 'open-chat',
+            message: 'the composer is on the ChatGPT Work surface; the generic chat send cannot drive it — switch to Chat, or use the Work primitives (chatgpt-work-picker: ensureWorkSurface/setWorkPower/submitWorkPrompt)',
+            evidence: surfaceDetection.evidence as unknown as Record<string, unknown>,
+        });
+    }
     const contextPack = await prepareContextForBrowser(input);
     const rendered = contextPack
         ? contextPack.transport === 'inline'
@@ -269,7 +315,19 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         }).catch(() => null)
         : null;
     await waitForStableAssistantCount(page);
-    const assistantCount = await countAssistantMessages(page);
+    // parity2 060 slice A-02: a failed baseline read must abort the send
+    // PRE-MUTATION — a 0-count baseline poisons every later poll.
+    const assistantCountOrNull = await countAssistantMessagesOrNull(page);
+    if (assistantCountOrNull === null) {
+        throw new WebAiError({
+            errorCode: 'provider.baseline-unverified',
+            stage: 'send-baseline',
+            vendor: 'chatgpt',
+            retryHint: 'retry',
+            message: 'assistant baseline could not be read; refusing to send (a 0 baseline would re-admit the whole conversation as new)',
+        });
+    }
+    const assistantCount = assistantCountOrNull;
     const baseline = saveBaseline({
         vendor: envelope.vendor,
         targetId,
@@ -316,6 +374,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     };
     const adapter = createChatGptEditorAdapter(page, editorOptions);
     const attachmentWarnings: string[] = [];
+    if (surfaceProbeFailed) attachmentWarnings.push(`surface-probe-failed:${surfaceProbeFailed}`);
     const usedFallbacks: string[] = [];
     try {
         const composerTarget = await resolveTargetForIntent(page, {
@@ -364,17 +423,43 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         }
         // 104.12: hand the resolved send target + upload-aware timeout to the submit path.
         const sendSelector = sendTarget.ok ? sendTarget.target?.selector : null;
-        await liveAdapter.submitPrompt({
+        const totalUploadBytes = uploadPaths.reduce((total, p) => total + (localFileInfo(p).sizeBytes || 0), 0);
+        const submitResult = await liveAdapter.submitPrompt({
             ...(sendSelector ? { sendTarget: { selector: sendSelector, resolution: sendTarget.resolutionSource } } : {}),
-            sendButtonTimeoutMs: sendButtonTimeoutMs(uploadPaths),
+            sendButtonTimeoutMs: sendButtonTimeoutMs(uploadPaths, totalUploadBytes),
+            // parity2 060 slice A-03: never Enter-submit while uploads pend.
+            requireEnabledSendButton: uploadPaths.length > 0,
         });
+        if (submitResult.failure === 'send-button-disabled') {
+            throw new WebAiError({
+                errorCode: 'provider.send-click',
+                stage: 'send-click',
+                vendor: 'chatgpt',
+                retryHint: 'retry-send',
+                message: 'send button never became enabled while attachments were pending',
+            });
+        }
         await liveAdapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
         for (const uploadPath of uploadPaths) {
             // eslint-disable-next-line no-await-in-loop -- evidence follows upload order.
             const sentAttachment = await verifySentTurnAttachmentLive(page, localFileInfo(uploadPath));
             if (!sentAttachment.ok) {
-                usedFallbacks.push('sent-attachment-evidence-unavailable');
-                attachmentWarnings.push(`sent attachment evidence unavailable after submit: ${sentAttachment.error}`);
+                // parity2 060 slice A-04: a missing sent-attachment chip is a
+                // FAILURE by default (the model answers without the file);
+                // JAW_SENT_ATTACHMENT_POLICY=warn restores the old warning.
+                if (String(process.env['JAW_SENT_ATTACHMENT_POLICY'] || '').toLowerCase() === 'warn') {
+                    usedFallbacks.push('sent-attachment-evidence-unavailable');
+                    attachmentWarnings.push(`sent attachment evidence unavailable after submit: ${sentAttachment.error}`);
+                } else {
+                    throw new WebAiError({
+                        errorCode: 'provider.sent-attachment-missing',
+                        stage: 'send-verify',
+                        vendor: 'chatgpt',
+                        retryHint: 'retry-send',
+                        message: `sent attachment not verified in the committed turn: ${sentAttachment.error}`,
+                        evidence: { uploadPath },
+                    });
+                }
             }
         }
         updateSessionStatus(session.sessionId, 'streaming');
@@ -500,6 +585,10 @@ export async function poll(port: number, input: {
         : session?.timeoutMs ? session.timeoutMs / 1000
         : resolveTimeoutDefaultSec({}, vendor);
     const timeoutMs = timeoutSec * 1000;
+    // parity2 040 slice 4.3 (C-06): the finalizer's side-effect phases re-check
+    // this bound so a losing run cannot write/pool after the caller timed out.
+    const pollDeadlineAt = Date.now() + timeoutMs;
+    const pollStillActive = () => Date.now() < pollDeadlineAt;
     // 104.18: per-tick conversation-drift guard. baseline.url is the chat we committed to; if the
     // held page later sits on a *different* /c/<id>, we're polling the wrong thread. The expected
     // fresh-chat none→id transition is NOT flagged (it only fires when both ids exist and differ).
@@ -509,15 +598,45 @@ export async function poll(port: number, input: {
         if (baselineConvoId && currentConvoId && baselineConvoId !== currentConvoId) {
             return `conversation changed: ${baselineConvoId} → ${currentConvoId}`;
         }
+        // parity2 050 slice B-02: per-tick target-identity verification. The
+        // single upfront assertSameTarget said nothing about later ticks — a
+        // tab swap mid-poll rebinds the read to the wrong target. Probe the
+        // out-of-band target list; a MISMATCH bails, an unreadable probe does
+        // not (drift bail-out must be positive evidence).
+        if (session?.targetId) {
+            const liveness = await probeCdpLiveness({ port, targetId: session.targetId }).catch(() => null);
+            if (liveness && liveness.endpointReachable && liveness.targetFound === false) {
+                return `session target ${session.targetId} no longer exists`;
+            }
+        }
         return null;
     };
-    const result = await captureAssistantResponse(page, {
+    // parity2 110 fix (final-audit F2): the long-running poll registers itself
+    // in the cross-process active-command store so tab cleanup in OTHER
+    // processes cannot reclaim this tab mid-poll. Best-effort: a store failure
+    // must not block the poll (it degrades to the old unprotected behavior,
+    // observed via the warning).
+    let result: Awaited<ReturnType<typeof captureAssistantResponse>>;
+    const captureArgs = {
         minTurnIndex: baseline.assistantCount,
         timeoutMs,
         promptText: '',
         allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
         driftCheck,
-    });
+    };
+    try {
+        result = await withActiveCommand(
+            { command: 'web-ai-poll', owner: 'cli-jaw', targetId, ...(session ? { sessionId: session.sessionId } : {}), ttlMs: timeoutMs + 60_000 },
+            () => captureAssistantResponse(page, captureArgs),
+        );
+    } catch (err) {
+        if ((err as { code?: string })?.code === 'active-command.store-unavailable' || (err as { code?: string })?.code === 'active-command.target-owned') {
+            result = await captureAssistantResponse(page, captureArgs);
+            result.warnings.push(`active-command-unprotected:${(err as { code?: string }).code}`);
+        } else {
+            throw err;
+        }
+    }
     // 104.18: surface a per-tick drift/crash bail-out as a typed, (for crashes) recoverable outcome.
     if (result.drift) {
         if (session) updateSessionStatus(session.sessionId, result.drift.status === 'tab-crashed' ? 'crashed' : session.status);
@@ -555,6 +674,19 @@ export async function poll(port: number, input: {
                     { sessionId: session.sessionId, baselineAssistantCount: baseline.assistantCount },
                 );
                 if (fileResult.warnings.length) result.warnings.push(...fileResult.warnings);
+                // parity2 050 slice B-06: generated-image capture was ported
+                // (chatgpt-images.ts collectImages) but never invoked — wire it
+                // into the same post-completion artifact pass. Best-effort:
+                // failures become warnings, never a thrown error.
+                try {
+                    const imageResult = await collectImages(
+                        fileCdp as unknown as Parameters<typeof collectImages>[0],
+                        { sessionId: session.sessionId, baselineAssistantCount: baseline.assistantCount },
+                    );
+                    if (imageResult.warnings?.length) result.warnings.push(...imageResult.warnings);
+                } catch (err) {
+                    result.warnings.push(`image-capture-failed:${(err as Error)?.message || 'unknown'}`);
+                }
             } catch (err) {
                 result.warnings.push(`file-artifact-capture-failed:${(err as Error)?.message || 'unknown'}`);
             } finally {
@@ -564,7 +696,7 @@ export async function poll(port: number, input: {
     }
     if (result.canvas) {
         if (session) {
-            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
+            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '', stillActive: pollStillActive });
         }
         const output = decorateCompletedOutput(stripUndefined({
             ok: true,
@@ -590,7 +722,7 @@ export async function poll(port: number, input: {
     }
     if (result.ok) {
         if (session) {
-            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
+            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '', stillActive: pollStillActive });
         }
         const output = decorateCompletedOutput(stripUndefined({
             ok: true,
@@ -896,12 +1028,13 @@ export async function stop(port: number, input: { vendor?: string; session?: str
     return { ok: true, vendor: 'chatgpt', status: 'blocked', url: currentUrl, warnings: ['sent Escape to stop generation'] };
 }
 
-export async function diagnose(port: number, input: { vendor?: string; stage?: string } = {}): Promise<{ ok: boolean; diagnostics?: ReturnType<typeof toJsonDiagnostics> }> {
+export async function diagnose(port: number, input: { vendor?: string; stage?: string; session?: string } = {}): Promise<{ ok: boolean; diagnostics?: ReturnType<typeof toJsonDiagnostics> }> {
     const vendor = parseVendor(input.vendor);
     const stage = (input.stage as WebAiFailureStage) || 'unknown';
     const page = await requireActivePage(port).catch(() => null);
     if (!page) return { ok: false };
-    const diagnostics = await captureWebAiDiagnostics({ stage, page });
+    // parity2 110 fix (F1): an explicit session persists the bundle as an artifact.
+    const diagnostics = await captureWebAiDiagnostics({ stage, page, ...(input.session ? { sessionId: String(input.session) } : {}) });
     return { ok: true, diagnostics: toJsonDiagnostics({ ...diagnostics, vendor }) };
 }
 
@@ -986,18 +1119,61 @@ async function countAssistantMessages(page: Page): Promise<number> {
     return (await readAssistantMessages(page)).length;
 }
 
-async function waitForStableAssistantCount(page: Page, timeoutMs = 8_000): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    let previous = -1;
-    let stableReads = 0;
-    while (Date.now() < deadline) {
-        const count = await countAssistantMessages(page).catch(() => 0);
-        if (count === previous) stableReads++;
-        else stableReads = 0;
-        previous = count;
-        if (stableReads >= 2) return;
-        await page.waitForTimeout(500).catch(() => undefined);
+/**
+ * parity2 060 slice A-02: baseline counter with NULL semantics. A failed read
+ * is NOT zero — recording 0 re-admits the whole conversation as "new" on every
+ * later poll. The send path must throw pre-mutation instead.
+ */
+async function countAssistantMessagesOrNull(page: Page): Promise<number | null> {
+    const evaluated = await page.evaluate?.((selectors: readonly string[]) => {
+        for (const selector of selectors) {
+            const texts = Array.from(document.querySelectorAll(selector))
+                .map((el: TextNodeLike) => String(el.innerText || el.textContent || '').trim())
+                .filter(Boolean);
+            if (texts.length) return texts;
+        }
+        return [];
+    }, ASSISTANT_SELECTORS).catch(() => null);
+    if (evaluated === null) {
+        // evaluate failed — try the locator path, but report null on failure
+        // rather than an empty success.
+        try {
+            const messages: string[] = [];
+            for (const selector of ASSISTANT_SELECTORS) {
+                const locators = await page.locator(selector).all();
+                for (const locator of locators) {
+                    const text = cleanAssistantText(await locator.innerText().catch(() => ''));
+                    if (text) messages.push(text);
+                }
+                if (messages.length > 0) break;
+            }
+            return messages.length;
+        } catch {
+            return null;
+        }
     }
+    return evaluated.map(cleanAssistantText).filter(Boolean).length;
+}
+
+async function waitForStableAssistantCount(page: Page, timeoutMs = 8_000): Promise<void> {
+    // parity2 010 slice 1.1 (C-04): hard-bounded — a stalled readAssistantMessages
+    // evaluate would otherwise hold this helper past its budget.
+    await withPollDeadline<void>(
+        async (_hardDeadline, token) => {
+            const deadline = Date.now() + timeoutMs;
+            let previous = -1;
+            let stableReads = 0;
+            while (Date.now() < deadline && !token.expired) {
+                const count = await countAssistantMessages(page).catch(() => 0);
+                if (count === previous) stableReads++;
+                else stableReads = 0;
+                previous = count;
+                if (stableReads >= 2) return;
+                await page.waitForTimeout(500).catch(() => undefined);
+            }
+        },
+        { timeoutMs, onExpired: () => undefined },
+    );
 }
 
 async function readAssistantMessages(page: Page): Promise<string[]> {

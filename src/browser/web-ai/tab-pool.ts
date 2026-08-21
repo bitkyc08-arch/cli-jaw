@@ -7,6 +7,7 @@ import {
     type LeaseScopeInput,
 } from './tab-lease-store.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
+import { activeCommandTargetIds } from './active-command-store.js';
 import type { WebAiVendor } from './types.js';
 
 export interface PoolTabOptions extends Partial<LeaseScopeInput> {
@@ -61,7 +62,12 @@ export async function unpoolTab(vendor: WebAiVendor, targetId: string | null | u
 }
 
 export async function cleanupPoolTabs(port: number): Promise<{ closed: number; closedTabs: string[] }> {
-    return cleanupLeasedTabs(port);
+    // parity2 100 (B8): tabs owned by RUNNING cross-process commands are
+    // protected from reclamation — the seat existed but nothing filled it.
+    // parity2 110 fix (F2): a corrupt/unreadable command store must not
+    // silently unprotect running tabs — refuse the cleanup instead.
+    const protectedIds = await activeCommandTargetIds();
+    return cleanupLeasedTabs(port, { activeCommandTargetIds: protectedIds });
 }
 
 export async function getPoolStats(): Promise<Record<string, number>> {

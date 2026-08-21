@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JAW_HOME } from '../../core/config.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
+import { isDurableConversationUrl } from './conversation-url.js';
 import type {
     CommittedTurnBaseline,
     QuestionEnvelope,
@@ -255,6 +256,8 @@ export function updateSessionResult(input: {
     turns?: import('./types.js').WebAiTurnRecord[];
     followUpCount?: number;
     modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
+    // parity2 070 slice C-03: DR marker consumed by chatgpt-archive's guard + resume routing.
+    researchMode?: string | null;
 }): WebAiSessionRecord | null {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
@@ -271,6 +274,7 @@ export function updateSessionResult(input: {
     if (input.turns !== undefined) record.turns = input.turns;
     if (input.followUpCount !== undefined) record.followUpCount = input.followUpCount;
     if (input.modelSelection !== undefined) record.modelSelection = input.modelSelection;
+    if (input.researchMode !== undefined) record.researchMode = input.researchMode;
     if (input.answerText !== undefined) {
         record.answerText = input.answerText;
         record.lastSeenTextHash = createHash('sha256').update(input.answerText).digest('hex');
@@ -375,8 +379,11 @@ export function pruneSessions(input: {
 export function discoverConversationUrl(sessionId: string, candidateUrl: string): boolean {
     const session = getSession(sessionId);
     if (!session) return false;
-    const hasConvoId = /\/c\/[a-f0-9-]+/i.test(candidateUrl);
-    const currentIsRoot = !session.conversationUrl || !session.conversationUrl.includes('/c/');
+    // parity2 020 slice 2.1 (B4/C-10): substring '/c/' admitted foreign hosts,
+    // http, ports, and traversal strings — and recovery later NAVIGATES to the
+    // stored value. Only a durable-safe URL may be persisted.
+    const hasConvoId = isDurableConversationUrl(candidateUrl);
+    const currentIsRoot = !isDurableConversationUrl(session.conversationUrl);
     if (hasConvoId && currentIsRoot) {
         updateSessionResult({ sessionId, status: session.status, conversationUrl: candidateUrl });
         return true;
