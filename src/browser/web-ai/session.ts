@@ -256,6 +256,8 @@ export function updateSessionResult(input: {
     turns?: import('./types.js').WebAiTurnRecord[];
     followUpCount?: number;
     modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
+    // parity2 070 slice C-03: DR marker consumed by chatgpt-archive's guard + resume routing.
+    researchMode?: string | null;
 }): WebAiSessionRecord | null {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
@@ -272,6 +274,7 @@ export function updateSessionResult(input: {
     if (input.turns !== undefined) record.turns = input.turns;
     if (input.followUpCount !== undefined) record.followUpCount = input.followUpCount;
     if (input.modelSelection !== undefined) record.modelSelection = input.modelSelection;
+    if (input.researchMode !== undefined) record.researchMode = input.researchMode;
     if (input.answerText !== undefined) {
         record.answerText = input.answerText;
         record.lastSeenTextHash = createHash('sha256').update(input.answerText).digest('hex');
