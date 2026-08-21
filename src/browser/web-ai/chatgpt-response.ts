@@ -152,7 +152,12 @@ async function captureAssistantResponseInner(page: Page, options: CaptureOptions
     const transcript = new ActionTranscript();
     const resolverTrace = createTraceContext('chatgpt-response');
     const pollIntervalMs = Math.max(100, options.pollIntervalMs ?? 500);
-    const deadline = Date.now() + Math.max(1000, options.timeoutMs);
+    // The post-loop tiers (copy fallback, 3rd-tier recovery) must run INSIDE the
+    // outer hard deadline, so the loop stops early enough to leave them room:
+    // 20% of the budget, clamped to [200ms, 2s].
+    const budgetMs = Math.max(1000, options.timeoutMs);
+    const recoveryReserveMs = Math.min(2000, Math.max(200, Math.floor(budgetMs * 0.2)));
+    const deadline = Date.now() + Math.max(200, budgetMs - recoveryReserveMs);
     let stableSince: number | null = null;
     let stableText: string | undefined;
 
