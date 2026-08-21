@@ -5,6 +5,7 @@ import { WebAiError } from './errors.js';
 import { isDurableConversationUrl } from './conversation-url.js';
 import { getSession, listSessions, pruneSessions } from './session.js';
 import { buildSessionDoctorReport } from './session-doctor.js';
+import { listActiveCommands } from './active-command-store.js';
 import { probeTabAlive } from './tab-recovery.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import type { WebAiVendor, WebAiSessionStatus } from './types.js';
@@ -107,10 +108,9 @@ export async function runSessionsCommand(
         const port = deps.port ?? 0;
         const report = await buildSessionDoctorReport({
             getSession: (sessionId) => getSession(sessionId),
-            // Cross-process command-lock/active-command visibility lands with the
-            // active-command store (parity2 100 / B8); until then report none.
+            // parity2 100 (B8): real cross-process active-command visibility.
             readSessionCommandLock: () => null,
-            listActiveCommands: async () => [],
+            listActiveCommands: async (scope) => listActiveCommands({ active: true, ...(scope?.browserProfileKey ? { browserProfileKey: scope.browserProfileKey } : {}) }),
             verifySessionTab: async (session) => {
                 const liveness = await probeTabAlive(port, (session as { targetId?: string }).targetId);
                 if (liveness === 'alive') return { valid: true };
