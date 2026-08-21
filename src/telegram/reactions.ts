@@ -159,14 +159,20 @@ export function createTelegramNoticeTransport(
     api: TelegramNoticeApi,
     chatId: number | string,
     messageId: number,
+    timeoutMs: number = TELEGRAM_NOTICE_TIMEOUT_MS,
 ): NoticeTransport {
     // A per-call timeout is composed even when the caller supplies nothing.
     // QueueNotice pins whichever signal the FIRST close receives, and ordinary
     // delivery and the 5-minute timer both close without one — so relying on the
     // shutdown drain to supply it would leave the common path on grammY's
     // 500-second default.
+    //
+    // The duration is a parameter purely so a test can prove the timeout FIRES
+    // without spending five real seconds waiting for it. A wall-clock wait that
+    // long is also what made the assertion flaky on CI, where the runner tore
+    // the event loop down before the timer landed.
     const bounded = (signal?: AbortSignal): AbortSignal => {
-        const timeout = AbortSignal.timeout(TELEGRAM_NOTICE_TIMEOUT_MS);
+        const timeout = AbortSignal.timeout(timeoutMs);
         return signal ? AbortSignal.any([signal, timeout]) : timeout;
     };
     return {

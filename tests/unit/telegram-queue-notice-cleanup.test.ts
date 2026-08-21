@@ -150,7 +150,10 @@ test('the composed timeout actually fires', async () => {
     // A live, never-aborted caller signal, so only the timeout can end this.
     const caller = new AbortController();
     const notice = createQueueNotice({ expiredText: EXPIRED });
-    notice.bind(createTelegramNoticeTransport(api, 1, 2));
+    // 10ms rather than the shipped 5s. Waiting out the real duration made this
+    // assertion race the test runner's event-loop teardown on CI, and the thing
+    // being proven — that the timeout fires at all — does not depend on it.
+    notice.bind(createTelegramNoticeTransport(api, 1, 2, 10));
     await notice.close('answered', caller.signal);
     assert.equal(observed?.aborted, true, 'the composed timeout must abort the call');
     assert.equal(caller.signal.aborted, false, 'the caller signal is untouched');
