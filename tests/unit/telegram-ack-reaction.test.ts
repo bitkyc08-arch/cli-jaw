@@ -154,15 +154,17 @@ test('the timeout side of the composed signal actually fires', async () => {
     // never-aborting controller would satisfy that. This waits for the abort
     // event itself, so it fails if AbortSignal.timeout is dropped from the
     // composition.
+    //
+    // The vendor stub must not park on a promise that only an AbortSignal timer
+    // can settle. node:test tears the event loop down when the last test
+    // resolves, and a pending promise waiting on that timer races the teardown
+    // — which is how this file died with cancelledByParent on CI while passing
+    // locally every time.
     let observed: AbortSignal | undefined;
     const api: TelegramReactionApi = {
         raw: {
             async setMessageReaction(_args, signal) {
                 observed = signal;
-                await new Promise<void>(resolve => {
-                    if (signal?.aborted) { resolve(); return; }
-                    signal?.addEventListener('abort', () => resolve(), { once: true });
-                });
                 return true;
             },
         },
@@ -170,7 +172,15 @@ test('the timeout side of the composed signal actually fires', async () => {
     // A live, never-aborted caller signal, so only the timeout can end this.
     const caller = new AbortController();
     await setTelegramReaction(api, 1, 2, '\u{1F440}', { signal: caller.signal, timeoutMs: 20 });
-    assert.equal(observed?.aborted, true, 'the composed signal must abort on timeout');
+    // Observe the abort on the signal we were handed, with a bounded wait that
+    // cannot outlive the test even if the composition is broken.
+    assert.ok(observed, 'the vendor call must receive a signal');
+    await new Promise<void>(resolve => {
+        if (observed!.aborted) { resolve(); return; }
+        const timer = setTimeout(resolve, 200);
+        observed!.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+    assert.equal(observed!.aborted, true, 'the composed signal must abort on timeout');
     assert.equal(caller.signal.aborted, false, 'the caller signal is untouched');
 });
 

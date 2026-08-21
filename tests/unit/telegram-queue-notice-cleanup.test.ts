@@ -139,10 +139,6 @@ test('the composed timeout actually fires', async () => {
     const api: TelegramNoticeApi = {
         async deleteMessage(_c, _m, signal) {
             observed = signal as AbortSignal | undefined;
-            await new Promise<void>(resolve => {
-                if (observed?.aborted) { resolve(); return; }
-                observed?.addEventListener('abort', () => resolve(), { once: true });
-            });
             return true;
         },
         async editMessageText() { return true; },
@@ -155,6 +151,16 @@ test('the composed timeout actually fires', async () => {
     // being proven — that the timeout fires at all — does not depend on it.
     notice.bind(createTelegramNoticeTransport(api, 1, 2, 10));
     await notice.close('answered', caller.signal);
-    assert.equal(observed?.aborted, true, 'the composed timeout must abort the call');
+    // Bounded observation rather than parking the vendor stub on the timer: a
+    // promise that only AbortSignal.timeout can settle races node:test's
+    // event-loop teardown, which killed this whole file on CI (cancelledByParent)
+    // while passing locally every run.
+    assert.ok(observed, 'the API call must receive a signal');
+    await new Promise<void>(resolve => {
+        if (observed!.aborted) { resolve(); return; }
+        const timer = setTimeout(resolve, 200);
+        observed!.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+    assert.equal(observed!.aborted, true, 'the composed timeout must abort the call');
     assert.equal(caller.signal.aborted, false, 'the caller signal is untouched');
 });
