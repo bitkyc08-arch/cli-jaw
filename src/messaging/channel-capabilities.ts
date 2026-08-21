@@ -41,7 +41,9 @@ const CAPABILITIES = {
         sendText: true,
         editText: true,
         deleteMessage: true,
-        reaction: false,
+        // setMessageReaction is wired through src/telegram/reactions.ts and driven
+        // by the inbound ACK handle in bot.ts (#413).
+        reaction: true,
         typing: true,
         fileUpload: true,
         voice: true,

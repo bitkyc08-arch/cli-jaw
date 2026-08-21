@@ -215,7 +215,14 @@ for (const channel of CHANNELS) {
             assert.equal(receipt.ambiguous, false);
         }
         assert.equal(vendor.calls.length, 0, `${channel} called the vendor for an undeclared operation`);
-        assert.ok(checked > 0, `${channel} has no false capability — this test would be vacuous`);
+        // A channel that declares every operation true has nothing to refuse, so
+        // there is no refusal to assert. That is a real state now — Telegram
+        // reached it once setMessageReaction landed (#413) — and it is different
+        // from a channel whose false capabilities are silently going unchecked.
+        const declaredFalse = (Object.keys(CAPABILITY_OPERATIONS) as OperationCapabilityKey[])
+            .filter(key => !adapter.capabilities[key]);
+        assert.equal(checked, declaredFalse.length,
+            `${channel}: every false capability must be exercised`);
     });
 
     test(`${channel}: every receipt carries the adapter accountId`, async () => {

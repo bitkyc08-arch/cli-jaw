@@ -25,7 +25,13 @@ test('TZ-003: 409 retry has max limit (TG_MAX_RETRIES)', () => {
 test('TZ-004: old.stop() failure triggers wait before proceeding', () => {
     const initIdx = botSrc.indexOf('_initTelegramInner');
     assert.ok(initIdx >= 0, '_initTelegramInner must exist');
-    const initBlock = botSrc.slice(initIdx, initIdx + 600);
+    // Anchored on the declaration rather than the first textual mention: the
+    // shared dispose helper (added with the queue-notice registry, #413) now
+    // references _initTelegramInner in its own doc comment, so indexOf lands
+    // above the function and a fixed window never reaches the stop path.
+    const declIdx = botSrc.indexOf('async function _initTelegramInner');
+    assert.ok(declIdx >= 0, '_initTelegramInner declaration must exist');
+    const initBlock = botSrc.slice(declIdx, declIdx + 1600);
     assert.ok(initBlock.includes('await old.stop()'), 'initTelegramInner must call old.stop()');
     assert.ok(initBlock.includes('setTimeout(r, 2000)'), 'must wait 2s after stop failure');
 });
