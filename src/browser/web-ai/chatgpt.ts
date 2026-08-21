@@ -284,7 +284,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             stage: 'provider-surface',
             vendor: 'chatgpt',
             retryHint: 'open-chat',
-            message: 'the composer is on the ChatGPT Work surface, which cli-jaw cannot drive yet (parity2 8b pending); switch to Chat or open a chat conversation',
+            message: 'the composer is on the ChatGPT Work surface; the generic chat send cannot drive it — switch to Chat, or use the Work primitives (chatgpt-work-picker: ensureWorkSurface/setWorkPower/submitWorkPrompt)',
             evidence: surfaceDetection.evidence as unknown as Record<string, unknown>,
         });
     }
