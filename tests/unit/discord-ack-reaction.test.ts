@@ -11,6 +11,7 @@ import {
     createDiscordNoticeTransport,
 } from '../../src/discord/reactions.ts';
 import { createAckHandle, DISCORD_ACK_DEFAULTS } from '../../src/messaging/ack-reaction.ts';
+import { createQueueNotice, QueueNoticeRegistry } from '../../src/messaging/queue-notice.ts';
 import type { Message } from 'discord.js';
 
 type RestCall = { verb: string; route: string; options: Record<string, unknown> };
@@ -28,6 +29,7 @@ function fakeMessage() {
             rest: {
                 async delete(route: string, options: Record<string, unknown>) {
                     rest.push({ verb: 'delete', route, options });
+                    if (route.includes('/reactions/')) removed.push(route);
                 },
                 async patch(route: string, options: Record<string, unknown>) {
                     rest.push({ verb: 'patch', route, options });
@@ -37,9 +39,9 @@ function fakeMessage() {
         reactions: { cache },
         async react(emoji: string) {
             reacted.push(emoji);
-            // The real API hands back the MessageReaction; keeping it is the only
-            // reliable way to remove a custom emoji later.
-            return { users: { async remove(id: string) { removed.push(`${emoji}:${id}`); } } };
+            // The real API hands back the MessageReaction carrying the canonical
+            // REST identifier — the only reliable handle for a custom emoji.
+            return { emoji: { identifier: emoji.includes(':') ? `x${emoji.split(':')[1]}` : emoji } };
         },
     } as unknown as Message;
     return { message, reacted, removed, rest };
@@ -53,7 +55,8 @@ test('the ACK transport uses remove-then-add: Discord has no atomic replace', as
     await handle.to('running');
     await handle.settle('success');
     assert.deepEqual(reacted, ['👀', '✅']);
-    assert.deepEqual(removed, ['👀:BOT'], 'the running reaction must come off first');
+    assert.equal(removed.length, 1, 'the running reaction must come off first');
+    assert.match(removed[0]!, /\/messages\/M1\/reactions\/.+\/@me$/);
 });
 
 test('a CUSTOM emoji is removed via the returned handle, not the cache', async () => {
@@ -68,7 +71,10 @@ test('a CUSTOM emoji is removed via the returned handle, not the cache', async (
     await handle.to('running');
     await handle.settle('success');
     assert.deepEqual(reacted, ['wave:12345', 'done:67890']);
-    assert.deepEqual(removed, ['wave:12345:BOT'], 'custom removal must still fire');
+    // Resolved through the identifier react() returned, not the name:id we sent —
+    // discord.js caches custom reactions under the emoji ID.
+    assert.equal(removed.length, 1, 'custom removal must still fire');
+    assert.match(removed[0]!, /reactions\/x12345\/@me$/);
 });
 
 test('a failing reaction leaves the handle unchanged', async () => {
@@ -107,4 +113,66 @@ test('an expired notice is rewritten in place, never deleted', async () => {
     assert.equal(rest[0]!.verb, 'patch', 'a turn that never answered must keep a trace');
     assert.deepEqual(rest[0]!.options['body'], { content: 'timed out' });
     assert.equal(rest.some(c => c.verb === 'delete'), false);
+});
+
+// ─── Lifecycle boundaries ────────────────────────────
+// These drive the queue-notice module the way bot.ts drives it, covering the
+// two paths the reviewer found broken in the first Discord cut: a failed notice
+// post that never entered the terminal, and a timeout that never unregistered.
+
+test('a failed notice post still closes the turn out', async () => {
+    // abandon() alone left the listener, the request-id claim, the timer and the
+    // running reaction alive until the 5-minute timeout.
+    const registry = new QueueNoticeRegistry();
+    const notice = createQueueNotice({ expiredText: 'expired' });
+    let settled: string | null = null;
+    let unregister = () => { };
+    const finishExpired = async () => {
+        try {
+            await Promise.allSettled([notice.close('expired'), (async () => { settled = 'failure'; })()]);
+        } finally { unregister(); }
+    };
+    unregister = registry.add(() => finishExpired());
+
+    notice.abandon();          // the post failed: no handle will ever arrive
+    await finishExpired();     // ...and the turn is closed out anyway
+
+    assert.equal(settled, 'failure', 'the ACK must not stay on running forever');
+    assert.equal(registry.size, 0, 'a closed-out turn must not linger in the registry');
+});
+
+test('a timeout unregisters, so shutdown does not redo finished work', async () => {
+    const registry = new QueueNoticeRegistry();
+    const notice = createQueueNotice({ expiredText: 'expired' });
+    const calls: string[] = [];
+    notice.bind({
+        async delete() { calls.push('delete'); },
+        async edit(text) { calls.push('edit:' + text); },
+    });
+    let unregister = () => { };
+    let ran = 0;
+    const finishExpired = async () => {
+        ran += 1;
+        try { await notice.close('expired'); } finally { unregister(); }
+    };
+    unregister = registry.add(() => finishExpired());
+
+    await finishExpired();            // the 5-minute timer fires
+    assert.equal(registry.size, 0, 'the timeout must drop its registry entry');
+    await registry.drain(100);       // ...then shutdown arrives
+
+    assert.equal(ran, 1, 'shutdown must not re-run a turn the timeout already closed');
+    assert.deepEqual(calls, ['edit:expired'], 'expired rewrites once, never deletes');
+});
+
+test('a delayed notice post that lands after completion is still cleaned up', async () => {
+    // The live race: msg.reply for the notice is awaited, and the queued job can
+    // settle during that await.
+    const { message, rest } = fakeMessage();
+    const notice = createQueueNotice({ expiredText: 'expired' });
+    const closing = notice.close('answered');   // completion first
+    notice.bind(createDiscordNoticeTransport(message));  // handle second
+    await closing;
+    assert.equal(rest.length, 1);
+    assert.equal(rest[0]!.verb, 'delete', 'a late handle must still be removed');
 });

@@ -271,7 +271,6 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             disposed = true;
             clearTimeout(queueTimeout);
             removeBroadcastListener(queueHandler);
-            pendingQueueWaiters.delete(onTeardown);
             if (requestId) pendingQueueRequestIds.delete(requestId);
         };
         // One terminal outcome per turn, shared by whoever reaches it first.
@@ -287,17 +286,25 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             }
             return terminal;
         };
+        // Registered before the closures that use it so the terminal winner can
+        // always unregister, whichever path wins.
+        let unregister = () => { };
         const finishExpired = (signal?: AbortSignal) => claimTerminal(async () => {
             disposeListener();
-            // Started together, not in sequence: awaiting the notice first can eat
-            // the whole drain deadline before the reaction is even attempted.
-            await Promise.allSettled([
-                notice.close('expired', signal),
-                ack?.settle('failure') ?? Promise.resolve(),
-            ]);
+            try {
+                // Started together, not in sequence: awaiting the notice first can
+                // eat the whole drain deadline before the reaction is attempted.
+                await Promise.allSettled([
+                    notice.close('expired', signal),
+                    ack?.settle('failure') ?? Promise.resolve(),
+                ]);
+            } finally {
+                // Centralized here: every terminal path routes through a claim, so
+                // unregistering in one place is what makes "exactly once" true.
+                unregister();
+            }
         });
-        const onTeardown = () => { void finishExpired(); };
-        const unregister = discordNoticeRegistry.add((signal) => finishExpired(signal));
+        unregister = discordNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, any>) => {
             if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'discord'
                 || data["requestId"] !== requestId) return;
@@ -307,6 +314,15 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             // out would leave a failed send with neither answer nor notice.
             disposeListener();
             await claimTerminal(async () => {
+                try {
+                    await deliverQueued(data);
+                } finally {
+                    unregister();
+                }
+            });
+        };
+        const deliverQueued = async (data: Record<string, any>) => {
+            {
                 const body = String(data["text"]);
                 const channel = asSendable(msg.channel);
                 if (!channel) {
@@ -315,7 +331,6 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                         notice.close('expired'),
                         ack?.settle('failure') ?? Promise.resolve(),
                     ]);
-                    unregister();
                     return;
                 }
                 let delivered = true;
@@ -329,10 +344,9 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     notice.close(delivered ? 'answered' : 'expired'),
                     ack?.settle(delivered ? 'success' : 'failure') ?? Promise.resolve(),
                 ]);
-                unregister();
                 await relayDiscordImages(msg.client, target, body).catch(
                     e => log.error('[discord:queue-relay]', logErrorText(e)));
-            });
+            }
         };
         // Everything is armed SYNCHRONOUSLY, before any reaction or notice post.
         // A reaction call that takes a moment must not outlive the completion it
@@ -340,8 +354,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // fast queued job would be missed here or answered by the fallback.
         addBroadcastListener(queueHandler);
         if (requestId) pendingQueueRequestIds.add(requestId);
-        pendingQueueWaiters.add(onTeardown);
-        queueTimeout = setTimeout(onTeardown, 300000);
+        // Deliberately NOT added to pendingQueueWaiters: that set is invoked
+        // without a signal, and QueueNotice pins whichever signal the FIRST close
+        // receives — so a waiter-triggered close would make the registry's own
+        // cancellation unreachable. The registry is the single shutdown path.
+        queueTimeout = setTimeout(() => { void finishExpired(); }, 300000);
         // Not awaited: the notice is what the user needs to see.
         void ack?.to('running', { wasQueued: true });
         const posted = await msg.reply(
@@ -356,6 +373,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             // No handle will ever arrive, so a deferred close would wait for a
             // bind that cannot happen and the drain would burn its deadline.
             notice.abandon();
+            // Then close the turn out properly: abandoning the notice alone would
+            // leave the listener, the request-id claim, the timer and the running
+            // reaction alive until the 5-minute timeout or shutdown.
+            await finishExpired();
         }
         return;
     }

@@ -27,25 +27,41 @@ export const DISCORD_REACTION_TIMEOUT_MS = 2500;
  * picked the wrong transition mode.
  */
 export function createDiscordAckTransport(message: Message): AckTransport {
-    // Keyed by the emoji we asked for. Re-resolving from the cache is what broke
-    // custom emoji: discord.js stores those under the emoji ID, not `name:id`.
-    const applied = new Map<string, MessageReaction>();
+    // The REST identifier discord.js resolved for each emoji we applied.
+    //
+    // Two reasons not to re-derive it: discord.js caches CUSTOM reactions under
+    // the emoji ID rather than the `name:id` form we send, so a cache lookup
+    // silently misses; and the reaction returned by react() already carries the
+    // canonical identifier the removal route needs.
+    const applied = new Map<string, string>();
+
+    /** Bounded on every call. A reaction is decoration on the answer, so it must
+     *  never be the reason a shutdown drain runs out of time — and discord.js's
+     *  own 15s network timeout does not cover rate-limit queue time. */
+    const bounded = () => ({ signal: AbortSignal.timeout(DISCORD_REACTION_TIMEOUT_MS) });
+
     return {
         // Discord has no atomic replace, so the old reaction must come off first.
         mode: 'remove-then-add',
         apply: async (emoji) => {
-            // discord.js URL-encodes the emoji path segment; hand-rolling the REST
-            // route instead would need encodeURIComponent or Discord answers 10014.
-            applied.set(emoji, await message.react(emoji));
+            // react() resolves the emoji (including custom ones) and URL-encodes
+            // the path segment; hand-rolling that would need encodeURIComponent or
+            // Discord answers 10014 Unknown Emoji.
+            const reaction: MessageReaction = await message.react(emoji);
+            applied.set(emoji, reaction.emoji.identifier);
         },
         remove: async (emoji) => {
-            const reaction = applied.get(emoji)
+            const identifier = applied.get(emoji)
                 ?? message.reactions.cache.find(r =>
-                    r.emoji.identifier === emoji || r.emoji.name === emoji);
+                    r.emoji.identifier === emoji || r.emoji.name === emoji)?.emoji.identifier;
             applied.delete(emoji);
-            const selfId = message.client.user?.id;
-            if (!reaction || !selfId) return;
-            await reaction.users.remove(selfId);
+            if (!identifier) return;
+            // Low-level so the call is actually bounded: users.remove() forwards
+            // no request options, so its request can outlive the drain.
+            await message.client.rest.delete(
+                Routes.channelMessageOwnReaction(message.channelId, message.id, identifier),
+                bounded(),
+            );
         },
         // Unicode and the custom `name:id` form both pass through unchanged.
         coerce: (emoji) => emoji,
