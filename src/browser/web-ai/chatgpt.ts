@@ -512,6 +512,10 @@ export async function poll(port: number, input: {
         : session?.timeoutMs ? session.timeoutMs / 1000
         : resolveTimeoutDefaultSec({}, vendor);
     const timeoutMs = timeoutSec * 1000;
+    // parity2 040 slice 4.3 (C-06): the finalizer's side-effect phases re-check
+    // this bound so a losing run cannot write/pool after the caller timed out.
+    const pollDeadlineAt = Date.now() + timeoutMs;
+    const pollStillActive = () => Date.now() < pollDeadlineAt;
     // 104.18: per-tick conversation-drift guard. baseline.url is the chat we committed to; if the
     // held page later sits on a *different* /c/<id>, we're polling the wrong thread. The expected
     // fresh-chat none→id transition is NOT flagged (it only fires when both ids exist and differ).
@@ -576,7 +580,7 @@ export async function poll(port: number, input: {
     }
     if (result.canvas) {
         if (session) {
-            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
+            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '', stillActive: pollStillActive });
         }
         const output = decorateCompletedOutput(stripUndefined({
             ok: true,
@@ -602,7 +606,7 @@ export async function poll(port: number, input: {
     }
     if (result.ok) {
         if (session) {
-            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
+            await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '', stillActive: pollStillActive });
         }
         const output = decorateCompletedOutput(stripUndefined({
             ok: true,

@@ -6,6 +6,7 @@ import {
     incrementRecoveryCount,
     listSessions,
     setSessionNotifyOnComplete,
+    updateSessionProgress,
     updateSessionResult,
     updateSessionStatus,
 } from './session.js';
@@ -181,6 +182,17 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
             return;
         }
         if (result.ok && result.status === 'complete') {
+            // parity2 040 slice 4.2 (C-07): a poll can report complete while the
+            // page is still streaming (false-complete). When the persisted
+            // streaming state disagrees, DEFER finalization — keep polling and
+            // record the typed warning; the next non-streaming poll finalizes.
+            const persisted = getSession(input.sessionId);
+            if (persisted?.lastStreamingState === 'streaming' && !result.answerText) {
+                updateSessionResult({ sessionId: input.sessionId, status: 'streaming' });
+                updateSessionProgress(input.sessionId, { lastStreamingState: 'streaming' });
+                scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
+                return;
+            }
             updateSessionResult({
                 sessionId: input.sessionId,
                 status: 'complete',

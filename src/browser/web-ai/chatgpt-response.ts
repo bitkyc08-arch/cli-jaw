@@ -124,9 +124,11 @@ async function readAssistantTexts(page: Page): Promise<string[]> {
     // match never double-counts its parent's text. page.evaluate first, locator fallback.
     const viaEvaluate = await page.evaluate(readTopLevelAssistantTexts, ASSISTANT_TURN_SELECTORS)
         .catch(() => [] as string[]);
+    // parity2 040 (C-09): the locator fallback now reports unread-vs-empty; a
+    // partial read is discarded upstream, so only the texts survive here.
     const texts = viaEvaluate.length
         ? viaEvaluate
-        : await readTopLevelAssistantTextsFromLocators(page, ASSISTANT_TURN_SELECTORS);
+        : (await readTopLevelAssistantTextsFromLocators(page, ASSISTANT_TURN_SELECTORS)).texts;
     return texts.map(normalizeAssistantText).filter(Boolean);
 }
 
