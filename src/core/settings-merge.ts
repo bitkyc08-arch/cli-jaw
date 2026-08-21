@@ -2,6 +2,7 @@
 // Phase 9.4 — server.js의 applySettingsPatch에서 추출한 deep merge 로직
 
 import { mergeAckSettings } from '../messaging/ack-reaction.js';
+import { mergeSlackAutoJoin } from '../slack/auto-join.js';
 
 export type SettingsInputSource = 'boot' | 'watch' | 'api';
 export type SettingsPersistenceShape = 'absent' | 'present';
@@ -154,12 +155,32 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
         const patchChannel = patch[key];
         if (!patchChannel || typeof patchChannel !== 'object') continue;
         const patchAck = (patchChannel as Record<string, any>)["ack"];
-        if (!patchAck || typeof patchAck !== 'object' || Array.isArray(patchAck)) continue;
         const currentChannel = current[key] as Record<string, any> | undefined;
-        result[key] = {
-            ...result[key],
-            ack: mergeAckSettings(currentChannel?.["ack"], patchAck),
-        };
+        if (patchAck && typeof patchAck === 'object' && !Array.isArray(patchAck)) {
+            result[key] = {
+                ...result[key],
+                ack: mergeAckSettings(currentChannel?.["ack"], patchAck),
+            };
+        }
+        // slack.autoJoin is the same nested-group case, and its budget reaches
+        // a loop that joins real channels — so this path normalizes as well as
+        // merges. A PUT carrying {autoJoin:{enabled:false}} must not erase
+        // maxJoinsPerRun, and {maxJoinsPerRun:-1} must not reach the runner.
+        if (key === 'slack') {
+            const patchAutoJoin = (patchChannel as Record<string, any>)["autoJoin"];
+            // Any mention of the key is repaired, including a malformed one.
+            // Testing for a well-formed object would let {autoJoin:null} and
+            // {autoJoin:'yes'} through the one-level spread above and survive
+            // to disk, where the next boot reads them as "absent" and quietly
+            // restores default-on. A patch that names the key gets a valid
+            // block or nothing.
+            if ('autoJoin' in (patchChannel as Record<string, any>)) {
+                result[key] = {
+                    ...result[key],
+                    autoJoin: mergeSlackAutoJoin(currentChannel?.["autoJoin"], patchAutoJoin),
+                };
+            }
+        }
     }
 
 

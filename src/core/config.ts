@@ -16,6 +16,7 @@ import {
     SLACK_ACK_DEFAULTS,
     TELEGRAM_ACK_DEFAULTS,
 } from '../messaging/ack-reaction.js';
+import { SLACK_AUTO_JOIN_DEFAULTS, mergeSlackAutoJoin } from '../slack/auto-join.js';
 import { SETUP_STATE_FILE } from './install-integrity.js';
 import {
     sanitizeSettingsInput,
@@ -322,6 +323,14 @@ function createDefaultSettings() {
             // Slack takes emoji NAMES without colons (reactions.add docs), so
             // these defaults are names, not unicode like the other two.
             ack: cloneAckDefaults(SLACK_ACK_DEFAULTS),
+            // Public-channel auto-join. A bot token gets not_in_channel from
+            // conversations.history unless it is a member, so joining is the
+            // only supported way to reach a channel nobody invited it to.
+            // On by default, and deliberately visible: each join posts a
+            // “has joined the channel” line. maxJoinsPerRun and exclude bound
+            // the blast radius; the inbound mention gate is unchanged, so this
+            // widens on-demand lookup rather than making the bot answer chatter.
+            autoJoin: { ...SLACK_AUTO_JOIN_DEFAULTS, exclude: [] as string[] },
         },
        messaging: {
             enabledChannels: [] as MessengerChannel[],
@@ -1067,7 +1076,12 @@ export function loadSettings() {
             discord: { ...defaults.discord, ...(raw.discord || {}),
                 ack: mergeAckSettings(defaults.discord.ack, raw.discord?.ack) },
             slack: { ...defaults.slack, ...(raw.slack || {}),
-                ack: mergeAckSettings(defaults.slack.ack, raw.slack?.ack) },
+                ack: mergeAckSettings(defaults.slack.ack, raw.slack?.ack),
+                // Same one-level-deep problem as ack: a stored
+                // {autoJoin:{enabled:false}} would erase maxJoinsPerRun and
+                // exclude. Normalizes too — the budget reaches a loop that
+                // mutates a live workspace, so NaN must not survive here.
+                autoJoin: mergeSlackAutoJoin(defaults.slack.autoJoin, raw.slack?.autoJoin) },
             dispatchApproval: {
                 ...defaults.dispatchApproval,
                 ...(raw.dispatchApproval || {}),

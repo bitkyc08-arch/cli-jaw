@@ -49,6 +49,15 @@ export const SLACK_CAPABILITY_SCOPES = [
     // reactions:write is optional on purpose: promoting it to required would mark
     // every existing install broken over an opt-in acknowledgement feature.
     'reactions:write',
+    // conversations.join -> auto-join public channels at boot. A bot token gets
+    // not_in_channel from conversations.history unless it is a member, so this
+    // is the only supported route to reading a channel nobody invited us to.
+    'channels:join',
+    // chat.postMessage into a public channel the bot has NOT joined. Redundant
+    // once a join succeeds, which is exactly why it is not required: auto-join
+    // can be off, budget-capped, still running, or refused for one channel, and
+    // outbound should not wait for membership in any of those cases.
+    'chat:write.public',
     'files:read',
     'users:read', 'team:read',
     'channels:read', 'groups:read', 'im:read', 'mpim:read',

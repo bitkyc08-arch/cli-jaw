@@ -34,6 +34,12 @@ mock.module('../../src/slack/api.ts', {
         updateSlackMessage: async () => ({ ok: true }),
         stripEmojiColons: (name: string) => name.replace(/^:+|:+$/g, ''),
         SLACK_CLEANUP_TIMEOUT_MS: 5000,
+        // Auto-join reaches api.ts through bot.ts, so the same completeness
+        // rule applies. An empty channel list makes the background scan a
+        // no-op, which is what this file wants: it tests the lifecycle, not
+        // the reconciliation.
+        listSlackConversations: async () => ({ ok: true, data: { channels: [] } }),
+        joinSlackConversation: async () => ({ ok: true, data: {} }),
         slackFailure: (error: string, status?: number) =>
             status === undefined ? { ok: false, error } : { ok: false, error, status },
     },

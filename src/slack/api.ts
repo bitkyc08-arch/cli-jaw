@@ -320,3 +320,75 @@ export async function updateSlackMessage(
 ): Promise<SlackApiResult> {
     return slackApi(token, 'chat.update', { channel, ts, text }, callOptions(options));
 }
+
+// ─── Conversation discovery and membership ───────
+// A bot token may not read a channel it has not joined: conversations.history
+// answers not_in_channel. Listing is different — conversations.list returns
+// public channels the bot is NOT in, which is what makes boot-time auto-join
+// possible at all. See src/slack/auto-join.ts for the policy that drives these.
+
+/** One row of conversations.list. Every field optional: Slack omits freely. */
+export type SlackConversationSummary = {
+    id?: string;
+    name?: string;
+    is_member?: boolean;
+    is_archived?: boolean;
+    is_private?: boolean;
+};
+
+export type SlackConversationListData = {
+    channels?: SlackConversationSummary[];
+    response_metadata?: { next_cursor?: string };
+};
+
+/**
+ * Page through workspace conversations. Tier 2 (20+/min) — the slowest budget
+ * any of these wrappers carries, so the caller must pace itself.
+ *
+ * Scope: channels:read for public channels. Returns channels the bot has not
+ * joined, with `is_member` telling the two apart.
+ *
+ * Form-encoded like history/replies: these read methods take their arguments as
+ * query-style parameters and a JSON body is not universally accepted.
+ */
+export async function listSlackConversations(
+    token: string,
+    params: {
+        cursor?: string;
+        limit?: number;
+        types?: string;
+        excludeArchived?: boolean;
+    } = {},
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult<SlackConversationListData>> {
+    const body: Record<string, unknown> = {
+        limit: params.limit ?? 200,
+        types: params.types ?? 'public_channel',
+        exclude_archived: params.excludeArchived !== false,
+    };
+    // Slack rejects an empty cursor string on some methods; omit it entirely
+    // for the first page rather than sending an empty cursor parameter.
+    if (params.cursor) body['cursor'] = params.cursor;
+    return slackApi<SlackConversationListData>(token, 'conversations.list', body, {
+        ...callOptions(options),
+        form: true,
+    });
+}
+
+/**
+ * Join a PUBLIC channel. Tier 3 (50+/min). Scope: channels:join.
+ *
+ * Has no effect on private channels — those answer
+ * method_not_supported_for_channel_type and can only be entered by invitation.
+ * Joining posts a visible "<bot> has joined the channel" line, so this is a
+ * user-observable mutation, not a silent read.
+ */
+export async function joinSlackConversation(
+    token: string,
+    channel: string,
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult<{ channel?: { id?: string } }>> {
+    return slackApi<{ channel?: { id?: string } }>(
+        token, 'conversations.join', { channel }, { ...callOptions(options), form: true },
+    );
+}

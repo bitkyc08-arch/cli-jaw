@@ -47,6 +47,7 @@ import {
     resetSlackScopeStatus,
 } from './scope-status.js';
 import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
+import { runSlackAutoJoin, mergeSlackAutoJoin } from './auto-join.js';
 import { createHash } from 'node:crypto';
 import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
 import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
@@ -1079,6 +1080,10 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
         shouldSkip: (data) => data["origin"] === 'slack',
     });
     addBroadcastListener(forwarderHandler);
+    // Deliberately NOT awaited. A workspace with thousands of channels takes
+    // minutes to reconcile at Slack's Tier 2/3 pacing, and the socket must not
+    // wait for it — inbound already works the moment the connection is up.
+    startSlackAutoJoin(sc, generation);
     log.info(`[slack] ✅ connected as ${selfUserId || 'unknown'}`);
     return transportStarted;
 }
@@ -1088,6 +1093,57 @@ export async function shutdownSlack(): Promise<void> {
     await disposeSlackRuntime();
 }
 
+// ─── Public-channel auto-join ──────────────────
+// Owned here rather than inside auto-join.ts so the module stays a pure policy
+// function the tests can drive without a live transport.
+let autoJoinAbort: AbortController | null = null;
+
+/**
+ * Kick off the background reconciliation for this init generation.
+ *
+ * Two guards, and both are load-bearing. The AbortController wakes the pacing
+ * sleeps immediately so a shutdown does not wait out a 3-second gap, and the
+ * generation check stops a scan whose transport has already been replaced by a
+ * newer init. Cleanup is identity-guarded: a stale run that finishes late must
+ * not clear the controller belonging to the run that superseded it.
+ */
+function startSlackAutoJoin(sc: Record<string, any>, generation: number): void {
+    const config = mergeSlackAutoJoin(undefined, sc?.["autoJoin"]);
+    if (!config.enabled) return;
+    const token = String(sc?.["botToken"] ?? '').trim();
+    if (!token) return;
+
+    autoJoinAbort?.abort();
+    const controller = new AbortController();
+    autoJoinAbort = controller;
+
+    void runSlackAutoJoin({
+        token,
+        config,
+        signal: controller.signal,
+        isCurrent: () => generation === lifecycleGeneration,
+        // The inbound allowlist is the operator's boundary; joining past it
+        // would grant history access to conversations they silenced.
+        allowlist: readSlackAllowlist(sc?.["channelIds"]),
+    }).then(result => {
+        if (result.cancelled) return;
+        if (result.joined.length || result.failed.length || result.abortedReason) {
+            log.info(`[slack:autojoin] scanned=${result.scanned} joined=${result.joined.length}`
+                + ` skipped=${result.skipped} failed=${result.failed.length}`
+                + (result.budgetExhausted ? ' budget=exhausted' : '')
+                + (result.abortedReason ? ` stopped=${result.abortedReason}` : ''));
+        }
+        if (result.abortedReason === 'missing_scope') {
+            log.warn('[slack:autojoin] channels:join is not granted — add it under'
+                + ' OAuth & Permissions and reinstall the app to auto-join public channels');
+        }
+    }).catch(err => {
+        log.warn('[slack:autojoin] run failed:', (err as Error)?.message ?? String(err));
+    }).finally(() => {
+        if (autoJoinAbort === controller) autoJoinAbort = null;
+    });
+}
+
 /**
  * Release every runtime resource WITHOUT touching the lifecycle generation.
  * `initSlack` reuses this for its own teardown; only an external
@@ -1095,6 +1151,10 @@ export async function shutdownSlack(): Promise<void> {
  */
 async function disposeSlackRuntime(): Promise<void> {
     await resetSlackIngress();
+    // Wakes the pacing sleeps immediately instead of letting a teardown wait
+    // out a 3-second gap between conversations.list pages.
+    autoJoinAbort?.abort();
+    autoJoinAbort = null;
     // A re-init can authenticate against a different workspace, whose app has
     // its own grant. Carrying the previous observation forward would report
     // the old workspace's scopes for the new one.
