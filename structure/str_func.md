@@ -119,7 +119,7 @@ cli-jaw/
 │   │   ├── tool-timeout.ts   ← tool inactivity timeout helper (33L)
 │   │   ├── watchdog.ts       ← idle/progress watchdog + 4h absolute hard cap with progress deadline extension (130L)
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
-│   ├── messaging/            ← 통합 메시징 런타임 (31 files)
+│   ├── messaging/            ← 통합 메시징 런타임 (32 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
 │   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (362L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
@@ -146,6 +146,7 @@ cli-jaw/
 │   │   ├── ingress-audit.ts  ← append-only replay audit JSONL (49L)
 │   │   ├── inbound-envelope.ts ← InboundEnvelope normalizers (229L)
 │   │   ├── ack-reaction.ts   ← inbound ACK reaction lifecycle (serialized transitions + per-channel defaults + nested ack merge) (269L)
+│   │   ├── queue-notice.ts   ← queue-notice lifecycle (deferred close + bind race drain + bounded shutdown registry) (208L)
 │   │   ├── channel-adapter.ts ← ChannelAdapter contract (130L)
 │   │   ├── channel-capabilities.ts ← closed capability set + generated matrix (95L)
 │   │   ├── delivery-outcome.ts ← DeliveryReceipt classification (145L)
