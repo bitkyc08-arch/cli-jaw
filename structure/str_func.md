@@ -148,7 +148,7 @@ cli-jaw/
 │   │   ├── ack-reaction.ts   ← inbound ACK reaction lifecycle (serialized transitions + per-channel defaults + nested ack merge) (269L)
 │   │   ├── queue-notice.ts   ← queue-notice lifecycle (deferred close + bind race drain + bounded shutdown registry) (208L)
 │   │   ├── channel-adapter.ts ← ChannelAdapter contract (130L)
-│   │   ├── channel-capabilities.ts ← closed capability set + generated matrix (99L)
+│   │   ├── channel-capabilities.ts ← closed capability set + generated matrix (101L)
 │   │   ├── delivery-outcome.ts ← DeliveryReceipt classification (145L)
 │   │   ├── draft-stream.ts   ← draft stream helper (180L)
 │   │   └── slack-target.ts   ← Slack target helper (56L)
@@ -251,7 +251,7 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (7 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (688L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (793L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
 │   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (167L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨

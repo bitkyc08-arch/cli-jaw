@@ -54,7 +54,11 @@ test('dcOrchestrate passes chatId to submitMessage', () => {
 });
 
 test('queue handler correlates by requestId for request-level isolation', () => {
-    assert.match(botSrc, /data\.requestId\s*===\s*requestId/,
+    // Two forms are correct now: bracket access, because
+    // noPropertyAccessFromIndexSignature makes data["requestId"] the only way to
+    // read it off a Record; and !== , because the handler guards with an early
+    // return rather than nesting the body in an if.
+    assert.match(botSrc, /data(\.requestId|\["requestId"\])\s*[!=]==\s*requestId/,
         'queue handler should correlate by requestId');
     assert.ok(!botSrc.includes('data.target?.targetId === msg.channelId'),
         'queue handler should NOT use data.target?.targetId (not always present)');

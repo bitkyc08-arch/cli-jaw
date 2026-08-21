@@ -57,7 +57,9 @@ const CAPABILITIES = {
         sendText: true,
         editText: false,
         deleteMessage: false,
-        reaction: false,
+        // message.react + the returned MessageReaction's users.remove are wired
+        // through src/discord/reactions.ts and driven by the ACK handle (#414).
+        reaction: true,
         typing: true,
         fileUpload: true,
         voice: true,
