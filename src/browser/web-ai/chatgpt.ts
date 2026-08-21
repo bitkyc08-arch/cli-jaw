@@ -32,6 +32,7 @@ import {
 } from './session.js';
 import { captureAssistantResponse } from './chatgpt-response.js';
 import { saveAssistantDownloadableFiles } from './chatgpt-files.js';
+import { collectImages } from './chatgpt-images.js';
 import { resolveTimeoutDefaultSec } from './tier-timeout.js';
 import { selectChatGptModel } from './chatgpt-model.js';
 import { withAnswerArtifact } from './answer-artifact.js';
@@ -55,6 +56,7 @@ import { sendDeepResearch } from './chatgpt-deep-research.js';
 import { sendMultiTurn } from './chatgpt-multi-turn.js';
 import { withPollDeadline } from './poll-deadline.js';
 import { probeTabAlive, isSafeChatGptConversationUrl } from './tab-recovery.js';
+import { probeCdpLiveness } from './cdp-liveness.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -525,6 +527,17 @@ export async function poll(port: number, input: {
         if (baselineConvoId && currentConvoId && baselineConvoId !== currentConvoId) {
             return `conversation changed: ${baselineConvoId} → ${currentConvoId}`;
         }
+        // parity2 050 slice B-02: per-tick target-identity verification. The
+        // single upfront assertSameTarget said nothing about later ticks — a
+        // tab swap mid-poll rebinds the read to the wrong target. Probe the
+        // out-of-band target list; a MISMATCH bails, an unreadable probe does
+        // not (drift bail-out must be positive evidence).
+        if (session?.targetId) {
+            const liveness = await probeCdpLiveness({ port, targetId: session.targetId }).catch(() => null);
+            if (liveness && liveness.endpointReachable && liveness.targetFound === false) {
+                return `session target ${session.targetId} no longer exists`;
+            }
+        }
         return null;
     };
     const result = await captureAssistantResponse(page, {
@@ -571,6 +584,19 @@ export async function poll(port: number, input: {
                     { sessionId: session.sessionId, baselineAssistantCount: baseline.assistantCount },
                 );
                 if (fileResult.warnings.length) result.warnings.push(...fileResult.warnings);
+                // parity2 050 slice B-06: generated-image capture was ported
+                // (chatgpt-images.ts collectImages) but never invoked — wire it
+                // into the same post-completion artifact pass. Best-effort:
+                // failures become warnings, never a thrown error.
+                try {
+                    const imageResult = await collectImages(
+                        fileCdp as unknown as Parameters<typeof collectImages>[0],
+                        { sessionId: session.sessionId, baselineAssistantCount: baseline.assistantCount },
+                    );
+                    if (imageResult.warnings?.length) result.warnings.push(...imageResult.warnings);
+                } catch (err) {
+                    result.warnings.push(`image-capture-failed:${(err as Error)?.message || 'unknown'}`);
+                }
             } catch (err) {
                 result.warnings.push(`file-artifact-capture-failed:${(err as Error)?.message || 'unknown'}`);
             } finally {

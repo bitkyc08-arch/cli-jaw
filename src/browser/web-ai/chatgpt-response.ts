@@ -9,7 +9,17 @@
 
 import type { ResponseCaptureResult } from './provider-adapter.js';
 import { ActionTranscript } from '../primitives.js';
-import { readTopLevelAssistantTexts, readTopLevelAssistantTextsFromLocators } from './chatgpt-response-dom.js';
+import {
+    readTopLevelAssistantTexts,
+    readTopLevelAssistantTextsFromLocators,
+    readAssistantTurnOrderingInPage,
+    probeStopButton,
+    scopeToMainRegion,
+    resolveTopLevelAssistantTurns,
+    CHATGPT_ASSISTANT_SELECTORS,
+    type ChatGptTurnOrderingInPage,
+    type ChatGptStopVerdict,
+} from './chatgpt-response-dom.js';
 import { observeAssistantResponse, recoverAssistantResponse } from './chatgpt-response-observer.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
@@ -57,6 +67,13 @@ const PLACEHOLDER_PATTERNS: RegExp[] = [
     /^searching the web…?$/i,
     /^reading documents?$/i,
     /^analyzing files?$/i,
+    // parity2 050 slice B-10: placeholder drift since the 2606 port (agbrowse chatgpt.mjs:103-118).
+    /^stopped thinking$/i,
+    /^reasoning$/i,
+    /^deep thinking$/i,
+    /^searching…?$/i,
+    /^browsing…?$/i,
+    /^chatgpt said: answer now$/i,
     /^\s*$/,
 ];
 
@@ -81,6 +98,8 @@ export interface AssistantSnapshot {
     latestNewText?: string;
     /** True while a stop/streaming indicator is visible. */
     streaming: boolean;
+    /** parity2 050 (B-03): tri-state activity verdict; 'unknown' = failed read, fail closed. */
+    activity?: 'visible' | 'absent' | 'unknown';
     /** True when ChatGPT routed the answer into a Canvas surface. */
     canvasOpened: boolean;
 }
@@ -107,7 +126,10 @@ export interface CaptureOptions {
 
 export async function readAssistantSnapshot(page: Page, minTurnIndex: number, promptText = ''): Promise<AssistantSnapshot> {
     const allTexts = await readAssistantTexts(page);
-    const streaming = await isStreaming(page);
+    // parity2 050 slice B-03: tri-state verdict; 'unknown' must NOT read as
+    // "not streaming" — the caller demands a quiet window before accepting.
+    const activity = await probeActivity(page);
+    const streaming = activity === 'visible';
     const canvasOpened = await isCanvasOpened(page);
     const newTexts = allTexts.slice(minTurnIndex);
     const latestNewText = pickLatestRealAnswer(newTexts, promptText);
@@ -115,6 +137,7 @@ export async function readAssistantSnapshot(page: Page, minTurnIndex: number, pr
         assistantCount: allTexts.length,
         latestNewText,
         streaming,
+        activity,
         canvasOpened,
     });
 }
@@ -122,8 +145,12 @@ export async function readAssistantSnapshot(page: Page, minTurnIndex: number, pr
 async function readAssistantTexts(page: Page): Promise<string[]> {
     // Descendant-dedup (catalog 106.13): prefer top-level assistant nodes so a nested
     // match never double-counts its parent's text. page.evaluate first, locator fallback.
-    const viaEvaluate = await page.evaluate(readTopLevelAssistantTexts, ASSISTANT_TURN_SELECTORS)
-        .catch(() => [] as string[]);
+    // parity2 050 slice B-08: each snapshot read races a 10s cap so one
+    // huge-DOM evaluate cannot eat the whole poll budget.
+    const viaEvaluate = await withPollDeadline<string[]>(
+        () => page.evaluate(readTopLevelAssistantTexts, ASSISTANT_TURN_SELECTORS).catch(() => [] as string[]),
+        { timeoutMs: 10_000, onExpired: () => [] as string[] },
+    );
     // parity2 040 (C-09): the locator fallback now reports unread-vs-empty; a
     // partial read is discarded upstream, so only the texts survive here.
     const texts = viaEvaluate.length
@@ -154,6 +181,9 @@ async function captureAssistantResponseInner(page: Page, options: CaptureOptions
     const transcript = new ActionTranscript();
     const resolverTrace = createTraceContext('chatgpt-response');
     const pollIntervalMs = Math.max(100, options.pollIntervalMs ?? 500);
+    // parity2 050 slice B-12: stderr progress heartbeat for long polls.
+    const pollStartedAt = Date.now();
+    let lastHeartbeatAt = pollStartedAt;
     // The post-loop tiers (copy fallback, 3rd-tier recovery) must run INSIDE the
     // outer hard deadline, so the loop stops early enough to leave them room:
     // 20% of the budget, clamped to [200ms, 2s].
@@ -197,14 +227,31 @@ async function captureAssistantResponseInner(page: Page, options: CaptureOptions
             }
             if (!snap.streaming && snap.latestNewText) {
                 if (snap.latestNewText === stableText) {
-                    const finished = await isResponseFinished(page);
+                    const finished = await isResponseFinished(page, options.minTurnIndex);
+                    // parity2 050 slice B-03: an UNKNOWN activity probe is not
+                    // "not streaming" — demand the long quiet window and never
+                    // take the fast finished path on top of a failed read.
+                    const activityUnknown = snap.activity === 'unknown';
                     const textLen = snap.latestNewText.length;
-                    const adaptiveMs = finished ? 1000
+                    const adaptiveMs = (finished && !activityUnknown) ? 1000
+                        : activityUnknown ? 5000
                         : textLen < 16 ? 8000
                         : textLen < 40 ? 3000
                         : textLen < 500 ? 2000
                         : 3000;
                     if (stableSince !== null && Date.now() - stableSince >= adaptiveMs) {
+                        // parity2 050 slice B-01: ordering gate — text that does
+                        // not verifiably FOLLOW the latest user turn is stale
+                        // history, not the answer. 'unknown' (failed read) and
+                        // 'stale' both refuse; 'unverifiable' (no user turn)
+                        // passes, as upstream.
+                        const ordering = await readTurnOrdering(page);
+                        if (ordering === 'stale' || ordering === 'unknown') {
+                            transcript.warn(`assistant-ordering-${ordering === 'stale' ? 'stale' : 'unverified'}`);
+                            stableSince = null;
+                            stableText = undefined;
+                            continue;
+                        }
                         if (options.allowCopyMarkdownFallback) {
                             const copyTarget = await resolveOptionalChatGptCopyTarget(page, resolverTrace);
                             const copied = await captureCopiedResponseText(page, CHATGPT_COPY_SELECTORS, { copyTarget });
@@ -231,6 +278,11 @@ async function captureAssistantResponseInner(page: Page, options: CaptureOptions
             } else {
                 await wait(pollIntervalMs);
             }
+            if (Date.now() - lastHeartbeatAt >= 30_000) {
+                lastHeartbeatAt = Date.now();
+                const phase = snap.streaming ? 'streaming' : (stableSince !== null ? 'stabilizing' : 'settling');
+                process.stderr.write(`[poll] ${Math.round((Date.now() - pollStartedAt) / 1000)}s — ${phase}\n`);
+            }
         } catch (pollErr) {
             // 104.18: a crashed/closed tab is recoverable — surface it as a typed result instead of
             // throwing past the poll boundary, so the caller can relaunch + resume the session.
@@ -246,7 +298,13 @@ async function captureAssistantResponseInner(page: Page, options: CaptureOptions
         }
     }
 
-    if (options.allowCopyMarkdownFallback && stableText) {
+    // parity2 050 slice B-01/B-07: the post-timeout copy path must not admit
+    // text the loop's gates refused — ordering applies here too.
+    const postLoopOrdering = stableText ? await readTurnOrdering(page) : null;
+    // Terminal path: only POSITIVE staleness refuses; unknown/unverifiable fall
+    // through to tiers carrying their own gates.
+    const postLoopOrderingOk = postLoopOrdering !== 'stale';
+    if (options.allowCopyMarkdownFallback && stableText && postLoopOrderingOk) {
         const copyTarget = await resolveOptionalChatGptCopyTarget(page, resolverTrace);
         const copied = await captureCopiedResponseText(page, CHATGPT_COPY_SELECTORS, { copyTarget });
         const copiedText = preferCopiedText(stableText, copied);
@@ -263,11 +321,33 @@ async function captureAssistantResponseInner(page: Page, options: CaptureOptions
         baselineAssistantCount: options.minTurnIndex,
         isFinalAnswer: (t) => !isPlaceholderAssistantText(t),
         readStreaming: () => isStreaming(page),
-        readFinished: () => isResponseFinished(page),
+        readFinished: () => isResponseFinished(page, options.minTurnIndex),
     });
-    if (recovered?.text && !recovered.streaming && (recovered.finished || recovered.responseStableMs > 0)) {
-        transcript.fallback('recovery');
-        return withResolverTrace({ ok: true, answerText: normalizeAssistantText(recovered.text), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+    if (recovered?.text && !recovered.streaming) {
+        // parity2 050 slice B-01 (recovery gate): the ordering gate applies to
+        // recovered text too — agbrowse re-applies it on the recovery path.
+        const recoveryOrdering = await readTurnOrdering(page);
+        if (recoveryOrdering === 'stale') {
+            transcript.warn('assistant-ordering-stale-recovery');
+            return withResolverTrace(stripUndefined({ ok: false, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }), resolverTrace);
+        }
+        // parity2 050 slice B-07: mere stability (responseStableMs > 0) is NOT
+        // completion — the old acceptance admitted half-written answers. Only
+        // identity-pinned FINISHED evidence completes; stable-but-unfinished
+        // text is reported as a deferred 'polling' outcome so the caller keeps
+        // the session alive instead of persisting a truncated answer.
+        if (recovered.finished) {
+            transcript.fallback('recovery');
+            return withResolverTrace({ ok: true, answerText: normalizeAssistantText(recovered.text), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+        }
+        transcript.warn('recovery-text-unfinished-deferred');
+        return withResolverTrace(stripUndefined({
+            ok: false,
+            polling: true,
+            answerText: normalizeAssistantText(recovered.text),
+            usedFallbacks: transcript.usedFallbacks,
+            warnings: transcript.warnings,
+        }), resolverTrace);
     }
 
     return withResolverTrace(stripUndefined({ ok: false, answerText: stableText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }), resolverTrace);
@@ -353,18 +433,70 @@ function pickLatestRealAnswer(texts: string[], promptText: string): string | und
     return undefined;
 }
 
-async function isStreaming(page: Page): Promise<boolean> {
-    for (const selector of STOP_BUTTON_SELECTORS) {
-        try {
-            if (await page.locator(selector).first().isVisible().catch(() => false)) return true;
-        } catch {
-            // ignore
-        }
-    }
-    return false;
+/**
+ * parity2 050 slice B-03: activity is a VERDICT, not a boolean. An unreadable
+ * stop probe reads as 'unknown' — the exact stall-disguised-as-complete case
+ * the old catch(() => false) admitted. The probe is composer/main-scoped so
+ * dictation/voice/read-aloud/sidebar Stop buttons never count as streaming.
+ */
+async function probeActivity(page: Page): Promise<ChatGptStopVerdict> {
+    const scope = scopeToMainRegion(page);
+    return probeStopButton(scope);
 }
 
-async function isResponseFinished(page: Page): Promise<boolean> {
+async function isStreaming(page: Page): Promise<boolean> {
+    return (await probeActivity(page)) === 'visible';
+}
+
+/**
+ * parity2 050 slice B-01: turn-ordering gate. 'unknown' (failed read) is
+ * fail-closed — stale historical text must never be admitted as the answer.
+ */
+async function readTurnOrdering(page: Page): Promise<ChatGptTurnOrderingInPage | 'unknown'> {
+    try {
+        const verdict = await page.evaluate(readAssistantTurnOrderingInPage, CHATGPT_ASSISTANT_SELECTORS);
+        // A malformed result (test double, stripped serialization) is a FAILED
+        // observation, not evidence either way.
+        return verdict === 'ordered' || verdict === 'stale' || verdict === 'unverifiable' ? verdict : 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
+
+/**
+ * parity2 050 slice B-05: identity-pinned completion. The old page-wide
+ * .last() scan let a PREVIOUS turn's action bar mark a still-streaming answer
+ * finished. The finished-action buttons must live inside the LATEST top-level
+ * assistant turn at or past the baseline index.
+ */
+async function isResponseFinished(page: Page, minTurnIndex = 0): Promise<boolean> {
+    try {
+        const result = await page.evaluate(
+            ({ finishedSelector, minTurnIndex, resolverSource, selectors }: { finishedSelector: string; minTurnIndex: number; resolverSource: string; selectors: string[] }) => {
+                const resolver = (0, eval)(`(${resolverSource})`);
+                const turns = resolver(selectors);
+                for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex--) {
+                    if (turnIndex < minTurnIndex) break;
+                    const turn = turns[turnIndex];
+                    return Boolean(turn.querySelector(finishedSelector));
+                }
+                return false;
+            }, {
+                finishedSelector: FINISHED_ACTIONS_SELECTOR,
+                minTurnIndex,
+                resolverSource: resolveTopLevelAssistantTurns.toString(),
+                selectors: CHATGPT_ASSISTANT_SELECTORS,
+            });
+        if (typeof result === 'boolean') return result;
+        // Malformed result (test double / stripped serialization): fall through
+        // to the legacy visibility scan rather than inventing "not finished".
+        return await legacyFinishedScan(page);
+    } catch {
+        return await legacyFinishedScan(page);
+    }
+}
+
+async function legacyFinishedScan(page: Page): Promise<boolean> {
     try {
         for (const sel of FINISHED_ACTIONS_SELECTOR.split(', ')) {
             const count = await page.locator(sel).count().catch(() => 0);
