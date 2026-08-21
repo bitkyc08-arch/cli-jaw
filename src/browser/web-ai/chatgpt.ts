@@ -57,6 +57,7 @@ import { sendMultiTurn } from './chatgpt-multi-turn.js';
 import { withPollDeadline } from './poll-deadline.js';
 import { probeTabAlive, isSafeChatGptConversationUrl } from './tab-recovery.js';
 import { probeCdpLiveness } from './cdp-liveness.js';
+import { detectChatGptComposerSurface } from './product-surfaces.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -261,6 +262,30 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             retryHint: interstitial.retryHint,
             message: `ChatGPT blocked by ${interstitial.kind}: ${interstitial.evidence}`,
             evidence: interstitial,
+        });
+    }
+    // parity2 080 slice 8a (C-03): Work/Chat surface preflight, fail-closed.
+    // On a Work-enabled account a chat prompt would otherwise silently land in
+    // the Work surface (whose submit/poll semantics differ — port pending, 8b).
+    const surfaceDetection = await detectChatGptComposerSurface(page).catch(() => null);
+    if (surfaceDetection?.surface === 'ambiguous') {
+        throw new WebAiError({
+            errorCode: 'provider.surface-ambiguous',
+            stage: 'provider-surface',
+            vendor: 'chatgpt',
+            retryHint: 'retry',
+            message: 'ChatGPT Chat/Work surface state is ambiguous; refusing to send rather than guessing the surface',
+            evidence: surfaceDetection.evidence as unknown as Record<string, unknown>,
+        });
+    }
+    if (surfaceDetection?.surface === 'work') {
+        throw new WebAiError({
+            errorCode: 'provider.work-surface-unsupported',
+            stage: 'provider-surface',
+            vendor: 'chatgpt',
+            retryHint: 'open-chat',
+            message: 'the composer is on the ChatGPT Work surface, which cli-jaw cannot drive yet (parity2 8b pending); switch to Chat or open a chat conversation',
+            evidence: surfaceDetection.evidence as unknown as Record<string, unknown>,
         });
     }
     const contextPack = await prepareContextForBrowser(input);

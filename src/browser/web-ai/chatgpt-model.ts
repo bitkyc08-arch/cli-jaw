@@ -37,6 +37,7 @@ export function normalizeChatGptFamilyChoice(family: string | undefined): ChatGp
 
 /** parity2 030 (C-01): Power-shell selectors — the 5.6 Chat picker renders a
  * Power menu item whose slider drives tier/effort; menu rows may not exist. */
+export const CHATGPT_SURFACE_RADIO_SELECTOR = 'button[role="radio"]';
 export const CHATGPT_POWER_PICKER_ROOT_SELECTOR =
     '[role="menu"][data-state="open"]:has([role="menuitem"][aria-label="Power"])';
 export const CHATGPT_POWER_SLIDER_VIEW_SELECTOR = [
