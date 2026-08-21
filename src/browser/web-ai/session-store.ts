@@ -55,7 +55,7 @@ export interface PruneResult {
     remaining: number;
 }
 
-function storePath(): string {
+export function storePath(): string {
     return join(JAW_HOME, STORE_FILE);
 }
 
@@ -94,17 +94,42 @@ function encodeRandom(): string {
 }
 
 export function readSessionStore(): SessionStore {
+    return readSessionStoreObserved().store;
+}
+
+/**
+ * parity2 010 slice 1.3 (C-08, mirrors agbrowse 9d49c31/107233e): a corrupt or
+ * schema-invalid store must be OBSERVED, not silently collapsed into "no
+ * sessions". Read paths get the empty store plus a marker; write paths consult
+ * the marker and refuse (see assertStoreReadable) so a parse failure cannot
+ * silently discard every session record on the next write.
+ */
+export function readSessionStoreObserved(): { store: SessionStore; storeReadFailed?: { path: string; reason: string } } {
     const path = storePath();
-    if (!existsSync(path)) return { version: SESSION_STORE_VERSION, sessions: [] };
+    if (!existsSync(path)) return { store: { version: SESSION_STORE_VERSION, sessions: [] } };
     try {
         const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<SessionStore>;
-        if (!parsed || typeof parsed !== 'object') return { version: SESSION_STORE_VERSION, sessions: [] };
+        if (!parsed || typeof parsed !== 'object') {
+            return { store: { version: SESSION_STORE_VERSION, sessions: [] }, storeReadFailed: { path, reason: 'not-an-object' } };
+        }
         if (!Array.isArray(parsed.sessions)) parsed.sessions = [];
         if (typeof parsed.version !== 'number') parsed.version = SESSION_STORE_VERSION;
-        return parsed as SessionStore;
-    } catch {
-        return { version: SESSION_STORE_VERSION, sessions: [] };
+        return { store: parsed as SessionStore };
+    } catch (err) {
+        return { store: { version: SESSION_STORE_VERSION, sessions: [] }, storeReadFailed: { path, reason: String((err as Error)?.message || err) } };
     }
+}
+
+/** Throws `session-store-read-failed` when the on-disk store is unreadable. Write paths call this so a corrupt store is never silently overwritten with an empty one. */
+export function assertStoreReadable(): void {
+    const { storeReadFailed } = readSessionStoreObserved();
+    if (!storeReadFailed) return;
+    throw new WebAiError({
+        errorCode: 'session-store-read-failed',
+        stage: 'session-store-read',
+        retryHint: `inspect or move the corrupt store at ${storeReadFailed.path} (${storeReadFailed.reason})`,
+        message: `web-ai session store unreadable: ${storeReadFailed.path} — ${storeReadFailed.reason}`,
+    });
 }
 
 function readSessionStoreLocked(): SessionStore {
@@ -230,6 +255,7 @@ export async function patchSessionAsync(
 ): Promise<StoredSession | null | DeadlinePassed> {
     return withStoreLockAsync(() => {
         if (stillActive?.() === false) return DEADLINE_PASSED;
+        assertStoreReadable();
         const store = readSessionStore();
         const idx = store.sessions.findIndex(s => s.sessionId === sessionId);
         if (idx < 0) return null;
@@ -248,6 +274,7 @@ export async function insertSessionAsync(
 ): Promise<StoredSession | DeadlinePassed> {
     return withStoreLockAsync(() => {
         if (stillActive?.() === false) return DEADLINE_PASSED;
+        assertStoreReadable();
         const store = readSessionStore();
         store.sessions.push(session);
         writeSessionStore(store);
@@ -293,6 +320,7 @@ function sleepBlockingMs(ms: number): void {
 
 export function insertSession(session: StoredSession): StoredSession {
     return withStoreLock(() => {
+        assertStoreReadable();
         const store = readSessionStore();
         store.sessions.push(session);
         writeSessionStore(store);
@@ -302,6 +330,7 @@ export function insertSession(session: StoredSession): StoredSession {
 
 export function patchSession(sessionId: string, patch: Partial<StoredSession>): StoredSession | null {
     return withStoreLock(() => {
+        assertStoreReadable();
         const store = readSessionStore();
         const idx = store.sessions.findIndex(s => s.sessionId === sessionId);
         if (idx < 0) return null;
