@@ -1,4 +1,5 @@
 import type { AckTransport } from '../messaging/ack-reaction.js';
+import type { NoticeTransport } from '../messaging/queue-notice.js';
 
 // ─── Telegram Message Reactions (Bot API 7.0+) ───────
 // Telegram does NOT accept arbitrary emoji here. ReactionTypeEmoji has a fixed
@@ -65,6 +66,9 @@ export type TelegramReactionApi = {
  *  shutdown hangs. Tight enough that remove+apply stays inside a drain deadline. */
 export const TELEGRAM_REACTION_TIMEOUT_MS = 2500;
 
+/** Same reasoning for the notice: a stuck cleanup must not hold shutdown open. */
+export const TELEGRAM_NOTICE_TIMEOUT_MS = 5000;
+
 export type TelegramReactionOptions = {
     signal?: AbortSignal;
     timeoutMs?: number;
@@ -125,5 +129,52 @@ export function createTelegramAckTransport(
             await setTelegramReaction(api, chatId, messageId, null, options);
         },
         coerce: (emoji) => coerceTelegramReaction(emoji),
+    };
+}
+
+/** The slice of grammY's Api the notice transport needs. Narrow so a test can
+ *  supply it without constructing a Bot. */
+export type TelegramNoticeApi = {
+    deleteMessage(chatId: number | string, messageId: number, signal?: never): Promise<unknown>;
+    editMessageText(
+        chatId: number | string,
+        messageId: number,
+        text: string,
+        other?: never,
+        signal?: never,
+    ): Promise<unknown>;
+};
+
+/**
+ * The queue-notice transport for a posted Telegram message.
+ *
+ * Exported for the same reason as the ACK transport: production and tests must
+ * drive the SAME binding, or a test proves only its own fixture.
+ *
+ * Both calls forward the signal grammY takes positionally. deleteMessage has a
+ * 48-hour limit and needs permission in groups; both failures are harmless here,
+ * since the worst case is the stale notice this whole unit exists to remove.
+ */
+export function createTelegramNoticeTransport(
+    api: TelegramNoticeApi,
+    chatId: number | string,
+    messageId: number,
+): NoticeTransport {
+    // A per-call timeout is composed even when the caller supplies nothing.
+    // QueueNotice pins whichever signal the FIRST close receives, and ordinary
+    // delivery and the 5-minute timer both close without one — so relying on the
+    // shutdown drain to supply it would leave the common path on grammY's
+    // 500-second default.
+    const bounded = (signal?: AbortSignal): AbortSignal => {
+        const timeout = AbortSignal.timeout(TELEGRAM_NOTICE_TIMEOUT_MS);
+        return signal ? AbortSignal.any([signal, timeout]) : timeout;
+    };
+    return {
+        delete: async (signal) => {
+            await api.deleteMessage(chatId, messageId, bounded(signal) as never);
+        },
+        edit: async (text, signal) => {
+            await api.editMessageText(chatId, messageId, text, undefined, bounded(signal) as never);
+        },
     };
 }

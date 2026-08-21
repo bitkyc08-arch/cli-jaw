@@ -1,6 +1,5 @@
 // ─── Telegram Bot ────────────────────────────────────
 
-import https from 'node:https';
 import nodeFetch, { type RequestInit } from 'node-fetch';
 import { Bot, type Context } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
@@ -63,6 +62,7 @@ export {
 // Re-exported from collect.ts (extracted in Phase B)
 import { orchestrateAndCollect, orchestrateAndCollectData } from '../orchestrator/collect.js';
 import { log } from '../core/logger.js';
+import { createIpv4Fetch } from './ipv4-fetch.js';
 import {
     createAckHandle,
     resolveAckConfig,
@@ -73,6 +73,7 @@ import {
 import { createQueueNotice, QueueNoticeRegistry } from '../messaging/queue-notice.js';
 import {
     createTelegramAckTransport,
+    createTelegramNoticeTransport,
     TELEGRAM_REACTION_TIMEOUT_MS,
 } from './reactions.js';
 export { orchestrateAndCollect };
@@ -580,40 +581,12 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         log.info(`[tg] Pre-seeded ${settings["telegram"].allowedChatIds.length} chat(s) from allowedChatIds`);
     }
 
-    const ipv4Agent = new https.Agent({ family: 4 });
-    const ipv4Fetch = (url: string, init: Record<string, unknown> = {}): Promise<unknown> => {
-        const body = init["body"];
-        if (requiresStreamingFetchBody(body)) {
-            return nodeFetch(url, {
-                ...(init as RequestInit),
-                agent: ipv4Agent,
-            });
-        }
-        return new Promise((resolve, reject) => {
-            const u = new URL(url);
-            const headersInit = init["headers"];
-            const opts = {
-                hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search,
-                method: (init["method"] as string) || 'GET', agent: ipv4Agent,
-                headers: headersInit instanceof Headers
-                    ? Object.fromEntries(headersInit)
-                    : ((headersInit as Record<string, string>) || {}),
-            };
-            const req = https.request(opts, (res) => {
-                let data = '';
-                res.on('data', (c: string) => data += c);
-                res.on('end', () => resolve({
-                    ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
-                    status: res.statusCode,
-                    json: () => Promise.resolve(JSON.parse(data)),
-                    text: () => Promise.resolve(data),
-                }));
-            });
-            req.on('error', reject);
-            if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
-            req.end();
-        });
-    };
+    // The factory, not an inline closure: production and the cancellation test
+    // must drive the same implementation, or the test proves only itself.
+    const ipv4Fetch = createIpv4Fetch({
+        streamingFetch: (url, init) => nodeFetch(url, init as RequestInit) as Promise<unknown>,
+        isStreamingBody: requiresStreamingFetchBody,
+    });
 
     const bot = new Bot(settings["telegram"].token, {
         client: { fetch: ipv4Fetch as never },
@@ -841,18 +814,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             void ackHandle?.to('running', { wasQueued: true });
             try {
                 const posted = await ctx.reply(t('tg.queued', { count: result.pending }, currentLocale()));
-                notice.bind({
-                    // grammY takes the AbortSignal positionally after the options
-                    // bag, and types it against the abort-controller polyfill —
-                    // structurally identical to the platform type, nominally not.
-                    delete: async (signal) => {
-                        await ctx.api.deleteMessage(chat.id, posted.message_id, signal as never);
-                    },
-                    edit: async (text, signal) => {
-                        await ctx.api.editMessageText(
-                            chat.id, posted.message_id, text, undefined, signal as never);
-                    },
-                });
+                // The exported factory, not an inline object: tests drive the same
+                // binding production uses.
+                notice.bind(createTelegramNoticeTransport(ctx.api, chat.id, posted.message_id));
                 await finalDelivery;
             } catch (error) {
                 // A failed notice post means no handle will ever arrive; without
