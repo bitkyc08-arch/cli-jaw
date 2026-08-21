@@ -27,7 +27,7 @@ test('dimension 1 — queue context changes the progress signal', () => {
     assert.equal(resolveAckEmoji(CONFIG, 'running', { wasQueued: true }), 'wait');
 });
 
-test('dimension 2 — all six state x context combinations', () => {
+test('dimension 2 — all eight AckState x wasQueued combinations', () => {
     const at = (state: 'received' | 'running' | 'success' | 'failure', wasQueued: boolean) =>
         resolveAckEmoji(CONFIG, state, { wasQueued });
     // received and running share a signal: for the user, picked up and being
