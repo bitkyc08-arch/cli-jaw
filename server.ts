@@ -109,6 +109,8 @@ import { initEnabledMessagingRuntimes, shutdownMessagingRuntime, hydrateTargetsF
 import { initIngressJournal } from './src/messaging/durable-ingress.js';
 import { initEffectClaimStore } from './src/messaging/effect-once.js';
 import { initOutboundOutbox } from './src/messaging/outbound-outbox.js';
+import { initQueueNoticeStore } from './src/messaging/queue-notice-store.js';
+import { restoreQueueNoticesForEnabledChannels } from './src/messaging/queue-notice-boot.js';
 import type { MessengerChannel } from './src/messaging/types.js';
 
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
@@ -660,6 +662,10 @@ server.listen(PORT, bindHost, async () => {
     // prove the children announced themselves, which it cannot do before they exist.
     initEffectClaimStore(db);
     initOutboundOutbox(db);
+    // Before the transports start, for the same reason as the journal: a queued
+    // turn can post its notice the moment inbound is live, and the record has to
+    // be reservable by then (#418).
+    initQueueNoticeStore(db);
     // Before any transport starts: the journal must exist for the first inbound event,
     // and the connection is handed in rather than imported so the module stays testable
     // against a temporary database.
@@ -683,6 +689,12 @@ server.listen(PORT, bindHost, async () => {
     // the previous run finally has somewhere to answer. Nothing on the boot path
     // used to start the queue, so those messages waited for a NEW one to drag
     // them out — from the outside, the bot had just gone quiet (#407).
+    //
+    // Before the drain, not after: the drain re-runs those turns and posts fresh
+    // answers, so a notice from the PREVIOUS run has to be closed out first or the
+    // channel shows an answer sitting under a notice that still claims to be
+    // waiting. Awaited because ordering is the whole point (#418).
+    await restoreQueueNoticesForEnabledChannels();
     drainRecoveredQueue();
 
     try {
