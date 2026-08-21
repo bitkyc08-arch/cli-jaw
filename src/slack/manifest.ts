@@ -88,6 +88,8 @@ export function createSlackAppManifest(appName: string = DEFAULT_SLACK_APP_NAME)
                     'im:history',
                     'im:write',
                     'chat:write',
+                    // reactions.add / reactions.remove -> the inbound ACK reaction
+                    'reactions:write',
                     // files.info -> files:read; authenticated private downloads use
                     // the same bot token only after Slack-host and SSRF validation.
                     'files:read',

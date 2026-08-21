@@ -154,6 +154,7 @@
   "cmd.runtimeSelectionInstanceWide": "CLI 与模型选择由本实例的所有会话共用。请在实例网页设置中修改。",
   "tg.promptUnsupported": "（Telegram 不支持）",
   "tg.queued": "已加入队列（第 {count} 个）",
+  "tg.queueExpired": "排队等待已超时",
   "tg.imageCaption": "[📷 图片] {caption}",
   "tg.imageFail": "图片处理失败：{msg}",
   "tg.fileFail": "文件处理失败：{msg}",

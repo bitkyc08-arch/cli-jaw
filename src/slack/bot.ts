@@ -20,7 +20,26 @@ import {
 import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-target.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildMediaPromptMany } from '../agent/spawn.js';
-import { slackApi } from './api.js';
+import {
+    addSlackReaction,
+    deleteSlackMessage,
+    describeSlackError,
+    removeSlackReaction,
+    slackApi,
+    updateSlackMessage,
+    SLACK_CLEANUP_TIMEOUT_MS,
+} from './api.js';
+import {
+    createAckHandle,
+    resolveAckConfig,
+    shouldAck,
+    SLACK_ACK_DEFAULTS,
+    type AckHandle,
+} from '../messaging/ack-reaction.js';
+import {
+    createQueueNotice,
+    QueueNoticeRegistry,
+} from '../messaging/queue-notice.js';
 import {
     recordSlackScopeObservation,
     getSlackScopeStatus,
@@ -76,6 +95,69 @@ const pendingQueueWaiters = new Set<() => void>();
  * requester that is not (#407).
  */
 const pendingQueueRequestIds = new Set<string>();
+/**
+ * Queue-notice teardowns, owned by the shared lifecycle module rather than by
+ * hand-rolled closures. Shutdown drains this instead of dropping callbacks, so a
+ * turn that never answered gets its notice rewritten rather than left claiming
+ * the agent is still working on it.
+ */
+const slackNoticeRegistry = new QueueNoticeRegistry();
+
+/**
+ * A reaction transition is best-effort, so it gets a tighter bound than an
+ * ordinary cleanup call: settle() may run remove THEN apply sequentially, and
+ * the running apply can still be in flight ahead of both.
+ */
+const SLACK_ACK_TIMEOUT_MS = 2500;
+/**
+ * Long enough for the worst honest chain — running apply, terminal remove,
+ * terminal apply, plus one notice call — so a slow-but-working Slack finishes
+ * inside the deadline instead of being cut off by it.
+ */
+const SLACK_NOTICE_DRAIN_MS = SLACK_CLEANUP_TIMEOUT_MS + SLACK_ACK_TIMEOUT_MS * 2;
+
+/** Live ack config, re-read per turn so a settings change needs no restart. */
+function slackAckConfig() {
+    return resolveAckConfig(settings["slack"]?.ack, SLACK_ACK_DEFAULTS);
+}
+
+/**
+ * Build the ACK handle for one inbound message.
+ *
+ * The transport throws on vendor failure because slackApi RESOLVES with
+ * {ok:false}; without that check the handle would record a reaction that never
+ * landed and then try to remove something that is not there. already_reacted and
+ * no_reaction are successes: they mean the desired state is already true.
+ */
+function buildSlackAck(
+    token: string,
+    target: RemoteTarget,
+    anchorTs: string,
+    context: { isDirect: boolean; isMention: boolean },
+): AckHandle | null {
+    const config = slackAckConfig();
+    if (!shouldAck(config, context)) return null;
+    return createAckHandle(config, {
+        // Slack has no atomic replace, so the previous reaction must come off first.
+        mode: 'remove-then-add',
+        apply: async (emoji) => {
+            const r = await addSlackReaction(token, target.targetId, anchorTs, emoji,
+                { timeoutMs: SLACK_ACK_TIMEOUT_MS });
+            if (!r.ok && r.error !== 'already_reacted') {
+                throw new Error(describeSlackError(r.error, r.data));
+            }
+        },
+        remove: async (emoji) => {
+            const r = await removeSlackReaction(token, target.targetId, anchorTs, emoji,
+                { timeoutMs: SLACK_ACK_TIMEOUT_MS });
+            if (!r.ok && r.error !== 'no_reaction') {
+                throw new Error(describeSlackError(r.error, r.data));
+            }
+        },
+        // Any workspace emoji name is valid; the wrapper strips colons.
+        coerce: (emoji) => emoji,
+    }, (e) => log.info('[slack:ack]', logErrorText(e)));
+}
 
 function hasPendingQueueWaiter(requestId: string): boolean {
     return pendingQueueRequestIds.has(requestId);
@@ -203,6 +285,12 @@ async function slackOrchestrate(
         eventKey?: string;
         reservationGeneration?: number;
         preResolvedScope?: string | null;
+        /** The inbound message's ts — the ACK reaction's anchor. Passed explicitly
+         *  because this function cannot recover it, and the caller has it. */
+        ackTs?: string;
+        /** Ack scope inputs, resolved by the caller that knows the event shape. */
+        isDirect?: boolean;
+        isMention?: boolean;
     } = {},
 ) {
     const client = getSlackSendClient();
@@ -219,11 +307,21 @@ async function slackOrchestrate(
         log.info('[slack:in] skipped (stale_generation)');
         return;
     }
+    // Built before admission: a queued turn never enters runReply (ingress.ts
+    // returns early unless disposition is 'new_run'), so a handle created inside
+    // it would never exist for exactly the case this feature is for.
+    const ack = dedupe.ackTs
+        ? buildSlackAck(token, target, dedupe.ackTs, {
+            isDirect: dedupe.isDirect ?? false,
+            isMention: dedupe.isMention ?? false,
+        })
+        : null;
     const result = admitSlackRun({
         target, prompt, displayText: displayMsg, chatId,
         ...(dedupe.preResolvedScope !== undefined
             ? { preResolvedScope: dedupe.preResolvedScope } : {}),
         runReply: async (ctx: SlackRunContext) => {
+            let ackOutcome: 'success' | 'failure' = 'failure';
             try {
                 const progress = await startSlackProgress(
                     token, target, t('slack.progress.start', {}, currentLocale()),
@@ -257,6 +355,11 @@ async function slackOrchestrate(
                     }),
                 ));
                 const sendResult = await sendSlackText(token, target, text);
+                // Recorded here, settled once in the finally below. The image
+                // relay can still throw after the text is out, and the user did
+                // get their answer in that case — so the outcome is success and
+                // settling twice would be a lie about which one happened.
+                ackOutcome = sendResult.ok ? 'success' : 'failure';
                 // A successful reply records presence, not ownership (marking
                 // point b). Replying into a thread we were invited to does not
                 // make the rest of that conversation ours; the default `joined`
@@ -269,6 +372,9 @@ async function slackOrchestrate(
             } catch (err: unknown) {
                 log.error('[slack:error]', logErrorText(err));
                 await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
+            } finally {
+                // Exactly one settle per turn, whichever way the body exited.
+                await ack?.settle(ackOutcome);
             }
         },
     });
@@ -283,38 +389,102 @@ async function slackOrchestrate(
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
         let disposed = false;
-        const dispose = () => {
+        const notice = createQueueNotice({
+            expiredText: t('tg.queueExpired', {}, currentLocale()),
+            onError: (e) => log.info('[slack:queue-notice]', logErrorText(e)),
+        });
+        const disposeListener = () => {
             if (disposed) return;
             disposed = true;
             clearTimeout(queueTimeout);
             removeBroadcastListener(queueHandler);
-            pendingQueueWaiters.delete(dispose);
             if (requestId) pendingQueueRequestIds.delete(requestId);
         };
+        // One terminal outcome per turn, shared by whoever gets there first.
+        //
+        // A boolean flag would pick a winner and let the loser return
+        // immediately — and the loser here is the shutdown drain, which would
+        // then tear the transport down while the winner is still sending. The
+        // broadcast bus never awaits listener promises (core/bus.ts), so nothing
+        // else would hold it. Handing back the winner's promise makes both paths
+        // converge on the same completion.
+        let terminal: Promise<void> | null = null;
+        const claimTerminal = (run: () => Promise<void>): Promise<void> => {
+            if (!terminal) {
+                terminal = run().catch(e => log.info('[slack:queue]', logErrorText(e)));
+            }
+            return terminal;
+        };
+        const finishExpired = (signal?: AbortSignal) => claimTerminal(async () => {
+            disposeListener();
+            // Started together, not in sequence: awaiting the notice first can
+            // eat the whole drain deadline before the reaction is even attempted.
+            await Promise.allSettled([
+                notice.close('expired', signal),
+                ack?.settle('failure') ?? Promise.resolve(),
+            ]);
+        });
+        const unregister = slackNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, unknown>) => {
-            if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'slack'
-                && data["requestId"] === requestId) {
-                // Dispose FIRST so a duplicate broadcast cannot double-post.
-                if (disposed) return;
-                dispose();
+            if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'slack'
+                || data["requestId"] !== requestId) return;
+            if (disposed) return;
+            // Dispose FIRST so a duplicate broadcast cannot double-post, but the
+            // notice deliberately outlives it: deleting before the answer is out
+            // would leave a failed send with neither answer nor notice.
+            disposeListener();
+            await claimTerminal(async () => {
                 const text = String(data["text"]);
                 const queuedSendResult = await sendSlackText(token, target, text);
+                await notice.close(queuedSendResult.ok ? 'answered' : 'expired');
                 if (queuedSendResult.ok && target.threadId) {
                     markThreadParticipated(target.targetId, target.threadId);
                 }
-                await relaySlackImages(token, target, text);
-            }
+                await relaySlackImages(token, target, text).catch(
+                    e => log.error('[slack:queue-send]', logErrorText(e)));
+                // The text is what the user was waiting for; a failed image relay
+                // does not turn an answered turn into a failed one.
+                await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
+            });
+            unregister();
         };
-        // Register BEFORE any await: a fast queued job can finish while the
-        // "queued" notice is still in flight, and the completion broadcast
-        // would be missed entirely.
+        // Everything below is armed SYNCHRONOUSLY, before any await. A reaction
+        // call that takes a moment must not be able to outlive the completion it
+        // is acknowledging: without the listener and the request-id claim in
+        // place, a fast queued job would either be missed here or answered by the
+        // standing fallback forwarder instead (#407).
         addBroadcastListener(queueHandler);
-        pendingQueueWaiters.add(dispose);
-        // Claim the id BEFORE the notice below: the fallback forwarder must see
-        // this waiter as live even if the result lands during that await.
         if (requestId) pendingQueueRequestIds.add(requestId);
-        queueTimeout = setTimeout(dispose, 300000);
-        await sendSlackText(token, target, t('tg.queued', { count: result.pending }, currentLocale()));
+        pendingQueueWaiters.add(() => { void finishExpired(); });
+        queueTimeout = setTimeout(() => { void finishExpired(); }, 300000);
+        // Only now, with the lifecycle armed. Not awaited: the notice below is
+        // what the user needs to see, and the reaction is decoration on top.
+        void ack?.to('running', { wasQueued: true });
+        const posted = await sendSlackText(
+            token, target, t('tg.queued', { count: result.pending }, currentLocale()),
+        );
+        if (posted.ok && posted.ts) {
+            const ts = posted.ts;
+            notice.bind({
+                delete: async (signal) => {
+                    const r = await deleteSlackMessage(token, target.targetId, ts,
+                        { ...(signal ? { signal } : {}) });
+                    // A notice that is already gone is a deletion that succeeded.
+                    if (!r.ok && r.error !== 'message_not_found') {
+                        throw new Error(describeSlackError(r.error, r.data));
+                    }
+                },
+                edit: async (text, signal) => {
+                    const r = await updateSlackMessage(token, target.targetId, ts, text,
+                        { ...(signal ? { signal } : {}) });
+                    if (!r.ok) throw new Error(describeSlackError(r.error, r.data));
+                },
+            });
+        } else {
+            // No ts will ever arrive, so a deferred close would wait for a bind
+            // that cannot happen and the drain would burn its whole deadline.
+            notice.abandon();
+        }
         return;
     }
 
@@ -438,6 +608,11 @@ async function runSlackMessageEvent(
         ...(opts.reservationGeneration !== undefined
             ? { reservationGeneration: opts.reservationGeneration } : {}),
         ...(opts.preResolvedScope !== undefined ? { preResolvedScope: opts.preResolvedScope } : {}),
+        // The ACK anchor is the user's own message. Only this caller has the raw
+        // event, so the scope inputs are resolved here rather than re-derived.
+        ...(event.ts ? { ackTs: event.ts } : {}),
+        isDirect: event.channel_type === 'im',
+        isMention: event.type === 'app_mention',
     });
 }
 
@@ -929,10 +1104,15 @@ async function disposeSlackRuntime(): Promise<void> {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;
     }
-    // Drop any queued-result waiters rather than leaving them armed for their
-    // 5-minute timeout against a transport that no longer exists.
+    // Close out queued turns rather than leaving them armed for their 5-minute
+    // timeout against a transport that no longer exists. Awaited and bounded:
+    // dropping the callbacks (as this did) leaves the notice claiming the agent
+    // is still working, while an unbounded await would hold shutdown open on a
+    // stuck vendor call. The deadline covers the worst honest chain and the
+    // signal cancels whatever is left.
     for (const dispose of [...pendingQueueWaiters]) dispose();
     pendingQueueWaiters.clear();
+    await slackNoticeRegistry.drain(SLACK_NOTICE_DRAIN_MS);
     pendingQueueRequestIds.clear();
     socketClient?.stop();
     socketClient = null;

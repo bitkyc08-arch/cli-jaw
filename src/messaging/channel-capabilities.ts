@@ -69,7 +69,9 @@ const CAPABILITIES = {
         sendText: true,
         editText: true,
         deleteMessage: true,
-        reaction: false,
+        // reactions.add / reactions.remove are wired through src/slack/api.ts and
+        // driven by the inbound ACK handle in bot.ts (#412).
+        reaction: true,
         typing: false,
         fileUpload: true,
         voice: true,

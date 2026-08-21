@@ -46,6 +46,9 @@ export const REQUIRED_SLACK_BOT_SCOPES = [
  * sender names simply fall back to raw ids until the app is reinstalled.
  */
 export const SLACK_CAPABILITY_SCOPES = [
+    // reactions:write is optional on purpose: promoting it to required would mark
+    // every existing install broken over an opt-in acknowledgement feature.
+    'reactions:write',
     'files:read',
     'users:read', 'team:read',
     'channels:read', 'groups:read', 'im:read', 'mpim:read',

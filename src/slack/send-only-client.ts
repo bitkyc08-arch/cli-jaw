@@ -49,15 +49,19 @@ export async function sendSlackText(
     target: RemoteTarget,
     text: string,
     options: { fetchImpl?: SlackFetch; blocks?: unknown } = {},
-): Promise<{ ok: boolean; error?: string; status?: number }> {
+): Promise<{ ok: boolean; error?: string; status?: number; ts?: string }> {
     const chunks = chunkSlackMessage(toMrkdwn(text));
+    // The FIRST chunk's ts. A caller that wants to remove what it just posted —
+    // the queue notice — needs a handle, and the first message is the one the
+    // user sees, so it is the stable one to name.
+    let firstTs: string | undefined;
     // `text` is masked inside chunkSlackMessage(); `blocks` bypassed masking
     // entirely (#408). Computed once, before the loop, so the first send and the
     // rate-limit retry below carry the same value — masking only the first would
     // put the original back on the wire the moment Slack throttled us.
     const safeBlocks = options.blocks ? redactOutboundPayload(options.blocks) : undefined;
     for (const [index, chunk] of chunks.entries()) {
-        const result = await slackApi(
+        const result = await slackApi<{ ts?: string }>(
             token,
             'chat.postMessage',
             {
@@ -69,6 +73,7 @@ export async function sendSlackText(
             },
             options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
         );
+        if (result.ok && index === 0 && result.data?.ts) firstTs = result.data.ts;
         if (!result.ok) {
             const classified = classifySendFailure({
                 error: result.error,
@@ -82,7 +87,7 @@ export async function sendSlackText(
             });
             if (classified === 'rate-limit' && wait > 0 && wait <= MAX_INLINE_RATE_LIMIT_MS) {
                 await new Promise((resolve) => setTimeout(resolve, wait));
-                const retried = await slackApi(
+                const retried = await slackApi<{ ts?: string }>(
                     token,
                     'chat.postMessage',
                     {
@@ -93,11 +98,17 @@ export async function sendSlackText(
                     },
                     options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
                 );
-                if (retried.ok) continue;
+                if (retried.ok) {
+                    // Without this a throttled first send leaves a notice nobody
+                    // can delete: the retry is what actually created the message.
+                    if (index === 0 && retried.data?.ts) firstTs = retried.data.ts;
+                    continue;
+                }
                 return slackFailure(describeSlackError(retried.error, retried.data), retried.status, retried.retryAfterMs, retried.grantedScopes);
             }
             return slackFailure(describeSlackError(result.error, result.data), result.status, result.retryAfterMs, result.grantedScopes);
         }
     }
-    return { ok: true };
+    // exactOptionalPropertyTypes: omit the key rather than sending undefined.
+    return firstTs ? { ok: true, ts: firstTs } : { ok: true };
 }

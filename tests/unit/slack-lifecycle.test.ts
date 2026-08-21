@@ -26,6 +26,14 @@ mock.module('../../src/slack/api.ts', {
         // inbound-file.ts imports this from the same module; a partial mock
         // that omits it makes the whole import graph fail to link.
         neededScopeFrom: () => '',
+        // Same rule for the ACK/notice wrappers bot.ts pulls in (#412): every
+        // named import in the graph has to exist here or nothing links.
+        addSlackReaction: async () => ({ ok: true }),
+        removeSlackReaction: async () => ({ ok: true }),
+        deleteSlackMessage: async () => ({ ok: true }),
+        updateSlackMessage: async () => ({ ok: true }),
+        stripEmojiColons: (name: string) => name.replace(/^:+|:+$/g, ''),
+        SLACK_CLEANUP_TIMEOUT_MS: 5000,
         slackFailure: (error: string, status?: number) =>
             status === undefined ? { ok: false, error } : { ok: false, error, status },
     },
