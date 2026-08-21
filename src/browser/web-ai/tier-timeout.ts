@@ -13,19 +13,28 @@ import { normalizeGrokModelChoice } from './grok-model.js';
 export const TIER_DEFAULT_TIMEOUT_SEC: Readonly<Record<string, number>> = Object.freeze({
     instant: 120,
     thinking: 600,
-    pro: 3600,
+    // parity2 030 slice 3.3 (C-19): vendor-specific long-reasoning tiers stay
+    // independent so one budget change cannot silently change another
+    // provider's behavior. Pro runs get 1.5h (agbrowse chatgpt-pro), Grok
+    // Heavy 1h. Legacy 'pro' key kept as an alias for existing callers.
+    'chatgpt-pro': 5400,
+    pro: 5400,
+    'grok-heavy': 3600,
     'deep-research': 3600,
 });
 
-/** Long-reasoning ceiling (seconds), exported for cross-module reuse (e.g. lease TTLs). */
-export const PRO_TIMEOUT_SEC = TIER_DEFAULT_TIMEOUT_SEC['pro'];
+/** ChatGPT Pro ceiling (seconds), exported for cross-module reuse (e.g. lease TTLs). */
+export const CHATGPT_PRO_TIMEOUT_SEC = TIER_DEFAULT_TIMEOUT_SEC['chatgpt-pro'];
+/** Backward-compatible alias; new consumers use CHATGPT_PRO_TIMEOUT_SEC. */
+export const PRO_TIMEOUT_SEC = CHATGPT_PRO_TIMEOUT_SEC;
 
-const FALLBACK_TIMEOUT_SEC = 1200;
+/** parity2 030 slice 3.3 (C-19): per-vendor defaults — Grok answers fast, so its unknown-tier budget is tighter. */
+const VENDOR_DEFAULT_TIMEOUT_SEC: Readonly<Record<string, number>> = Object.freeze({ chatgpt: 1200, gemini: 1200, grok: 600 });
 
-/** Resolve a tier name to a default timeout (seconds), falling back to 1200s when unknown. */
-export function tierDefaultTimeoutSec(tier: string | null): number {
+/** Resolve a tier name to a default timeout (seconds), falling back to the vendor default, then 1200s. */
+export function tierDefaultTimeoutSec(tier: string | null, vendor: string = 'chatgpt'): number {
     if (tier && TIER_DEFAULT_TIMEOUT_SEC[tier] != null) return TIER_DEFAULT_TIMEOUT_SEC[tier];
-    return FALLBACK_TIMEOUT_SEC;
+    return VENDOR_DEFAULT_TIMEOUT_SEC[vendor] || 1200;
 }
 
 /**
@@ -43,7 +52,7 @@ export function deriveTimeoutTier(vendor: WebAiVendor, model: string | undefined
     }
     if (vendor === 'grok') {
         const m = normalizeGrokModelChoice(model);
-        if (m === 'heavy') return 'pro';
+        if (m === 'heavy') return 'grok-heavy';
         if (m === 'fast') return 'instant';
         return m ? 'thinking' : null;
     }
@@ -57,5 +66,5 @@ export function resolveTimeoutDefaultSec(
     input: { model?: string; research?: string } = {},
     vendor: WebAiVendor = 'chatgpt',
 ): number {
-    return tierDefaultTimeoutSec(deriveTimeoutTier(vendor, input.model, input.research));
+    return tierDefaultTimeoutSec(deriveTimeoutTier(vendor, input.model, input.research), vendor);
 }

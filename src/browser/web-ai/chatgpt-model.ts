@@ -13,6 +13,36 @@ declare const document: { querySelectorAll(selector: string): Iterable<BrowserNo
 
 export type ChatGptModelChoice = 'instant' | 'thinking' | 'pro';
 export type ChatGptEffortChoice = 'light' | 'standard' | 'extended' | 'heavy';
+/** parity2 030 slice 3.1 (C-01): GPT-5.6 family picker vocabulary. */
+export type ChatGptFamilyChoice = 'gpt-5.6-sol' | 'gpt-5.5' | 'o3';
+
+export const CHATGPT_FAMILY_OPTIONS: Readonly<Record<ChatGptFamilyChoice, { label: string }>> = Object.freeze({
+    'gpt-5.6-sol': { label: 'GPT-5.6 Sol' },
+    'gpt-5.5': { label: 'GPT-5.5' },
+    o3: { label: 'o3' },
+});
+
+const FAMILY_ALIASES: Readonly<Record<string, ChatGptFamilyChoice>> = Object.freeze({
+    'gpt-5.6-sol': 'gpt-5.6-sol',
+    'gpt-5.6': 'gpt-5.6-sol',
+    sol: 'gpt-5.6-sol',
+    'gpt-5.5': 'gpt-5.5',
+    o3: 'o3',
+});
+
+export function normalizeChatGptFamilyChoice(family: string | undefined): ChatGptFamilyChoice | null {
+    const key = String(family || '').trim().toLowerCase();
+    return key ? FAMILY_ALIASES[key] || null : null;
+}
+
+/** parity2 030 (C-01): Power-shell selectors — the 5.6 Chat picker renders a
+ * Power menu item whose slider drives tier/effort; menu rows may not exist. */
+export const CHATGPT_POWER_PICKER_ROOT_SELECTOR =
+    '[role="menu"][data-state="open"]:has([role="menuitem"][aria-label="Power"])';
+export const CHATGPT_POWER_SLIDER_VIEW_SELECTOR = [
+    '[data-testid="composer-model-picker-slider-simple-view"]',
+    '[data-testid="composer-model-picker-slider-advanced-view"]',
+].join(', ');
 
 export interface ChatGptModelSelectionEvidence {
     requestedModel: string | null;
@@ -69,7 +99,7 @@ const CHATGPT_COMPOSER_MODEL_PILL_SELECTORS = [
 ] as const;
 
 const CHATGPT_MODEL_MENU_ITEM_SELECTOR = '[data-testid^="model-switcher-gpt-"]';
-const CHATGPT_MODEL_TEXT_BUTTON_PATTERN = /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b|Medium\b|High\b|Extra High\b|Pro Standard\b|Pro Extended\b|즉시|중간|높음|매우 높음|Pro 확장|프로 확장)/i;
+const CHATGPT_MODEL_TEXT_BUTTON_PATTERN = /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b|Medium\b|High\b|Extra High\b|Pro Standard\b|Pro Extended\b|즉시|중간|높음|매우 높음|Pro 확장|프로 확장|即时|思考|中等|极高|高|Pro 扩展)/i;
 const CHATGPT_OBSERVED_PRO_PILL_LABELS = ['Standard Pro', 'Extended Pro'] as const;
 const CHATGPT_EFFORT_TRIGGER_SELECTORS = [
     '[data-testid*="thinking-effort"]',
@@ -82,9 +112,11 @@ const CHATGPT_EFFORT_TRIGGER_SELECTORS = [
 ] as const;
 
 export const CHATGPT_MODEL_OPTIONS: Record<ChatGptModelChoice, { testIds: string[]; labels: string[] }> = {
-    instant: { testIds: ['model-switcher-gpt-5-5', 'model-switcher-gpt-5-3'], labels: ['Instant', '즉시'] },
-    thinking: { testIds: ['model-switcher-gpt-5-5-thinking', 'model-switcher-gpt-5-5-thinking-thinking-effort'], labels: ['Thinking', 'Medium', 'High', 'Extra High', '중간', '높음', '매우 높음'] },
-    pro: { testIds: ['model-switcher-gpt-5-5-pro', 'model-switcher-gpt-5-5-pro-thinking-effort'], labels: ['Pro', 'Heavy', 'Pro Standard', 'Pro Extended', 'Pro 확장', '프로 확장'] },
+    // parity2 030 slice 3.2 (C-20): zh projections added per label set — each list is
+    // its old literal PLUS only the locale variants of those same terms (agbrowse G25).
+    instant: { testIds: ['model-switcher-gpt-5-5', 'model-switcher-gpt-5-3'], labels: ['Instant', '즉시', '即时'] },
+    thinking: { testIds: ['model-switcher-gpt-5-5-thinking', 'model-switcher-gpt-5-5-thinking-thinking-effort'], labels: ['Thinking', 'Medium', 'High', 'Extra High', '중간', '높음', '매우 높음', '思考', '中等', '高', '极高'] },
+    pro: { testIds: ['model-switcher-gpt-5-5-pro', 'model-switcher-gpt-5-5-pro-thinking-effort'], labels: ['Pro', 'Heavy', 'Pro Standard', 'Pro Extended', 'Pro 확장', '프로 확장', 'Pro 扩展'] },
 };
 
 export const CHATGPT_MODEL_EFFORT_OPTIONS: Record<'thinking' | 'pro', { triggerTestIds: string[]; efforts: Partial<Record<ChatGptEffortChoice, string>> }> = {
@@ -111,25 +143,25 @@ const CHATGPT_SIMPLIFIED_INTELLIGENCE_OPTIONS: Readonly<Record<ChatGptModelChoic
     efforts: Readonly<Partial<Record<ChatGptEffortChoice, readonly string[]>>>;
 }>> = {
     instant: {
-        defaultLabels: ['Instant', '즉시'],
+        defaultLabels: ['Instant', '즉시', '即时'],
         efforts: {
-            light: ['Instant', '즉시'],
+            light: ['Instant', '즉시', '即时'],
         },
     },
     thinking: {
-        defaultLabels: ['Medium', '중간'],
+        defaultLabels: ['Medium', '중간', '中等'],
         efforts: {
-            light: ['Instant', '즉시'],
-            standard: ['Medium', '중간'],
-            extended: ['High', '높음'],
-            heavy: ['Extra High', '매우 높음'],
+            light: ['Instant', '즉시', '即时'],
+            standard: ['Medium', '중간', '中等'],
+            extended: ['High', '높음', '高'],
+            heavy: ['Extra High', '매우 높음', '极高'],
         },
     },
     pro: {
-        defaultLabels: ['Pro Extended', 'Pro 확장', '프로 확장'],
+        defaultLabels: ['Pro Extended', 'Pro 확장', '프로 확장', 'Pro 扩展'],
         efforts: {
-            standard: ['Pro Extended', 'Pro 확장', '프로 확장'],
-            extended: ['Pro Extended', 'Pro 확장', '프로 확장'],
+            standard: ['Pro Extended', 'Pro 확장', '프로 확장', 'Pro 扩展'],
+            extended: ['Pro Extended', 'Pro 확장', '프로 확장', 'Pro 扩展'],
         },
     },
 };
@@ -143,9 +175,13 @@ const MODEL_ALIASES: Record<string, ChatGptModelChoice> = {
     think: 'thinking',
     'gpt-5-5-thinking': 'thinking',
     'gpt-5.5-thinking': 'thinking',
+    'gpt-5-6-thinking': 'thinking',
+    'gpt-5.6-thinking': 'thinking',
     pro: 'pro',
     'gpt-5-5-pro': 'pro',
     'gpt-5.5-pro': 'pro',
+    'gpt-5-6-pro': 'pro',
+    'gpt-5.6-pro': 'pro',
 };
 
 const EFFORT_ALIASES: Record<string, ChatGptEffortChoice> = {
@@ -235,33 +271,80 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
         });
     }
     if (requested && currentModel !== requested) {
-        const option = await findModelOption(page, requested);
-        if (!option) throw new WebAiError({
-            errorCode: 'provider.model-mismatch',
-            stage: 'provider-select-mode',
-            vendor: 'chatgpt',
-            retryHint: 'model-fallback',
-            message: `ChatGPT model option not found: ${requested}`,
-            evidence: { requested },
-        });
-        await option.click({ timeout: 5_000 });
-        await page.waitForTimeout(750).catch(() => undefined);
-        await openModelMenu(page, usedFallbacks);
-        currentModel = await readCheckedModel(page, requested);
-        modelChanged = true;
+        // parity2 030 slice 3.1 (C-01): bounded retry (menu re-render race) with a
+        // Power-slider fallback — on the 5.6 Power shell the menu rows may not
+        // exist at all and the slider IS the selection control.
+        let attempt = 0;
+        const MODEL_SELECT_MAX_ATTEMPTS = 3;
+        while (currentModel !== requested && attempt < MODEL_SELECT_MAX_ATTEMPTS) {
+            attempt += 1;
+            const option = await findModelOption(page, requested);
+            if (!option) {
+                if (!(await isChatGptPowerPickerOpen(page))) {
+                    await openModelMenu(page, usedFallbacks).catch(() => undefined);
+                }
+                if (await isChatGptPowerPickerOpen(page)
+                    && await selectChatGptPowerTierBySlider(page, requested, { effort: requestedEffort || null, usedFallbacks })) {
+                    await page.waitForTimeout(400).catch(() => undefined);
+                    currentModel = await readCheckedModel(page, requested);
+                    modelChanged = true;
+                    continue;
+                }
+                throw new WebAiError({
+                    errorCode: 'provider.model-mismatch',
+                    stage: 'provider-select-mode',
+                    vendor: 'chatgpt',
+                    retryHint: 'model-fallback',
+                    message: `ChatGPT model option not found: ${requested}`,
+                    evidence: { requested },
+                });
+            }
+            await option.click({ timeout: 5_000 });
+            await page.waitForTimeout(750).catch(() => undefined);
+            await openModelMenu(page, usedFallbacks);
+            currentModel = await readCheckedModel(page, requested);
+            modelChanged = true;
+        }
+        if (currentModel !== requested && !warnings.includes('model-selection-unverified')) {
+            warnings.push('model-selection-unverified');
+        }
     }
 
     let selectedEffort: { selected: ChatGptEffortChoice; changed: boolean } | null = null;
     if (requestedEffort) {
-        try {
-            selectedEffort = await selectChatGptEffort(page, targetModel, requestedEffort, usedFallbacks);
-            await openModelMenu(page, usedFallbacks);
-        } catch (err) {
-            if (!isSelectionUnavailable(err)) throw err;
-            usedFallbacks.push('reasoning-effort-unavailable-current-effort');
-            warnings.push(`reasoning effort ${requestedEffort} was not enforced: ${errorMessage(err)}`);
-            await closeModelMenu(page);
+        // parity2 030 (C-01): the Power shell's 5-stop slider IS the effort
+        // control for thinking — try it before the legacy effort-portal path.
+        let sliderApplied = false;
+        if (targetModel === 'thinking') {
+            await openModelMenu(page, usedFallbacks).catch(() => undefined);
+            if (await isChatGptPowerPickerOpen(page)
+                && await selectChatGptPowerTierBySlider(page, 'thinking', { effort: requestedEffort, usedFallbacks })) {
+                const stop = await readChatGptPowerSliderState(page);
+                if (effortChoiceFromPowerTierLabel(stop.label, stop.index) === requestedEffort) {
+                    selectedEffort = { selected: requestedEffort, changed: true };
+                    usedFallbacks.push('thinking-effort-power-slider-direct');
+                    sliderApplied = true;
+                }
+            }
         }
+        if (!sliderApplied) {
+            try {
+                selectedEffort = await selectChatGptEffort(page, targetModel, requestedEffort, usedFallbacks);
+                await openModelMenu(page, usedFallbacks);
+            } catch (err) {
+                if (!isSelectionUnavailable(err)) throw err;
+                usedFallbacks.push('reasoning-effort-unavailable-current-effort');
+                warnings.push(`reasoning effort ${requestedEffort} was not enforced: ${errorMessage(err)}`);
+                await closeModelMenu(page);
+            }
+        }
+    }
+    // Effort observation MUST be captured while the Power shell is still open:
+    // the tier string lives inside the shell that closeModelMenu() unmounts.
+    let observedEffort: ChatGptEffortChoice | null = null;
+    if (requestedEffort && targetModel === 'thinking' && await isChatGptPowerPickerOpen(page)) {
+        const stop = await readChatGptPowerSliderState(page);
+        observedEffort = effortChoiceFromPowerTierLabel(stop.label, stop.index);
     }
     const after = await readCheckedModel(page, targetModel);
     await closeModelMenu(page);
@@ -269,11 +352,23 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
         usedFallbacks.push('model-verification-unavailable-current-model');
         warnings.push(`model ${targetModel} was not verified; current detected model is ${after || 'unknown'}`);
     }
+    // parity2 030 (C-01): effort is its own verification axis — a wrong tier must
+    // not report as verified just because the model axis matched.
+    const effortVerified = !requestedEffort
+        || targetModel !== 'thinking'
+        || selectedEffort?.selected === requestedEffort
+        || observedEffort === requestedEffort;
+    if (requestedEffort && !effortVerified) {
+        usedFallbacks.push('effort-verification-unavailable-current-effort');
+        warnings.push('effort-selection-unverified');
+        warnings.push(`effort ${requestedEffort} was not applied; observed ${observedEffort || 'unknown'}`);
+    }
+    const effortReportable = effortVerified ? selectedEffort : null;
     return {
         requested: requested || targetModel,
         selected: after,
-        alreadySelected: !modelChanged && !selectedEffort?.changed,
-        effort: selectedEffort?.selected || null,
+        alreadySelected: !modelChanged && !effortReportable?.changed && effortVerified,
+        effort: effortReportable?.selected || null,
         requestedEffort: requestedEffort || null,
         usedFallbacks,
         warnings,
@@ -281,7 +376,7 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
             requestedModel: model ?? null,
             resolvedLabel: after,
             normalizedModel: targetModel,
-            verified: after === targetModel,
+            verified: after === targetModel && effortVerified,
         }),
     };
 }
@@ -655,6 +750,12 @@ function requiredEffortMenuLabels(model: ChatGptModelChoice, effort: ChatGptEffo
 }
 
 async function readCheckedModel(page: Page, expectedModel: ChatGptModelChoice | null = null): Promise<ChatGptModelChoice | null> {
+    // parity2 030 (C-01): on the Power shell there are no checked radio rows —
+    // the slider state is the selection evidence.
+    if (await isChatGptPowerPickerOpen(page)) {
+        const state = await readChatGptPowerSliderState(page);
+        if (state.choice) return state.choice;
+    }
     for (const [choice, option] of Object.entries(CHATGPT_MODEL_OPTIONS) as Array<[ChatGptModelChoice, typeof CHATGPT_MODEL_OPTIONS[ChatGptModelChoice]]>) {
         for (const testId of option.testIds) {
             const checked = await page.locator(`[role="menuitemradio"][data-testid="${testId}"][aria-checked="true"], [data-testid="${testId}"][aria-checked="true"]`).first().isVisible().catch(() => false);
@@ -726,6 +827,8 @@ async function readActiveEffortPill(page: Page): Promise<string> {
 }
 
 async function isModelMenuOpen(page: Page): Promise<boolean> {
+    // parity2 030 (C-01): the 5.6 Power shell counts as an open model menu.
+    if (await isChatGptPowerPickerOpen(page)) return true;
     const legacyOpen = await page.locator(CHATGPT_MODEL_MENU_ITEM_SELECTOR)
         .filter({ hasText: CHATGPT_MODEL_TEXT_BUTTON_PATTERN })
         .evaluateAll((items: BrowserNodeLike[]) => items.some((item: BrowserNodeLike) => {
@@ -756,9 +859,11 @@ function effortLabelPattern(label: string): RegExp {
 }
 
 export function modelChoiceFromText(text: string): ChatGptModelChoice | null {
-    if (/\b(Instant|Fast)\b|즉시/i.test(text)) return 'instant';
-    if (/\b(Pro Standard|Pro Extended)\b|Pro 확장|프로 확장/i.test(text)) return 'pro';
-    if (/\b(Medium|High|Extra High)\b|중간|높음|매우 높음/i.test(text)) return 'thinking';
+    // parity2 030 slice 3.2 (C-20): CJK terms use Han-script boundaries — \b is
+    // meaningless for them ("GPT-5.5即时" must match; a bare "高" inside "极高" must not).
+    if (/\b(Instant|Fast)\b|즉시|(?<!\p{Script=Han})即时(?!\p{Script=Han})/iu.test(text)) return 'instant';
+    if (/\b(Pro Standard|Pro Extended)\b|Pro 확장|프로 확장|(?<!\p{Script=Han})Pro 扩展(?!\p{Script=Han})/iu.test(text)) return 'pro';
+    if (/\b(Medium|High|Extra High)\b|중간|높음|매우 높음|(?<!\p{Script=Han})(思考|中等|极高|高)(?!\p{Script=Han})/iu.test(text)) return 'thinking';
     if (/\b(Thinking|Think)\b/i.test(text)) return 'thinking';
     if (/\b(Pro|Heavy)\b/i.test(text)) return 'pro';
     return null;
@@ -837,4 +942,149 @@ function isLegacyProModelLabel(text: string): boolean {
 
 function escapeRegExp(value: string): string {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ── Power shell (parity2 030 slice 3.1, C-01) ───────────────────────────────
+// The GPT-5.6 Chat picker renders a "Power" menu item whose 5-stop slider IS
+// the tier/effort control: 0 Instant, 1 Medium, 2 High, 3 Extra High, 4 Pro.
+// Menu rows may not exist at all on this shell, so selection must be able to
+// fall back to driving the slider with keyboard arrows (agbrowse 45ec48a).
+
+/** Slider stop → CJ effort vocabulary (standard=Medium, extended=High, heavy=Extra High). */
+const CHATGPT_POWER_STOP_EFFORT: Readonly<Record<number, ChatGptEffortChoice>> = Object.freeze({
+    1: 'standard',
+    2: 'extended',
+    3: 'heavy',
+});
+
+const CHATGPT_POWER_TIER_INDEX: Readonly<Record<ChatGptModelChoice, number>> = Object.freeze({
+    instant: 0,
+    thinking: 2,
+    pro: 4,
+});
+
+const POWER_EFFORT_STOP_LABELS: Readonly<Record<ChatGptEffortChoice, readonly string[]>> = Object.freeze({
+    light: ['Instant', '즉시', '即时'],
+    standard: ['Medium', '중간', '中等'],
+    extended: ['High', '높음', '高'],
+    heavy: ['Extra High', '매우 높음', '极高'],
+});
+
+export async function isChatGptPowerPickerOpen(page: Page): Promise<boolean> {
+    const root = page.locator(CHATGPT_POWER_PICKER_ROOT_SELECTOR).first();
+    if (await root.isVisible().catch(() => false)) return true;
+    const slider = page.locator(CHATGPT_POWER_SLIDER_VIEW_SELECTOR).first();
+    return root === slider ? false : await slider.isVisible().catch(() => false);
+}
+
+/**
+ * Resolve the thinking effort actually shown by a Power tier label. Label first
+ * ("Extra High, 4 of 5."), aria-valuenow index as cross-check. Fails CLOSED:
+ * when both are available and disagree, the effort is not verified.
+ */
+export function effortChoiceFromPowerTierLabel(label: string | null | undefined, index: number | null | undefined): ChatGptEffortChoice | null {
+    const firstLine = String(label || '').split(/\r?\n/)[0] || '';
+    const stripped = firstLine.replace(/,\s*\d+\s+of\s+\d+\.?$/i, '').trim();
+    let fromLabel: ChatGptEffortChoice | null = null;
+    for (const effort of ['standard', 'extended', 'heavy'] as const) {
+        if (POWER_EFFORT_STOP_LABELS[effort].some(l => menuTextHasExactLine(stripped, l))) {
+            fromLabel = effort;
+            break;
+        }
+    }
+    const hasIndex = Number.isFinite(index as number);
+    const fromIndex = hasIndex ? (CHATGPT_POWER_STOP_EFFORT[index as number] ?? null) : null;
+    if (fromLabel && hasIndex) return fromLabel === fromIndex ? fromLabel : null;
+    return fromLabel || fromIndex;
+}
+
+function modelChoiceFromPowerSimpleText(text: string): ChatGptModelChoice | null {
+    const first = String(text || '').split(/\r?\n/)[0] || '';
+    // "High, 3 of 5." / "Pro, 5 of 5."
+    const label = first.replace(/,\s*\d+\s+of\s+\d+\.?$/i, '').trim();
+    if (/^(Pro|Pro 확장|프로 확장|Pro 扩展)/i.test(label)) return 'pro';
+    if (/^(Instant|즉시|即时)/i.test(label)) return 'instant';
+    if (/^(Thinking|Medium|High|Extra High|중간|높음|매우 높음|思考|中等|极高|高)/i.test(label)) return 'thinking';
+    return modelChoiceFromText(label);
+}
+
+export async function readChatGptPowerSliderState(page: Page): Promise<{ index: number | null; choice: ChatGptModelChoice | null; label: string | null }> {
+    const simple = page.locator('[data-testid="composer-model-picker-slider-simple-view"]').first();
+    const simpleText = (await simple.innerText({ timeout: 500 }).catch(() => '')).trim();
+    const choiceFromSimple = simpleText ? modelChoiceFromPowerSimpleText(simpleText) : null;
+    const slider = page.locator(
+        '[data-testid="composer-model-picker-slider-simple-view"] [role="slider"], [role="menu"][data-state="open"] [role="slider"]',
+    ).first();
+    const nowStr = await slider.getAttribute('aria-valuenow').catch(() => null);
+    const index = nowStr != null && nowStr !== '' ? Number(nowStr) : null;
+    if (choiceFromSimple) return { index: Number.isFinite(index as number) ? (index as number) : null, choice: choiceFromSimple, label: simpleText || choiceFromSimple };
+    if (Number.isFinite(index as number)) {
+        // 0 Instant, 1 Medium, 2 High, 3 Extra High, 4 Pro — middle three are thinking.
+        const byIndex: ChatGptModelChoice[] = ['instant', 'thinking', 'thinking', 'thinking', 'pro'];
+        const mapped = byIndex[index as number] || null;
+        return { index: index as number, choice: mapped, label: simpleText || mapped };
+    }
+    return { index: null, choice: null, label: simpleText || null };
+}
+
+function powerTierIndexForChoice(choice: ChatGptModelChoice, effort: ChatGptEffortChoice | null = null): number {
+    if (choice === 'instant') return CHATGPT_POWER_TIER_INDEX.instant;
+    if (choice === 'pro') return CHATGPT_POWER_TIER_INDEX.pro;
+    if (effort === 'standard') return 1;
+    if (effort === 'heavy') return 3;
+    if (effort === 'extended') return 2;
+    return CHATGPT_POWER_TIER_INDEX.thinking;
+}
+
+/**
+ * Drive the Chat Power slider with keyboard arrows until the shell reports the
+ * requested choice (and effort stop for thinking). Returns true on success.
+ */
+export async function selectChatGptPowerTierBySlider(
+    page: Page,
+    choice: ChatGptModelChoice,
+    options: { effort?: ChatGptEffortChoice | null; usedFallbacks?: string[] } = {},
+): Promise<boolean> {
+    if (!(await isChatGptPowerPickerOpen(page))) return false;
+    const effort = options.effort || null;
+    const usedFallbacks = options.usedFallbacks || [];
+    const targetIndex = powerTierIndexForChoice(choice, effort);
+    const power = page.locator('[role="menuitem"][aria-label="Power"]').first();
+    if (!(await power.isVisible().catch(() => false))) return false;
+    await power.focus({ timeout: 1_000 }).catch(() => undefined);
+    await power.click({ timeout: 2_000 }).catch(() => undefined);
+    await page.waitForTimeout(150).catch(() => undefined);
+    let stagnant = 0;
+    let previousIndex: number | null = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const state = await readChatGptPowerSliderState(page);
+        if (state.choice === choice) {
+            if (choice !== 'thinking' || effort == null || state.index == null || state.index === targetIndex) {
+                usedFallbacks.push('chat-power-slider');
+                return true;
+            }
+        }
+        const currentIndex = state.index != null ? state.index : (
+            state.choice === 'instant' ? 0
+                : state.choice === 'pro' ? 4
+                    : 2
+        );
+        if (currentIndex === targetIndex && state.choice === choice) {
+            usedFallbacks.push('chat-power-slider');
+            return true;
+        }
+        if (previousIndex != null && previousIndex === currentIndex) stagnant += 1;
+        else stagnant = 0;
+        previousIndex = currentIndex;
+        if (stagnant >= 2) break;
+        const key = currentIndex > targetIndex ? 'ArrowLeft' : 'ArrowRight';
+        await page.keyboard.press(key).catch(() => undefined);
+        await page.waitForTimeout(250).catch(() => undefined);
+    }
+    const finalState = await readChatGptPowerSliderState(page);
+    if (finalState.choice === choice) {
+        usedFallbacks.push('chat-power-slider');
+        return true;
+    }
+    return false;
 }
