@@ -27,6 +27,10 @@ function fakeMessage() {
         client: {
             user: { id: 'BOT' },
             rest: {
+                async put(route: string, options: Record<string, unknown>) {
+                    rest.push({ verb: 'put', route, options });
+                    if (route.includes('/reactions/')) reacted.push(route);
+                },
                 async delete(route: string, options: Record<string, unknown>) {
                     rest.push({ verb: 'delete', route, options });
                     if (route.includes('/reactions/')) removed.push(route);
@@ -37,12 +41,7 @@ function fakeMessage() {
             },
         },
         reactions: { cache },
-        async react(emoji: string) {
-            reacted.push(emoji);
-            // The real API hands back the MessageReaction carrying the canonical
-            // REST identifier — the only reliable handle for a custom emoji.
-            return { emoji: { identifier: emoji.includes(':') ? `x${emoji.split(':')[1]}` : emoji } };
-        },
+
     } as unknown as Message;
     return { message, reacted, removed, rest };
 }
@@ -54,7 +53,8 @@ test('the ACK transport uses remove-then-add: Discord has no atomic replace', as
     const handle = createAckHandle({ ...DISCORD_ACK_DEFAULTS, enabled: true }, transport);
     await handle.to('running');
     await handle.settle('success');
-    assert.deepEqual(reacted, ['👀', '✅']);
+    assert.equal(reacted.length, 2);
+    assert.match(reacted[0]!, /reactions\/%F0%9F%91%80\/@me$|reactions\/👀\/@me$/);
     assert.equal(removed.length, 1, 'the running reaction must come off first');
     assert.match(removed[0]!, /\/messages\/M1\/reactions\/.+\/@me$/);
 });
@@ -70,19 +70,24 @@ test('a CUSTOM emoji is removed via the returned handle, not the cache', async (
     );
     await handle.to('running');
     await handle.settle('success');
-    assert.deepEqual(reacted, ['wave:12345', 'done:67890']);
+    assert.equal(reacted.length, 2, 'both custom reactions go out over REST');
     // Resolved through the identifier react() returned, not the name:id we sent —
     // discord.js caches custom reactions under the emoji ID.
     assert.equal(removed.length, 1, 'custom removal must still fire');
-    assert.match(removed[0]!, /reactions\/x12345\/@me$/);
+    // Routes URL-encodes the segment, which is what keeps Discord from answering
+    // 10014 Unknown Emoji.
+    assert.match(removed[0]!, /reactions\/wave%3A12345\/@me$/);
 });
 
 test('a failing reaction leaves the handle unchanged', async () => {
     const errors: unknown[] = [];
     const message = {
-        client: { user: { id: 'BOT' } },
+        id: 'M1', channelId: 'C1',
+        client: {
+            user: { id: 'BOT' },
+            rest: { async put() { throw new Error('Missing Permissions'); }, async delete() { }, async patch() { } },
+        },
         reactions: { cache: new Map() },
-        async react() { throw new Error('Missing Permissions'); },
     } as unknown as Message;
     const handle = createAckHandle(
         { ...DISCORD_ACK_DEFAULTS, enabled: true },
@@ -103,7 +108,13 @@ test('notice cleanup goes through REST so the drain signal can cancel it', async
     await transport.delete(controller.signal);
     assert.equal(rest[0]!.verb, 'delete');
     assert.match(rest[0]!.route, /channels\/C1\/messages\/M1/);
-    assert.equal(rest[0]!.options['signal'], controller.signal);
+    // Composed with the factory's own timeout, so not reference-equal — what
+    // matters is that the caller's cancellation still reaches the request.
+    const passed = rest[0]!.options['signal'] as AbortSignal;
+    assert.ok(passed instanceof AbortSignal);
+    assert.equal(passed.aborted, false);
+    controller.abort();
+    assert.equal(passed.aborted, true, 'aborting the caller signal must abort the request');
 });
 
 test('an expired notice is rewritten in place, never deleted', async () => {
@@ -175,4 +186,58 @@ test('a delayed notice post that lands after completion is still cleaned up', as
     await closing;
     assert.equal(rest.length, 1);
     assert.equal(rest[0]!.verb, 'delete', 'a late handle must still be removed');
+});
+
+test('a stuck REST call is actually aborted by the deadline, not just abandoned', async () => {
+    // The weaker version of this test only checked that a signal appeared in an
+    // options bag — which a REST layer could ignore entirely. This one holds the
+    // request open until the signal fires, so it fails if the signal never
+    // reaches the call or never aborts.
+    let observed: AbortSignal | undefined;
+    const message = {
+        id: 'M1',
+        channelId: 'C1',
+        client: {
+            user: { id: 'BOT' },
+            rest: {
+                async delete(_route: string, options: { signal?: AbortSignal }) {
+                    observed = options.signal;
+                    await new Promise<void>(resolve => {
+                        if (options.signal?.aborted) { resolve(); return; }
+                        options.signal?.addEventListener('abort', () => resolve(), { once: true });
+                    });
+                },
+                async patch() { },
+                async put() { },
+            },
+        },
+        reactions: { cache: new Map() },
+    } as unknown as Message;
+
+    const notice = createQueueNotice({ expiredText: 'expired' });
+    notice.bind(createDiscordNoticeTransport(message));
+    const registry = new QueueNoticeRegistry();
+    registry.add((signal) => notice.close('answered', signal));
+    const started = Date.now();
+    await registry.drain(60);
+    assert.ok(Date.now() - started < 2000, 'the drain must not wait out a stuck call');
+    assert.equal(observed?.aborted, true, 'the deadline must abort the request, not just stop waiting');
+});
+
+test('a close with no registry signal is still bounded on its own', async () => {
+    // Ordinary delivery closes without a signal, and QueueNotice pins the first
+    // one it gets — so if the factory did not compose its own timeout, the
+    // common path would be unbounded and a later drain could not fix it.
+    let observed: AbortSignal | undefined;
+    const message = {
+        id: 'M1', channelId: 'C1',
+        client: {
+            user: { id: 'BOT' },
+            rest: { async delete(_r: string, o: { signal?: AbortSignal }) { observed = o.signal; }, async patch() { }, async put() { } },
+        },
+        reactions: { cache: new Map() },
+    } as unknown as Message;
+    const transport = createDiscordNoticeTransport(message);
+    await transport.delete();   // no signal supplied
+    assert.ok(observed instanceof AbortSignal, 'the factory must supply its own timeout');
 });

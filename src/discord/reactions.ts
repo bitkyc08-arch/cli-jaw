@@ -12,12 +12,15 @@
 // through REST where cancellation is real.
 
 import { Routes } from 'discord.js';
-import type { Message, MessageReaction } from 'discord.js';
+import type { Message } from 'discord.js';
 import type { AckTransport } from '../messaging/ack-reaction.js';
 import type { NoticeTransport } from '../messaging/queue-notice.js';
 
 /** A reaction is decoration on the answer; it must never hold a shutdown open. */
 export const DISCORD_REACTION_TIMEOUT_MS = 2500;
+
+/** Same reasoning for the notice: a stuck cleanup must not hold shutdown open. */
+export const DISCORD_NOTICE_TIMEOUT_MS = 5000;
 
 /**
  * The ACK transport for one inbound Discord message.
@@ -44,11 +47,19 @@ export function createDiscordAckTransport(message: Message): AckTransport {
         // Discord has no atomic replace, so the old reaction must come off first.
         mode: 'remove-then-add',
         apply: async (emoji) => {
-            // react() resolves the emoji (including custom ones) and URL-encodes
-            // the path segment; hand-rolling that would need encodeURIComponent or
+            // Low-level so this is actually cancellable: message.react() forwards
+            // no request options, so a rate-limited add can outlive the drain.
+            //
+            // The identifier is resolved locally rather than by react(): a custom
+            // emoji already arrives as `name:id`, which IS the REST identifier,
+            // and a unicode one is itself. encodeURIComponent is required or
             // Discord answers 10014 Unknown Emoji.
-            const reaction: MessageReaction = await message.react(emoji);
-            applied.set(emoji, reaction.emoji.identifier);
+            const identifier = emoji;
+            await message.client.rest.put(
+                Routes.channelMessageOwnReaction(message.channelId, message.id, identifier),
+                bounded(),
+            );
+            applied.set(emoji, identifier);
         },
         remove: async (emoji) => {
             const identifier = applied.get(emoji)
@@ -77,14 +88,22 @@ export function createDiscordAckTransport(message: Message): AckTransport {
  */
 export function createDiscordNoticeTransport(message: Message): NoticeTransport {
     const route = Routes.channelMessage(message.channelId, message.id);
+    // A per-call timeout is composed even when the caller supplies nothing.
+    // QueueNotice pins whichever signal the FIRST close receives, and ordinary
+    // delivery closes without one — so relying on the shutdown drain to provide
+    // it would leave the common path unbounded.
+    const bounded = (signal?: AbortSignal): AbortSignal => {
+        const timeout = AbortSignal.timeout(DISCORD_NOTICE_TIMEOUT_MS);
+        return signal ? AbortSignal.any([signal, timeout]) : timeout;
+    };
     return {
         delete: async (signal) => {
-            await message.client.rest.delete(route, signal ? { signal } : {});
+            await message.client.rest.delete(route, { signal: bounded(signal) });
         },
         edit: async (text, signal) => {
             await message.client.rest.patch(route, {
                 body: { content: text },
-                ...(signal ? { signal } : {}),
+                signal: bounded(signal),
             });
         },
     };

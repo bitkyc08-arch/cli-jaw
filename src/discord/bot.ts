@@ -141,13 +141,6 @@ function markChannelActive(channelId: string) {
  * most recently, and skipped when a live waiter would post the same result.
  */
 const pendingQueueRequestIds = new Set<string>();
-/**
- * Disposers for listeners waiting on a queued result. Tracked so shutdown can
- * drop them at once instead of leaving them armed for their five-minute
- * timeout, which would let a post-shutdown result fire against a dead channel
- * and would keep a stale id blocking the standing forwarder.
- */
-const pendingQueueWaiters = new Set<() => void>();
 let targetReplyForwarderInstalled = false;
 
 function installDiscordTargetReplyForwarder(): void {
@@ -354,10 +347,9 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // fast queued job would be missed here or answered by the fallback.
         addBroadcastListener(queueHandler);
         if (requestId) pendingQueueRequestIds.add(requestId);
-        // Deliberately NOT added to pendingQueueWaiters: that set is invoked
-        // without a signal, and QueueNotice pins whichever signal the FIRST close
-        // receives — so a waiter-triggered close would make the registry's own
-        // cancellation unreachable. The registry is the single shutdown path.
+        // The registry is the single shutdown path for the notice lifecycle: a
+        // signal-less trigger would pin QueueNotice's first close and make the
+        // drain's own cancellation unreachable.
         queueTimeout = setTimeout(() => { void finishExpired(); }, 300000);
         // Not awaited: the notice is what the user needs to see.
         void ack?.to('running', { wasQueued: true });
@@ -719,8 +711,6 @@ export async function shutdownDiscord() {
     // Drop queued-result waiters immediately. Left armed, they would fire
     // against a destroyed channel for the next five minutes, and their claimed
     // request ids would keep the standing forwarder silent too.
-    for (const dispose of [...pendingQueueWaiters]) dispose();
-    pendingQueueWaiters.clear();
     pendingQueueRequestIds.clear();
     // Before the client goes away: a rewrite issued after destruction has no
     // transport to travel on. Bounded, because a stuck cleanup must not hold
