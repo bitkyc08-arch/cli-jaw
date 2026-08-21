@@ -268,7 +268,13 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     // parity2 080 slice 8a (C-03): Work/Chat surface preflight, fail-closed.
     // On a Work-enabled account a chat prompt would otherwise silently land in
     // the Work surface (whose submit/poll semantics differ — port pending, 8b).
-    const surfaceDetection = await detectChatGptComposerSurface(page).catch(() => null);
+    // parity2 110 (final-audit F6): a THROWN probe must not silently skip a gate
+    // advertised as fail-closed — record the degradation so it is observable.
+    let surfaceProbeFailed: string | null = null;
+    const surfaceDetection = await detectChatGptComposerSurface(page).catch((err: unknown) => {
+        surfaceProbeFailed = String((err as Error)?.message || err);
+        return null;
+    });
     if (surfaceDetection?.surface === 'ambiguous') {
         throw new WebAiError({
             errorCode: 'provider.surface-ambiguous',
@@ -368,6 +374,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     };
     const adapter = createChatGptEditorAdapter(page, editorOptions);
     const attachmentWarnings: string[] = [];
+    if (surfaceProbeFailed) attachmentWarnings.push(`surface-probe-failed:${surfaceProbeFailed}`);
     const usedFallbacks: string[] = [];
     try {
         const composerTarget = await resolveTargetForIntent(page, {
