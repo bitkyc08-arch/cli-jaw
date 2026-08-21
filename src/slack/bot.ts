@@ -322,6 +322,7 @@ async function slackOrchestrate(
             ? { preResolvedScope: dedupe.preResolvedScope } : {}),
         runReply: async (ctx: SlackRunContext) => {
             let ackOutcome: 'success' | 'failure' = 'failure';
+            let ackSettled = false;
             try {
                 const progress = await startSlackProgress(
                     token, target, t('slack.progress.start', {}, currentLocale()),
@@ -367,6 +368,11 @@ async function slackOrchestrate(
                 if (sendResult.ok && target.threadId) {
                     markThreadParticipated(target.targetId, target.threadId);
                 }
+                // Settled BEFORE the relay: image upload is uncancellable
+                // (#417), so awaiting it first can strand the reaction on
+                // `running` while the answer is already visible.
+                await ack?.settle(ackOutcome);
+                ackSettled = true;
                 await relaySlackImages(token, target, text);
                 log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
             } catch (err: unknown) {
@@ -374,7 +380,8 @@ async function slackOrchestrate(
                 await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
             } finally {
                 // Exactly one settle per turn, whichever way the body exited.
-                await ack?.settle(ackOutcome);
+                // The happy path already settled before the image relay.
+                if (!ackSettled) await ack?.settle(ackOutcome);
             }
         },
     });
@@ -440,11 +447,12 @@ async function slackOrchestrate(
                 if (queuedSendResult.ok && target.threadId) {
                     markThreadParticipated(target.targetId, target.threadId);
                 }
+                // Settled before the relay for the same reason as the normal
+                // path: the text is what the user was waiting for, and an
+                // uncancellable upload must not hold the reaction on running.
+                await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
                 await relaySlackImages(token, target, text).catch(
                     e => log.error('[slack:queue-send]', logErrorText(e)));
-                // The text is what the user was waiting for; a failed image relay
-                // does not turn an answered turn into a failed one.
-                await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
             });
             unregister();
         };

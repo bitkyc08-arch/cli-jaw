@@ -333,6 +333,8 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                         log.error('[discord:queue-send]', logErrorText(e));
                     });
                 }
+                // Settled before the relay for the same reason as the normal
+                // path: an uncancellable upload must not hold the reaction.
                 await Promise.allSettled([
                     notice.close(delivered ? 'answered' : 'expired'),
                     ack?.settle(delivered ? 'success' : 'failure') ?? Promise.resolve(),
@@ -396,6 +398,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     // relay can throw after the text is already out, and the user did get their
     // answer in that case.
     let ackOutcome: 'success' | 'failure' = 'failure';
+    let ackSettled = false;
     void ack?.to('running');
     try {
         const text = String(await orchestrateAndCollect(prompt, stripUndefined({
@@ -411,6 +414,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             await channel.send(chunk);
         }
         ackOutcome = 'success';
+        // Settled BEFORE the relay: image upload is uncancellable (#417), so
+        // awaiting it first can strand the reaction on `running` while the
+        // answer is already visible.
+        await ack?.settle(ackOutcome);
+        ackSettled = true;
         await relayDiscordImages(msg.client, target, text);
         log.info(`[discord:out] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
@@ -419,7 +427,8 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     } finally {
         clearInterval(typingInterval);
         // Exactly one settle per turn, whichever way the body exited.
-        await ack?.settle(ackOutcome);
+        // The happy path already settled before the image relay.
+        if (!ackSettled) await ack?.settle(ackOutcome);
     }
 }
 

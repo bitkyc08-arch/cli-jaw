@@ -927,6 +927,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         let finalDeliveryStarted = false;
+        // The started path is the COMMON one — the agent is idle — and it never
+        // touched the handle, so an ACK-enabled command got no reaction at all
+        // unless it happened to be queued.
+        let ackOutcome: 'success' | 'failure' = 'failure';
+        void ackHandle?.to('running');
         try {
             const { text: collectedText, data: doneData } = await orchestrateAndCollectData(prompt, stripUndefined({
                 origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true,
@@ -946,6 +951,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             }
             finalDeliveryStarted = true;
             await sendTelegramMarkdown(ctx.api, chat.id, collectedText, replyOptsOf(ctx));
+            // The text is what the user was waiting for. Image relay is
+            // fire-and-forget below, so it cannot hold the outcome open.
+            ackOutcome = 'success';
             log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
             void relayTelegramImages(bot, chat.id, collectedText, responseTarget).catch(() => { });
             void sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]).catch(() => { });
@@ -962,6 +970,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             log.error('[tg:error]', logErrorText(err));
             await ctx.reply(`❌ Error: ${userErrorText(err)}`);
             if (finalDeliveryStarted) telegramFinalDeliveryFailures.add(ctx.update.update_id);
+        } finally {
+            // Exactly one settle per turn, whichever way the body exited.
+            await ackHandle?.settle(ackOutcome);
         }
     }
 
