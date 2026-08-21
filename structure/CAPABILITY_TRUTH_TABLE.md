@@ -93,7 +93,7 @@ capability.
 | `sendText` | ✅ | ✅ | ✅ | 텍스트 전송 |
 | `editText` | ✅ | ❌ | ✅ | 전송된 메시지 수정 |
 | `deleteMessage` | ✅ | ❌ | ✅ | 전송된 메시지 삭제 |
-| `reaction` | ❌ | ❌ | ❌ | 리액션 부착 |
+| `reaction` | ✅ | ✅ | ✅ | 리액션 부착 |
 | `typing` | ✅ | ✅ | ❌ | 입력 중 표시 |
 | `fileUpload` | ✅ | ✅ | ✅ | 파일 업로드 |
 | `voice` | ✅ | ✅ | ✅ | 음성 파일 전달 (녹음 UI 아님) |

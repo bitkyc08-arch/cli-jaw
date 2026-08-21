@@ -20,6 +20,11 @@ import {
 const METHOD_SCOPE_MAP: Record<string, string | null> = {
     'chat.postMessage': 'chat:write',
     'conversations.open': 'im:write',
+    // Auto-join: list every public channel, then join the ones we are not in.
+    'conversations.list': 'channels:read',
+    'conversations.join': 'channels:join',
+    'reactions.add': 'reactions:write',
+    'reactions.remove': 'reactions:write',
     'files.info': 'files:read',
     'files.getUploadURLExternal': 'files:write',
     'files.completeUploadExternal': 'files:write',
@@ -52,6 +57,20 @@ test('manifest subscribes to every bot event the inbound path consumes', () => {
 test('socket mode and the DM composer surface stay enabled', () => {
     assert.equal(SLACK_APP_MANIFEST.settings.socket_mode_enabled, true);
     assert.equal(SLACK_APP_MANIFEST.features.app_home.messages_tab_enabled, true);
+});
+
+test('the manifest carries the reach scopes auto-join and outbound depend on', () => {
+    const scopes: readonly string[] = SLACK_APP_MANIFEST.oauth_config.scopes.bot;
+    // A bot token gets not_in_channel from conversations.history unless it is a
+    // member, so without channels:join there is no supported way to read a
+    // channel nobody invited it to.
+    assert.ok(scopes.includes('channels:join'),
+        'auto-join cannot work without channels:join');
+    // Posting into a public channel the bot has not joined. Membership makes it
+    // redundant, but auto-join is capped and best-effort, so outbound must not
+    // depend on a join having succeeded.
+    assert.ok(scopes.includes('chat:write.public'),
+        'outbound to an unjoined public channel needs chat:write.public');
 });
 
 test('slash command starter set exists in the shared catalog shape', () => {

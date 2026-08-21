@@ -1,6 +1,9 @@
 // ─── Settings Merge Logic ────────────────────────────
 // Phase 9.4 — server.js의 applySettingsPatch에서 추출한 deep merge 로직
 
+import { mergeAckSettings } from '../messaging/ack-reaction.js';
+import { mergeSlackAutoJoin } from '../slack/auto-join.js';
+
 export type SettingsInputSource = 'boot' | 'watch' | 'api';
 export type SettingsPersistenceShape = 'absent' | 'present';
 
@@ -140,6 +143,44 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
         if (remaining[key] && typeof remaining[key] === 'object') {
             result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];
+        }
+    }
+
+    // The loop above merges channel objects one level deep, so a patch carrying
+    // only {ack:{enabled:true}} would drop scope, emoji and removeAfterReply.
+    // Reads `patch` rather than `remaining` because the loop already deleted the
+    // key. Shares mergeAckSettings with the boot merge in config.ts so the three
+    // ingresses (boot/api/watch) cannot diverge.
+    for (const key of ['telegram', 'discord', 'slack']) {
+        const patchChannel = patch[key];
+        if (!patchChannel || typeof patchChannel !== 'object') continue;
+        const patchAck = (patchChannel as Record<string, any>)["ack"];
+        const currentChannel = current[key] as Record<string, any> | undefined;
+        if (patchAck && typeof patchAck === 'object' && !Array.isArray(patchAck)) {
+            result[key] = {
+                ...result[key],
+                ack: mergeAckSettings(currentChannel?.["ack"], patchAck),
+            };
+        }
+        // slack.autoJoin is the same nested-group case, and its budget reaches
+        // a loop that joins real channels — so this path normalizes as well as
+        // merges. A PUT carrying {autoJoin:{enabled:false}} must not erase
+        // maxJoinsPerRun, and {maxJoinsPerRun:-1} must not reach the runner.
+        if (key === 'slack') {
+            const slackPatch = patchChannel as Record<string, unknown>;
+            const patchAutoJoin = slackPatch["autoJoin"];
+            // Any mention of the key is repaired, including a malformed one.
+            // Testing for a well-formed object would let {autoJoin:null} and
+            // {autoJoin:'yes'} through the one-level spread above and survive
+            // to disk, where the next boot reads them as "absent" and quietly
+            // restores default-on. A patch that names the key gets a valid
+            // block or nothing.
+            if ('autoJoin' in slackPatch) {
+                result[key] = {
+                    ...result[key],
+                    autoJoin: mergeSlackAutoJoin(currentChannel?.["autoJoin"], patchAutoJoin),
+                };
+            }
         }
     }
 

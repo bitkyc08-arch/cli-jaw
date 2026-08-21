@@ -111,8 +111,12 @@ test('capability declarations match what this tree can actually call', () => {
     assert.deepEqual(capabilitiesFor('discord').interactiveActions, false);
     assert.deepEqual(capabilitiesFor('slack').interactiveActions, false);
     assert.deepEqual(capabilitiesFor('slack').typing, false);
+    // Slack gained a real reaction call site with the inbound ACK (#412); the
+    // other two are still declaration-only until their own phases wire them.
+    assert.equal(capabilitiesFor('slack').reaction, true, 'slack reacts via reactions.add');
+    assert.equal(capabilitiesFor('telegram').reaction, true, 'telegram reacts via setMessageReaction');
+    assert.equal(capabilitiesFor('discord').reaction, true, 'discord reacts via message.react');
     for (const channel of ['telegram', 'discord', 'slack'] as const) {
-        assert.equal(capabilitiesFor(channel).reaction, false, `${channel} has no reaction call site`);
         assert.equal(capabilitiesFor(channel).sendText, true);
     }
 });

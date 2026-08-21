@@ -41,7 +41,9 @@ const CAPABILITIES = {
         sendText: true,
         editText: true,
         deleteMessage: true,
-        reaction: false,
+        // setMessageReaction is wired through src/telegram/reactions.ts and driven
+        // by the inbound ACK handle in bot.ts (#413).
+        reaction: true,
         typing: true,
         fileUpload: true,
         voice: true,
@@ -55,7 +57,9 @@ const CAPABILITIES = {
         sendText: true,
         editText: false,
         deleteMessage: false,
-        reaction: false,
+        // message.react + the returned MessageReaction's users.remove are wired
+        // through src/discord/reactions.ts and driven by the ACK handle (#414).
+        reaction: true,
         typing: true,
         fileUpload: true,
         voice: true,
@@ -69,7 +73,9 @@ const CAPABILITIES = {
         sendText: true,
         editText: true,
         deleteMessage: true,
-        reaction: false,
+        // reactions.add / reactions.remove are wired through src/slack/api.ts and
+        // driven by the inbound ACK handle in bot.ts (#412).
+        reaction: true,
         typing: false,
         fileUpload: true,
         voice: true,

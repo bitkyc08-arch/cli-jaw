@@ -154,6 +154,7 @@
   "cmd.runtimeSelectionInstanceWide": "CLI とモデルの選択はこのインスタンスの全セッションで共有されます。インスタンスのウェブ設定から変更してください。",
   "tg.promptUnsupported": "（Telegram では未対応）",
   "tg.queued": "キューに追加しました（#{count}）",
+  "tg.queueExpired": "キューの待機時間が超過しました",
   "tg.imageCaption": "[📷 画像] {caption}",
   "tg.imageFail": "画像処理に失敗しました: {msg}",
   "tg.fileFail": "ファイル処理に失敗しました: {msg}",

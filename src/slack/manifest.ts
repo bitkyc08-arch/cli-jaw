@@ -88,6 +88,18 @@ export function createSlackAppManifest(appName: string = DEFAULT_SLACK_APP_NAME)
                     'im:history',
                     'im:write',
                     'chat:write',
+                    // chat.postMessage into a PUBLIC channel this bot has not
+                    // joined. Membership makes it redundant, but auto-join is
+                    // capped and best-effort, so outbound must not depend on it.
+                    'chat:write.public',
+                    // reactions.add / reactions.remove -> the inbound ACK reaction
+                    'reactions:write',
+                    // conversations.join -> boot-time auto-join of public channels.
+                    // Without membership conversations.history answers
+                    // not_in_channel, so this is what lets the agent read a
+                    // channel it was never invited to. Public channels only —
+                    // private ones still require a human invite.
+                    'channels:join',
                     // files.info -> files:read; authenticated private downloads use
                     // the same bot token only after Slack-host and SSRF validation.
                     'files:read',

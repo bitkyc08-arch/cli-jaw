@@ -815,7 +815,33 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ---
 
-## src/messaging/ — shared messaging runtime (22 files)
+## src/messaging/ — shared messaging runtime (24 files)
+
+### ack-reaction.ts / queue-notice.ts
+
+ACK 리액션과 큐 안내 생명주기는 채널이 아니라 이 계층이 소유한다 (#410, #411). 세 채널이
+각자 클로저로 처리하던 것을 올린 것이고, 이유는 그렇게 두면 매번 세 번 틀리기 때문이다.
+
+`ack-reaction.ts` — received/running -> success/failure 상태머신. 전이를 내부 promise
+chain으로 직렬화한다: lane runner가 task를 동기 시작할 수 있어(`orchestrator/session-lanes.ts`)
+settle이 running의 벤더 호출을 추월할 수 있다. terminal은 벤더 호출 **전에** settled를
+세워 첫 outcome이 이긴다. apply가 reject하면 applied를 갱신하지 않는다 — Slack API가
+실패를 throw하지 않고 {ok:false}로 돌려주므로 transport가 검사해서 throw해야 한다.
+`resolveAckEmoji`가 유일한 이모지 결정 지점이고 채널 제약은 각 transport의 coerce가
+처리한다. 채널별 기본값과 `mergeAckSettings`(중첩 병합, boot/API/watch 3경로 공유)도 여기서.
+
+`queue-notice.ts` — 안내 생명주기. 핵심은 삭제가 아니라 **순서**다: 안내는 await로
+게시되는데 그 사이 큐 작업이 끝날 수 있어 정리가 대상보다 먼저 도착한다. 하나의 deferred
+completion을 모든 close() 호출자가 공유하고, 늦은 bind()가 벤더 작업을 끝낸 뒤 resolve
+한다 — 먼저 resolve하면 drain이 요청 도중에 transport를 내린다. answered는 삭제, expired는
+만료 문구로 편집(답변이 영영 안 온 턴의 흔적을 지우지 않는다). abandon()은 post 실패용.
+`QueueNoticeRegistry.drain(timeoutMs)`이 셧다운을 소유하며 deadline에서 실제로 abort
+한다 — race로 반환만 하는 것은 기다림을 멈출 뿐 요청을 취소하지 않는다.
+
+채널은 transport 팩토리만 제공한다: Slack reactions.add/remove + chat.delete/update,
+Telegram setMessageReaction(replace 의미론 + ReactionTypeEmoji 허용목록 73개, 체크/엑스
+표시는 목록에 없어 엄지 사용), Discord 저수준 client.rest(고수준 helper가 request options를
+넘기지 않아 취소 불가). 세 채널 모두 reaction: true 이며 payload/route 캡처 테스트가 뒷받침한다.
 
 ### durable-ingress.ts / ingress-audit.ts
 

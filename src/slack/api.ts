@@ -90,6 +90,14 @@ export function describeSlackError(error: string | undefined, data?: unknown): s
             return 'Slack conversation is archived';
         case 'msg_too_long':
             return 'Slack message exceeded the length limit after chunking';
+        case 'already_reacted':
+            return 'Slack reaction is already on that message';
+        case 'no_reaction':
+            return 'Slack reaction was not there to remove';
+        case 'invalid_name':
+            return 'Slack emoji name is not valid in this workspace';
+        case 'message_not_found':
+            return 'Slack message not found — it may already be deleted';
         case 'ratelimited':
             return 'Slack rate limit hit — retry shortly';
         default:
@@ -223,4 +231,164 @@ export async function slackApi<T = Record<string, unknown>>(
             status: 502,
         };
     }
+}
+
+// ─── Reactions and notice cleanup ────────────────────
+// Two Slack quirks these wrappers absorb, both of which produce confusing errors
+// when got wrong:
+//   1. the emoji NAME goes in WITHOUT colons — the docs' own example is
+//      `thumbsup`, and `:thumbsup:` fails with invalid_name;
+//   2. reactions.add/remove take `timestamp` while chat.delete/chat.update take
+//      `ts`. Same value, different parameter name.
+
+/** `:eyes:` and `eyes` are the same reaction to a human, and different to Slack. */
+export function stripEmojiColons(name: string): string {
+    return name.replace(/^:+|:+$/g, '');
+}
+
+/** `timeoutMs` matters even though these calls are best-effort: without a bound a
+ *  hung request outlives the shutdown drain that is waiting on it. */
+export type SlackCallOptions = { fetchImpl?: SlackFetch; signal?: AbortSignal; timeoutMs?: number };
+
+/** Long enough for a normal Slack round trip, short enough that a shutdown drain
+ *  is not held open by one stuck cleanup call. */
+export const SLACK_CLEANUP_TIMEOUT_MS = 5000;
+
+function callOptions(
+    options: SlackCallOptions,
+): { fetchImpl?: SlackFetch; signal?: AbortSignal; timeoutMs?: number } {
+    // exactOptionalPropertyTypes: an explicit undefined is not assignable here,
+    // so absent keys rather than undefined values.
+    return {
+        ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+        timeoutMs: options.timeoutMs ?? SLACK_CLEANUP_TIMEOUT_MS,
+    };
+}
+
+/** Tier 3 (50+/min). Scope: reactions:write. */
+export async function addSlackReaction(
+    token: string,
+    channel: string,
+    timestamp: string,
+    name: string,
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult> {
+    return slackApi(token, 'reactions.add',
+        { channel, timestamp, name: stripEmojiColons(name) }, callOptions(options));
+}
+
+/** Tier 2 (20+/min) — half of reactions.add's budget. Scope: reactions:write. */
+export async function removeSlackReaction(
+    token: string,
+    channel: string,
+    timestamp: string,
+    name: string,
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult> {
+    return slackApi(token, 'reactions.remove',
+        { channel, timestamp, name: stripEmojiColons(name) }, callOptions(options));
+}
+
+/**
+ * Delete a message this bot posted. Uses `ts`, NOT `timestamp`.
+ *
+ * A bot token may delete only its own messages, so this needs no ownership check
+ * before being called on a notice we posted ourselves. Scope: chat:write.
+ */
+export async function deleteSlackMessage(
+    token: string,
+    channel: string,
+    ts: string,
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult> {
+    return slackApi(token, 'chat.delete', { channel, ts }, callOptions(options));
+}
+
+/**
+ * Rewrite a message in place.
+ *
+ * Used for the timeout/shutdown path, where deleting the queue notice would
+ * leave no trace of a turn that never answered. Scope: chat:write.
+ */
+export async function updateSlackMessage(
+    token: string,
+    channel: string,
+    ts: string,
+    text: string,
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult> {
+    return slackApi(token, 'chat.update', { channel, ts, text }, callOptions(options));
+}
+
+// ─── Conversation discovery and membership ───────
+// A bot token may not read a channel it has not joined: conversations.history
+// answers not_in_channel. Listing is different — conversations.list returns
+// public channels the bot is NOT in, which is what makes boot-time auto-join
+// possible at all. See src/slack/auto-join.ts for the policy that drives these.
+
+/** One row of conversations.list. Every field optional: Slack omits freely. */
+export type SlackConversationSummary = {
+    id?: string;
+    name?: string;
+    is_member?: boolean;
+    is_archived?: boolean;
+    is_private?: boolean;
+};
+
+export type SlackConversationListData = {
+    channels?: SlackConversationSummary[];
+    response_metadata?: { next_cursor?: string };
+};
+
+/**
+ * Page through workspace conversations. Tier 2 (20+/min) — the slowest budget
+ * any of these wrappers carries, so the caller must pace itself.
+ *
+ * Scope: channels:read for public channels. Returns channels the bot has not
+ * joined, with `is_member` telling the two apart.
+ *
+ * Form-encoded like history/replies: these read methods take their arguments as
+ * query-style parameters and a JSON body is not universally accepted.
+ */
+export async function listSlackConversations(
+    token: string,
+    params: {
+        cursor?: string;
+        limit?: number;
+        types?: string;
+        excludeArchived?: boolean;
+    } = {},
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult<SlackConversationListData>> {
+    const body: Record<string, unknown> = {
+        limit: params.limit ?? 200,
+        types: params.types ?? 'public_channel',
+        exclude_archived: params.excludeArchived !== false,
+    };
+    // Slack rejects an empty cursor string on some methods; omit it entirely
+    // for the first page rather than sending an empty cursor parameter.
+    if (params.cursor) body['cursor'] = params.cursor;
+    return slackApi<SlackConversationListData>(token, 'conversations.list', body, {
+        ...callOptions(options),
+        form: true,
+    });
+}
+
+/**
+ * Join a PUBLIC channel. Tier 3 (50+/min). Scope: channels:join.
+ *
+ * Has no effect on private channels — those answer
+ * method_not_supported_for_channel_type and can only be entered by invitation.
+ * Joining posts a visible "<bot> has joined the channel" line, so this is a
+ * user-observable mutation, not a silent read.
+ */
+export async function joinSlackConversation(
+    token: string,
+    channel: string,
+    options: SlackCallOptions = {},
+): Promise<SlackApiResult<{ channel?: { id?: string } }>> {
+    return slackApi<{ channel?: { id?: string } }>(
+        token, 'conversations.join', { channel }, { ...callOptions(options), form: true },
+    );
 }

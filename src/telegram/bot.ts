@@ -1,6 +1,5 @@
 // ─── Telegram Bot ────────────────────────────────────
 
-import https from 'node:https';
 import nodeFetch, { type RequestInit } from 'node-fetch';
 import { Bot, type Context } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
@@ -63,6 +62,20 @@ export {
 // Re-exported from collect.ts (extracted in Phase B)
 import { orchestrateAndCollect, orchestrateAndCollectData } from '../orchestrator/collect.js';
 import { log } from '../core/logger.js';
+import { createIpv4Fetch } from './ipv4-fetch.js';
+import {
+    createAckHandle,
+    resolveAckConfig,
+    shouldAck,
+    TELEGRAM_ACK_DEFAULTS,
+    type AckHandle,
+} from '../messaging/ack-reaction.js';
+import { createQueueNotice, QueueNoticeRegistry } from '../messaging/queue-notice.js';
+import {
+    createTelegramAckTransport,
+    createTelegramNoticeTransport,
+    TELEGRAM_REACTION_TIMEOUT_MS,
+} from './reactions.js';
 export { orchestrateAndCollect };
 import {
     startPendingElicitation,
@@ -213,18 +226,42 @@ function installTelegramTargetReplyForwarder(): void {
     });
 }
 
+/**
+ * Queue-notice teardowns. Module scope because tgOrchestrate is a closure inside
+ * _initTelegramInner, and both shutdown and re-init have to reach these.
+ */
+const telegramNoticeRegistry = new QueueNoticeRegistry();
+/** Covers the worst honest chain: a notice edit plus a replace-mode reaction. */
+const TELEGRAM_NOTICE_DRAIN_MS = TELEGRAM_REACTION_TIMEOUT_MS * 2 + 3000;
+
+/**
+ * Stop polling and close out queued notices, in the one order that is safe.
+ *
+ * stop() aborts synchronously and only THEN awaits its running loop, so starting
+ * it without awaiting closes the admission window before the drain snapshots the
+ * registry. Draining first would let a newly-received update register after that
+ * snapshot, and the awaited stop would block on its undrained delivery.
+ *
+ * The catch is attached at construction, not after the drain: stop() can reject
+ * through its loop, and the drain in between is a window where nothing would be
+ * listening.
+ */
+async function disposeTelegramRuntime(poller: { stop(): Promise<void> } | null): Promise<void> {
+    const stopping = poller?.stop().catch((e: unknown) => {
+        log.warn('[telegram:poller-stop]', logErrorText(e));
+    });
+    await telegramNoticeRegistry.drain(TELEGRAM_NOTICE_DRAIN_MS);
+    await stopping;
+}
+
 // ─── Transport Contract Exports ─────────────────────
 
 export async function shutdownTelegram() {
     if (tgRetryTimer) { clearTimeout(tgRetryTimer); tgRetryTimer = null; }
     detachTelegramForwarder();
-    if (telegramPoller) {
-        const oldPoller = telegramPoller;
-        telegramPoller = null;
-        try { await oldPoller.stop(); } catch (e: unknown) {
-            log.warn('[telegram:poller-stop]', logErrorText(e));
-        }
-    }
+    const oldPoller = telegramPoller;
+    telegramPoller = null;
+    await disposeTelegramRuntime(oldPoller);
     if (!telegramBot) return;
     const old = telegramBot;
     telegramBot = null;
@@ -517,11 +554,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             await new Promise(r => setTimeout(r, 2000));
         }
     }
-    const stoppingPoller = telegramPoller?.stop().catch((e: unknown) => {
-        log.warn('[telegram:poller-stop]', logErrorText(e));
-    });
+    const reinitPoller = telegramPoller;
     telegramPoller = null;
-    await stoppingPoller;
+    // Same helper as shutdown: a re-init that skipped the drain would strand
+    // every queued notice from the previous run.
+    await disposeTelegramRuntime(reinitPoller);
     const envToken = process.env["TELEGRAM_TOKEN"];
     if (envToken) settings["telegram"].token = envToken;
 
@@ -544,40 +581,12 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         log.info(`[tg] Pre-seeded ${settings["telegram"].allowedChatIds.length} chat(s) from allowedChatIds`);
     }
 
-    const ipv4Agent = new https.Agent({ family: 4 });
-    const ipv4Fetch = (url: string, init: Record<string, unknown> = {}): Promise<unknown> => {
-        const body = init["body"];
-        if (requiresStreamingFetchBody(body)) {
-            return nodeFetch(url, {
-                ...(init as RequestInit),
-                agent: ipv4Agent,
-            });
-        }
-        return new Promise((resolve, reject) => {
-            const u = new URL(url);
-            const headersInit = init["headers"];
-            const opts = {
-                hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search,
-                method: (init["method"] as string) || 'GET', agent: ipv4Agent,
-                headers: headersInit instanceof Headers
-                    ? Object.fromEntries(headersInit)
-                    : ((headersInit as Record<string, string>) || {}),
-            };
-            const req = https.request(opts, (res) => {
-                let data = '';
-                res.on('data', (c: string) => data += c);
-                res.on('end', () => resolve({
-                    ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
-                    status: res.statusCode,
-                    json: () => Promise.resolve(JSON.parse(data)),
-                    text: () => Promise.resolve(data),
-                }));
-            });
-            req.on('error', reject);
-            if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
-            req.end();
-        });
-    };
+    // The factory, not an inline closure: production and the cancellation test
+    // must drive the same implementation, or the test proves only itself.
+    const ipv4Fetch = createIpv4Fetch({
+        streamingFetch: (url, init) => nodeFetch(url, init as RequestInit) as Promise<unknown>,
+        isStreamingBody: requiresStreamingFetchBody,
+    });
 
     const bot = new Bot(settings["telegram"].token, {
         client: { fetch: ipv4Fetch as never },
@@ -669,12 +678,30 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         }
     });
 
-    async function tgOrchestrate(ctx: Context, prompt: string, displayMsg: string) {
+    async function tgOrchestrate(
+        ctx: Context,
+        prompt: string,
+        displayMsg: string,
+        ackInput: { anchorId?: number; isMention?: boolean } = {},
+    ) {
         const chatId = ctx.chat?.id;
         if (!ctx.chat) return;
         const chat = ctx.chat;
         const responseTarget = buildTelegramTarget(ctx);
         const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, target: responseTarget, chatId }));
+        // Narrowed once so the closures below capture a definite number.
+        const anchorId = ackInput.anchorId;
+        const ackConfig = resolveAckConfig(settings["telegram"]?.ack, TELEGRAM_ACK_DEFAULTS);
+        const ackHandle: AckHandle | null = anchorId !== undefined && shouldAck(ackConfig, {
+            isDirect: chat.type === 'private',
+            isMention: ackInput.isMention ?? false,
+        })
+            ? createAckHandle(
+                ackConfig,
+                createTelegramAckTransport(ctx.api, chat.id, anchorId),
+                (e) => log.info('[tg:ack]', logErrorText(e)),
+            )
+            : null;
         // Reproduce grammy ctx.reply's auto-injected routing (context.js: thread/business/DM-topic)
         // so the rich-first send helper lands replies exactly where ctx.reply would.
         const replyOptsOf = (c: Context): RichSendOpts => stripUndefined({
@@ -698,7 +725,25 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             log.info(`[tg:queue] agent busy, queued (${result.pending} pending)`);
             // 큐 처리 후 응답을 이 채팅으로 전달 — requestId로 request-level 격리
             const requestId = result.requestId;
+            const notice = createQueueNotice({
+                expiredText: t('tg.queueExpired', {}, currentLocale()),
+                onError: (e) => log.info('[tg:queue-notice]', logErrorText(e)),
+            });
+            // One terminal outcome per turn, shared by whoever reaches it first.
+            //
+            // A boolean would pick a winner and let the loser return immediately —
+            // and the loser here is the shutdown drain, which would then stop the
+            // poller while the winner is still delivering. Handing back the
+            // winner's promise makes every path converge on one completion.
+            let terminal: Promise<void> | null = null;
+            const claimTerminal = (run: () => Promise<void>): Promise<void> => {
+                if (!terminal) {
+                    terminal = run().catch(e => log.info('[tg:queue]', logErrorText(e)));
+                }
+                return terminal;
+            };
             const finalDeliveryControl: { cancel?: (reason: unknown) => void } = {};
+            let unregister = () => { };
             const finalDelivery = new Promise<void>((resolve, reject) => {
                 let timer: ReturnType<typeof setTimeout>;
                 let settled = false;
@@ -706,35 +751,78 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                     clearTimeout(timer);
                     removeBroadcastListener(queueHandler);
                 };
-                finalDeliveryControl.cancel = (reason) => {
+                // Timeout, shutdown and an explicit cancel all land here.
+                const expire = (reason: unknown, signal?: AbortSignal) => claimTerminal(async () => {
                     if (settled) return;
                     settled = true;
                     cleanup();
+                    // Started together rather than in sequence: awaiting the notice
+                    // first can eat the whole drain deadline before the reaction is
+                    // even attempted.
+                    await Promise.allSettled([
+                        notice.close('expired', signal),
+                        ackHandle?.settle('failure') ?? Promise.resolve(),
+                    ]);
+                    unregister();
                     reject(reason);
-                };
+                });
+                finalDeliveryControl.cancel = (reason) => { void expire(reason); };
                 const queueHandler = (type: string, data: Record<string, unknown>) => {
                     if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'telegram' || data["requestId"] !== requestId) return;
                     if (settled) return;
                     settled = true;
                     cleanup();
-                    void sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx))
-                        .then(() => {
-                            resolve();
-                            void relayTelegramImages(bot, chat.id, String(data["text"]), responseTarget).catch(() => { });
-                            void sendElicitationKeyboards(chat.id, data["elicitationSpecs"]).catch(() => { });
-                        })
-                        .catch(reject);
+                    void claimTerminal(async () => {
+                        const body = String(data["text"]);
+                        try {
+                            await sendTelegramMarkdown(ctx.api, chat.id, body, replyOptsOf(ctx));
+                        } catch (error) {
+                            // The answer never landed, so the notice is not stale —
+                            // it is the only trace this turn happened.
+                            await Promise.allSettled([
+                                notice.close('expired'),
+                                ackHandle?.settle('failure') ?? Promise.resolve(),
+                            ]);
+                            unregister();
+                            reject(error);
+                            return;
+                        }
+                        // Only now is the notice redundant.
+                        await Promise.allSettled([
+                            notice.close('answered'),
+                            ackHandle?.settle('success') ?? Promise.resolve(),
+                        ]);
+                        unregister();
+                        resolve();
+                        void relayTelegramImages(bot, chat.id, body, responseTarget).catch(() => { });
+                        void sendElicitationKeyboards(chat.id, data["elicitationSpecs"]).catch(() => { });
+                    });
                 };
+                // Armed synchronously, before any reaction call: a delayed
+                // setMessageReaction must not be able to outlive the completion it
+                // is acknowledging, or the result arrives with no listener here.
                 timer = setTimeout(() => {
-                    finalDeliveryControl.cancel?.(new Error('telegram_queue_delivery_timeout'));
+                    void expire(new Error('telegram_queue_delivery_timeout'));
                 }, 300000);
                 addBroadcastListener(queueHandler);
+                unregister = telegramNoticeRegistry.add((signal) =>
+                    expire(new Error('telegram_queue_shutdown'), signal));
             });
             void finalDelivery.catch(() => { });
+            // Not awaited: the notice below is what the user needs to see, and the
+            // reaction is decoration on top of it.
+            void ackHandle?.to('running', { wasQueued: true });
             try {
-                await ctx.reply(t('tg.queued', { count: result.pending }, currentLocale()));
+                const posted = await ctx.reply(t('tg.queued', { count: result.pending }, currentLocale()));
+                // The exported factory, not an inline object: tests drive the same
+                // binding production uses.
+                notice.bind(createTelegramNoticeTransport(ctx.api, chat.id, posted.message_id));
                 await finalDelivery;
             } catch (error) {
+                // A failed notice post means no handle will ever arrive; without
+                // this a deferred close waits for a bind that cannot happen and the
+                // drain burns its whole deadline.
+                notice.abandon();
                 finalDeliveryControl.cancel?.(error);
                 await finalDelivery.catch(() => { });
                 telegramFinalDeliveryFailures.add(ctx.update.update_id);
@@ -839,6 +927,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         let finalDeliveryStarted = false;
+        // The started path is the COMMON one — the agent is idle — and it never
+        // touched the handle, so an ACK-enabled command got no reaction at all
+        // unless it happened to be queued.
+        let ackOutcome: 'success' | 'failure' = 'failure';
+        void ackHandle?.to('running');
         try {
             const { text: collectedText, data: doneData } = await orchestrateAndCollectData(prompt, stripUndefined({
                 origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true,
@@ -858,6 +951,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             }
             finalDeliveryStarted = true;
             await sendTelegramMarkdown(ctx.api, chat.id, collectedText, replyOptsOf(ctx));
+            // The text is what the user was waiting for. Image relay is
+            // fire-and-forget below, so it cannot hold the outcome open.
+            ackOutcome = 'success';
             log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
             void relayTelegramImages(bot, chat.id, collectedText, responseTarget).catch(() => { });
             void sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]).catch(() => { });
@@ -874,6 +970,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             log.error('[tg:error]', logErrorText(err));
             await ctx.reply(`❌ Error: ${userErrorText(err)}`);
             if (finalDeliveryStarted) telegramFinalDeliveryFailures.add(ctx.update.update_id);
+        } finally {
+            // Exactly one settle per turn, whichever way the body exited.
+            await ackHandle?.settle(ackOutcome);
         }
     }
 
@@ -881,6 +980,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         if (!ctx.chat) return;
         markChatActive(ctx.chat.id, ctx);
         let text = ctx.message.text;
+        // Captured BEFORE the mention is stripped below — afterwards there is
+        // nothing left to detect, and the ACK scope gate needs to know.
+        const isMention = !!botUsername && text.includes(`@${botUsername}`);
         if (botUsername) {
             text = text.replace(new RegExp(`@${escapeRegExp(botUsername)}\\b`, 'g'), '').trim();
         }
@@ -945,7 +1047,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             }
             return;
         }
-        await tgOrchestrate(ctx, text, text);
+        await tgOrchestrate(ctx, text, text, { anchorId: ctx.message.message_id, isMention });
     });
 
     bot.on('message:photo', async (ctx) => {
@@ -961,7 +1063,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             })) as Record<string, unknown>;
             const filePath = saveUpload(dlResult["buffer"] as Buffer, `photo${dlResult["ext"]}`);
             const prompt = buildMediaPrompt(filePath, caption);
-            await tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`);
+            await tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`, { anchorId: ctx.message.message_id });
         } catch (err: unknown) {
             log.error('[tg:photo:error]', logErrorText(err));
             await ctx.reply(t('tg.imageFail', { msg: userErrorText(err) }, currentLocale()));
@@ -980,14 +1082,19 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             })) as Record<string, any>;
             const filePath = saveUpload(dlResult["buffer"], doc.file_name || 'document');
             const prompt = buildMediaPrompt(filePath, caption);
-            await tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);
+            await tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`, { anchorId: ctx.message.message_id });
         } catch (err: unknown) {
             log.error('[tg:doc:error]', logErrorText(err));
             await ctx.reply(t('tg.fileFail', { msg: userErrorText(err) }, currentLocale()));
         }
     });
 
-    bot.on('message:voice', async (ctx) => { await handleVoice(ctx, currentLocale, tgOrchestrate); });
+    bot.on('message:voice', async (ctx) => {
+        // handleVoice's callback contract is three parameters, so the anchor is
+        // injected here rather than widening that module's signature.
+        await handleVoice(ctx, currentLocale, (c, prompt, display) =>
+            tgOrchestrate(c, prompt, display, { anchorId: ctx.message?.message_id }));
+    });
 
     // Identity first: the self-echo guard needs it, and the refusal below has
     // to happen BEFORE anything is attached. Returning after attaching left the

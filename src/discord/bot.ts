@@ -35,6 +35,19 @@ import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from '
 import type { Attachment, Interaction, Message } from 'discord.js';
 import { asSendable, asThreadLike, asTypingChannel } from './channel-types.js';
 import { log } from '../core/logger.js';
+import {
+    createAckHandle,
+    resolveAckConfig,
+    shouldAck,
+    DISCORD_ACK_DEFAULTS,
+    type AckHandle,
+} from '../messaging/ack-reaction.js';
+import { createQueueNotice, QueueNoticeRegistry } from '../messaging/queue-notice.js';
+import {
+    createDiscordAckTransport,
+    createDiscordNoticeTransport,
+    DISCORD_REACTION_TIMEOUT_MS,
+} from './reactions.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
 import { createSeenSet, DELIVERY_DEDUPE_TTL_MS } from '../messaging/dedupe.js';
 import {
@@ -128,13 +141,6 @@ function markChannelActive(channelId: string) {
  * most recently, and skipped when a live waiter would post the same result.
  */
 const pendingQueueRequestIds = new Set<string>();
-/**
- * Disposers for listeners waiting on a queued result. Tracked so shutdown can
- * drop them at once instead of leaving them armed for their five-minute
- * timeout, which would let a post-shutdown result fire against a dead channel
- * and would keep a stale id blocking the standing forwarder.
- */
-const pendingQueueWaiters = new Set<() => void>();
 let targetReplyForwarderInstalled = false;
 
 function installDiscordTargetReplyForwarder(): void {
@@ -216,6 +222,14 @@ function currentLocale() {
 
 // ─── Discord Orchestrate (full reply path) ──────────
 
+/**
+ * Queue-notice teardowns, drained on shutdown so a turn that never answered gets
+ * its notice rewritten rather than left claiming the agent is still working.
+ */
+const discordNoticeRegistry = new QueueNoticeRegistry();
+/** Covers a notice edit plus a remove-then-add reaction chain. */
+const DISCORD_NOTICE_DRAIN_MS = DISCORD_REACTION_TIMEOUT_MS * 2 + 3000;
+
 async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     const target = buildDiscordTarget(msg);
     const chatId = msg.channelId;
@@ -223,47 +237,141 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         origin: 'discord', displayText: displayMsg, skipOrchestrate: true, target, chatId,
     });
 
+    // Built before the queued/started split: a queued turn is exactly the case
+    // this acknowledgement exists for, so the handle cannot live inside the
+    // normal-path branch.
+    const ackConfig = resolveAckConfig(settings["discord"]?.ack, DISCORD_ACK_DEFAULTS);
+    const selfId = msg.client.user?.id;
+    const ack: AckHandle | null = shouldAck(ackConfig, {
+        isDirect: !msg.guildId,
+        isMention: !!selfId && msg.mentions.has(selfId),
+    })
+        ? createAckHandle(ackConfig, createDiscordAckTransport(msg),
+            (e) => log.info('[discord:ack]', logErrorText(e)))
+        : null;
+
     if (result.action === 'queued') {
         log.info(`[discord:queue] agent busy, queued (${result.pending} pending)`);
-        await msg.reply(t('tg.queued', { count: result.pending }, currentLocale()));
-
-        // Listen for queued result — correlate by requestId (request-level isolation)
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
         let disposed = false;
-        const dispose = () => {
+        const notice = createQueueNotice({
+            expiredText: t('tg.queueExpired', {}, currentLocale()),
+            onError: (e) => log.info('[discord:queue-notice]', logErrorText(e)),
+        });
+        const disposeListener = () => {
             if (disposed) return;
             disposed = true;
             clearTimeout(queueTimeout);
             removeBroadcastListener(queueHandler);
-            pendingQueueWaiters.delete(dispose);
             if (requestId) pendingQueueRequestIds.delete(requestId);
         };
+        // One terminal outcome per turn, shared by whoever reaches it first.
+        //
+        // A boolean would pick a winner and let the loser return immediately —
+        // and the loser here is the shutdown drain, which would then destroy the
+        // client while the winner is still sending. The broadcast bus never
+        // awaits listener promises, so nothing else would hold it.
+        let terminal: Promise<void> | null = null;
+        const claimTerminal = (run: () => Promise<void>): Promise<void> => {
+            if (!terminal) {
+                terminal = run().catch(e => log.info('[discord:queue]', logErrorText(e)));
+            }
+            return terminal;
+        };
+        // Registered before the closures that use it so the terminal winner can
+        // always unregister, whichever path wins.
+        let unregister = () => { };
+        const finishExpired = (signal?: AbortSignal) => claimTerminal(async () => {
+            disposeListener();
+            try {
+                // Started together, not in sequence: awaiting the notice first can
+                // eat the whole drain deadline before the reaction is attempted.
+                await Promise.allSettled([
+                    notice.close('expired', signal),
+                    ack?.settle('failure') ?? Promise.resolve(),
+                ]);
+            } finally {
+                // Centralized here: every terminal path routes through a claim, so
+                // unregistering in one place is what makes "exactly once" true.
+                unregister();
+            }
+        });
+        unregister = discordNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, any>) => {
-            if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'discord'
-                && data["requestId"] === requestId) {
-                // Dispose FIRST: the standing forwarder checks this id, so
-                // releasing it before the send would let both post.
-                if (disposed) return;
-                dispose();
-                const chunks = chunkDiscordMessage(data["text"]);
+            if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'discord'
+                || data["requestId"] !== requestId) return;
+            if (disposed) return;
+            // Dispose FIRST so a duplicate broadcast cannot double-post, but the
+            // notice deliberately outlives it: removing it before the answer is
+            // out would leave a failed send with neither answer nor notice.
+            disposeListener();
+            await claimTerminal(async () => {
+                try {
+                    await deliverQueued(data);
+                } finally {
+                    unregister();
+                }
+            });
+        };
+        const deliverQueued = async (data: Record<string, any>) => {
+            {
+                const body = String(data["text"]);
                 const channel = asSendable(msg.channel);
                 if (!channel) {
                     log.warn('[discord:queue-send] channel not sendable, dropping queued reply', { channelId: msg.channelId });
+                    await Promise.allSettled([
+                        notice.close('expired'),
+                        ack?.settle('failure') ?? Promise.resolve(),
+                    ]);
                     return;
                 }
-                for (const chunk of chunks) {
+                let delivered = true;
+                for (const chunk of chunkDiscordMessage(body)) {
                     await channel.send(chunk).catch((e: Error) => {
+                        delivered = false;
                         log.error('[discord:queue-send]', logErrorText(e));
                     });
                 }
-                await relayDiscordImages(msg.client, target, String(data["text"]));
+                // Settled before the relay for the same reason as the normal
+                // path: an uncancellable upload must not hold the reaction.
+                await Promise.allSettled([
+                    notice.close(delivered ? 'answered' : 'expired'),
+                    ack?.settle(delivered ? 'success' : 'failure') ?? Promise.resolve(),
+                ]);
+                await relayDiscordImages(msg.client, target, body).catch(
+                    e => log.error('[discord:queue-relay]', logErrorText(e)));
             }
         };
+        // Everything is armed SYNCHRONOUSLY, before any reaction or notice post.
+        // A reaction call that takes a moment must not outlive the completion it
+        // acknowledges: without the listener and the request-id claim in place, a
+        // fast queued job would be missed here or answered by the fallback.
         addBroadcastListener(queueHandler);
         if (requestId) pendingQueueRequestIds.add(requestId);
-        pendingQueueWaiters.add(dispose);
-        queueTimeout = setTimeout(dispose, 300000);
+        // The registry is the single shutdown path for the notice lifecycle: a
+        // signal-less trigger would pin QueueNotice's first close and make the
+        // drain's own cancellation unreachable.
+        queueTimeout = setTimeout(() => { void finishExpired(); }, 300000);
+        // Not awaited: the notice is what the user needs to see.
+        void ack?.to('running', { wasQueued: true });
+        const posted = await msg.reply(
+            t('tg.queued', { count: result.pending }, currentLocale()),
+        ).catch((e: unknown) => {
+            log.info('[discord:queue-notice] post failed', logErrorText(e));
+            return undefined;
+        });
+        if (posted) {
+            notice.bind(createDiscordNoticeTransport(posted));
+        } else {
+            // No handle will ever arrive, so a deferred close would wait for a
+            // bind that cannot happen and the drain would burn its deadline.
+            notice.abandon();
+            // Then close the turn out properly: abandoning the notice alone would
+            // leave the listener, the request-id claim, the timer and the running
+            // reaction alive until the 5-minute timeout or shutdown.
+            await finishExpired();
+        }
         return;
     }
 
@@ -286,6 +394,12 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             ?.catch((e: Error) => log.info('[discord:typing] ❌ refresh', logErrorText(e)));
     }, 8000);
 
+    // Recorded through the body, settled once in the finally below: the image
+    // relay can throw after the text is already out, and the user did get their
+    // answer in that case.
+    let ackOutcome: 'success' | 'failure' = 'failure';
+    let ackSettled = false;
+    void ack?.to('running');
     try {
         const text = String(await orchestrateAndCollect(prompt, stripUndefined({
             origin: 'discord', target, chatId, requestId: result.requestId, _skipInsert: true,
@@ -299,6 +413,12 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         for (const chunk of chunks) {
             await channel.send(chunk);
         }
+        ackOutcome = 'success';
+        // Settled BEFORE the relay: image upload is uncancellable (#417), so
+        // awaiting it first can strand the reaction on `running` while the
+        // answer is already visible.
+        await ack?.settle(ackOutcome);
+        ackSettled = true;
         await relayDiscordImages(msg.client, target, text);
         log.info(`[discord:out] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
@@ -306,6 +426,9 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         await msg.reply(`❌ Error: ${userErrorText(err)}`).catch(() => { });
     } finally {
         clearInterval(typingInterval);
+        // Exactly one settle per turn, whichever way the body exited.
+        // The happy path already settled before the image relay.
+        if (!ackSettled) await ack?.settle(ackOutcome);
     }
 }
 
@@ -597,9 +720,11 @@ export async function shutdownDiscord() {
     // Drop queued-result waiters immediately. Left armed, they would fire
     // against a destroyed channel for the next five minutes, and their claimed
     // request ids would keep the standing forwarder silent too.
-    for (const dispose of [...pendingQueueWaiters]) dispose();
-    pendingQueueWaiters.clear();
     pendingQueueRequestIds.clear();
+    // Before the client goes away: a rewrite issued after destruction has no
+    // transport to travel on. Bounded, because a stuck cleanup must not hold
+    // shutdown open — the drain's signal cancels whatever is still in flight.
+    await discordNoticeRegistry.drain(DISCORD_NOTICE_DRAIN_MS);
     const supervisor = gatewaySupervisor;
     gatewaySupervisor = null;
     if (supervisor) {

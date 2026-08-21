@@ -156,6 +156,7 @@
   "cmd.runtimeSelectionInstanceWide": "The CLI and model are shared by every session on this instance. Change them from the instance web settings.",
   "tg.promptUnsupported": "(Not supported on Telegram)",
   "tg.queued": "Added to queue (#{count})",
+  "tg.queueExpired": "The queued turn timed out",
   "tg.imageCaption": "[📷 Image] {caption}",
   "tg.imageFail": "Image processing failed: {msg}",
   "tg.fileFail": "File processing failed: {msg}",

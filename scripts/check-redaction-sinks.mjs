@@ -86,6 +86,11 @@ const ALLOWLIST = [
     { contains: "persist failed:", why: "a Node.js Error.message from fs write, not a credential" },
     { contains: 'await ctx.reply(syncText)', why: 'syncText is masked where it is built' },
     { contains: 'Chat ID: <code>', why: 'a chat id the user just asked for' },
+    // Queue-notice lifecycle (#412). Both carry text this repo built, not text
+    // that passed through a credential-bearing surface.
+    { contains: "t('tg.queued'", why: 'a locale string plus a pending count' },
+    { contains: 'const posted = await msg.reply(', why: 'the queue notice: a locale string plus a pending count' },
+    { contains: 'api.editMessageText(chatId, messageId, text', why: 'text is the notice expiry constant supplied at createQueueNotice' },
 ];
 
 /**
