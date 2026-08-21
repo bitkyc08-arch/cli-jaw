@@ -6,10 +6,10 @@
 // because the built-in 15s network timeout does not cover queue time and is
 // longer than any shutdown deadline worth having.
 //
-// So: reactions go through the high-level API (the returned MessageReaction is
-// the only reliable way to remove a CUSTOM emoji, since discord.js caches those
-// by id rather than by the name:id form we send), and notice cleanup goes
-// through REST where cancellation is real.
+// So both reactions and notice cleanup go through client.rest. That also sidesteps
+// a cache trap: discord.js stores CUSTOM reactions under the emoji ID rather than
+// the name:id form we send, so resolving a removal from the cache silently misses.
+// Sending the identifier we already know avoids the lookup entirely.
 
 import { Routes } from 'discord.js';
 import type { Message } from 'discord.js';
@@ -30,12 +30,9 @@ export const DISCORD_NOTICE_TIMEOUT_MS = 5000;
  * picked the wrong transition mode.
  */
 export function createDiscordAckTransport(message: Message): AckTransport {
-    // The REST identifier discord.js resolved for each emoji we applied.
-    //
-    // Two reasons not to re-derive it: discord.js caches CUSTOM reactions under
-    // the emoji ID rather than the `name:id` form we send, so a cache lookup
-    // silently misses; and the reaction returned by react() already carries the
-    // canonical identifier the removal route needs.
+    // The canonical REST identifier for each emoji we applied, kept so removal
+    // never has to consult discord.js's cache — which keys CUSTOM reactions by
+    // emoji ID rather than the `name:id` form we send, and would miss.
     const applied = new Map<string, string>();
 
     /** Bounded on every call. A reaction is decoration on the answer, so it must

@@ -59,10 +59,11 @@ test('the ACK transport uses remove-then-add: Discord has no atomic replace', as
     assert.match(removed[0]!, /\/messages\/M1\/reactions\/.+\/@me$/);
 });
 
-test('a CUSTOM emoji is removed via the returned handle, not the cache', async () => {
+test('a CUSTOM emoji is removed by its canonical identifier, not via the cache', async () => {
     // The bug this guards: discord.js keys custom reactions by emoji ID, so
     // reactions.cache.get('name:id') returns undefined and optional chaining
-    // then leaves the running reaction attached forever.
+    // then leaves the running reaction attached forever. The factory stores the
+    // identifier it sent instead, so removal never needs that lookup.
     const { message, reacted, removed } = fakeMessage();
     const handle = createAckHandle(
         { ...DISCORD_ACK_DEFAULTS, enabled: true, emoji: { running: 'wave:12345', success: 'done:67890', failure: 'x:1' } },
@@ -240,4 +241,12 @@ test('a close with no registry signal is still bounded on its own', async () => 
     const transport = createDiscordNoticeTransport(message);
     await transport.delete();   // no signal supplied
     assert.ok(observed instanceof AbortSignal, 'the factory must supply its own timeout');
+});
+
+test('an ANIMATED custom emoji round-trips through the same identifier path', () => {
+    // Animated emoji carry an a: prefix (a:name:id) and must survive unchanged
+    // into the REST route, encoded rather than reinterpreted.
+    const { message } = fakeMessage();
+    const transport = createDiscordAckTransport(message);
+    assert.equal(transport.coerce('a:spin:987'), 'a:spin:987');
 });
