@@ -53,6 +53,7 @@ import { detectInterstitial, isPageDeathError } from './interstitial.js';
 import { selectChatGptComposerTools } from './chatgpt-tools.js';
 import { sendDeepResearch } from './chatgpt-deep-research.js';
 import { sendMultiTurn } from './chatgpt-multi-turn.js';
+import { withPollDeadline } from './poll-deadline.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -987,17 +988,24 @@ async function countAssistantMessages(page: Page): Promise<number> {
 }
 
 async function waitForStableAssistantCount(page: Page, timeoutMs = 8_000): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    let previous = -1;
-    let stableReads = 0;
-    while (Date.now() < deadline) {
-        const count = await countAssistantMessages(page).catch(() => 0);
-        if (count === previous) stableReads++;
-        else stableReads = 0;
-        previous = count;
-        if (stableReads >= 2) return;
-        await page.waitForTimeout(500).catch(() => undefined);
-    }
+    // parity2 010 slice 1.1 (C-04): hard-bounded — a stalled readAssistantMessages
+    // evaluate would otherwise hold this helper past its budget.
+    await withPollDeadline<void>(
+        async (_hardDeadline, token) => {
+            const deadline = Date.now() + timeoutMs;
+            let previous = -1;
+            let stableReads = 0;
+            while (Date.now() < deadline && !token.expired) {
+                const count = await countAssistantMessages(page).catch(() => 0);
+                if (count === previous) stableReads++;
+                else stableReads = 0;
+                previous = count;
+                if (stableReads >= 2) return;
+                await page.waitForTimeout(500).catch(() => undefined);
+            }
+        },
+        { timeoutMs, onExpired: () => undefined },
+    );
 }
 
 async function readAssistantMessages(page: Page): Promise<string[]> {

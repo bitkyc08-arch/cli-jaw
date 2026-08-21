@@ -11,6 +11,7 @@ import {
 } from './session.js';
 import { isPageDeathError } from './interstitial.js';
 import { acquireWatcherSessionLock, type WatcherSessionLock } from './watcher-lock.js';
+import { withPollDeadline } from './poll-deadline.js';
 import type { WebAiOutput, WebAiSessionRecord, WebAiVendor } from './types.js';
 
 export interface StartWebAiWatcherInput {
@@ -127,12 +128,27 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
     try {
         let result: WebAiOutput;
         try {
-            result = await runSerializedPoll(() => input.pollOnce(stripUndefined({
-                vendor: input.vendor,
-                session: input.sessionId,
-                timeout: POLL_TICK_SECONDS,
-                allowCopyMarkdownFallback: input.allowCopyMarkdownFallback,
-            })));
+            // parity2 010 slice 1.1 (C-04): the tick asks pollOnce for a
+            // POLL_TICK_SECONDS poll, but a stalled probe inside it could hold the
+            // serialized queue forever — starving every other watcher. Bound the
+            // tick at 2x its budget + grace and treat expiry as a soft retry.
+            const tickBudgetMs = POLL_TICK_SECONDS * 2_000 + 10_000;
+            const TICK_EXPIRED = Symbol('watcher-tick-expired');
+            const bounded = await withPollDeadline<WebAiOutput | typeof TICK_EXPIRED>(
+                () => runSerializedPoll(() => input.pollOnce(stripUndefined({
+                    vendor: input.vendor,
+                    session: input.sessionId,
+                    timeout: POLL_TICK_SECONDS,
+                    allowCopyMarkdownFallback: input.allowCopyMarkdownFallback,
+                }))),
+                { timeoutMs: tickBudgetMs, onExpired: () => TICK_EXPIRED },
+            );
+            if (bounded === TICK_EXPIRED) {
+                // The tick's probe outlived its bound; reschedule rather than hang.
+                scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
+                return;
+            }
+            result = bounded;
         } catch (pollErr) {
             const recoveryAttempts = (state as { recoveryAttempts?: number }).recoveryAttempts || 0;
             if (isPageDeathError(pollErr) && recoveryAttempts < 2) {

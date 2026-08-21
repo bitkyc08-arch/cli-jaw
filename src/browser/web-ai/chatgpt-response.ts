@@ -16,6 +16,7 @@ import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } f
 import { resolveActionTarget } from './self-heal.js';
 import { isPageDeathError } from './interstitial.js';
 import { createTraceContext, getSessionTrace, recordTraceStep } from './action-trace.js';
+import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
 import type { ResolveActionTargetResult, TargetCandidate } from './self-heal.js';
 import type { TraceContext, TraceStep } from './action-trace.js';
 import type { Page } from 'playwright-core';
@@ -130,6 +131,24 @@ async function readAssistantTexts(page: Page): Promise<string[]> {
 }
 
 export async function captureAssistantResponse(page: Page, options: CaptureOptions): Promise<ResponseCaptureResult> {
+    // parity2 010 slice 1.1 (C-04): the loop below checks its deadline only BETWEEN
+    // awaited probes, so a single never-settling evaluate/locator call would defeat
+    // the timeout. The hard-deadline race answers the caller regardless; the token
+    // lets the losing tick refuse late side effects.
+    const timeoutMs = Math.max(1000, options.timeoutMs);
+    return withPollDeadline(
+        (_hardDeadline, token) => captureAssistantResponseInner(page, options, token),
+        {
+            timeoutMs,
+            onExpired: () => ({
+                ok: false,
+                warnings: ['poll-deadline-expired: a browser probe outlived the timeout'],
+            } as ResponseCaptureResult),
+        },
+    );
+}
+
+async function captureAssistantResponseInner(page: Page, options: CaptureOptions, deadlineToken: PollDeadlineToken): Promise<ResponseCaptureResult> {
     const transcript = new ActionTranscript();
     const resolverTrace = createTraceContext('chatgpt-response');
     const pollIntervalMs = Math.max(100, options.pollIntervalMs ?? 500);
@@ -144,7 +163,7 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
         ? observeAssistantResponse(page, { baselineAssistantCount: options.minTurnIndex, timeoutMs: observerBudgetMs })
         : null;
 
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !deadlineToken.expired) {
         try {
             // 104.18: per-tick guard — if the held tab drifted to a different chat, stop polling the
             // wrong thread and report it so the caller can rebind instead of timing out on stale DOM.

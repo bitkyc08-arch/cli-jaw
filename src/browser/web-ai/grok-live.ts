@@ -18,6 +18,7 @@ import { hasContextPackaging, prepareContextForBrowser, summarizeContextPack } f
 
 export const GROK_CONTEXT_PACK_WARNING = 'grok-context-pack-not-recommended: prefer inline prompts plus optional --file uploads for Grok; ChatGPT or Gemini handle context packages more reliably.';
 import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
+import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
 import type { WebAiFailureStage } from './diagnostics.js';
 import { attachLocalFileLive } from './chatgpt-attachments.js';
 import { captureCopiedResponseText, GROK_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
@@ -210,10 +211,41 @@ export async function grokPoll(port: number, input: { timeout?: number | string;
     if (!baseline) throw new Error('baseline required. Run web-ai send --vendor grok first.');
 
     const timeoutMs = Math.max(1, Number(input.timeout || 600)) * 1000;
+    // parity2 010 slice 1.1 (C-04): hard bound over the whole poll.
+    return withPollDeadline<WebAiOutput>(
+        (_hardDeadline, token) => grokPollInner(page, input, session, baseline, timeoutMs, token),
+        {
+            timeoutMs,
+            onExpired: () => {
+                if (session) updateSessionStatus(session.sessionId, 'timeout');
+                return {
+                    ok: false,
+                    vendor: 'grok' as const,
+                    status: 'timeout' as const,
+                    url: page.url(),
+                    baseline,
+                    ...(session ? { sessionId: session.sessionId, next: 'poll' as const } : {}),
+                    usedFallbacks: [],
+                    warnings: ['poll-deadline-expired: a browser probe outlived the timeout'],
+                    error: 'timed out waiting for grok response',
+                };
+            },
+        },
+    );
+}
+
+async function grokPollInner(
+    page: Page,
+    input: { timeout?: number | string; session?: string; allowCopyMarkdownFallback?: boolean },
+    session: ReturnType<typeof getSession>,
+    baseline: NonNullable<ReturnType<typeof getBaseline>>,
+    timeoutMs: number,
+    deadlineToken: PollDeadlineToken,
+): Promise<WebAiOutput> {
     const deadline = Date.now() + timeoutMs;
     let stableText = '';
     let stableSince = 0;
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !deadlineToken.expired) {
         const answers = await readGrokAssistantMessages(page);
         const latest = answers.slice(baseline.assistantCount).at(-1) || '';
         const streaming = await isGrokStreaming(page);

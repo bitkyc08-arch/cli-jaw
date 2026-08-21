@@ -34,6 +34,7 @@ import { captureCopiedResponseText, GEMINI_COPY_SELECTORS, preferCopiedText } fr
 import { selectGeminiModel } from './gemini-model.js';
 import { geminiCapabilityStatus } from './gemini-capabilities.js';
 import { preflightAttachment } from './chatgpt-attachments.js';
+import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
 const GEMINI_UPLOAD_SELECTORS = [
@@ -522,11 +523,43 @@ export async function geminiPoll(port: number, input: { timeout?: number | strin
         GEMINI_DEEP_THINK_CONSTRAINTS.minimumWaitMs,
         Number(input.timeout || 1200) * 1000,
     );
+    // parity2 010 slice 1.1 (C-04): hard bound — a stalled locator/evaluate call
+    // must not outlive the timeout even though the loop only checks between awaits.
+    return withPollDeadline<WebAiOutput>(
+        (_hardDeadline, token) => geminiPollInner(page, input, session, baseline, timeoutMs, token),
+        {
+            timeoutMs,
+            onExpired: () => {
+                if (session) updateSessionStatus(session.sessionId, 'timeout');
+                return {
+                    ok: false,
+                    vendor: 'gemini' as const,
+                    status: 'timeout' as const,
+                    url: page.url(),
+                    baseline,
+                    ...(session ? { sessionId: session.sessionId, next: 'poll' as const } : {}),
+                    usedFallbacks: [],
+                    warnings: ['poll-deadline-expired: a browser probe outlived the timeout'],
+                    error: 'timed out waiting for gemini deep-think response',
+                };
+            },
+        },
+    );
+}
+
+async function geminiPollInner(
+    page: Page,
+    input: { timeout?: number | string; session?: string; allowCopyMarkdownFallback?: boolean },
+    session: ReturnType<typeof getSession>,
+    baseline: NonNullable<ReturnType<typeof getBaseline>>,
+    timeoutMs: number,
+    deadlineToken: PollDeadlineToken,
+): Promise<WebAiOutput> {
     const deadline = Date.now() + timeoutMs;
     const completionSel = GEMINI_DEEP_THINK_SELECTORS.completionSignal[0];
     const responseSel = GEMINI_DEEP_THINK_SELECTORS.responseTurn[0];
     const textSel = GEMINI_DEEP_THINK_SELECTORS.responseText[0];
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !deadlineToken.expired) {
         const turns = await page.locator(responseSel).count().catch(() => 0);
         if (turns > baseline.assistantCount) {
             const lastTurn = page.locator(responseSel).nth(turns - 1);
