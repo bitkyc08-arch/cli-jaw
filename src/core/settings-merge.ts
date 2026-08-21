@@ -1,6 +1,8 @@
 // ─── Settings Merge Logic ────────────────────────────
 // Phase 9.4 — server.js의 applySettingsPatch에서 추출한 deep merge 로직
 
+import { mergeAckSettings } from '../messaging/ack-reaction.js';
+
 export type SettingsInputSource = 'boot' | 'watch' | 'api';
 export type SettingsPersistenceShape = 'absent' | 'present';
 
@@ -141,6 +143,23 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
             result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];
         }
+    }
+
+    // The loop above merges channel objects one level deep, so a patch carrying
+    // only {ack:{enabled:true}} would drop scope, emoji and removeAfterReply.
+    // Reads `patch` rather than `remaining` because the loop already deleted the
+    // key. Shares mergeAckSettings with the boot merge in config.ts so the three
+    // ingresses (boot/api/watch) cannot diverge.
+    for (const key of ['telegram', 'discord', 'slack']) {
+        const patchChannel = patch[key];
+        if (!patchChannel || typeof patchChannel !== 'object') continue;
+        const patchAck = (patchChannel as Record<string, any>)["ack"];
+        if (!patchAck || typeof patchAck !== 'object' || Array.isArray(patchAck)) continue;
+        const currentChannel = current[key] as Record<string, any> | undefined;
+        result[key] = {
+            ...result[key],
+            ack: mergeAckSettings(currentChannel?.["ack"], patchAck),
+        };
     }
 
 

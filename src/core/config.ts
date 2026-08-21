@@ -9,6 +9,13 @@ import type { MessengerChannel } from '../messaging/types.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { resolveHomePath } from './path-expand.js';
+import {
+    cloneAckDefaults,
+    mergeAckSettings,
+    DISCORD_ACK_DEFAULTS,
+    SLACK_ACK_DEFAULTS,
+    TELEGRAM_ACK_DEFAULTS,
+} from '../messaging/ack-reaction.js';
 import { SETUP_STATE_FILE } from './install-integrity.js';
 import {
     sanitizeSettingsInput,
@@ -269,6 +276,10 @@ function createDefaultSettings() {
             forwardAll: true,
             allowBots: false,
             mentionOnly: true,
+            // Acknowledge an inbound command by reacting to it rather than
+            // posting a message. Off by default: reactions need their own
+            // permission and an existing install has not granted it.
+            ack: cloneAckDefaults(TELEGRAM_ACK_DEFAULTS),
         },
         discord: {
             enabled: false,
@@ -278,6 +289,7 @@ function createDefaultSettings() {
             forwardAll: true,
             allowBots: false,
             mentionOnly: false,
+            ack: cloneAckDefaults(DISCORD_ACK_DEFAULTS),
         },
         slack: {
             enabled: false,
@@ -307,6 +319,9 @@ function createDefaultSettings() {
             // /api/slack/members still serves the full roster on demand.
             channelRoster: false,
             identityCacheTtlMs: 21600000,
+            // Slack takes emoji NAMES without colons (reactions.add docs), so
+            // these defaults are names, not unicode like the other two.
+            ack: cloneAckDefaults(SLACK_ACK_DEFAULTS),
         },
        messaging: {
             enabledChannels: [] as MessengerChannel[],
@@ -1042,9 +1057,17 @@ export function loadSettings() {
             ...(sourceVersion === 1 ? { cli: legacyCli } : {}),
             perCli: mergedPerCli,
             tui: { ...defaults.tui, ...(raw.tui || {}) },
-            telegram: { ...defaults.telegram, ...(raw.telegram || {}) },
-            discord: { ...defaults.discord, ...(raw.discord || {}) },
-            slack: { ...defaults.slack, ...(raw.slack || {}) },
+            // The channel spreads are one level deep, which is right for flat
+            // credential fields and wrong for the nested ack group: a stored file
+            // carrying only {ack:{enabled:true}} would drop the rest. Merged here
+            // rather than repaired later so migrateSettings below sees a complete
+            // ack object.
+            telegram: { ...defaults.telegram, ...(raw.telegram || {}),
+                ack: mergeAckSettings(defaults.telegram.ack, raw.telegram?.ack) },
+            discord: { ...defaults.discord, ...(raw.discord || {}),
+                ack: mergeAckSettings(defaults.discord.ack, raw.discord?.ack) },
+            slack: { ...defaults.slack, ...(raw.slack || {}),
+                ack: mergeAckSettings(defaults.slack.ack, raw.slack?.ack) },
             dispatchApproval: {
                 ...defaults.dispatchApproval,
                 ...(raw.dispatchApproval || {}),
