@@ -58,3 +58,17 @@ test('AC-4: withActiveCommand always releases, heartbeat extends', async () => {
     assert.equal(failed[0]?.status, 'failed');
 });
 
+test('AC-5: corrupt store is observed, not silently emptied (110/F2)', async () => {
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { JAW_HOME } = await import('../../src/core/config.ts');
+    const p = join(JAW_HOME, 'web-ai-active-commands.json');
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, '{ corrupt !!!', 'utf8');
+    await assert.rejects(
+        listActiveCommands(),
+        (e: unknown) => (e as { code?: string }).code === 'active-command.store-unavailable',
+    );
+    // restore a valid empty store for later tests
+    writeFileSync(p, JSON.stringify({ version: 1, commands: [] }), 'utf8');
+});

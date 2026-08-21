@@ -21,6 +21,7 @@ import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
 import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
 import { classifyComposerInterstitial } from './composer-interstitial.js';
 import { isPageDeathError } from './interstitial.js';
+import { resolveTimeoutDefaultSec } from './tier-timeout.js';
 import type { WebAiFailureStage } from './diagnostics.js';
 import { attachLocalFileLive } from './chatgpt-attachments.js';
 import { captureCopiedResponseText, GROK_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
@@ -219,7 +220,11 @@ export async function grokPoll(port: number, input: { timeout?: number | string;
     const baseline = getBaseline('grok', tab.tab.targetId);
     if (!baseline) throw new WebAiError({ errorCode: 'provider.baseline-missing', stage: 'poll-timeout', vendor: 'grok', retryHint: 'send-first', message: 'baseline required. Run web-ai send --vendor grok first.' });
 
-    const timeoutMs = Math.max(1, Number(input.timeout || 600)) * 1000;
+    // parity2 110 fix (final-audit F3): tier-aware default — grok-heavy gets
+    // its 3600s tier instead of the flat 600s. Explicit input.timeout wins.
+    const sessionModel = (session?.envelopeSummary as { model?: string } | undefined)?.model;
+    const defaultSec = resolveTimeoutDefaultSec(sessionModel ? { model: sessionModel } : {}, 'grok');
+    const timeoutMs = Math.max(1, Number(input.timeout) > 0 ? Number(input.timeout) : defaultSec) * 1000;
     // parity2 010 slice 1.1 (C-04): hard bound over the whole poll.
     return withPollDeadline<WebAiOutput>(
         (_hardDeadline, token) => grokPollInner(page, input, session, baseline, timeoutMs, token),

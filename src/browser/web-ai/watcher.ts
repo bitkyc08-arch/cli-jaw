@@ -14,6 +14,8 @@ import { isPageDeathError } from './interstitial.js';
 import { acquireWatcherSessionLock, type WatcherSessionLock } from './watcher-lock.js';
 import { withPollDeadline } from './poll-deadline.js';
 import { probeCdpLiveness, isRecoverableCdpDisconnect } from './cdp-liveness.js';
+import { getActivePage } from '../connection.js';
+import { captureWebAiDiagnostics } from './diagnostics.js';
 import type { WebAiOutput, WebAiSessionRecord, WebAiVendor } from './types.js';
 
 export interface StartWebAiWatcherInput {
@@ -222,6 +224,19 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
     } catch (e) {
         state.status = 'error';
         const error = (e as Error).message;
+        // parity2 110 fix (final-audit F1): a terminal watcher error is the
+        // production failure path that persists a diagnostics artifact — the
+        // sink existed but nothing production-side flowed through it.
+        try {
+            const page = await getActivePage(input.port).catch(() => null);
+            if (page) {
+                await captureWebAiDiagnostics({
+                    stage: 'poll-timeout',
+                    page: page as never,
+                    sessionId: input.sessionId,
+                });
+            }
+        } catch { /* diagnostics capture must never become a second failure */ }
         updateSessionResult({
             sessionId: input.sessionId,
             status: 'error',

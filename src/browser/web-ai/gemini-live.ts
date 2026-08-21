@@ -38,6 +38,7 @@ import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
 import { classifyComposerInterstitial } from './composer-interstitial.js';
 import { WebAiError } from './errors.js';
 import { isPageDeathError } from './interstitial.js';
+import { resolveTimeoutDefaultSec } from './tier-timeout.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
 const GEMINI_UPLOAD_SELECTORS = [
@@ -529,9 +530,14 @@ export async function geminiPoll(port: number, input: { timeout?: number | strin
     if (session) assertSameTarget(session, tab.tab.targetId);
     const baseline = getBaseline('gemini', tab.tab.targetId);
     if (!baseline) throw new WebAiError({ errorCode: 'provider.baseline-missing', stage: 'poll-timeout', vendor: 'gemini', retryHint: 'send-first', message: 'baseline required. Run web-ai send --vendor gemini first.' });
+    // parity2 110 fix (final-audit F3): route the default budget through the
+    // tier table — a deep-think session gets its 3600s tier instead of the
+    // flat 1200s. Explicit input.timeout always wins.
+    const sessionModel = (session?.envelopeSummary as { model?: string } | undefined)?.model;
+    const defaultSec = resolveTimeoutDefaultSec(sessionModel ? { model: sessionModel } : {}, 'gemini');
     const timeoutMs = Math.max(
         GEMINI_DEEP_THINK_CONSTRAINTS.minimumWaitMs,
-        Number(input.timeout || 1200) * 1000,
+        (Number(input.timeout) > 0 ? Number(input.timeout) : defaultSec) * 1000,
     );
     // parity2 010 slice 1.1 (C-04): hard bound — a stalled locator/evaluate call
     // must not outlive the timeout even though the loop only checks between awaits.

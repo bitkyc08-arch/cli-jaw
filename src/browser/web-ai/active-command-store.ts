@@ -60,11 +60,16 @@ function readStore(): ActiveCommandStore {
     try {
         const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<ActiveCommandStore>;
         if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.commands)) {
-            return { version: STORE_VERSION, commands: [] };
+            throw new Error(`active-command store schema-invalid at ${path}`);
         }
         return { version: STORE_VERSION, commands: parsed.commands as ActiveCommandRow[] };
-    } catch {
-        return { version: STORE_VERSION, commands: [] };
+    } catch (err) {
+        // parity2 110 fix (final-audit F2): a corrupt store must be OBSERVED —
+        // silently returning empty unprotects every running command's tab
+        // (agbrowse throws active-command.store-unavailable here).
+        const error = new Error(`active-command store unavailable: ${(err as Error)?.message || err}`) as Error & { code?: string };
+        error.code = 'active-command.store-unavailable';
+        throw error;
     }
 }
 
@@ -251,4 +256,3 @@ export async function withActiveCommand<T>(input: ActiveCommandInput, fn: (comma
         if (heartbeatTimer) clearInterval(heartbeatTimer);
     }
 }
-

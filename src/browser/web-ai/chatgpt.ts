@@ -58,6 +58,7 @@ import { withPollDeadline } from './poll-deadline.js';
 import { probeTabAlive, isSafeChatGptConversationUrl } from './tab-recovery.js';
 import { probeCdpLiveness } from './cdp-liveness.js';
 import { detectChatGptComposerSurface } from './product-surfaces.js';
+import { withActiveCommand } from './active-command-store.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -603,13 +604,32 @@ export async function poll(port: number, input: {
         }
         return null;
     };
-    const result = await captureAssistantResponse(page, {
+    // parity2 110 fix (final-audit F2): the long-running poll registers itself
+    // in the cross-process active-command store so tab cleanup in OTHER
+    // processes cannot reclaim this tab mid-poll. Best-effort: a store failure
+    // must not block the poll (it degrades to the old unprotected behavior,
+    // observed via the warning).
+    let result: Awaited<ReturnType<typeof captureAssistantResponse>>;
+    const captureArgs = {
         minTurnIndex: baseline.assistantCount,
         timeoutMs,
         promptText: '',
         allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
         driftCheck,
-    });
+    };
+    try {
+        result = await withActiveCommand(
+            { command: 'web-ai-poll', owner: 'cli-jaw', targetId, ...(session ? { sessionId: session.sessionId } : {}), ttlMs: timeoutMs + 60_000 },
+            () => captureAssistantResponse(page, captureArgs),
+        );
+    } catch (err) {
+        if ((err as { code?: string })?.code === 'active-command.store-unavailable' || (err as { code?: string })?.code === 'active-command.target-owned') {
+            result = await captureAssistantResponse(page, captureArgs);
+            result.warnings.push(`active-command-unprotected:${(err as { code?: string }).code}`);
+        } else {
+            throw err;
+        }
+    }
     // 104.18: surface a per-tick drift/crash bail-out as a typed, (for crashes) recoverable outcome.
     if (result.drift) {
         if (session) updateSessionStatus(session.sessionId, result.drift.status === 'tab-crashed' ? 'crashed' : session.status);
@@ -1001,12 +1021,13 @@ export async function stop(port: number, input: { vendor?: string; session?: str
     return { ok: true, vendor: 'chatgpt', status: 'blocked', url: currentUrl, warnings: ['sent Escape to stop generation'] };
 }
 
-export async function diagnose(port: number, input: { vendor?: string; stage?: string } = {}): Promise<{ ok: boolean; diagnostics?: ReturnType<typeof toJsonDiagnostics> }> {
+export async function diagnose(port: number, input: { vendor?: string; stage?: string; session?: string } = {}): Promise<{ ok: boolean; diagnostics?: ReturnType<typeof toJsonDiagnostics> }> {
     const vendor = parseVendor(input.vendor);
     const stage = (input.stage as WebAiFailureStage) || 'unknown';
     const page = await requireActivePage(port).catch(() => null);
     if (!page) return { ok: false };
-    const diagnostics = await captureWebAiDiagnostics({ stage, page });
+    // parity2 110 fix (F1): an explicit session persists the bundle as an artifact.
+    const diagnostics = await captureWebAiDiagnostics({ stage, page, ...(input.session ? { sessionId: String(input.session) } : {}) });
     return { ok: true, diagnostics: toJsonDiagnostics({ ...diagnostics, vendor }) };
 }
 

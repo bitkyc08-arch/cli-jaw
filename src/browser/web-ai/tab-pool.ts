@@ -64,7 +64,9 @@ export async function unpoolTab(vendor: WebAiVendor, targetId: string | null | u
 export async function cleanupPoolTabs(port: number): Promise<{ closed: number; closedTabs: string[] }> {
     // parity2 100 (B8): tabs owned by RUNNING cross-process commands are
     // protected from reclamation — the seat existed but nothing filled it.
-    const protectedIds = await activeCommandTargetIds().catch(() => new Set<string>());
+    // parity2 110 fix (F2): a corrupt/unreadable command store must not
+    // silently unprotect running tabs — refuse the cleanup instead.
+    const protectedIds = await activeCommandTargetIds();
     return cleanupLeasedTabs(port, { activeCommandTargetIds: protectedIds });
 }
 
