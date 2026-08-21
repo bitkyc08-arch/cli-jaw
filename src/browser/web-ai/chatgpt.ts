@@ -283,7 +283,19 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         }).catch(() => null)
         : null;
     await waitForStableAssistantCount(page);
-    const assistantCount = await countAssistantMessages(page);
+    // parity2 060 slice A-02: a failed baseline read must abort the send
+    // PRE-MUTATION — a 0-count baseline poisons every later poll.
+    const assistantCountOrNull = await countAssistantMessagesOrNull(page);
+    if (assistantCountOrNull === null) {
+        throw new WebAiError({
+            errorCode: 'provider.baseline-unverified',
+            stage: 'send-baseline',
+            vendor: 'chatgpt',
+            retryHint: 'retry',
+            message: 'assistant baseline could not be read; refusing to send (a 0 baseline would re-admit the whole conversation as new)',
+        });
+    }
+    const assistantCount = assistantCountOrNull;
     const baseline = saveBaseline({
         vendor: envelope.vendor,
         targetId,
@@ -378,17 +390,43 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         }
         // 104.12: hand the resolved send target + upload-aware timeout to the submit path.
         const sendSelector = sendTarget.ok ? sendTarget.target?.selector : null;
-        await liveAdapter.submitPrompt({
+        const totalUploadBytes = uploadPaths.reduce((total, p) => total + (localFileInfo(p).sizeBytes || 0), 0);
+        const submitResult = await liveAdapter.submitPrompt({
             ...(sendSelector ? { sendTarget: { selector: sendSelector, resolution: sendTarget.resolutionSource } } : {}),
-            sendButtonTimeoutMs: sendButtonTimeoutMs(uploadPaths),
+            sendButtonTimeoutMs: sendButtonTimeoutMs(uploadPaths, totalUploadBytes),
+            // parity2 060 slice A-03: never Enter-submit while uploads pend.
+            requireEnabledSendButton: uploadPaths.length > 0,
         });
+        if (submitResult.failure === 'send-button-disabled') {
+            throw new WebAiError({
+                errorCode: 'provider.send-click',
+                stage: 'send-click',
+                vendor: 'chatgpt',
+                retryHint: 'retry-send',
+                message: 'send button never became enabled while attachments were pending',
+            });
+        }
         await liveAdapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
         for (const uploadPath of uploadPaths) {
             // eslint-disable-next-line no-await-in-loop -- evidence follows upload order.
             const sentAttachment = await verifySentTurnAttachmentLive(page, localFileInfo(uploadPath));
             if (!sentAttachment.ok) {
-                usedFallbacks.push('sent-attachment-evidence-unavailable');
-                attachmentWarnings.push(`sent attachment evidence unavailable after submit: ${sentAttachment.error}`);
+                // parity2 060 slice A-04: a missing sent-attachment chip is a
+                // FAILURE by default (the model answers without the file);
+                // JAW_SENT_ATTACHMENT_POLICY=warn restores the old warning.
+                if (String(process.env['JAW_SENT_ATTACHMENT_POLICY'] || '').toLowerCase() === 'warn') {
+                    usedFallbacks.push('sent-attachment-evidence-unavailable');
+                    attachmentWarnings.push(`sent attachment evidence unavailable after submit: ${sentAttachment.error}`);
+                } else {
+                    throw new WebAiError({
+                        errorCode: 'provider.sent-attachment-missing',
+                        stage: 'send-verify',
+                        vendor: 'chatgpt',
+                        retryHint: 'retry-send',
+                        message: `sent attachment not verified in the committed turn: ${sentAttachment.error}`,
+                        evidence: { uploadPath },
+                    });
+                }
             }
         }
         updateSessionStatus(session.sessionId, 'streaming');
@@ -1026,6 +1064,42 @@ async function requireActivePage(port: number): Promise<Page> {
 
 async function countAssistantMessages(page: Page): Promise<number> {
     return (await readAssistantMessages(page)).length;
+}
+
+/**
+ * parity2 060 slice A-02: baseline counter with NULL semantics. A failed read
+ * is NOT zero — recording 0 re-admits the whole conversation as "new" on every
+ * later poll. The send path must throw pre-mutation instead.
+ */
+async function countAssistantMessagesOrNull(page: Page): Promise<number | null> {
+    const evaluated = await page.evaluate?.((selectors: readonly string[]) => {
+        for (const selector of selectors) {
+            const texts = Array.from(document.querySelectorAll(selector))
+                .map((el: TextNodeLike) => String(el.innerText || el.textContent || '').trim())
+                .filter(Boolean);
+            if (texts.length) return texts;
+        }
+        return [];
+    }, ASSISTANT_SELECTORS).catch(() => null);
+    if (evaluated === null) {
+        // evaluate failed — try the locator path, but report null on failure
+        // rather than an empty success.
+        try {
+            const messages: string[] = [];
+            for (const selector of ASSISTANT_SELECTORS) {
+                const locators = await page.locator(selector).all();
+                for (const locator of locators) {
+                    const text = cleanAssistantText(await locator.innerText().catch(() => ''));
+                    if (text) messages.push(text);
+                }
+                if (messages.length > 0) break;
+            }
+            return messages.length;
+        } catch {
+            return null;
+        }
+    }
+    return evaluated.map(cleanAssistantText).filter(Boolean).length;
 }
 
 async function waitForStableAssistantCount(page: Page, timeoutMs = 8_000): Promise<void> {
