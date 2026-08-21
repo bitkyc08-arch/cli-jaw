@@ -2,6 +2,7 @@ import { poll as chatgptPoll } from './chatgpt.js';
 import { geminiPoll } from './gemini-live.js';
 import { grokPoll } from './grok-live.js';
 import { WebAiError } from './errors.js';
+import { isDurableConversationUrl } from './conversation-url.js';
 import { getSession, listSessions, pruneSessions } from './session.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import type { WebAiVendor, WebAiSessionStatus } from './types.js';
@@ -127,6 +128,19 @@ export async function runSessionsCommand(
         }
         if (currentUrl !== targetUrl) {
             if (input.navigate === true) {
+                // parity2 020 slice 2.1 (B4/C-10): never navigate a reattach to a
+                // non-durable ChatGPT URL — a bare origin or smuggled string would
+                // land on a home tab (or worse), not the conversation.
+                if (session.vendor === 'chatgpt' && !isDurableConversationUrl(targetUrl)) {
+                    return {
+                        ok: false,
+                        status: 'reattach-failed',
+                        sessionId: id,
+                        vendor: session.vendor,
+                        error: `session URL is not a durable ChatGPT conversation URL (${targetUrl}); refusing navigation`,
+                        warnings: [],
+                    };
+                }
                 await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
                 return { ok: true, status: 'reattached', sessionId: id, vendor: session.vendor, url: targetUrl, warnings: [`navigated from ${currentUrl} to ${targetUrl}`] };
             }

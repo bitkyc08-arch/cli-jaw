@@ -12,6 +12,7 @@ import {
 import { isPageDeathError } from './interstitial.js';
 import { acquireWatcherSessionLock, type WatcherSessionLock } from './watcher-lock.js';
 import { withPollDeadline } from './poll-deadline.js';
+import { probeCdpLiveness, isRecoverableCdpDisconnect } from './cdp-liveness.js';
 import type { WebAiOutput, WebAiSessionRecord, WebAiVendor } from './types.js';
 
 export interface StartWebAiWatcherInput {
@@ -156,6 +157,22 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
                 incrementRecoveryCount(input.sessionId);
                 scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
                 return;
+            }
+            // parity2 020 slice 2.3 (B6): before treating any other poll error as
+            // terminal, classify the disconnect out-of-band. Chrome alive with the
+            // session's target still listed means the CDP client wobbled, not the
+            // tab — retry the tick instead of killing the watcher.
+            if (recoveryAttempts < 2) {
+                const sessionTargetId = getSession(input.sessionId)?.targetId;
+                if (sessionTargetId) {
+                    const liveness = await probeCdpLiveness({ port: input.port, targetId: sessionTargetId }).catch(() => null);
+                    if (liveness && isRecoverableCdpDisconnect(liveness)) {
+                        (state as { recoveryAttempts?: number }).recoveryAttempts = recoveryAttempts + 1;
+                        incrementRecoveryCount(input.sessionId);
+                        scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
+                        return;
+                    }
+                }
             }
             throw pollErr;
         }

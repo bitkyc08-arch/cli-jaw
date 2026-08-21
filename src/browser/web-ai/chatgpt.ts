@@ -54,6 +54,7 @@ import { selectChatGptComposerTools } from './chatgpt-tools.js';
 import { sendDeepResearch } from './chatgpt-deep-research.js';
 import { sendMultiTurn } from './chatgpt-multi-turn.js';
 import { withPollDeadline } from './poll-deadline.js';
+import { probeTabAlive, isSafeChatGptConversationUrl } from './tab-recovery.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -194,9 +195,19 @@ async function withSessionPage<T>(port: number, sessionId: string, fn: (ctx: Ses
     async function resolvePage(forceRecover = false) {
         const current = getSession(sessionId);
         if (!current) throw new Error(`Session not found: ${sessionId}`);
-        const alive = current.targetId ? !!(await getPageByTargetId(port, current.targetId).catch(() => null)) : false;
-        if (!alive || forceRecover) {
-            const tab = await createTab(port, current.conversationUrl || current.url || 'https://chatgpt.com', { activate: false });
+        // parity2 020 slice 2.3 (B3/C-10): a probe failure is NOT death. The old
+        // catch(() => null) treated any transient CDP error as a dead tab and
+        // immediately rebound the session to a fresh one, abandoning a live
+        // conversation. Liveness is tri-state and UNKNOWN fails closed.
+        const liveness = await probeTabAlive(port, current.targetId);
+        if (liveness === 'unknown' && !forceRecover) {
+            throw new Error(`Session ${sessionId} tab liveness could not be verified (targetId ${current.targetId}); refusing to replace a possibly-live tab. Error: tab.liveness-unverified`);
+        }
+        if (liveness === 'dead' || forceRecover) {
+            const recoveryUrl = isSafeChatGptConversationUrl(current.conversationUrl)
+                ? (current.conversationUrl as string)
+                : 'https://chatgpt.com';
+            const tab = await createTab(port, recoveryUrl, { activate: false });
             const page = await waitForPageByTargetId(port, tab.targetId);
             updateSessionResult({ sessionId, status: current.status, tabState: { createdAt: current.tabState?.createdAt || new Date().toISOString(), lastActiveAt: new Date().toISOString(), recoveryCount: (current.tabState?.recoveryCount || 0) + 1, closeCount: current.tabState?.closeCount || 0 } });
             const recovered = getSession(sessionId);
