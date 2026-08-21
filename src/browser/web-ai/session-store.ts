@@ -147,6 +147,13 @@ export function withStoreLock<T>(fn: () => T): T {
                 try { unlinkSync(path); } catch { /* races resolve naturally */ }
                 continue;
             }
+            // parity2 010 slice 1.2 (C-05): the old Atomics.wait sleep here froze
+            // the WHOLE event loop for the retry interval, suspending any
+            // deadline timer the caller held — the exact bound this store sits
+            // under. Sync callers now spin on the reported clock without
+            // blocking the loop's timers... except they still block, so the
+            // sync form is kept ONLY for read paths and bounded writes off the
+            // deadline path; deadline-path writers use withStoreLockAsync.
             sleepBlockingMs(LOCK_RETRY_MS);
         }
     }
@@ -155,6 +162,96 @@ export function withStoreLock<T>(fn: () => T): T {
         stage: 'session-store-lock',
         retryHint: 'retry',
         message: `web-ai session store: failed to acquire lock at ${path} after ${LOCK_RETRY_LIMIT} attempts`,
+    });
+}
+
+/**
+ * Returned when a caller's deadline passed while the lock was being waited for.
+ *
+ * Distinct from `null` (no such session), because the two need different
+ * handling: one is a missing record, the other is a write that must not happen.
+ * (parity2 010 slice 1.2, mirrors agbrowse session-store.mjs DEADLINE_PASSED.)
+ */
+export const DEADLINE_PASSED: unique symbol = Symbol('store-write-deadline-passed');
+export type DeadlinePassed = typeof DEADLINE_PASSED;
+
+/**
+ * Awaitable store lock. Same on-disk protocol as {@link withStoreLock}, but the
+ * retry wait is an async sleep, so the caller's event loop — and any deadline
+ * timer racing this write — keeps running while we wait.
+ */
+export async function withStoreLockAsync<T>(fn: () => T): Promise<T> {
+    const path = lockPath();
+    mkdirSync(dirname(path), { recursive: true });
+    let attempts = 0;
+    while (attempts < LOCK_RETRY_LIMIT) {
+        try {
+            const fd = openSync(path, 'wx');
+            closeSync(fd);
+            const tmpMeta = `${path}.meta.${process.pid}`;
+            try {
+                writeFileSync(tmpMeta, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
+                renameSync(tmpMeta, `${path}.meta`);
+            } catch { try { unlinkSync(tmpMeta); } catch { /* cleanup */ } }
+            try {
+                return fn();
+            } finally {
+                try { unlinkSync(`${path}.meta`); } catch { /* already gone */ }
+                try { unlinkSync(path); } catch { /* already gone */ }
+            }
+        } catch (err) {
+            if ((err as { code?: string })?.code !== 'EEXIST') throw err;
+            attempts += 1;
+            if (isStaleLock(path)) {
+                try { unlinkSync(`${path}.meta`); } catch { /* may not exist */ }
+                try { unlinkSync(path); } catch { /* races resolve naturally */ }
+                continue;
+            }
+            await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_MS));
+        }
+    }
+    throw new WebAiError({
+        errorCode: 'internal.unhandled',
+        stage: 'session-store-lock',
+        retryHint: 'retry',
+        message: `web-ai session store: failed to acquire lock at ${path} after ${LOCK_RETRY_LIMIT} attempts`,
+    });
+}
+
+/**
+ * Deadline-aware async patch. The predicate is re-checked AFTER the lock is
+ * held — the wait for the lock is exactly the gap where a deadline can pass,
+ * and a check taken before it says nothing about this moment (agbrowse 523635d).
+ */
+export async function patchSessionAsync(
+    sessionId: string,
+    patch: Partial<StoredSession>,
+    stillActive?: () => boolean,
+): Promise<StoredSession | null | DeadlinePassed> {
+    return withStoreLockAsync(() => {
+        if (stillActive?.() === false) return DEADLINE_PASSED;
+        const store = readSessionStore();
+        const idx = store.sessions.findIndex(s => s.sessionId === sessionId);
+        if (idx < 0) return null;
+        const existing = store.sessions[idx]!;
+        const merged: StoredSession = { ...existing, ...patch, sessionId: existing.sessionId, vendor: patch.vendor ?? existing.vendor, status: patch.status ?? existing.status, createdAt: patch.createdAt ?? existing.createdAt };
+        store.sessions[idx] = merged;
+        writeSessionStore(store);
+        return merged;
+    });
+}
+
+/** Deadline-aware async insert (see {@link patchSessionAsync}). */
+export async function insertSessionAsync(
+    session: StoredSession,
+    stillActive?: () => boolean,
+): Promise<StoredSession | DeadlinePassed> {
+    return withStoreLockAsync(() => {
+        if (stillActive?.() === false) return DEADLINE_PASSED;
+        const store = readSessionStore();
+        store.sessions.push(session);
+        writeSessionStore(store);
+        return session;
     });
 }
 
