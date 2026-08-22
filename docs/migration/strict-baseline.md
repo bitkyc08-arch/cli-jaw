@@ -17,6 +17,15 @@
 > 103/0/13 while this file still said 100/0/4. Recorded rather than silently
 > absorbed; narrowing those signatures is its own unit of work.
 > AST-aware counts via `scripts/check-strict-baseline.mjs`.
+> Raised 2026-08-22 to 113 for the parity2 web-ai port (`b09cd437`, merged to
+> dev without CI). The port added 10 unmarked `any` in
+> src/browser/web-ai (chatgpt-response-dom Playwright test-double declares,
+> WorkAnyPage/SurfaceAnyNode aliases, code-artifact evaluate callback) — the
+> F5 residual of its final audit records them as accepted with the agbrowse
+> JSDoc-any contract. Verified by running the scanner on 43fb07e1 (104 by the
+> current scanner build) vs b09cd437 (113); the +9 delta plus the scanner's
+> earlier drift correction lands at live=113. Narrowing is part of the web-ai
+> strict pass, not this release.
 >
 > When a phase intentionally lowers a counter, update this file in the same PR.
 >
@@ -30,7 +39,7 @@
 
 | dir | any | debt | allow |
 |-----|----:|-----:|------:|
-| src | 103 | 0 | 13 |
+| src | 113 | 0 | 13 |
 | bin | 0 | 0 | 0 |
 | lib | 0 | 0 | 0 |
 | public/js | 0 | 0 | 0 |
