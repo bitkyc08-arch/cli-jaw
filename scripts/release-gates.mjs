@@ -438,6 +438,23 @@ const GATES = {
             return { ok: true, detail: 'docs:check + check-doc-drift.sh clean' };
         },
     },
+    'path-length': {
+        description: 'no tracked path exceeds the Windows MAX_PATH budget (main repo + submodules)',
+        check() {
+            // Runs on CI too, unlike doc-drift. The condition is platform-neutral
+            // (a string length in the index), and the failure it prevents is one
+            // Linux CI can never reproduce on its own — which is exactly how it
+            // reached users twice (#422, #430).
+            const r = run('node', ['scripts/check-path-length.mjs'], { timeout: 120_000 });
+            if (r.status !== 0) {
+                return {
+                    ok: false,
+                    detail: [r.stdout, r.stderr].filter(Boolean).join('\n').slice(-1500),
+                };
+            }
+            return { ok: true, detail: (r.stdout || '').trim().slice(-300) };
+        },
+    },
     'strict-baseline': {
         description: 'any-count ratchet: live counts must not exceed docs/migration/strict-baseline.md',
         check() {
