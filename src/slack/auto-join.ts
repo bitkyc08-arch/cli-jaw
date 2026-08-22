@@ -15,6 +15,7 @@
 
 import { log } from '../core/logger.js';
 import { redactChannelSecrets } from '../messaging/redact.js';
+import { MALFORMED_SLACK_ALLOWLIST } from './events.js';
 import {
     listSlackConversations,
     joinSlackConversation,
@@ -187,6 +188,12 @@ export type SlackAutoJoinOptions = {
      * outside it would hand the agent read access to channels the same
      * operator deliberately put out of reach (#406 is the mirror of this
      * mistake). Auto-join stays inside the line the operator drew.
+     *
+     * A MALFORMED value is a third case, and the one that used to fail open.
+     * `readSlackAllowlist` reports it as a single unmatchable sentinel, which
+     * denies every channel inbound. Read here as an ordinary one-entry list it
+     * would merely skip everything — right by accident, and only for as long as
+     * the sentinel stays unmatchable. It is now detected and stops the run.
      */
     allowlist?: readonly string[];
 };
@@ -204,6 +211,18 @@ export async function runSlackAutoJoin(opts: SlackAutoJoinOptions): Promise<Slac
     };
     const { token, config } = opts;
     if (!config.enabled || !token) return result;
+
+    // A malformed inbound allowlist means the operator's boundary could not be
+    // read. Joining is a VISIBLE workspace mutation, so an unreadable boundary
+    // must stop the run outright rather than be treated as one odd channel name
+    // that happens to match nothing. Skipping every channel would look the same
+    // today and silently start joining the moment the sentinel changes.
+    if ((opts.allowlist ?? []).includes(MALFORMED_SLACK_ALLOWLIST)) {
+        result.abortedReason = 'malformed_allowlist';
+        log.warn('[slack:autojoin] slack.channelIds is malformed — refusing to join any channel.'
+            + ' Fix the allowlist (an array of channel ids) and restart.');
+        return result;
+    }
 
     const sleep = opts.sleep ?? defaultSleep;
     const signal = opts.signal;

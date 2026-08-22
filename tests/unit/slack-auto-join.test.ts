@@ -13,6 +13,7 @@ import {
     SLACK_AUTO_JOIN_DEFAULTS,
     type SlackAutoJoinConfig,
 } from '../../src/slack/auto-join.ts';
+import { MALFORMED_SLACK_ALLOWLIST, readSlackAllowlist } from '../../src/slack/events.ts';
 
 type Captured = { method: string; body: Record<string, string> };
 
@@ -122,10 +123,44 @@ test('a stale generation cancels the run even without an abort signal', async ()
         { ok: true },
     ]);
     const result = await runSlackAutoJoin({
-        token: 'xoxb-t', config: config(), fetchImpl, sleep: noSleep,
+        token: 'xoxb-t', config: config(), fetchImpl,
+        // The generation must go stale DURING the run. Flipping it after
+        // runSlackAutoJoin resolves leaves isCurrent() true for the whole scan,
+        // which is how the previous version of this test passed while proving
+        // nothing. The join pacing sleep is the seam that gets us mid-run.
+        sleep: async () => { current = false; },
         isCurrent: () => current,
     });
-    void calls; void result; void (current = false);
+    assert.equal(result.cancelled, true, 'a superseded generation must cancel the run');
+    assert.equal(calls.filter(c => c.method === 'conversations.join').length, 1,
+        'the second join must not fire once the generation is stale');
+});
+
+// A malformed slack.channelIds is not "one channel that matches nothing". It is
+// the operator's boundary being unreadable, and joining is a visible mutation.
+test('a malformed inbound allowlist stops the run instead of joining everything', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+        page([{ id: 'C_A', name: 'general', is_member: false }], ''),
+        { ok: true },
+    ]);
+    const result = await runSlackAutoJoin({
+        token: 'xoxb-t', config: config(), fetchImpl, sleep: noSleep,
+        allowlist: readSlackAllowlist('not-an-array'),
+    });
+    assert.equal(result.abortedReason, 'malformed_allowlist');
+    assert.deepEqual(result.joined, []);
+    assert.equal(calls.length, 0,
+        'a malformed boundary must stop before conversations.list, not merely skip rows');
+});
+
+test('the malformed sentinel is refused even if it arrives directly', async () => {
+    const { fetchImpl, calls } = scriptedFetch([page([], '')]);
+    const result = await runSlackAutoJoin({
+        token: 'xoxb-t', config: config(), fetchImpl, sleep: noSleep,
+        allowlist: [MALFORMED_SLACK_ALLOWLIST],
+    });
+    assert.equal(result.abortedReason, 'malformed_allowlist');
+    assert.equal(calls.length, 0);
 });
 
 test('one channel refusing does not end the scan', async () => {
@@ -332,4 +367,3 @@ test('the exclude list is scrubbed: non-strings, blanks and hashes', () => {
 test('a non-array exclude value cannot poison the run', () => {
     assert.deepEqual(mergeSlackAutoJoin(undefined, { exclude: 'C_ONE' }).exclude, []);
 });
-
