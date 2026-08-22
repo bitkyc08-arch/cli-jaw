@@ -35,21 +35,35 @@ test('every channel ACKs on its normal path, not only when queued', () => {
 });
 
 test('the ACK outcome is settled before the uncancellable image relay', () => {
-    // Image upload has no cancellation (#417), so awaiting it first can leave
-    // the reaction on `running` after the user already has their answer.
+    // The answer is already visible once the text lands, so the reaction must not
+    // wait on the upload behind it. That was originally because the upload could
+    // not be cancelled at all; it is cancellable now (#417), but the ordering
+    // still matters — a slow upload would otherwise strand the reaction on
+    // `running` long after the user has their answer.
+    //
+    // Matched by ANCHOR rather than by a literal call string. The previous version
+    // pinned the exact argument list, so adding a signal argument broke it without
+    // any behaviour changing — a false red that says nothing about ordering.
     const cases = [
-        { channel: 'slack', file: 'src/slack/bot.ts', relay: 'await relaySlackImages(token, target, text);' },
-        { channel: 'discord', file: 'src/discord/bot.ts', relay: 'await relayDiscordImages(msg.client, target, text);' },
+        { channel: 'slack', file: 'src/slack/bot.ts', relay: 'relaySlackImages(' },
+        { channel: 'discord', file: 'src/discord/bot.ts', relay: 'relayDiscordImages(' },
     ];
     for (const { channel, file, relay } of cases) {
         const src = read(file);
         const settleIdx = src.indexOf('await ack?.settle(ackOutcome);');
         assert.ok(settleIdx > 0, `${channel}: settle call not found`);
-        // Searched FROM the settle: both files contain an earlier relay call in
-        // the standing forwarder, which has no ACK at all.
-        const relayIdx = src.indexOf(relay, settleIdx);
-        assert.ok(relayIdx > settleIdx,
-            `${channel}: ACK must settle before the image relay, not after`);
+        // The NEAREST relay on either side, not the next one anywhere in the file.
+        //
+        // Scanning only forward made this test unfalsifiable: moving the settle
+        // AFTER its own relay still found a later relay belonging to the queued
+        // path, so the assertion passed while the invariant was broken. Verified
+        // by mutation — swapping the two now turns this red.
+        const before = src.lastIndexOf(relay, settleIdx);
+        const after = src.indexOf(relay, settleIdx);
+        assert.ok(after > 0, `${channel}: no relay call found after the settle`);
+        const nearestBefore = before > 0 ? settleIdx - before : Number.POSITIVE_INFINITY;
+        assert.ok(after - settleIdx < nearestBefore,
+            `${channel}: ACK must settle before its own image relay, not after`);
     }
 });
 

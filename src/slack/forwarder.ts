@@ -16,15 +16,20 @@ export async function relaySlackImages(
     token: string,
     target: RemoteTarget,
     text: string,
+    options: { signal?: AbortSignal } = {},
 ): Promise<void> {
     for (const candidate of extractLocalImagePaths(text)) {
+        // Between files, not only inside one: a ten-image answer would otherwise
+        // keep uploading long after shutdown cancelled the first (#417).
+        if (options.signal?.aborted) return;
         try {
             const filePath = assertSendFilePath(
                 candidate,
                 settings["workingDir"] || undefined,
                 settings["projectDirs"] || null,
             );
-            const result = await sendSlackFile(token, target, filePath);
+            const result = await sendSlackFile(token, target, filePath,
+                { ...(options.signal ? { signal: options.signal } : {}) });
             if (!result.ok) {
                 log.warn('[slack:image-relay] send failed', {
                     path: candidate,

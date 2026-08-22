@@ -48,8 +48,23 @@ export async function sendSlackText(
     token: string,
     target: RemoteTarget,
     text: string,
-    options: { fetchImpl?: SlackFetch; blocks?: unknown } = {},
+    options: {
+        fetchImpl?: SlackFetch;
+        blocks?: unknown;
+        /**
+         * Cancels the whole send, not one request (#417).
+         *
+         * `slackApi` has always accepted a signal; no caller supplied one, so the
+         * chunk loop and the retry wait below were unbounded no matter what the
+         * shutdown deadline said.
+         */
+        signal?: AbortSignal;
+        /** Test seam for the rate-limit wait; production uses Slack's Retry-After. */
+        retryWaitMs?: number;
+    } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number; ts?: string }> {
+    const signal = options.signal;
+    if (signal?.aborted) return slackFailure('send_aborted', 499);
     const chunks = chunkSlackMessage(toMrkdwn(text));
     // The FIRST chunk's ts. A caller that wants to remove what it just posted —
     // the queue notice — needs a handle, and the first message is the one the
@@ -60,7 +75,14 @@ export async function sendSlackText(
     // rate-limit retry below carry the same value — masking only the first would
     // put the original back on the wire the moment Slack throttled us.
     const safeBlocks = options.blocks ? redactOutboundPayload(options.blocks) : undefined;
+    const callOpts = () => ({
+        ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        ...(signal ? { signal } : {}),
+    });
     for (const [index, chunk] of chunks.entries()) {
+        // Re-checked per chunk: an abort reaches the request in flight, not the
+        // loop that would post the next one.
+        if (signal?.aborted) return slackFailure('send_aborted', 499);
         const result = await slackApi<{ ts?: string }>(
             token,
             'chat.postMessage',
@@ -71,7 +93,7 @@ export async function sendSlackText(
                 ...(target.threadId ? { thread_ts: target.threadId } : {}),
                 ...(index === 0 && safeBlocks ? { blocks: safeBlocks } : {}),
             },
-            options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+            callOpts(),
         );
         if (result.ok && index === 0 && result.data?.ts) firstTs = result.data.ts;
         if (!result.ok) {
@@ -80,13 +102,17 @@ export async function sendSlackText(
                 status: result.status,
                 retryAfterMs: result.retryAfterMs,
             });
-            const wait = result.retryAfterMs ?? retryAfterMs({
+            const wait = options.retryWaitMs ?? result.retryAfterMs ?? retryAfterMs({
                 error: result.error,
                 status: result.status,
                 retryAfterMs: result.retryAfterMs,
             });
             if (classified === 'rate-limit' && wait > 0 && wait <= MAX_INLINE_RATE_LIMIT_MS) {
-                await new Promise((resolve) => setTimeout(resolve, wait));
+                // Abortable: this used to be dead time shutdown could not
+                // interrupt, so a drain deadline could expire while we waited to
+                // retry a send nobody wanted any more.
+                await abortableDelay(wait, signal);
+                if (signal?.aborted) return slackFailure('send_aborted', 499);
                 const retried = await slackApi<{ ts?: string }>(
                     token,
                     'chat.postMessage',
@@ -96,7 +122,7 @@ export async function sendSlackText(
                         ...(target.threadId ? { thread_ts: target.threadId } : {}),
                         ...(index === 0 && safeBlocks ? { blocks: safeBlocks } : {}),
                     },
-                    options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+                    callOpts(),
                 );
                 if (retried.ok) {
                     // Without this a throttled first send leaves a notice nobody
@@ -111,4 +137,20 @@ export async function sendSlackText(
     }
     // exactOptionalPropertyTypes: omit the key rather than sending undefined.
     return firstTs ? { ok: true, ts: firstTs } : { ok: true };
+}
+
+/** Sleep that wakes on abort. Resolves either way; the caller decides what an
+ *  aborted wait means. */
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+    if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+    if (signal.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+        const timer = setTimeout(finish, ms);
+        function finish() {
+            clearTimeout(timer);
+            signal!.removeEventListener('abort', finish);
+            resolve();
+        }
+        signal!.addEventListener('abort', finish, { once: true });
+    });
 }

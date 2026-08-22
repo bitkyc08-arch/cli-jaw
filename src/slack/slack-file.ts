@@ -30,9 +30,22 @@ export async function sendSlackFile(
     token: string,
     target: RemoteTarget,
     filePath: string,
-    options: { caption?: string; fetchImpl?: SlackFetch } = {},
+    options: {
+        caption?: string;
+        fetchImpl?: SlackFetch;
+        /**
+         * Cancels the upload (#417).
+         *
+         * Step 2 below is the long one — up to 50 MiB to a presigned URL — and it
+         * had no cancellation at all, so a shutdown mid-upload left the transfer
+         * running against a process that was already gone.
+         */
+        signal?: AbortSignal;
+    } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number }> {
     const doFetch = options.fetchImpl || fetch;
+    const signal = options.signal;
+    if (signal?.aborted) return slackFailure('upload_aborted', 499);
     let fileStat;
     try {
         fileStat = await stat(filePath);
@@ -56,7 +69,7 @@ export async function sendSlackFile(
         token,
         'files.getUploadURLExternal',
         { filename: safeFilename, length: fileStat.size },
-        { fetchImpl: doFetch, form: true },
+        { fetchImpl: doFetch, form: true, ...(signal ? { signal } : {}) },
     );
     const uploadUrl = reserve.data?.upload_url;
     const fileId = reserve.data?.file_id;
@@ -66,14 +79,21 @@ export async function sendSlackFile(
 
     // Step 2 — POST the bytes to the returned URL.
     try {
+        if (signal?.aborted) return slackFailure('upload_aborted', 499);
         const buffer = await readFile(filePath);
         const form = new FormData();
         form.append('file', new Blob([new Uint8Array(buffer)]), safeFilename);
-        const upload = await doFetch(uploadUrl, { method: 'POST', body: form });
+        const upload = await doFetch(uploadUrl, {
+            method: 'POST',
+            body: form,
+            ...(signal ? { signal } : {}),
+        });
         if (!upload.ok) {
             return { ok: false, error: `Slack upload failed (${upload.status})`, status: upload.status };
         }
     } catch (error) {
+        // An abort is a cancellation, not a transport fault to report as one.
+        if (signal?.aborted) return slackFailure('upload_aborted', 499);
         // The presigned upload URL is a temporary capability: a thrown fetch
         // error routinely embeds it, and this string reaches both API responses
         // and the image-relay log.
@@ -90,7 +110,7 @@ export async function sendSlackFile(
             ...(target.threadId ? { thread_ts: target.threadId } : {}),
             ...(options.caption?.trim() ? { initial_comment: redactOutboundText(options.caption.trim()) } : {}),
         },
-        { fetchImpl: doFetch },
+        { fetchImpl: doFetch, ...(signal ? { signal } : {}) },
     );
     if (!complete.ok) {
         // File uploads are where a missing files:write scope actually bites,
