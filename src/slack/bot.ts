@@ -85,12 +85,6 @@ let forwarderHandler: BroadcastListener | null = null;
 let selfUserId: string | null = null;
 let slackInitLock = false;
 /**
- * Listeners waiting on a queued agent result. Tracked so shutdown can drop
- * them immediately instead of leaving them armed for their 5-minute timeout,
- * which would let a post-shutdown result fire against a dead transport.
- */
-const pendingQueueWaiters = new Set<() => void>();
-/**
  * Request ids a live queued-reply listener is already waiting on. The
  * target-reply forwarder checks this so a result does not get posted twice: once
  * by the requester that is still here, once by the fallback that exists for the
@@ -469,6 +463,9 @@ async function slackOrchestrate(
         // else would hold it. Handing back the winner's promise makes both paths
         // converge on the same completion.
         let terminal: Promise<void> | null = null;
+        // Assigned immediately below, but referenced by finishExpired, which is
+        // defined first. Declared here so the terminal claim can unregister.
+        let unregister: () => void = () => {};
         const claimTerminal = (run: () => Promise<void>): Promise<void> => {
             if (!terminal) {
                 terminal = run().catch(e => log.info('[slack:queue]', logErrorText(e)));
@@ -477,18 +474,28 @@ async function slackOrchestrate(
         };
         const finishExpired = (signal?: AbortSignal) => claimTerminal(async () => {
             disposeListener();
-            // Started together, not in sequence: awaiting the notice first can
-            // eat the whole drain deadline before the reaction is even attempted.
-            await Promise.allSettled([
-                notice.close('expired', signal),
-                ack?.settle('failure') ?? Promise.resolve(),
-            ]);
-            // The in-process handle just closed this notice, so the durable record
-            // has nothing left to restore. Dropping it here is what keeps the next
-            // boot from rewriting a message this turn already dealt with.
-            if (requestId) closeSlackNoticeRecord(requestId);
+            try {
+                // Started together, not in sequence: awaiting the notice first can
+                // eat the whole drain deadline before the reaction is even attempted.
+                await Promise.allSettled([
+                    notice.close('expired', signal),
+                    ack?.settle('failure') ?? Promise.resolve(),
+                ]);
+                // The in-process handle just closed this notice, so the durable
+                // record has nothing left to restore. Dropping it here is what
+                // keeps the next boot from rewriting a message this turn already
+                // dealt with.
+                if (requestId) closeSlackNoticeRecord(requestId);
+            } finally {
+                // Centralized here, as in the Discord path: every terminal route
+                // passes through a claim, so unregistering in one place is what
+                // makes "exactly once" true. The plain timeout used to leave its
+                // registry entry behind, so a later shutdown re-ran a turn that
+                // had already finished.
+                unregister();
+            }
         });
-        const unregister = slackNoticeRegistry.add((signal) => finishExpired(signal));
+        unregister = slackNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, unknown>) => {
             if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'slack'
                 || data["requestId"] !== requestId) return;
@@ -498,21 +505,28 @@ async function slackOrchestrate(
             // would leave a failed send with neither answer nor notice.
             disposeListener();
             await claimTerminal(async () => {
-                const text = String(data["text"]);
-                const queuedSendResult = await sendSlackText(token, target, text);
-                await notice.close(queuedSendResult.ok ? 'answered' : 'expired');
-                if (queuedSendResult.ok && target.threadId) {
-                    markThreadParticipated(target.targetId, target.threadId);
+                try {
+                    const text = String(data["text"]);
+                    const queuedSendResult = await sendSlackText(token, target, text);
+                    await notice.close(queuedSendResult.ok ? 'answered' : 'expired');
+                    if (queuedSendResult.ok && target.threadId) {
+                        markThreadParticipated(target.targetId, target.threadId);
+                    }
+                    // Settled before the relay for the same reason as the normal
+                    // path: the text is what the user was waiting for, and an
+                    // uncancellable upload must not hold the reaction on running.
+                    await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
+                    await relaySlackImages(token, target, text).catch(
+                        e => log.error('[slack:queue-send]', logErrorText(e)));
+                    // The notice is closed, so the durable record has nothing
+                    // left to restore on the next boot (#418).
+                    if (requestId) closeSlackNoticeRecord(requestId);
+                } finally {
+                    // Same "exactly once" reasoning as finishExpired: whichever
+                    // path claims the terminal owns the registry cleanup.
+                    unregister();
                 }
-                // Settled before the relay for the same reason as the normal
-                // path: the text is what the user was waiting for, and an
-                // uncancellable upload must not hold the reaction on running.
-                await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
-                await relaySlackImages(token, target, text).catch(
-                    e => log.error('[slack:queue-send]', logErrorText(e)));
-                if (requestId) closeSlackNoticeRecord(requestId);
             });
-            unregister();
         };
         // Everything below is armed SYNCHRONOUSLY, before any await. A reaction
         // call that takes a moment must not be able to outlive the completion it
@@ -521,7 +535,6 @@ async function slackOrchestrate(
         // standing fallback forwarder instead (#407).
         addBroadcastListener(queueHandler);
         if (requestId) pendingQueueRequestIds.add(requestId);
-        pendingQueueWaiters.add(() => { void finishExpired(); });
         queueTimeout = setTimeout(() => { void finishExpired(); }, 300000);
         // Only now, with the lifecycle armed. Not awaited: the notice below is
         // what the user needs to see, and the reaction is decoration on top.
@@ -1233,8 +1246,13 @@ async function disposeSlackRuntime(): Promise<void> {
     // is still working, while an unbounded await would hold shutdown open on a
     // stuck vendor call. The deadline covers the worst honest chain and the
     // signal cancels whatever is left.
-    for (const dispose of [...pendingQueueWaiters]) dispose();
-    pendingQueueWaiters.clear();
+    //
+    // The registry is the single shutdown route, as on Discord. A parallel
+    // waiter set used to hold one closure per queued turn and was cleared only
+    // here, so a long-lived instance retained every historical turn's token,
+    // target, notice and ACK closure. It also stripped the drain's abort signal:
+    // a QueueNotice pins the signal from its FIRST close, so a waiter closing
+    // without one made the later shutdown signal unreachable.
     await slackNoticeRegistry.drain(SLACK_NOTICE_DRAIN_MS);
     pendingQueueRequestIds.clear();
     socketClient?.stop();

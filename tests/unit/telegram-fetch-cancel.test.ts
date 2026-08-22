@@ -73,6 +73,42 @@ test('a request with no signal still completes normally', async () => {
     await new Promise<void>(resolve => server.close(() => resolve()));
 });
 
+// A multi-byte character split across TCP chunks used to be decoded per chunk
+// and corrupted into replacement characters. JSON.parse still succeeded on the
+// result, so nothing failed loudly — the damage only showed up as mojibake in
+// message text, which is a routine case for a Korean-language deployment.
+test('a UTF-8 character split across chunks is decoded intact', async () => {
+    const payload = Buffer.from(JSON.stringify({ ok: true, text: '안녕하세요 세계' }), 'utf8');
+    // The cut MUST land inside a multi-byte character, not merely between two
+    // chunks — a split at an ASCII boundary decodes cleanly either way and the
+    // test would pass against the very bug it exists to catch. '안' starts at
+    // byte 19 and is three bytes wide, so 20 lands mid-syllable. Asserted below
+    // rather than trusted, since the offset moves if the payload is edited.
+    const cut = 20;
+    assert.notEqual(payload.subarray(0, cut).toString('utf8').at(-1), '안',
+        'the cut must fall inside a multi-byte character for this test to bite');
+    const server = createServer((_req, res) => {
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/json');
+        res.write(payload.subarray(0, cut));
+        // Flush the first chunk on its own so the second arrives as a separate
+        // 'data' event rather than being coalesced into one buffer.
+        setTimeout(() => res.end(payload.subarray(cut)), 20);
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+        const result = await localFetch()(`http://127.0.0.1:${port}/`, {}) as {
+            json(): Promise<{ text: string }>; text(): Promise<string>;
+        };
+        assert.equal((await result.json()).text, '안녕하세요 세계');
+        assert.equal((await result.text()).includes('\uFFFD'), false,
+            'no replacement characters may survive the chunk boundary');
+    } finally {
+        await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+});
+
 test('bot.ts wires the production factory rather than an inline closure', async () => {
     // Guards the seam: an inline reimplementation in bot.ts would make every
     // test above prove only this file.
