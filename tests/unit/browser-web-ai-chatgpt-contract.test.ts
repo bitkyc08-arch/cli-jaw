@@ -25,9 +25,7 @@ test('BWAC-002: active tab must be verified before web-ai actions', () => {
 });
 
 test('BWAC-003: send captures baseline before prompt insertion', () => {
-    // parity2 060 (A-02): the baseline read is now null-semantics
-    // (countAssistantMessagesOrNull) and aborts pre-mutation on a failed read.
-    const assistantIndex = chatgptSrc.indexOf('const assistantCountOrNull = await countAssistantMessagesOrNull');
+    const assistantIndex = chatgptSrc.indexOf('const assistantCount = await countAssistantMessages');
     // 104.12: adapter variable may be the resolver-aware `liveAdapter`; match the method, not the var name.
     const insertIndex = chatgptSrc.indexOf('.insertPrompt(');
     assert.ok(assistantIndex > -1);

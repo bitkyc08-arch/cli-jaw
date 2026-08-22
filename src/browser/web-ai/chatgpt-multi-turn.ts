@@ -2,7 +2,6 @@ import type { Page } from 'playwright-core';
 import { updateSessionResult, appendSessionArtifact } from './session.js';
 import { trySaveTranscript } from './session-artifacts.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
-import { withPollDeadline, type PollDeadlineToken } from './poll-deadline.js';
 import type { WebAiSessionRecord, WebAiTurnRecord } from './types.js';
 
 // Re-exported alias preserves the public `TurnResult` name while reusing the
@@ -35,17 +34,9 @@ async function readLatestAssistant(page: Page): Promise<string> {
     return last.innerText().catch(() => '');
 }
 
-/**
- * parity2 070 slice D-02: tri-state probe — an unreadable count is 'unknown',
- * which BLOCKS completion instead of reading as "not streaming".
- */
-async function probeStopState(page: Page): Promise<'visible' | 'absent' | 'unknown'> {
-    try {
-        const stop = await page.locator('[data-testid="stop-button"], button[aria-label="Stop generating"]').count();
-        return stop > 0 ? 'visible' : 'absent';
-    } catch {
-        return 'unknown';
-    }
+async function isStreaming(page: Page): Promise<boolean> {
+    const stop = await page.locator('[data-testid="stop-button"], button[aria-label="Stop generating"]').count();
+    return stop > 0;
 }
 
 async function submitTurn(page: Page, deps: MultiTurnDeps, opts: { prompt: string }): Promise<void> {
@@ -71,23 +62,21 @@ async function submitTurn(page: Page, deps: MultiTurnDeps, opts: { prompt: strin
 async function pollTurn(page: Page, opts: {
     baselineAssistantCount: number;
     timeoutMs?: number;
-    deadlineToken?: PollDeadlineToken;
 }): Promise<{ ok: boolean; answerText: string; warnings: string[] }> {
     const deadline = Date.now() + (opts.timeoutMs ?? 120_000);
     let stableText = '';
     let stableSince = 0;
 
-    while (Date.now() < deadline && !opts.deadlineToken?.expired) {
-        // parity2 070 slice D-02: cap the tick by the remaining budget.
-        await new Promise((r) => setTimeout(r, Math.min(500, Math.max(1, deadline - Date.now()))));
+    while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 500));
 
         const count = await countAssistants(page);
         if (count <= opts.baselineAssistantCount) continue;
 
         const latest = (await readLatestAssistant(page)).trim();
-        const stopState = await probeStopState(page);
+        const streaming = await isStreaming(page);
 
-        if (latest && stopState === 'absent') {
+        if (latest && !streaming) {
             if (latest === stableText) {
                 if (Date.now() - stableSince >= 1500) {
                     return { ok: true, answerText: latest, warnings: [] };
@@ -96,9 +85,7 @@ async function pollTurn(page: Page, opts: {
                 stableText = latest;
                 stableSince = Date.now();
             }
-        } else if (stopState !== 'absent') {
-            // visible OR unknown both reset stability: an unreadable probe must
-            // not let a half-written answer pass as stable.
+        } else if (streaming) {
             stableText = '';
             stableSince = 0;
         }
@@ -111,37 +98,7 @@ export async function sendMultiTurn(page: Page, deps: MultiTurnDeps, opts: {
     followUps: string[];
     session: WebAiSessionRecord;
     timeoutPerTurn?: number;
-    /** Test/ops override for the outer sequence bound; defaults to a floor of 60s or turns*budget+30s. */
-    outerBudgetMs?: number;
 }): Promise<MultiTurnResult> {
-    const { followUps, session, timeoutPerTurn = 120_000 } = opts;
-    // parity2 070 slice D-01: the WHOLE follow-up sequence runs under a hard
-    // outer deadline — per-turn budgets alone let a stalled probe hold the
-    // caller indefinitely, and a losing run could still write to the session.
-    const outerBudgetMs = opts.outerBudgetMs ?? Math.max(60_000, followUps.length * timeoutPerTurn + 30_000);
-    return withPollDeadline<MultiTurnResult>(
-        (_hardDeadline, token) => sendMultiTurnInner(page, deps, { ...opts, timeoutPerTurn }, token),
-        {
-            timeoutMs: outerBudgetMs,
-            onExpired: () => ({
-                ok: false,
-                sessionId: session.sessionId,
-                conversationUrl: page.url?.() || session.conversationUrl || '',
-                turns: [],
-                finalAnswer: null,
-                warnings: ['multi-turn-deadline-expired'],
-                finalStatus: 'partial',
-                transcriptMarkdown: '',
-            }),
-        },
-    );
-}
-
-async function sendMultiTurnInner(page: Page, deps: MultiTurnDeps, opts: {
-    followUps: string[];
-    session: WebAiSessionRecord;
-    timeoutPerTurn?: number;
-}, deadlineToken: PollDeadlineToken): Promise<MultiTurnResult> {
     const { followUps, session, timeoutPerTurn = 120_000 } = opts;
     const turns: TurnResult[] = [];
     const allWarnings: string[] = [];
@@ -152,18 +109,12 @@ async function sendMultiTurnInner(page: Page, deps: MultiTurnDeps, opts: {
     let turnIndex = existingTurns.length;
 
     for (const prompt of followUps) {
-        // parity2 070 slice D-01: a losing run must not start another turn (or
-        // write) after the caller has been answered.
-        if (deadlineToken.expired) {
-            allWarnings.push('multi-turn-deadline-expired');
-            break;
-        }
         const sentAt = new Date().toISOString();
         const baselineAssistantCount = await countAssistants(page);
 
         try {
             await submitTurn(page, deps, { prompt });
-            const result = await pollTurn(page, { baselineAssistantCount, timeoutMs: timeoutPerTurn, deadlineToken });
+            const result = await pollTurn(page, { baselineAssistantCount, timeoutMs: timeoutPerTurn });
 
             const turn: TurnResult = {
                 index: turnIndex,
@@ -179,9 +130,9 @@ async function sendMultiTurnInner(page: Page, deps: MultiTurnDeps, opts: {
 
             const allTurns = [...existingTurns, ...turns];
             if (result.answerText) finalAnswer = result.answerText;
-            if (!deadlineToken.expired) updateSessionResult({
+            updateSessionResult({
                 sessionId: session.sessionId,
-                status: result.ok ? 'streaming' : 'partial',
+                status: result.ok ? 'streaming' : 'error',
                 turns: allTurns,
                 followUpCount: allTurns.length,
                 ...(result.answerText ? { answerText: result.answerText } : {}),
@@ -204,9 +155,9 @@ async function sendMultiTurnInner(page: Page, deps: MultiTurnDeps, opts: {
             turnIndex++;
 
             const allTurns = [...existingTurns, ...turns];
-            if (!deadlineToken.expired) updateSessionResult({
+            updateSessionResult({
                 sessionId: session.sessionId,
-                status: 'partial',
+                status: 'error',
                 turns: allTurns,
                 followUpCount: allTurns.length,
             });
@@ -226,11 +177,9 @@ async function sendMultiTurnInner(page: Page, deps: MultiTurnDeps, opts: {
         else allWarnings.push(`artifact-save-failed:${saved.stage}:${saved.error}`);
     }
 
-    if (!deadlineToken.expired) updateSessionResult({
+    updateSessionResult({
         sessionId: session.sessionId,
-        // parity2 070 slice C-04: a partial multi-turn is resumable — 'error'
-        // destroyed that signal.
-        status: ok ? 'complete' : 'partial',
+        status: ok ? 'complete' : 'error',
         conversationUrl: page.url(),
         turns: allTurns,
         followUpCount: allTurns.length,

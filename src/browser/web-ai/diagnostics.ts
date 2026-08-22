@@ -8,8 +8,6 @@
 
 import { captureBrowserDiagnostics } from '../primitives.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
-import { trySaveDiagnosticsArtifact } from './session-artifacts.js';
-import { appendSessionArtifact } from './session.js';
 
 export type WebAiFailureStage =
     | 'status'
@@ -61,12 +59,6 @@ export interface DiagnosticsCaptureOptions {
     enableScreenshot?: boolean;
     /** Cap for any free-form diagnostic text. */
     maxChars?: number;
-    /** parity2 090 slice 4 (B7): when set, the diagnostics bundle is persisted
-     * as a session artifact (bounded DOM summary + best-effort screenshot) and
-     * its ref lands in artifactRefs. Never throws. */
-    sessionId?: string;
-    /** Best-effort CDP screenshot provider (Page.captureScreenshot). */
-    getCdpSession?: () => Promise<{ send(method: string, params?: Record<string, unknown>): Promise<unknown>; detach?(): Promise<void> } | null>;
 }
 
 const DEFAULT_MAX_CHARS = 1024;
@@ -223,48 +215,6 @@ export async function captureWebAiDiagnostics(
         chipNodes: await safeCount(page, '[data-testid*="attachment" i], [aria-label*="attachment" i]'),
         progressNodes: await safeCount(page, '[role="progressbar"]'),
     };
-    // parity2 090 slice 4 (B7): persist the bundle as a session artifact.
-    // artifactRefs was initialized empty and never filled — the sink existed,
-    // the pipe was missing. Best-effort: failures become warnings.
-    if (options.sessionId) {
-        let screenshotBuffer: Buffer | null = null;
-        if (options.enableScreenshot && options.getCdpSession) {
-            try {
-                const cdp = await options.getCdpSession();
-                if (cdp) {
-                    try {
-                        const shot = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 }) as { data?: string };
-                        if (shot?.data) screenshotBuffer = Buffer.from(shot.data, 'base64');
-                    } finally {
-                        await cdp.detach?.().catch(() => undefined);
-                    }
-                }
-            } catch (err) {
-                out.warnings.push(`diagnostics-screenshot-failed:${(err as Error)?.message || 'unknown'}`);
-            }
-        }
-        const saved = trySaveDiagnosticsArtifact(options.sessionId, {
-            context: out.stage,
-            domJson: {
-                stage: out.stage,
-                url: out.url,
-                title: out.title,
-                selectorCounts: out.selectorCounts,
-                sendButtonStates: out.sendButtonStates,
-                stopVisible: out.stopVisible,
-                assistantTurnCount: out.assistantTurnCount,
-                conversationTurnCount: out.conversationTurnCount,
-                uploadSignals: out.uploadSignals,
-            },
-            screenshotBuffer,
-        });
-        if (saved.ok) {
-            out.artifactRefs.push(String((saved.descriptor as { path?: string })?.path || 'diagnostics-artifact'));
-            appendSessionArtifact(options.sessionId, saved.descriptor);
-        } else {
-            out.warnings.push(`diagnostics-artifact-save-failed:${saved.stage}:${saved.error}`);
-        }
-    }
     return out;
 }
 

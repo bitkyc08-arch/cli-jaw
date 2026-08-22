@@ -81,10 +81,7 @@ export interface CommittedTurnBaseline {
     capturedAt: string;
 }
 
-// parity2 070 slice C-04: 'partial' (multi-turn stopped mid-sequence, resumable),
-// 'blocked' (DR account block — not a generic error), 'stale' (watcher-marked).
-// Storing these as 'error' lost the resumability signal.
-export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error' | 'crashed' | 'partial' | 'blocked' | 'stale';
+export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error' | 'crashed';
 
 export interface WebAiSessionTabState {
     createdAt: string;
@@ -128,9 +125,6 @@ export interface WebAiSessionRecord {
     timeoutMs: number;
     notifyOnComplete?: boolean;
     capabilityMode?: string;
-    // parity2 070 slice C-03: 'deep' marks a Deep Research session — the archive
-    // DR-guard reads it and resume routing needs it (it was read but never written).
-    researchMode?: string | null;
     answerText?: string;
     answerArtifact?: import('./answer-artifact.js').AnswerArtifact;
     sourceAudit?: import('./source-audit.js').SourceAuditResult;

@@ -22,9 +22,11 @@ import type { RemoteTarget } from '../messaging/types.js';
 import { buildMediaPromptMany } from '../agent/spawn.js';
 import {
     addSlackReaction,
+    deleteSlackMessage,
     describeSlackError,
     removeSlackReaction,
     slackApi,
+    updateSlackMessage,
     SLACK_CLEANUP_TIMEOUT_MS,
 } from './api.js';
 import {
@@ -48,9 +50,6 @@ import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from
 import { runSlackAutoJoin, mergeSlackAutoJoin } from './auto-join.js';
 import { createHash } from 'node:crypto';
 import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
-import { getQueueNoticeStore } from '../messaging/queue-notice-store.js';
-import { restoreQueueNotices } from '../messaging/queue-notice-restore.js';
-import { createSlackNoticeTransport } from './notice-transport.js';
 import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { slackInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { readSlackAllowlist, resolveEventText, shouldAttachSlack, shouldProcessSlackEvent, type SlackMessageEvent } from './events.js';
@@ -163,57 +162,6 @@ function buildSlackAck(
 
 function hasPendingQueueWaiter(requestId: string): boolean {
     return pendingQueueRequestIds.has(requestId);
-}
-
-// ─── Durable notice records (#418) ──────────────────
-// The handles above are process-local; these three wrap the store that outlives
-// the process. Every one of them is best-effort by contract: a durable write is a
-// convenience for the NEXT boot, and letting it throw here would fail the turn the
-// user is actually waiting on.
-
-function reserveSlackNoticeRecord(requestId: string, target: RemoteTarget): void {
-    try {
-        getQueueNoticeStore()?.reserve({ requestId, channel: 'slack', target });
-    } catch (e) {
-        log.info('[slack:queue-notice] reserve failed', logErrorText(e));
-    }
-}
-
-function attachSlackNoticeRecord(requestId: string, ts: string): void {
-    try {
-        getQueueNoticeStore()?.attachMessageId(requestId, ts);
-    } catch (e) {
-        log.info('[slack:queue-notice] attach failed', logErrorText(e));
-    }
-}
-
-function closeSlackNoticeRecord(requestId: string): void {
-    try {
-        getQueueNoticeStore()?.close(requestId);
-    } catch (e) {
-        log.info('[slack:queue-notice] close failed', logErrorText(e));
-    }
-}
-
-/**
- * Rewrite notices left behind by a previous run.
- *
- * Called once the token is known, because the transport needs it — a record whose
- * transport cannot be built yet is kept rather than closed (#418).
- */
-export async function restoreSlackQueueNotices(): Promise<void> {
-    const store = getQueueNoticeStore();
-    if (!store) return;
-    const token = getSlackSendClient().token;
-    await restoreQueueNotices({
-        store,
-        channel: 'slack',
-        expiredText: t('tg.queueExpired', {}, currentLocale()),
-        transport: (record) => (token
-            ? createSlackNoticeTransport(token, record.target.targetId, record.messageId)
-            : null),
-        onError: (e) => log.info('[slack:queue-notice] restore failed', logErrorText(e)),
-    });
 }
 
 /** Stand in for a live queued-reply listener without opening a socket. */
@@ -483,10 +431,6 @@ async function slackOrchestrate(
                 notice.close('expired', signal),
                 ack?.settle('failure') ?? Promise.resolve(),
             ]);
-            // The in-process handle just closed this notice, so the durable record
-            // has nothing left to restore. Dropping it here is what keeps the next
-            // boot from rewriting a message this turn already dealt with.
-            if (requestId) closeSlackNoticeRecord(requestId);
         });
         const unregister = slackNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, unknown>) => {
@@ -510,7 +454,6 @@ async function slackOrchestrate(
                 await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
                 await relaySlackImages(token, target, text).catch(
                     e => log.error('[slack:queue-send]', logErrorText(e)));
-                if (requestId) closeSlackNoticeRecord(requestId);
             });
             unregister();
         };
@@ -526,26 +469,30 @@ async function slackOrchestrate(
         // Only now, with the lifecycle armed. Not awaited: the notice below is
         // what the user needs to see, and the reaction is decoration on top.
         void ack?.to('running', { wasQueued: true });
-        // Reserved BEFORE the post, so the crash window falls the harmless way: a
-        // record without an id restores to nothing, while a posted message without
-        // a record is unreachable forever (#418).
-        if (requestId) reserveSlackNoticeRecord(requestId, target);
         const posted = await sendSlackText(
             token, target, t('tg.queued', { count: result.pending }, currentLocale()),
         );
         if (posted.ok && posted.ts) {
             const ts = posted.ts;
-            // The exported factory, not an inline object: the restart path builds
-            // the same transport, and a second copy is how the two drift.
-            notice.bind(createSlackNoticeTransport(token, target.targetId, ts));
-            if (requestId) attachSlackNoticeRecord(requestId, ts);
+            notice.bind({
+                delete: async (signal) => {
+                    const r = await deleteSlackMessage(token, target.targetId, ts,
+                        { ...(signal ? { signal } : {}) });
+                    // A notice that is already gone is a deletion that succeeded.
+                    if (!r.ok && r.error !== 'message_not_found') {
+                        throw new Error(describeSlackError(r.error, r.data));
+                    }
+                },
+                edit: async (text, signal) => {
+                    const r = await updateSlackMessage(token, target.targetId, ts, text,
+                        { ...(signal ? { signal } : {}) });
+                    if (!r.ok) throw new Error(describeSlackError(r.error, r.data));
+                },
+            });
         } else {
             // No ts will ever arrive, so a deferred close would wait for a bind
             // that cannot happen and the drain would burn its whole deadline.
             notice.abandon();
-            // Nothing was posted, so the reservation describes a message that does
-            // not exist. Leaving it would make every later boot look for it.
-            if (requestId) closeSlackNoticeRecord(requestId);
         }
         return;
     }

@@ -22,13 +22,10 @@ export interface PromptCommitResult {
 }
 
 export interface PromptSubmitResult {
-    method: 'button' | 'enter' | 'none';
+    method: 'button' | 'enter';
     // 104.12: which resolver-verified target was clicked, when the resolved-send path won.
     selector?: string;
     resolution?: unknown;
-    // parity2 060 slice A-03: submit refused because the send button never
-    // enabled while attachments were pending (no blind Enter fallback).
-    failure?: 'send-button-disabled';
 }
 
 // 104.12: resolver-verified targets carry the self-healed selector + its resolution provenance.
@@ -50,9 +47,6 @@ export interface VendorEditorAdapterOptions {
     composerTarget?: ComposerTarget;
     sendTarget?: SendTarget;
     sendButtonTimeoutMs?: number;
-    // parity2 060 slice A-03: with attachments pending, an Enter fallback can
-    // submit BEFORE uploads finish; require the enabled send button instead.
-    requireEnabledSendButton?: boolean;
 }
 
 export interface VendorEditorAdapter {

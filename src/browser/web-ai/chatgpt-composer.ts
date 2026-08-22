@@ -184,11 +184,6 @@ export async function submitPromptFromComposer(page: Page, options: VendorEditor
     }
     const clicked = await clickEnabledSendButton(page, options.sendButtonTimeoutMs);
     if (clicked) return { method: 'button' };
-    // parity2 060 slice A-03: attachments pending → Enter may submit early;
-    // report the typed failure sentinel instead (agbrowse composer :163-180).
-    if (options.requireEnabledSendButton) {
-        return { method: 'none', failure: 'send-button-disabled' };
-    }
     await page.keyboard.press('Enter');
     return { method: 'enter' };
 }

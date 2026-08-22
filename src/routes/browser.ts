@@ -432,7 +432,6 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
             res.json(await browser.webAi.diagnose(cdpPort(req), {
                 vendor: String(req.query["vendor"] || 'chatgpt'),
                 stage: String(req.query["stage"] || 'unknown'),
-                ...(req.query["session"] ? { session: String(req.query["session"]) } : {}),
             }));
         } catch (e: unknown) { res.status(500).json(toWebAiHttpError(e)); }
     });

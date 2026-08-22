@@ -2,17 +2,11 @@ import { poll as chatgptPoll } from './chatgpt.js';
 import { geminiPoll } from './gemini-live.js';
 import { grokPoll } from './grok-live.js';
 import { WebAiError } from './errors.js';
-import { isDurableConversationUrl } from './conversation-url.js';
 import { getSession, listSessions, pruneSessions } from './session.js';
-import { buildSessionDoctorReport } from './session-doctor.js';
-import { listActiveCommands } from './active-command-store.js';
-import { probeTabAlive } from './tab-recovery.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import type { WebAiVendor, WebAiSessionStatus } from './types.js';
 
-// parity2 070 slice C-05: 'doctor' was advertised by session-doctor's own help
-// text but never routed.
-const SESSIONS_SUBCOMMANDS = new Set(['list', 'show', 'resume', 'reattach', 'prune', 'doctor']);
+const SESSIONS_SUBCOMMANDS = new Set(['list', 'show', 'resume', 'reattach', 'prune']);
 
 const SESSION_DURATION_RE = /^(\d+)\s*([smhdw]?)$/i;
 const DURATION_MS: Record<string, number> = { '': 1000, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
@@ -102,68 +96,20 @@ export async function runSessionsCommand(
         if (!session) throw new WebAiError({ errorCode: 'internal.unhandled', stage: 'internal', retryHint: 'report', message: `no session record for ${id}`, evidence: { sessionId: id } });
         return { ok: true, status: 'show', session, vendor: session.vendor, warnings: [] };
     }
-    if (sub === 'doctor') {
-        const id = rest[0] || input.session;
-        if (!id) throw new WebAiError({ errorCode: 'internal.unhandled', stage: 'internal', retryHint: 'report', message: 'sessions doctor <id> requires a sessionId' });
-        const port = deps.port ?? 0;
-        const report = await buildSessionDoctorReport({
-            getSession: (sessionId) => getSession(sessionId),
-            // parity2 100 (B8): real cross-process active-command visibility.
-            readSessionCommandLock: () => null,
-            listActiveCommands: async (scope) => listActiveCommands({ active: true, ...(scope?.browserProfileKey ? { browserProfileKey: scope.browserProfileKey } : {}) }),
-            verifySessionTab: async (session) => {
-                const liveness = await probeTabAlive(port, (session as { targetId?: string }).targetId);
-                if (liveness === 'alive') return { valid: true };
-                if (liveness === 'dead') return { valid: false, needsRecovery: true, error: 'target not found' };
-                return { valid: false, error: 'tab liveness could not be verified' };
-            },
-            getPort: () => port,
-        }, id, { navigate: input.navigate === true });
-        return report as unknown as Record<string, unknown>;
-    }
     if (sub === 'resume') {
         const id = rest[0] || input.session;
         if (!id) throw new WebAiError({ errorCode: 'internal.unhandled', stage: 'internal', retryHint: 'report', message: 'sessions resume <id> requires a sessionId (positional or --session)' });
         const session = getSession(id);
         if (!session) throw new WebAiError({ errorCode: 'internal.unhandled', stage: 'internal', retryHint: 'report', message: `no session record for ${id}`, evidence: { sessionId: id } });
-        const pollInputBase: { timeout?: number } = {};
-        // parity2 070 slice C-01: refuse expired sessions and clamp the poll
-        // budget to the stored deadline — a bare pollFn call granted a fresh
-        // full default budget to a session whose deadline already passed.
-        const deadlineMs = Date.parse(session.createdAt || '') + (Number(session.timeoutMs) || 0);
-        if (Number.isFinite(deadlineMs)) {
-            const remainingMs = deadlineMs - Date.now();
-            if (remainingMs <= 0) {
-                return {
-                    ok: false,
-                    status: 'timeout',
-                    sessionId: id,
-                    vendor: session.vendor,
-                    error: `session deadline already passed (${new Date(deadlineMs).toISOString()}); start a new send`,
-                    warnings: [],
-                };
-            }
-            (pollInputBase as { timeout?: number }).timeout = Math.max(1, Math.floor(remainingMs / 1000));
-        }
         const pollInput = {
             vendor: session.vendor,
             session: id,
             allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
-            ...pollInputBase,
         };
         const port = deps.port ?? 0;
         const pollFn = session.vendor === 'gemini' ? geminiPoll : session.vendor === 'grok' ? grokPoll : chatgptPoll;
         const result = await pollFn(port, pollInput);
-        // parity2 070 slice C-02 (partial): a Deep Research session resumed
-        // through the generic poll gets a warning so callers know the report
-        // pipeline (frame read / report-shape rejection) was not applied. The
-        // full resumeDeepResearch port (target-scope + not-started + re-bind)
-        // is tracked in the 070 doc as its remaining slice.
-        const warnings = Array.isArray((result as { warnings?: unknown }).warnings) ? (result as { warnings: string[] }).warnings : [];
-        if (session.vendor === 'chatgpt' && session.researchMode === 'deep') {
-            warnings.push('deep-research-resume-generic-poll: report-pipeline reread not applied');
-        }
-        return { ...result, warnings, status: result.status || 'resumed' };
+        return { ...result, status: result.status || 'resumed' };
     }
     if (sub === 'reattach') {
         const id = rest[0] || input.session;
@@ -181,19 +127,6 @@ export async function runSessionsCommand(
         }
         if (currentUrl !== targetUrl) {
             if (input.navigate === true) {
-                // parity2 020 slice 2.1 (B4/C-10): never navigate a reattach to a
-                // non-durable ChatGPT URL — a bare origin or smuggled string would
-                // land on a home tab (or worse), not the conversation.
-                if (session.vendor === 'chatgpt' && !isDurableConversationUrl(targetUrl)) {
-                    return {
-                        ok: false,
-                        status: 'reattach-failed',
-                        sessionId: id,
-                        vendor: session.vendor,
-                        error: `session URL is not a durable ChatGPT conversation URL (${targetUrl}); refusing navigation`,
-                        warnings: [],
-                    };
-                }
                 await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
                 return { ok: true, status: 'reattached', sessionId: id, vendor: session.vendor, url: targetUrl, warnings: [`navigated from ${currentUrl} to ${targetUrl}`] };
             }

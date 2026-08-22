@@ -21,8 +21,6 @@ import { createHash } from 'node:crypto';
 import {
     admitIngress, getIngressJournal, settleIngress, type IngressAdmission,
 } from '../messaging/durable-ingress.js';
-import { getQueueNoticeStore } from '../messaging/queue-notice-store.js';
-import { restoreQueueNotices } from '../messaging/queue-notice-restore.js';
 import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
@@ -48,7 +46,6 @@ import { createQueueNotice, QueueNoticeRegistry } from '../messaging/queue-notic
 import {
     createDiscordAckTransport,
     createDiscordNoticeTransport,
-    createDiscordNoticeTransportByIds,
     DISCORD_REACTION_TIMEOUT_MS,
 } from './reactions.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
@@ -233,58 +230,6 @@ const discordNoticeRegistry = new QueueNoticeRegistry();
 /** Covers a notice edit plus a remove-then-add reaction chain. */
 const DISCORD_NOTICE_DRAIN_MS = DISCORD_REACTION_TIMEOUT_MS * 2 + 3000;
 
-// ─── Durable notice records (#418) ──────────────────
-// The registry above is process-local; these wrap the store that outlives the
-// process. Best-effort by contract: a durable write is a convenience for the NEXT
-// boot, so letting it throw would fail the turn the user is waiting on.
-
-function reserveDiscordNoticeRecord(requestId: string, target: RemoteTarget): void {
-    try {
-        getQueueNoticeStore()?.reserve({ requestId, channel: 'discord', target });
-    } catch (e) {
-        log.info('[discord:queue-notice] reserve failed', logErrorText(e));
-    }
-}
-
-function attachDiscordNoticeRecord(requestId: string, messageId: string): void {
-    try {
-        getQueueNoticeStore()?.attachMessageId(requestId, messageId);
-    } catch (e) {
-        log.info('[discord:queue-notice] attach failed', logErrorText(e));
-    }
-}
-
-function closeDiscordNoticeRecord(requestId: string): void {
-    try {
-        getQueueNoticeStore()?.close(requestId);
-    } catch (e) {
-        log.info('[discord:queue-notice] close failed', logErrorText(e));
-    }
-}
-
-/**
- * Rewrite notices left behind by a previous run.
- *
- * Addressed by ids rather than a fetched Message: a restart has the two ids from
- * its record, and re-fetching would turn a rewrite into a fetch that can fail on
- * its own. A record is kept when no client is connected yet — that is temporary,
- * unlike a vendor rejection (#418).
- */
-export async function restoreDiscordQueueNotices(): Promise<void> {
-    const store = getQueueNoticeStore();
-    if (!store) return;
-    const client = discordClient;
-    await restoreQueueNotices({
-        store,
-        channel: 'discord',
-        expiredText: t('tg.queueExpired', {}, currentLocale()),
-        transport: (record) => (client
-            ? createDiscordNoticeTransportByIds(client, record.target.targetId, record.messageId)
-            : null),
-        onError: (e) => log.info('[discord:queue-notice] restore failed', logErrorText(e)),
-    });
-}
-
 async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     const target = buildDiscordTarget(msg);
     const chatId = msg.channelId;
@@ -346,9 +291,6 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     notice.close('expired', signal),
                     ack?.settle('failure') ?? Promise.resolve(),
                 ]);
-                // Closed in-process, so the durable record has nothing left to
-                // restore on the next boot.
-                if (requestId) closeDiscordNoticeRecord(requestId);
             } finally {
                 // Centralized here: every terminal path routes through a claim, so
                 // unregistering in one place is what makes "exactly once" true.
@@ -397,7 +339,6 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     notice.close(delivered ? 'answered' : 'expired'),
                     ack?.settle(delivered ? 'success' : 'failure') ?? Promise.resolve(),
                 ]);
-                if (requestId) closeDiscordNoticeRecord(requestId);
                 await relayDiscordImages(msg.client, target, body).catch(
                     e => log.error('[discord:queue-relay]', logErrorText(e)));
             }
@@ -414,9 +355,6 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         queueTimeout = setTimeout(() => { void finishExpired(); }, 300000);
         // Not awaited: the notice is what the user needs to see.
         void ack?.to('running', { wasQueued: true });
-        // Reserved BEFORE the post: a record with no id restores to nothing, while
-        // a posted message with no record is unreachable forever (#418).
-        if (requestId) reserveDiscordNoticeRecord(requestId, target);
         const posted = await msg.reply(
             t('tg.queued', { count: result.pending }, currentLocale()),
         ).catch((e: unknown) => {
@@ -425,13 +363,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         });
         if (posted) {
             notice.bind(createDiscordNoticeTransport(posted));
-            if (requestId) attachDiscordNoticeRecord(requestId, posted.id);
         } else {
             // No handle will ever arrive, so a deferred close would wait for a
             // bind that cannot happen and the drain would burn its deadline.
             notice.abandon();
-            // The reservation describes a message that does not exist.
-            if (requestId) closeDiscordNoticeRecord(requestId);
             // Then close the turn out properly: abandoning the notice alone would
             // leave the listener, the request-id claim, the timer and the running
             // reaction alive until the 5-minute timeout or shutdown.

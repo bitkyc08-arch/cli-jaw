@@ -30,8 +30,6 @@ export interface WebAiErrorInit {
     selectorsTried?: string[];
     evidence?: unknown;
     cause?: unknown;
-    /** parity2 100 (C-18): id of the policy/contract rule that produced this error. */
-    ruleId?: string;
 }
 
 export interface WebAiErrorJson {
@@ -44,7 +42,6 @@ export interface WebAiErrorJson {
     mutationAllowed: boolean;
     selectorsTried: string[];
     evidence: unknown;
-    ruleId?: string;
 }
 
 export class WebAiError extends Error {
@@ -55,7 +52,6 @@ export class WebAiError extends Error {
     mutationAllowed: boolean;
     selectorsTried: string[];
     evidence: unknown;
-    ruleId?: string;
 
     constructor(init: WebAiErrorInit = {}) {
         super(init.message || init.errorCode || 'web-ai error');
@@ -68,7 +64,6 @@ export class WebAiError extends Error {
         this.selectorsTried = Array.isArray(init.selectorsTried) ? init.selectorsTried : [];
         this.evidence = init.evidence ?? null;
         if (init.cause !== undefined) (this as { cause?: unknown }).cause = init.cause;
-        if (init.ruleId !== undefined) this.ruleId = init.ruleId;
     }
 
     toJSON(): WebAiErrorJson {
@@ -113,7 +108,7 @@ export function contextError(init: WebAiErrorInit = {}): WebAiError {
     return new WebAiError(init);
 }
 
-export function toErrorJson(err: WebAiError | { name?: string; errorCode?: string; stage?: string; message?: string; retryHint?: string; vendor?: string; mutationAllowed?: boolean; selectorsTried?: string[]; evidence?: unknown; ruleId?: string }): WebAiErrorJson {
+export function toErrorJson(err: WebAiError | { name?: string; errorCode?: string; stage?: string; message?: string; retryHint?: string; vendor?: string; mutationAllowed?: boolean; selectorsTried?: string[]; evidence?: unknown }): WebAiErrorJson {
     const out: WebAiErrorJson = {
         name: err?.name || 'WebAiError',
         errorCode: err?.errorCode || 'internal.unhandled',
@@ -125,7 +120,6 @@ export function toErrorJson(err: WebAiError | { name?: string; errorCode?: strin
         evidence: err?.evidence ?? null,
     };
     if (err?.vendor) out.vendor = err.vendor;
-    if (err?.ruleId) out.ruleId = err.ruleId;
     return out;
 }
 

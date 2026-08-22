@@ -84,22 +84,7 @@ export function createDiscordAckTransport(message: Message): AckTransport {
  * cleanup would outlive the drain that is supposed to bound it.
  */
 export function createDiscordNoticeTransport(message: Message): NoticeTransport {
-    return createDiscordNoticeTransportByIds(message.client, message.channelId, message.id);
-}
-
-/**
- * The same transport addressed by ids rather than a live Message.
- *
- * A restart has the channel and message id from its durable record but no
- * Message object (#418), and re-fetching one would turn a rewrite into a fetch
- * that can 404 on its own. The REST route only ever needed the two ids.
- */
-export function createDiscordNoticeTransportByIds(
-    client: Pick<Message['client'], 'rest'>,
-    channelId: string,
-    messageId: string,
-): NoticeTransport {
-    const route = Routes.channelMessage(channelId, messageId);
+    const route = Routes.channelMessage(message.channelId, message.id);
     // A per-call timeout is composed even when the caller supplies nothing.
     // QueueNotice pins whichever signal the FIRST close receives, and ordinary
     // delivery closes without one — so relying on the shutdown drain to provide
@@ -110,10 +95,10 @@ export function createDiscordNoticeTransportByIds(
     };
     return {
         delete: async (signal) => {
-            await client.rest.delete(route, { signal: bounded(signal) });
+            await message.client.rest.delete(route, { signal: bounded(signal) });
         },
         edit: async (text, signal) => {
-            await client.rest.patch(route, {
+            await message.client.rest.patch(route, {
                 body: { content: text },
                 signal: bounded(signal),
             });

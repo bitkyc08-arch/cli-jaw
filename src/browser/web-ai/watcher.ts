@@ -6,16 +6,11 @@ import {
     incrementRecoveryCount,
     listSessions,
     setSessionNotifyOnComplete,
-    updateSessionProgress,
     updateSessionResult,
     updateSessionStatus,
 } from './session.js';
 import { isPageDeathError } from './interstitial.js';
 import { acquireWatcherSessionLock, type WatcherSessionLock } from './watcher-lock.js';
-import { withPollDeadline } from './poll-deadline.js';
-import { probeCdpLiveness, isRecoverableCdpDisconnect } from './cdp-liveness.js';
-import { getActivePage } from '../connection.js';
-import { captureWebAiDiagnostics } from './diagnostics.js';
 import type { WebAiOutput, WebAiSessionRecord, WebAiVendor } from './types.js';
 
 export interface StartWebAiWatcherInput {
@@ -132,27 +127,12 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
     try {
         let result: WebAiOutput;
         try {
-            // parity2 010 slice 1.1 (C-04): the tick asks pollOnce for a
-            // POLL_TICK_SECONDS poll, but a stalled probe inside it could hold the
-            // serialized queue forever — starving every other watcher. Bound the
-            // tick at 2x its budget + grace and treat expiry as a soft retry.
-            const tickBudgetMs = POLL_TICK_SECONDS * 2_000 + 10_000;
-            const TICK_EXPIRED = Symbol('watcher-tick-expired');
-            const bounded = await withPollDeadline<WebAiOutput | typeof TICK_EXPIRED>(
-                () => runSerializedPoll(() => input.pollOnce(stripUndefined({
-                    vendor: input.vendor,
-                    session: input.sessionId,
-                    timeout: POLL_TICK_SECONDS,
-                    allowCopyMarkdownFallback: input.allowCopyMarkdownFallback,
-                }))),
-                { timeoutMs: tickBudgetMs, onExpired: () => TICK_EXPIRED },
-            );
-            if (bounded === TICK_EXPIRED) {
-                // The tick's probe outlived its bound; reschedule rather than hang.
-                scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
-                return;
-            }
-            result = bounded;
+            result = await runSerializedPoll(() => input.pollOnce(stripUndefined({
+                vendor: input.vendor,
+                session: input.sessionId,
+                timeout: POLL_TICK_SECONDS,
+                allowCopyMarkdownFallback: input.allowCopyMarkdownFallback,
+            })));
         } catch (pollErr) {
             const recoveryAttempts = (state as { recoveryAttempts?: number }).recoveryAttempts || 0;
             if (isPageDeathError(pollErr) && recoveryAttempts < 2) {
@@ -161,22 +141,6 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
                 scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
                 return;
             }
-            // parity2 020 slice 2.3 (B6): before treating any other poll error as
-            // terminal, classify the disconnect out-of-band. Chrome alive with the
-            // session's target still listed means the CDP client wobbled, not the
-            // tab — retry the tick instead of killing the watcher.
-            if (recoveryAttempts < 2) {
-                const sessionTargetId = getSession(input.sessionId)?.targetId;
-                if (sessionTargetId) {
-                    const liveness = await probeCdpLiveness({ port: input.port, targetId: sessionTargetId }).catch(() => null);
-                    if (liveness && isRecoverableCdpDisconnect(liveness)) {
-                        (state as { recoveryAttempts?: number }).recoveryAttempts = recoveryAttempts + 1;
-                        incrementRecoveryCount(input.sessionId);
-                        scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
-                        return;
-                    }
-                }
-            }
             throw pollErr;
         }
         if (result.status === 'interstitial') {
@@ -184,17 +148,6 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
             return;
         }
         if (result.ok && result.status === 'complete') {
-            // parity2 040 slice 4.2 (C-07): a poll can report complete while the
-            // page is still streaming (false-complete). When the persisted
-            // streaming state disagrees, DEFER finalization — keep polling and
-            // record the typed warning; the next non-streaming poll finalizes.
-            const persisted = getSession(input.sessionId);
-            if (persisted?.lastStreamingState === 'streaming' && !result.answerText) {
-                updateSessionResult({ sessionId: input.sessionId, status: 'streaming' });
-                updateSessionProgress(input.sessionId, { lastStreamingState: 'streaming' });
-                scheduleTick(input, state, normalizedPollIntervalMs(input.pollIntervalSeconds));
-                return;
-            }
             updateSessionResult({
                 sessionId: input.sessionId,
                 status: 'complete',
@@ -224,19 +177,6 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
     } catch (e) {
         state.status = 'error';
         const error = (e as Error).message;
-        // parity2 110 fix (final-audit F1): a terminal watcher error is the
-        // production failure path that persists a diagnostics artifact — the
-        // sink existed but nothing production-side flowed through it.
-        try {
-            const page = await getActivePage(input.port).catch(() => null);
-            if (page) {
-                await captureWebAiDiagnostics({
-                    stage: 'poll-timeout',
-                    page: page as never,
-                    sessionId: input.sessionId,
-                });
-            }
-        } catch { /* diagnostics capture must never become a second failure */ }
         updateSessionResult({
             sessionId: input.sessionId,
             status: 'error',

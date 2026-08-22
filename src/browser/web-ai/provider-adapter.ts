@@ -29,9 +29,6 @@ export interface ResponseCaptureResult {
     warnings: string[];
     // 104.18: per-tick poll bail-out — the conversation drifted, or the tab crashed (recoverable).
     drift?: { status: 'conversation-mismatch' | 'tab-crashed'; reason: string; recoverable?: boolean };
-    // parity2 050 (B-07): recovery found stable-but-UNFINISHED text; the caller
-    // should keep polling instead of persisting a truncated answer.
-    polling?: boolean;
 }
 
 export interface WebAiProviderAdapter {
