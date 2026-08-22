@@ -19,7 +19,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 
 ```text
 cli-jaw/
-├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (733L)
+├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (745L)
 ├── lib/                      ← 외부 통합/공용 헬퍼 (5 root files + mcp/ 8 files)
 │   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + softResetSkills + runSkillReset + trusted repair gate + clone cooldown (83L)
 │   ├── mcp/                  ← MCP 모듈 분리 (8 files)
@@ -140,6 +140,7 @@ cli-jaw/
 │   │   ├── ingress-generation.ts ← envelope → chat_sessions.generation lookup (0 if unbound) (22L)
 │   │   ├── effect-once.ts    ← protected-effect claim FSM (claimed|completed|failed|manual, lease+token CAS) (286L)
 │   │   ├── outbound-outbox.ts ← reserve-before-send outbox + ambiguous FSM (256L)
+│   │   ├── outbound-lifecycle.ts ← live outbound turn registry (per-turn signal + total deadline + abort classification) (212L)
 │   │   ├── trace-context.ts  ← ALS MessagingTraceContext; reuses journal trace_id (73L)
 │   │   ├── metrics.ts       ← in-process counters/histograms; labels channel/state/result only (97L)
 │   │   ├── durable-ingress.ts ← inbound journal FSM + admit/settle + session_generation + operator list/replay (592L)
@@ -244,25 +245,25 @@ cli-jaw/
 │   │   └── worklog.ts        ← Worklog CRUD + phase matrix (201L)
 │   ├── telegram/             ← Telegram 인터페이스 (11 files)
 │   │   ├── reactions.ts     ← ACK reaction transport + ReactionTypeEmoji allowlist + notice transport (186L)
-│   │   ├── ipv4-fetch.ts    ← IPv4 fetch factory that honours init.signal (destroys on abort) (96L)
-│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (1189L)
+│   │   ├── ipv4-fetch.ts    ← IPv4 fetch factory that honours init.signal (destroys on abort) (106L)
+│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (1259L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (43L)
 │   │   ├── forwarder.ts      ← text 전송 뒤 guarded local-image photo relay + escape/chunk/createForwarder (245L)
-│   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (315L)
+│   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (356L)
 │   │   ├── elicitation-buttons.ts ← single_select elicitation → inline keyboard + pending store + callback codec (110L)
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (8 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (813L)
-│   │   ├── reactions.ts   ← ACK reaction transport + cancellable notice REST (107L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (923L)
+│   │   ├── reactions.ts   ← ACK reaction transport + cancellable notice REST (122L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
-│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (167L) ✨
+│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (191L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (89L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (67L)
 │   ├── slack/                ← Slack 인터페이스 (21 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (407L)
-│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (1190L)
+│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (1324L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (394L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (66L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (283L)
@@ -273,12 +274,12 @@ cli-jaw/
 │   │   ├── history.ts        ← 동적 조회 (conversations.history/replies form-encoded 래퍼 + 재시도 + 에이전트용 포맷/redact) (218L)
 │   │   ├── attachment-recovery.ts ← app_mention 봉투에 없는 첨부를 channel+ts 재조회로 복구 (oldest+inclusive+limit=1) (53L)
 │   │   ├── commands.ts       ← slash command → 공유 parseCommand/executeCommand 파이프라인 (165L)
-│   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (파일명·캡션 모두 아웃바운드 마스킹) (101L)
+│   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (파일명·캡션 모두 아웃바운드 마스킹) (121L)
 │   │   ├── ingress.ts        ← 세션별 ingress lane + admitSlackRun 동기 실행 예약(sessionLanes) + 전역 다운로드 세마포어 + shutdown abort/drain (290L) ✨
 │   │   ├── inbound-file.ts   ← 인바운드 첨부 단일 IO owner (files.info → 인증 스트리밍 다운로드 → saveUpload, 파일/메시지 바이트 예산, 고정 error code) (280L) ✨
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
-│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (114L)
-│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (69L)
+│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (156L)
+│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (74L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (161L)
 │   │   ├── scope-status.ts   ← OAuth grant drift 단일 소유자 (auth.test의 x-oauth-scopes를 manifest 요구 집합과 대조, 미관측을 '이상 없음'과 구분, doctor·health·identity 경고가 공유) (152L) ✨
