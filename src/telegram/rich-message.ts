@@ -31,7 +31,10 @@ const HTML_MESSAGE_LIMIT = 4096;
  * when it should not: a long rate limit or an ambiguous failure is the
  * caller's to report, not to paper over with another send.
  */
-async function attemptSend(send: () => Promise<unknown>): Promise<boolean> {
+async function attemptSend(
+    send: () => Promise<unknown>,
+    signal?: AbortSignal,
+): Promise<boolean> {
     try {
         await send();
         return false;
@@ -42,7 +45,10 @@ async function attemptSend(send: () => Promise<unknown>): Promise<boolean> {
 
         const wait = retryAfterMs(err);
         if (wait <= 0 || wait > MAX_INLINE_RATE_LIMIT_MS) throw err;
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        // Abortable: a plain sleep is dead time shutdown cannot interrupt, so a
+        // drain deadline could expire while we wait to retry a send nobody wants.
+        await abortableDelay(wait, signal);
+        if (signal?.aborted) throw err;
 
         // Retry the SAME form, once: waiting is what the server asked for, and
         // switching format would add load rather than remove it.
@@ -56,6 +62,22 @@ async function attemptSend(send: () => Promise<unknown>): Promise<boolean> {
     }
 }
 
+/** Sleep that wakes on abort. Resolves either way; the caller decides what an
+ *  aborted wait means. */
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+    if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+    if (signal.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+        const timer = setTimeout(finish, ms);
+        function finish() {
+            clearTimeout(timer);
+            signal!.removeEventListener('abort', finish);
+            resolve();
+        }
+        signal!.addEventListener('abort', finish, { once: true });
+    });
+}
+
 type MaybeRichApi = Pick<Api, 'sendMessage'> & Partial<Pick<Api, 'sendRichMessage'>>;
 
 export interface RichSendOpts {
@@ -64,6 +86,15 @@ export interface RichSendOpts {
     direct_messages_topic_id?: number;
     /** Prepended to the FIRST chunk only (e.g. '📡 '). */
     prefix?: string;
+    /**
+     * Cancels the whole send, not one request (#417).
+     *
+     * `createIpv4Fetch` already destroys the request on abort, so the only thing
+     * missing was a caller willing to supply this. It is re-checked BETWEEN chunks
+     * because aborting reaches only the request already in flight — without the
+     * re-check a multi-chunk answer keeps posting after shutdown began.
+     */
+    signal?: AbortSignal;
 }
 
 /** True when the running grammy build exposes sendRichMessage (Bot API 10.1+). */
@@ -269,6 +300,8 @@ export async function sendTelegramMarkdown(
     // point, so masking here cannot be bypassed by a caller that forgot.
     const markdown = redactOutboundText(rawMarkdown);
     const prefix = effectivePrefix(opts?.prefix ?? '', RICH_MESSAGE_LIMIT, markdown);
+    // Nothing goes out for a turn that is already cancelled.
+    if (opts?.signal?.aborted) return;
     if (!supportsRichMessage(api)) {
         await sendHtmlFallback(api, chatId, markdown, opts, prefix);
         return;
@@ -279,9 +312,13 @@ export async function sendTelegramMarkdown(
     // fallback.
     const chunks = chunkWithPrefixBudget(markdown, prefix, RICH_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
+        // Re-checked per chunk: the abort reaches the in-flight request, not the
+        // loop that would queue the next one.
+        if (opts?.signal?.aborted) return;
         const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
         const needsFallback = await attemptSend(() =>
-            api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts)));
+            api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts), opts?.signal as never),
+            opts?.signal);
         if (needsFallback) {
             await sendHtmlFallback(api, chatId, chunks[i]!, opts, i === 0 ? prefix : '');
         }
@@ -305,11 +342,15 @@ async function sendHtmlFallback(
         ? chunkTelegramMessage(html, HTML_MESSAGE_LIMIT - safePrefix.length)
         : chunkTelegramMessage(html, HTML_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
+        if (opts?.signal?.aborted) return;
         const withPrefix = i === 0 ? `${safePrefix}${chunks[i]}` : chunks[i]!;
-        const needsPlain = await attemptSend(() => api.sendMessage(chatId, withPrefix, htmlOpts));
+        const needsPlain = await attemptSend(
+            () => api.sendMessage(chatId, withPrefix, htmlOpts, opts?.signal as never),
+            opts?.signal);
         if (needsPlain) {
-            await attemptSend(() =>
-                api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts));
+            await attemptSend(
+                () => api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts, opts?.signal as never),
+                opts?.signal);
         }
     }
 }
