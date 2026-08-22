@@ -62,13 +62,36 @@ export async function sendDiscordTextRest(
     token: string,
     channelId: string,
     text: string,
-    extra?: { components?: unknown },
+    extra?: {
+        components?: unknown;
+        /**
+         * Cancels the whole send (#417).
+         *
+         * The scheduler applies it BOTH while a job waits behind a rate limit and
+         * during the fetch, which is the part discord.js's `channel.send()` cannot
+         * offer at all — queue time is invisible to its 15s network timeout.
+         */
+        signal?: AbortSignal;
+        /** Test seam: production uses the cached per-token scheduler. */
+        scheduler?: DiscordRestScheduler;
+    },
 ): Promise<DiscordRestSendResult> {
+    const signal = extra?.signal;
+    // Nothing goes out for a turn that is already cancelled.
+    if (signal?.aborted) {
+        return { ok: false, failure: discordDeliveryError(signal.reason), error: 'send_aborted' };
+    }
+    const scheduler = extra?.scheduler ?? schedulerFor(token);
     const chunks = chunkDiscordMessage(text);
     for (const [index, chunk] of chunks.entries()) {
+        // Re-checked per chunk: aborting reaches the job already scheduled, not
+        // the loop that would enqueue the next one.
+        if (signal?.aborted) {
+            return { ok: false, failure: discordDeliveryError(signal.reason), error: 'send_aborted' };
+        }
         const body: Record<string, unknown> = { content: chunk };
         if (index === 0 && extra?.components) body['components'] = extra.components;
-        const result = await schedulerFor(token).schedule({
+        const result = await scheduler.schedule({
             method: 'POST',
             path: `/channels/${encodeURIComponent(channelId)}/messages`,
             routeKey: 'POST:/channels/:channel/messages',
@@ -78,6 +101,7 @@ export async function sendDiscordTextRest(
                 body: JSON.stringify(body),
             }),
             parse: async () => undefined,
+            ...(signal ? { signal } : {}),
         });
         if (!result.ok) return sendResult(result);
     }

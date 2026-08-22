@@ -23,6 +23,7 @@ import {
 } from '../messaging/durable-ingress.js';
 import { getQueueNoticeStore } from '../messaging/queue-notice-store.js';
 import { restoreQueueNotices } from '../messaging/queue-notice-restore.js';
+import { OutboundLifecycleRegistry } from '../messaging/outbound-lifecycle.js';
 import { currentGenerationForEnvelope } from '../messaging/ingress-generation.js';
 import { discordInboundEnvelope } from '../messaging/inbound-envelope.js';
 import { t, normalizeLocale } from '../core/i18n.js';
@@ -230,6 +231,23 @@ function currentLocale() {
  * its notice rewritten rather than left claiming the agent is still working.
  */
 const discordNoticeRegistry = new QueueNoticeRegistry();
+
+/**
+ * Live outbound turns (#417).
+ *
+ * Separate from the notice registry above: that one holds cleanups shutdown
+ * STARTS, this one holds sends shutdown must STOP. Registered on all three paths,
+ * because wiring only the queued branch leaves the ordinary reply and the
+ * forwarder invisible to shutdown — which is how they outlived it.
+ */
+const discordOutbound = new OutboundLifecycleRegistry();
+/** Covers a chunked answer plus one rate-limit wait inside the scheduler. */
+const DISCORD_OUTBOUND_DRAIN_MS = 5000;
+
+/** The bot token, or an empty string when Discord is not configured. */
+function dcToken(): string {
+    return getDiscordSendClient().token ?? '';
+}
 /** Covers a notice edit plus a remove-then-add reaction chain. */
 const DISCORD_NOTICE_DRAIN_MS = DISCORD_REACTION_TIMEOUT_MS * 2 + 3000;
 
@@ -385,11 +403,25 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     return;
                 }
                 let delivered = true;
-                for (const chunk of chunkDiscordMessage(body)) {
-                    await channel.send(chunk).catch((e: Error) => {
+                // The queued answer is outbound work shutdown must be able to stop.
+                const turn = discordOutbound.begin({ channel: 'discord', path: 'queued' });
+                // Through the REST scheduler rather than channel.send(): the
+                // high-level helper forwards no request options, so a shutdown
+                // signal could not reach it and a queued turn kept posting after
+                // the client was gone (#417). The scheduler also chunks.
+                try {
+                    const sending = sendDiscordTextRest(
+                        dcToken(), msg.channelId, body, { signal: turn.signal });
+                    // Tracked so a drain WAITS for a send that is nearly done
+                    // instead of cancelling it at time zero.
+                    turn.track(sending);
+                    const queuedSend = await sending;
+                    if (!queuedSend.ok) {
                         delivered = false;
-                        log.error('[discord:queue-send]', logErrorText(e));
-                    });
+                        log.error('[discord:queue-send]', logErrorText(queuedSend.error));
+                    }
+                } finally {
+                    turn.end();
                 }
                 // Settled before the relay for the same reason as the normal
                 // path: an uncancellable upload must not hold the reaction.
@@ -472,12 +504,21 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             chatSessionId: result.sessionContext?.chatSessionId,
             remoteKey: result.sessionContext?.remoteKey,
         })));
-        const chunks = chunkDiscordMessage(text);
         const channel = asSendable(msg.channel);
         if (!channel) throw new Error('Discord channel is not text-based');
-        for (const chunk of chunks) {
-            await channel.send(chunk);
+        // Same reason as the queued path: channel.send() cannot be cancelled, so
+        // the ordinary answer outlived shutdown (#417).
+        const turn = discordOutbound.begin({ channel: 'discord', path: 'normal' });
+        let sent;
+        try {
+            const sending = sendDiscordTextRest(
+                dcToken(), msg.channelId, text, { signal: turn.signal });
+            turn.track(sending);
+            sent = await sending;
+        } finally {
+            turn.end();
         }
+        if (!sent.ok) throw new Error(sent.error);
         ackOutcome = 'success';
         // Settled BEFORE the relay: image upload is uncancellable (#417), so
         // awaiting it first can strand the reaction on `running` while the
@@ -782,6 +823,10 @@ export async function initDiscord(): Promise<TransportStartOutcome> {
 
 export async function shutdownDiscord() {
     discordActiveChannelIds.clear();
+    // Cancel answers still going out BEFORE the client is destroyed. Bounded, so
+    // a send stuck behind a rate limit cannot hold shutdown open; the signal is
+    // what actually stops it once the deadline passes (#417).
+    await discordOutbound.drain(DISCORD_OUTBOUND_DRAIN_MS);
     // Drop queued-result waiters immediately. Left armed, they would fire
     // against a destroyed channel for the next five minutes, and their claimed
     // request ids would keep the standing forwarder silent too.
