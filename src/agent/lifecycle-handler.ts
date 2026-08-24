@@ -946,7 +946,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             return;
         }
         if (
-            (cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup)
+            (cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup || cls.isConnection)
             && !cls.isStall && !cls.isAuth
             && !performedSideEffects(ctx)
             && !opts._employeeFreshSessionRetry

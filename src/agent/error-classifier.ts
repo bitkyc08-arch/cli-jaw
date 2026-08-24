@@ -61,7 +61,11 @@ export function classifyExitError(
     const isTransientStartup = !outputStarted && /exited before SessionStart/i.test(combined);
     const isAuth = combined.includes('auth') || combined.includes('credentials')
         || KEYCHAIN_LOCKED_RE.test(combined);
-    const isConnection = !isAuth && CONNECTION_ERROR_RE.test(combined);
+    // stderr ONLY, never diagnosticText: the diagnostic carries ctx.fullText,
+    // and 'fetch failed' / 'network error' are ordinary phrases inside model
+    // answers and tool output. A transport failure the CLI itself suffered is
+    // reported on ITS stderr; text it merely relayed must not trigger respawns.
+    const isConnection = !isAuth && CONNECTION_ERROR_RE.test(stderrBuf);
     const isStall = !!stallReason;
 
     let message = `${cli} 실행 실패 (exit ${code})`;
