@@ -16,15 +16,18 @@ export async function relayDiscordImages(
     client: Client,
     target: RemoteTarget,
     text: string,
+    options: { signal?: AbortSignal } = {},
 ): Promise<void> {
     for (const candidate of extractLocalImagePaths(text)) {
+        if (options.signal?.aborted) return;
         try {
             const filePath = assertSendFilePath(
                 candidate,
                 settings["workingDir"] || undefined,
                 settings["projectDirs"] || null,
             );
-            const result = await sendDiscordFile(client, target, filePath);
+            const result = await sendDiscordFile(client, target, filePath,
+                options.signal ? { signal: options.signal } : {});
             if (!result.ok) {
                 log.warn('[discord:image-relay] send failed', {
                     path: candidate,

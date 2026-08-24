@@ -34,7 +34,10 @@ export function handleCodexEvent(
                     const tool = stripUndefined({
                         icon: '💬',
                         label: buildPreview(text, 80) || 'working...',
-                        toolType: 'tool' as const,
+                        // 'thinking', not 'tool': external channel status lines
+                        // (Slack progress, Telegram tool log) drop thinking-type
+                        // entries, so narration stays a live-UI-only affordance.
+                        toolType: 'thinking' as const,
                         detail: text,
                         status: 'done' as const,
                     });
@@ -44,6 +47,16 @@ export function handleCodexEvent(
                 }
                 return;
             }
+            // Untagged agent_message: current Codex builds often omit the
+            // channel tag, so progress narration ("확인하겠습니다...") and the
+            // real answer arrive shaped identically. Treat them as LAST-WINS:
+            // each new untagged message REPLACES the durable text instead of
+            // being joined with "\n- ", which is exactly the
+            // "확인합니다.- <답변>" artifact users saw in Slack. Earlier
+            // messages remain visible live via pendingOutputChunk/agent_output
+            // and the 💬 toolLog entry below.
+            ctx.fullText = '';
+            ctx.outputTextStarted = false;
             const segment = appendAssistantTextSegment(ctx, text);
             ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
             if (segment.trim()) {

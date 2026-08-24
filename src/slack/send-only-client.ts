@@ -5,6 +5,7 @@
 import { settings } from '../core/config.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { slackApi, describeSlackError, slackFailure, type SlackFetch } from './api.js';
+import { abortableDelay } from '../messaging/outbound-lifecycle.js';
 import { chunkSlackMessage, toMrkdwn } from './format.js';
 import { MAX_INLINE_RATE_LIMIT_MS, classifySendFailure, retryAfterMs } from '../messaging/retry.js';
 import { redactOutboundPayload } from '../messaging/redact.js';
@@ -48,7 +49,7 @@ export async function sendSlackText(
     token: string,
     target: RemoteTarget,
     text: string,
-    options: { fetchImpl?: SlackFetch; blocks?: unknown } = {},
+    options: { fetchImpl?: SlackFetch; blocks?: unknown; signal?: AbortSignal } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number; ts?: string }> {
     const chunks = chunkSlackMessage(toMrkdwn(text));
     // The FIRST chunk's ts. A caller that wants to remove what it just posted —
@@ -60,7 +61,17 @@ export async function sendSlackText(
     // rate-limit retry below carry the same value — masking only the first would
     // put the original back on the wire the moment Slack throttled us.
     const safeBlocks = options.blocks ? redactOutboundPayload(options.blocks) : undefined;
+    const callOpts = {
+        ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+    };
     for (const [index, chunk] of chunks.entries()) {
+        // A shutdown abort between chunks is a cancellation, not a vendor
+        // failure — report it as its own error so no caller records a Slack
+        // rejection (or closes a notice as answered) for a send we cut short.
+        if (options.signal?.aborted) {
+            return slackFailure('slack_send_aborted', 499);
+        }
         const result = await slackApi<{ ts?: string }>(
             token,
             'chat.postMessage',
@@ -71,10 +82,16 @@ export async function sendSlackText(
                 ...(target.threadId ? { thread_ts: target.threadId } : {}),
                 ...(index === 0 && safeBlocks ? { blocks: safeBlocks } : {}),
             },
-            options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+            callOpts,
         );
         if (result.ok && index === 0 && result.data?.ts) firstTs = result.data.ts;
         if (!result.ok) {
+            // Keep an abort recognizable end to end (#417): describeSlackError
+            // would wrap it as 'Slack API error: slack_send_aborted', and
+            // anything matching the raw code would then mislabel a cancellation.
+            if (result.error === 'slack_send_aborted') {
+                return slackFailure('slack_send_aborted', 499);
+            }
             const classified = classifySendFailure({
                 error: result.error,
                 status: result.status,
@@ -86,7 +103,11 @@ export async function sendSlackText(
                 retryAfterMs: result.retryAfterMs,
             });
             if (classified === 'rate-limit' && wait > 0 && wait <= MAX_INLINE_RATE_LIMIT_MS) {
-                await new Promise((resolve) => setTimeout(resolve, wait));
+                // Abortable: a shutdown must not sit out a rate-limit window.
+                await abortableDelay(wait, options.signal);
+                if (options.signal?.aborted) {
+                    return slackFailure('slack_send_aborted', 499);
+                }
                 const retried = await slackApi<{ ts?: string }>(
                     token,
                     'chat.postMessage',
@@ -96,13 +117,16 @@ export async function sendSlackText(
                         ...(target.threadId ? { thread_ts: target.threadId } : {}),
                         ...(index === 0 && safeBlocks ? { blocks: safeBlocks } : {}),
                     },
-                    options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+                    callOpts,
                 );
                 if (retried.ok) {
                     // Without this a throttled first send leaves a notice nobody
                     // can delete: the retry is what actually created the message.
                     if (index === 0 && retried.data?.ts) firstTs = retried.data.ts;
                     continue;
+                }
+                if (retried.error === 'slack_send_aborted') {
+                    return slackFailure('slack_send_aborted', 499);
                 }
                 return slackFailure(describeSlackError(retried.error, retried.data), retried.status, retried.retryAfterMs, retried.grantedScopes);
             }

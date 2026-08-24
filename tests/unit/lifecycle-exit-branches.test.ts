@@ -64,6 +64,67 @@ test('LEB-005: a silent stall is still explained, by the other branch', () => {
     assert.notEqual(classified.message, STALL_TRUNCATION_NOTICE);
 });
 
+test('LEB-CONN-01: cursor lowercase resource_exhausted classifies as 429 (suji live evidence)', () => {
+    // cursor-agent prints "RetriableError: [resource_exhausted]" — lowercase.
+    // The old cased includes('RESOURCE_EXHAUSTED') missed it, so those turns
+    // died with exit 1 and no retry (observed on suji, 2026-08-24).
+    const c = classifyExitError('cursor', 1, 'RetriableError: [resource_exhausted] Error', undefined);
+    assert.equal(c.is429, true);
+    assert.equal(c.isConnection, false, '429 is not a connection error');
+});
+
+test('LEB-CONN-02: cursor ConnectRPC loss classifies as connection and joins the retry path', () => {
+    const c = classifyExitError(
+        'cursor', 1,
+        'Connection lost. Failed to reconnect to api2.cursor.sh after 3 attempts.',
+        undefined,
+    );
+    assert.equal(c.isConnection, true);
+    assert.equal(c.is429, false);
+    assert.match(c.message, /연결 오류/);
+    // ECONNRESET-style OS errors count too.
+    assert.equal(classifyExitError('cursor', 1, 'read ECONNRESET', undefined).isConnection, true);
+    // ConnectRPC status forms.
+    assert.equal(classifyExitError('cursor', 1, 'rpc_unavailable: backend gone', undefined).isConnection, true);
+});
+
+test('LEB-CONN-03: a locked keychain is auth, never a connection retry', () => {
+    const c = classifyExitError(
+        'cursor', 1,
+        'Your macOS login keychain is locked. Set AGENT_CLI_CREDENTIAL_STORE=file.',
+        undefined,
+    );
+    assert.equal(c.isAuth, true);
+    assert.equal(c.isConnection, false, 'respawning cannot unlock a keychain');
+    assert.match(c.message, /인증 오류/);
+});
+
+test('LEB-CONN-04: ordinary prose containing the word unavailable is not a connection error', () => {
+    const c = classifyExitError('cursor', 1, 'The requested feature is unavailable in this plan.', undefined);
+    assert.equal(c.isConnection, false, 'bare English "unavailable" must not trigger transport retry');
+});
+
+test('LEB-CONN-05: connection matches stderr only — relayed answer text cannot trigger a respawn', () => {
+    // diagnosticText carries ctx.fullText, where 'fetch failed' is an ordinary
+    // phrase inside model answers and tool output.
+    const c = classifyExitError('codex', 1, '', undefined, 'The tool reported: fetch failed for https://example.com', true);
+    assert.equal(c.isConnection, false, 'fullText content must not classify as transport failure');
+    // The same phrase ON STDERR is the CLI its own transport failing.
+    assert.equal(classifyExitError('codex', 1, 'TypeError: fetch failed', undefined).isConnection, true);
+});
+
+test('LEB-CONN-06: the main error branch actually rides isConnection into the retry decision', () => {
+    // Wiring guard, same style as LEB-006: the pure classifier tests above
+    // cannot see whether the handler folds isConnection into effectiveIs429.
+    const src = readFileSync(
+        new URL('../../src/agent/lifecycle-handler.ts', import.meta.url), 'utf8',
+    );
+    assert.match(src, /const effectiveIs429 = is429 \|\| isClaudeRateLimit \|\| isTransientStartup \|\| isConnection/,
+        'main branch must include isConnection in effectiveIs429');
+    assert.match(src, /cls\.is429 \|\| cls\.isClaudeRateLimit \|\| cls\.isTransientStartup \|\| cls\.isConnection/,
+        'employee transient branch must include isConnection');
+});
+
 test('LEB-006: the output branch uses the shared decision, not its own condition', () => {
     // Guards the wiring the pure tests above cannot see: a copy of the condition
     // inlined here would drift from what LEB-001..004 verify.

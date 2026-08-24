@@ -121,6 +121,17 @@ git clone https://github.com/lidge-jun/cli-jaw.git
 git clone --recursive https://github.com/lidge-jun/cli-jaw.git
 ```
 
+**Windows**: 추적 경로 길이는 `npm run check:path-length` 가 150자로 묶는다 (`gate:all` 포함).
+상한이 260(MAX_PATH)이 아닌 이유는 실패 지점에 맞추면 clone 위치가 한 단계만 깊어져도
+다시 깨지기 때문이다 — #430 의 경로는 223자였고, 200 상한에서도 74자 접두사 + 186자 경로가 다시 260에 걸렸다(#432). 150이면 74자 접두사 기준 224라 여유가 있다.
+
+이 게이트가 있어도 예전 커밋을 체크아웃하면 긴 경로를 만날 수 있다. 그때 clone 은
+**절반만 실패한다**: 앞선 서브모듈은 정상이고 하나만 비어 있어 워킹트리가 멀쩡해 보인다.
+
+```bash
+git -c core.longpaths=true clone --recursive https://github.com/lidge-jun/cli-jaw.git
+```
+
 ### Submodule Update
 
 서브모듈 수정 후 반드시 메인 레포에서도 ref 커밋:

@@ -722,7 +722,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     } else if (mainManaged && code !== 0 && !wasKilled) {
         // ─── Error handling ───
         const diagnosticText = `${ctx.fullText}\n${ctx.traceLog.join('\n')}`;
-        const { is429, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, message: errMsg } = classifyExitError(
+        const { is429, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, isConnection, message: errMsg } = classifyExitError(
             runtimeCli,
             code,
             ctx.stderrBuf,
@@ -731,7 +731,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             ctx.fullText.length > 0,
         );
         const suppressClaudeRateLimitFallback = isClaudeRateLimit;
-        const effectiveIs429 = is429 || isClaudeRateLimit || isTransientStartup;
+        // Connection loss rides the same retry machinery as a 429: the request
+        // never completed, backoff-and-respawn is the right recovery, and the
+        // side-effect gate below already refuses when tools already ran. The
+        // classifier keeps auth failures out of isConnection (a locked keychain
+        // is not fixed by respawning). Observed live on suji: cursor turns dying
+        // on ConnectRPC loss with no retry (2026-08-24).
+        const effectiveIs429 = is429 || isClaudeRateLimit || isTransientStartup || isConnection;
         recordError(cli, isStall ? 'stall' : isModelCapacity ? 'model_capacity' : effectiveIs429 ? '429' : 'error');
 
         const invalidatedResume = isResume
@@ -940,7 +946,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             return;
         }
         if (
-            (cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup)
+            (cls.is429 || cls.isClaudeRateLimit || cls.isTransientStartup || cls.isConnection)
             && !cls.isStall && !cls.isAuth
             && !performedSideEffects(ctx)
             && !opts._employeeFreshSessionRetry

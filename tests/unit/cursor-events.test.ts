@@ -94,6 +94,67 @@ test('Cursor result fallback normalizes escaped newlines', () => {
     assert.equal(ctx.fullText, 'done\nnext');
 });
 
+test('Cursor narration before a tool call is discarded: post-last-tool text wins fullText', () => {
+    // The Slack join bug: "회사 기록과 ... 확인한 뒤 ... 남기겠습니다. - <답변>"
+    // was planning narration + "\n- " + answer in one message. Assistant text
+    // that precedes a NEW tool_call is narration and must not survive into the
+    // durable answer; the live stream still carries it.
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '경계를 먼저 확인한 뒤 답하겠습니다.' }] },
+    }, ctx, 'cursor');
+    assert.equal(extractOutputChunk('cursor', { type: 'assistant' }, ctx), '경계를 먼저 확인한 뒤 답하겠습니다.', 'live stream keeps narration');
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'started', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'success', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '최종 답변입니다.' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '최종 답변입니다.', 'durable answer contains no pre-tool narration and no \n- join');
+});
+
+test('Cursor multi-part answer after the LAST tool call is preserved intact', () => {
+    // Guard from the audit: answer-part-1 → (no new tool) → answer-part-2 must
+    // not be truncated by last-wins. Only a NEW tool start discards.
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'started', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '결과 요약:' }] },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '결과 요약:\n1) 완료' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '결과 요약:\n1) 완료', 'snapshot growth after the last tool accumulates normally');
+    // A late tool COMPLETION update (not a new tool start) must not wipe the answer.
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'success', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '결과 요약:\n1) 완료');
+});
+
+test('Cursor result fallback still applies after pre-tool narration was discarded', () => {
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '확인해볼게요.' }] },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'started', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    // No assistant text after the tool; the result event carries the answer.
+    extractFromEvent('cursor', { type: 'result', subtype: 'success', result: '최종 결과' }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '최종 결과', 'result fallback fills the empty durable slot');
+});
+
 test('Cursor tool calls update running entries to done', () => {
     const ctx = makeContext();
     extractFromEvent('cursor', {

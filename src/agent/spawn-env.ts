@@ -115,6 +115,20 @@ export function applyCliEnvDefaults(
         };
     }
 
+    // cursor-agent on macOS dies on a locked login keychain unless it is told
+    // to use file-backed credentials. The launchd plist injects this on the
+    // PARENT (launchd-plist.ts), so service children inherit it — the gap is a
+    // foreground `jaw serve` or an SSH session, where nothing sets it (#393).
+    // Only when unset: a user who chose `keychain` keeps their choice.
+    if (cli === 'cursor' && platform === 'darwin') {
+        return {
+            ...extraEnv,
+            AGENT_CLI_CREDENTIAL_STORE: extraEnv["AGENT_CLI_CREDENTIAL_STORE"]
+                ?? inheritedEnv["AGENT_CLI_CREDENTIAL_STORE"]
+                ?? 'file',
+        };
+    }
+
     if (cli !== 'opencode') return extraEnv;
     const withPath = prependPathDir(extraEnv, inheritedEnv, getOpencodePreferredBinDir(), platform);
     if (withPath["OPENCODE_ENABLE_EXA"] !== undefined) return withPath;

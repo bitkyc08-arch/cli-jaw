@@ -155,7 +155,7 @@
   "sl.settingsUnsupported": "Slack에서 설정 변경은 지원하지 않습니다.",
   "cmd.runtimeSelectionInstanceWide": "CLI와 모델 선택은 이 인스턴스의 모든 세션이 함께 씁니다. 인스턴스 웹 설정에서 바꿔주세요.",
   "tg.promptUnsupported": "(Telegram에서 미지원)",
-  "tg.queued": "대기열에 추가됨 ({count}번째)",
+  "tg.queued": "⏳ 대기열에 추가됨 ({count}번째)",
   "tg.queueExpired": "대기 시간이 초과되었습니다",
   "tg.imageCaption": "[📷 이미지] {caption}",
   "tg.imageFail": "이미지 처리 실패: {msg}",

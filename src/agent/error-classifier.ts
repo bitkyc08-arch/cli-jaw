@@ -9,8 +9,20 @@ export interface ErrorClassification {
     isModelCapacity: boolean;
     isClaudeRateLimit: boolean;
     isTransientStartup: boolean;
+    /** Transport-level failure (backend unreachable / connection dropped).
+     *  Retryable like a 429: the request never completed, so re-running it
+     *  repeats nothing. Auth failures are excluded — a locked keychain is not
+     *  fixed by respawning. */
+    isConnection: boolean;
     message: string;
 }
+
+/** Transport failures as the wrapped CLIs actually print them. `unavailable`
+ *  is deliberately CLI-scoped (cursor's ConnectRPC status), not a bare word —
+ *  audit note: matching the plain English word would misclassify ordinary
+ *  model prose. */
+const CONNECTION_ERROR_RE = /connection lost|failed to reconnect|connect_error|connecterror|econnreset|econnrefused|etimedout|enotfound|socket hang up|fetch failed|network error|rpc_unavailable|code = unavailable/i;
+const KEYCHAIN_LOCKED_RE = /keychain is locked|login keychain/i;
 
 export function classifyExitError(
     cli: string,
@@ -27,9 +39,13 @@ export function classifyExitError(
 ): ErrorClassification {
     const combined = `${stderrBuf}\n${diagnosticText}`;
     const isModelCapacity = false;
+    // Case-insensitive on purpose: cursor-agent prints
+    // "RetriableError: [resource_exhausted]" in lowercase (observed live on
+    // suji, 2026-08-24), which a cased includes() silently missed — those
+    // turns died with exit 1 and no retry.
     const rawIs429 = /\b429\b/.test(combined)
-        || combined.includes('RESOURCE_EXHAUSTED')
-        || combined.includes('Too Many Requests');
+        || /resource_exhausted/i.test(combined)
+        || /too many requests/i.test(combined);
     // Claude Code owns its own rate-limit wait/retry behavior. Treating these
     // progress messages as Jaw-level 429 failures causes unnecessary retries or
     // fallback away from a request that Claude may still complete.
@@ -43,7 +59,13 @@ export function classifyExitError(
     // enough: the same string can appear in output from a run that already
     // produced results.
     const isTransientStartup = !outputStarted && /exited before SessionStart/i.test(combined);
-    const isAuth = combined.includes('auth') || combined.includes('credentials');
+    const isAuth = combined.includes('auth') || combined.includes('credentials')
+        || KEYCHAIN_LOCKED_RE.test(combined);
+    // stderr ONLY, never diagnosticText: the diagnostic carries ctx.fullText,
+    // and 'fetch failed' / 'network error' are ordinary phrases inside model
+    // answers and tool output. A transport failure the CLI itself suffered is
+    // reported on ITS stderr; text it merely relayed must not trigger respawns.
+    const isConnection = !isAuth && CONNECTION_ERROR_RE.test(stderrBuf);
     const isStall = !!stallReason;
 
     let message = `${cli} 실행 실패 (exit ${code})`;
@@ -51,9 +73,10 @@ export function classifyExitError(
     else if (isModelCapacity) message = '⚡ Gemini 모델 capacity 부족 — Auto로 임시 우회합니다';
     else if (is429) message = '⚡ API 용량 초과 (429)';
     else if (isAuth) message = '🔐 인증 오류 — CLI 로그인 상태를 확인해주세요';
+    else if (isConnection) message = `🔌 ${cli} 연결 오류 — 재시도합니다`;
     else if (combined.trim()) message = combined.trim().slice(0, 200);
 
-    return { is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, message };
+    return { is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, isConnection, message };
 }
 
 // Lives in its own leaf module so `core/db` can strip it without importing the

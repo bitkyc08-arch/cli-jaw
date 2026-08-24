@@ -154,3 +154,52 @@ test('SQB-003b: a failure with a live requester is reported once', async () => {
         bot.releaseSlackQueueRequestForTest(requestId);
     }
 });
+
+// The reported leak (#411 family): the forwarder delivered the queued answer
+// but never closed the "대기열에 추가됨" notice, so it sat in the thread next to
+// the answer. The durable record (#418) knows the posted ts; the forwarder must
+// use it to delete the notice and drop the record after a successful delivery.
+test('SQB-004: forwarder delivery also deletes the leftover queue notice', async () => {
+    sent.length = 0;
+    const { initQueueNoticeStore, __resetQueueNoticeStoreForTests, getQueueNoticeStore } =
+        await import('../../src/messaging/queue-notice-store.ts');
+    const { default: Database } = await import('better-sqlite3');
+    __resetQueueNoticeStoreForTests();
+    initQueueNoticeStore(new Database(':memory:'));
+    const store = getQueueNoticeStore()!;
+    const requestId = 'req-forwarder-close';
+    const target = slackTarget('C_BOOT', '1710000000.000400');
+    store.reserve({ requestId, channel: 'slack', target });
+    store.attachMessageId(requestId, '1710000000.000401');
+
+    // ES module exports are frozen, so intercept at the fetch seam slackApi
+    // actually calls. chat.delete carries {channel, ts} in its JSON body.
+    const deletes: Array<{ channel: string; ts: string }> = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).endsWith('/chat.delete')) {
+            const body = JSON.parse(String(init?.body || '{}')) as { channel: string; ts: string };
+            deletes.push({ channel: body.channel, ts: body.ts });
+            return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        return realFetch(url as RequestInfo, init);
+    }) as typeof fetch;
+
+    try {
+        const { broadcast } = await import('../../src/core/bus.ts');
+        broadcast('orchestrate_done', {
+            text: 'queued answer after restart', origin: 'slack', requestId,
+            fromQueue: true, target,
+        });
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        assert.equal(sent.length, 1, 'the answer is delivered');
+        assert.deepEqual(deletes, [{ channel: 'C_BOOT', ts: '1710000000.000401' }],
+            'the queue notice message is deleted');
+        assert.equal(store.findByRequestId(requestId), null,
+            'the durable record is dropped so no later boot rewrites it');
+    } finally {
+        globalThis.fetch = realFetch;
+        __resetQueueNoticeStoreForTests();
+    }
+});

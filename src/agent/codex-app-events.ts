@@ -267,7 +267,12 @@ function handleItemStarted(params: EvRec): CodexAppEventResult | null {
         {
             // Track the item-level channel so subsequent deltas inherit it
             // when they do not carry their own channel field.
-            const itemChannel = fs(item, 'channel') || undefined;
+            // A message item WITHOUT a channel must RESET the sticky value to
+            // the empty string rather than leave the previous item's channel in
+            // place: a stale 'commentary' would silently swallow the final
+            // answer, and a stale 'final' would leak narration into it.
+            const itemChannel = fs(item, 'channel')
+                || fs((f(item, 'annotations') as EvRec) ?? {}, 'channel');
             return { channel: itemChannel };
         }
         case 'userMessage':

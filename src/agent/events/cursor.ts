@@ -169,6 +169,22 @@ export function handleCursorEvent(
     }
 
     if (event.type === 'tool_call') {
+        // LAST-WINS across tool boundaries: assistant text that arrived BEFORE
+        // a tool ran is planning narration ("경계를 먼저 확인한 뒤 ..."), not part
+        // of the final answer. Cursor stream-json has no channel tags, so the
+        // tool boundary is the only reliable seam — discard the durable
+        // accumulation when a NEW tool starts and keep only post-last-tool text.
+        // Only on 'running' (tool start): a late completion update arriving
+        // after the answer began must not wipe answer text. The delta/snapshot
+        // dedupe state (cursorAssistantText) is deliberately NOT reset, so a
+        // cumulative end-of-turn snapshot still dedupes to nothing instead of
+        // re-ingesting the discarded narration. Live UI keeps the narration via
+        // pendingOutputChunk/agent_output; only fullText (=agent_done → external
+        // channels) is affected.
+        if (cursorToolStatus(event) === 'running' && (ctx.fullText || ctx.outputTextStarted)) {
+            ctx.fullText = '';
+            ctx.outputTextStarted = false;
+        }
         emitCursorTool(ctx, agentLabel, empTag, cursorToolLabel(event));
     }
 

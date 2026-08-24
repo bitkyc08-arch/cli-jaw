@@ -31,6 +31,25 @@ test('preserves explicit opencode override', () => {
     );
 });
 
+test('darwin cursor children default AGENT_CLI_CREDENTIAL_STORE to file', () => {
+    // launchd injects this on the parent; the gap is jaw serve / SSH (#393).
+    assert.deepEqual(
+        applyCliEnvDefaults('cursor', {}, {}, 'darwin'),
+        { AGENT_CLI_CREDENTIAL_STORE: 'file' },
+    );
+    // A user choice — explicit or inherited — is never overwritten.
+    assert.deepEqual(
+        applyCliEnvDefaults('cursor', { AGENT_CLI_CREDENTIAL_STORE: 'keychain' }, {}, 'darwin'),
+        { AGENT_CLI_CREDENTIAL_STORE: 'keychain' },
+    );
+    assert.deepEqual(
+        applyCliEnvDefaults('cursor', {}, { AGENT_CLI_CREDENTIAL_STORE: 'keychain' }, 'darwin'),
+        { AGENT_CLI_CREDENTIAL_STORE: 'keychain' },
+    );
+    // Non-darwin platforms are untouched.
+    assert.deepEqual(applyCliEnvDefaults('cursor', {}, {}, 'linux'), {});
+});
+
 test('preserves inherited opencode env when already set', () => {
     assert.deepEqual(
         withoutPath(applyCliEnvDefaults('opencode', { OTHER_FLAG: '1' }, { OPENCODE_ENABLE_EXA: '1' })),

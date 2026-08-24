@@ -31,9 +31,11 @@ import { sendChannelOutput, type ChannelSendRequest } from '../messaging/send.js
 import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
-import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
+import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
+import { invalidateDiscordSendClient } from './send-only-client.js';
+import { OutboundSendRegistry } from '../messaging/outbound-lifecycle.js';
 import type { Attachment, Interaction, Message } from 'discord.js';
 import { asSendable, asThreadLike, asTypingChannel } from './channel-types.js';
 import { log } from '../core/logger.js';
@@ -159,8 +161,16 @@ function installDiscordTargetReplyForwarder(): void {
         if (!target || target.channel !== 'discord' || !target.targetId) return;
         if (data["requestId"] && pendingQueueRequestIds.has(String(data["requestId"]))) return;
         void sendChannelOutput({ channel: 'discord', type: 'text', text: String(data["text"]), target })
-            .then(result => {
-                if (!result.ok) log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
+            .then(async result => {
+                if (!result.ok) {
+                    log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
+                    return;
+                }
+                // The forwarder delivered the answer, so it also keeps the
+                // queue-notice promise the missing waiter could not.
+                if (data["requestId"]) {
+                    await closeDiscordNoticeAsAnsweredByRequestId(String(data["requestId"]));
+                }
             })
             .catch((e: unknown) => log.error('[discord:target-reply]', logErrorText(e)));
     });
@@ -230,6 +240,9 @@ function currentLocale() {
  * its notice rewritten rather than left claiming the agent is still working.
  */
 const discordNoticeRegistry = new QueueNoticeRegistry();
+/** In-flight ANSWER sends (#417): REST body sends carry these scopes' signals
+ *  so shutdown can abort them; the notice registry above only covers cleanup. */
+const discordOutboundRegistry = new OutboundSendRegistry();
 /** Covers a notice edit plus a remove-then-add reaction chain. */
 const DISCORD_NOTICE_DRAIN_MS = DISCORD_REACTION_TIMEOUT_MS * 2 + 3000;
 
@@ -259,6 +272,46 @@ function closeDiscordNoticeRecord(requestId: string): void {
         getQueueNoticeStore()?.close(requestId);
     } catch (e) {
         log.info('[discord:queue-notice] close failed', logErrorText(e));
+    }
+}
+
+/**
+ * Close a queue notice as ANSWERED from the standing forwarder, which never
+ * held the live handle. Mirrors the Slack fix: when the forwarder delivers a
+ * queued answer (restart / missed waiter), the "added to queue" message must
+ * still be deleted, or it sits in the channel next to the answer (#411 family).
+ * Best-effort — the answer is already out.
+ */
+async function closeDiscordNoticeAsAnsweredByRequestId(requestId: string): Promise<void> {
+    try {
+        const record = getQueueNoticeStore()?.findByRequestId(requestId);
+        if (!record) return;
+        const client = discordClient;
+        if (record.messageId && !client) {
+            // The forwarder can deliver over the outbound-only REST path while
+            // no gateway client exists, but this transport needs client.rest.
+            // KEEP the record: dropping it here would strand the posted notice
+            // forever, while a later boot's restore can still close it out.
+            log.info('[discord:queue-notice] answered-close deferred (no client) — record kept for restore');
+            return;
+        }
+        if (record.messageId && client) {
+            try {
+                await createDiscordNoticeTransportByIds(client, record.target.targetId, record.messageId)
+                    .delete();
+            } catch (e) {
+                // 10008 Unknown Message: the notice is already gone, which is a
+                // deletion that succeeded (same contract as Slack's
+                // message_not_found). Anything else keeps the record so restore
+                // can retry on the next boot.
+                const code = (e as { code?: number; status?: number })?.code
+                    ?? (e as { status?: number })?.status;
+                if (code !== 10008 && code !== 404) throw e;
+            }
+        }
+        closeDiscordNoticeRecord(requestId);
+    } catch (e) {
+        log.info('[discord:queue-notice] answered-close failed', logErrorText(e));
     }
 }
 
@@ -357,7 +410,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         });
         unregister = discordNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, any>) => {
-            if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'discord'
+            // No !data.text gate (matches the Slack fix): an empty completion
+            // must still claim the terminal, or the notice waits out the full
+            // timeout before being rewritten instead of closed.
+            if (type !== 'orchestrate_done' || data["origin"] !== 'discord'
                 || data["requestId"] !== requestId) return;
             if (disposed) return;
             // Dispose FIRST so a duplicate broadcast cannot double-post, but the
@@ -374,7 +430,17 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         };
         const deliverQueued = async (data: Record<string, any>) => {
             {
-                const body = String(data["text"]);
+                const body = String(data["text"] ?? '');
+                if (!body) {
+                    // Empty completion: nothing to send, but the notice must not
+                    // linger until the timeout rewrite.
+                    await Promise.allSettled([
+                        notice.close('expired'),
+                        ack?.settle('failure') ?? Promise.resolve(),
+                    ]);
+                    if (requestId) closeDiscordNoticeRecord(requestId);
+                    return;
+                }
                 const channel = asSendable(msg.channel);
                 if (!channel) {
                     log.warn('[discord:queue-send] channel not sendable, dropping queued reply', { channelId: msg.channelId });
@@ -385,11 +451,26 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     return;
                 }
                 let delivered = true;
-                for (const chunk of chunkDiscordMessage(body)) {
-                    await channel.send(chunk).catch((e: Error) => {
+                // Same REST migration as the normal path (#417 3/3): a queued
+                // body must be cancellable at shutdown. An abort reports as a
+                // failed delivery below, which closes the notice as EXPIRED —
+                // never 'answered' for a send we cut short.
+                {
+                    const outbound = discordOutboundRegistry.start();
+                    try {
+                        const restToken = msg.client.token;
+                        if (!restToken) throw new Error('Discord client token unavailable');
+                        const sendResult = await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal });
+                        if (!sendResult.ok) {
+                            delivered = false;
+                            log.error('[discord:queue-send]', logErrorText(sendResult.error || 'send failed'));
+                        }
+                    } catch (e) {
                         delivered = false;
                         log.error('[discord:queue-send]', logErrorText(e));
-                    });
+                    } finally {
+                        outbound.done();
+                    }
                 }
                 // Settled before the relay for the same reason as the normal
                 // path: an uncancellable upload must not hold the reaction.
@@ -398,8 +479,12 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     ack?.settle(delivered ? 'success' : 'failure') ?? Promise.resolve(),
                 ]);
                 if (requestId) closeDiscordNoticeRecord(requestId);
-                await relayDiscordImages(msg.client, target, body).catch(
-                    e => log.error('[discord:queue-relay]', logErrorText(e)));
+                {
+                    const relayScope = discordOutboundRegistry.start();
+                    await relayDiscordImages(msg.client, target, body, { signal: relayScope.signal })
+                        .catch(e => log.error('[discord:queue-relay]', logErrorText(e)))
+                        .finally(() => relayScope.done());
+                }
             }
         };
         // Everything is armed SYNCHRONOUSLY, before any reaction or notice post.
@@ -472,11 +557,22 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             chatSessionId: result.sessionContext?.chatSessionId,
             remoteKey: result.sessionContext?.remoteKey,
         })));
-        const chunks = chunkDiscordMessage(text);
         const channel = asSendable(msg.channel);
         if (!channel) throw new Error('Discord channel is not text-based');
-        for (const chunk of chunks) {
-            await channel.send(chunk);
+        // REST scheduler, not channel.send(): discord.js's high-level send
+        // accepts no AbortSignal, so a shutdown could never cancel the body
+        // (#417 3/3). The scheduler owns rate-limit pacing and honours the
+        // scope's signal; the gateway client still receives events as before.
+        {
+            const outbound = discordOutboundRegistry.start();
+            try {
+                const restToken = msg.client.token;
+                if (!restToken) throw new Error('Discord client token unavailable');
+                const sendResult = await sendDiscordTextRest(restToken, msg.channelId, text, { signal: outbound.signal });
+                if (!sendResult.ok) throw new Error(sendResult.error || 'discord send failed');
+            } finally {
+                outbound.done();
+            }
         }
         ackOutcome = 'success';
         // Settled BEFORE the relay: image upload is uncancellable (#417), so
@@ -484,7 +580,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // answer is already visible.
         await ack?.settle(ackOutcome);
         ackSettled = true;
-        await relayDiscordImages(msg.client, target, text);
+        {
+            const relayScope = discordOutboundRegistry.start();
+            try {
+                await relayDiscordImages(msg.client, target, text, { signal: relayScope.signal });
+            } finally {
+                relayScope.done();
+            }
+        }
         log.info(`[discord:out] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
         log.error('[discord:error]', logErrorText(err));
@@ -789,6 +892,13 @@ export async function shutdownDiscord() {
     // Before the client goes away: a rewrite issued after destruction has no
     // transport to travel on. Bounded, because a stuck cleanup must not hold
     // shutdown open — the drain's signal cancels whatever is still in flight.
+    // Outbound abort FIRST (#417 review): the notice drain awaits a queued
+    // waiter's in-flight send, so the abort must precede it or a hung vendor
+    // POST eats the whole budget. Closing the cached REST scheduler aborts its
+    // queue and in-flight fetches too — shutdownDiscord never called
+    // invalidateDiscordSendClient before (#417).
+    await discordOutboundRegistry.drain();
+    invalidateDiscordSendClient();
     await discordNoticeRegistry.drain(DISCORD_NOTICE_DRAIN_MS);
     const supervisor = gatewaySupervisor;
     gatewaySupervisor = null;
@@ -828,12 +938,16 @@ export async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok:
             const text = req.text?.trim();
             if (!text) return { ok: false, error: 'text required' };
             try {
-                const channel = await discordClient.channels.fetch(String(channelId));
-                const sendable = asSendable(channel);
-                if (!sendable) return { ok: false, error: 'Channel not text-based' };
-                const chunks = chunkDiscordMessage(text);
-                for (const chunk of chunks) {
-                    await sendable.send(chunk);
+                // REST with a registry scope, same as the reply paths (#417):
+                // channel.send() cannot be cancelled at shutdown.
+                const restToken = discordClient.token;
+                if (!restToken) return { ok: false, error: 'Discord client token unavailable' };
+                const outbound = discordOutboundRegistry.start();
+                try {
+                    const sendResult = await sendDiscordTextRest(restToken, String(channelId), text, { signal: outbound.signal });
+                    if (!sendResult.ok) return { ok: false, error: sendResult.error || 'send failed' };
+                } finally {
+                    outbound.done();
                 }
                 return { ok: true, channel_id: channelId, type: 'text' };
             } catch (e) {

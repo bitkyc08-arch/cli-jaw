@@ -83,6 +83,11 @@ export function extractOutputChunk(cli: string, event: CliEventRecord, ctx?: Spa
             return chunk;
         }
         if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
+            // Commentary items never reach the live stream from this raw
+            // fallback either — the codex handler already skipped them.
+            const channel = event.item?.['channel']
+                || (event.item?.['annotations'] as Record<string, unknown> | undefined)?.['channel'];
+            if (channel === 'commentary') return '';
             return String(event.item.text || '');
         }
         return '';

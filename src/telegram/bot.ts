@@ -73,6 +73,7 @@ import {
     type AckHandle,
 } from '../messaging/ack-reaction.js';
 import { createQueueNotice, QueueNoticeRegistry } from '../messaging/queue-notice.js';
+import { OutboundSendRegistry } from '../messaging/outbound-lifecycle.js';
 import {
     createTelegramAckTransport,
     createTelegramNoticeTransport,
@@ -233,6 +234,10 @@ function installTelegramTargetReplyForwarder(): void {
  * _initTelegramInner, and both shutdown and re-init have to reach these.
  */
 const telegramNoticeRegistry = new QueueNoticeRegistry();
+/** In-flight ANSWER sends (#417): body sends + retry sleeps. grammY's default
+ *  API timeout is 500s, so an un-signalled send can outlive shutdown by
+ *  minutes; the ipv4 fetch adapter destroys the request on abort. */
+const telegramOutboundRegistry = new OutboundSendRegistry();
 /** Covers the worst honest chain: a notice edit plus a replace-mode reaction. */
 const TELEGRAM_NOTICE_DRAIN_MS = TELEGRAM_REACTION_TIMEOUT_MS * 2 + 3000;
 
@@ -252,6 +257,10 @@ async function disposeTelegramRuntime(poller: { stop(): Promise<void> } | null):
     const stopping = poller?.stop().catch((e: unknown) => {
         log.warn('[telegram:poller-stop]', logErrorText(e));
     });
+    // Outbound abort FIRST (#417 review): the notice drain awaits the queued
+    // waiter's in-flight send; aborting it up front frees that budget for the
+    // actual cleanup instead of a hung vendor POST.
+    await telegramOutboundRegistry.drain();
     await telegramNoticeRegistry.drain(TELEGRAM_NOTICE_DRAIN_MS);
     await stopping;
 }
@@ -503,7 +512,16 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
         if (!text) return { ok: false, error: 'text required' };
         // Rich-first default (Bot API 10.1): raw markdown via sendRichMessage, with the
         // legacy HTML→plaintext chain as per-chunk fallback inside the helper.
-        await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({ message_thread_id: messageThreadId }));
+        // Scoped for shutdown cancellation (#417).
+        const outbound = telegramOutboundRegistry.start();
+        try {
+            await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({
+                message_thread_id: messageThreadId,
+                signal: outbound.signal,
+            }));
+        } finally {
+            outbound.done();
+        }
         return { ok: true, chat_id: chatId, type: 'text' };
     }
 
@@ -828,14 +846,36 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 });
                 finalDeliveryControl.cancel = (reason) => { void expire(reason); };
                 const queueHandler = (type: string, data: Record<string, unknown>) => {
-                    if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'telegram' || data["requestId"] !== requestId) return;
+                    // No !data.text gate (matches Slack/Discord): an empty
+                    // completion claims the terminal and expires the notice now
+                    // instead of letting the timeout rewrite it later.
+                    if (type !== 'orchestrate_done' || data["origin"] !== 'telegram' || data["requestId"] !== requestId) return;
                     if (settled) return;
                     settled = true;
                     cleanup();
                     void claimTerminal(async () => {
-                        const body = String(data["text"]);
+                        const body = String(data["text"] ?? '');
+                        if (!body) {
+                            await Promise.allSettled([
+                                notice.close('expired'),
+                                ackHandle?.settle('failure') ?? Promise.resolve(),
+                            ]);
+                            if (requestId) closeTelegramNoticeRecord(requestId);
+                            unregister();
+                            resolve();
+                            return;
+                        }
                         try {
-                            await sendTelegramMarkdown(ctx.api, chat.id, body, replyOptsOf(ctx));
+                            // Scoped for shutdown cancellation (#417). An abort
+                            // lands in the catch below, which closes the notice
+                            // as EXPIRED — a cancelled send is never 'answered'.
+                            const outbound = telegramOutboundRegistry.start();
+                            try {
+                                await sendTelegramMarkdown(ctx.api, chat.id, body,
+                                    { ...replyOptsOf(ctx), signal: outbound.signal });
+                            } finally {
+                                outbound.done();
+                            }
                         } catch (error) {
                             // The answer never landed, so the notice is not stale —
                             // it is the only trace this turn happened.
@@ -856,7 +896,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                         if (requestId) closeTelegramNoticeRecord(requestId);
                         unregister();
                         resolve();
-                        void relayTelegramImages(bot, chat.id, body, responseTarget).catch(() => { });
+                        {
+                            const relayScope = telegramOutboundRegistry.start();
+                            void relayTelegramImages(bot, chat.id, body, responseTarget, { signal: relayScope.signal })
+                                .catch(() => { }).finally(() => relayScope.done());
+                        }
                         void sendElicitationKeyboards(chat.id, data["elicitationSpecs"]).catch(() => { });
                     });
                 };
@@ -987,7 +1031,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 log.info(`[tg:smoke] ${data["cli"]} smoke detected — auto-continuing`);
             } else if (type === 'agent_tool' && data["icon"] && data["label"]) {
                 // Copilot ACP emits many thought chunks; hide them on Telegram to avoid message storms.
-                if (data["icon"] === '💭') return;
+                // 💬 (assistant-message narration badge) and thinking-type entries
+                // are live-UI-only for the same reason (Slack drops them too).
+                if (data["icon"] === '💭' || data["icon"] === '💬' || data["toolType"] === 'thinking') return;
                 pushToolLine(`${data["icon"]} ${data["label"]}`);
             } else {
                 return;
@@ -1020,12 +1066,25 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
             finalDeliveryStarted = true;
-            await sendTelegramMarkdown(ctx.api, chat.id, collectedText, replyOptsOf(ctx));
+            {
+                // Scoped for shutdown cancellation (#417).
+                const outbound = telegramOutboundRegistry.start();
+                try {
+                    await sendTelegramMarkdown(ctx.api, chat.id, collectedText,
+                        { ...replyOptsOf(ctx), signal: outbound.signal });
+                } finally {
+                    outbound.done();
+                }
+            }
             // The text is what the user was waiting for. Image relay is
             // fire-and-forget below, so it cannot hold the outcome open.
             ackOutcome = 'success';
             log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
-            void relayTelegramImages(bot, chat.id, collectedText, responseTarget).catch(() => { });
+            {
+                const relayScope = telegramOutboundRegistry.start();
+                void relayTelegramImages(bot, chat.id, collectedText, responseTarget, { signal: relayScope.signal })
+                    .catch(() => { }).finally(() => relayScope.done());
+            }
             void sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]).catch(() => { });
         } catch (err: unknown) {
             clearInterval(typingInterval);

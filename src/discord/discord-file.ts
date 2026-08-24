@@ -9,6 +9,7 @@ import { basename } from 'node:path';
 import type { RemoteTarget } from '../messaging/types.js';
 import { asSendable } from './channel-types.js';
 import { redactOutboundText, userErrorText } from '../messaging/redact.js';
+import { sendDiscordFileRest } from './send-only-client.js';
 
 export const DISCORD_LIMITS = {
     document: 10 * 1024 * 1024,
@@ -37,7 +38,7 @@ export async function sendDiscordFile(
     client: Client,
     target: RemoteTarget,
     filePath: string,
-    options?: { caption?: string; replyTo?: string },
+    options?: { caption?: string; replyTo?: string; signal?: AbortSignal },
 ): Promise<{ ok: boolean; error?: string }> {
     let fileStat;
     try {
@@ -49,6 +50,13 @@ export async function sendDiscordFile(
 
     // Thread-aware: prefer threadId over targetId
     const resolvedId = target.threadId || target.targetId;
+    // Cancellable REST first (#417): sendable.send() ignores AbortSignal, so a
+    // shutdown could never abort the upload. The token lives on the client.
+    if (client.token) {
+        const rest = await sendDiscordFileRest(client.token, resolvedId, filePath,
+            options?.caption, options?.signal ? { signal: options.signal } : {});
+        return rest.ok ? { ok: true } : { ok: false, error: rest.error };
+    }
     const channel = await client.channels.fetch(resolvedId);
     const sendable = asSendable(channel);
     if (!sendable) {

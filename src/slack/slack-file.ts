@@ -30,9 +30,10 @@ export async function sendSlackFile(
     token: string,
     target: RemoteTarget,
     filePath: string,
-    options: { caption?: string; fetchImpl?: SlackFetch } = {},
+    options: { caption?: string; fetchImpl?: SlackFetch; signal?: AbortSignal } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number }> {
     const doFetch = options.fetchImpl || fetch;
+    const signalOpt = options.signal ? { signal: options.signal } : {};
     let fileStat;
     try {
         fileStat = await stat(filePath);
@@ -56,7 +57,7 @@ export async function sendSlackFile(
         token,
         'files.getUploadURLExternal',
         { filename: safeFilename, length: fileStat.size },
-        { fetchImpl: doFetch, form: true },
+        { fetchImpl: doFetch, form: true, ...signalOpt },
     );
     const uploadUrl = reserve.data?.upload_url;
     const fileId = reserve.data?.file_id;
@@ -69,11 +70,18 @@ export async function sendSlackFile(
         const buffer = await readFile(filePath);
         const form = new FormData();
         form.append('file', new Blob([new Uint8Array(buffer)]), safeFilename);
-        const upload = await doFetch(uploadUrl, { method: 'POST', body: form });
+        // The raw presigned-URL POST is the long pole of the three steps (#417):
+        // it carries the file bytes, so it is the one a shutdown most needs to
+        // be able to abort.
+        const upload = await doFetch(uploadUrl, { method: 'POST', body: form, ...signalOpt });
         if (!upload.ok) {
             return { ok: false, error: `Slack upload failed (${upload.status})`, status: upload.status };
         }
     } catch (error) {
+        // Abort during the byte upload is a cancellation, not a vendor failure (#417).
+        if (options.signal?.aborted || (error as Error)?.name === 'AbortError') {
+            return slackFailure('slack_send_aborted', 499);
+        }
         // The presigned upload URL is a temporary capability: a thrown fetch
         // error routinely embeds it, and this string reaches both API responses
         // and the image-relay log.
@@ -90,7 +98,7 @@ export async function sendSlackFile(
             ...(target.threadId ? { thread_ts: target.threadId } : {}),
             ...(options.caption?.trim() ? { initial_comment: redactOutboundText(options.caption.trim()) } : {}),
         },
-        { fetchImpl: doFetch },
+        { fetchImpl: doFetch, ...signalOpt },
     );
     if (!complete.ok) {
         // File uploads are where a missing files:write scope actually bites,
