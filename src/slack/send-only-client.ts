@@ -86,6 +86,12 @@ export async function sendSlackText(
         );
         if (result.ok && index === 0 && result.data?.ts) firstTs = result.data.ts;
         if (!result.ok) {
+            // Keep an abort recognizable end to end (#417): describeSlackError
+            // would wrap it as 'Slack API error: slack_send_aborted', and
+            // anything matching the raw code would then mislabel a cancellation.
+            if (result.error === 'slack_send_aborted') {
+                return slackFailure('slack_send_aborted', 499);
+            }
             const classified = classifySendFailure({
                 error: result.error,
                 status: result.status,
@@ -118,6 +124,9 @@ export async function sendSlackText(
                     // can delete: the retry is what actually created the message.
                     if (index === 0 && retried.data?.ts) firstTs = retried.data.ts;
                     continue;
+                }
+                if (retried.error === 'slack_send_aborted') {
+                    return slackFailure('slack_send_aborted', 499);
                 }
                 return slackFailure(describeSlackError(retried.error, retried.data), retried.status, retried.retryAfterMs, retried.grantedScopes);
             }
