@@ -93,7 +93,7 @@ cli-jaw/
 │   │   ├── agy-capabilities.ts ← AGY `--help`/`--version` capability probe + cached optional flag support map + legacy emit-all fallback marker (124L)
 │   │   ├── agy-transcript-watcher.ts ← AGY transcript/log watcher and session-id extraction support (291L)
 │   │   ├── pi-runtime.ts     ← Pi profile 정규화 + isolated `PI_CODING_AGENT_DIR` models/settings 생성 + `pi --offline --list-models` discovery + `pi --mode rpc` JSONL parser/spawner (803L) ✨
-│   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers + goal continuation boundary row (1208L)
+│   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers + goal continuation boundary row (1214L)
 │   │   ├── jwc-runtime.ts    ← resident/in-process JWC runtime bridge and event handling (222L)
 │   │   ├── kiro-auth.ts      ← Kiro CLI auth store reader (resolveKiroDataPath, readKiroAuthFromStore, resolveKiroProfileArn, regionFromProfileArn, listKiroConversationIdsForCwd, resolveKiroSessionIdAfterSpawn, extractKiroSessionIdFromV2Store) (253L)
 │   │   ├── kiro-models.ts    ← Kiro live model inventory (KiroModelEntry, KiroModelInventory, parseKiroModelListJson, fetchKiroModelInventory) (98L)
@@ -106,7 +106,7 @@ cli-jaw/
 │   │   ├── codex-app-client.ts ← Codex App stdio server client (1430L)
 │   │   ├── codex-host-pool.ts ← Codex App shared host generation + lane lease/FIFO/reaper/shutdown owner (494L)
 │   │   ├── codex-app-events.ts ← Codex App turn/tool/message event adapter (420L)
-│   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 + shouldAnnounceStallTruncation (부분 출력 워치독 종료를 독자에게 알릴지 판정) (88L)
+│   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 + shouldAnnounceStallTruncation (부분 출력 워치독 종료를 독자에게 알릴지 판정) (107L)
 │   │   ├── stall-notice.ts   ← 워치독 중단 통지 문구 + 접미사 전용 제거 (사람에겐 보이고 모델 컨텍스트엔 안 들어가도록 db 조회 경계가 사용) (21L) ✨
 │   │   ├── grok-trace-backfill.ts ← Grok trace backfill helper (167L) ✨
 │   │   ├── live-run-state.ts ← active run snapshot / hydrate helper (108L)
@@ -253,7 +253,7 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (182L)
 │   ├── discord/              ← Discord 인터페이스 (8 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (921L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (939L)
 │   │   ├── reactions.ts   ← ACK reaction transport + cancellable notice REST (122L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
 │   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (167L) ✨
