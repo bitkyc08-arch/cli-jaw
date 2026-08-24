@@ -61,6 +61,7 @@
     "check:copilot-gap": "tsx scripts/check-copilot-gap.ts",
     "check:deps": "tsx scripts/check-deps-offline.ts",
     "check:strict-baseline": "node scripts/check-strict-baseline.mjs",
+    "check:path-length": "node scripts/check-path-length.mjs",
     "docs:check": "tsx scripts/docs/check-docs.mts",
     "docs:windows": "tsx scripts/render-windows-support.mts",
     "docs:channel-capabilities": "tsx scripts/generate-channel-capability-table.mts",
