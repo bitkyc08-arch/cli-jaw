@@ -82,10 +82,13 @@ export class OutboundSendRegistry {
             // parent signal after the registry has forgotten it.
             detachParent();
         }
-        await new Promise((resolve) => {
-            const timer = setTimeout(resolve, graceMs);
-            (timer as { unref?: () => void }).unref?.();
-        });
+        // NOT unref'd: an unref'd timer whose promise is awaited can strand the
+        // await forever when nothing else keeps the event loop alive (observed
+        // as ERR_TEST_FAILURE 'Promise resolution is still pending but the
+        // event loop has already resolved' on CI). The grace is 250ms and
+        // drain() runs only during shutdown, so briefly keeping the loop alive
+        // is the correct behavior, not a leak.
+        await new Promise((resolve) => { setTimeout(resolve, graceMs); });
     }
 }
 
