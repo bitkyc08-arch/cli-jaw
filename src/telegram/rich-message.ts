@@ -19,6 +19,8 @@ import { classifySendFailure, retryAfterMs, MAX_INLINE_RATE_LIMIT_MS } from '../
 export const RICH_MESSAGE_LIMIT = 32000;
 const HTML_MESSAGE_LIMIT = 4096;
 
+import { abortableDelay } from '../messaging/outbound-lifecycle.js';
+
 /**
  * Send once, honouring what the failure actually was.
  *
@@ -31,18 +33,23 @@ const HTML_MESSAGE_LIMIT = 4096;
  * when it should not: a long rate limit or an ambiguous failure is the
  * caller's to report, not to paper over with another send.
  */
-async function attemptSend(send: () => Promise<unknown>): Promise<boolean> {
+async function attemptSend(send: () => Promise<unknown>, signal?: AbortSignal): Promise<boolean> {
     try {
         await send();
         return false;
     } catch (err: unknown) {
+        // A lifecycle abort is a cancellation, not a vendor failure: no
+        // fallback leg, no retry — surface it to the caller as-is (#417).
+        if (signal?.aborted) throw err;
         const kind = classifySendFailure(err);
         if (kind === 'format') return true;
         if (kind !== 'rate-limit') throw err;
 
         const wait = retryAfterMs(err);
         if (wait <= 0 || wait > MAX_INLINE_RATE_LIMIT_MS) throw err;
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        // Abortable: a shutdown must not sit out a Telegram rate-limit window.
+        await abortableDelay(wait, signal);
+        if (signal?.aborted) throw err;
 
         // Retry the SAME form, once: waiting is what the server asked for, and
         // switching format would add load rather than remove it.
@@ -64,6 +71,9 @@ export interface RichSendOpts {
     direct_messages_topic_id?: number;
     /** Prepended to the FIRST chunk only (e.g. '📡 '). */
     prefix?: string;
+    /** Lifecycle cancellation (#417). Passed to grammY per call, exactly like
+     *  the reaction path: the ipv4 fetch adapter destroys the request on abort. */
+    signal?: AbortSignal;
 }
 
 /** True when the running grammy build exposes sendRichMessage (Bot API 10.1+). */
@@ -279,9 +289,12 @@ export async function sendTelegramMarkdown(
     // fallback.
     const chunks = chunkWithPrefixBudget(markdown, prefix, RICH_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
+        if (opts?.signal?.aborted) throw new Error('telegram_send_aborted');
         const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
         const needsFallback = await attemptSend(() =>
-            api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts)));
+            // grammY's declared AbortSignal is the abort-controller shim type;
+            // the reaction path (reactions.ts) uses the same `as never` cast.
+            api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts), opts?.signal as never), opts?.signal);
         if (needsFallback) {
             await sendHtmlFallback(api, chatId, chunks[i]!, opts, i === 0 ? prefix : '');
         }
@@ -305,11 +318,13 @@ async function sendHtmlFallback(
         ? chunkTelegramMessage(html, HTML_MESSAGE_LIMIT - safePrefix.length)
         : chunkTelegramMessage(html, HTML_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
+        if (opts?.signal?.aborted) throw new Error('telegram_send_aborted');
         const withPrefix = i === 0 ? `${safePrefix}${chunks[i]}` : chunks[i]!;
-        const needsPlain = await attemptSend(() => api.sendMessage(chatId, withPrefix, htmlOpts));
+        const needsPlain = await attemptSend(
+            () => api.sendMessage(chatId, withPrefix, htmlOpts, opts?.signal as never), opts?.signal);
         if (needsPlain) {
             await attemptSend(() =>
-                api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts));
+                api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts, opts?.signal as never), opts?.signal);
         }
     }
 }

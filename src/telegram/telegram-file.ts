@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { log } from '../core/logger.js';
 import { redactOutboundText, logErrorText, userErrorText } from '../messaging/redact.js';
+import { abortableDelay } from '../messaging/outbound-lifecycle.js';
 
 interface TelegramApiErrorLike {
     error_code?: number;
@@ -95,7 +96,7 @@ export async function sendTelegramFile(
     chatId: number | string,
     filePath: string,
     type: string,
-    opts?: { caption?: string; threadId?: number },
+    opts?: { caption?: string; threadId?: number; signal?: AbortSignal },
 ): Promise<{ ok: boolean; attempts: number; error?: string; retryAfter?: number; statusCode?: number }> {
     // Validate here, not at the call sites. The Hub's outbound relay calls this
     // transport directly and skipped the check, which is how an empty document
@@ -122,13 +123,13 @@ export async function sendTelegramFile(
             const file = new InputFile(filePath);
             switch (type) {
                 case 'voice':
-                    await bot.api.sendVoice(chatId, file, stripUndefined({ caption, message_thread_id }));
+                    await bot.api.sendVoice(chatId, file, stripUndefined({ caption, message_thread_id }), opts?.signal as never);
                     break;
                 case 'photo':
-                    await bot.api.sendPhoto(chatId, file, stripUndefined({ caption, message_thread_id }));
+                    await bot.api.sendPhoto(chatId, file, stripUndefined({ caption, message_thread_id }), opts?.signal as never);
                     break;
                 case 'document':
-                    await bot.api.sendDocument(chatId, file, stripUndefined({ caption, message_thread_id }));
+                    await bot.api.sendDocument(chatId, file, stripUndefined({ caption, message_thread_id }), opts?.signal as never);
                     break;
                 default:
                     return { ok: false, attempts: attempt, error: `unsupported type: ${type}`, statusCode: 400 };
@@ -175,7 +176,11 @@ export async function sendTelegramFile(
             }
 
             log.warn(`[telegram:retry] attempt ${attempt}/${MAX_RETRIES} failed (${e.error_code || 'network'}), retrying in ${delay}ms...`);
-            await new Promise(r => setTimeout(r, delay));
+            // Abortable (#417): a shutdown must not sit out the backoff window.
+            await abortableDelay(delay, opts?.signal);
+            if (opts?.signal?.aborted) {
+                return { ok: false, attempts: attempt, error: 'telegram_send_aborted', statusCode: 499 };
+            }
         }
     }
     return { ok: false, attempts: MAX_RETRIES, error: 'exhausted retries', statusCode: 502 };

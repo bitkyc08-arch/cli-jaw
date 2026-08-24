@@ -56,3 +56,29 @@ test('OSR-005: an already-aborted parent yields an aborted scope immediately', (
     assert.equal(scope.signal.aborted, true);
     scope.done();
 });
+
+// Telegram plumbing (#417 2/3): the markdown sender must stop between chunks
+// on abort and must not spend a fallback/retry leg on a cancelled send.
+test('OSR-006: sendTelegramMarkdown aborts between chunks and skips fallback legs', async () => {
+    const { sendTelegramMarkdown } = await import('../../src/telegram/rich-message.ts');
+    const controller = new AbortController();
+    const calls: string[] = [];
+    const api = {
+        sendRichMessage: async () => {
+            calls.push('rich');
+            // Abort DURING the first chunk's send, then fail it the way the
+            // ipv4 fetch adapter does on req.destroy().
+            controller.abort();
+            throw new Error('socket destroyed');
+        },
+        sendMessage: async () => { calls.push('html'); },
+    };
+    // Long enough to need multiple chunks so the loop guard matters too.
+    const text = 'x'.repeat(9000);
+    await assert.rejects(
+        () => sendTelegramMarkdown(api as never, 1, text, { signal: controller.signal }),
+        /socket destroyed/,
+        'a cancelled send surfaces the abort error',
+    );
+    assert.deepEqual(calls, ['rich'], 'no fallback or retry leg after the abort');
+});
