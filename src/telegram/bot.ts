@@ -987,7 +987,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 log.info(`[tg:smoke] ${data["cli"]} smoke detected — auto-continuing`);
             } else if (type === 'agent_tool' && data["icon"] && data["label"]) {
                 // Copilot ACP emits many thought chunks; hide them on Telegram to avoid message storms.
-                if (data["icon"] === '💭') return;
+                // 💬 (assistant-message narration badge) and thinking-type entries
+                // are live-UI-only for the same reason (Slack drops them too).
+                if (data["icon"] === '💭' || data["icon"] === '💬' || data["toolType"] === 'thinking') return;
                 pushToolLine(`${data["icon"]} ${data["label"]}`);
             } else {
                 return;

@@ -390,7 +390,9 @@ async function slackOrchestrate(
                     // Telegram already drops its 💭 lines; Slack's progress
                     // placeholder gets real tool activity only, so agent
                     // reasoning text never lands in the channel even briefly.
-                    if (data['toolType'] === 'thinking') return;
+                    // 💬 is the untagged-codex assistant-message badge (spark
+                    // visibility) — also narration from the channel's view.
+                    if (data['toolType'] === 'thinking' || data['icon'] === '💬') return;
                     const line = statusFromToolEvent(data, t('slack.progress.working', {}, currentLocale()));
                     if (line) progress.update(line);
                 };
