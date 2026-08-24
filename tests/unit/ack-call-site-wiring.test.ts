@@ -37,9 +37,11 @@ test('every channel ACKs on its normal path, not only when queued', () => {
 test('the ACK outcome is settled before the uncancellable image relay', () => {
     // Image upload has no cancellation (#417), so awaiting it first can leave
     // the reaction on `running` after the user already has their answer.
+    // Relay calls now carry the outbound cancellation signal (#417), so the
+    // anchors match the call prefix rather than the exact argument list.
     const cases = [
-        { channel: 'slack', file: 'src/slack/bot.ts', relay: 'await relaySlackImages(token, target, text);' },
-        { channel: 'discord', file: 'src/discord/bot.ts', relay: 'await relayDiscordImages(msg.client, target, text);' },
+        { channel: 'slack', file: 'src/slack/bot.ts', relay: 'await relaySlackImages(token, target, text' },
+        { channel: 'discord', file: 'src/discord/bot.ts', relay: 'await relayDiscordImages(msg.client, target, text' },
     ];
     for (const { channel, file, relay } of cases) {
         const src = read(file);

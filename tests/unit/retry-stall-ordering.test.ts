@@ -35,7 +35,7 @@ test('the stall branch returns before the main 429 retry can fire', () => {
 
 test('the employee transient retry excludes stalls and auth failures explicitly', () => {
     const guard = handler.match(
-        /\(cls\.is429 \|\| cls\.isClaudeRateLimit \|\| cls\.isTransientStartup\)[\s\S]{0,300}?empAttempt < EMP_MAX_RETRIES/,
+        /\(cls\.is429 \|\| cls\.isClaudeRateLimit \|\| cls\.isTransientStartup \|\| cls\.isConnection\)[\s\S]{0,300}?empAttempt < EMP_MAX_RETRIES/,
     );
 
     assert.ok(guard, 'employee transient retry guard must exist');

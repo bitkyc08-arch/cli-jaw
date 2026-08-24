@@ -84,7 +84,9 @@ test('Discord main, collect, and reset paths preserve the built target', () => {
     assert.match(mainBlock, /submitMessage\(prompt,\s*\{[\s\S]*?\btarget\b[\s,}]/);
 
     const collectStart = botSrc.indexOf('const text = String(await orchestrateAndCollect', mainEnd);
-    const collectEnd = botSrc.indexOf('const chunks = chunkDiscordMessage', collectStart);
+    // The body send migrated from channel.send chunks to the REST scheduler
+    // (#417 3/3); the collect block now ends at the sendable-channel guard.
+    const collectEnd = botSrc.indexOf('const channel = asSendable(msg.channel)', collectStart);
     assert.ok(collectStart >= 0 && collectEnd > collectStart, 'collect block should be bounded');
     const collectBlock = botSrc.slice(collectStart, collectEnd);
     assert.match(collectBlock, /orchestrateAndCollect\(prompt,\s*\{[\s\S]*?\btarget\b[\s,}]/);

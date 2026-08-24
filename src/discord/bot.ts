@@ -31,9 +31,11 @@ import { sendChannelOutput, type ChannelSendRequest } from '../messaging/send.js
 import { handleApprovalCommand, handleApprovalCallback, registerProductionTransport, type DispatchApprovalTransport } from '../core/dispatch-approval-ingress.js';
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
-import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
+import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
+import { invalidateDiscordSendClient } from './send-only-client.js';
+import { OutboundSendRegistry } from '../messaging/outbound-lifecycle.js';
 import type { Attachment, Interaction, Message } from 'discord.js';
 import { asSendable, asThreadLike, asTypingChannel } from './channel-types.js';
 import { log } from '../core/logger.js';
@@ -238,6 +240,9 @@ function currentLocale() {
  * its notice rewritten rather than left claiming the agent is still working.
  */
 const discordNoticeRegistry = new QueueNoticeRegistry();
+/** In-flight ANSWER sends (#417): REST body sends carry these scopes' signals
+ *  so shutdown can abort them; the notice registry above only covers cleanup. */
+const discordOutboundRegistry = new OutboundSendRegistry();
 /** Covers a notice edit plus a remove-then-add reaction chain. */
 const DISCORD_NOTICE_DRAIN_MS = DISCORD_REACTION_TIMEOUT_MS * 2 + 3000;
 
@@ -446,11 +451,26 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     return;
                 }
                 let delivered = true;
-                for (const chunk of chunkDiscordMessage(body)) {
-                    await channel.send(chunk).catch((e: Error) => {
+                // Same REST migration as the normal path (#417 3/3): a queued
+                // body must be cancellable at shutdown. An abort reports as a
+                // failed delivery below, which closes the notice as EXPIRED —
+                // never 'answered' for a send we cut short.
+                {
+                    const outbound = discordOutboundRegistry.start();
+                    try {
+                        const restToken = msg.client.token;
+                        if (!restToken) throw new Error('Discord client token unavailable');
+                        const sendResult = await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal });
+                        if (!sendResult.ok) {
+                            delivered = false;
+                            log.error('[discord:queue-send]', logErrorText(sendResult.error || 'send failed'));
+                        }
+                    } catch (e) {
                         delivered = false;
                         log.error('[discord:queue-send]', logErrorText(e));
-                    });
+                    } finally {
+                        outbound.done();
+                    }
                 }
                 // Settled before the relay for the same reason as the normal
                 // path: an uncancellable upload must not hold the reaction.
@@ -533,11 +553,22 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             chatSessionId: result.sessionContext?.chatSessionId,
             remoteKey: result.sessionContext?.remoteKey,
         })));
-        const chunks = chunkDiscordMessage(text);
         const channel = asSendable(msg.channel);
         if (!channel) throw new Error('Discord channel is not text-based');
-        for (const chunk of chunks) {
-            await channel.send(chunk);
+        // REST scheduler, not channel.send(): discord.js's high-level send
+        // accepts no AbortSignal, so a shutdown could never cancel the body
+        // (#417 3/3). The scheduler owns rate-limit pacing and honours the
+        // scope's signal; the gateway client still receives events as before.
+        {
+            const outbound = discordOutboundRegistry.start();
+            try {
+                const restToken = msg.client.token;
+                if (!restToken) throw new Error('Discord client token unavailable');
+                const sendResult = await sendDiscordTextRest(restToken, msg.channelId, text, { signal: outbound.signal });
+                if (!sendResult.ok) throw new Error(sendResult.error || 'discord send failed');
+            } finally {
+                outbound.done();
+            }
         }
         ackOutcome = 'success';
         // Settled BEFORE the relay: image upload is uncancellable (#417), so
@@ -851,6 +882,11 @@ export async function shutdownDiscord() {
     // transport to travel on. Bounded, because a stuck cleanup must not hold
     // shutdown open — the drain's signal cancels whatever is still in flight.
     await discordNoticeRegistry.drain(DISCORD_NOTICE_DRAIN_MS);
+    // Abort in-flight answer bodies after notice claims settle, and close the
+    // cached REST scheduler so its queue and in-flight fetches abort too —
+    // shutdownDiscord never called invalidateDiscordSendClient before (#417).
+    await discordOutboundRegistry.drain();
+    invalidateDiscordSendClient();
     const supervisor = gatewaySupervisor;
     gatewaySupervisor = null;
     if (supervisor) {
@@ -889,12 +925,16 @@ export async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok:
             const text = req.text?.trim();
             if (!text) return { ok: false, error: 'text required' };
             try {
-                const channel = await discordClient.channels.fetch(String(channelId));
-                const sendable = asSendable(channel);
-                if (!sendable) return { ok: false, error: 'Channel not text-based' };
-                const chunks = chunkDiscordMessage(text);
-                for (const chunk of chunks) {
-                    await sendable.send(chunk);
+                // REST with a registry scope, same as the reply paths (#417):
+                // channel.send() cannot be cancelled at shutdown.
+                const restToken = discordClient.token;
+                if (!restToken) return { ok: false, error: 'Discord client token unavailable' };
+                const outbound = discordOutboundRegistry.start();
+                try {
+                    const sendResult = await sendDiscordTextRest(restToken, String(channelId), text, { signal: outbound.signal });
+                    if (!sendResult.ok) return { ok: false, error: sendResult.error || 'send failed' };
+                } finally {
+                    outbound.done();
                 }
                 return { ok: true, channel_id: channelId, type: 'text' };
             } catch (e) {
