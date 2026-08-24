@@ -135,8 +135,10 @@ export async function relayTelegramImages(
     chatId: string | number,
     text: string,
     target?: RemoteTarget | null,
+    options: { signal?: AbortSignal } = {},
 ): Promise<void> {
     for (const candidate of extractLocalImagePaths(text)) {
+        if (options.signal?.aborted) return;
         try {
             const filePath = assertSendFilePath(
                 candidate,
@@ -149,7 +151,7 @@ export async function relayTelegramImages(
                 chatId,
                 filePath,
                 'photo',
-                stripUndefined({ threadId: threadIdNumber(target ?? undefined) }),
+                stripUndefined({ threadId: threadIdNumber(target ?? undefined), signal: options.signal }),
             );
             if (!result.ok) {
                 appLog.warn('[tg:image-relay] send failed', {

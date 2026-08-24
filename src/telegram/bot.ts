@@ -257,9 +257,11 @@ async function disposeTelegramRuntime(poller: { stop(): Promise<void> } | null):
     const stopping = poller?.stop().catch((e: unknown) => {
         log.warn('[telegram:poller-stop]', logErrorText(e));
     });
-    await telegramNoticeRegistry.drain(TELEGRAM_NOTICE_DRAIN_MS);
-    // Abort in-flight answer bodies after the notice claims settle (#417).
+    // Outbound abort FIRST (#417 review): the notice drain awaits the queued
+    // waiter's in-flight send; aborting it up front frees that budget for the
+    // actual cleanup instead of a hung vendor POST.
     await telegramOutboundRegistry.drain();
+    await telegramNoticeRegistry.drain(TELEGRAM_NOTICE_DRAIN_MS);
     await stopping;
 }
 
@@ -894,7 +896,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                         if (requestId) closeTelegramNoticeRecord(requestId);
                         unregister();
                         resolve();
-                        void relayTelegramImages(bot, chat.id, body, responseTarget).catch(() => { });
+                        {
+                            const relayScope = telegramOutboundRegistry.start();
+                            void relayTelegramImages(bot, chat.id, body, responseTarget, { signal: relayScope.signal })
+                                .catch(() => { }).finally(() => relayScope.done());
+                        }
                         void sendElicitationKeyboards(chat.id, data["elicitationSpecs"]).catch(() => { });
                     });
                 };
@@ -1074,7 +1080,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             // fire-and-forget below, so it cannot hold the outcome open.
             ackOutcome = 'success';
             log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
-            void relayTelegramImages(bot, chat.id, collectedText, responseTarget).catch(() => { });
+            {
+                const relayScope = telegramOutboundRegistry.start();
+                void relayTelegramImages(bot, chat.id, collectedText, responseTarget, { signal: relayScope.signal })
+                    .catch(() => { }).finally(() => relayScope.done());
+            }
             void sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]).catch(() => { });
         } catch (err: unknown) {
             clearInterval(typingInterval);

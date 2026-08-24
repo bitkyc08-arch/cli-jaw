@@ -78,6 +78,10 @@ export async function sendSlackFile(
             return { ok: false, error: `Slack upload failed (${upload.status})`, status: upload.status };
         }
     } catch (error) {
+        // Abort during the byte upload is a cancellation, not a vendor failure (#417).
+        if (options.signal?.aborted || (error as Error)?.name === 'AbortError') {
+            return slackFailure('slack_send_aborted', 499);
+        }
         // The presigned upload URL is a temporary capability: a thrown fetch
         // error routinely embeds it, and this string reaches both API responses
         // and the image-relay log.

@@ -82,3 +82,43 @@ test('OSR-006: sendTelegramMarkdown aborts between chunks and skips fallback leg
     );
     assert.deepEqual(calls, ['rich'], 'no fallback or retry leg after the abort');
 });
+
+// Slack in-flight abort must be a 499 cancellation, not a 502 vendor failure
+// (#417 review): the queued waiter uses ok:false to expire the notice either
+// way, but the outbox/diagnostics must not record a Slack rejection for a
+// send we cut short.
+test('OSR-007: an aborted in-flight slackApi call reports slack_send_aborted 499', async () => {
+    const { slackApi } = await import('../../src/slack/api.ts');
+    const controller = new AbortController();
+    const hungFetch: typeof fetch = (_url, init) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }));
+        }, { once: true });
+    });
+    const pending = slackApi('xoxb-test', 'chat.postMessage',
+        { channel: 'C1', text: 'hi' }, { fetchImpl: hungFetch, signal: controller.signal });
+    controller.abort();
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 499, 'abort is a cancellation, not a 502');
+    assert.equal(result.error, 'slack_send_aborted');
+});
+
+// Shutdown ordering (#417 review): a hung queued send must be aborted BEFORE
+// the notice drain awaits its terminal, or the drain eats its whole budget on
+// a socket nobody can cancel. Proven at the registry level: drain resolves in
+// grace time even while a scope's owner is still pending.
+test('OSR-008: drain returns within grace while a hung send is still pending', async () => {
+    const registry = new OutboundSendRegistry();
+    const scope = registry.start();
+    let hungSettled = false;
+    const hung = new Promise<void>((resolve) => {
+        scope.signal.addEventListener('abort', () => { hungSettled = true; resolve(); }, { once: true });
+    });
+    const started = Date.now();
+    await registry.drain(100);
+    assert.ok(Date.now() - started < 5_000, 'drain must not wait for the send to finish');
+    await hung;
+    assert.equal(hungSettled, true, 'the hung send observed the abort');
+    scope.done();
+});

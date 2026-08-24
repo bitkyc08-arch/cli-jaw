@@ -138,8 +138,17 @@ export async function sendDiscordFileRest(
     channelId: string,
     filePath: string,
     caption?: string,
+    extra?: { signal?: AbortSignal },
 ): Promise<DiscordRestSendResult> {
     try {
+        if (extra?.signal?.aborted) {
+            return {
+                ok: false,
+                failure: { kind: 'transient', retryAfterMs: 0, code: 'aborted', message: 'discord_send_aborted' },
+                error: 'discord_send_aborted',
+                status: 499,
+            };
+        }
         const buffer = await readFile(filePath);
         validateDiscordFileSize(filePath, buffer.length);
         const safeCaption = caption?.trim() ? redactOutboundText(caption.trim()) : '';
@@ -148,6 +157,7 @@ export async function sendDiscordFileRest(
             path: `/channels/${encodeURIComponent(channelId)}/messages`,
             routeKey: 'POST:/channels/:channel/messages',
             majorKey: channelId,
+            ...(extra?.signal ? { signal: extra.signal } : {}),
             makeInit: () => {
                 const form = new FormData();
                 form.append('files[0]', new Blob([buffer]), basename(filePath));

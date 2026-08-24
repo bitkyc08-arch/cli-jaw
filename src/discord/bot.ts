@@ -479,8 +479,12 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     ack?.settle(delivered ? 'success' : 'failure') ?? Promise.resolve(),
                 ]);
                 if (requestId) closeDiscordNoticeRecord(requestId);
-                await relayDiscordImages(msg.client, target, body).catch(
-                    e => log.error('[discord:queue-relay]', logErrorText(e)));
+                {
+                    const relayScope = discordOutboundRegistry.start();
+                    await relayDiscordImages(msg.client, target, body, { signal: relayScope.signal })
+                        .catch(e => log.error('[discord:queue-relay]', logErrorText(e)))
+                        .finally(() => relayScope.done());
+                }
             }
         };
         // Everything is armed SYNCHRONOUSLY, before any reaction or notice post.
@@ -576,7 +580,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // answer is already visible.
         await ack?.settle(ackOutcome);
         ackSettled = true;
-        await relayDiscordImages(msg.client, target, text);
+        {
+            const relayScope = discordOutboundRegistry.start();
+            try {
+                await relayDiscordImages(msg.client, target, text, { signal: relayScope.signal });
+            } finally {
+                relayScope.done();
+            }
+        }
         log.info(`[discord:out] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
         log.error('[discord:error]', logErrorText(err));
@@ -881,12 +892,14 @@ export async function shutdownDiscord() {
     // Before the client goes away: a rewrite issued after destruction has no
     // transport to travel on. Bounded, because a stuck cleanup must not hold
     // shutdown open — the drain's signal cancels whatever is still in flight.
-    await discordNoticeRegistry.drain(DISCORD_NOTICE_DRAIN_MS);
-    // Abort in-flight answer bodies after notice claims settle, and close the
-    // cached REST scheduler so its queue and in-flight fetches abort too —
-    // shutdownDiscord never called invalidateDiscordSendClient before (#417).
+    // Outbound abort FIRST (#417 review): the notice drain awaits a queued
+    // waiter's in-flight send, so the abort must precede it or a hung vendor
+    // POST eats the whole budget. Closing the cached REST scheduler aborts its
+    // queue and in-flight fetches too — shutdownDiscord never called
+    // invalidateDiscordSendClient before (#417).
     await discordOutboundRegistry.drain();
     invalidateDiscordSendClient();
+    await discordNoticeRegistry.drain(DISCORD_NOTICE_DRAIN_MS);
     const supervisor = gatewaySupervisor;
     gatewaySupervisor = null;
     if (supervisor) {

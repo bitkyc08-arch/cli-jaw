@@ -224,6 +224,13 @@ export async function slackApi<T = Record<string, unknown>>(
             data: parsed as T,
         };
     } catch (error) {
+        // A lifecycle abort (#417) is a cancellation, not a vendor failure:
+        // callers must be able to tell "we cut this short" from "the network
+        // failed", or an aborted queued send would be recorded as a Slack
+        // rejection.
+        if (options.signal?.aborted || (error as Error)?.name === 'AbortError') {
+            return { ok: false, error: 'slack_send_aborted', status: 499 };
+        }
         // A network-level throw has no response, so there is no header to read.
         return {
             ok: false,

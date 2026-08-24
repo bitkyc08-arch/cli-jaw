@@ -24,7 +24,7 @@ export type OutboundSendScope = {
 };
 
 export class OutboundSendRegistry {
-    private readonly entries = new Set<AbortController>();
+    private readonly entries = new Map<AbortController, () => void>();
 
     /** Number of in-flight outbound scopes (test/diagnostic surface). */
     get size(): number { return this.entries.size; }
@@ -47,14 +47,17 @@ export class OutboundSendRegistry {
                 parent.addEventListener('abort', onParent, { once: true });
             }
         }
-        entries.add(controller);
+        const detachParent = () => {
+            if (parent && onParent) parent.removeEventListener('abort', onParent);
+        };
+        entries.set(controller, detachParent);
         let released = false;
         return {
             signal: controller.signal,
             done() {
                 if (released) return;
                 released = true;
-                if (parent && onParent) parent.removeEventListener('abort', onParent);
+                detachParent();
                 entries.delete(controller);
             },
         };
@@ -69,10 +72,16 @@ export class OutboundSendRegistry {
      * underlying requests are torn down before the process exits.
      */
     async drain(graceMs = 250): Promise<void> {
-        const pending = [...this.entries];
+        const pending = [...this.entries.entries()];
         this.entries.clear();
         if (!pending.length) return;
-        for (const controller of pending) controller.abort(new Error('outbound_shutdown'));
+        for (const [controller, detachParent] of pending) {
+            controller.abort(new Error('outbound_shutdown'));
+            // A scope whose owner never reached done() (thrown past its
+            // finally, or fire-and-forget) must not leave its listener on the
+            // parent signal after the registry has forgotten it.
+            detachParent();
+        }
         await new Promise((resolve) => {
             const timer = setTimeout(resolve, graceMs);
             (timer as { unref?: () => void }).unref?.();

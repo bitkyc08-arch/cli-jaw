@@ -1330,12 +1330,14 @@ async function disposeSlackRuntime(): Promise<void> {
     // target, notice and ACK closure. It also stripped the drain's abort signal:
     // a QueueNotice pins the signal from its FIRST close, so a waiter closing
     // without one made the later shutdown signal unreachable.
-    await slackNoticeRegistry.drain(SLACK_NOTICE_DRAIN_MS);
-    // Abort in-flight answer sends and uploads AFTER the notice drain settled
-    // its own claims: a queued waiter that won the terminal race is mid-send
-    // here, and its abort surfaces as slack_send_aborted, never as a vendor
-    // failure (#417).
+    // Abort in-flight answer sends FIRST (#417 review): a queued waiter that
+    // already claimed its terminal is mid-send, and the notice drain below
+    // awaits that same promise — un-aborted, a hung vendor POST would eat the
+    // whole notice budget and blow past the server's 5s force-exit. Aborting
+    // first makes the hung send settle immediately (as slack_send_aborted,
+    // never a vendor failure), so the notice drain only pays for cleanup.
     await slackOutboundRegistry.drain();
+    await slackNoticeRegistry.drain(SLACK_NOTICE_DRAIN_MS);
     pendingQueueRequestIds.clear();
     socketClient?.stop();
     socketClient = null;
