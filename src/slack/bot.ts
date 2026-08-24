@@ -386,6 +386,11 @@ async function slackOrchestrate(
                     // Letting it through would restore the old behaviour, so it is
                     // dropped; emitAgentTool and the jwc mapper both stamp the field.
                     if (data['requestId'] !== ctx.requestId) return;
+                    // Thinking/commentary entries are live-UI-only narration.
+                    // Telegram already drops its 💭 lines; Slack's progress
+                    // placeholder gets real tool activity only, so agent
+                    // reasoning text never lands in the channel even briefly.
+                    if (data['toolType'] === 'thinking') return;
                     const line = statusFromToolEvent(data, t('slack.progress.working', {}, currentLocale()));
                     if (line) progress.update(line);
                 };

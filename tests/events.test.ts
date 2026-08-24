@@ -1396,13 +1396,38 @@ test('grok trace backfill marks explicit failed result metadata as error', () =>
     assert.match(entries[0].detail || '', /permission denied/);
 });
 
-test('assistant output segments use a single markdown line break boundary', () => {
+test('untagged codex agent_messages are LAST-WINS: narration never joins the final answer', () => {
+    // The old contract joined successive untagged messages with "\n- ", which
+    // is exactly the "확인합니다.- <답변>" artifact that reached Slack. The
+    // last untagged message IS the answer; earlier ones are progress narration.
     const codexCtx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
-    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm1', text: 'first' } }, codexCtx, 'codex');
-    assert.equal(extractOutputChunk('codex', {}, codexCtx), 'first');
-    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm2', text: 'second' } }, codexCtx, 'codex');
-    assert.equal(extractOutputChunk('codex', {}, codexCtx), '\n- second');
-    assert.equal(codexCtx.fullText, 'first\n- second');
+    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm1', text: '확인하겠습니다.' } }, codexCtx, 'codex');
+    assert.equal(extractOutputChunk('codex', {}, codexCtx), '확인하겠습니다.');
+    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm2', text: '최종 답변입니다.' } }, codexCtx, 'codex');
+    assert.equal(extractOutputChunk('codex', {}, codexCtx), '최종 답변입니다.', 'live stream still shows the new message');
+    assert.equal(codexCtx.fullText, '최종 답변입니다.', 'durable text holds ONLY the last message — no \n- join');
+});
+
+test('single untagged codex agent_message is unchanged by last-wins', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm1', text: 'only answer' } }, ctx, 'codex');
+    assert.equal(ctx.fullText, 'only answer');
+});
+
+test('tagged commentary codex message stays out of fullText and emits thinking, not tool', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    extractFromEvent('codex', {
+        type: 'item.completed',
+        item: { id: 'c1', type: 'agent_message', text: '위키를 확인합니다.', channel: 'commentary' },
+    }, ctx, 'codex');
+    assert.equal(ctx.fullText, '', 'commentary never becomes durable answer text');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].toolType, 'thinking', 'external channel status lines drop thinking entries');
+    // The raw extractOutputChunk fallback must not resurrect commentary either.
+    assert.equal(extractOutputChunk('codex', {
+        type: 'item.completed',
+        item: { id: 'c1', type: 'agent_message', text: '위키를 확인합니다.', channel: 'commentary' },
+    }, undefined), '');
 });
 
 test('opencode buffers pre-tool text until step_finish and discards tool-call chatter', () => {
