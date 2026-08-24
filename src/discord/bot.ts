@@ -282,9 +282,27 @@ async function closeDiscordNoticeAsAnsweredByRequestId(requestId: string): Promi
         const record = getQueueNoticeStore()?.findByRequestId(requestId);
         if (!record) return;
         const client = discordClient;
+        if (record.messageId && !client) {
+            // The forwarder can deliver over the outbound-only REST path while
+            // no gateway client exists, but this transport needs client.rest.
+            // KEEP the record: dropping it here would strand the posted notice
+            // forever, while a later boot's restore can still close it out.
+            log.info('[discord:queue-notice] answered-close deferred (no client) — record kept for restore');
+            return;
+        }
         if (record.messageId && client) {
-            await createDiscordNoticeTransportByIds(client, record.target.targetId, record.messageId)
-                .delete();
+            try {
+                await createDiscordNoticeTransportByIds(client, record.target.targetId, record.messageId)
+                    .delete();
+            } catch (e) {
+                // 10008 Unknown Message: the notice is already gone, which is a
+                // deletion that succeeded (same contract as Slack's
+                // message_not_found). Anything else keeps the record so restore
+                // can retry on the next boot.
+                const code = (e as { code?: number; status?: number })?.code
+                    ?? (e as { status?: number })?.status;
+                if (code !== 10008 && code !== 404) throw e;
+            }
         }
         closeDiscordNoticeRecord(requestId);
     } catch (e) {
