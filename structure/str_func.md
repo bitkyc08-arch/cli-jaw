@@ -277,7 +277,7 @@ cli-jaw/
 │   │   ├── ingress.ts        ← 세션별 ingress lane + admitSlackRun 동기 실행 예약(sessionLanes) + 전역 다운로드 세마포어 + shutdown abort/drain (290L) ✨
 │   │   ├── inbound-file.ts   ← 인바운드 첨부 단일 IO owner (files.info → 인증 스트리밍 다운로드 → saveUpload, 파일/메시지 바이트 예산, 고정 error code) (280L) ✨
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
-│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (129L)
+│   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (138L)
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (72L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (161L)
