@@ -38,6 +38,7 @@ import {
     createQueueNotice,
     QueueNoticeRegistry,
 } from '../messaging/queue-notice.js';
+import { OutboundSendRegistry } from '../messaging/outbound-lifecycle.js';
 import {
     recordSlackScopeObservation,
     getSlackScopeStatus,
@@ -98,6 +99,13 @@ const pendingQueueRequestIds = new Set<string>();
  * the agent is still working on it.
  */
 const slackNoticeRegistry = new QueueNoticeRegistry();
+
+/**
+ * In-flight ANSWER sends (#417). The notice registry above cancels cleanup;
+ * this one cancels the answer body, chunk-retry sleeps, and image uploads —
+ * the calls that used to outlive the process because no signal reached them.
+ */
+const slackOutboundRegistry = new OutboundSendRegistry();
 
 /**
  * A reaction transition is best-effort, so it gets a tighter bound than an
@@ -330,8 +338,9 @@ function installSlackTargetReplyForwarder(): void {
         if (!token) return;
         const text = String(data["text"]);
         void (async () => {
+            const outbound = slackOutboundRegistry.start();
             try {
-                const result = await sendSlackText(token, target, text);
+                const result = await sendSlackText(token, target, text, { signal: outbound.signal });
                 if (!result.ok) {
                     log.error('[slack:target-reply]', logErrorText(result.error || 'send failed'));
                     return;
@@ -343,9 +352,11 @@ function installSlackTargetReplyForwarder(): void {
                 if (data["requestId"]) {
                     await closeSlackNoticeAsAnsweredByRequestId(String(data["requestId"]));
                 }
-                await relaySlackImages(token, target, text);
+                await relaySlackImages(token, target, text, { signal: outbound.signal });
             } catch (e) {
                 log.error('[slack:target-reply]', logErrorText(e));
+            } finally {
+                outbound.done();
             }
         })();
     });
@@ -441,26 +452,35 @@ async function slackOrchestrate(
                         await progress.finish().catch(() => { });
                     }),
                 ));
-                const sendResult = await sendSlackText(token, target, text);
-                // Recorded here, settled once in the finally below. The image
-                // relay can still throw after the text is out, and the user did
-                // get their answer in that case — so the outcome is success and
-                // settling twice would be a lie about which one happened.
-                ackOutcome = sendResult.ok ? 'success' : 'failure';
-                // A successful reply records presence, not ownership (marking
-                // point b). Replying into a thread we were invited to does not
-                // make the rest of that conversation ours; the default `joined`
-                // says so, and an already-`owned` thread keeps its kind (#400).
-                if (sendResult.ok && target.threadId) {
-                    markThreadParticipated(target.targetId, target.threadId);
+                // Scoped for shutdown cancellation (#417): the body send and the
+                // image relay below share one abortable scope, released when the
+                // turn settles either way.
+                const outbound = slackOutboundRegistry.start();
+                let sendResult: { ok: boolean; error?: string; status?: number; ts?: string };
+                try {
+                    sendResult = await sendSlackText(token, target, text, { signal: outbound.signal });
+                    // Recorded here, settled once in the finally below. The image
+                    // relay can still throw after the text is out, and the user did
+                    // get their answer in that case — so the outcome is success and
+                    // settling twice would be a lie about which one happened.
+                    ackOutcome = sendResult.ok ? 'success' : 'failure';
+                    // A successful reply records presence, not ownership (marking
+                    // point b). Replying into a thread we were invited to does not
+                    // make the rest of that conversation ours; the default `joined`
+                    // says so, and an already-`owned` thread keeps its kind (#400).
+                    if (sendResult.ok && target.threadId) {
+                        markThreadParticipated(target.targetId, target.threadId);
+                    }
+                    // Settled BEFORE the relay: the upload is now abortable but
+                    // still slow, and the reaction must not sit on `running`
+                    // while the answer is already visible (#417).
+                    await ack?.settle(ackOutcome);
+                    ackSettled = true;
+                    await relaySlackImages(token, target, text, { signal: outbound.signal });
+                    log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
+                } finally {
+                    outbound.done();
                 }
-                // Settled BEFORE the relay: image upload is uncancellable
-                // (#417), so awaiting it first can strand the reaction on
-                // `running` while the answer is already visible.
-                await ack?.settle(ackOutcome);
-                ackSettled = true;
-                await relaySlackImages(token, target, text);
-                log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
             } catch (err: unknown) {
                 log.error('[slack:error]', logErrorText(err));
                 await sendSlackText(token, target, `❌ Error: ${(err as Error).message}`).catch(() => { });
@@ -550,9 +570,17 @@ async function slackOrchestrate(
             await claimTerminal(async () => {
                 try {
                     const text = String(data["text"] ?? '');
-                    const queuedSendResult = text
-                        ? await sendSlackText(token, target, text)
-                        : { ok: false as const };
+                    const outbound = slackOutboundRegistry.start();
+                    let queuedSendResult: { ok: boolean };
+                    try {
+                        queuedSendResult = text
+                            ? await sendSlackText(token, target, text, { signal: outbound.signal })
+                            : { ok: false as const };
+                    } finally {
+                        // Released after the body; the relay below opens its own
+                        // scope so a slow upload does not hold this one.
+                        outbound.done();
+                    }
                     await notice.close(queuedSendResult.ok ? 'answered' : 'expired');
                     if (queuedSendResult.ok && target.threadId) {
                         markThreadParticipated(target.targetId, target.threadId);
@@ -562,8 +590,10 @@ async function slackOrchestrate(
                     // uncancellable upload must not hold the reaction on running.
                     await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
                     if (text) {
-                        await relaySlackImages(token, target, text).catch(
-                            e => log.error('[slack:queue-send]', logErrorText(e)));
+                        const relayScope = slackOutboundRegistry.start();
+                        await relaySlackImages(token, target, text, { signal: relayScope.signal })
+                            .catch(e => log.error('[slack:queue-send]', logErrorText(e)))
+                            .finally(() => relayScope.done());
                     }
                     // The notice is closed, so the durable record has nothing
                     // left to restore on the next boot (#418).
@@ -1301,6 +1331,11 @@ async function disposeSlackRuntime(): Promise<void> {
     // a QueueNotice pins the signal from its FIRST close, so a waiter closing
     // without one made the later shutdown signal unreachable.
     await slackNoticeRegistry.drain(SLACK_NOTICE_DRAIN_MS);
+    // Abort in-flight answer sends and uploads AFTER the notice drain settled
+    // its own claims: a queued waiter that won the terminal race is mid-send
+    // here, and its abort surfaces as slack_send_aborted, never as a vendor
+    // failure (#417).
+    await slackOutboundRegistry.drain();
     pendingQueueRequestIds.clear();
     socketClient?.stop();
     socketClient = null;
