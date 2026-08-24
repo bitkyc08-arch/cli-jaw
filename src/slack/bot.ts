@@ -190,6 +190,32 @@ function closeSlackNoticeRecord(requestId: string): void {
 }
 
 /**
+ * Close a queue notice as ANSWERED from a path that never held the live handle.
+ *
+ * The standing target-reply forwarder posts queued answers when no waiter is
+ * listening any more (restart, missed requestId). It used to stop there, which
+ * left the "대기열에 추가됨" message sitting in the thread next to the answer —
+ * the user-reported leak (#411 family). The durable record (#418) still knows
+ * the posted ts, so the answer's own delivery path can finish the promise:
+ * delete the notice message and drop the record. Best-effort like every other
+ * durable-notice touch; the answer is already out.
+ */
+async function closeSlackNoticeAsAnsweredByRequestId(requestId: string): Promise<void> {
+    try {
+        const record = getQueueNoticeStore()?.findByRequestId(requestId);
+        if (!record) return;
+        const token = getSlackSendClient().token;
+        if (record.messageId && token) {
+            await createSlackNoticeTransport(token, record.target.targetId, record.messageId)
+                .delete();
+        }
+        closeSlackNoticeRecord(requestId);
+    } catch (e) {
+        log.info('[slack:queue-notice] answered-close failed', logErrorText(e));
+    }
+}
+
+/**
  * Rewrite notices left behind by a previous run.
  *
  * Called once the token is known, because the transport needs it — a record whose
@@ -311,6 +337,12 @@ function installSlackTargetReplyForwarder(): void {
                     return;
                 }
                 if (target.threadId) markThreadParticipated(target.targetId, target.threadId);
+                // The answer is delivered, so the queue notice for this request
+                // is now noise. The live waiter usually owns this; when the
+                // forwarder delivers instead, it must also keep the promise.
+                if (data["requestId"]) {
+                    await closeSlackNoticeAsAnsweredByRequestId(String(data["requestId"]));
+                }
                 await relaySlackImages(token, target, text);
             } catch (e) {
                 log.error('[slack:target-reply]', logErrorText(e));
@@ -504,7 +536,11 @@ async function slackOrchestrate(
         });
         unregister = slackNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, unknown>) => {
-            if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'slack'
+            // No !data.text gate: an empty completion must still claim the
+            // terminal, or the notice sits until the 5-minute timeout rewrites
+            // it to "expired" — the reported "안 없어지는" symptom for empty or
+            // error turns. Empty text closes the notice as expired immediately.
+            if (type !== 'orchestrate_done' || data["origin"] !== 'slack'
                 || data["requestId"] !== requestId) return;
             if (disposed) return;
             // Dispose FIRST so a duplicate broadcast cannot double-post, but the
@@ -513,8 +549,10 @@ async function slackOrchestrate(
             disposeListener();
             await claimTerminal(async () => {
                 try {
-                    const text = String(data["text"]);
-                    const queuedSendResult = await sendSlackText(token, target, text);
+                    const text = String(data["text"] ?? '');
+                    const queuedSendResult = text
+                        ? await sendSlackText(token, target, text)
+                        : { ok: false as const };
                     await notice.close(queuedSendResult.ok ? 'answered' : 'expired');
                     if (queuedSendResult.ok && target.threadId) {
                         markThreadParticipated(target.targetId, target.threadId);
@@ -523,8 +561,10 @@ async function slackOrchestrate(
                     // path: the text is what the user was waiting for, and an
                     // uncancellable upload must not hold the reaction on running.
                     await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
-                    await relaySlackImages(token, target, text).catch(
-                        e => log.error('[slack:queue-send]', logErrorText(e)));
+                    if (text) {
+                        await relaySlackImages(token, target, text).catch(
+                            e => log.error('[slack:queue-send]', logErrorText(e)));
+                    }
                     // The notice is closed, so the durable record has nothing
                     // left to restore on the next boot (#418).
                     if (requestId) closeSlackNoticeRecord(requestId);

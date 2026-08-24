@@ -11,6 +11,7 @@
 //   slack.allowBots
 //   slack.mentionOnly
 //   slack.replyInThread
+//   slack.ack.enabled         (emoji reaction receipts on inbound messages)
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SettingsPageProps, DirtyEntry } from '../types';
@@ -37,6 +38,7 @@ type SlackBlock = {
     allowBots?: boolean;
     mentionOnly?: boolean;
     replyInThread?: boolean;
+    ack?: { enabled?: boolean };
 };
 
 type SlackSnapshot = {
@@ -60,6 +62,7 @@ const SLACK_KEYS = [
     'slack.allowBots',
     'slack.mentionOnly',
     'slack.replyInThread',
+    'slack.ack.enabled',
 ] as const;
 
 /**
@@ -86,6 +89,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     const [allowBots, setAllowBots] = useState(false);
     const [mentionOnly, setMentionOnly] = useState(true);
     const [replyInThread, setReplyInThread] = useState(true);
+    const [ackEnabled, setAckEnabled] = useState(false);
 
     const applySnapshot = useCallback((sc: SlackBlock) => {
         setEnabled(Boolean(sc.enabled));
@@ -99,6 +103,9 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
         // off on a fresh install while the backend behaves as on.
         setMentionOnly(sc.mentionOnly !== false);
         setReplyInThread(sc.replyInThread !== false);
+        // ACK reactions default OFF in SLACK_ACK_DEFAULTS; a plain Boolean read
+        // matches the backend default.
+        setAckEnabled(Boolean(sc.ack?.enabled));
     }, []);
 
     useEffect(() => {
@@ -338,6 +345,19 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                         setEntry('slack.allowBots', {
                             value: next,
                             original: Boolean(original.allowBots),
+                            valid: true,
+                        });
+                    }}
+                />
+                <ToggleField
+                    id="sl-ackEnabled"
+                    label="Emoji reactions (👀 → ✅)"
+                    value={ackEnabled}
+                    onChange={(next) => {
+                        setAckEnabled(next);
+                        setEntry('slack.ack.enabled', {
+                            value: next,
+                            original: Boolean(original.ack?.enabled),
                             valid: true,
                         });
                     }}

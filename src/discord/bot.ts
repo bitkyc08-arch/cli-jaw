@@ -159,8 +159,16 @@ function installDiscordTargetReplyForwarder(): void {
         if (!target || target.channel !== 'discord' || !target.targetId) return;
         if (data["requestId"] && pendingQueueRequestIds.has(String(data["requestId"]))) return;
         void sendChannelOutput({ channel: 'discord', type: 'text', text: String(data["text"]), target })
-            .then(result => {
-                if (!result.ok) log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
+            .then(async result => {
+                if (!result.ok) {
+                    log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
+                    return;
+                }
+                // The forwarder delivered the answer, so it also keeps the
+                // queue-notice promise the missing waiter could not.
+                if (data["requestId"]) {
+                    await closeDiscordNoticeAsAnsweredByRequestId(String(data["requestId"]));
+                }
             })
             .catch((e: unknown) => log.error('[discord:target-reply]', logErrorText(e)));
     });
@@ -263,6 +271,28 @@ function closeDiscordNoticeRecord(requestId: string): void {
 }
 
 /**
+ * Close a queue notice as ANSWERED from the standing forwarder, which never
+ * held the live handle. Mirrors the Slack fix: when the forwarder delivers a
+ * queued answer (restart / missed waiter), the "added to queue" message must
+ * still be deleted, or it sits in the channel next to the answer (#411 family).
+ * Best-effort — the answer is already out.
+ */
+async function closeDiscordNoticeAsAnsweredByRequestId(requestId: string): Promise<void> {
+    try {
+        const record = getQueueNoticeStore()?.findByRequestId(requestId);
+        if (!record) return;
+        const client = discordClient;
+        if (record.messageId && client) {
+            await createDiscordNoticeTransportByIds(client, record.target.targetId, record.messageId)
+                .delete();
+        }
+        closeDiscordNoticeRecord(requestId);
+    } catch (e) {
+        log.info('[discord:queue-notice] answered-close failed', logErrorText(e));
+    }
+}
+
+/**
  * Rewrite notices left behind by a previous run.
  *
  * Addressed by ids rather than a fetched Message: a restart has the two ids from
@@ -357,7 +387,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         });
         unregister = discordNoticeRegistry.add((signal) => finishExpired(signal));
         const queueHandler = async (type: string, data: Record<string, any>) => {
-            if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'discord'
+            // No !data.text gate (matches the Slack fix): an empty completion
+            // must still claim the terminal, or the notice waits out the full
+            // timeout before being rewritten instead of closed.
+            if (type !== 'orchestrate_done' || data["origin"] !== 'discord'
                 || data["requestId"] !== requestId) return;
             if (disposed) return;
             // Dispose FIRST so a duplicate broadcast cannot double-post, but the
@@ -374,7 +407,17 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         };
         const deliverQueued = async (data: Record<string, any>) => {
             {
-                const body = String(data["text"]);
+                const body = String(data["text"] ?? '');
+                if (!body) {
+                    // Empty completion: nothing to send, but the notice must not
+                    // linger until the timeout rewrite.
+                    await Promise.allSettled([
+                        notice.close('expired'),
+                        ack?.settle('failure') ?? Promise.resolve(),
+                    ]);
+                    if (requestId) closeDiscordNoticeRecord(requestId);
+                    return;
+                }
                 const channel = asSendable(msg.channel);
                 if (!channel) {
                     log.warn('[discord:queue-send] channel not sendable, dropping queued reply', { channelId: msg.channelId });

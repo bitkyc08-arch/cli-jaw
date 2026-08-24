@@ -828,12 +828,25 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 });
                 finalDeliveryControl.cancel = (reason) => { void expire(reason); };
                 const queueHandler = (type: string, data: Record<string, unknown>) => {
-                    if (type !== 'orchestrate_done' || !data["text"] || data["origin"] !== 'telegram' || data["requestId"] !== requestId) return;
+                    // No !data.text gate (matches Slack/Discord): an empty
+                    // completion claims the terminal and expires the notice now
+                    // instead of letting the timeout rewrite it later.
+                    if (type !== 'orchestrate_done' || data["origin"] !== 'telegram' || data["requestId"] !== requestId) return;
                     if (settled) return;
                     settled = true;
                     cleanup();
                     void claimTerminal(async () => {
-                        const body = String(data["text"]);
+                        const body = String(data["text"] ?? '');
+                        if (!body) {
+                            await Promise.allSettled([
+                                notice.close('expired'),
+                                ackHandle?.settle('failure') ?? Promise.resolve(),
+                            ]);
+                            if (requestId) closeTelegramNoticeRecord(requestId);
+                            unregister();
+                            resolve();
+                            return;
+                        }
                         try {
                             await sendTelegramMarkdown(ctx.api, chat.id, body, replyOptsOf(ctx));
                         } catch (error) {
