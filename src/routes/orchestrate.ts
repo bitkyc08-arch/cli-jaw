@@ -7,7 +7,7 @@ import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
-import { getState, getCtx, setState, resetState, canTransition, resetAllStaleStates, parseWorkerVerdict, aggregateBatchVerdicts } from '../orchestrator/state-machine.js';
+import { getState, getCtx, setState, resetState, canTransition, resetEveryState, parseWorkerVerdict, aggregateBatchVerdicts } from '../orchestrator/state-machine.js';
 import type { WorkerVerdict } from '../orchestrator/state-machine.js';
 import { normalizeTaskTags } from '../prompt/builder.js';
 import { parsePhaseAttestationObject } from '../orchestrator/attestation.js';
@@ -236,8 +236,12 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         try {
             const all = req.query["all"] === 'true' || req.body?.all === true;
             if (all) {
-                const cleared = resetAllStaleStates();
-                res.json({ ok: true, cleared, message: `Cleared ${cleared} stale state(s)` });
+                // `all` now means all. It used to call the stale-only variant, so a
+                // scope stuck mid-phase since the last restart — the exact thing an
+                // operator reaches for this endpoint to clear — was left untouched
+                // unless it had been stuck for over a day (#452).
+                const cleared = resetEveryState();
+                res.json({ ok: true, cleared, message: `Cleared ${cleared} orchestration state(s)` });
                 return;
             }
             await orchestrateReset({ origin: 'web' });

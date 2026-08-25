@@ -3,7 +3,7 @@
 // State persisted in jaw.db orc_state table.
 // CLI (bin/commands/orchestrate.ts) and server share the same DB.
 
-import { getOrcState, setOrcState, resetOrcState, resetAllOrcStates } from '../core/db.js';
+import { getOrcState, setOrcState, resetOrcState, resetAllOrcStates, resetEveryOrcState } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
 import { readLatestWorklog } from '../memory/worklog.js';
 import { checkAttestationGate } from './attestation.js';
@@ -166,6 +166,22 @@ export function resetAllStaleStates(): number {
   const cleared = result.changes;
   if (cleared > 0) {
     console.log(`[jaw:pabcd] cleared ${cleared} stale orchestration state(s) (>24h old)`);
+    broadcast('orc_state', { state: 'IDLE', title: '', scope: 'all' });
+  }
+  return cleared;
+}
+
+/** Reset every non-IDLE scope regardless of age.
+ *
+ *  `?all=true` used to call resetAllStaleStates, so it cleared only rows older
+ *  than a day — the opposite of what the name promised, and useless for the case
+ *  it exists for: a scope stuck mid-phase waiting on workers that died with the
+ *  previous process (#452). */
+export function resetEveryState(): number {
+  const result = resetEveryOrcState.run();
+  const cleared = result.changes;
+  if (cleared > 0) {
+    console.log(`[jaw:pabcd] cleared ${cleared} orchestration state(s) (explicit full reset)`);
     broadcast('orc_state', { state: 'IDLE', title: '', scope: 'all' });
   }
   return cleared;

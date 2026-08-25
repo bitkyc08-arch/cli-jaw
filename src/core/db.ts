@@ -762,6 +762,16 @@ export const resetAllOrcStates = db.prepare(
     "UPDATE orc_state SET state = 'IDLE', ctx = NULL WHERE state != 'IDLE' AND updated_at < datetime('now', '-24 hours')"
 );
 
+/** Unconditional reset, for when the caller knows the in-memory runtime is gone.
+ *
+ *  The stale variant above deliberately spares recent rows so a restart can
+ *  resume a live cycle. That guess is wrong after a crash: the workers a phase
+ *  was waiting on live in memory and did not survive, so the row describes a
+ *  handoff that can never complete and only a human can say so (#452). */
+export const resetEveryOrcState = db.prepare(
+    "UPDATE orc_state SET state = 'IDLE', ctx = NULL WHERE state != 'IDLE'"
+);
+
 export const deleteNonDefaultOrcStates = db.prepare(
     "DELETE FROM orc_state WHERE id != 'default'"
 );
