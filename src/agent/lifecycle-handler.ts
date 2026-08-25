@@ -30,7 +30,7 @@ import {
     memoryFlushCounter,
 } from './memory-flush-controller.js';
 import { buildGoalContinuation } from '../goal/heartbeat.js';
-import { completeGoal, cancelGoal, getActiveGoal, goalHasCompletionEvidence } from '../goal/store.js';
+import { completeGoal, getActiveGoal, goalHasCompletionEvidence } from '../goal/store.js';
 import { recordTurn } from '../goal-run/controller.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { evaluateRecordPending } from '../core/policy-flags.js';
@@ -1082,10 +1082,18 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     broadcast('goal_done_rejected', { goalId: activeGoal.id, reason: 'no_evidence' });
                 }
             } else if (GOAL_CANCEL_RE.test(ctx.fullText)) {
-                cancelGoal();
+                // Cancelling used to happen here on sight of the marker, with no
+                // gate at all — which made ABANDONING a goal strictly easier than
+                // completing one, since /goal done next door demands verification
+                // evidence. A model explaining the command ("you can /goal cancel
+                // to stop this") destroyed the goal by describing it.
+                //
+                // Stopping the continuation loop does not require destroying the
+                // record, so the marker now does the reversible half: timers stop,
+                // the goal survives, and a human decides whether it dies.
                 clearGoalTimers();
-                console.log('[jaw:goal] AI output contained /goal cancel — goal cancelled');
-                broadcast('goal_cancel', { goalId: activeGoal.id, source: 'ai_output' });
+                console.warn('[jaw:goal] AI output contained /goal cancel — timers cleared, goal left active for a human decision');
+                broadcast('goal_cancel_requested', { goalId: activeGoal.id, source: 'ai_output' });
             } else if (GOAL_PAUSE_RE.test(ctx.fullText)) {
                 clearGoalTimers();
                 console.log('[jaw:goal] AI output contained /goal pause — timers cleared');
