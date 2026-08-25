@@ -69,7 +69,7 @@ cli-jaw/
 │   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (228L)
 │   │   └── skill-cache.ts    ← 활성 스킬 슬래시 커맨드 캐시 (registerSkillLoader, getSkillCommandsCache, invalidateSkillCommandsCache) (44L)
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
-│   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3330L)
+│   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3322L)
 │   │   ├── spawn/            ← spawn 서브모듈 (3 files)
 │   │   │   ├── queue.ts      ← QueueItem persistent DB queue + processQueue race fix + enqueue/dequeue + drainRecoveredQueue (부팅 시 복구 큐 기동, server.ts가 transport 준비 후 호출) + `_fromQueue` 표식 (대기자 없는 턴을 채널이 답할 수 있게) (678L)
 │   │   │   ├── resume.ts     ← session resume logic + stale resume detection (117L)
@@ -121,7 +121,7 @@ cli-jaw/
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
 │   ├── messaging/            ← 통합 메시징 런타임 (32 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
-│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (405L)
+│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원) (382L)
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
 │   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (124L) ✨
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (276L) ✨
@@ -245,10 +245,10 @@ cli-jaw/
 │   ├── telegram/             ← Telegram 인터페이스 (11 files)
 │   │   ├── reactions.ts     ← ACK reaction transport + ReactionTypeEmoji allowlist + notice transport (186L)
 │   │   ├── ipv4-fetch.ts    ← IPv4 fetch factory that honours init.signal (destroys on abort) (106L)
-│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (1318L)
+│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + channel-origin text/image reply + elicitation callback + voice 핸들러 등록 (1346L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (43L)
 │   │   ├── forwarder.ts      ← text 전송 뒤 guarded local-image photo relay + escape/chunk/createForwarder (247L)
-│   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (330L)
+│   │   ├── rich-message.ts   ← Bot API 10.1 rich-first send (sendTelegramMarkdown, 32k chunk, HTML/plaintext fallback) (371L)
 │   │   ├── elicitation-buttons.ts ← single_select elicitation → inline keyboard + pending store + callback codec (110L)
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (187L)
@@ -256,7 +256,7 @@ cli-jaw/
 │   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 + channel-origin image relay (992L)
 │   │   ├── reactions.ts   ← ACK reaction transport + cancellable notice REST (122L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
-│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (188L) ✨
+│   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (201L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
 │   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (92L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (75L)
@@ -458,7 +458,7 @@ cli-jaw/
 │       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (394L)
 │       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1131L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
-│       ├── status.ts         ← 서버 상태 (--json) (86L)
+│       ├── status.ts         ← 서버 상태 (--json) (115L)
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)
 │       ├── skill.ts          ← 스킬 관리 (install/remove/info/list/reset soft·hard) (336L)
 │       ├── employee.ts       ← 직원 관리 (list/reset, REST API 호출, JSON/table 출력, 82L)
