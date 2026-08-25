@@ -199,7 +199,6 @@ export async function runHeartbeatJob(job: Record<string, any>) {
         log.info(`[heartbeat:${job["name"]}] ${queued ? 'deferred' : 'already deferred'} during active main agent (${pendingJobs.length} pending)`);
         return;
     }
-    // Main IDLE runs historically reached orchestrateAndCollect(prompt); wp4 uses its data-returning form.
     heartbeatBusy = true;
     try {
         const schedule = normalizeHeartbeatSchedule(job["schedule"]);
