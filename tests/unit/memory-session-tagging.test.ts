@@ -157,7 +157,8 @@ test('MEM-12: empty, SKIP, rejected, and failed extractor results append no entr
         { plan: { text: 'must not save', code: 2 }, advancesWatermark: false },
         { plan: { text: 'x'.repeat(64 * 1024 + 1), code: 0 }, advancesWatermark: false },
     ];
-    installSpawn(cases.map(item => item.plan));
+    const prompts: string[] = [];
+    installSpawn(cases.map(item => item.plan), prompts);
 
     for (let i = 0; i < cases.length; i++) {
         const before = readMemory();
@@ -174,10 +175,17 @@ test('MEM-12: empty, SKIP, rejected, and failed extractor results append no entr
         // behind and stops at the cap rather than at the newest insert.
         const mark = getFlushStatus().lastFlushedMessageId;
         if (cases[i]?.advancesWatermark) {
-            assert.ok(
-                mark !== null && (priorWatermark === null || mark > priorWatermark),
-                `SKIP must advance the watermark, saw ${mark} after ${priorWatermark}`,
-            );
+            // Exactly the last row that reached the prompt, not merely "further along".
+            // An overshooting mark is how rows get lost, so "it went up" is the wrong
+            // question — the prompt is the record of what was actually read.
+            const sent = prompts.at(-1) ?? '';
+            const rows = db.prepare(
+                'SELECT id, content FROM messages WHERE session_id = ? ORDER BY id ASC',
+            ).all('mem-session-a') as Array<{ id: number; content: string }>;
+            const lastSent = rows.filter(row => sent.includes(row.content)).at(-1);
+            assert.ok(lastSent, 'the SKIP case must have sent rows');
+            assert.equal(mark, lastSent.id,
+                `SKIP advances to the last row actually sent (${lastSent.content})`);
         } else {
             assert.equal(mark, priorWatermark, 'a failed extractor must leave the mark alone');
         }

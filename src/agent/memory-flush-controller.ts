@@ -173,6 +173,18 @@ export function buildFlushPrompt(vars: { memFile?: string; time: string; convo: 
             console.warn(`[memory] failed to load custom flush prompt: ${(err as Error).message}`);
         }
     }
+    // A template without {{convo}} produces a prompt containing none of the rows the
+    // caller is about to mark as flushed. The extractor still answers — off the system
+    // prompt alone — and that answer is treated as a successful summary, so the
+    // watermark advances past conversation nobody read. Merging widened the blast
+    // radius from one session to every session in the cycle.
+    //
+    // Fall back rather than fail: the flush still runs, and the person who wrote the
+    // template gets a warning instead of a silently skipped cycle.
+    if (!template.includes('{{convo}}')) {
+        console.warn('[memory] custom flush prompt has no {{convo}}; using the default template');
+        template = DEFAULT_FLUSH_PROMPT_TEMPLATE;
+    }
     // memFile is intentionally NOT exposed. The extractor returns text; cli-jaw
     // owns the append. Handing it the destination path would let a custom
     // template — or hostile conversation text — steer a direct write that

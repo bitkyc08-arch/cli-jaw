@@ -6,8 +6,9 @@ import '../setup/isolated-home.ts';
 import test, { beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { join } from 'node:path';
 
-import { settings } from '../../src/core/config.ts';
+import { settings, JAW_HOME } from '../../src/core/config.ts';
 import { db } from '../../src/core/db.ts';
 import { setActiveChatSession } from '../../src/core/chat-sessions.ts';
 import { getMemoryFlushFilePath } from '../../src/memory/runtime.ts';
@@ -82,6 +83,7 @@ beforeEach(() => {
     // Rows and watermarks together: clearing one without the other leaves marks pointing
     // at ids that no longer exist, and the next case reads nothing.
     resetFlushCountersForTest();
+    fs.rmSync(join(JAW_HOME, 'prompts', 'flush-prompt.md'), { force: true });
 });
 
 after(() => {
@@ -127,9 +129,12 @@ test('MERGE-2: each contributing session advances its own watermark', async () =
     assert.notEqual(marks()['mg-a'], marks()['mg-b'], 'one merged entry does not mean one shared mark');
 });
 
-test('MERGE-10: a session contributes an unbroken run of its rows', async () => {
+test('MERGE-10: a session contributes an unbroken run, and its mark is that run\'s end', async () => {
     // The invariant every discarded design broke. A watermark claims everything at or
     // below an id is summarised, so a take with a hole in it makes the claim false.
+    //
+    // Read the ORDER back out of the prompt rather than checking that six markers are
+    // present somewhere: presence survives a reordering or a gap that a later row fills.
     const prompts = installSpawn([{ text: 'merged summary', code: 0 }]);
     const ids = insertRows('mg-a', 'run', 6);
     insertRows('mg-b', 'other', 2);
@@ -137,11 +142,55 @@ test('MERGE-10: a session contributes an unbroken run of its rows', async () => 
     await triggerMemoryFlush();
     await waitForFlushCompletion();
 
+    const seen = ((prompts[0] ?? '').match(/run-\d+/g) ?? []).map(m => Number(m.split('-')[1]));
+    assert.deepEqual(seen, [0, 1, 2, 3, 4, 5],
+        `the take must be the session's rows in order with no gaps, saw ${JSON.stringify(seen)}`);
+    assert.equal(marks()['mg-a'], ids[seen.length - 1],
+        'and the mark is exactly the last row that reached the prompt');
+});
+
+test('MERGE-8: sessions past the prompt ceiling are deferred whole, marks untouched', async () => {
+    // Deferring a session is safe precisely because its watermark does not move. If it
+    // did, the deferred rows would be lost — the failure that killed three designs.
+    const prompts = installSpawn([{ text: 'merged summary', code: 0 }]);
+    // 10 rows x ~4k each ≈ 40k per session, so three sessions cross the 100k ceiling.
+    for (const id of ['mg-a', 'mg-b', 'mg-c']) insertRows(id, `big-${id}`, 10, 4_000);
+
+    await triggerMemoryFlush();
+    await waitForFlushCompletion();
+
     const prompt = prompts[0] ?? '';
-    for (let i = 0; i < 6; i++) {
-        assert.match(prompt, new RegExp(`run-${i}`), `row ${i} must be present — no gaps`);
+    const covered = ['mg-a', 'mg-b', 'mg-c'].filter(id => prompt.includes(`--- session ${id} ---`));
+    assert.ok(covered.length < 3, `the ceiling must defer someone, saw all ${covered.length} included`);
+    assert.ok(covered.length >= 1, 'and it must never defer everyone');
+
+    for (const id of ['mg-a', 'mg-b', 'mg-c']) {
+        if (covered.includes(id)) {
+            assert.ok(marks()[id] > 0, `${id} was summarised, so its mark advanced`);
+        } else {
+            assert.equal(marks()[id], undefined, `${id} was deferred, so its mark must NOT move`);
+        }
     }
-    assert.equal(marks()['mg-a'], ids.at(-1));
+});
+
+test('MERGE-9: a deferred session is reached within a bounded number of cycles', async () => {
+    // FIFO promises "waiting earns a slot", not "next cycle": a session behind deep
+    // backlogs waits longer. The bound is what matters — an unbounded wait is starvation
+    // wearing a different name.
+    installSpawn([]);
+    for (const id of ['mg-a', 'mg-b', 'mg-c']) insertRows(id, `big-${id}`, 10, 4_000);
+
+    const seenCovered = new Set<string>();
+    for (let cycle = 0; cycle < 5 && seenCovered.size < 3; cycle++) {
+        const outcome = await triggerMemoryFlush();
+        if (outcome !== 'started') break;
+        await waitForFlushCompletion();
+        for (const id of ['mg-a', 'mg-b', 'mg-c']) {
+            if (marks()[id] !== undefined) seenCovered.add(id);
+        }
+    }
+    assert.deepEqual([...seenCovered].sort(), ['mg-a', 'mg-b', 'mg-c'],
+        'every session must be reached within a few cycles');
 });
 
 test('MERGE-4/12: the manual flush stays single-session and keeps its heading', async () => {
@@ -179,6 +228,10 @@ test('MERGE-5: an oversized row is truncated rather than walling off its session
 
     const prompt = prompts[0] ?? '';
     assert.match(prompt, /… \[truncated\]/, 'the row is capped');
+    // Exact size, not just "smaller": a cap that trims to some other length would pass a
+    // loose bound while breaking the ceiling arithmetic that depends on it.
+    const body = (prompt.match(/\[user\] huge-0-x+… \[truncated\]/) ?? [''])[0].replace('[user] ', '');
+    assert.equal(body.length, 4_000, `a capped row is exactly 4000 chars, saw ${body.length}`);
     assert.ok(prompt.length < 20_000, `the prompt stays bounded, saw ${prompt.length}`);
     assert.equal(marks()['mg-a'], ids.at(-1), 'and the watermark still passes the capped row');
 });
@@ -261,8 +314,11 @@ test('MERGE-11b: a negative flushEvery cannot become an unbounded LIMIT', async 
     assert.equal(await triggerMemoryFlush(), 'started');
     await waitForFlushCompletion();
 
-    const seen = (prompts[0] ?? '').match(/neg-\d+/g) ?? [];
-    assert.equal(seen.length, 1, `a clamped limit reads one row, not an unbounded scan; saw ${seen.length}`);
+    const prompt = prompts[0] ?? '';
+    // Both sessions, so the clamp is proved everywhere rather than on whichever one the
+    // regex happened to name.
+    assert.equal((prompt.match(/neg-\d+/g) ?? []).length, 1, 'session A reads one row');
+    assert.equal((prompt.match(/negb-\d+/g) ?? []).length, 1, 'session B reads one row');
 });
 
 test('MERGE-13: nothing to summarise reports insufficient and writes nothing', async () => {
@@ -270,4 +326,23 @@ test('MERGE-13: nothing to summarise reports insufficient and writes nothing', a
     const before = readMemory();
     assert.equal(await triggerMemoryFlush(), 'insufficient');
     assert.equal(readMemory(), before);
+});
+
+test('MERGE-14: a template without {{convo}} cannot advance marks past unread rows', async () => {
+    // The prompt is what the extractor reads; the watermark says those rows are done. A
+    // template that drops {{convo}} breaks that pairing — the extractor answers off the
+    // system prompt alone and every session in the cycle is marked flushed unread.
+    // Merging made this worse: it used to cost one session, now it costs all of them.
+    const customPath = join(JAW_HOME, 'prompts', 'flush-prompt.md');
+    fs.mkdirSync(join(customPath, '..'), { recursive: true });
+    fs.writeFileSync(customPath, 'Summarise the conversation. Time is {{time}}.');
+
+    const prompts = installSpawn([{ text: 'merged summary', code: 0 }]);
+    insertRows('mg-a', 'unread', 4);
+
+    await triggerMemoryFlush();
+    await waitForFlushCompletion();
+
+    assert.match(prompts[0] ?? '', /unread-0/,
+        'the rows being marked flushed must actually appear in the prompt');
 });
