@@ -25,6 +25,9 @@ export async function drainPendingWebAiNotifications(
             channel: 'active',
             type: 'text',
             text: formatWebAiNotification(event),
+            // Drained when a watcher finishes, which can be long after the request
+            // that started it — by then last-active names an unrelated thread (#438).
+            preferConfiguredTarget: true,
         });
         if (result.ok) {
             sent += 1;

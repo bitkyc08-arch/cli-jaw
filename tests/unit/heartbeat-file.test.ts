@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 import { HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } from '../../src/core/config.ts';
 import { clearPromptCache, getSystemPrompt } from '../../src/prompt/builder.ts';
-import { normalizeHeartbeatPutRunnerFields } from '../../src/routes/heartbeat.ts';
+import { normalizeHeartbeatPutRunnerFields, resolveHeartbeatDestination } from '../../src/routes/heartbeat.ts';
 
 test('loadHeartbeatFile returns empty jobs only when heartbeat file is absent', () => {
     fs.rmSync(HEARTBEAT_JOBS_PATH, { force: true });
@@ -62,3 +62,56 @@ test('PUT normalization rejects an unknown employee', () => {
     const result = normalizeHeartbeatPutRunnerFields({ runner: 'employee', employee: 'missing' }, undefined, new Set(['known']));
     assert.deepEqual(result, { ok: false, error: 'unknown heartbeat employee' });
 });
+
+// ─── destination survives a UI save (#437) ──────────
+//
+// Every shipped UI rebuilds a job from a fixed five-field shape, so a field they
+// do not render is absent from the PUT body. If absence meant "clear", one
+// ordinary "Save jobs" click would silently unpin every scheduled report and
+// hand it back to the last-active resolver — the exact bug being fixed.
+
+test('a UI-shaped PUT that omits destination preserves the stored one', () => {
+    const existing = { channel: 'slack' as const, targetId: 'C_REPORTS', threadId: '1787616871.254919' };
+    const strippedUiJob = { id: 'pinned', name: 'pinned', enabled: true, schedule: { minutes: 5 }, prompt: 'check' };
+    const result = resolveHeartbeatDestination(strippedUiJob, existing);
+    assert.deepEqual(result, { ok: true, destination: existing });
+});
+
+test('an explicit null clears the destination', () => {
+    const existing = { channel: 'slack' as const, targetId: 'C_REPORTS' };
+    const result = resolveHeartbeatDestination({ destination: null }, existing);
+    assert.deepEqual(result, { ok: true, destination: undefined },
+        'unsetting must remain possible, so null is not folded into absence');
+});
+
+test('a supplied destination replaces the stored one', () => {
+    const result = resolveHeartbeatDestination(
+        { destination: { channel: 'slack', targetId: 'C_NEW' } },
+        { channel: 'slack', targetId: 'C_OLD' },
+    );
+    assert.deepEqual(result, { ok: true, destination: { channel: 'slack', targetId: 'C_NEW' } });
+});
+
+test('a malformed destination is rejected rather than half-applied', () => {
+    assert.deepEqual(
+        resolveHeartbeatDestination({ destination: { channel: 'slack' } }, undefined),
+        { ok: false, error: 'invalid heartbeat destination' });
+    assert.deepEqual(
+        resolveHeartbeatDestination({ destination: { channel: 'irc', targetId: 'x' } }, undefined),
+        { ok: false, error: 'invalid heartbeat destination' });
+});
+
+test('no destination anywhere stays absent', () => {
+    assert.deepEqual(resolveHeartbeatDestination({ id: 'j' }, undefined), { ok: true, destination: undefined });
+});
+
+test('a destination written directly to the file survives load', () => {
+    const destination = { channel: 'slack' as const, targetId: 'C_REPORTS', threadId: '1787616871.254919' };
+    try {
+        saveHeartbeatFile({ jobs: [{ id: 'pinned', prompt: 'check', destination }] });
+        assert.deepEqual(loadHeartbeatFile().jobs[0]?.destination, destination);
+    } finally {
+        saveHeartbeatFile({ jobs: [] });
+    }
+});
+

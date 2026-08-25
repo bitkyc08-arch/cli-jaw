@@ -8,10 +8,13 @@ import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } f
 import { stripUndefined } from '../core/strip-undefined.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import { orchestrateAndCollectData } from '../orchestrator/collect.js';
-import { claimWorker, failWorker, finishWorker, WorkerBusyError } from '../orchestrator/worker-registry.js';
+import { claimWorker, failWorker, finishWorker, markWorkerReplayed, WorkerBusyError } from '../orchestrator/worker-registry.js';
 import { hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 import { broadcast } from '../core/bus.js';
-import { sendChannelOutput } from '../messaging/send.js';
+import { sendChannelOutput, targetFromChatId } from '../messaging/send.js';
+import { isHeartbeatDestination } from '../core/config.js';
+import type { HeartbeatDestination } from '../core/config.js';
+import type { RemoteTarget } from '../messaging/types.js';
 import { getEmployees, insertHeartbeatAnchor } from '../core/db.js';
 import type { EmployeeRow } from '../core/employees.js';
 import { runSingleAgent } from '../orchestrator/distribute.js';
@@ -49,6 +52,27 @@ const pendingJobs: PendingHeartbeatJob[] = [];
 
 export function isHeartbeatQuietOutput(result: string, extraMarkers: string[] = []): boolean {
     return ['[SILENT]', ...extraMarkers].some(marker => marker.length > 0 && result.includes(marker));
+}
+
+/** Turn a stored destination into a send target.
+ *
+ *  The stored shape carries only what an operator can reasonably know: which
+ *  transport, which conversation, and optionally which thread. `targetKind` and
+ *  `peerKind` are derived from the id — Slack's C/D/G prefixes decide them — so
+ *  `targetFromChatId` owns that mapping rather than the heartbeat file.
+ *
+ *  `pinned` distinguishes the two ways this returns no target, because they must
+ *  not be delivered the same way. A job that never named a destination keeps the
+ *  legacy active-channel path. A job that DID name one but wrote it wrong has
+ *  stated an intent the resolver cannot satisfy — falling back there would send
+ *  a report meant for one channel to whoever spoke last, which is the failure
+ *  this whole change exists to stop (#437). */
+export function heartbeatTarget(destination: unknown): { pinned: boolean; target: RemoteTarget | null } {
+    if (destination === undefined || destination === null) return { pinned: false, target: null };
+    if (!isHeartbeatDestination(destination)) return { pinned: true, target: null };
+    const dest = destination as HeartbeatDestination;
+    const target = targetFromChatId(dest.channel, dest.targetId);
+    return { pinned: true, target: dest.threadId ? { ...target, threadId: dest.threadId } : target };
 }
 
 function pendingSnapshot(reason?: HeartbeatPendingReason, policy?: HeartbeatPendingPolicy) {
@@ -144,6 +168,11 @@ async function runEmployee(job: Record<string, any>, prompt: string): Promise<He
             const result = await runSingleAgent(ap, emp, { tag: `heartbeat:${job["id"] || job["name"]}` }, 1, { origin: 'heartbeat' }, []);
             const text = String(result["text"] || '');
             finishWorker(slot.agentId, text, Array.isArray(result["tools"]) ? result["tools"] : []);
+            // finishWorker arms a replay for a Boss to collect. A heartbeat has no
+            // Boss, so nobody ever collected it — and processQueue skips any scope
+            // with a pending replay, so one employee heartbeat left the default
+            // queue permanently stalled behind a handoff that would never happen.
+            markWorkerReplayed(slot.agentId);
             return parseHeartbeatReport(text);
         } catch (error) {
             failWorker(slot.agentId, error instanceof Error ? error.message : String(error));
@@ -175,7 +204,6 @@ export async function runHeartbeatJob(job: Record<string, any>) {
         log.info(`[heartbeat:${job["name"]}] ${queued ? 'deferred' : 'already deferred'} during active main agent (${pendingJobs.length} pending)`);
         return;
     }
-    // Main IDLE runs historically reached orchestrateAndCollect(prompt); wp4 uses its data-returning form.
     heartbeatBusy = true;
     try {
         const schedule = normalizeHeartbeatSchedule(job["schedule"]);
@@ -218,8 +246,26 @@ export async function runHeartbeatJob(job: Record<string, any>) {
 
         log.info(`[heartbeat:${job["name"]}] response: ${result.slice(0, 80)}`);
 
-        // Send heartbeat result via active messaging channel
-        const sendResult = decision.send ? await sendChannelOutput({ channel: 'active', type: 'text', text: formatted }) : { ok: true as const };
+        // A job with a destination goes THERE and nowhere else. Without one the
+        // send falls back to whichever conversation spoke to the bot most
+        // recently, which is not a property of this job at all — that is how two
+        // scheduled reports landed in an unrelated design thread (#437). Jobs
+        // with no destination keep the legacy behaviour on purpose: defaulting
+        // them to "do not send" would silence every existing install.
+        const { pinned, target } = heartbeatTarget(job["destination"]);
+        if (pinned && !target) {
+            // Stated an intent we cannot honour. Refusing is the point: delivering
+            // to the active channel would put this report wherever the last
+            // conversation happened to be.
+            log.error(`[heartbeat:${job["name"]}] malformed destination — not delivered`);
+        }
+        const sendResult = !decision.send
+            ? { ok: true as const }
+            : pinned
+                ? (target
+                    ? await sendChannelOutput({ channel: target.channel, type: 'text', text: formatted, target, allowActiveFallback: false })
+                    : { ok: false as const, error: 'invalid heartbeat destination' })
+                : await sendChannelOutput({ channel: 'active', type: 'text', text: formatted });
         if (!sendResult.ok) {
             log.error(`[heartbeat:${job["name"]}] send failed: ${sendResult.error}`);
         }
@@ -229,7 +275,7 @@ export async function runHeartbeatJob(job: Record<string, any>) {
             const now = Date.now();
             try {
                 insertHeartbeatAnchor.run(
-                    job["id"], job["name"], settings["workingDir"], 'active', null,
+                    job["id"], job["name"], settings["workingDir"], target?.channel ?? 'active', target?.targetId ?? null,
                     job["prompt"], decision.delivered ? formatted : `[quiet] ${formatted}`, now, decision.delivered ? now : null,
                 );
             } catch (e) {

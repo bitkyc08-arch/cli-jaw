@@ -89,7 +89,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
     });
 
     // Key-value memory
-    app.get('/api/memory', (_, res) => ok(res, getMemory.all()));
+    app.get('/api/memory', requireAuth, (_, res) => ok(res, getMemory.all()));
     app.post('/api/memory', requireAuth, (req, res) => {
         const { key, value, source = 'manual' } = req.body;
         if (!key || !value) return fail(res, 400, 'key and value required');
@@ -104,7 +104,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
     });
 
     // Memory files (integrated + Claude native)
-    app.get('/api/memory-files', (_, res) => {
+    app.get('/api/memory-files', requireAuth, (_, res) => {
         const memDir = memoryModule.MEMORY_DIR;
         const files = memoryModule.list()
             .sort((a, b) => b.path.localeCompare(a.path))
@@ -126,7 +126,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
         });
     });
 
-    app.get('/api/memory-file', (req, res) => {
+    app.get('/api/memory-file', requireAuth, (req, res) => {
         try {
             const name = assertMemoryRelPath(String(req.query["path"] || ''), { allowExt: ['.md', '.txt', '.json'] });
             const fp = safeResolveUnder(memoryModule.MEMORY_DIR, name);

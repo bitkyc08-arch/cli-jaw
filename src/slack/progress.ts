@@ -54,6 +54,15 @@ export function statusFromToolEvent(data: Record<string, unknown>, fallback: str
  */
 export function sanitizeProgressDetail(detail: string): string {
     if (!detail) return '';
+    // A search pattern is not a file the reader recognises — it is the query the
+    // agent wrote, and it names internal routes and API methods. On 2026-08-25 a
+    // Slack thread showed a raw grep pattern (channel/send, files.upload, a photo
+    // wildcard) for six minutes while the answer was still being written, because
+    // the token rules below only knew about absolute paths and executables (#440).
+    //
+    // Detected structurally rather than by keyword: regex metacharacters are what
+    // make a string a pattern, and an ordinary filename detail has none.
+    if (looksLikeSearchPattern(detail)) return '';
     // Strip content that looks like a file path or command invocation.
     // Approach: split on whitespace, redact tokens that look sensitive, rejoin.
     const tokens = detail.split(/\s+/);
@@ -66,6 +75,11 @@ export function sanitizeProgressDetail(detail: string): string {
         if (/^https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(token)) return '…';
         // Executable names with .exe suffix
         if (/^"?(?:pwsh|powershell|bash|cmd|node)(?:\.exe)?"?$/i.test(token)) return '…';
+        // Internal API method names (a dotted lowercase identifier such as an
+        // upload or post call). Never a word a channel reader needs; the suffix
+        // check keeps real filenames visible.
+        if (/^[a-z][a-z0-9]*\.[a-z][a-zA-Z0-9]*$/.test(token)
+            && !/\.(md|txt|json|ts|js|py|html|css|yml|yaml|sh|log)$/i.test(token)) return '…';
         return token;
     });
     // Remove consecutive redacted tokens
@@ -76,6 +90,15 @@ export function sanitizeProgressDetail(detail: string): string {
     }
     const cleaned = deduped.join(' ').trim();
     return cleaned === '…' ? '' : cleaned;
+}
+
+/** Does this detail read as a search query rather than a human-meaningful label?
+ *
+ *  Alternation, wildcards, character classes and anchors are the marks of a
+ *  pattern. Requiring one of those keeps ordinary details like a source path or
+ *  a README name visible, which is the whole value of the progress line. */
+function looksLikeSearchPattern(detail: string): boolean {
+    return /[|*+?\[\]()^$]/.test(detail) || /\\[a-zA-Z]/.test(detail);
 }
 
 export async function startSlackProgress(

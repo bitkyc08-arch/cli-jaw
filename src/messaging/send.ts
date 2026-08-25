@@ -47,6 +47,19 @@ export type ChannelSendRequest = {
      *  fidelity. Absent means the caller would rather be told it is unsupported
      *  than have the message quietly arrive as something else. */
     interactiveFallback?: 'text';
+    /** Non-interactive senders (heartbeats, scheduled jobs) set this to false so a
+     *  missing target FAILS instead of silently resolving to whoever spoke last.
+     *  The last-active chain exists for CONVERSATIONAL replies where "this
+     *  conversation" is the obvious destination (#397); a scheduled report has no
+     *  such context, so inheriting one delivers it to an unrelated thread (#437).
+     *  Absent keeps the historical behaviour — every existing caller is unchanged. */
+    allowActiveFallback?: boolean;
+    /** Skip the two volatile slots and resolve straight to the configured
+     *  allowlist. For reminders, watcher notifications and alerts, which have a
+     *  destination in the operator sense (the channel that was set up to receive
+     *  them) but not a conversational one — so last-active is wrong while failing
+     *  outright would be worse than delivering somewhere stable (#438). */
+    preferConfiguredTarget?: boolean;
 };
 
 // ─── Transport Send Registry ────────────────────────
@@ -220,7 +233,7 @@ export function validateTarget(
     return true;
 }
 
-function targetFromChatId(channel: MessengerChannel, chatId: string | number): RemoteTarget {
+export function targetFromChatId(channel: MessengerChannel, chatId: string | number): RemoteTarget {
     const targetId = String(chatId);
     switch (channel) {
         case 'telegram':
@@ -320,11 +333,18 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     }
 
     // Resolve target: explicit > validated lastActive > validated latestSeen > configured fallback > error
-    if (!req.target) {
-        const last = getLastActiveTarget(channel);
+    //
+    // Gated on allowActiveFallback: a scheduled sender opts OUT of this chain
+    // entirely (#437). Without that opt-out a heartbeat with no target inherits
+    // whichever conversation last spoke to the bot, which is how two reports
+    // landed in an unrelated design thread on 2026-08-25.
+    if (!req.target && req.allowActiveFallback !== false) {
+        const configuredFirst = req.preferConfiguredTarget ? getConfiguredFallbackTarget(channel) : null;
+        if (configuredFirst) req.target = configuredFirst;
+        const last = req.target ? null : getLastActiveTarget(channel);
         if (last && validateTarget(last, channel)) {
             req.target = last;
-        } else {
+        } else if (!req.target) {
             if (last) clearTargetState(channel); // stale cached target — clear it
             const seen = getLatestSeenTarget(channel);
             if (seen && validateTarget(seen, channel)) {

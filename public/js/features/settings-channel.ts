@@ -1,5 +1,5 @@
 // ── Active Channel & Fallback Order ──
-import { apiJson } from '../api.js';
+import { apiJson, api } from '../api.js';
 import { escapeHtml } from '../render.js';
 import { getCliMeta } from '../constants.js';
 import { providerLabel } from '../provider-icons.js';
@@ -11,16 +11,29 @@ import type { SettingsData } from './settings-types.js';
 export type MessengerChannel = 'telegram' | 'discord' | 'slack';
 const CHANNELS: MessengerChannel[] = ['telegram', 'discord', 'slack'];
 
-function readEnabledChannelsFromUi(): MessengerChannel[] {
-    // Classic UI does not yet expose a unified enabled-channel list.
-    // Returning [] means enabling a channel sends a singleton enabled set,
-    // which preserves the legacy single-active-channel behavior until the
-    // Classic UI gains per-channel enabled checkboxes.
-    return [];
+/** Read the enabled set from the server rather than rebuilding it from nothing.
+ *
+ *  This returned [], so every toggle sent a SINGLETON set. Under the v3 model
+ *  that was harmless — one channel was active at a time. Under v4 it means
+ *  enabling a channel tears down every other gateway, because
+ *  restartMessagingRuntime acts on the enabled-set difference: someone running
+ *  Slack and Telegram lost Telegram inbound by touching the Slack tab (#445). */
+async function readEnabledChannels(): Promise<MessengerChannel[]> {
+    try {
+        const data = await api<Record<string, unknown>>('/api/settings');
+        const messaging = data?.['messaging'] as { enabledChannels?: unknown } | undefined;
+        const enabled = messaging?.enabledChannels;
+        if (!Array.isArray(enabled)) return [];
+        return enabled.filter((c): c is MessengerChannel => CHANNELS.includes(c as MessengerChannel));
+    } catch {
+        // Unreadable state is not evidence that nothing is enabled; returning []
+        // would recreate the very bug this replaces.
+        return [];
+    }
 }
 
 export async function setChannelEnabled(ch: MessengerChannel, enabled: boolean): Promise<void> {
-    const current = readEnabledChannelsFromUi();
+    const current = await readEnabledChannels();
     const enabledChannels = enabled
         ? [...new Set([...current, ch])]
         : current.filter(item => item !== ch);

@@ -1,4 +1,5 @@
 // ─── Skill Slash Command Handler ──────────────────────
+import { sessionScopeMeta } from './session-scope-meta.js';
 // Handles /skill:<id> execution — injects SKILL.md as steerPrompt.
 
 import { getSkillCommandsCache } from '../core/skill-cache.js';
@@ -28,7 +29,11 @@ export async function executeSkillCommand(
     const iface = ctx.interface || 'web';
     if (iface !== 'telegram' && iface !== 'discord' && iface !== 'slack') {
         const { submitMessage } = await import('../orchestrator/gateway.js');
-        submitMessage(steerPrompt, { origin: iface as 'cli' | 'web' });
+        // Carry the tab's session through. Without it the message lands in the
+        // tab's chat session while the queue and PABCD scope fall back to
+        // 'default', so the turn queues behind unrelated work and runs outside
+        // the session's own lane.
+        submitMessage(steerPrompt, { origin: iface as 'cli' | 'web', ...sessionScopeMeta() });
         const { steerPrompt: _stripped, ...rest } = result;
         return rest;
     }

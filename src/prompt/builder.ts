@@ -1044,7 +1044,10 @@ export function getEmployeePromptV2(
     // --mutable: override the hard read-only block in employee.md
     if (opts?.mutable) {
         prompt = prompt.replace(
-            /- ⛔ Do NOT create, modify, or delete files\..*/,
+            // Must track employee.md. The previous pattern named a sentence that
+            // template no longer contains, so the replace silently matched nothing
+            // and --mutable left the prompt still saying writes were blocked (#442).
+            /- File writes are blocked unless the Boss explicitly grants `--mutable`\./,
             `- ✅ You are authorized to create or modify files${opts.scope ? ` inside \`${opts.scope}\`` : ''}. Protected paths (.git, .env, settings.json) remain blocked.`,
         );
     }

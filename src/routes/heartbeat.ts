@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
-import { loadHeartbeatFile, saveHeartbeatFile } from '../core/config.js';
+import { loadHeartbeatFile, saveHeartbeatFile, isHeartbeatDestination } from '../core/config.js';
+import type { HeartbeatDestination } from '../core/config.js';
 import { startHeartbeat } from '../memory/heartbeat.js';
 import { validateHeartbeatScheduleInput } from '../memory/heartbeat-schedule.js';
 import { getEmployees } from '../core/db.js';
@@ -9,6 +10,29 @@ import { stripUndefined } from '../core/strip-undefined.js';
 
 type RunnerFields = Pick<import('../core/config.js').HeartbeatJob, 'runner' | 'employee' | 'command' | 'reportPolicy'>;
 export type HeartbeatPutRunnerResult = { ok: true; fields: RunnerFields } | { ok: false; error: string };
+
+/** Resolve the destination a PUT should persist.
+ *
+ *  Every shipped UI (Classic `normalizeHeartbeatJob`, Manager `safeJob`) rebuilds
+ *  each job from a fixed five-field shape, so a field they do not know about is
+ *  absent from the body rather than explicitly cleared. Inheriting on absence is
+ *  what keeps an ordinary "Save jobs" click from deleting a destination the UI
+ *  cannot even display — the same reason runner fields already inherit.
+ *
+ *  An explicit `null` is the deliberate clear, and is NOT folded into undefined:
+ *  doing so would make unsetting impossible from any client. */
+export function resolveHeartbeatDestination(
+    job: Record<string, unknown>,
+    existing: HeartbeatDestination | null | undefined,
+): { ok: true; destination: HeartbeatDestination | undefined } | { ok: false; error: string } {
+    if (!Object.prototype.hasOwnProperty.call(job, 'destination')) {
+        return { ok: true, destination: existing ?? undefined };
+    }
+    const raw = job['destination'];
+    if (raw === null) return { ok: true, destination: undefined };
+    if (!isHeartbeatDestination(raw)) return { ok: false, error: 'invalid heartbeat destination' };
+    return { ok: true, destination: raw };
+}
 
 export function normalizeHeartbeatPutRunnerFields(
     job: Record<string, unknown>,
@@ -39,7 +63,7 @@ export function normalizeHeartbeatPutRunnerFields(
 }
 
 export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddleware): void {
-    app.get('/api/heartbeat', (_req, res) => res.json(loadHeartbeatFile()));
+    app.get('/api/heartbeat', requireAuth, (_req, res) => res.json(loadHeartbeatFile()));
 
     app.put('/api/heartbeat', requireAuth, (req, res) => {
         const data = req.body;
@@ -70,6 +94,8 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
             const existing = existingById.get(jobId);
             const runnerResult = normalizeHeartbeatPutRunnerFields(job, existing, employeeNames);
             if (!runnerResult.ok) { res.status(400).json({ error: runnerResult.error, index, jobId }); return; }
+            const destResult = resolveHeartbeatDestination(job, existing?.destination);
+            if (!destResult.ok) { res.status(400).json({ error: destResult.error, index, jobId }); return; }
             normalizedJobs.push(stripUndefined({
                 id: jobId,
                 name: typeof job["name"] === 'string' ? job["name"] : '',
@@ -77,6 +103,7 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
                 schedule: scheduleResult.schedule,
                 prompt: typeof job["prompt"] === 'string' ? job["prompt"] : '',
                 ...runnerResult.fields,
+                destination: destResult.destination,
             }));
         }
         const payload = { jobs: normalizedJobs };

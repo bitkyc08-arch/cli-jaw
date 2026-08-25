@@ -322,7 +322,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `system_notice` | compact refresh 같은 시스템 공지 |
 | `heartbeat_pending` | pending heartbeat job 수 |
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | distributed worker 상태 변화; 같은 상태가 `/api/orchestrate/worker-progress`의 safe `attention` metadata에도 반영됨 |
-| `goal_done` / `goal_done_rejected` / `goal_cancel` / `goal_continuation` / `goal_continuation_failed` / `goal_continuation_limit` | durable goal / bounded continuation lifecycle |
+| `goal_done` / `goal_done_rejected` / `goal_cancel_requested` / `goal_continuation` / `goal_continuation_failed` / `goal_continuation_limit` | durable goal / bounded continuation lifecycle. `goal_cancel_requested` replaced `goal_cancel`: an AI-authored marker now clears timers and asks, rather than archiving the goal outright (#441) |
 | `goal_pause_detected` / `goal_pause_gate_pending` | goal pause 2-tap gate 감지 및 pending gate continuation suppression |
 | `session_switched` / `session_created` / `session_list` | multi-session state update |
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |

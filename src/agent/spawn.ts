@@ -674,6 +674,27 @@ export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default'
     });
 }
 
+/** Wait for EVERY scope to finish exiting, bounded.
+ *
+ *  `killAllAgents` only sends the signal; it returns long before the children
+ *  are gone and before their exit handlers have written anything. Shutdown then
+ *  closed the database underneath those handlers, so the last turn of a restart
+ *  lost its assistant message, its session row and its trace, and the caller
+ *  waiting on that turn was never resolved (#439).
+ *
+ *  Bounded on purpose: a wedged child must not hold the process open past the
+ *  force-exit budget. Returning on timeout is the same outcome as today, minus
+ *  the common case where the child would have finished in milliseconds. */
+export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
+    if (activeMainProcesses.size === 0) return Promise.resolve();
+    return new Promise<void>(resolve => {
+        const check = setInterval(() => {
+            if (activeMainProcesses.size === 0) { clearInterval(check); clearTimeout(deadline); resolve(); }
+        }, 50);
+        const deadline = setTimeout(() => { clearInterval(check); resolve(); }, timeoutMs);
+    });
+}
+
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
     return run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true;

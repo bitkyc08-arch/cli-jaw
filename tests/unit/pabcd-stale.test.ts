@@ -25,8 +25,14 @@ test('PS-002: server.ts calls resetAllStaleStates on startup', () => {
 });
 
 test('PS-003: orchestrate reset route supports ?all=true', () => {
-    assert.ok(routesSrc.includes('resetAllStaleStates'),
-        'reset route must call resetAllStaleStates');
+    // Was: assert the route calls resetAllStaleStates. That pinned the defect —
+    // `?all=true` ran the stale-only statement, so the mid-phase scope an
+    // operator reaches for this endpoint to clear was skipped unless it had been
+    // stuck for over a day (#452).
+    assert.ok(routesSrc.includes('resetEveryState'),
+        'a parameter named all must reset all of them');
+    assert.ok(!routesSrc.includes('resetAllStaleStates'),
+        'the age-filtered variant belongs to startup, not to an explicit reset');
     assert.ok(routesSrc.includes("all === 'true'") || routesSrc.includes('all === true'),
         'reset route must check all parameter');
 });

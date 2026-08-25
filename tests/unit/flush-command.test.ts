@@ -6,6 +6,15 @@ import { join, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 import { flushHandler } from '../../src/cli/handlers.ts';
 import { migrateSettings } from '../../src/core/config.ts';
+import { resetOpenCodexModelCacheForTest } from '../../src/cli/opencodex-models.ts';
+
+// withIsolatedPath controls which CLI BINARIES are visible, but model→CLI
+// inference also consults the live opencodex catalog, so on a machine running
+// opencodex this test resolved through that daemon's models and picked a CLI the
+// isolated PATH never contained (#447). Removing the runtime keeps the inference
+// on the static registry the assertion is written against.
+process.env['CLI_JAW_OPENCODEX_DIR'] = join(tmpdir(), 'cli-jaw-test-no-opencodex');
+resetOpenCodexModelCacheForTest();
 
 // ─── Mock helpers ────────────────────────────────────
 // Note: locales are NOT loaded in test context, so t() falls back to key name.
