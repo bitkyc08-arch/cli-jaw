@@ -383,7 +383,7 @@ registerBgtaskRoutes(app, requireAuth);
 registerEventsRoutes(app, requireAuth);
 registerInstanceRoutes(app);
 registerChatSessionRoutes(app, requireAuth);
-registerMessageRoutes(app);
+registerMessageRoutes(app, requireAuth);
 const searchRegistry = new SearchProviderRegistry();
 searchRegistry.register(new ChatSearchProvider(settings['search'].engine));
 searchRegistry.register(new MemorySearchProvider(settings['memory'].enabled));

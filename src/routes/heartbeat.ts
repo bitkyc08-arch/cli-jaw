@@ -63,7 +63,7 @@ export function normalizeHeartbeatPutRunnerFields(
 }
 
 export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddleware): void {
-    app.get('/api/heartbeat', (_req, res) => res.json(loadHeartbeatFile()));
+    app.get('/api/heartbeat', requireAuth, (_req, res) => res.json(loadHeartbeatFile()));
 
     app.put('/api/heartbeat', requireAuth, (req, res) => {
         const data = req.body;

@@ -4,6 +4,7 @@
 // (Not to be confused with routes/messaging.ts — channel transport routes.)
 
 import type { Router } from 'express';
+import type { AuthMiddleware } from './types.js';
 import { ok } from '../http/response.js';
 import {
     getMessages, getMessagesWithTrace, getRecentMessagesAll, getRecentMessagesAllWithTrace,
@@ -50,8 +51,8 @@ export function resolveToolLog(
     return sanitizeSerializedToolLog(blobToolLog);
 }
 
-export function registerMessageRoutes(app: Router): void {
-    app.get('/api/messages', (req, res) => {
+export function registerMessageRoutes(app: Router, requireAuth: AuthMiddleware): void {
+    app.get('/api/messages', requireAuth, (req, res) => {
         const includeTrace = ['1', 'true', 'yes'].includes(String(req.query["includeTrace"] || '').toLowerCase());
         // Optional recent-window: `?limit=N` returns only the most recent N messages
         // (still ascending) so the chat boot/instance-switch payload stays small.
@@ -78,7 +79,7 @@ export function registerMessageRoutes(app: Router): void {
         ok(res, { count: row?.count ?? 0 });
     });
 
-    app.get('/api/messages/search', (req, res) => {
+    app.get('/api/messages/search', requireAuth, (req, res) => {
         const q = String(req.query['q'] || '').trim();
         if (!q) return ok(res, []);
         const limit = Math.min(Math.max(Number(req.query['limit']) || 20, 1), 50);
@@ -114,7 +115,7 @@ export function registerMessageRoutes(app: Router): void {
         ok(res, results);
     });
 
-    app.get('/api/messages/latest', (_req, res) => {
+    app.get('/api/messages/latest', requireAuth, (_req, res) => {
         const includeContent = ['1', 'true', 'yes'].includes(String(_req.query["includeContent"] || '').toLowerCase());
         const latestRow = getLatestAssistantMessage.get(getActiveChatSession()) as {
             id?: number;

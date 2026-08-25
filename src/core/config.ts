@@ -1254,6 +1254,17 @@ export function serializeSettingsForSave(candidate: SettingsStateCandidate): str
     if (value["slack"] && typeof value["slack"] === 'object') {
         for (const key of slackEnvironmentManagedSettingKeys()) delete value["slack"][key];
     }
+    // Same rule, the other two channels. applyEnvOverrides writes the env token
+    // onto the live settings object, so any later save — a port write, a target
+    // persist — copied that secret onto disk. Slack was stripped here; Telegram
+    // and Discord were not, which contradicted the documented promise that env
+    // values never enter settings.json (#449).
+    if (process.env["TELEGRAM_TOKEN"] && value["telegram"] && typeof value["telegram"] === 'object') {
+        delete value["telegram"].token;
+    }
+    if (process.env["DISCORD_TOKEN"] && value["discord"] && typeof value["discord"] === 'object') {
+        delete value["discord"].token;
+    }
     const runtime = value["runtime"];
     if (candidate.shape === 'absent' && runtime?.codexApp?.multiplex === false) {
         delete runtime.codexApp.multiplex;
