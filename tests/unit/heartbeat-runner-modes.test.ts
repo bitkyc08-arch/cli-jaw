@@ -169,14 +169,38 @@ test('a job without a destination keeps the legacy active-channel behaviour', as
         'existing installs must not start failing to deliver');
 });
 
-test('a malformed destination falls back rather than throwing inside a scheduled run', async () => {
+test('a malformed destination is refused, not redirected to the active channel', async () => {
+    // A job that named a destination has stated an intent. When that intent
+    // cannot be resolved, delivering to whoever spoke last is the original bug
+    // wearing a different hat — the report still lands in an unrelated place.
     sent.length = 0; sentRequests.length = 0;
     await runHeartbeatJob({
         id: 'bad', name: 'bad', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
         destination: { channel: 'slack' },
     });
 
-    assert.equal(sentRequests[0]?.['channel'], 'active');
+    assert.equal(sentRequests.length, 0, 'a broken pin must not deliver anywhere');
+});
+
+test('a destination naming an unknown transport is refused too', async () => {
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({
+        id: 'bad-channel', name: 'bad-channel', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'irc', targetId: 'C_X' },
+    });
+
+    assert.equal(sentRequests.length, 0);
+});
+
+test('a scheduled run survives a malformed destination without throwing', async () => {
+    // Refusing to deliver must not take the heartbeat loop down with it.
+    await runHeartbeatJob({
+        id: 'bad-survives', name: 'bad-survives', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { targetId: 'C_X' },
+    });
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({ id: 'after', name: 'after', enabled: true, schedule: { minutes: 5 }, prompt: 'check' });
+    assert.equal(sentRequests.length, 1, 'the next job still runs');
 });
 
 test('the anchor records where the report actually went', async () => {
@@ -191,4 +215,3 @@ test('the anchor records where the report actually went', async () => {
     assert.equal(anchors.at(-1)?.[3], 'slack');
     assert.equal(anchors.at(-1)?.[4], 'C_REPORTS');
 });
-

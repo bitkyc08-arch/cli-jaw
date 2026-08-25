@@ -605,3 +605,44 @@ test('the default is unchanged: omitting the flag still resolves through last-ac
         assert.equal(capture.requests[0]?.target?.targetId, 'C_CURRENT');
     });
 });
+
+test('resolution falls through last-active to latest-seen when the last-active target is gone', async () => {
+    // The three-step order used to be asserted by reading send.ts as text. This
+    // exercises it instead: with no last-active recorded, the latest-seen slot is
+    // what a reply must reach.
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLatestSeenTarget } = await import('../../src/messaging/runtime.js');
+        setLatestSeenTarget('slack', slackTarget('C_SEEN'));
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_SEEN');
+    });
+});
+
+test('resolution falls through to the configured allowlist when neither slot is set', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_CONFIGURED');
+    }, ['C_CONFIGURED']);
+});
+
+test('last-active outranks latest-seen', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget, setLatestSeenTarget } = await import('../../src/messaging/runtime.js');
+        setLatestSeenTarget('slack', slackTarget('C_SEEN'));
+        setLastActiveTarget('slack', slackTarget('C_ACTIVE'));
+
+        await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_ACTIVE');
+    });
+});
+
