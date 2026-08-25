@@ -23,7 +23,7 @@ async function pageApiStatus(page: Page, path: string): Promise<number> {
 }
 
 async function waitForPageApiStatus(page: Page, path: string, expected: number): Promise<void> {
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 20000;
     let latest = await pageApiStatus(page, path);
     while (Date.now() < deadline) {
         if (latest === expected) return;

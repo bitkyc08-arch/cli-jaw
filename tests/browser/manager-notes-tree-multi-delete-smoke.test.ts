@@ -92,7 +92,7 @@ test('notes tree multi-select Delete trashes every selected entry in one keystro
         ]);
         assert.match(confirmMessage, /trash/i);
 
-        const deadline = Date.now() + 5000;
+        const deadline = Date.now() + 20000;
         while (Date.now() < deadline) {
             const a = await pageApiStatus(page, noteA);
             const b = await pageApiStatus(page, noteB);
@@ -249,7 +249,7 @@ test('notes tree Cmd+Delete trashes the selected folder', async () => await with
         assert.match(confirmMessage, /folder/i);
         assert.match(confirmMessage, /trash/i);
 
-        const deadline = Date.now() + 5000;
+        const deadline = Date.now() + 20000;
         while (Date.now() < deadline) {
             const status = await pageApiStatus(page, notePath);
             if (status === 404) break;

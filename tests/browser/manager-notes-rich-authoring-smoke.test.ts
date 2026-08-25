@@ -155,7 +155,12 @@ async function waitForSavedContent(
     predicate: (content: string) => boolean,
     message: string,
 ): Promise<string> {
-    const deadline = Date.now() + 5000;
+    // 5s was enough when this file ran alone and not enough under test:all, where
+    // ~60 other files share the machine: the save round-trip is disk + a debounced
+    // write, so scheduling pressure lands directly on it. Waiting longer costs
+    // nothing when the predicate is already true — the loop returns on first match
+    // — and only the genuinely-failing case pays the full deadline (#461).
+    const deadline = Date.now() + 20000;
     let latest = await readNoteContent(page, noteName);
     while (Date.now() < deadline) {
         if (predicate(latest)) return latest;
@@ -584,7 +589,7 @@ async function expectInputValue(locator: Locator, expected: string): Promise<voi
     // Replace Playwright's auto-wait inputValue (which has shown flake under
     // tsx --test for inline math node views even when the underlying DOM is
     // ready) with an explicit deadline-based poll over a fresh evaluate read.
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 20000;
     let value = '';
     while (Date.now() < deadline) {
         value = await locator.evaluate(el => (el as HTMLInputElement | HTMLTextAreaElement).value ?? '').catch(() => '');
@@ -602,7 +607,7 @@ function reopenedCodeSource(page: Page): Locator {
 }
 
 async function expectNoOpenCodeSource(page: Page, message: string): Promise<void> {
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 8000;
     let count = 0;
     while (Date.now() < deadline) {
         count = await page.locator('.notes-code-source-node[data-editing="true"]').count();
