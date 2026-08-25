@@ -224,3 +224,28 @@ gh workflow run publish.yml \
   -f create-github-release=true
 
 echo "stable publish dispatched: cli-jaw@$STABLE_VERSION from $MERGED_MAIN_SHA"
+
+# ─── Realign dev/preview onto the new main (#466) ───────────────────────────
+# The squash above folds preview's commits into one NEW commit, so main stops
+# being an ancestor of preview the instant this script succeeds — and the guard
+# at the top of this same script requires exactly that ancestry on the next
+# cycle. Left to prose in AGENTS.md, that realignment gets skipped, and the
+# manual recovery it forces is what silently dropped #418's code from the
+# published 2.17.13 tarball.
+#
+# realign_branch_onto_main lives in promotion-checkout.sh and builds the commit
+# from plumbing, so the published tree is an input rather than a merge result.
+# A failure here is a warning, not a release failure: the publish above already
+# went out, and the only cost is that the NEXT promotion needs a manual repair
+# (AGENTS.md carries that recipe).
+realign_branch_onto_main preview "$MERGED_MAIN_SHA" \
+  "chore: record the v$STABLE_VERSION promotion as an ancestor" \
+  || echo "WARN: preview realignment failed; the next promotion will need a manual realign" >&2
+realign_branch_onto_main dev "$MERGED_MAIN_SHA" \
+  "chore: record the v$STABLE_VERSION promotion as an ancestor" \
+  || echo "WARN: dev realignment failed; realign it before the next release" >&2
+
+POST_PREVIEW="$(git ls-remote origin refs/heads/preview | cut -f1)"
+if [ -n "$POST_PREVIEW" ] && ! git merge-base --is-ancestor "$MERGED_MAIN_SHA" "$POST_PREVIEW"; then
+  echo "WARN: origin/main is still not an ancestor of origin/preview — the next promotion will be blocked" >&2
+fi

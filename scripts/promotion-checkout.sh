@@ -128,3 +128,52 @@ assert_promotion_checkout_ready_to_push() {
     return 1
   fi
 }
+
+# ─── Post-promotion realignment (#466) ─────────────────────────────────────
+#
+# A squash promotion folds preview's commits into one NEW commit on main, so
+# main stops being an ancestor of preview the moment the promotion succeeds —
+# and promote-to-main.sh demands exactly that ancestry on the next cycle. The
+# script breaks its own precondition every release. Leaving the repair to prose
+# is what produced the 2.17.13 incident: a hand-made merge claimed to take the
+# preview tree, took main's, and shipped a tarball missing #418's code.
+#
+# Built from plumbing (commit-tree) rather than a worktree on purpose: the tree
+# is an INPUT here, not a merge result, so the published content cannot change
+# no matter which side is which. The caller re-checks it anyway.
+realign_branch_onto_main() {
+  local branch="$1" main_sha="$2" message="$3"
+  local head tree new_commit
+  head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+  if [ -z "$head" ]; then
+    echo "realign: no origin/$branch to realign" >&2
+    return 0
+  fi
+  if git merge-base --is-ancestor "$main_sha" "$head" 2>/dev/null; then
+    echo "realign: $branch already has main as an ancestor"
+    return 0
+  fi
+  git fetch origin "$branch" >/dev/null 2>&1 || true
+  tree="$(git rev-parse "$head^{tree}")" || {
+    promotion_error "realign: cannot read $branch tree"
+    return 1
+  }
+  new_commit="$(git commit-tree "$tree" -p "$head" -p "$main_sha" -m "$message")" || {
+    promotion_error "realign: could not create the realignment commit for $branch"
+    return 1
+  }
+  if [ "$(git rev-parse "$new_commit^{tree}")" != "$tree" ]; then
+    promotion_error "realign: $branch tree changed; refusing to push"
+    return 1
+  fi
+  if ! git merge-base --is-ancestor "$main_sha" "$new_commit"; then
+    promotion_error "realign: $main_sha is still not an ancestor of $branch; refusing to push"
+    return 1
+  fi
+  if git push origin "$new_commit:refs/heads/$branch" >/dev/null 2>&1; then
+    echo "realign: $branch now has main as an ancestor, tree unchanged"
+  else
+    echo "realign: could not push $branch (did it move?)" >&2
+    return 1
+  fi
+}
