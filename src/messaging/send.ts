@@ -54,6 +54,12 @@ export type ChannelSendRequest = {
      *  such context, so inheriting one delivers it to an unrelated thread (#437).
      *  Absent keeps the historical behaviour — every existing caller is unchanged. */
     allowActiveFallback?: boolean;
+    /** Skip the two volatile slots and resolve straight to the configured
+     *  allowlist. For reminders, watcher notifications and alerts, which have a
+     *  destination in the operator sense (the channel that was set up to receive
+     *  them) but not a conversational one — so last-active is wrong while failing
+     *  outright would be worse than delivering somewhere stable (#438). */
+    preferConfiguredTarget?: boolean;
 };
 
 // ─── Transport Send Registry ────────────────────────
@@ -333,10 +339,12 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     // whichever conversation last spoke to the bot, which is how two reports
     // landed in an unrelated design thread on 2026-08-25.
     if (!req.target && req.allowActiveFallback !== false) {
-        const last = getLastActiveTarget(channel);
+        const configuredFirst = req.preferConfiguredTarget ? getConfiguredFallbackTarget(channel) : null;
+        if (configuredFirst) req.target = configuredFirst;
+        const last = req.target ? null : getLastActiveTarget(channel);
         if (last && validateTarget(last, channel)) {
             req.target = last;
-        } else {
+        } else if (!req.target) {
             if (last) clearTargetState(channel); // stale cached target — clear it
             const seen = getLatestSeenTarget(channel);
             if (seen && validateTarget(seen, channel)) {
