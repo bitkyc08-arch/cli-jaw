@@ -636,7 +636,20 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
         : 'telegram';
 
     if (sourceVersion < 4 || !Array.isArray(messaging.enabledChannels)) {
-        messaging.enabledChannels = [legacyChannel];
+        // A v3 document has no enabled set yet, so deriving one from the legacy
+        // scalar is the migration. A v4 document that reaches here has a MALFORMED
+        // set, and `legacyChannel` is always 'telegram' by then because the key it
+        // reads was deleted during the v3 migration — so silently "repairing" it
+        // would hand a Slack install a Telegram gateway (#445). Preserve whatever
+        // channels are still recognisable instead.
+        if (sourceVersion >= 4 && messaging.enabledChannels !== undefined) {
+            const salvaged = (Array.isArray(messaging.enabledChannels)
+                ? messaging.enabledChannels
+                : [messaging.enabledChannels]).filter(isMessengerChannel);
+            messaging.enabledChannels = salvaged.length ? [...new Set(salvaged)] : [legacyChannel];
+        } else {
+            messaging.enabledChannels = [legacyChannel];
+        }
     } else {
         messaging.enabledChannels = [...new Set(
             messaging.enabledChannels.filter(isMessengerChannel),
@@ -838,7 +851,8 @@ function clearPersistedSlackConnectionForEnvironment(
 }
 
 /** Apply environment variable overrides to a settings object */
-function applyEnvOverrides(s: Record<string, any>) {
+/** @internal exported so the env-driven home-channel switch can be tested (#444) */
+export function applyEnvOverrides(s: Record<string, any>) {
     if (process.env["TELEGRAM_TOKEN"]) {
         s["telegram"] = s["telegram"] || {};
         s["telegram"].token = process.env["TELEGRAM_TOKEN"];
@@ -852,9 +866,20 @@ function applyEnvOverrides(s: Record<string, any>) {
         s["discord"] = s["discord"] || {};
         s["discord"].token = process.env["DISCORD_TOKEN"];
         s["discord"].enabled = true;
-        // Auto-switch active channel if Discord has token but Telegram doesn't
+        // Auto-switch the home channel when Discord is the only configured one.
+        //
+        // This wrote `s["channel"]` until v4 deleted that key during migration,
+        // and applyEnvOverrides runs AFTER migrateSettings — so the assignment
+        // landed on a field nothing reads and the switch silently stopped
+        // happening. getHomeChannel() only consults messaging.homeChannel (#444).
         if (!s["telegram"]?.token && !s["telegram"]?.enabled) {
-            s["channel"] = 'discord';
+            const messaging = isPlainRecord(s["messaging"]) ? s["messaging"] : {};
+            const enabled = Array.isArray(messaging["enabledChannels"]) ? messaging["enabledChannels"] : [];
+            s["messaging"] = {
+                ...messaging,
+                enabledChannels: [...new Set([...enabled, 'discord'])],
+                homeChannel: 'discord',
+            };
         }
     }
     if (process.env["DISCORD_GUILD_ID"]) {
