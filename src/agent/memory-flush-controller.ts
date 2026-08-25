@@ -65,6 +65,40 @@ export function resetMemoryFlushCounter(): void {
     flushCycleCount++;
 }
 
+// The trigger counter has to be per session for the same reason the watermark is.
+// A single counter meant any session could spend it: nine turns in session A plus
+// one in B fired a flush that then summarised B, and A — whose turns had actually
+// filled the counter — went back to zero without being summarised at all. Worse,
+// if B had fewer than four new rows the flush returned early, so the counter was
+// spent on nothing (#454).
+const _flushCounterBySession = new Map<string, number>();
+const MAX_TRACKED_FLUSH_SESSIONS = 200;
+
+/** Count a completed turn against its own session and report whether that session
+ *  has now earned a flush. Resets the session on a true result, so the caller
+ *  cannot forget to. */
+export function countTurnForFlush(sessionId: string, threshold: number): boolean {
+    const next = (_flushCounterBySession.get(sessionId) ?? 0) + 1;
+    if (next >= threshold) {
+        _flushCounterBySession.delete(sessionId);
+        flushCycleCount++;
+        return true;
+    }
+    _flushCounterBySession.set(sessionId, next);
+    if (_flushCounterBySession.size > MAX_TRACKED_FLUSH_SESSIONS) {
+        // Bounded like the deferred set: an unbounded map keyed by session id is a
+        // slow leak on a long-lived host.
+        const oldest = _flushCounterBySession.keys().next();
+        if (!oldest.done) _flushCounterBySession.delete(oldest.value);
+    }
+    return false;
+}
+
+/** @internal exported for unit tests */
+export function resetFlushCountersForTest(): void {
+    _flushCounterBySession.clear();
+}
+
 type FlushSpawnResult = {
     text: string;
     code: number;

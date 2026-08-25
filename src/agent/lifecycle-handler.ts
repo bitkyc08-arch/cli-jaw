@@ -25,7 +25,7 @@ import { resolveSpawnOutputText } from './events/helpers.js';
 import { isKiroPlainTextCli, isKiroResumeDegradedOutput } from './kiro-runtime.js';
 import {
     incrementMemoryFlush,
-    resetMemoryFlushCounter,
+    countTurnForFlush,
     triggerMemoryFlush,
     memoryFlushCounter,
 } from './memory-flush-controller.js';
@@ -681,10 +681,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 }
             }
 
+            // Counted against THIS turn's session. A single global counter let one
+            // session spend the budget another session had filled, so the busy one
+            // was summarised and the quiet one never was (#454).
             incrementMemoryFlush();
             const threshold = settings["memory"]?.flushEvery ?? 10;
-            if (settings["memory"]?.enabled !== false && memoryFlushCounter >= threshold) {
-                resetMemoryFlushCounter();
+            if (settings["memory"]?.enabled !== false && countTurnForFlush(chatSessionId, threshold)) {
                 triggerMemoryFlush();
             }
         }
