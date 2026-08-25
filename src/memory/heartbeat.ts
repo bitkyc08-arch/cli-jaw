@@ -11,7 +11,10 @@ import { orchestrateAndCollectData } from '../orchestrator/collect.js';
 import { claimWorker, failWorker, finishWorker, WorkerBusyError } from '../orchestrator/worker-registry.js';
 import { hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 import { broadcast } from '../core/bus.js';
-import { sendChannelOutput } from '../messaging/send.js';
+import { sendChannelOutput, targetFromChatId } from '../messaging/send.js';
+import { isHeartbeatDestination } from '../core/config.js';
+import type { HeartbeatDestination } from '../core/config.js';
+import type { RemoteTarget } from '../messaging/types.js';
 import { getEmployees, insertHeartbeatAnchor } from '../core/db.js';
 import type { EmployeeRow } from '../core/employees.js';
 import { runSingleAgent } from '../orchestrator/distribute.js';
@@ -49,6 +52,22 @@ const pendingJobs: PendingHeartbeatJob[] = [];
 
 export function isHeartbeatQuietOutput(result: string, extraMarkers: string[] = []): boolean {
     return ['[SILENT]', ...extraMarkers].some(marker => marker.length > 0 && result.includes(marker));
+}
+
+/** Turn a stored destination into a send target.
+ *
+ *  The stored shape carries only what an operator can reasonably know: which
+ *  transport, which conversation, and optionally which thread. `targetKind` and
+ *  `peerKind` are derived from the id — Slack's C/D/G prefixes decide them — so
+ *  `targetFromChatId` owns that mapping rather than the heartbeat file.
+ *
+ *  Returns null for anything malformed, which routes the job back to the legacy
+ *  active-channel path instead of throwing inside a scheduled run. */
+export function heartbeatTarget(destination: unknown): RemoteTarget | null {
+    if (!isHeartbeatDestination(destination)) return null;
+    const dest = destination as HeartbeatDestination;
+    const target = targetFromChatId(dest.channel, dest.targetId);
+    return dest.threadId ? { ...target, threadId: dest.threadId } : target;
 }
 
 function pendingSnapshot(reason?: HeartbeatPendingReason, policy?: HeartbeatPendingPolicy) {
@@ -218,8 +237,18 @@ export async function runHeartbeatJob(job: Record<string, any>) {
 
         log.info(`[heartbeat:${job["name"]}] response: ${result.slice(0, 80)}`);
 
-        // Send heartbeat result via active messaging channel
-        const sendResult = decision.send ? await sendChannelOutput({ channel: 'active', type: 'text', text: formatted }) : { ok: true as const };
+        // A job with a destination goes THERE and nowhere else. Without one the
+        // send falls back to whichever conversation spoke to the bot most
+        // recently, which is not a property of this job at all — that is how two
+        // scheduled reports landed in an unrelated design thread (#437). Jobs
+        // with no destination keep the legacy behaviour on purpose: defaulting
+        // them to "do not send" would silence every existing install.
+        const target = heartbeatTarget(job["destination"]);
+        const sendResult = decision.send
+            ? await sendChannelOutput(target
+                ? { channel: target.channel, type: 'text', text: formatted, target, allowActiveFallback: false }
+                : { channel: 'active', type: 'text', text: formatted })
+            : { ok: true as const };
         if (!sendResult.ok) {
             log.error(`[heartbeat:${job["name"]}] send failed: ${sendResult.error}`);
         }
@@ -229,7 +258,7 @@ export async function runHeartbeatJob(job: Record<string, any>) {
             const now = Date.now();
             try {
                 insertHeartbeatAnchor.run(
-                    job["id"], job["name"], settings["workingDir"], 'active', null,
+                    job["id"], job["name"], settings["workingDir"], target?.channel ?? 'active', target?.targetId ?? null,
                     job["prompt"], decision.delivered ? formatted : `[quiet] ${formatted}`, now, decision.delivered ? now : null,
                 );
             } catch (e) {

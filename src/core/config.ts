@@ -1313,6 +1313,31 @@ export interface HeartbeatJob {
     employee?: string;
     command?: string[];
     reportPolicy?: 'always' | 'anomaly_only' | 'silent';
+    /** Where this job's report goes. Absent means the legacy behaviour: the
+     *  active channel's last-active conversation, which is whoever spoke to the
+     *  bot most recently and therefore NOT a stable destination (#437).
+     *
+     *  Only the three operator-meaningful fields live here. `targetKind` and
+     *  `peerKind` are derived from the id by the channel helpers, so an operator
+     *  never has to know Slack's C/D/G prefix rules to fill this in. */
+    destination?: HeartbeatDestination | null;
+}
+
+export interface HeartbeatDestination {
+    channel: 'telegram' | 'discord' | 'slack';
+    targetId: string;
+    threadId?: string;
+}
+
+/** A destination is only usable when it names both a transport and a conversation.
+ *  Anything else is treated as absent rather than half-applied. */
+export function isHeartbeatDestination(value: unknown): value is HeartbeatDestination {
+    if (!value || typeof value !== 'object') return false;
+    const d = value as Record<string, unknown>;
+    if (d['channel'] !== 'telegram' && d['channel'] !== 'discord' && d['channel'] !== 'slack') return false;
+    if (typeof d['targetId'] !== 'string' || !d['targetId'].trim()) return false;
+    if (d['threadId'] !== undefined && typeof d['threadId'] !== 'string') return false;
+    return true;
 }
 export interface HeartbeatFile { jobs: HeartbeatJob[] }
 
