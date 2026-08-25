@@ -1,3 +1,7 @@
+// #458: writes the shared `orc_state` row via setState/resetState. Needs its own
+// CLI_JAW_HOME so a concurrent test file cannot clobber it. Must precede every
+// DB-touching import: config.ts binds DB_PATH at module evaluation.
+import '../setup/isolated-home.ts';
 // Behavioral harness for batch async dispatch (WP6, 260703).
 // Real singletons: worker-registry, state-machine/core-db (temp CLI_JAW_HOME),
 // boss-auth (real token via initBossToken). Mocked: distribute.runSingleAgent

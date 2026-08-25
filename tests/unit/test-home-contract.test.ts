@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const projectRoot = join(import.meta.dirname, '../..');
@@ -34,4 +34,30 @@ test('THC-003: parser-only and smoke scripts are not forced through test-home pr
         assert.ok(!packageJson.scripts[name]?.includes('--import ./tests/setup/test-home.ts'),
             `${name} should keep its existing specialized test policy`);
     }
+});
+
+test('THC-004: every test file that writes orc_state owns an isolated CLI_JAW_HOME (#458)', () => {
+    // Not a source-regex on product code — this is a repo invariant about the test
+    // harness itself. tests/run.mts forks per file but shares ONE CLI_JAW_HOME, so
+    // two files that both write the 'default' orc_state row race each other and the
+    // loser reads the winner's phase (actual: 'IDLE', expected: 'P').
+    const unitDir = join(projectRoot, 'tests/unit');
+    const offenders: string[] = [];
+    for (const name of readdirSync(unitDir)) {
+        if (!name.endsWith('.test.ts')) continue;
+        const src = readFileSync(join(unitDir, name), 'utf8');
+        if (!/from\s+'[^']*orchestrator\/state-machine[^']*'/.test(src)) continue;
+        // Only files that MUTATE the shared row matter. Strip comments AND string
+        // literals first: the source-inspection tests quote "resetState(scope)" as
+        // an assertion needle without ever calling it.
+        const code = src
+            .replace(/^\s*\/\/.*$/gm, '')
+            .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+            .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+            .replace(/`(?:[^\\`]|\\.)*`/g, '``');
+        if (!/\b(setState|resetState)\s*\(/.test(code)) continue;
+        if (!src.includes('setup/isolated-home')) offenders.push(name);
+    }
+    assert.deepEqual(offenders, [],
+        "these files mutate the shared orc_state row without an isolated home; add import '../setup/isolated-home.ts' as the FIRST import");
 });

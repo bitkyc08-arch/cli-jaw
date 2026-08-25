@@ -306,6 +306,7 @@ const memoryScanSupplier = async () => {
         port: i.port,
         profileId: i.profileId ?? null,
         homeDisplay: i.homeDisplay ?? null,
+        ok: i.ok,
     }));
 };
 app.use('/api/dashboard/memory', createDashboardMemoryRouter({

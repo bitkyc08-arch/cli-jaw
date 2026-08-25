@@ -16,7 +16,7 @@ test('notes sidebar does not refetch tree/index on every render while active', a
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.evaluate(async () => {
         await fetch('/api/dashboard/registry', {
             method: 'PATCH',
@@ -39,7 +39,7 @@ test('notes sidebar does not refetch tree/index on every render while active', a
         if (url.includes('/api/dashboard/notes/index')) counts.index += 1;
     });
 
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree', { timeout: 5000 });
     await page.waitForTimeout(2000);
 

@@ -66,6 +66,46 @@ export function isSkillSourceEntryName(name: string): boolean {
     return name !== '.git' && isDiscoverableSkillDirName(name);
 }
 
+/** Skill directory entries, with alias links folded into the thing they point at.
+ *
+ *  Callers used to write `readdirSync(withFileTypes).filter(d => d.isDirectory())`
+ *  and rely on a platform detail: a POSIX symlink reports `isDirectory() === false`,
+ *  so legacy `dev -> jaw-dev` aliases were skipped for free. That is not true
+ *  everywhere — the migration creates Windows links with `symlinkSync(..., "junction")`,
+ *  and a junction can present as a directory. There the alias counts twice: the
+ *  prompt lists one skill under both names and the count doubles (#446).
+ *
+ *  Resolving each entry and keeping the first per real path removes the alias no
+ *  matter how the platform reports it. Directory NAMES come back, not paths,
+ *  because callers join their own base. Whether an entry is a usable skill (has
+ *  SKILL.md) stays the caller's question — moving that here would quietly change
+ *  what `skill list` shows. */
+export function dedupeSkillDirEntries(dir: string): string[] {
+    let entries: fs.Dirent[];
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const entry of entries) {
+        if (!isDiscoverableSkillDirName(entry.name)) continue;
+        const full = join(dir, entry.name);
+        let real: string;
+        try {
+            if (!fs.statSync(full).isDirectory()) continue;
+            real = fs.realpathSync(full);
+        } catch {
+            continue; // broken link, or it vanished mid-scan
+        }
+        if (seen.has(real)) continue;
+        seen.add(real);
+        names.push(entry.name);
+    }
+    return names;
+}
+
 // ─── Skill activation sets (shared by copyDefaultSkills / softResetSkills) ───
 // Active ids carry the jaw-* prefix so they cannot be mistaken for a
 // Codex-native tool or skill. Legacy names still resolve for one major

@@ -10,7 +10,8 @@ import {
     shouldSkipClone, writeCloneMeta, CLONE_TIMEOUT_MS,
     CODEX_ACTIVE, OPENCLAW_ACTIVE,
     copyDirRecursive, findPackageRoot,
-    isDiscoverableSkillDirName, isSkillSourceEntryName, shouldUseLocalSkillsSource,
+    isSkillSourceEntryName, shouldUseLocalSkillsSource,
+    dedupeSkillDirEntries,
 } from './skills-utils.js';
 
 type SkillRegistry = {
@@ -134,12 +135,14 @@ export function softResetSkills() {
     let restored = 0;
     let removed = 0;
     if (fs.existsSync(activeDir)) {
-        for (const d of fs.readdirSync(activeDir, { withFileTypes: true })) {
-            if (!d.isDirectory() || !isDiscoverableSkillDirName(d.name)) continue;
-            const src = join(refDir, d.name);
-            const dst = join(activeDir, d.name);
+        // Dedupe first: on a platform where an alias link reads as a directory,
+        // the same skill would be visited twice and the second visit would try to
+        // remove what the first just restored (#446).
+        for (const name of dedupeSkillDirEntries(activeDir)) {
+            const src = join(refDir, name);
+            const dst = join(activeDir, name);
             if (!fs.existsSync(src)) continue;  // ref에 없으면 보존 (순수 커스텀)
-            if (!autoActivate.has(d.name)) {
+            if (!autoActivate.has(name)) {
                 fs.rmSync(dst, { recursive: true, force: true });
                 removed++;
                 continue;
