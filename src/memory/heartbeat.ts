@@ -8,7 +8,7 @@ import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } f
 import { stripUndefined } from '../core/strip-undefined.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import { orchestrateAndCollectData } from '../orchestrator/collect.js';
-import { claimWorker, failWorker, finishWorker, WorkerBusyError } from '../orchestrator/worker-registry.js';
+import { claimWorker, failWorker, finishWorker, markWorkerReplayed, WorkerBusyError } from '../orchestrator/worker-registry.js';
 import { hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 import { broadcast } from '../core/bus.js';
 import { sendChannelOutput, targetFromChatId } from '../messaging/send.js';
@@ -168,6 +168,11 @@ async function runEmployee(job: Record<string, any>, prompt: string): Promise<He
             const result = await runSingleAgent(ap, emp, { tag: `heartbeat:${job["id"] || job["name"]}` }, 1, { origin: 'heartbeat' }, []);
             const text = String(result["text"] || '');
             finishWorker(slot.agentId, text, Array.isArray(result["tools"]) ? result["tools"] : []);
+            // finishWorker arms a replay for a Boss to collect. A heartbeat has no
+            // Boss, so nobody ever collected it — and processQueue skips any scope
+            // with a pending replay, so one employee heartbeat left the default
+            // queue permanently stalled behind a handoff that would never happen.
+            markWorkerReplayed(slot.agentId);
             return parseHeartbeatReport(text);
         } catch (error) {
             failWorker(slot.agentId, error instanceof Error ? error.message : String(error));

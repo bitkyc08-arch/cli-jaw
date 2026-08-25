@@ -215,3 +215,22 @@ test('the anchor records where the report actually went', async () => {
     assert.equal(anchors.at(-1)?.[3], 'slack');
     assert.equal(anchors.at(-1)?.[4], 'C_REPORTS');
 });
+
+// ─── #450: an employee heartbeat stalled the default queue ───
+
+test('an employee heartbeat consumes its own worker replay', async () => {
+    // finishWorker arms a replay for a Boss to collect, and processQueue skips
+    // any scope holding one. A heartbeat has no Boss, so a single successful
+    // employee run left the default queue waiting on a handoff that could never
+    // arrive.
+    const { hasPendingWorkerReplays } = await import('../../src/orchestrator/worker-registry.js');
+
+    await runHeartbeatJob({
+        id: 'emp', name: 'emp', runner: 'employee', employee: employee.name,
+        enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+    });
+
+    assert.equal(hasPendingWorkerReplays('default'), false,
+        'a heartbeat must not leave the default scope blocked on a replay');
+});
+
