@@ -1,4 +1,5 @@
 // ─── Runtime Handlers ─────────────────────────────────
+import { sessionScopeMeta } from './session-scope-meta.js';
 // Extracted from handlers.ts for 500-line compliance.
 
 import { CLI_KEYS, buildModelChoicesByCli } from './registry.js';
@@ -253,7 +254,9 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
 
     // Web/CLI: fire orchestration directly via submitMessage
     const { submitMessage } = await import('../orchestrator/gateway.js');
-    submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' | 'slack' });
+    // Same session carry-through as the other slash handlers: steering a run
+    // must land in the lane that run belongs to.
+    submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' | 'slack', ...sessionScopeMeta() });
     return { ok: true, type: 'success', text: t('cmd.steer.started', {}, L) };
 }
 

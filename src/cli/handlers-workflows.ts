@@ -1,4 +1,5 @@
 import { buildPlanCompatArtifact, formatPlanCompatText } from '../workflows/plan.js';
+import { sessionScopeMeta } from './session-scope-meta.js';
 import { buildDeliberateArtifact, formatDeliberateText } from '../workflows/deliberate.js';
 import { buildPlanAuditArtifact, formatPlanAuditText } from '../workflows/planaudit.js';
 import { parseReviewFlags, parseReviewFocus, buildReviewArtifact, buildReviewSteerPrompt, buildReviewTargetContext, formatReviewText } from '../workflows/review.js';
@@ -28,7 +29,11 @@ async function fireSteerForWebCli(
     const iface = ctx.interface || 'web';
     if (iface === 'telegram' || iface === 'discord' || iface === 'slack') return result;
     const { submitMessage } = await import('../orchestrator/gateway.js');
-    submitMessage(result.steerPrompt, { origin: iface as 'cli' | 'web' });
+    // Carry the tab's session through. Without it the message lands in the
+    // tab's chat session while the queue and PABCD scope fall back to
+    // 'default', so the turn queues behind unrelated work and runs outside
+    // the session's own lane.
+    submitMessage(result.steerPrompt, { origin: iface as 'cli' | 'web', ...sessionScopeMeta() });
     const { steerPrompt: _stripped, ...rest } = result;
     return rest;
 }

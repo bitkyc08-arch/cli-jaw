@@ -1,4 +1,5 @@
 import { buildSearchSteerPrompt } from '../workflows/search.js';
+import { sessionScopeMeta } from './session-scope-meta.js';
 import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
 
@@ -28,7 +29,11 @@ export async function searchWorkflowHandler(args: string[], ctx: CliCommandConte
     if (iface === 'telegram' || iface === 'discord' || iface === 'slack') return result;
 
     const { submitMessage } = await import('../orchestrator/gateway.js');
-    submitMessage(result.steerPrompt!, { origin: iface as 'cli' | 'web' });
+    // Carry the tab's session through. Without it the message lands in the
+    // tab's chat session while the queue and PABCD scope fall back to
+    // 'default', so the turn queues behind unrelated work and runs outside
+    // the session's own lane.
+    submitMessage(result.steerPrompt!, { origin: iface as 'cli' | 'web', ...sessionScopeMeta() });
     const { steerPrompt: _stripped, ...rest } = result;
     return rest;
 }
