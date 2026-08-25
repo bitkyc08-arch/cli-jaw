@@ -73,16 +73,33 @@ bash scripts/promote-to-main.sh             # preview CI 인증 확인 → main 
 현재 브랜치에 커밋하고 `HEAD:preview` 로 푸시한다. 그 커밋을 `dev` 에도 올리지
 않으면 origin/dev 만 뒤처진 채 남는다.
 
-승격이 끝나면 `main` 에 승격 커밋이 하나 더 생기므로 `dev`/`preview` 를 그 위로
-다시 맞춘다. 내용은 같고 버전 장부만 다르므로 리셋이 안전하다:
+승격이 끝나면 `main` 에 squash 승격 커밋이 하나 생기고, 그 순간 main 은 preview 의
+조상이 아니게 된다 — 그런데 `promote-to-main.sh` 는 다음 사이클 시작에서 바로 그
+조상 관계를 요구한다. **`promote-to-main.sh` 가 승격 직후 `dev`/`preview` 를
+자동으로 재정렬하므로 보통은 손댈 일이 없다** (#466). 로그에 `realign: preview now
+has main as an ancestor` 가 찍혔는지 확인하면 된다.
+
+자동 재정렬이 경고를 남기고 실패했다면 수동으로 맞춘다. **`git reset --hard` 는
+쓰지 않는다** — dev 가 main 보다 앞서 있으면 그 앞선 커밋이 사라진다. 실제로 그
+레시피를 따른 수동 복구가 #418 의 durable queue-notice store 를 통째로 삼켰고,
+그 상태로 `cli-jaw@2.17.13` 이 npm 에 발행됐다:
 
 ```bash
 git fetch origin
 git branch -f backup/dev-pre-align-$(date +%y%m%d) dev
-git reset --hard origin/main
-git push --force-with-lease origin dev
-git push --force-with-lease origin HEAD:preview
+git checkout dev
+# 트리는 그대로 두고 main 을 부모로만 기록한다.
+git merge origin/main -s ours -m "chore: record the promotion as an ancestor"
+git diff --stat backup/dev-pre-align-$(date +%y%m%d) HEAD   # 반드시 비어 있어야 한다
+git merge-base --is-ancestor origin/main HEAD && echo ff-able
+git push origin dev
+git push origin HEAD:preview
 ```
+
+`git diff` 가 비어 있는지 **푸시 전에** 확인할 것. `-s ours` 는 "현재 브랜치의
+트리를 유지" 라는 뜻이라 방향을 헷갈리면 반대쪽 트리가 살아남는다. 2.17.13 사고가
+정확히 그것이었다 — 커밋 메시지는 preview 트리를 취한다고 적혀 있었지만 실제
+결과 트리는 main 쪽과 동일했다.
 
 #### 게이트가 막을 때
 
