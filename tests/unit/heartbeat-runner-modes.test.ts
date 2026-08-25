@@ -18,6 +18,7 @@ let collectCalls = 0;
 let plannerOnly = false;
 let employeeBusy = false;
 const sent: string[] = [];
+const sentRequests: Array<Record<string, any>> = [];
 const anchors: unknown[][] = [];
 const employee = { id: 'emp-1', name: 'reviewer', cli: 'codex', model: null, role: 'reviewer' };
 
@@ -28,7 +29,14 @@ mock.module(collectUrl, { namedExports: {
     },
     orchestrateAndCollect: async () => 'unused',
 } });
-mock.module(sendUrl, { namedExports: { ...realSend, sendChannelOutput: async (input: { text: string }) => { sent.push(input.text); return { ok: true }; } } });
+mock.module(sendUrl, { namedExports: {
+    ...realSend,
+    sendChannelOutput: async (input: Record<string, any>) => {
+        sent.push(input["text"]);
+        sentRequests.push(structuredClone(input));
+        return { ok: true };
+    },
+} });
 mock.module(dbUrl, { namedExports: {
     ...realDb,
     getEmployees: { all: () => [employee] },
@@ -103,3 +111,126 @@ test('script runner configures the audited timeout and output bound', async () =
     const source = await import('node:fs').then(fs => fs.readFileSync(new URL('../../src/memory/heartbeat.ts', import.meta.url), 'utf8'));
     assert.match(source, /timeout: 10 \* 60_000, maxBuffer: 64 \* 1024/);
 });
+
+// ─── destination routing (#437) ─────────────────────
+//
+// The incident: two scheduled reports were delivered to whichever Slack thread
+// had most recently spoken to the bot, because the send carried no target and
+// the resolver filled one in. These assert on the REQUEST the job builds, since
+// that is where the destination is either honoured or lost.
+
+test('a job with a destination sends there and forbids the active fallback', async () => {
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({
+        id: 'pinned', name: 'pinned', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'slack', targetId: 'C_REPORTS', threadId: '1787616871.254919' },
+    });
+
+    assert.equal(sentRequests.length, 1);
+    const req = sentRequests[0]!;
+    assert.equal(req['channel'], 'slack');
+    assert.equal(req['target']?.targetId, 'C_REPORTS');
+    assert.equal(req['target']?.threadId, '1787616871.254919');
+    assert.equal(req['allowActiveFallback'], false,
+        'a pinned job must not be re-routed by whoever spoke last');
+});
+
+test('a destination without a thread posts to the conversation root', async () => {
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({
+        id: 'root', name: 'root', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'slack', targetId: 'C_REPORTS' },
+    });
+
+    assert.equal(sentRequests[0]?.['target']?.targetId, 'C_REPORTS');
+    assert.equal(sentRequests[0]?.['target']?.threadId, undefined);
+});
+
+test('the derived target carries the kinds the operator never types', async () => {
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({
+        id: 'kinds', name: 'kinds', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'slack', targetId: 'C_REPORTS' },
+    });
+
+    // Stored form is three fields; targetKind/peerKind come from the id prefix.
+    assert.equal(sentRequests[0]?.['target']?.targetKind, 'channel');
+    assert.equal(sentRequests[0]?.['target']?.peerKind, 'channel');
+});
+
+test('a job without a destination keeps the legacy active-channel behaviour', async () => {
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({ id: 'legacy', name: 'legacy', enabled: true, schedule: { minutes: 5 }, prompt: 'check' });
+
+    assert.equal(sentRequests.length, 1);
+    assert.equal(sentRequests[0]?.['channel'], 'active');
+    assert.equal(sentRequests[0]?.['target'], undefined);
+    assert.equal(sentRequests[0]?.['allowActiveFallback'], undefined,
+        'existing installs must not start failing to deliver');
+});
+
+test('a malformed destination is refused, not redirected to the active channel', async () => {
+    // A job that named a destination has stated an intent. When that intent
+    // cannot be resolved, delivering to whoever spoke last is the original bug
+    // wearing a different hat — the report still lands in an unrelated place.
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({
+        id: 'bad', name: 'bad', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'slack' },
+    });
+
+    assert.equal(sentRequests.length, 0, 'a broken pin must not deliver anywhere');
+});
+
+test('a destination naming an unknown transport is refused too', async () => {
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({
+        id: 'bad-channel', name: 'bad-channel', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'irc', targetId: 'C_X' },
+    });
+
+    assert.equal(sentRequests.length, 0);
+});
+
+test('a scheduled run survives a malformed destination without throwing', async () => {
+    // Refusing to deliver must not take the heartbeat loop down with it.
+    await runHeartbeatJob({
+        id: 'bad-survives', name: 'bad-survives', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { targetId: 'C_X' },
+    });
+    sent.length = 0; sentRequests.length = 0;
+    await runHeartbeatJob({ id: 'after', name: 'after', enabled: true, schedule: { minutes: 5 }, prompt: 'check' });
+    assert.equal(sentRequests.length, 1, 'the next job still runs');
+});
+
+test('the anchor records where the report actually went', async () => {
+    anchors.length = 0;
+    await runHeartbeatJob({
+        id: 'anchored', name: 'anchored', enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+        destination: { channel: 'slack', targetId: 'C_REPORTS' },
+    });
+
+    // Routing and the record must not disagree: 'active' here would attribute the
+    // report to a channel it was explicitly kept away from.
+    assert.equal(anchors.at(-1)?.[3], 'slack');
+    assert.equal(anchors.at(-1)?.[4], 'C_REPORTS');
+});
+
+// ─── #450: an employee heartbeat stalled the default queue ───
+
+test('an employee heartbeat consumes its own worker replay', async () => {
+    // finishWorker arms a replay for a Boss to collect, and processQueue skips
+    // any scope holding one. A heartbeat has no Boss, so a single successful
+    // employee run left the default queue waiting on a handoff that could never
+    // arrive.
+    const { hasPendingWorkerReplays } = await import('../../src/orchestrator/worker-registry.js');
+
+    await runHeartbeatJob({
+        id: 'emp', name: 'emp', runner: 'employee', employee: employee.name,
+        enabled: true, schedule: { minutes: 5 }, prompt: 'check',
+    });
+
+    assert.equal(hasPendingWorkerReplays('default'), false,
+        'a heartbeat must not leave the default scope blocked on a replay');
+});
+

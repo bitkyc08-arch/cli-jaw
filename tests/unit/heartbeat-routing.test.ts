@@ -36,14 +36,14 @@ test('sendChannelOutput returns explicit error when no target available', () => 
 });
 
 // ─── Target resolution order ────────────────────────
-
-test('target resolution follows explicit > lastActive > latestSeen > configured', () => {
-    // The sendChannelOutput function should check in this order
-    const sendFn = sendSrc.slice(sendSrc.indexOf('async function sendChannelOutput'));
-    const lastActiveIdx = sendFn.indexOf('getLastActiveTarget');
-    const latestSeenIdx = sendFn.indexOf('getLatestSeenTarget');
-    const configuredIdx = sendFn.indexOf('getConfiguredFallbackTarget');
-
-    assert.ok(lastActiveIdx < latestSeenIdx, 'lastActive before latestSeen');
-    assert.ok(latestSeenIdx < configuredIdx, 'latestSeen before configured');
-});
+//
+// This used to assert the ORDER of three identifiers inside sendChannelOutput's
+// source text. That is not a contract — it is a transcription of the current
+// implementation, and it made the resolver un-refactorable while proving nothing
+// about delivery. Worse, the file is named heartbeat-routing, so it read as an
+// endorsement of the very fallback that misdelivered two scheduled reports on
+// 2026-08-25 (#437).
+//
+// The behaviour it meant to protect now lives where it can actually fail:
+//   tests/unit/send-validation.test.ts   — resolution order and the opt-out
+//   tests/unit/heartbeat-runner-modes.test.ts — which request a job builds

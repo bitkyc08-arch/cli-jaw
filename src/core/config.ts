@@ -636,7 +636,20 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
         : 'telegram';
 
     if (sourceVersion < 4 || !Array.isArray(messaging.enabledChannels)) {
-        messaging.enabledChannels = [legacyChannel];
+        // A v3 document has no enabled set yet, so deriving one from the legacy
+        // scalar is the migration. A v4 document that reaches here has a MALFORMED
+        // set, and `legacyChannel` is always 'telegram' by then because the key it
+        // reads was deleted during the v3 migration — so silently "repairing" it
+        // would hand a Slack install a Telegram gateway (#445). Preserve whatever
+        // channels are still recognisable instead.
+        if (sourceVersion >= 4 && messaging.enabledChannels !== undefined) {
+            const salvaged = (Array.isArray(messaging.enabledChannels)
+                ? messaging.enabledChannels
+                : [messaging.enabledChannels]).filter(isMessengerChannel);
+            messaging.enabledChannels = salvaged.length ? [...new Set(salvaged)] : [legacyChannel];
+        } else {
+            messaging.enabledChannels = [legacyChannel];
+        }
     } else {
         messaging.enabledChannels = [...new Set(
             messaging.enabledChannels.filter(isMessengerChannel),
@@ -838,7 +851,8 @@ function clearPersistedSlackConnectionForEnvironment(
 }
 
 /** Apply environment variable overrides to a settings object */
-function applyEnvOverrides(s: Record<string, any>) {
+/** @internal exported so the env-driven home-channel switch can be tested (#444) */
+export function applyEnvOverrides(s: Record<string, any>) {
     if (process.env["TELEGRAM_TOKEN"]) {
         s["telegram"] = s["telegram"] || {};
         s["telegram"].token = process.env["TELEGRAM_TOKEN"];
@@ -852,9 +866,20 @@ function applyEnvOverrides(s: Record<string, any>) {
         s["discord"] = s["discord"] || {};
         s["discord"].token = process.env["DISCORD_TOKEN"];
         s["discord"].enabled = true;
-        // Auto-switch active channel if Discord has token but Telegram doesn't
+        // Auto-switch the home channel when Discord is the only configured one.
+        //
+        // This wrote `s["channel"]` until v4 deleted that key during migration,
+        // and applyEnvOverrides runs AFTER migrateSettings — so the assignment
+        // landed on a field nothing reads and the switch silently stopped
+        // happening. getHomeChannel() only consults messaging.homeChannel (#444).
         if (!s["telegram"]?.token && !s["telegram"]?.enabled) {
-            s["channel"] = 'discord';
+            const messaging = isPlainRecord(s["messaging"]) ? s["messaging"] : {};
+            const enabled = Array.isArray(messaging["enabledChannels"]) ? messaging["enabledChannels"] : [];
+            s["messaging"] = {
+                ...messaging,
+                enabledChannels: [...new Set([...enabled, 'discord'])],
+                homeChannel: 'discord',
+            };
         }
     }
     if (process.env["DISCORD_GUILD_ID"]) {
@@ -1229,6 +1254,17 @@ export function serializeSettingsForSave(candidate: SettingsStateCandidate): str
     if (value["slack"] && typeof value["slack"] === 'object') {
         for (const key of slackEnvironmentManagedSettingKeys()) delete value["slack"][key];
     }
+    // Same rule, the other two channels. applyEnvOverrides writes the env token
+    // onto the live settings object, so any later save — a port write, a target
+    // persist — copied that secret onto disk. Slack was stripped here; Telegram
+    // and Discord were not, which contradicted the documented promise that env
+    // values never enter settings.json (#449).
+    if (process.env["TELEGRAM_TOKEN"] && value["telegram"] && typeof value["telegram"] === 'object') {
+        delete value["telegram"].token;
+    }
+    if (process.env["DISCORD_TOKEN"] && value["discord"] && typeof value["discord"] === 'object') {
+        delete value["discord"].token;
+    }
     const runtime = value["runtime"];
     if (candidate.shape === 'absent' && runtime?.codexApp?.multiplex === false) {
         delete runtime.codexApp.multiplex;
@@ -1313,6 +1349,31 @@ export interface HeartbeatJob {
     employee?: string;
     command?: string[];
     reportPolicy?: 'always' | 'anomaly_only' | 'silent';
+    /** Where this job's report goes. Absent means the legacy behaviour: the
+     *  active channel's last-active conversation, which is whoever spoke to the
+     *  bot most recently and therefore NOT a stable destination (#437).
+     *
+     *  Only the three operator-meaningful fields live here. `targetKind` and
+     *  `peerKind` are derived from the id by the channel helpers, so an operator
+     *  never has to know Slack's C/D/G prefix rules to fill this in. */
+    destination?: HeartbeatDestination | null;
+}
+
+export interface HeartbeatDestination {
+    channel: 'telegram' | 'discord' | 'slack';
+    targetId: string;
+    threadId?: string;
+}
+
+/** A destination is only usable when it names both a transport and a conversation.
+ *  Anything else is treated as absent rather than half-applied. */
+export function isHeartbeatDestination(value: unknown): value is HeartbeatDestination {
+    if (!value || typeof value !== 'object') return false;
+    const d = value as Record<string, unknown>;
+    if (d['channel'] !== 'telegram' && d['channel'] !== 'discord' && d['channel'] !== 'slack') return false;
+    if (typeof d['targetId'] !== 'string' || !d['targetId'].trim()) return false;
+    if (d['threadId'] !== undefined && typeof d['threadId'] !== 'string') return false;
+    return true;
 }
 export interface HeartbeatFile { jobs: HeartbeatJob[] }
 

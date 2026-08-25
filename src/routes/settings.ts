@@ -93,6 +93,33 @@ function redactJawCeoSettings(input: Record<string, unknown> | undefined): Recor
     };
 }
 
+/** Stand-in for a secret that exists but must not travel. Non-empty so a UI
+ *  testing for "is a token configured" keeps working. */
+const MASKED_SECRET = '••••••••';
+
+/** Mask credential-bearing fields in an MCP config tree.
+ *
+ *  Values are replaced, keys are not, so the dashboard can still show which
+ *  variables a server expects without shipping their contents. */
+function redactMcpSecrets(config: unknown): unknown {
+    if (!config || typeof config !== 'object') return config;
+    if (Array.isArray(config)) return config.map(redactMcpSecrets);
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(config as Record<string, unknown>)) {
+        if ((key === 'env' || key === 'headers') && value && typeof value === 'object' && !Array.isArray(value)) {
+            out[key] = Object.fromEntries(
+                Object.entries(value as Record<string, unknown>)
+                    .map(([k, v]) => [k, typeof v === 'string' && v ? MASKED_SECRET : v]),
+            );
+        } else if (key === 'oauth' && value) {
+            out[key] = MASKED_SECRET;
+        } else {
+            out[key] = redactMcpSecrets(value);
+        }
+    }
+    return out;
+}
+
 function redactRuntimeSettings<T extends Record<string, unknown>>(input: T): T {
     const safe = { ...input } as T & {
         stt?: Record<string, unknown>;
@@ -121,6 +148,19 @@ function redactRuntimeSettings<T extends Record<string, unknown>>(input: T): T {
             channelIds: [],
             attachPort: '',
         };
+    }
+    // Channel bot tokens are full account credentials, and only the Slack
+    // env-managed case was being masked — a file-configured Telegram or Discord
+    // token came back verbatim (#449). The UI needs to know whether a token is
+    // SET, never what it is, so the boolean survives and the value does not.
+    for (const channel of ['telegram', 'discord', 'slack'] as const) {
+        const block = safe[channel] as Record<string, unknown> | undefined;
+        if (!block || typeof block !== 'object') continue;
+        const masked = { ...block };
+        for (const key of ['token', 'botToken', 'appToken']) {
+            if (typeof masked[key] === 'string' && masked[key]) masked[key] = MASKED_SECRET;
+        }
+        (safe as Record<string, unknown>)[channel] = masked;
     }
     const messaging = safe["messaging"] as { homeChannel?: unknown } | undefined;
     if (typeof messaging?.homeChannel === 'string') {
@@ -208,7 +248,7 @@ export function registerSettingsRoutes(
     applySettings: (patch: Record<string, unknown>) => Promise<unknown>,
     projectRoot: string,
 ): void {
-    app.get('/api/settings', (_, res) => {
+    app.get('/api/settings', requireAuth, (_, res) => {
         const safe = redactRuntimeSettings(settings);
         ok(res, safe, safe);
     });
@@ -427,7 +467,7 @@ export function registerSettingsRoutes(
         res.json(readCodexContextWindow());
     });
 
-    app.get('/api/prompt', (_, res) => {
+    app.get('/api/prompt', requireAuth, (_, res) => {
         const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
         res.json({ content: a2 });
     });
@@ -499,7 +539,10 @@ export function registerSettingsRoutes(
         res.json({ ok: true });
     });
 
-    app.get('/api/mcp', (_req, res) => res.json(loadUnifiedMcp()));
+    // MCP server definitions carry API keys in `env` and bearer tokens in
+    // `headers`. Nothing masked them and the route had no guard, so the whole
+    // set was readable by anyone who could reach the port (#449).
+    app.get('/api/mcp', requireAuth, (_req, res) => res.json(redactMcpSecrets(loadUnifiedMcp())));
 
     app.put('/api/mcp', requireAuth, (req, res) => {
         const config = req.body;

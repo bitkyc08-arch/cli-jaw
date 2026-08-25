@@ -208,7 +208,7 @@ test('collect merges only not-yet-started items from the same scope', async () =
     ]);
 });
 
-test('interrupt purge preserves B and restarts with the latest A item at queue head', () => {
+test('interrupt purge preserves B and does not reorder it', () => {
     db.prepare("INSERT INTO chat_sessions (id, seq, label) VALUES ('queue-v2-interrupt-a', 821, 'A')").run();
     db.prepare("INSERT INTO chat_sessions (id, seq, label) VALUES ('queue-v2-interrupt-b', 822, 'B')").run();
     const controller = makeController({ busy: () => true, maxConcurrent: 1 });
@@ -219,11 +219,15 @@ test('interrupt purge preserves B and restarts with the latest A item at queue h
     const latestA = controller.enqueueMessage('queue-v2-interrupt-a-latest', 'web', {
         scope: 'A', chatSessionId: 'queue-v2-interrupt-a', front: true,
     });
-    assert.deepEqual(controller.messageQueue.map(item => item.id), [latestA, b]);
+    // Was [latestA, b]: the interrupt was unshifted onto the GLOBAL queue, so A's
+    // replacement turn jumped ahead of B, which had been waiting first. Interrupt
+    // is scope-local — it replaces A's own work and says nothing about B (#453).
+    // A's original item is gone via purge, so A now appends behind B.
+    assert.deepEqual(controller.messageQueue.map(item => item.id), [b, latestA]);
     assert.equal(db.prepare('SELECT 1 FROM queued_messages WHERE id = ?').get(oldA), undefined);
 
     const recovered = makeController({ busy: () => true, maxConcurrent: 1 });
-    assert.deepEqual(recovered.messageQueue.map(item => item.id), [latestA, b]);
+    assert.deepEqual(recovered.messageQueue.map(item => item.id), [b, latestA]);
 });
 
 test('session run policies survive reads and new sessions capture the current global default', () => {

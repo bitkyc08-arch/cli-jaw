@@ -546,3 +546,160 @@ test('a malformed slack allowlist yields no configured fallback target', async (
         settings.channel = previousChannel;
     }
 });
+
+// ─── allowActiveFallback: non-interactive senders opt out of last-active (#437) ───
+//
+// The chain below is right for a REPLY: when an agent answers without naming a
+// conversation, the one that just spoke is the obvious destination. It is wrong
+// for a scheduled report, which has no conversation of its own and would inherit
+// whoever happened to message the bot last.
+
+test('a send that opts out of the active fallback fails instead of inheriting the last-active thread', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_SOMEONE_ELSE'));
+
+        const result = await sendChannelOutput({
+            channel: 'slack', type: 'text', text: 'scheduled report',
+            allowActiveFallback: false,
+        });
+
+        assert.equal(result.ok, false, 'no target and no fallback must not deliver anywhere');
+        assert.match(String(result.error), /No target available/);
+        assert.equal(capture.requests.length, 0, 'the unrelated conversation must receive nothing');
+    });
+});
+
+test('opting out does not disturb a send that carries its own target', async () => {
+    // The allowlist is what authorizes an explicit target (#406); with one
+    // configured, opting out of the fallback must not interfere with a send that
+    // already knows where it is going.
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_SOMEONE_ELSE'));
+
+        const result = await sendChannelOutput({
+            channel: 'slack', type: 'text', text: 'scheduled report',
+            target: slackTarget('C_INTENDED', '1710000000.000999'),
+            allowActiveFallback: false,
+        });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests.length, 1);
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_INTENDED');
+        assert.equal(capture.requests[0]?.target?.threadId, '1710000000.000999');
+    }, ['C_INTENDED']);
+});
+
+test('the default is unchanged: omitting the flag still resolves through last-active', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_CURRENT'));
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(result.ok, true, 'conversational replies keep the historical behaviour');
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_CURRENT');
+    });
+});
+
+test('resolution falls through last-active to latest-seen when the last-active target is gone', async () => {
+    // The three-step order used to be asserted by reading send.ts as text. This
+    // exercises it instead: with no last-active recorded, the latest-seen slot is
+    // what a reply must reach.
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLatestSeenTarget } = await import('../../src/messaging/runtime.js');
+        setLatestSeenTarget('slack', slackTarget('C_SEEN'));
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_SEEN');
+    });
+});
+
+test('resolution falls through to the configured allowlist when neither slot is set', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+
+        const result = await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_CONFIGURED');
+    }, ['C_CONFIGURED']);
+});
+
+test('last-active outranks latest-seen', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget, setLatestSeenTarget } = await import('../../src/messaging/runtime.js');
+        setLatestSeenTarget('slack', slackTarget('C_SEEN'));
+        setLastActiveTarget('slack', slackTarget('C_ACTIVE'));
+
+        await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_ACTIVE');
+    });
+});
+
+
+// ─── #438: scheduled notifications must not inherit a conversation ───
+//
+// Same defect class as the heartbeat incident, different callers. A reminder,
+// a watcher notification and an alert all fire on their own schedule, so the
+// conversation that spoke most recently has nothing to do with them.
+
+test('a configured-target send ignores an unrelated last-active conversation', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_SOMEONE_ELSE'));
+
+        const result = await sendChannelOutput({
+            channel: 'slack', type: 'text', text: 'reminder',
+            preferConfiguredTarget: true,
+        });
+
+        assert.equal(result.ok, true, 'a notification should still be delivered');
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_CONFIGURED',
+            'it must land in the channel the operator configured');
+    }, ['C_CONFIGURED']);
+});
+
+test('with nothing configured it still falls back rather than going silent', async () => {
+    // Failing outright would be worse than the old behaviour for an alert: an
+    // operator who never set an allowlist would simply stop hearing about
+    // problems. Delivery is best-effort, the PREFERENCE is what changed.
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_CURRENT'));
+
+        const result = await sendChannelOutput({
+            channel: 'slack', type: 'text', text: 'alert',
+            preferConfiguredTarget: true,
+        });
+
+        assert.equal(result.ok, true);
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_CURRENT');
+    });
+});
+
+test('conversational sends are untouched by the new preference', async () => {
+    await withIsolatedSlack(async capture => {
+        const { sendChannelOutput } = await import('../../src/messaging/send.js');
+        const { setLastActiveTarget } = await import('../../src/messaging/runtime.js');
+        setLastActiveTarget('slack', slackTarget('C_CURRENT'));
+
+        await sendChannelOutput({ channel: 'slack', type: 'text', text: 'reply' });
+
+        assert.equal(capture.requests[0]?.target?.targetId, 'C_CURRENT',
+            'a reply must still go to the conversation it is replying to');
+        // Both ids are allowlisted so the conversation is a legal destination;
+        // otherwise this would be testing the allowlist, not the preference.
+    }, ['C_CONFIGURED', 'C_CURRENT']);
+});

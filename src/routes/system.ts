@@ -5,6 +5,7 @@
 
 import type { Router } from 'express';
 import { fail, ok } from '../http/response.js';
+import { isLoopbackAddress } from '../http/loopback.js';
 import { APP_VERSION, settings } from '../core/config.js';
 import { drainLogRing } from '../core/logger.js';
 import { getSession } from '../core/db.js';
@@ -100,6 +101,17 @@ export function registerSystemRoutes(app: Router, deps: { jawAuthToken: string }
     // Auth token endpoint — Sec-Fetch-Site guard blocks cross-origin XSS token theft
     // Browser-enforced header: cannot be set/spoofed by JS, absent from CLI/curl (passes through)
     app.get('/api/auth/token', (req, res) => {
+        // The Sec-Fetch-Site guard below defends against a BROWSER stealing this
+        // token cross-origin. It cannot defend against a network peer, because
+        // curl simply omits the header — the comment above says so. That was
+        // fine while the server only ever bound to loopback; remoteAccess and LAN
+        // mode bind 0.0.0.0, at which point anyone on the network could ask for
+        // the bearer that unlocks every guarded write endpoint (#449).
+        const remoteIp = req.ip || req.socket?.remoteAddress || '';
+        if (!isLoopbackAddress(remoteIp)) {
+            res.status(401).json({ error: 'auth token is available on loopback only' });
+            return;
+        }
         const site = req.headers['sec-fetch-site'];
         if (site && site !== 'same-origin' && site !== 'none') {
             res.status(403).json({ error: 'cross-origin token request blocked' });

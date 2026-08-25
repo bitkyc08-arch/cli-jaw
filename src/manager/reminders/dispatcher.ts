@@ -46,7 +46,10 @@ export async function dispatchReminderNotification(
 ): Promise<ReminderDispatchResult> {
     const send = options.send ?? sendChannelOutput;
     const at = (options.now ?? (() => new Date()))().toISOString();
-    const result = await send({ channel: 'active', type: 'text', text: reminderText(reminder) });
+    // A reminder fires on a schedule, so "the active conversation" at that moment
+    // is whoever happened to message the bot last — not the person who set the
+    // reminder. Resolve to the configured channel instead (#438).
+    const result = await send({ channel: 'active', type: 'text', text: reminderText(reminder), preferConfiguredTarget: true });
     const status = statusFromSendResult(result);
     const error = result.ok ? null : result.error || 'send failed';
     if (status !== 'delivered') options.log?.(`[reminders-dispatch] ${status} ${reminder.id}: ${error}`);

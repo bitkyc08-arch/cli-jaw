@@ -72,7 +72,9 @@ export function initAlertDelivery(): void {
 
         for (const ch of channels) {
             if (ch !== 'telegram' && ch !== 'discord' && ch !== 'slack') continue;
-            void sendChannelOutput({ type: 'text', text, channel: ch as MessengerChannel })
+            // An operational alert belongs in the channel configured to receive
+            // one, not in whichever conversation spoke most recently (#438).
+            void sendChannelOutput({ type: 'text', text, channel: ch as MessengerChannel, preferConfiguredTarget: true })
                 .then((result) => {
                     if (!result.ok) {
                         console.warn(`[jaw:alert] delivery to ${ch} failed:`, result.error);

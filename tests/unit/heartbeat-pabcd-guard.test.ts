@@ -11,11 +11,16 @@ const pipelineSrc = readFileSync(join(projectRoot, 'src/orchestrator/pipeline.ts
 
 test('heartbeat guard checks PABCD state before orchestrateAndCollect', () => {
     const guardIdx = heartbeatSrc.indexOf("getState('default') !== 'IDLE'");
-    const collectIdx = heartbeatSrc.indexOf('orchestrateAndCollect(prompt');
+    // Anchored on the real call. The previous anchor, `orchestrateAndCollect(prompt`,
+    // has not existed as a call since the runner moved to the data-returning form —
+    // it survives only inside a comment, so this test was measuring the position of
+    // a comment. Deleting that line would have failed the test; moving it above the
+    // guard would have passed one with the guard removed (#443).
+    const collectIdx = heartbeatSrc.indexOf('orchestrateAndCollectData(prompt');
 
     assert.ok(heartbeatSrc.includes("import { getState } from '../orchestrator/state-machine.js'"));
     assert.ok(guardIdx > -1, 'heartbeat must check PABCD state');
-    assert.ok(collectIdx > -1, 'heartbeat must still call orchestrateAndCollect for IDLE runs');
+    assert.ok(collectIdx > -1, 'heartbeat must still run the collector for IDLE runs');
     assert.ok(guardIdx < collectIdx, 'PABCD guard must run before orchestrateAndCollect');
     assert.ok(heartbeatSrc.includes("'pabcd_active'"), 'defer reason must be structured');
     assert.ok(heartbeatSrc.includes("'defer'"), 'defer policy must be structured');
@@ -23,12 +28,12 @@ test('heartbeat guard checks PABCD state before orchestrateAndCollect', () => {
 
 test('heartbeat defers while the main agent is busy', () => {
     const busyIdx = heartbeatSrc.indexOf('isAgentBusy(HEARTBEAT_SCOPE)');
-    const collectIdx = heartbeatSrc.indexOf('orchestrateAndCollect(prompt');
+    const collectIdx = heartbeatSrc.indexOf('orchestrateAndCollectData(prompt');
 
     assert.ok(heartbeatSrc.includes("import { isAgentBusy, messageQueue } from '../agent/spawn.js'"));
     assert.ok(heartbeatSrc.includes("'agent_busy'"), 'agent-busy defer reason must be structured');
     assert.ok(busyIdx > -1, 'heartbeat must check isAgentBusy before starting');
-    assert.ok(collectIdx > -1, 'heartbeat must still call orchestrateAndCollect for IDLE runs');
+    assert.ok(collectIdx > -1, 'heartbeat must still run the collector for IDLE runs');
     assert.ok(busyIdx < collectIdx, 'agent-busy guard must run before orchestrateAndCollect');
     assert.match(
         heartbeatSrc,

@@ -72,7 +72,9 @@ test('?session=id scopes history, count, and search while absence preserves the 
     db.prepare("INSERT INTO messages (role, content, session_id) VALUES ('user', 'hub-only-a', 'hub-a'), ('user', 'hub-only-b', 'hub-b')").run();
     db.prepare("UPDATE session SET active_chat_session = 'hub-a' WHERE id = 'default'").run();
     const app = express();
-    registerMessageRoutes(app);
+    // Reads are authenticated now (#449); this suite exercises session scoping,
+    // not the guard, so it passes through.
+    registerMessageRoutes(app, (_req, _res, next) => next());
 
     await withServer(app, async baseUrl => {
         const scoped = await (await fetch(`${baseUrl}/api/messages?session=hub-b`)).json() as { data: Array<{ content: string }> };

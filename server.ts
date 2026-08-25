@@ -94,7 +94,7 @@ import {
     initPromptFiles, regenerateB,
 } from './src/prompt/builder.js';
 
-import { killAllAgents, drainRecoveredQueue } from './src/agent/spawn.js';
+import { killAllAgents, drainRecoveredQueue, waitForAllProcessesEnd } from './src/agent/spawn.js';
 import { resetAllStaleStates } from './src/orchestrator/state-machine.js';
 
 import { submitMessage } from './src/orchestrator/gateway.js';
@@ -383,7 +383,7 @@ registerBgtaskRoutes(app, requireAuth);
 registerEventsRoutes(app, requireAuth);
 registerInstanceRoutes(app);
 registerChatSessionRoutes(app, requireAuth);
-registerMessageRoutes(app);
+registerMessageRoutes(app, requireAuth);
 const searchRegistry = new SearchProviderRegistry();
 searchRegistry.register(new ChatSearchProvider(settings['search'].engine));
 searchRegistry.register(new MemorySearchProvider(settings['memory'].enabled));
@@ -526,6 +526,10 @@ const shutdown = async (sig: string) => {
 
     // Flush WAL and close SQLite before exiting
     try {
+        // killAllAgents only signalled; the exit handlers that persist the last
+        // turn run after the child actually dies. Closing the database before
+        // they finish threw "connection is not open" and lost that turn (#439).
+        await waitForAllProcessesEnd();
         closeDb();
         console.log('[server] database closed');
     } catch (e) {
