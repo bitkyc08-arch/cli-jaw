@@ -75,11 +75,12 @@ test('OSR-006: sendTelegramMarkdown aborts between chunks and skips fallback leg
     };
     // Long enough to need multiple chunks so the loop guard matters too.
     const text = 'x'.repeat(9000);
-    await assert.rejects(
-        () => sendTelegramMarkdown(api as never, 1, text, { signal: controller.signal }),
-        /socket destroyed/,
-        'a cancelled send surfaces the abort error',
-    );
+    // The cancellation is REPORTED, not thrown (#417): the transport error that
+    // happened to surface it is incidental, and a caller must be able to tell a
+    // cancelled turn from a Telegram rejection without matching Error text.
+    const result = await sendTelegramMarkdown(api as never, 1, text, { signal: controller.signal });
+    assert.equal(result.ok, false, 'a cancelled send must not claim it delivered');
+    assert.equal(result.aborted, true, 'and it must be identifiable as a cancellation');
     assert.deepEqual(calls, ['rich'], 'no fallback or retry leg after the abort');
 });
 
