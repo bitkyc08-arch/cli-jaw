@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { startSlackProgress, statusFromToolEvent, truncateStatus } from '../../src/slack/progress.ts';
+import { startSlackProgress, statusFromToolEvent, truncateStatus, sanitizeProgressDetail } from '../../src/slack/progress.ts';
 
 type Call = { method: string; body: Record<string, unknown> };
 
@@ -127,4 +127,34 @@ test('SPR-003: ordinary Korean progress text is not mangled', async () => {
     const progress = await startSlackProgress('xoxb-1', target, status, { fetchImpl });
     assert.equal(calls[0]?.body['text'], status);
     await progress.finish();
+});
+
+// ─── #440: a search pattern is not a progress label ──
+//
+// The incident string sat in a Slack thread for six minutes looking like an
+// answer. These assert the shape that made it leak, not the literal.
+
+test('SPR-440a: a grep pattern never reaches the channel', () => {
+    const leaked = 'channel/send|files.upload|slack.*photo';
+    assert.equal(sanitizeProgressDetail(leaked), '');
+    assert.equal(statusFromToolEvent({ label: 'Grep', detail: leaked }, 'Working'), 'Grep');
+});
+
+test('SPR-440b: regex metacharacters of every common kind are treated as a pattern', () => {
+    for (const pattern of ['a|b', 'foo.*bar', '^start', 'end$', 'x[0-9]y', '(a|b)+', 'a\\d+']) {
+        assert.equal(sanitizeProgressDetail(pattern), '', `pattern not stripped: ${pattern}`);
+    }
+});
+
+test('SPR-440c: ordinary details still show, or the progress line is pointless', () => {
+    assert.equal(sanitizeProgressDetail('src/app.ts'), 'src/app.ts');
+    assert.equal(sanitizeProgressDetail('README.md'), 'README.md');
+    assert.equal(statusFromToolEvent({ label: 'Read', detail: 'src/app.ts' }, 'Working'), 'Read — src/app.ts');
+});
+
+test('SPR-440d: internal API method names are redacted, real filenames are not', () => {
+    assert.equal(sanitizeProgressDetail('files.upload'), '');
+    assert.equal(sanitizeProgressDetail('chat.postMessage'), '');
+    assert.equal(sanitizeProgressDetail('notes.md'), 'notes.md');
+    assert.equal(sanitizeProgressDetail('config.json'), 'config.json');
 });
