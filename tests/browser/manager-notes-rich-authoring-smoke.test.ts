@@ -175,9 +175,9 @@ serialTest('notes WYSIWYG authoring keeps the primary toolbar compact', async ()
     const noteName = `browser-rich-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedRichNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -282,9 +282,9 @@ serialTest('notes WYSIWYG code block raw editor keeps rich paste inside textarea
     const noteName = `browser-code-paste-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedRichNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
     await page.getByRole('tab', { name: 'WYSIWYG' }).click();
@@ -326,9 +326,9 @@ serialTest('notes WYSIWYG toolbar commands can be used together without conflict
     const noteName = `browser-toolbar-all-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedSimpleNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -431,9 +431,9 @@ serialTest('notes WYSIWYG heading marker supports level 6 source editing', async
     const noteName = `browser-heading-six-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedSimpleNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -471,9 +471,9 @@ serialTest('notes WYSIWYG Task toolbar stays in Milkdown without fallback', asyn
     const noteName = `browser-task-toolbar-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedSimpleNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -504,11 +504,11 @@ serialTest('notes render and edit GitHub Flavored Markdown affordances', async (
     const taskOnlyNoteName = `browser-gfm-task-only-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedGfmNote(page, noteName);
     await seedGfmNote(page, wysiwygNoteName, { includeFootnotes: false });
     await seedTaskOnlyNote(page, taskOnlyNoteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();

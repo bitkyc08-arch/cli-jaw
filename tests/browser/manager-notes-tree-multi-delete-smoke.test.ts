@@ -43,7 +43,7 @@ test('notes tree multi-select Delete trashes every selected entry in one keystro
     const noteB = `browser-multi-${runId}-b.md`;
 
     try {
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.evaluate(async () => {
             await fetch('/api/dashboard/registry', {
                 method: 'PATCH',
@@ -53,7 +53,7 @@ test('notes tree multi-select Delete trashes every selected entry in one keystro
         });
         await seedNote(page, noteA);
         await seedNote(page, noteB);
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.notes-tree');
 
         const buttonA = page.locator('.notes-tree-file-button').filter({ hasText: noteA }).first();
@@ -133,7 +133,7 @@ test('notes tree single click clears existing multi-selection', async () => awai
     const folderName = `browser-clear-folder-${runId}`;
 
     try {
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.evaluate(async ({ folderName }) => {
             const headers = { 'content-type': 'application/json' };
             await fetch('/api/dashboard/registry', {
@@ -150,7 +150,7 @@ test('notes tree single click clears existing multi-selection', async () => awai
         await seedNote(page, noteA);
         await seedNote(page, noteB);
         await seedNote(page, noteC);
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.notes-tree');
 
         const buttonA = page.locator('.notes-tree-file-button').filter({ hasText: noteA }).first();
@@ -199,7 +199,7 @@ test('notes tree Cmd+Delete trashes the selected folder', async () => await with
     const notePath = `${folderName}/nested.md`;
 
     try {
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.evaluate(async ({ folderName, notePath }) => {
             const headers = { 'content-type': 'application/json' };
             await fetch('/api/dashboard/registry', {
@@ -219,7 +219,7 @@ test('notes tree Cmd+Delete trashes the selected folder', async () => await with
             });
         }, { folderName, notePath });
 
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.notes-tree');
 
         const folderButton = page.locator('.notes-tree-folder-button').filter({ hasText: folderName }).first();
@@ -271,7 +271,7 @@ test('notes tree Cmd+Shift+C copies the selected folder path instead of stale fi
     const notePath = `${folderName}/nested.md`;
 
     try {
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.evaluate(async ({ folderName, notePath }) => {
             const headers = { 'content-type': 'application/json' };
             await fetch('/api/dashboard/registry', {
@@ -291,7 +291,7 @@ test('notes tree Cmd+Shift+C copies the selected folder path instead of stale fi
             });
         }, { folderName, notePath });
 
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.notes-tree');
         await page.evaluate(`
             Object.defineProperty(navigator.clipboard, 'writeText', {

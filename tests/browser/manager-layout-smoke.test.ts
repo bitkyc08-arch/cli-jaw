@@ -76,7 +76,7 @@ async function selectFirstOnlineInstance(page: Page): Promise<void> {
         });
         return selected.port;
     });
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction((selectedPort) => {
         return document.body.textContent?.includes(String(selectedPort)) ?? false;
     }, port);
@@ -129,7 +129,7 @@ test('manager dashboard shell has measured layout coverage at critical viewports
 
     for (const viewport of VIEWPORTS) {
         await page.setViewportSize(viewport);
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.dashboard-shell.manager-shell');
         await page.screenshot({
             fullPage: false,
@@ -229,7 +229,7 @@ test('manager preview header toggles and refreshes the iframe', async (t) => awa
     const page = await pageForManager(t);
     if (!page) return;
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await selectFirstOnlineInstance(page);
 
     await page.getByRole('tab', { name: 'Preview' }).click();
