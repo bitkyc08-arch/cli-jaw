@@ -180,15 +180,56 @@ export function createQueueController(
     function loadPersistedQueue(): QueueItem[] {
         const recovered = (deps.listQueuedMessages.all() as Array<{ id: string; payload: string }>).flatMap(normalizeQueueItem);
         if (!multiSessionEnabled) return recovered;
-        return [
-            ...recovered.filter(item => item.priority === 'head'),
-            ...recovered.filter(item => item.priority !== 'head'),
-        ];
+        // Restore each scope's internal order, not a global one. Hoisting every
+        // `head` item to the front of the whole queue re-created the ordering bug
+        // that enqueueing was just fixed for: an interrupt saved by session A came
+        // back ahead of session B, which had been waiting first (#453).
+        const byScope = new Map<string, QueueItem[]>();
+        for (const item of recovered) {
+            const scope = item.scope ?? 'default';
+            const bucket = byScope.get(scope);
+            if (bucket) bucket.push(item);
+            else byScope.set(scope, [item]);
+        }
+        for (const [scope, items] of byScope) {
+            byScope.set(scope, [
+                ...items.filter(item => item.priority === 'head'),
+                ...items.filter(item => item.priority !== 'head'),
+            ]);
+        }
+        // Scopes keep the order they were first seen in, so cross-scope fairness
+        // survives the restart too.
+        const seen = new Set<string>();
+        const ordered: QueueItem[] = [];
+        for (const item of recovered) {
+            const scope = item.scope ?? 'default';
+            if (seen.has(scope)) continue;
+            seen.add(scope);
+            ordered.push(...(byScope.get(scope) ?? []));
+        }
+        return ordered;
     }
 
     const messageQueue: QueueItem[] = loadPersistedQueue();
     if (messageQueue.length > 0) {
         console.log(`[queue] recovered ${messageQueue.length} persisted message(s) from previous session`);
+    }
+    /**
+     * Put an interrupt ahead of its OWN scope, not ahead of everyone.
+     *
+     * `unshift` sent it to the head of the global array, so interrupting session
+     * A promoted that turn past session B's older waiting message. Interrupt is a
+     * scope-local policy — "drop what I am doing and take this instead" — and it
+     * was silently reordering conversations that had nothing to do with it.
+     *
+     * Landing before the first item of the same scope preserves that meaning and
+     * leaves every other scope's relative order untouched.
+     */
+    function insertAheadOfScope(item: QueueItem): void {
+        const scope = normalizeScope(item.scope);
+        const at = messageQueue.findIndex(queued => normalizeScope(queued.scope) === scope);
+        if (at === -1) messageQueue.push(item);
+        else messageQueue.splice(at, 0, item);
     }
     /**
      * Wake the queue we just recovered.
@@ -399,7 +440,7 @@ export function createQueueController(
             ts: Date.now(),
         });
         deps.insertQueuedMessage.run(item.id, JSON.stringify(item));
-        if (multiSessionEnabled && meta?.front === true) messageQueue.unshift(item);
+        if (multiSessionEnabled && meta?.front === true) insertAheadOfScope(item);
         else messageQueue.push(item);
         console.log(`[queue] +1 (${messageQueue.length} pending)`);
         deps.broadcast('queue_update', queueUpdatePayload(item.scope));
