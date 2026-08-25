@@ -164,7 +164,7 @@ Prefers ES Module only, no CommonJS.
 |------|-----|
 | **소스** | `src/prompt/builder.ts` `appendLegacyMemoryContext()` |
 | **저장소** | `~/.claude/projects/{hash}/memory/*.md` + `~/.cli-jaw/memory/MEMORY.md` |
-| **주입 빈도** | 첫 3 assistant counter turn 또는 `memoryFlushCounter % ceil(flushEvery / 2) === 0` 일 때 session memory 주입 |
+| **주입 빈도** | 첫 3 assistant counter turn 또는 `memoryFlushCounter % ceil(flushEvery / 2) === 0` 일 때 session memory 주입 (이 카운터는 플러시 트리거와 별개이며 리셋되지 않는다) |
 | **CHAR_BUDGET** | `10000자` |
 | **주입 형태** | `## Recent Session Memories` + `## Core Memory` |
 | **Core Memory 길이 제한** | `1500자` 초과 시 자르고 안내 문구 추가 |

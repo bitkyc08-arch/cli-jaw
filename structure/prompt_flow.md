@@ -140,6 +140,7 @@ advanced 가 아니면 `appendLegacyMemoryContext()`로 legacy fallback을 먼�
 advanced index가 아직 준비되지 않았거나 `forDisk: true`인 경우 `appendLegacyMemoryContext()`를 먼저 쓴다.
 
 - 세션 메모리: 첫 3 assistant counter turn 또는 `memoryFlushCounter % ceil(flushEvery / 2) === 0`일 때 주입
+  - `memoryFlushCounter` 는 **단조 증가**하며 플러시 트리거와 분리돼 있다. 플러시는 별도 전역 카운터(`countTurnForFlush`)가 세고 임계에서 0으로 리셋되는데, 이 값이 리셋되면 주입 주기와 compact 임계(25/35턴)가 함께 왜곡되므로 둘을 합치지 말 것.
 - 코어 메모리: `MEMORY.md`가 50자 이상일 때 항상 주입
 - 코어 메모리 길이 제한: 1500자
 - 세션 메모리 길이 예산: 10000자
