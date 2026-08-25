@@ -76,6 +76,26 @@ export interface RichSendOpts {
     signal?: AbortSignal;
 }
 
+/**
+ * Outcome of a Telegram text send.
+ *
+ * Telegram was the one channel that signalled cancellation by throwing, while
+ * `sendSlackText` and `sendDiscordTextRest` returned `ok: false`. That forced
+ * every caller into a try/catch whose catch block could not tell "we cancelled
+ * this" from "Telegram rejected it" without string-matching an Error message —
+ * and the queue-notice path has to tell them apart, because a cancelled answer
+ * must never close a notice as 'answered'.
+ *
+ * `aborted` is a separate flag rather than an error code so a caller can branch
+ * on it without parsing text.
+ */
+export type TelegramSendResult =
+    | { ok: true; aborted?: false }
+    | { ok: false; aborted: true };
+
+const OK: TelegramSendResult = { ok: true };
+const ABORTED: TelegramSendResult = { ok: false, aborted: true };
+
 /** True when the running grammy build exposes sendRichMessage (Bot API 10.1+). */
 export function supportsRichMessage(api: MaybeRichApi): boolean {
     return typeof api.sendRichMessage === 'function';
@@ -268,20 +288,24 @@ function richOpts(opts?: RichSendOpts) {
  * Send markdown text, preferring Bot API 10.1 sendRichMessage; falls back per chunk to
  * parse_mode:'HTML' (re-chunked at 4096), then tag-stripped plaintext. Never throws for
  * a single bad chunk; rethrows only when every leg of the chain failed.
+ *
+ * Cancellation is reported, not thrown (#417). A shutdown abort is an expected
+ * outcome the caller asked for, so it comes back as `{ ok: false, aborted: true }`
+ * the way Slack and Discord already report theirs. Vendor failures still throw:
+ * collapsing the two would make a real delivery fault look like a clean stop.
  */
 export async function sendTelegramMarkdown(
     api: MaybeRichApi,
     chatId: string | number,
     rawMarkdown: string,
     opts?: RichSendOpts,
-): Promise<void> {
+): Promise<TelegramSendResult> {
     // Last mile for every Telegram text send: this helper is the single entry
     // point, so masking here cannot be bypassed by a caller that forgot.
     const markdown = redactOutboundText(rawMarkdown);
     const prefix = effectivePrefix(opts?.prefix ?? '', RICH_MESSAGE_LIMIT, markdown);
     if (!supportsRichMessage(api)) {
-        await sendHtmlFallback(api, chatId, markdown, opts, prefix);
-        return;
+        return sendHtmlFallback(api, chatId, markdown, opts, prefix);
     }
     // The prefix rides on the first chunk, so it has to come out of that
     // chunk's budget. Chunking at the full limit and prepending afterwards
@@ -289,16 +313,27 @@ export async function sendTelegramMarkdown(
     // fallback.
     const chunks = chunkWithPrefixBudget(markdown, prefix, RICH_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
-        if (opts?.signal?.aborted) throw new Error('telegram_send_aborted');
+        if (opts?.signal?.aborted) return ABORTED;
         const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
-        const needsFallback = await attemptSend(() =>
-            // grammY's declared AbortSignal is the abort-controller shim type;
-            // the reaction path (reactions.ts) uses the same `as never` cast.
-            api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts), opts?.signal as never), opts?.signal);
+        let needsFallback: boolean;
+        try {
+            needsFallback = await attemptSend(() =>
+                // grammY's declared AbortSignal is the abort-controller shim type;
+                // the reaction path (reactions.ts) uses the same `as never` cast.
+                api.sendRichMessage!(chatId, { markdown: withPrefix }, richOpts(opts), opts?.signal as never), opts?.signal);
+        } catch (err: unknown) {
+            // attemptSend rethrows the vendor error as-is when the signal fired
+            // mid-flight. The transport error is incidental there — what the
+            // caller needs to know is that this turn was cancelled.
+            if (opts?.signal?.aborted) return ABORTED;
+            throw err;
+        }
         if (needsFallback) {
-            await sendHtmlFallback(api, chatId, chunks[i]!, opts, i === 0 ? prefix : '');
+            const fallback = await sendHtmlFallback(api, chatId, chunks[i]!, opts, i === 0 ? prefix : '');
+            if (!fallback.ok) return fallback;
         }
     }
+    return OK;
 }
 
 async function sendHtmlFallback(
@@ -307,7 +342,7 @@ async function sendHtmlFallback(
     mdChunk: string,
     opts: RichSendOpts | undefined,
     prefix: string,
-): Promise<void> {
+): Promise<TelegramSendResult> {
     const base = richOpts(opts);
     const htmlOpts = { ...base, parse_mode: 'HTML' as const };
     // Plaintext leg: omit the options object entirely when empty (legacy wire shape).
@@ -318,13 +353,19 @@ async function sendHtmlFallback(
         ? chunkTelegramMessage(html, HTML_MESSAGE_LIMIT - safePrefix.length)
         : chunkTelegramMessage(html, HTML_MESSAGE_LIMIT);
     for (let i = 0; i < chunks.length; i += 1) {
-        if (opts?.signal?.aborted) throw new Error('telegram_send_aborted');
+        if (opts?.signal?.aborted) return ABORTED;
         const withPrefix = i === 0 ? `${safePrefix}${chunks[i]}` : chunks[i]!;
-        const needsPlain = await attemptSend(
-            () => api.sendMessage(chatId, withPrefix, htmlOpts, opts?.signal as never), opts?.signal);
-        if (needsPlain) {
-            await attemptSend(() =>
-                api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts, opts?.signal as never), opts?.signal);
+        try {
+            const needsPlain = await attemptSend(
+                () => api.sendMessage(chatId, withPrefix, htmlOpts, opts?.signal as never), opts?.signal);
+            if (needsPlain) {
+                await attemptSend(() =>
+                    api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts, opts?.signal as never), opts?.signal);
+            }
+        } catch (err: unknown) {
+            if (opts?.signal?.aborted) return ABORTED;
+            throw err;
         }
     }
+    return OK;
 }
