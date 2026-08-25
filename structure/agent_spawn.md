@@ -311,14 +311,16 @@ orchestrate(prompt, meta)
 
 | Export | Role |
 | --- | --- |
-| `incrementMemoryFlush()` | 카운터 증가 |
-| `resetMemoryFlushCounter()` | 카운터 리셋 + cycle 증가 |
-| `triggerMemoryFlush()` | flush lock + spawnAgent로 memory flush 실행 |
+| `incrementMemoryFlush()` | `memoryFlushCounter` 증가 (compact 턴 수 추정용, 단조 증가) |
+| `countTurnForFlush(threshold)` | 전역 플러시 트리거 카운터. 임계 도달 시 리셋하고 true |
+| `triggerMemoryFlush()` | 자동 플러시 — 미플러시 세션 전부를 합쳐 extractor 1회 |
+| `triggerMemoryFlushForCurrentSession()` | 수동 플러시 — 현재 세션 단독, 세션 헤딩 유지 |
 | `setSpawnRef(fn, procs)` | circular import 회피용 forward reference 설정 |
 
-- `_flushLock`으로 동시 flush 방지.
-- `_lastFlushedMessageId`로 중복 flush 방지.
-- `lifecycle-handler.ts`가 agent 종료 후 `memoryFlushCounter` 기준으로 flush 트리거.
+- `_flushLock`으로 동시 flush 방지. 막힌 자동 플러시는 `_pendingMergedFlush` 한 비트로 합쳐져 lock 해제 시 한 번 재시도된다.
+- `_lastFlushedMessageId`(세션별)로 중복 flush 방지. 합본이어도 각 세션은 자기 마지막 담긴 행까지만 전진한다.
+- `lifecycle-handler.ts`가 agent 종료 후 전역 턴 카운터 기준으로 flush 트리거. `memoryFlushCounter` 는 여기서 쓰이지 않는다 — compact 임계(25/35턴) 추정용이라 리셋되면 안 되기 때문이다.
+- 반환값은 `'started' | 'insufficient' | 'locked'`.
 - Dashboard home resolution으로 flush 결과를 dashboard notes에도 반영 가능.
 
 ---
@@ -332,7 +334,7 @@ orchestrate(prompt, meta)
 | Goal continuation | active goal + completion evidence 미충족 시 `buildGoalContinuation()` → 재스폰 (max 20회) |
 | Fallback retry | error classification → retry with different model/effort |
 | Grok trace backfill | 정상 종료 후 `grok trace --local --json` 호출 |
-| Memory flush trigger | `memoryFlushCounter` 기준 `triggerMemoryFlush()` |
+| Memory flush trigger | 전역 턴 카운터(`countTurnForFlush`) 기준 `triggerMemoryFlush()` |
 | Queue resume | `processQueue()` 호출 |
 | Interview tracker strip | `stripInterviewTracker()` from broadcast text |
 | Tool-log sanitize | `sanitizeToolLogForDurableStorage()` before DB insert |

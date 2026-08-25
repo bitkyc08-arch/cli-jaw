@@ -216,9 +216,19 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
 
     app.post('/api/jaw-memory/flush', requireAuth, async (_req, res) => {
         try {
-            const { triggerMemoryFlush } = await import('../agent/memory-flush-controller.js');
-            await triggerMemoryFlush();
-            res.json({ ok: true, message: 'Memory flush triggered' });
+            const { triggerMemoryFlushForCurrentSession } = await import('../agent/memory-flush-controller.js');
+            // Single-session by design; the merged flush is the automatic one.
+            const outcome = await triggerMemoryFlushForCurrentSession();
+            if (outcome === 'locked') {
+                // 409 rather than 500: nothing failed, the writer is simply busy.
+                res.status(409).json({ ok: false, outcome, message: 'A memory flush is already running' });
+                return;
+            }
+            res.json({
+                ok: true,
+                outcome,
+                message: outcome === 'insufficient' ? 'Nothing new to summarise' : 'Memory flush triggered',
+            });
         } catch (e: unknown) {
             res.status(500).json({ error: (e as Error).message });
         }

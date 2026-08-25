@@ -584,6 +584,27 @@ function stripNoticeFromRows<T>(rows: T[]): T[] {
 export const getRecentMessages = {
     all: (...args: unknown[]) => stripNoticeFromRows(recentMessagesStmt.all(...args as [])),
 };
+
+// Ascending and watermark-bounded, for the merged memory flush.
+//
+// recentMessagesStmt cannot serve it: DESC + LIMIT keeps the NEWEST n rows, which is
+// right for a prompt window and wrong for a summariser. If a session ever falls more
+// than n rows behind, the newest-n view silently drops the front of that backlog and
+// the watermark then commits past the rows nobody read.
+const unflushedMessagesStmt = db.prepare(
+    'SELECT id, role, content FROM messages'
+    + ' WHERE (working_dir = ? OR working_dir IS NULL) AND session_id = ? AND id > ?'
+    + ' ORDER BY id ASC LIMIT ?',
+);
+export const getUnflushedMessages = {
+    all: (...args: unknown[]) => stripNoticeFromRows(unflushedMessagesStmt.all(...args as [])),
+};
+
+// Sessions that actually hold rows in scope. Enumerating chat_sessions instead would
+// miss rows whose session row was deleted — messages has no foreign key to it.
+export const getSessionIdsWithMessages = db.prepare(
+    'SELECT DISTINCT session_id FROM messages WHERE (working_dir = ? OR working_dir IS NULL)',
+);
 export const getRecentMessagesLite = {
     all: (...args: unknown[]) => stripNoticeFromRows(recentMessagesLiteStmt.all(...args as [])),
 };
