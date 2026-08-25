@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
     parseCommand,
     executeCommand,
@@ -8,6 +10,17 @@ import {
     getArgumentCompletionItems,
     COMMANDS,
 } from '../../src/cli/commands.ts';
+import { CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
+import { resetOpenCodexModelCacheForTest } from '../../src/cli/opencodex-models.ts';
+
+// Codex completions prefer a LIVE opencodex catalog and only fall back to the
+// static registry when no runtime answers. On a developer machine running
+// opencodex these tests were therefore asserting the contents of whatever that
+// daemon happened to serve, and failed for a reason that had nothing to do with
+// the code under test (#447). Pointing the lookup at an empty directory removes
+// the runtime from the equation so the static path is the one being tested.
+process.env['CLI_JAW_OPENCODEX_DIR'] = join(tmpdir(), 'cli-jaw-test-no-opencodex');
+resetOpenCodexModelCacheForTest();
 
 // ─── parseCommand ────────────────────────────────────
 
@@ -258,14 +271,20 @@ test('getArgumentCompletionItems: model labels use concrete provider instead of 
     assert.notEqual(item.desc, 'ai-e');
 });
 
-test('getArgumentCompletionItems: model command includes default Codex spark choice', async () => {
-    const items = await getArgumentCompletionItems('model', 'spark', 'cli', [], {});
-    assert.ok(items.some(i => i.name === 'gpt-5.3-codex-spark'));
+// Assert on the registry rather than a hardcoded id: the point is that the static
+// catalog reaches completions, not that any particular model is in it forever.
+const staticCodexModel = CODEX_MODEL_CHOICES.find(m => m.includes('spark')) ?? CODEX_MODEL_CHOICES[0]!;
+
+test('getArgumentCompletionItems: model command offers the static Codex catalog when no runtime answers', async () => {
+    const items = await getArgumentCompletionItems('model', staticCodexModel, 'cli', [], {});
+    assert.ok(items.some(i => i.name === staticCodexModel),
+        `expected ${staticCodexModel} from CODEX_MODEL_CHOICES, got: ${items.map(i => i.name).join(', ')}`);
 });
 
-test('getArgumentCompletionItems: employee model command uses dynamic Codex model choices', async () => {
-    const items = await getArgumentCompletionItems('employee', 'spark', 'cli', ['model', 'Control'], {});
-    assert.ok(items.some(i => i.name === 'gpt-5.3-codex-spark'));
+test('getArgumentCompletionItems: employee model command uses the same Codex catalog', async () => {
+    const items = await getArgumentCompletionItems('employee', staticCodexModel, 'cli', ['model', 'Control'], {});
+    assert.ok(items.some(i => i.name === staticCodexModel),
+        `expected ${staticCodexModel}, got: ${items.map(i => i.name).join(', ')}`);
 });
 
 test('getArgumentCompletionItems: employee cli command returns cli choices', async () => {
