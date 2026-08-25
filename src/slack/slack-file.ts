@@ -34,6 +34,14 @@ export async function sendSlackFile(
 ): Promise<{ ok: boolean; error?: string; status?: number }> {
     const doFetch = options.fetchImpl || fetch;
     const signalOpt = options.signal ? { signal: options.signal } : {};
+    // An already-aborted send must reach zero network calls. Handing the signal to
+    // slackApi is not enough: it only helps once the request is in flight, and the
+    // FIRST call here reserves an upload slot on Slack's side. A reservation nobody
+    // completes is state we left behind, one per shutdown. sendSlackText has had
+    // this guard since #417; the file path never got one (#464).
+    if (options.signal?.aborted) {
+        return slackFailure('slack_send_aborted', 499);
+    }
     let fileStat;
     try {
         fileStat = await stat(filePath);

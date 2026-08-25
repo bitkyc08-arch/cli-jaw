@@ -90,5 +90,12 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // costs more characters than the wrong advice did, and the reason has to travel
     // with the rule — an agent told "always send target" without being told what
     // happens otherwise will drop it again the first time it is inconvenient.
-    assert.ok(a1Src.length <= 38250, `a1-system.md is ${a1Src.length} chars — over the 38,250 budget`);
+    // Budget raised 38,250 → 38,750 for two lines that only work inline. The first
+    // is the answer-shape rule: an agent that opens with a warm-up paragraph, blurs
+    // what it verified against what it guessed, or answers past the question does
+    // that in its FIRST sentence — before any skill read could correct it. The
+    // second routes 윤문/답변 구성 to jaw-dev-write / jaw-dev-speech, and a routing
+    // line the agent never sees routes nothing. The depth lives in those skills;
+    // only the trigger is here.
+    assert.ok(a1Src.length <= 38750, `a1-system.md is ${a1Src.length} chars — over the 38,750 budget`);
 });

@@ -210,6 +210,9 @@ jobs:
       - name: Deps security check
         run: npm run check:deps
 
+      - name: Dependency advisory gate
+        run: npm run check:deps:audit
+
       - name: Strict-baseline regression gate
         run: npm run check:strict-baseline
 

@@ -1,6 +1,6 @@
 {
   "name": "cli-jaw",
-  "version": "2.17.17",
+  "version": "2.17.18",
   "description": "Personal AI assistant powered by Pi, Antigravity, AI-E, Claude, Claude E, Codex, Codex App, Cursor, Grok, Kiro, OpenCode, and Copilot — Web, Terminal, Telegram, and Discord interfaces with 107 built-in skills",
   "type": "module",
   "keywords": [
@@ -60,6 +60,7 @@
     "test:claude-exec": "npm run test:claude-e",
     "check:copilot-gap": "tsx scripts/check-copilot-gap.ts",
     "check:deps": "tsx scripts/check-deps-offline.ts",
+    "check:deps:audit": "tsx scripts/check-deps-audit.ts",
     "check:strict-baseline": "node scripts/check-strict-baseline.mjs",
     "check:path-length": "node scripts/check-path-length.mjs",
     "docs:check": "tsx scripts/docs/check-docs.mts",
@@ -164,7 +165,7 @@
     "better-sqlite3": "^13.0.2",
     "d3": "^7.9.0",
     "discord.js": "^14.25.1",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.14",
     "eventsource": "^3.0.7",
     "express": "^5.2.1",
     "fast-glob": "^3.3.3",
@@ -174,7 +175,7 @@
     "katex": "^0.16.44",
     "marked": "^18.0.0",
     "marked-highlight": "^2.2.3",
-    "mermaid": "^11.14.0",
+    "mermaid": "^11.17.1",
     "node-fetch": "^3.3.2",
     "playwright-core": "^1.58.2",
     "react": "^19.2.5",

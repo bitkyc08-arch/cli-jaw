@@ -23,7 +23,7 @@ async function pageApiStatus(page: Page, path: string): Promise<number> {
 }
 
 async function waitForPageApiStatus(page: Page, path: string, expected: number): Promise<void> {
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 20000;
     let latest = await pageApiStatus(page, path);
     while (Date.now() < deadline) {
         if (latest === expected) return;
@@ -85,9 +85,9 @@ test('notes keyboard trash confirms dirty notes and repairs selection', async ()
     const notePath = noteName;
 
     try {
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await seedNote(page, notePath);
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.notes-tree');
 
         const noteButton = page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first();
@@ -118,7 +118,7 @@ test('notes Alt/Option+N creates a note from a file path prompt', async () => aw
     const notePath = `${runId}.md`;
 
     try {
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.evaluate(async () => {
             const headers = { 'content-type': 'application/json' };
             await fetch('/api/dashboard/registry', {
@@ -127,7 +127,7 @@ test('notes Alt/Option+N creates a note from a file path prompt', async () => aw
                 body: JSON.stringify({ ui: { sidebarMode: 'notes', notesSelectedPath: null, notesViewMode: 'raw', notesAuthoringMode: 'plain' } }),
             });
         });
-        await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.notes-tree');
 
         const dialogPromise = new Promise<string>((resolve) => {

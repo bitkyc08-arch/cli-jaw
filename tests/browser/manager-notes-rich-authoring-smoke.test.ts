@@ -155,7 +155,12 @@ async function waitForSavedContent(
     predicate: (content: string) => boolean,
     message: string,
 ): Promise<string> {
-    const deadline = Date.now() + 5000;
+    // 5s was enough when this file ran alone and not enough under test:all, where
+    // ~60 other files share the machine: the save round-trip is disk + a debounced
+    // write, so scheduling pressure lands directly on it. Waiting longer costs
+    // nothing when the predicate is already true — the loop returns on first match
+    // — and only the genuinely-failing case pays the full deadline (#461).
+    const deadline = Date.now() + 20000;
     let latest = await readNoteContent(page, noteName);
     while (Date.now() < deadline) {
         if (predicate(latest)) return latest;
@@ -175,9 +180,9 @@ serialTest('notes WYSIWYG authoring keeps the primary toolbar compact', async ()
     const noteName = `browser-rich-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedRichNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -282,9 +287,9 @@ serialTest('notes WYSIWYG code block raw editor keeps rich paste inside textarea
     const noteName = `browser-code-paste-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedRichNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
     await page.getByRole('tab', { name: 'WYSIWYG' }).click();
@@ -326,9 +331,9 @@ serialTest('notes WYSIWYG toolbar commands can be used together without conflict
     const noteName = `browser-toolbar-all-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedSimpleNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -431,9 +436,9 @@ serialTest('notes WYSIWYG heading marker supports level 6 source editing', async
     const noteName = `browser-heading-six-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedSimpleNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -471,9 +476,9 @@ serialTest('notes WYSIWYG Task toolbar stays in Milkdown without fallback', asyn
     const noteName = `browser-task-toolbar-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedSimpleNote(page, noteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -504,11 +509,11 @@ serialTest('notes render and edit GitHub Flavored Markdown affordances', async (
     const taskOnlyNoteName = `browser-gfm-task-only-${Date.now()}.md`;
 
     try {
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await seedGfmNote(page, noteName);
     await seedGfmNote(page, wysiwygNoteName, { includeFootnotes: false });
     await seedTaskOnlyNote(page, taskOnlyNoteName);
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.notes-tree');
 
     await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
@@ -584,7 +589,7 @@ async function expectInputValue(locator: Locator, expected: string): Promise<voi
     // Replace Playwright's auto-wait inputValue (which has shown flake under
     // tsx --test for inline math node views even when the underlying DOM is
     // ready) with an explicit deadline-based poll over a fresh evaluate read.
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 20000;
     let value = '';
     while (Date.now() < deadline) {
         value = await locator.evaluate(el => (el as HTMLInputElement | HTMLTextAreaElement).value ?? '').catch(() => '');
@@ -602,7 +607,7 @@ function reopenedCodeSource(page: Page): Locator {
 }
 
 async function expectNoOpenCodeSource(page: Page, message: string): Promise<void> {
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 8000;
     let count = 0;
     while (Date.now() < deadline) {
         count = await page.locator('.notes-code-source-node[data-editing="true"]').count();

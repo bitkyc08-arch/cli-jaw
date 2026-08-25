@@ -1,3 +1,8 @@
+// #458: this file writes the shared `orc_state` 'default' row. tests/run.mts forks
+// per file but every child inherits ONE CLI_JAW_HOME, so without an isolated home a
+// concurrent file's resetState() clobbers this file's setState() mid-assertion.
+// Must be the FIRST import: config.ts binds DB_PATH at module evaluation.
+import '../setup/isolated-home.ts';
 import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 

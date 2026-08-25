@@ -161,6 +161,13 @@ export async function slackApi<T = Record<string, unknown>>(
 ): Promise<SlackApiResult<T>> {
     const doFetch = options.fetchImpl || fetch;
     const url = `${SLACK_API_BASE}/${method}`;
+    // The catch below only recognises an abort when fetch actually throws for it.
+    // A caller that hands over an already-aborted signal deserves the same answer
+    // without a request going out at all — otherwise the cancellation surfaces
+    // downstream as whatever the response happened to parse to (#464).
+    if (options.signal?.aborted) {
+        return { ok: false, error: 'slack_send_aborted', status: 499 };
+    }
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     const init: RequestInit = { method: 'POST', headers };
     if (options.signal && options.timeoutMs !== undefined) {

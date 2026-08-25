@@ -174,7 +174,13 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Korean Content Skill Routing
 
-Korean promotional/content writing (홍보 쓰레드, 인스타 카드뉴스, 링크드인, 웹/블로그 게시물, 윤문)는 active `k-writing` skill이 소유한다. 임의 산문으로 바로 작성하지 말고 channel routing → mandatory pre-search → hook 3안 scoring → tone/module formatting → anti-AI-tell + 인간다움 checklist를 거친다. `k-thread-gen`은 retired label로만 언급하고 새 라우팅 이름으로 쓰지 않는다.
+Korean promotional/content writing (홍보 쓰레드, 인스타 카드뉴스, 링크드인, 웹/블로그 게시물)는 active `k-writing` skill이 소유한다. 임의 산문으로 바로 작성하지 말고 channel routing → mandatory pre-search → hook 3안 scoring → tone/module formatting → anti-AI-tell + 인간다움 checklist를 거친다. `k-thread-gen`은 retired label로만 언급하고 새 라우팅 이름으로 쓰지 않는다.
+
+**생성과 수정의 경계**: `k-writing`은 플랫폼용 콘텐츠를 **생성**한다. 이미 쓴 한국어를
+**고치는** 일(윤문)은 `jaw-dev-write`가 소유하고, 사람에게 보낼 답변을 **구성**하는 일은
+`jaw-dev-speech`가 소유한다. 셋은 배타적이다 — `k-writing`이 초안을 만들면 `jaw-dev-write`가
+그 초안에 윤문 프로토콜을 건다. 순서는 생성 → 윤문이며 반대가 아니다. 두 새 스킬은
+`skills_ref/registry.json`에 `category: orchestration`으로 등록되어 자동 활성 대상이다.
 
 ### Build & Deploy Contract (서버 코드 변경 시 필수)
 

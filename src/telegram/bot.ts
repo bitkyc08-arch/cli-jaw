@@ -514,13 +514,19 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
         // legacy HTML→plaintext chain as per-chunk fallback inside the helper.
         // Scoped for shutdown cancellation (#417).
         const outbound = telegramOutboundRegistry.start();
+        let sendResult;
         try {
-            await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({
+            sendResult = await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({
                 message_thread_id: messageThreadId,
                 signal: outbound.signal,
             }));
         } finally {
             outbound.done();
+        }
+        // Previously the abort threw past this return, so the handler answered
+        // 500 with a raw message. A cancelled send is a 499, and it is not ok.
+        if (!sendResult.ok) {
+            return { ok: false, error: 'telegram_send_aborted', status: 499, chat_id: chatId, type: 'text' };
         }
         return { ok: true, chat_id: chatId, type: 'text' };
     }
@@ -870,11 +876,26 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                             // lands in the catch below, which closes the notice
                             // as EXPIRED — a cancelled send is never 'answered'.
                             const outbound = telegramOutboundRegistry.start();
+                            let sendResult;
                             try {
-                                await sendTelegramMarkdown(ctx.api, chat.id, body,
+                                sendResult = await sendTelegramMarkdown(ctx.api, chat.id, body,
                                     { ...replyOptsOf(ctx), signal: outbound.signal });
                             } finally {
                                 outbound.done();
+                            }
+                            // A cancelled send delivered nothing, so it takes the
+                            // same path a vendor failure does: the notice stays as
+                            // the only trace of the turn. Reported rather than
+                            // thrown now, so it needs an explicit branch.
+                            if (!sendResult.ok) {
+                                await Promise.allSettled([
+                                    notice.close('expired'),
+                                    ackHandle?.settle('failure') ?? Promise.resolve(),
+                                ]);
+                                if (requestId) closeTelegramNoticeRecord(requestId);
+                                unregister();
+                                reject(new Error('telegram_send_aborted'));
+                                return;
                             }
                         } catch (error) {
                             // The answer never landed, so the notice is not stale —
@@ -1069,11 +1090,18 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             {
                 // Scoped for shutdown cancellation (#417).
                 const outbound = telegramOutboundRegistry.start();
+                let finalResult;
                 try {
-                    await sendTelegramMarkdown(ctx.api, chat.id, collectedText,
+                    finalResult = await sendTelegramMarkdown(ctx.api, chat.id, collectedText,
                         { ...replyOptsOf(ctx), signal: outbound.signal });
                 } finally {
                     outbound.done();
+                }
+                // Nothing reached the user, so this turn must not be recorded as
+                // a success or relay images for an answer that was never sent.
+                if (!finalResult.ok) {
+                    ackOutcome = 'failure';
+                    return;
                 }
             }
             // The text is what the user was waiting for. Image relay is

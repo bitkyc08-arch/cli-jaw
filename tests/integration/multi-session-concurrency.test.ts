@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 import { activeMainProcesses, killActiveAgent, killAllAgents } from '../../src/agent/spawn.ts';
+import { ownProcess } from '../../src/agent/spawn/process-kill.ts';
 import { jawRuntimesByScope, runtimeForScope } from '../../src/agent/jwc-runtime.ts';
 
 function deferred<T>() {
@@ -13,14 +14,26 @@ function deferred<T>() {
     return { promise, resolve };
 }
 
+// #459: termination no longer goes through child.kill. killActiveAgent hands the
+// child to OwnedProcess.terminate, which walks the PROCESS TREE by pid so a CLI's
+// own children cannot outlive it. A fake with no pid short-circuits that path
+// entirely (process-kill.ts:147), so the old fake observed a call site that no
+// longer exists and read the absence as "nothing was killed".
+//
+// Give the fake a pid and observe the tree walk instead. ownProcess is memoized
+// by child identity, so registering the owner HERE — before killActiveAgent asks
+// for it — is what makes the injected terminateTree the one that runs.
+let nextFakePid = 424200;
 function fakeChild(onKill: () => void): ChildProcess {
     const child = new EventEmitter() as ChildProcess;
     child.kill = (() => { onKill(); return true; }) as ChildProcess['kill'];
     Object.defineProperties(child, {
+        pid: { value: nextFakePid++, writable: false },
         killed: { value: false, writable: true },
         exitCode: { value: null, writable: true },
         signalCode: { value: null, writable: true },
     });
+    ownProcess(child, { terminateTree: () => { onKill(); } });
     return child;
 }
 

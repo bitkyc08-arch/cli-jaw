@@ -93,7 +93,7 @@ function createChatDb(
     }
 }
 
-function makeRef(id: string, homePath: string, hasDb = true): InstanceMemoryRef {
+function makeRef(id: string, homePath: string, hasDb = true, origin: 'registry' | 'scan' = 'scan'): InstanceMemoryRef {
     return {
         instanceId: id,
         homePath,
@@ -104,6 +104,7 @@ function makeRef(id: string, homePath: string, hasDb = true): InstanceMemoryRef 
         hasDb,
         chatDbPath: join(homePath, 'jaw.db'),
         hasChatDb: false,
+        origin,
     };
 }
 
@@ -286,4 +287,17 @@ test('FED-13: a peer-local truncation keeps hasMore true when merged length equa
     assert.equal(result.groups[0]!.hits.length, 50);
     assert.equal(result.page.hasMore, true);
     assert.equal(result.page.nextCursor, null);
+});
+
+// ─── #436: which instances reach the federation list ────────────────────
+
+test('a registry entry with no index does not warn; a live scanned one does', () => {
+    const home = freshTmp();
+    // Neither has an index.sqlite. The difference is why they are in the list.
+    const declared = makeRef('3457', join(home, 'declared'), false, 'registry');
+    const scanned = makeRef('3458', join(home, 'scanned'), false, 'scan');
+    const res = searchFederated('anything', { instances: [declared, scanned] });
+    const codes = res.warnings.map(w => w.instanceId + ':' + w.code);
+    assert.deepEqual(codes, ['3458:missing_db'],
+        'an offline operator-declared instance has no index to open — saying so every search is noise');
 });

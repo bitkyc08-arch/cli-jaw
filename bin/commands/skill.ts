@@ -8,12 +8,12 @@
  *   cli-jaw skill remove <name>      # delete a skill
  *   cli-jaw skill info <name>        # show SKILL.md content
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, cpSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execSync } from 'node:child_process';
 import { JAW_HOME, SKILLS_DIR } from '../../src/core/config.js';
-import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
+import { dedupeSkillDirEntries } from '../../lib/mcp/skills-utils.js';
 import { resolveSkillId, legacySkillIdNotice } from '../../lib/mcp/skills-aliases.js';
 
 const CODEX_SKILLS = join(homedir(), '.codex', 'skills');
@@ -38,17 +38,18 @@ const c = {
 // ─── Helpers ─────────────────────────────────
 function listSkills() {
     mkdirSync(SKILLS_DIR, { recursive: true });
-    return readdirSync(SKILLS_DIR, { withFileTypes: true })
-        .filter(d => d.isDirectory() && isDiscoverableSkillDirName(d.name))
-        .map(d => {
-            const skillMd = join(SKILLS_DIR, d.name, 'SKILL.md');
+    // Same dedupe as the prompt loader, so `skill list` and the injected count
+    // cannot disagree about how many skills exist (#446).
+    return dedupeSkillDirEntries(SKILLS_DIR)
+        .map(name => {
+            const skillMd = join(SKILLS_DIR, name, 'SKILL.md');
             let desc = '';
             try {
                 const content = readFileSync(skillMd, 'utf8');
                 const match = content.match(/description:\s*(.+)/i);
                 if (match) desc = match[1]!.trim();
             } catch { } // best-effort: unreadable SKILL.md shows empty description
-            return { name: d.name, desc };
+            return { name, desc };
         });
 }
 
@@ -318,11 +319,9 @@ switch (sub) {
             }
 
             console.log(`\n  ${c.green}✅ 초기화 완료!${c.reset}`);
-            const activeCount = readdirSync(SKILLS_DIR, { withFileTypes: true })
-                .filter(d => d.isDirectory() && isDiscoverableSkillDirName(d.name)).length;
+            const activeCount = dedupeSkillDirEntries(SKILLS_DIR).length;
             const REF_DIR = join(JAW_HOME, 'skills_ref');
-            const refCount = readdirSync(REF_DIR, { withFileTypes: true })
-                .filter(d => d.isDirectory() && isDiscoverableSkillDirName(d.name)).length;
+            const refCount = dedupeSkillDirEntries(REF_DIR).length;
             console.log(`  ${c.cyan}⚡ Active: ${activeCount}개${c.reset}`);
             console.log(`  ${c.cyan}📦 Ref: ${refCount}개${c.reset}\n`);
         } catch (e) {
