@@ -144,7 +144,27 @@ function loadRegistry(dir) {
 
 function countSkillDirs(dir) {
 	try {
-		return fs.readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory() && isSkillDir(entry.name)).length;
+		// Fold alias links into what they point at. A POSIX symlink already reads as
+		// non-directory, but a Windows junction can read as one, and then the legacy
+		// `dev -> jaw-dev` aliases would double this count (#446). This sidecar is
+		// CommonJS and cannot import lib/mcp, so the rule is repeated rather than shared.
+		const seen = new Set();
+		let count = 0;
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			if (!isSkillDir(entry.name)) continue;
+			const full = path.join(dir, entry.name);
+			let real;
+			try {
+				if (!fs.statSync(full).isDirectory()) continue;
+				real = fs.realpathSync(full);
+			} catch {
+				continue;
+			}
+			if (seen.has(real)) continue;
+			seen.add(real);
+			count++;
+		}
+		return count;
 	} catch {
 		return 0;
 	}

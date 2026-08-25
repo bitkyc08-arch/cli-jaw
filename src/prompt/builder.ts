@@ -16,7 +16,7 @@ import { readHostToolchain, renderHostToolchainSection } from '../memory/host-to
 import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 import { findStaticEmployee } from '../core/employees.js';
-import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
+import { dedupeSkillDirEntries } from '../../lib/mcp/skills-utils.js';
 import { getEmployeeMcpToolSummary } from '../agent/mcp-passthrough.js';
 import { buildInjectionBlock as buildRuntimeContextBlock } from './runtime-context.js';
 import { buildPrePromptContextHook } from './context-hooks.js';
@@ -195,17 +195,18 @@ export function resolveLegacyA1Migration(opts: {
 export function loadActiveSkills() {
     try {
         if (!fs.existsSync(SKILLS_DIR)) return [];
-        return fs.readdirSync(SKILLS_DIR, { withFileTypes: true })
-            .filter(d => d.isDirectory() && isDiscoverableSkillDirName(d.name))
-            .map(d => {
-                const mdPath = join(SKILLS_DIR, d.name, 'SKILL.md');
+        // Alias links share a real path with the skill they point at; counting both
+        // would list one skill twice in the prompt (#446).
+        return dedupeSkillDirEntries(SKILLS_DIR)
+            .map(name => {
+                const mdPath = join(SKILLS_DIR, name, 'SKILL.md');
                 if (!fs.existsSync(mdPath)) return null;
                 const content = fs.readFileSync(mdPath, 'utf8');
                 const nameMatch = content.match(/^name:\s*(.+)/m);
                 const descMatch = content.match(/^description:\s*"?(.+?)"?\s*$/m);
                 return {
-                    id: d.name,
-                    name: nameMatch?.[1]?.trim() || d.name,
+                    id: name,
+                    name: nameMatch?.[1]?.trim() || name,
                     description: descMatch?.[1]?.trim() || '',
                     keywords: parseSkillMetadataList(content, 'keywords'),
                     triggers: parseSkillMetadataList(content, 'triggers'),
