@@ -39,6 +39,10 @@ export function searchFederated(query: string, opts: FederatedSearchOptions = {}
 
     for (const ref of filtered) {
         if (!ref.hasDb) {
+            // An operator-declared registry entry that is simply offline has no
+            // index to open, and saying so once per search is noise, not news.
+            // A scanned live instance missing its index IS worth reporting (#436).
+            if (ref.origin === 'registry') continue;
             warnings.push({
                 instanceId: ref.instanceId,
                 code: 'missing_db',

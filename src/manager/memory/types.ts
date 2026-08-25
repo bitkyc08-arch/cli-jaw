@@ -10,6 +10,10 @@ export interface InstanceMemoryRef {
     hasDb: boolean;
     chatDbPath: string;
     hasChatDb: boolean;
+    /** How this ref entered the list. `registry` entries are operator-declared and
+     *  survive being offline; `scan` entries only appear while the port answers.
+     *  federation uses it to decide whether a missing index is worth a warning (#436). */
+    origin: 'registry' | 'scan';
 }
 
 export interface FederatedHit extends SearchHit {
@@ -61,4 +65,7 @@ export interface ScanItemForFederation {
     port: number;
     profileId?: string | null;
     homeDisplay?: string | null;
+    /** True only for an instance that answered. Offline/timeout rows must not
+     *  become federation entries (#436). */
+    ok?: boolean;
 }

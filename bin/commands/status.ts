@@ -3,7 +3,10 @@
  * Checks if the server is running by pinging the API.
  */
 import { parseArgs } from 'node:util';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { getServerUrl, DEFAULT_PORT } from '../../src/core/config.js';
+import { JAW_HOME } from '../../src/core/config.js';
 import { DASHBOARD_DEFAULT_PORT } from '../../src/manager/constants.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord } from '../_http-client.js';
@@ -26,29 +29,55 @@ if (shouldShowHelp(process.argv)) printAndExit(`
 const { values } = parseArgs({
     args: process.argv.slice(3),
     options: {
-        port: { type: 'string', default: process.env["PORT"] || DEFAULT_PORT },
+        // No default here on purpose: a default makes "--port was omitted"
+        // indistinguishable from "--port 3457", and `jaw --home <path> status`
+        // then probed 3457 no matter which instance the home belongs to (#436).
+        port: { type: 'string' },
         json: { type: 'boolean', default: false },
         dashboard: { type: 'boolean', default: false },
     },
     strict: false,
 });
 
-const url = `${getServerUrl(values.port as string)}/api/settings`;
+/** Port for the home this invocation targets: explicit flag, then the running
+ *  instance's pidfile, then its settings, then the built-in default. */
+function resolvePort(): string {
+    if (values.port) return String(values.port);
+    if (process.env["PORT"]) return String(process.env["PORT"]);
+    try {
+        const pidfile = join(JAW_HOME, 'jaw.pid.json');
+        if (existsSync(pidfile)) {
+            const rec = JSON.parse(readFileSync(pidfile, 'utf8')) as { port?: unknown };
+            if (Number.isFinite(Number(rec.port)) && Number(rec.port) > 0) return String(rec.port);
+        }
+    } catch { /* unreadable pidfile — fall through to settings */ }
+    try {
+        const settingsPath = join(JAW_HOME, 'settings.json');
+        if (existsSync(settingsPath)) {
+            const s = JSON.parse(readFileSync(settingsPath, 'utf8')) as { port?: unknown };
+            if (Number.isFinite(Number(s.port)) && Number(s.port) > 0) return String(s.port);
+        }
+    } catch { /* unreadable settings — fall through to default */ }
+    return DEFAULT_PORT;
+}
+
+const resolvedPort = resolvePort();
+const url = `${getServerUrl(resolvedPort)}/api/settings`;
 
 try {
     const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
         const data = await res.json() as Record<string, unknown>;
         if (values.json) {
-            console.log(JSON.stringify({ status: 'running', port: values.port, cli: data["cli"] }));
+            console.log(JSON.stringify({ status: 'running', port: resolvedPort, cli: data["cli"] }));
         } else {
-            console.log(`  🦈 Server is running on port ${values.port}`);
+            console.log(`  🦈 Server is running on port ${resolvedPort}`);
             console.log(`  CLI: ${data["cli"]}`);
             console.log(`  Working dir: ${data["workingDir"] || '~'}`);
 
             // Heartbeat status
             try {
-                const hbRes = await fetch(`${getServerUrl(values.port as string)}/api/heartbeat`, { signal: AbortSignal.timeout(2000) });
+                const hbRes = await fetch(`${getServerUrl(resolvedPort)}/api/heartbeat`, { signal: AbortSignal.timeout(2000) });
                 const hb = asRecord(await hbRes.json());
                 const active = asArray<{ enabled?: boolean }>(hb["jobs"]).filter((j) => j.enabled).length;
                 console.log(`  Heartbeat: ${active} job${active !== 1 ? 's' : ''} active`);
@@ -62,7 +91,7 @@ try {
     if (values.json) {
         console.log(JSON.stringify({ status: 'stopped' }));
     } else {
-        console.log(`  ❌ Server not running (port ${values.port})`);
+        console.log(`  ❌ Server not running (port ${resolvedPort})`);
     }
     process.exitCode = 1;
 }
