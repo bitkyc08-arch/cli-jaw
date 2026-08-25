@@ -71,23 +71,33 @@ graph TD
 
 | 항목 | 값 |
 |------|-----|
-| **소스** | `src/agent/memory-flush-controller.ts` `triggerMemoryFlush()` |
+| **소스** | `src/agent/memory-flush-controller.ts` `triggerMemoryFlush()` (자동, 합본) / `triggerMemoryFlushForCurrentSession()` (수동, 단일 세션) |
 | **저장소** | `~/.cli-jaw/memory/structured/episodes/live/YYYY-MM-DD.md` |
-| **트리거** | 메인 에이전트가 assistant 응답을 저장한 뒤 `memoryFlushCounter` 증가 |
+| **트리거** | assistant 응답 저장 시 전역 턴 카운터 증가 (세션 무관) |
+| **요약 범위** | 자동 플러시는 미플러시 행이 있는 **모든 세션**을 한 대화로 합쳐 extractor 1회 |
 | **threshold** | `settings.memory.flushEvery` (config 기본값 `10`; legacy session memory 주입 간격은 `ceil(flushEvery / 2)`) |
+| **크기 상한** | 조립 대화 100,000자 / 세션당 10행 / 행당 4,000자 |
+| **초과 시** | 세션을 **통째로** 다음 사이클로 미룸 (FIFO, watermark 부동) |
 | **플러시 CLI** | `settings.memory.cli` 또는 현재 `settings.cli` |
 | **플러시 모델** | `settings.memory.model` 또는 `settings.perCli[flushCli].model`, 없으면 `default` |
-| **최소 대화 수** | 최근 메시지 4개 미만이면 스킵 |
+| **최소 대화 수** | 자동 2행 / 수동 4행 미만이면 스킵 (`insufficient`) |
 
 ### 플러시 프로세스
 
 ```
-assistant 응답 저장 → memoryFlushCounter++
-   → threshold 도달 시 memoryFlushCounter = 0, flushCycleCount++
-   → DB에서 최근 threshold개 메시지 읽기
-   → 별도 spawn으로 "memory extractor" 프롬프트 실행
+assistant 응답 저장 → 전역 턴 카운터++
+   → threshold 도달 시 카운터 = 0, flushCycleCount++
+   → 미플러시 행이 있는 모든 세션 열거 (세션당 최대 10행, 행당 4,000자로 절단)
+   → 가장 오래 기다린 행을 가진 세션부터 정렬 (FIFO)
+   → 조립 대화가 100,000자를 넘으면 뒤쪽 세션을 통째로 다음 사이클로 미룸
+   → 합본 대화로 extractor 1회 spawn
    → 결과를 structured/episodes/live/YYYY-MM-DD.md에 ## HH:MM 형식으로 append
+   → 담긴 세션만 각자의 마지막 행 id로 watermark 전진
 ```
+
+세션이 여럿이면 대화 본문에 `--- session <id> ---` 구분자가 들어간다. 합본 항목의
+헤딩에는 `· session:` 접미사가 붙지 않는다 — 인덱서 정규식이 하나만 잡으므로 여러
+세션을 나열하면 마지막 것만 잡혀 틀린 출처가 되기 때문이다.
 
 ### 저장 형식
 
@@ -104,6 +114,10 @@ Prefers ES Module only, no CommonJS.
 - `mainManaged === true`이고 `!opts.internal`일 때만 카운터가 증가한다.
 - ACP/표준 CLI 둘 다 같은 counter를 공유한다.
 - flush 전용 경로는 일반 대화와 분리되어 있고, `_flushLock`과 `_lastFlushedMessageId`로 중복 실행과 재플러시를 막는다.
+- 수동 `/memory flush` 와 `POST /api/jaw-memory/flush` 는 **현재 세션 단독**이며 `· session:<id>` 헤딩을 유지한다. 합본은 자동 경로에만 적용된다.
+- lock 에 막힌 자동 플러시는 세션별 큐가 아니라 단일 `_pendingMergedFlush` 비트로 합쳐져 lock 해제 시 **한 번** 재시도된다.
+- 두 경계를 구분할 것: 크기 상한으로 **미뤄진 세션**은 watermark 가 움직이지 않아 다음 사이클에 온전히 다시 후보가 되고, `capRow` 로 **잘린 행**은 watermark 가 전진해 잘린 뒷부분이 요약되지 않는다(수용한 손실).
+- 플러시 결과는 `'started' | 'insufficient' | 'locked'` 를 반환한다. 수동 경로 호출자는 이를 구분해 응답하며, HTTP 는 `locked` 에 409 를 준다.
 - `settings.memory.autoReflectAfterFlush`와 `flushMessageWindow` 기본값은 설정에 존재하지만, 현재 flush 설명문 생성의 핵심 경로는 `triggerMemoryFlush()` + extractor prompt다.
 
 ---
@@ -150,7 +164,7 @@ Prefers ES Module only, no CommonJS.
 |------|-----|
 | **소스** | `src/prompt/builder.ts` `appendLegacyMemoryContext()` |
 | **저장소** | `~/.claude/projects/{hash}/memory/*.md` + `~/.cli-jaw/memory/MEMORY.md` |
-| **주입 빈도** | 첫 3 assistant counter turn 또는 `memoryFlushCounter % ceil(flushEvery / 2) === 0` 일 때 session memory 주입 |
+| **주입 빈도** | 첫 3 assistant counter turn 또는 `memoryFlushCounter % ceil(flushEvery / 2) === 0` 일 때 session memory 주입 (이 카운터는 플러시 트리거와 별개이며 리셋되지 않는다) |
 | **CHAR_BUDGET** | `10000자` |
 | **주입 형태** | `## Recent Session Memories` + `## Core Memory` |
 | **Core Memory 길이 제한** | `1500자` 초과 시 자르고 안내 문구 추가 |
@@ -248,6 +262,7 @@ Prefers ES Module only, no CommonJS.
 - `appendDaily()` 도 structured episodes daily 파일에 append 후 reindex 한다.
 - `src/routes/memory.ts` 의 `memory-files` 설정 API 는 memory CLI/model 을 저장하고, claude 모델 값은 legacy alias 를 정규화한다.
 - `/api/memory/status` 는 `profileFresh`, `coreSourceHash`, `profileSourceHash`, `lastReflectedAt`, `flushRunning`, `migrationLocked`, `staleWarnings`, `hasSoul`, `soulSynthesized`, `soulPreview`, `legacyFileCount`, `advancedFileCount`, `flushStatus`까지 함께 내려준다.
+- `flushStatus` 에 `pendingMergedFlush`(합본 재시도 예약 여부)와 `turnsSinceFlush`(전역 트리거 카운터)가 추가됐다. `deferredFlushSessions` 는 항상 빈 배열이며 한 major 동안 호환용으로만 남는다 — 세션별 큐가 단일 pending 비트로 대체됐다.
 
 ---
 

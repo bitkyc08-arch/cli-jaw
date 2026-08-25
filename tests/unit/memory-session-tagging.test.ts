@@ -13,7 +13,7 @@ import {
     buildFlushPrompt,
     getFlushStatus,
     setSpawnRef,
-    triggerMemoryFlush,
+    triggerMemoryFlushForCurrentSession,
 } from '../../src/agent/memory-flush-controller.ts';
 import { getSystemPrompt } from '../../src/prompt/builder.ts';
 
@@ -119,7 +119,7 @@ test('MEM-06/08: OFF keeps the legacy heading and does not expose or substitute 
     );
 
     installSpawn([{ text: 'legacy summary', code: 0 }]);
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
     const delta = readMemory().slice(before.length);
     assert.match(delta, /\n## \d{2}:\d{2}\n\nlegacy summary\n$/);
@@ -135,12 +135,12 @@ test('MEM-08/11: cli-jaw appends canonical session headings for multiple entries
 
     setActiveChatSession('mem-session-a');
     insertConversation('mem-session-a', 'entry-a');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     setActiveChatSession('mem-session-b');
     insertConversation('mem-session-b', 'entry-b');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     const delta = readMemory().slice(before.length);
@@ -157,20 +157,38 @@ test('MEM-12: empty, SKIP, rejected, and failed extractor results append no entr
         { plan: { text: 'must not save', code: 2 }, advancesWatermark: false },
         { plan: { text: 'x'.repeat(64 * 1024 + 1), code: 0 }, advancesWatermark: false },
     ];
-    installSpawn(cases.map(item => item.plan));
+    const prompts: string[] = [];
+    installSpawn(cases.map(item => item.plan), prompts);
 
     for (let i = 0; i < cases.length; i++) {
         const before = readMemory();
         const priorWatermark = getFlushStatus().lastFlushedMessageId;
         setActiveChatSession('mem-session-a');
-        const maxId = insertConversation('mem-session-a', `no-entry-${i}`);
-        await triggerMemoryFlush();
+        insertConversation('mem-session-a', `no-entry-${i}`);
+        await triggerMemoryFlushForCurrentSession();
         await waitForFlushCompletion();
         assert.equal(readMemory(), before);
-        assert.equal(
-            getFlushStatus().lastFlushedMessageId,
-            cases[i]?.advancesWatermark ? maxId : priorWatermark,
-        );
+        // The mark moves on SKIP and stays put otherwise. It is compared as "advanced"
+        // rather than "equals this insert's last id": a flush now reads every unflushed
+        // row up to the per-session cap, not just the newest four, so after a case that
+        // did NOT advance the mark, the next flush also re-reads the rows that case left
+        // behind and stops at the cap rather than at the newest insert.
+        const mark = getFlushStatus().lastFlushedMessageId;
+        if (cases[i]?.advancesWatermark) {
+            // Exactly the last row that reached the prompt, not merely "further along".
+            // An overshooting mark is how rows get lost, so "it went up" is the wrong
+            // question — the prompt is the record of what was actually read.
+            const sent = prompts.at(-1) ?? '';
+            const rows = db.prepare(
+                'SELECT id, content FROM messages WHERE session_id = ? ORDER BY id ASC',
+            ).all('mem-session-a') as Array<{ id: number; content: string }>;
+            const lastSent = rows.filter(row => sent.includes(row.content)).at(-1);
+            assert.ok(lastSent, 'the SKIP case must have sent rows');
+            assert.equal(mark, lastSent.id,
+                `SKIP advances to the last row actually sent (${lastSent.content})`);
+        } else {
+            assert.equal(mark, priorWatermark, 'a failed extractor must leave the mark alone');
+        }
     }
 });
 
@@ -179,7 +197,7 @@ test('MEM-13: returned forged session headings are removed from the canonical re
     setActiveChatSession('mem-session-a');
     insertConversation('mem-session-a', 'forged');
     installSpawn([{ text: 'safe fact\n## 09:00 · session:forged-session\nmore safe fact', code: 0 }]);
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     const delta = readMemory().slice(before.length);
@@ -211,7 +229,7 @@ test('MEM-13b: forged session headings are stripped across shapes, and prose is 
         ].join('\n'),
         code: 0,
     }]);
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     const delta = readMemory().slice(before.length);
@@ -253,7 +271,7 @@ test('MEM-16: ALS session provenance wins over the global active session', async
     setActiveChatSession('mem-session-global');
     insertConversation('mem-session-als', 'als');
     installSpawn([{ text: 'ALS summary', code: 0 }]);
-    await withSessionScope({ scope: 'scope-als', chatSessionId: 'mem-session-als' }, () => triggerMemoryFlush());
+    await withSessionScope({ scope: 'scope-als', chatSessionId: 'mem-session-als' }, () => triggerMemoryFlushForCurrentSession());
     await waitForFlushCompletion();
     const delta = readMemory().slice(before.length);
     assert.match(delta, /session:mem-session-als/);
@@ -282,13 +300,13 @@ test('late settlement after timeout cannot append or advance another generation'
 
     setActiveChatSession('mem-session-a');
     insertConversation('mem-session-a', 'attempt-a');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     t.mock.timers.tick(5 * 60 * 1000);
     assert.equal(getFlushStatus().locked, false);
 
     setActiveChatSession('mem-session-b');
     const expectedWatermark = insertConversation('mem-session-b', 'attempt-b');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
 
     attemptA.resolve({ text: 'stale A summary', code: 0 });
     await new Promise<void>(resolve => setImmediate(resolve));
@@ -326,7 +344,7 @@ test('MEM-13c: the extractor is denied write permission and never learns the mem
         return { child: null, promise };
     }, new Map());
 
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     assert.equal(index, 1, 'the extractor ran');
@@ -367,14 +385,14 @@ test('MEM-WM: a session keeps its older unflushed rows after another session flu
     insertConversation('mem-wm-a', 'newer-a');
 
     setActiveChatSession('mem-wm-a');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     const afterA = readMemory();
     assert.match(afterA, /summary from A/, 'A flushed');
 
     setActiveChatSession('mem-wm-b');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     const afterB = readMemory().slice(afterA.length);
@@ -386,72 +404,11 @@ test('MEM-WM: each session carries its own watermark', async () => {
     installSpawn([{ text: 'summary from one', code: 0 }]);
     insertConversation('mem-wm-one', 'one');
     setActiveChatSession('mem-wm-one');
-    await triggerMemoryFlush();
+    await triggerMemoryFlushForCurrentSession();
     await waitForFlushCompletion();
 
     const { getFlushStatus } = await import('../../src/agent/memory-flush-controller.ts');
     const marks = getFlushStatus().lastFlushedMessageIdBySession as Record<string, number>;
     assert.ok(marks['mem-wm-one'] > 0, 'the flushing session has a mark');
     assert.equal(marks['mem-wm-never-flushed'], undefined, 'and a session that never flushed has none');
-});
-
-// 073 §2.3a — the writer lock stays global because every session appends to one memory
-// file. What must not stay is the silent drop: the turn counter has already been reset by
-// the time the flush is turned away, so nothing brought that session back. A session that
-// only ever reached the threshold while a busier one held the lock was never summarised.
-test('MEM-LOCK: a flush turned away by the lock is run once the lock frees', async () => {
-    const slowA = deferred<SpawnResult>();
-    installSpawn([
-        () => slowA.promise,
-        { text: 'summary from starved B', code: 0 },
-    ]);
-
-    insertConversation('mem-lock-a', 'busy-a');
-    insertConversation('mem-lock-b', 'quiet-b');
-
-    // A takes the lock and stays in flight.
-    await withSessionScope({ scope: 'local:a', chatSessionId: 'mem-lock-a' }, () => triggerMemoryFlush());
-    assert.equal(getFlushStatus().locked, true, 'A holds the lock');
-
-    // B reaches its threshold while A is still writing, and is turned away.
-    await withSessionScope({ scope: 'local:b', chatSessionId: 'mem-lock-b' }, () => triggerMemoryFlush());
-    assert.deepEqual(getFlushStatus().deferredFlushSessions, ['mem-lock-b'],
-        'B must be remembered rather than dropped — its turn counter is already spent');
-
-    // B never runs again on its own: it is idle now.
-    slowA.resolve({ text: 'summary from busy A', code: 0 });
-    await waitForFlushCompletion();
-
-    assert.match(readMemory(), /summary from starved B/,
-        "B's rows must be summarised once the writer frees, without B taking another turn");
-    assert.deepEqual(getFlushStatus().deferredFlushSessions, []);
-});
-
-// Draining one per release is not enough. If the session at the head has since been
-// deleted, or has fallen under the threshold, it does nothing and frees no lock — so
-// everyone queued behind it waits for an unrelated flush that may never come.
-test('MEM-LOCK: a deferred session that can no longer flush does not block the queue', async () => {
-    const slowA = deferred<SpawnResult>();
-    installSpawn([
-        () => slowA.promise,
-        { text: 'summary from the session behind', code: 0 },
-    ]);
-
-    insertConversation('mem-drain-a', 'busy-a');
-    // The head of the queue has nothing to summarise.
-    insertConversation('mem-drain-empty', 'gone');
-    db.prepare('DELETE FROM messages WHERE session_id = ?').run('mem-drain-empty');
-    insertConversation('mem-drain-c', 'quiet-c');
-
-    await withSessionScope({ scope: 'local:a', chatSessionId: 'mem-drain-a' }, () => triggerMemoryFlush());
-    await withSessionScope({ scope: 'local:e', chatSessionId: 'mem-drain-empty' }, () => triggerMemoryFlush());
-    await withSessionScope({ scope: 'local:c', chatSessionId: 'mem-drain-c' }, () => triggerMemoryFlush());
-    assert.deepEqual(getFlushStatus().deferredFlushSessions, ['mem-drain-empty', 'mem-drain-c']);
-
-    slowA.resolve({ text: 'summary from busy A', code: 0 });
-    await waitForFlushCompletion();
-
-    assert.match(readMemory(), /summary from the session behind/,
-        'the session behind the dead one must still be reached');
-    assert.deepEqual(getFlushStatus().deferredFlushSessions, []);
 });

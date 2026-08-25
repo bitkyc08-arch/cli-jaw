@@ -681,13 +681,16 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 }
             }
 
-            // Counted against THIS turn's session. A single global counter let one
-            // session spend the budget another session had filled, so the busy one
-            // was summarised and the quiet one never was (#454).
+            // Global on purpose: N assistant turns anywhere trigger ONE flush, which then
+            // summarises every session holding unflushed rows. #454 stays fixed because
+            // the TARGET is global now, not because the trigger is per session — when
+            // everyone is summarised together, who spent the counter stops mattering.
             incrementMemoryFlush();
             const threshold = settings["memory"]?.flushEvery ?? 10;
-            if (settings["memory"]?.enabled !== false && countTurnForFlush(chatSessionId, threshold)) {
-                triggerMemoryFlush();
+            if (settings["memory"]?.enabled !== false && countTurnForFlush(threshold)) {
+                // The outcome needs no handling: an insufficient cycle is spent by policy,
+                // and a locked one has already queued its own retry.
+                void triggerMemoryFlush();
             }
         }
     } else if (code !== 0 && wasKilled && !wasSteer && ctx.stallReason) {
