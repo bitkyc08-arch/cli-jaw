@@ -62,8 +62,21 @@ export async function sendDiscordTextRest(
     token: string,
     channelId: string,
     text: string,
-    extra?: { components?: unknown; signal?: AbortSignal },
+    extra?: {
+        components?: unknown;
+        signal?: AbortSignal;
+        /**
+         * Test seam: production passes nothing and gets the cached per-token
+         * scheduler. Without an injection point the cancellation tests can only
+         * reach the real scheduler, which owns rate-limit timers and a live
+         * socket — so they would assert against a stub of the wrong layer, or
+         * not run at all. `openDiscordDm` already takes `fetchImpl` for the
+         * same reason; this is that convention one level up.
+         */
+        scheduler?: DiscordRestScheduler;
+    },
 ): Promise<DiscordRestSendResult> {
+    const scheduler = extra?.scheduler ?? schedulerFor(token);
     const chunks = chunkDiscordMessage(text);
     for (const [index, chunk] of chunks.entries()) {
         // A shutdown abort between chunks is a cancellation, not a vendor
@@ -78,7 +91,7 @@ export async function sendDiscordTextRest(
         }
         const body: Record<string, unknown> = { content: chunk };
         if (index === 0 && extra?.components) body['components'] = extra.components;
-        const result = await schedulerFor(token).schedule({
+        const result = await scheduler.schedule({
             method: 'POST',
             path: `/channels/${encodeURIComponent(channelId)}/messages`,
             routeKey: 'POST:/channels/:channel/messages',
