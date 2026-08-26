@@ -101,12 +101,12 @@ prepare_promotion_checkout() {
 assert_promotion_checkout_ready_to_push() {
   local checkout_dir="$1"
   local preview_sha="$2"
-  local promotion_branch="$3"
+  local target_branch="$3"
   local current_branch checkout_status commit_count
   promotion_checkout_path_safe "$checkout_dir" || return 1
   current_branch="$(git -C "$checkout_dir" branch --show-current)"
-  if [ "$current_branch" != "$promotion_branch" ]; then
-    promotion_error "promotion checkout branch is $current_branch, expected $promotion_branch"
+  if [ "$current_branch" != "$target_branch" ]; then
+    promotion_error "promotion checkout branch is $current_branch, expected $target_branch"
     return 1
   fi
   if ! git -C "$checkout_dir" merge-base --is-ancestor "$preview_sha" HEAD; then
@@ -125,55 +125,6 @@ assert_promotion_checkout_ready_to_push() {
   fi
   if ! git -C "$checkout_dir" diff --check "$preview_sha..HEAD"; then
     promotion_error "promotion commit contains whitespace errors"
-    return 1
-  fi
-}
-
-# ─── Post-promotion realignment (#466) ─────────────────────────────────────
-#
-# A squash promotion folds preview's commits into one NEW commit on main, so
-# main stops being an ancestor of preview the moment the promotion succeeds —
-# and promote-to-main.sh demands exactly that ancestry on the next cycle. The
-# script breaks its own precondition every release. Leaving the repair to prose
-# is what produced the 2.17.13 incident: a hand-made merge claimed to take the
-# preview tree, took main's, and shipped a tarball missing #418's code.
-#
-# Built from plumbing (commit-tree) rather than a worktree on purpose: the tree
-# is an INPUT here, not a merge result, so the published content cannot change
-# no matter which side is which. The caller re-checks it anyway.
-realign_branch_onto_main() {
-  local branch="$1" main_sha="$2" message="$3"
-  local head tree new_commit
-  head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
-  if [ -z "$head" ]; then
-    echo "realign: no origin/$branch to realign" >&2
-    return 0
-  fi
-  if git merge-base --is-ancestor "$main_sha" "$head" 2>/dev/null; then
-    echo "realign: $branch already has main as an ancestor"
-    return 0
-  fi
-  git fetch origin "$branch" >/dev/null 2>&1 || true
-  tree="$(git rev-parse "$head^{tree}")" || {
-    promotion_error "realign: cannot read $branch tree"
-    return 1
-  }
-  new_commit="$(git commit-tree "$tree" -p "$head" -p "$main_sha" -m "$message")" || {
-    promotion_error "realign: could not create the realignment commit for $branch"
-    return 1
-  }
-  if [ "$(git rev-parse "$new_commit^{tree}")" != "$tree" ]; then
-    promotion_error "realign: $branch tree changed; refusing to push"
-    return 1
-  fi
-  if ! git merge-base --is-ancestor "$main_sha" "$new_commit"; then
-    promotion_error "realign: $main_sha is still not an ancestor of $branch; refusing to push"
-    return 1
-  fi
-  if git push origin "$new_commit:refs/heads/$branch" >/dev/null 2>&1; then
-    echo "realign: $branch now has main as an ancestor, tree unchanged"
-  else
-    echo "realign: could not push $branch (did it move?)" >&2
     return 1
   fi
 }

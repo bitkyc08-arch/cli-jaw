@@ -73,33 +73,27 @@ bash scripts/promote-to-main.sh             # preview CI 인증 확인 → main 
 현재 브랜치에 커밋하고 `HEAD:preview` 로 푸시한다. 그 커밋을 `dev` 에도 올리지
 않으면 origin/dev 만 뒤처진 채 남는다.
 
-승격이 끝나면 `main` 에 squash 승격 커밋이 하나 생기고, 그 순간 main 은 preview 의
-조상이 아니게 된다 — 그런데 `promote-to-main.sh` 는 다음 사이클 시작에서 바로 그
-조상 관계를 요구한다. **`promote-to-main.sh` 가 승격 직후 `dev`/`preview` 를
-자동으로 재정렬하므로 보통은 손댈 일이 없다** (#466). 로그에 `realign: preview now
-has main as an ancestor` 가 찍혔는지 확인하면 된다.
+#### 승격은 fast-forward 다 (#480)
 
-자동 재정렬이 경고를 남기고 실패했다면 수동으로 맞춘다. **`git reset --hard` 는
-쓰지 않는다** — dev 가 main 보다 앞서 있으면 그 앞선 커밋이 사라진다. 실제로 그
-레시피를 따른 수동 복구가 #418 의 durable queue-notice store 를 통째로 삼켰고,
-그 상태로 `cli-jaw@2.17.13` 이 npm 에 발행됐다:
+`promote-to-main.sh` 는 stable 버전 범프를 **preview 위에** 커밋하고, preview 를
+거기까지 ff 한 뒤, CI 인증이 끝나면 `main` 을 **같은 커밋으로** ff 한다. PR 도
+squash 도 없다. 그래서:
 
-```bash
-git fetch origin
-git branch -f backup/dev-pre-align-$(date +%y%m%d) dev
-git checkout dev
-# 트리는 그대로 두고 main 을 부모로만 기록한다.
-git merge origin/main -s ours -m "chore: record the promotion as an ancestor"
-git diff --stat backup/dev-pre-align-$(date +%y%m%d) HEAD   # 반드시 비어 있어야 한다
-git merge-base --is-ancestor origin/main HEAD && echo ff-able
-git push origin dev
-git push origin HEAD:preview
-```
+- `main` 은 preview 에 없는 커밋을 절대 갖지 않는다. 조상 관계가 정의상 유지되므로
+  재정렬이라는 단계 자체가 없다.
+- npm 에 발행되는 SHA 가 CI 가 인증한 SHA 와 **문자 그대로 같다.** 같은 트리의 복사본이
+  아니다. `publish.yml` 의 `certified-sha` 우회 장치가 필요 없어진 이유다.
+- 스크립트 말미가 `dev` 도 같은 커밋으로 ff 한다. dev 가 이미 앞서 있으면 건드리지
+  않고 `NOTE:` 를 남기므로, 그때는 `git merge origin/main` 으로 dev 에 릴리스 선을
+  들여놓는다.
 
-`git diff` 가 비어 있는지 **푸시 전에** 확인할 것. `-s ours` 는 "현재 브랜치의
-트리를 유지" 라는 뜻이라 방향을 헷갈리면 반대쪽 트리가 살아남는다. 2.17.13 사고가
-정확히 그것이었다 — 커밋 메시지는 preview 트리를 취한다고 적혀 있었지만 실제
-결과 트리는 main 쪽과 동일했다.
+`main` 푸시는 `--force` 를 쓰지 않는다. non-ff 를 git 이 스스로 거부하는 것이 이
+구조의 실제 보증이므로, 실패하면 강제로 밀지 말고 왜 갈라졌는지부터 볼 것.
+
+예전에는 squash 승격이 매 사이클 조상 관계를 끊었고, 그 복구가 수동이라 #418 의
+durable queue-notice store 가 통째로 사라진 채 `cli-jaw@2.17.13` 이 발행됐다.
+#468 이 자동 재정렬로 그 증상을 막았지만 dev 와 preview 에 각각 다른 커밋을 만들어
+두 브랜치를 영구히 갈라놓았다(쌍둥이 8개 누적). ff 승격은 그 원인을 없앤다.
 
 #### 게이트가 막을 때
 
@@ -108,10 +102,14 @@ git push origin HEAD:preview
   돌린** 경우다. `git log --oneline origin/preview..origin/main` 으로 main 이 이미
   그 버전을 갖고 있는지부터 볼 것. 갖고 있으면 승격은 성공한 것이고 재실행할 일이
   아니다 — `promote-to-main.sh` 는 승격 후 재실행을 지원하지 않는다.
-- **`No successful Postinstall Platform Checks run found for certified <sha>`** —
-  승격 직후 stable publish 가 main 의 push CI 보다 먼저 dispatch 되면 난다. main
-  push 런이 끝나기를 기다렸다가 publish 만 다시 dispatch 하면 된다. 승격을 되돌릴
-  필요는 없다.
+- **`No successful Postinstall Platform Checks run found for <sha>`** — 승격이
+  preview 의 CI 를 기다린 뒤 main 을 ff 하므로 보통은 나지 않는다. 그래도 났다면
+  해당 SHA 의 preview push 런이 실패했거나 아직 안 끝난 것이다. 런이 끝나기를
+  기다렸다가 publish 만 다시 dispatch 하면 된다. 승격을 되돌릴 필요는 없다.
+- **`! [rejected] ... (non-fast-forward)`** — main 이 preview 에 없는 커밋을 갖고
+  있다는 뜻이다. **강제로 밀지 말 것.** 무엇이 main 에만 들어갔는지
+  (`git log --oneline origin/preview..origin/main`) 부터 확인하고, 그것을 preview 로
+  가져와 다시 ff 가 되게 만든다.
 
 #### 배포 확인은 npm 버전만으로 부족하다
 
