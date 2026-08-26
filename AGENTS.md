@@ -113,6 +113,45 @@ git push origin HEAD:preview
   push 런이 끝나기를 기다렸다가 publish 만 다시 dispatch 하면 된다. 승격을 되돌릴
   필요는 없다.
 
+#### 긴급 수정 (hotfix)
+
+`preview` 에는 아직 출시되지 않은 커밋이 수십 개 쌓여 있는 것이 정상이다. beta 채널
+(`npm i -g cli-jaw@preview`)이 존재하는 이유가 그것이고, "preview 에는 있고 main 에는
+없는 기능"은 결함이 아니다. 다만 그 상태에서 정규 승격은 **preview 전체를 함께
+내보낸다** — 골라낼 수 없다. 그래서 main 만 고쳐야 하는 긴급 수정은 경로가 다르다.
+
+어느 쪽인지 먼저 판단할 것:
+
+- preview 에 쌓인 것을 지금 다 내보내도 괜찮다 → 그냥 정규 릴리스 절차를 돌린다.
+  분기를 만들지 않는 쪽이 항상 더 안전하다.
+- 그럴 수 없다 (미검증 기능이 섞여 있다) → 아래 hotfix 경로.
+
+```bash
+git fetch origin
+git checkout -b hotfix/<설명> origin/main   # dev 가 아니라 main 에서 딴다
+# 수정 + 테스트
+gh pr create --base main --head hotfix/<설명>
+```
+
+**머지 후 백머지가 필수다.** hotfix 커밋은 main 에만 있으므로, 그대로 두면 main 이
+preview 의 조상에서 빠지고 **다음 승격이 `origin/main is not an ancestor of the
+certified preview SHA` 로 막힌다.** 승격이 막히는 것으로 끝나면 다행이고, 실제로는
+그 상태를 손으로 복구하려다 #418 의 코드가 통째로 사라진 전례가 있다 (2.17.13).
+
+```bash
+git fetch origin
+git checkout dev && git merge origin/main && git push origin dev
+git push origin dev:preview                 # ff 가 안 되면 preview 에서도 같은 머지
+git merge-base --is-ancestor origin/main origin/preview && echo ok
+```
+
+마지막 줄이 통과해야 끝난 것이다. `promote-to-main.sh` 말미가 같은 검증을 하고
+어긋나면 `WARN: origin/main is still not an ancestor of origin/preview` 를 남기므로,
+백머지를 빠뜨렸다면 다음 릴리스 로그에 반드시 드러난다.
+
+긴급 수정을 `dev` 에서 따서 정규 경로로 올리면 안 된다 — preview 에 쌓인 미출시
+커밋을 전부 끌고 나가게 되고, 그것이 애초에 hotfix 를 만든 이유였다.
+
 #### 배포 확인은 npm 버전만으로 부족하다
 
 설치 호스트에서 **실행 중인 프로세스가 새 `dist/` 를 로드했는지**까지 본다.
