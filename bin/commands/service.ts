@@ -10,13 +10,14 @@
  *   jaw service logs         — 로그 보기
  */
 import { execFileSync, spawn as nodeSpawn } from 'node:child_process';
-import { existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 import { instanceId, getNodePath, getJawPath, sanitizeUnitName, buildServicePath } from '../../src/core/instance.js';
 import { defaultLifecycleDeps, verifyOwnership, type OwnershipVerdict } from '../../src/core/instance-lifecycle.js';
 import { manualSupervisionGuidance } from '../../src/manager/manual-supervision.js';
+import { renderSupervisorScript, supervisorInstallSummary } from '../../src/manager/supervisor-service.js';
 import type { DashboardLifecycleResult, DashboardServiceState } from '../../src/manager/types.js';
 import { detectServiceState, permInstance, restartServiceInstance, stopServiceInstance, unpermInstance } from '../../src/manager/platform-service.js';
 
@@ -101,16 +102,16 @@ const knownKeys = new Set(['port', 'backend']);
 for (const key of Object.keys(opts)) {
     if (!knownKeys.has(key)) {
         console.error(`❌ Unknown option: --${key}`);
-        console.error('   Usage: jaw service [--port PORT] [--backend launchd|systemd|docker] [status|stop|restart|unset|logs]');
+        console.error('   Usage: jaw service [--port PORT] [--backend launchd|systemd|docker|supervisor] [status|stop|restart|unset|logs]');
         process.exit(1);
     }
 }
 
 // --backend whitelist validation
-const VALID_BACKENDS = new Set(['launchd', 'systemd', 'windows', 'docker']);
+const VALID_BACKENDS = new Set(['launchd', 'systemd', 'windows', 'docker', 'supervisor']);
 if (opts.backend && !VALID_BACKENDS.has(opts.backend as string)) {
     console.error(`❌ Unknown backend: ${opts.backend}`);
-    console.error('   Supported: launchd, systemd, windows, docker');
+    console.error('   Supported: launchd, systemd, windows, docker, supervisor');
     process.exit(1);
 }
 
@@ -181,7 +182,7 @@ const LOG_DIR = join(JAW_HOME, 'logs');
 
 // ─── Backend detection ───────────────────────────────
 
-type Backend = 'launchd' | 'systemd' | 'windows' | 'docker';
+type Backend = 'launchd' | 'systemd' | 'windows' | 'docker' | 'supervisor';
 
 function detectBackend(): Backend {
     if (process.platform === 'darwin') return 'launchd';
@@ -207,13 +208,18 @@ function detectBackend(): Backend {
     // multiplexer needs an interactive session to attach to and inherits the
     // same non-interactive PATH that already failed to resolve `jaw` — so it
     // is unusable from the one-shot ssh command that lands operators here.
+    //
+    // Auto-selecting the supervisor backend here would be wrong: writing a
+    // script and telling the operator to wire it into boot is a different act
+    // from registering autostart, so it stays opt-in via --backend supervisor.
     console.error('❌ ' + manualSupervisionGuidance({
         nodePath: getNodePath(),
         jawPath: getJawPath(),
         home: JAW_HOME,
         port: PORT,
         logPath: join(JAW_HOME, 'logs', 'jaw-serve.log'),
-    }).join('\n'));
+    }).join('\n')
+        + '\n\n   Or generate a supervisor loop:  jaw service --backend supervisor --port ' + PORT);
     process.exit(1);
 }
 
@@ -275,6 +281,63 @@ if (backend === 'docker') {
 }
 
 // ─── Windows: delegate to platform-service (#379) ───
+// ─── Supervisor: script for hosts with no service manager (#479) ───
+//
+// Opt-in only. This backend does not register autostart — nothing on such a
+// host can — it writes the loop the operator would otherwise hand-roll and
+// says where to wire it in.
+if (backend === 'supervisor') {
+    const subcommand = pos[0];
+    const scriptPath = join(JAW_HOME, 'jaw-supervisor.sh');
+    const logPath = join(LOG_DIR, 'jaw-serve.log');
+    const ctx = {
+        nodePath: getNodePath(),
+        jawPath: getJawPath(),
+        home: JAW_HOME,
+        port: PORT,
+        logPath,
+        intervalSeconds: 60,
+    };
+
+    if (subcommand === 'status') {
+        // The generated loop branches on this exit code, so it must report
+        // liveness rather than the presence of a registration artifact.
+        // systemd's status branch exits 0 either way; a supervisor trusting
+        // that would never restart a dead server.
+        const verdict = verifyOwnership(JAW_HOME, defaultLifecycleDeps);
+        const running = verdict.status === 'owned';
+        console.log('🦈 jaw serve — ' + (running ? '🟢 running' : '⚪ not running'));
+        console.log('   home:       ' + JAW_HOME);
+        console.log('   port:       ' + PORT);
+        console.log('   verdict:    ' + verdict.status);
+        console.log('   supervisor: ' + (existsSync(scriptPath) ? scriptPath : 'not installed'));
+        process.exit(running ? 0 : 1);
+    }
+
+    if (subcommand === 'logs') {
+        console.log('📋 tail -n 50 -f ' + logPath);
+        process.exit(0);
+    }
+
+    if (subcommand === 'unset') {
+        if (!existsSync(scriptPath)) {
+            console.log('⚠️  no supervisor script at ' + scriptPath);
+            process.exit(0);
+        }
+        rmSync(scriptPath, { force: true });
+        console.log('✅ removed ' + scriptPath);
+        console.log('   A supervisor loop already running keeps its copy in memory —');
+        console.log('   stop it where you started it (container, cron, or shell job).');
+        process.exit(0);
+    }
+
+    // default: write the script
+    mkdirSync(LOG_DIR, { recursive: true });
+    writeFileSync(scriptPath, renderSupervisorScript(ctx), { mode: 0o755 });
+    console.log('🦈 ' + supervisorInstallSummary(scriptPath, ctx).join('\n'));
+    process.exit(0);
+}
+
 if (backend === 'windows') {
     const subcommand = pos[0];
     if (subcommand === 'status') {
