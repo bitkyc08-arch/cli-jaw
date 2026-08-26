@@ -105,7 +105,13 @@ export function extractFromAcpUpdate(params: AcpUpdateParams | unknown, ctx: Spa
 
         case 'agent_message_chunk': {
             const text = extractText(update.content);
-            return { text };
+            // messageId is optional in the ACP session-update schema, but when the
+            // agent sends it, chunks of one message share it and a change marks a
+            // NEW assistant message. Preserving it lets the consumer apply
+            // NARRATION-BOUNDARY-01; without it the chunks just accumulate, which
+            // is the correct fallback (no signal, no boundary).
+            const messageId = fieldString(update['messageId'] || update['message_id']);
+            return messageId ? { text, messageId } : { text };
         }
 
         case 'plan':

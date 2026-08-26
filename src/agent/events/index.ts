@@ -17,7 +17,12 @@ import {
     summarizeToolInput,
     appendAssistantRawText,
 } from './helpers.js';
-import { handleClaudeEvent, handleClaudeRateLimitEvent, finalizeClaudeRateLimitOnResult } from './claude.js';
+import {
+    handleClaudeEvent,
+    handleClaudeRateLimitEvent,
+    finalizeClaudeRateLimitOnResult,
+    resetClaudeDurableMessage,
+} from './claude.js';
 import { updateTraceToolRow } from '../../trace/store.js';
 import { handleCodexEvent } from './codex.js';
 import { handleCursorEvent } from './cursor.js';
@@ -136,9 +141,19 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
         }
 
         // [P2-3.2] message_start: capture per-message input_tokens
-        if (inner?.type === 'message_start' && inner.message?.usage) {
-            if (!ctx.tokens) ctx.tokens = { input_tokens: 0, output_tokens: 0 };
-            ctx.tokens["input_tokens"] = inner.message.usage.input_tokens ?? ctx.tokens["input_tokens"] ?? 0;
+        if (inner?.type === 'message_start') {
+            // A new protocol message begins BEFORE its first delta — the only point
+            // where the streaming anchor can be reset cleanly. Text streamed for the
+            // previous message was progress narration (NARRATION-BOUNDARY-01) and
+            // must not join this answer in ctx.fullText, which is what external
+            // channels deliver. The live UI keeps it via pendingOutputChunk.
+            // No early return: message_start falls through to the trailing flush
+            // branch below, which drains a pending thinking buffer.
+            if (ctx.fullText || ctx.outputTextStarted) resetClaudeDurableMessage(ctx);
+            if (inner.message?.usage) {
+                if (!ctx.tokens) ctx.tokens = { input_tokens: 0, output_tokens: 0 };
+                ctx.tokens["input_tokens"] = inner.message.usage.input_tokens ?? ctx.tokens["input_tokens"] ?? 0;
+            }
         }
 
         // Buffer thinking deltas

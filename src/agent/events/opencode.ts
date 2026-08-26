@@ -116,6 +116,18 @@ export function handleOpenCodeEvent(
     if (evt.type === 'step_start') {
         const model = evt.part?.model || evt.model;
         if (model) ctx.model = model;
+        // LAST-STEP-WINS (NARRATION-BOUNDARY-01): a NEW step means the text the
+        // previous step committed was not this turn's answer — otherwise the run
+        // would have ended there. External channels deliver text derived from
+        // ctx.fullText, so mid-turn narration must not accumulate into it; the
+        // live UI still has it via pendingOutputChunk/agent_output.
+        // Unconditional on purpose: 'stop' ends the step loop, so nothing follows
+        // a terminal step, and if a step_start DOES follow, its existence proves
+        // the earlier text was not terminal.
+        if (ctx.fullText || ctx.outputTextStarted) {
+            ctx.fullText = '';
+            ctx.outputTextStarted = false;
+        }
         ctx.opencodePreToolText = '';
         ctx.opencodePostToolText = '';
         ctx.opencodeSawToolInStep = false;

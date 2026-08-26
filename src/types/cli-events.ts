@@ -116,7 +116,7 @@ export type AcpSubagentEvent = CliEventRecord & {
 };
 
 export type ExtractedEventResult =
-  | { text?: string; tool?: ToolEntry }
+  | { text?: string; tool?: ToolEntry; messageId?: string }
   | null;
 
 export function isCliEventRecord(value: unknown): value is CliEventRecord {

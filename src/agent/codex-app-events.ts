@@ -2,6 +2,7 @@
 // Maps app-server JSON-RPC notifications to the same
 // { tool, text, sessionId, tokens } shape spawn.ts expects.
 
+import { stripUndefined } from '../core/strip-undefined.js';
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type {
     CodexAppClient,
@@ -15,6 +16,10 @@ export interface CodexAppEventResult {
     tool?: ToolEntry | undefined;
     text?: string | undefined;
     channel?: string | undefined;
+    /** Wire id of the agentMessage this event belongs to (item/started + delta). */
+    itemId?: string | undefined;
+    /** True on item/started for an agentMessage: a NEW durable message begins here. */
+    messageStarted?: boolean | undefined;
     sessionId?: string | undefined;
     tokens?: Record<string, number> | undefined;
     flushThinking?: boolean | undefined;
@@ -265,15 +270,20 @@ function handleItemStarted(params: EvRec): CodexAppEventResult | null {
         }
         case 'agentMessage':
         {
-            // Track the item-level channel so subsequent deltas inherit it
-            // when they do not carry their own channel field.
-            // A message item WITHOUT a channel must RESET the sticky value to
-            // the empty string rather than leave the previous item's channel in
-            // place: a stale 'commentary' would silently swallow the final
-            // answer, and a stale 'final' would leak narration into it.
-            const itemChannel = fs(item, 'channel')
+            // The app-server protocol classifies assistant messages with 'phase'
+            // (MessagePhase = commentary | final_answer on AgentMessageThreadItem),
+            // NOT 'channel'. Reading only 'channel' meant every protocol-conformant
+            // commentary message looked untagged, so progress narration was appended
+            // to the durable answer and shipped to Slack as one run-on paragraph.
+            // 'channel'/'annotations.channel' remain as fallbacks for non-standard
+            // builds. A message item with NO tag must RESET the sticky value to the
+            // empty string rather than leave the previous item's in place: a stale
+            // 'commentary' would swallow the final answer, a stale 'final' would leak
+            // narration into it.
+            const itemChannel = normalizeCodexAppMessagePhase(fs(item, 'phase'))
+                || fs(item, 'channel')
                 || fs((f(item, 'annotations') as EvRec) ?? {}, 'channel');
-            return { channel: itemChannel };
+            return { channel: itemChannel, itemId: id, messageStarted: true };
         }
         case 'userMessage':
         case 'hookPrompt':
@@ -283,13 +293,87 @@ function handleItemStarted(params: EvRec): CodexAppEventResult | null {
     }
 }
 
+/** Map the app-server 'phase' enum onto the channel vocabulary this adapter speaks.
+ *  'final_answer' becomes 'final' so the sticky value stays truthy and a later
+ *  untagged delta is not mistaken for a new phase-unknown message. */
+function normalizeCodexAppMessagePhase(phase: string): string {
+    if (phase === 'commentary') return 'commentary';
+    if (phase === 'final_answer') return 'final';
+    return '';
+}
+
 function handleAgentMessageDelta(params: EvRec): CodexAppEventResult | null {
     const delta = f(params, 'delta');
-    if (typeof delta === 'string') {
-        const channel = fs(params, 'channel') || undefined;
-        return { text: delta, channel };
+    if (typeof delta !== 'string') return null;
+    // itemId is REQUIRED on AgentMessageDeltaNotification. Keeping it lets the
+    // consumer detect a new message even when item/started was dropped or
+    // buffered — item/completed cannot help, it returns null for agentMessage.
+    // 'phase' is NOT part of the delta notification in the v2 schema; reading it
+    // here is a forward-compat fallback for non-standard builds, not the path
+    // that classifies conformant streams.
+    const channel = normalizeCodexAppMessagePhase(fs(params, 'phase'))
+        || fs(params, 'channel')
+        || undefined;
+    const itemId = fs(params, 'itemId') || undefined;
+    return stripUndefined({ text: delta, channel, itemId }) as CodexAppEventResult;
+}
+
+export interface CodexAppTextDecision {
+    /** Text to append to ctx.fullText, or '' when the text is live-only. */
+    readonly durable: string;
+    /** Text to broadcast to the live UI, or '' when there is nothing to show. */
+    readonly live: string;
+}
+
+/** Decide how one normalized codex-app event affects durable vs live text, and
+ *  advance the sticky channel/item bookkeeping on ctx.
+ *
+ *  The discard rule keys on the PROVENANCE of what is already accumulated, not on
+ *  the phase of whichever item arrives next:
+ *
+ *  1. Durable text appended under an explicit 'final' phase is PROTECTED. A turn
+ *     may emit a trailing commentary or untagged item after its answer, and that
+ *     must not erase an answer already delivered.
+ *  2. Otherwise a NEW agentMessage item discards the unprotected accumulation
+ *     (LAST-WINS), so successive phase-unknown items replace each other instead of
+ *     concatenating — the Slack run-on artifact this fixes. Same tradeoff the
+ *     codex NDJSON adapter already makes for untagged agent_messages.
+ *  3. commentary text is live-only and never becomes durable.
+ *
+ *  Lives here rather than inline in spawn.ts so the decision is testable without a
+ *  live runtime.
+ */
+export function applyCodexAppTextEvent(
+    ctx: SpawnContext,
+    parsed: CodexAppEventResult,
+): CodexAppTextDecision {
+    const startingItemId = parsed.messageStarted ? parsed.itemId : undefined;
+    const deltaItemId = parsed.text !== undefined ? parsed.itemId : undefined;
+    const boundaryFromDelta = deltaItemId !== undefined
+        && deltaItemId !== ctx.codexAppActiveItemId;
+    const newItemId = startingItemId ?? (boundaryFromDelta ? deltaItemId : undefined);
+
+    if (newItemId !== undefined && newItemId !== ctx.codexAppActiveItemId) {
+        const hadPreviousItem = ctx.codexAppActiveItemId !== undefined;
+        ctx.codexAppActiveItemId = newItemId;
+        // A boundary seen only through a changed delta itemId means item/started
+        // was dropped, so THIS item's phase is unknown. Clearing the sticky value
+        // stops the previous item's 'commentary' from swallowing this one.
+        if (startingItemId === undefined) ctx.codexAppActiveChannel = '';
+        // Never discard on the first item, and never discard a protected answer.
+        if (hadPreviousItem && !ctx.codexAppDurableIsFinal) {
+            ctx.fullText = '';
+            ctx.outputTextStarted = false;
+        }
     }
-    return null;
+    // After the boundary, so this event's own phase wins over the cleared sticky.
+    if (parsed.channel !== undefined) ctx.codexAppActiveChannel = parsed.channel;
+
+    if (!parsed.text) return { durable: '', live: '' };
+    const effectiveChannel = parsed.channel || ctx.codexAppActiveChannel;
+    if (effectiveChannel === 'commentary') return { durable: '', live: parsed.text };
+    if (effectiveChannel === 'final') ctx.codexAppDurableIsFinal = true;
+    return { durable: parsed.text, live: parsed.text };
 }
 
 function handleReasoningDelta(params: EvRec): CodexAppEventResult | null {

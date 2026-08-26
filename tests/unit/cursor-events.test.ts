@@ -155,6 +155,106 @@ test('Cursor result fallback still applies after pre-tool narration was discarde
     assert.equal(ctx.fullText, '최종 결과', 'result fallback fills the empty durable slot');
 });
 
+test('Cursor narration is discarded on a TOOLLESS turn: message boundary wins fullText', () => {
+    // The tool-boundary guard cannot fire on a turn that never calls a tool, so
+    // narration used to concatenate with the answer and reach Slack as one
+    // paragraph. A snapshot that does not continue the previous text is a new
+    // message.
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '요청은 반복 작업 설정으로 처리하겠습니다.' }] },
+    }, ctx, 'cursor');
+    assert.equal(
+        extractOutputChunk('cursor', { type: 'assistant' }, ctx),
+        '요청은 반복 작업 설정으로 처리하겠습니다.',
+        'live stream keeps the narration',
+    );
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '설정했습니다.' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '설정했습니다.', 'only the last message reaches external channels');
+});
+
+test('Cursor narration AFTER the last tool call is discarded', () => {
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'started', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'success', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '이제 정리해서 보고하겠습니다.' }] },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '보고 완료.' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '보고 완료.', 'no tool follows the narration, so the message seam catches it');
+});
+
+test('Cursor message id change starts a new message even when the text is a prefix', () => {
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: '요약' }] },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant', message: { id: 'm2', content: [{ type: 'text', text: '요약본입니다.' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '요약본입니다.', 'a different id is a boundary regardless of prefix');
+});
+
+test('Cursor deltas never start a new message, even with differing ids', () => {
+    // Guard against an id-first rule: cursor's id granularity is unverified, and if
+    // ids ever varied per chunk an id-first rule would shred the answer to its last
+    // delta.
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant', subtype: 'delta', message: { id: 'd1' }, text: '답변 ',
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant', subtype: 'delta', message: { id: 'd2' }, text: '이어짐',
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '답변 이어짐', 'delta chunks accumulate into one answer');
+});
+
+test('Cursor answer survives when a snapshot follows the tool-boundary reset', () => {
+    // After a tool reset fullText is '' while cursorAssistantText still holds the
+    // discarded narration. The message-boundary rule must not interfere with the
+    // answer that follows.
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '확인해볼게요.' }] },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'tool_call', subtype: 'started', call_id: 'c1', name: 'shell', input: { command: 'ls' },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '결과는 이렇습니다.' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '결과는 이렇습니다.');
+    extractFromEvent('cursor', { type: 'result', subtype: 'success', result: '무시되어야 함' }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '결과는 이렇습니다.', 'result fallback stays inert while an answer exists');
+});
+
+test('Cursor two non-continuing snapshots keep only the last (recorded tradeoff)', () => {
+    // Two idless snapshots that do not continue each other are ambiguous on the
+    // wire: "narration then answer" and "answer part 1 then part 2" look identical.
+    // Last-wins is the deliberate choice, matching the codex adapter. Pinned here so
+    // the tradeoff is visible rather than incidental.
+    const ctx = makeContext();
+    extractFromEvent('cursor', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '첫 번째 조각' }] },
+    }, ctx, 'cursor');
+    extractFromEvent('cursor', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '두 번째 조각' }] },
+    }, ctx, 'cursor');
+    assert.equal(ctx.fullText, '두 번째 조각');
+});
+
 test('Cursor tool calls update running entries to done', () => {
     const ctx = makeContext();
     extractFromEvent('cursor', {

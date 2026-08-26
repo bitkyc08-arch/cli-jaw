@@ -295,6 +295,48 @@ Thinking visibility:
 
 ---
 
+## 3z. 어댑터 공통 계약 — narration 경계 (NARRATION-BOUNDARY-01)
+
+외부 채널(Slack/Telegram/Discord)이 받는 최종 텍스트는 `ctx.fullText` 에서 나온다
+(`src/agent/lifecycle-handler.ts` 가 `resolve({ text: ctx.fullText })` 로 돌려주고
+`src/orchestrator/pipeline.ts` 가 `orchestrate_done.text` 로 만든다). 라이브 UI 는
+`pendingOutputChunk`/`agent_output` 으로 따로 받는다. 그래서 진행 서술을 `fullText`
+에서 막지 못하면 하류에 걸러줄 층이 없다. 아래 규칙은 전부 durable 텍스트에 대한 것이고
+라이브에는 항상 전부 보인다.
+
+1. **경계는 구조적 신호여야 한다.** 프로토콜이 주는 메시지 정체성(아이템/메시지 id,
+   메시지 시작 이벤트, phase 태그, step 경계)만 쓴다. 문장 패턴으로 서술을 추측하지
+   않는다 — 같은 문장이 진짜 답변의 일부일 수 있다.
+2. **경계에서 보호되지 않은 durable 누적을 버린다 (LAST-WINS).**
+3. **연속 신호는 경계가 아니다.** 델타, 접두사가 일치하는 누적 스냅샷, 같은 메시지 id
+   의 성장은 모두 같은 메시지의 계속이다.
+4. **명시적 final 출처는 보호된다.** 프로토콜이 "최종 답변"이라고 말해준 텍스트는 이후
+   아이템이 지울 수 없다.
+5. **dedupe 기준선의 운명은 리셋 이유에 달렸다.** 교체된 메시지 기준으로 남기면 새
+   메시지의 접두사가 잘리므로 버린다. 뒤따르는 텍스트가 같은 메시지의 누적 스냅샷일 수
+   있으면 유지한다(cursor 툴 경계).
+6. **경계 신호가 없으면 고치지 않는다.** 억지 경계는 정상 답변을 자른다. 결함과 한계를
+   문서와 테스트로 남기고 코드는 그대로 둔다.
+
+"서술 → 답변"과 "답변 조각 2개"가 구별 불가능한 경계에서는 **마지막만 남긴다.**
+어댑터마다 다른 답을 주면 사용자가 CLI 를 바꿀 때마다 동작이 달라진다.
+
+| 어댑터 | 경계 신호 | final 보호 | 상태 |
+|--------|-----------|-----------|------|
+| codex (NDJSON) | 태그 없는 `agent_message` 아이템 | `channel` 태그 | 적용 |
+| codex-app | `item/started`(agentMessage) 또는 델타 `itemId` 변화 | `phase: final_answer` | 적용 |
+| cursor | 툴 시작 + 비-델타 메시지 경계 | 없음 | 적용 |
+| claude / claude-e | `message_start`(스트리밍), 이어지지 않는 스냅샷(스냅샷/fallback) | 없음 | 적용 |
+| opencode | `step_start` (last-step-wins) | 없음 | 적용 |
+| acp | `agent_message_chunk.messageId` 변화 | 없음 | 적용(id 있을 때) |
+| grok | **없음** — 프로토콜에 메시지 정체성 부재 | — | 미적용(한계) |
+| agy (transcript) | final planner row 로 **교체** | `agyFinalPlannerSeen` | 이미 안전 |
+| agy (stdout fallback) | **없음** — 전송 청크는 메시지가 아님 | — | 미적용(한계) |
+
+공유 헬퍼는 만들지 않았다. 어댑터마다 리셋해야 하는 상태 집합이 다르고(claude 는 앵커와
+스냅샷 기준선까지 8개), 공통분모는 `fullText`/`outputTextStarted` 두 개뿐이라 헬퍼가
+"이것만 부르면 된다"는 착시를 만든다. 일관성은 이 표와 각 어댑터의 주석 어휘로 유지한다.
+
 ## 4b. Codex AppServer (`codex-app`)
 
 `codex-app` 경로는 `codex app-server --listen stdio://`의 JSON-RPC notification을 `agent_tool`/`agent_output` 경로로 맞춘다.
@@ -318,14 +360,49 @@ Reasoning config:
 | `item/reasoning/summaryPartAdded` | summary index 증가 | thinking buffer에 줄바꿈 삽입 |
 | `item/completed` | `reasoning` + 기존 buffer 있음 | thinking buffer flush |
 | `item/completed` | `reasoning` + buffer 없음 | completed item의 string/object-shaped `content[]` 우선, 없으면 `summary[]` fallback 표시 |
-| `item/agentMessage/delta` | final answer delta | live output text에 축적 |
+| `item/started` | `agentMessage` | `phase`(→ sticky channel) + `itemId` 기록, 메시지 경계 표시 |
+| `item/agentMessage/delta` | `commentary` | live `agent_output` 으로만 브로드캐스트, `fullText` 제외 |
+| `item/agentMessage/delta` | 그 외 | `fullText` 에 raw 축적 (토큰 단위라 세그먼트 포매터 우회) |
 | `thread/tokenUsage/updated` | token usage | input/output/cached token 저장 |
 
 raw `textDelta`는 app-server/모델 조합이 제공할 때만 온다. 확인된 `gpt-5.4-mini` app-server smoke에서는 raw `textDelta` 대신 `summaryTextDelta` detailed stream이 왔다.
 
+### agentMessage 채널 판정과 LAST-WINS
+
+외부 채널(Slack/Telegram/Discord)이 받는 최종 텍스트는 `ctx.fullText` 에서 나온다
+(`src/agent/lifecycle-handler.ts` 가 `resolve({ text: ctx.fullText })` 로 돌려주고
+`orchestrate_done.text` 가 된다). 그래서 진행 서술을 `fullText` 에서 막지 못하면
+하류에 걸러줄 층이 없다.
+
+판정은 `src/agent/codex-app-events.ts` 의 `applyCodexAppTextEvent` 가 소유한다
+(`spawn.ts` 인라인이 아니라 순수 함수라 테스트 가능):
+
+1. **프로토콜 `phase` 우선.** app-server v2 스키마의 `AgentMessageThreadItem` 은
+   `channel` 이 아니라 `phase`(`commentary | final_answer`)를 싣는다. `commentary` 는
+   live 전용, `final_answer` 는 sticky `final` 로 정규화한다. 레거시 `channel` 과
+   `annotations.channel` 은 비표준 빌드 fallback 으로 남는다.
+2. **아이템 경계 LAST-WINS.** 스키마가 `phase` 를 nullable 로 두고 "providers do not
+   emit this consistently" 라고 명시하므로, 태그 없는 `agentMessage` 아이템이 새로
+   시작되면 직전 누적을 버린다. 태그 없는 서술 여러 개가 최종 답변에 이어붙던 것이
+   이 규칙으로 끊긴다.
+3. **`final` 출처는 보호된다.** `codexAppDurableIsFinal` 이 서면 이후 아이템은
+   누적만 하고 리셋하지 않는다 — 답변 뒤에 붙는 commentary 가 답변을 지우지 못한다.
+4. **`item/started` 유실 대비.** 델타의 `itemId` 가 바뀌면 그것만으로 경계를 잡고,
+   그 아이템의 phase 는 unknown 이므로 sticky 를 비운다(직전 `commentary` 가 답변을
+   삼키는 것 방지). `item/completed` 는 `agentMessage` 에 대해 null 을 반환하므로
+   경계 신호로 쓸 수 없다.
+
 ---
 
 ## 5. Antigravity / AGY CLI (`-p`)
+
+**경계(NARRATION-BOUNDARY-01):** transcript 앵커 경로는 이미 안전하다 — close 시
+`ctx.fullText` 를 final planner row 텍스트로 **교체** 한다(이어붙이지 않는다). 반면
+stdout fallback 은 전송 청크를 이어붙이므로 메시지 경계가 없고, 청크를 경계로 쓰면 한
+답변이 두 번에 나뉘어 읽혔을 때 뒤쪽만 남는다. 규칙 6 에 따라 고치지 않는다. 현재 방어인
+`isAgyIntermediatePlannerText` 는 인식된 planner 접두사로 **시작하는 전체 본문** 만
+덮고, 일반 서술이나 앞에 다른 출력이 붙은 경우는 못 덮는다. fallback 이 쓰이는 조건은
+timeout 도 provider 에러도 아닌 close 인데 final planner row 를 못 본 경우다.
 
 AGY is not an NDJSON runtime in cli-jaw. It uses direct print mode; optional flags are capability-probed before emission (`--model` is observed in AGY 1.0.12):
 
@@ -352,9 +429,29 @@ Cursor CLI는 separate effort flag가 없으므로 `src/agent/cursor-runtime.ts`
 | event.type | jaw 처리 |
 | --- | --- |
 | `system` | session id, model, raw cursor metadata 저장 |
-| `assistant` | text delta/snapshot을 `fullText`와 `agent_output` chunk로 누적 |
+| `assistant` | text delta/snapshot을 `fullText`와 `agent_output` chunk로 누적. 단 **새 메시지 경계**에서는 `fullText` 를 버린다 (아래) |
 | `tool_call` | `🔧 {name}` running/done/error step, `stepRef=cursor:tool:{call_id}` |
 | `result` | session id, token usage, duration, cost, finish reason 저장; rejected/error result는 tool error로 기록 |
+
+### cursor LAST-WINS: 툴 경계 + 메시지 경계
+
+cursor stream-json 에는 채널 태그가 없어서 구조적 경계 두 개를 쓴다.
+
+- **툴 경계**: 새 `tool_call`(running) 앞의 텍스트는 계획 서술로 보고 `fullText` 를
+  비운다. 완료 업데이트(`done`/`success`)는 비우지 않는다 — 이미 시작된 답변을
+  지우면 안 되기 때문. dedupe 기준선(`cursorAssistantText`)은 유지한다: 뒤따르는
+  누적 스냅샷이 같은 메시지일 수 있어서다.
+- **메시지 경계**: 툴이 하나도 없는 턴, 또는 마지막 툴 이후의 서술을 잡는다. 델타는
+  정의상 연속이므로 **절대** 경계가 되지 않는다(cursor 의 message id granularity 가
+  미확인이라 id 우선 규칙은 답변을 마지막 청크로 잘라낼 위험이 있다). 비-델타
+  이벤트에서 `message.id` 가 바뀌거나, 스냅샷이 직전 텍스트를 이어받지 않으면
+  새 메시지로 본다. 이때는 dedupe 기준선도 함께 버린다 — 교체된 메시지를 기준으로
+  접두사를 자르면 새 메시지의 앞부분이 날아간다.
+
+이어지지 않는 스냅샷 두 개는 "서술→답변"과 "답변 조각 2개"를 구별할 수 없다.
+마지막만 남기는 쪽을 택했고(codex NDJSON 어댑터와 동일한 트레이드오프), 관측된
+실패는 전부 앞쪽 모양이다. 델타로만 흐르고 id 가 없는 턴은 이 규칙으로 고쳐지지
+않는다 — 알려진 한계다.
 
 ---
 
@@ -391,6 +488,14 @@ Grok `streaming-json`은 실제 tool을 실행해도 일부 버전에서 live st
 
 Grok CLI 런타임과 `browser web-ai --vendor grok`는 별도 표면이다. 전자는 local CLI process/streaming-json, 후자는 `grok.com` 브라우저 자동화다.
 
+**경계 없음 (NARRATION-BOUNDARY-01 규칙 6):** grok 스트림에는 메시지 정체성이 없다.
+`text` 이벤트에 id 가 없고, `thought` 는 가시 텍스트 뒤에도 올 수 있으며, 일부 버전은
+tool 이벤트를 아예 내보내지 않고, `end` 는 모든 텍스트가 이어붙은 뒤에 도착한다.
+따라서 서술과 최종 답변이 한 턴에 오면 **현재는 이어붙는다.** 억지 경계는 정상 답변을
+자르므로 고치지 않고 한계로 기록한다 (`tests/events.test.ts` 의
+"grok has no message boundary" 테스트가 이 계약을 고정한다). 상류가 메시지 id 나 별도
+final 이벤트를 주기 시작하면 그때 적용한다.
+
 ## 9. Copilot ACP
 
 ACP 자체는 NDJSON이 아니라 `session/update` 이벤트를 사용한다. 현재 Copilot ACP task/subagent 관측 wire shape은 `tool_call`의 `rawInput.agent_type === 'task'`이며, 완료는 같은 `toolCallId`의 `tool_call_update`로 온다.
@@ -401,7 +506,7 @@ ACP 자체는 NDJSON이 아니라 `session/update` 이벤트를 사용한다. �
 | `tool_call` | 일반 tool은 kind 기반 `📖/✏️/⚡/🔍/🌐` 또는 `🔧`, `stepRef=acp:callid:{toolCallId}` |
 | `tool_call` + `rawInput.agent_type='task'` | `🤖 subagent: {title/description/name}`, `toolType=subagent`, `status=running`, same `stepRef` |
 | `tool_call_update` | status map: `pending→⏳/pending`, `running|in_progress→🔧/running`, `completed→✅/done`, `failed→❌/error`, unknown→`❔/{raw status}` |
-| `agent_message_chunk` | fullText 누적 |
+| `agent_message_chunk` | fullText 누적. `messageId` 가 바뀌면 **새 메시지** 로 보고 직전 누적을 버린다 (NARRATION-BOUNDARY-01). id 없는 청크는 신호가 없으므로 그대로 누적 |
 | `plan` | `📝 planning...` |
 | `session_cancelled` / `cancelled` | `⏹️` cancellation tool entry |
 | `request_permission` | `🔐 permission: ...`, `status=pending` audit entry |
@@ -421,7 +526,12 @@ ACP 자체는 NDJSON이 아니라 `session/update` 이벤트를 사용한다. �
 | `tool_result` | 일반 tool은 `✅ {tool}`; task `callID`가 ctx에 등록된 경우 기존 subagent step을 갱신 |
 | `text` | fullText 누적 |
 | `step_start` | trace/model metadata 기록 |
-| `step_finish` | sessionId/tokens/cost/time 누적 |
+| `step_finish` | sessionId/tokens/cost/time 누적 + step 텍스트 커밋 |
+
+**경계(NARRATION-BOUNDARY-01):** `step_start` 는 직전 step 이 커밋한 durable 텍스트를
+무조건 버린다(last-step-wins). `reason: 'stop'` 은 step 루프를 끝내므로 그 뒤에
+`step_start` 가 오지 않고, 만약 온다면 그 존재 자체가 직전 텍스트가 최종이 아니었음을
+증명한다. 툴 실패 설명처럼 뒤에 step 이 없는 텍스트는 그대로 남는다.
 
 OpenCode는 여러 step에 걸친 token/cost를 누적합으로 저장한다. `step_finish` 시 pending running tools를 done/error로 finalize하고, task tool output은 `<task_result>...</task_result>`를 정리해 detail에 넣는다.
 

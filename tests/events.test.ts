@@ -333,6 +333,7 @@ test('claude plain-text messages get codex-parity segment bullets at the boundar
 });
 
 test('claude within-message newlines survive reconcile (live-capture fixture)', () => {
+    // (boundary tests for NARRATION-BOUNDARY-01 are appended at the end of this file)
     const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
     // Real deltas captured from claude stream-json on 2026-07-03: ["-", " one\n- two\n- three"]
     for (const text of ['-', ' one\n- two\n- three']) {
@@ -2005,4 +2006,272 @@ test('WP4: claude tool_result converges the trace row even after RAM eviction', 
     assert.equal(rows[0].status, 'done', 'evicted placeholder must still converge via toolTraceIndex');
     assert.equal(rows[0].icon, '✅');
     assert.equal(rows[0].detail, 'ok');
+});
+
+// ─── NARRATION-BOUNDARY-01: claude family message boundaries ─────────────────
+//
+// External channels (Slack/Telegram/Discord) deliver text derived from
+// ctx.fullText, so narration that survives there reaches the user's final
+// answer. The live UI reads pendingOutputChunk separately and keeps everything.
+// Plan: devlog/_plan/260826_intermediate_text_leak/050_phase4_claude.md
+
+function boundaryCtx() {
+    return { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+}
+
+test('claude streaming: message_start discards the previous message narration', () => {
+    const ctx = boundaryCtx();
+    const messageStart = (id) => extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'message_start', message: { id, usage: { input_tokens: 10 } } },
+    }, ctx, 'test');
+    const delta = (text) => extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
+    }, ctx, 'test');
+    const complete = (id, text) => extractFromEvent('claude', {
+        type: 'assistant', message: { id, content: [{ type: 'text', text }] },
+    }, ctx, 'test');
+
+    messageStart('msg-narration');
+    delta('관련 파일을 확인하겠습니다.');
+    complete('msg-narration', '관련 파일을 확인하겠습니다.');
+    assert.equal(ctx.fullText, '관련 파일을 확인하겠습니다.');
+
+    // A tool ran here; then the model starts a NEW message with the real answer.
+    messageStart('msg-answer');
+    delta('원인은 메시지 경계 누락입니다.');
+    complete('msg-answer', '원인은 메시지 경계 누락입니다.');
+    assert.equal(ctx.fullText, '원인은 메시지 경계 누락입니다.', 'narration must not join the answer');
+});
+
+test('claude streaming: the first message_start does not discard anything', () => {
+    const ctx = boundaryCtx();
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'message_start', message: { id: 'msg-1', usage: { input_tokens: 4 } } },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '첫 답변' } },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'assistant', message: { id: 'msg-1', content: [{ type: 'text', text: '첫 답변' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '첫 답변');
+});
+
+test('claude streaming: message_start still flushes a pending thinking buffer', () => {
+    // The boundary reset must not early-return past the trailing thinking flush.
+    const ctx = boundaryCtx();
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: '생각 중' } },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'message_start', message: { id: 'msg-1', usage: { input_tokens: 1 } } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.filter((t) => t.toolType === 'thinking').length, 1);
+    assert.equal(ctx.toolLog[0].detail, '생각 중');
+});
+
+test('claude-e snapshot: a changed message id discards the previous narration', () => {
+    const ctx = boundaryCtx();
+    extractFromEvent('claude-e', {
+        type: 'assistant',
+        message: { id: 'msg-narration', content: [{ type: 'text', text: '관련 파일을 확인하겠습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '관련 파일을 확인하겠습니다.');
+    extractFromEvent('claude-e', {
+        type: 'assistant',
+        message: { id: 'msg-answer', content: [{ type: 'text', text: '원인은 메시지 경계 누락입니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '원인은 메시지 경계 누락입니다.');
+});
+
+test('claude-e snapshot: same-id cumulative growth still appends only the delta', () => {
+    const ctx = boundaryCtx();
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { id: 'msg-1', content: [{ type: 'text', text: '원인은' }] },
+    }, ctx, 'test');
+    extractFromEvent('claude-e', {
+        type: 'assistant',
+        message: { id: 'msg-1', content: [{ type: 'text', text: '원인은 메시지 경계 누락입니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '원인은 메시지 경계 누락입니다.', 'growth is continuation, not a boundary');
+});
+
+test('claude-e: consecutive ID-LESS snapshots are last-wins', () => {
+    // An anonymous stream has no id to compare, but each non-continuing snapshot
+    // is still a new message. Guarding on "a message was accumulating" (the
+    // snapshot baseline) rather than on the id keeps these covered.
+    const ctx = boundaryCtx();
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '확인하겠습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '확인하겠습니다.');
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '완료했습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '완료했습니다.');
+});
+
+test('claude-e: id → no-id → new-id keeps only the last message', () => {
+    // The regression the reviewer found: an id-less snapshot in the middle used to
+    // clear claudeILastAssistantId, so the following identified message saw no
+    // previous id and skipped its own boundary, keeping the narration.
+    const ctx = boundaryCtx();
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: '첫 서술' }] },
+    }, ctx, 'test');
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { content: [{ type: 'text', text: '중간 서술' }] },
+    }, ctx, 'test');
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { id: 'm2', content: [{ type: 'text', text: '최종 답변' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '최종 답변');
+});
+
+
+test('claude fallback (no deltas): a changed message id discards the previous narration', () => {
+    const ctx = boundaryCtx();
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { id: 'msg-narration', content: [{ type: 'text', text: '먼저 확인하겠습니다.' }] },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { id: 'msg-answer', content: [{ type: 'text', text: '완료했습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '완료했습니다.');
+});
+
+test('claude fallback: two events of the SAME message keep both blocks', () => {
+    // Keyed on the id, not on "a second event arrived": one message can span
+    // several assistant events, and a boolean would delete the first block.
+    const ctx = boundaryCtx();
+    extractFromEvent('claude', {
+        type: 'assistant', message: { id: 'msg-1', content: [{ type: 'text', text: '앞부분' }] },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'assistant', message: { id: 'msg-1', content: [{ type: 'text', text: '뒷부분' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '앞부분\n- 뒷부분', 'same id is continuation');
+});
+
+test('ai-e never accumulates assistant text, so it has no narration to leak', () => {
+    // ai-e is claude-LIKE for stream_event bookkeeping (isClaudeLikeCli), but the
+    // dispatch switch routes only 'claude' and 'claude-e' into handleClaudeEvent —
+    // ai-e assistant records never reach an appender. Pinned so a future dispatch
+    // change cannot silently give ai-e the unbounded-accumulation bug.
+    const ctx = boundaryCtx();
+    extractFromEvent('ai-e', {
+        type: 'assistant', message: { id: 'msg-1', content: [{ type: 'text', text: '확인하겠습니다.' }] },
+    }, ctx, 'test');
+    extractFromEvent('ai-e', {
+        type: 'assistant', message: { id: 'msg-2', content: [{ type: 'text', text: '완료했습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '', 'ai-e durable text stays empty in this adapter layer');
+});
+
+test('claude live stream keeps narration the durable answer drops', () => {
+    const ctx = boundaryCtx();
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: '확인하겠습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(extractOutputChunk('claude-e', { type: 'assistant' }, ctx), '확인하겠습니다.');
+    extractFromEvent('claude-e', {
+        type: 'assistant', message: { id: 'm2', content: [{ type: 'text', text: '완료했습니다.' }] },
+    }, ctx, 'test');
+    assert.equal(extractOutputChunk('claude-e', { type: 'assistant' }, ctx), '완료했습니다.');
+    assert.equal(ctx.fullText, '완료했습니다.');
+});
+
+// ─── NARRATION-BOUNDARY-01: opencode step boundary + grok limitation ─────────
+// Plan: devlog/_plan/260826_intermediate_text_leak/060_phase5_grok_opencode.md
+
+function opencodeCtx() {
+    return {
+        toolLog: [], fullText: '', traceLog: [], pendingOutputChunk: '',
+        opencodePreToolText: '', opencodePostToolText: '',
+        opencodeSawToolInStep: false, opencodeHadToolErrorInStep: false,
+        opencodePendingToolRefs: [], seenToolKeys: new Set(),
+    };
+}
+
+test('opencode: a tool-less narration step is discarded by the next step', () => {
+    const ctx = opencodeCtx();
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: '먼저 상황을 정리하겠습니다.' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'stop' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '먼저 상황을 정리하겠습니다.', 'committed by its own step');
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: '최종 답변입니다.' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'stop' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '최종 답변입니다.', 'a following step proves the earlier text was not the answer');
+});
+
+test('opencode: post-tool narration is discarded by the next step', () => {
+    const ctx = opencodeCtx();
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'tool_use',
+        part: { tool: 'bash', callID: 'bash:0', state: { status: 'completed', input: { command: 'cat x' } } },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'text', part: { text: '좋아요! 파일 있네요! 내용 확인할게요!' },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'tool-calls' } }, ctx, 'oc');
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: '조사 결과는 다음과 같습니다.' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'stop' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '조사 결과는 다음과 같습니다.');
+});
+
+test('opencode: the last step survives when nothing follows it', () => {
+    // Regression guard: a tool-error explanation with no following step is the
+    // answer, and last-step-wins must not touch it.
+    const ctx = opencodeCtx();
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'read:0', state: { status: 'error', input: { filePath: '/x' } } },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'text', part: { text: 'I could not read that file because permission was denied.' },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'tool-calls' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '- I could not read that file because permission was denied.');
+});
+
+test('opencode live stream keeps the narration the durable answer drops', () => {
+    const ctx = opencodeCtx();
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: '먼저 확인하겠습니다.' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'stop' } }, ctx, 'oc');
+    assert.equal(extractOutputChunk('opencode', {}, ctx), '먼저 확인하겠습니다.', 'live UI saw it');
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '', 'durable slot cleared for the next step');
+});
+
+test('grok has no message boundary, so narration still joins the answer (known limit)', () => {
+    // Recorded, not fixed: grok's streaming-json carries no message identity —
+    // 'text' events have no id, 'thought' can follow visible text, tool events are
+    // optional in some builds, and 'end' arrives after everything is joined.
+    // Forcing a boundary here would truncate real answers (NARRATION-BOUNDARY-01
+    // rule 6). This test pins the current contract so it changes deliberately if
+    // grok ever emits message ids.
+    const ctx = { toolLog: [], fullText: '', traceLog: [], pendingOutputChunk: '', seenToolKeys: new Set() };
+    extractFromEvent('grok', { type: 'text', data: '파일을 먼저 확인하겠습니다.' }, ctx, 'grok');
+    extractFromEvent('grok', { type: 'tool_use', id: 'read-1', name: 'read', input: { file: 'README.md' } }, ctx, 'grok');
+    extractFromEvent('grok', { type: 'text', data: '최종 답변입니다.' }, ctx, 'grok');
+    assert.equal(
+        ctx.fullText,
+        '파일을 먼저 확인하겠습니다.최종 답변입니다.',
+        'known limitation: no structural boundary exists in the grok stream',
+    );
 });
