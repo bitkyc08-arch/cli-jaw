@@ -42,7 +42,7 @@ import { OutboundSendRegistry } from '../messaging/outbound-lifecycle.js';
 import {
     recordSlackScopeObservation,
     getSlackScopeStatus,
-    describeSlackScopeGap,
+    describeSlackScopeGaps,
     resetSlackScopeStatus,
 } from './scope-status.js';
 import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
@@ -1189,8 +1189,13 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
     // that return would make an unconfigured channel hit the network on every
     // start. Documented as a known limitation rather than silently ignored.
     recordSlackScopeObservation(auth.grantedScopes, null);
-    const scopeGap = describeSlackScopeGap(getSlackScopeStatus());
-    if (scopeGap) log.warn(`[slack:scopes] ${scopeGap}`);
+    for (const gap of describeSlackScopeGaps(getSlackScopeStatus())) {
+        // Each group logs at its own level: a missing required scope is a real
+        // break, a missing optional one is not, and one shared WARN made them
+        // indistinguishable (#478).
+        const emit = gap.level === 'warn' ? log.warn : log.info;
+        emit(`[slack:scopes] ${gap.text}`);
+    }
     if (auth.data?.team_id && !sc.teamId) sc.teamId = auth.data.team_id;
     // The team id namespaces every ingress dedup key, and `slackEventKey`
     // degrades an empty one to the literal 'unknown' — so two workspaces,
