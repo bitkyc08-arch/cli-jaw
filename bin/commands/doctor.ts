@@ -18,6 +18,7 @@ import { migrateAllJawHomes, hasPendingLegacySkillDirs, discoverJawHomes } from 
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
 import { isWsl, isWindowsNative, resolvePlatformKind } from '../../src/core/platform-kind.js';
+import { checkNonInteractivePath, nonInteractivePathRemedy } from '../../src/core/noninteractive-path.js';
 import { readClaudeCreds } from '../../src/routes/quota.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
@@ -675,6 +676,47 @@ check('uv (Python)', () => {
         throw new Error(`WARN: not installed — run: ${installHint}`);
     }
 });
+
+// 9b. Non-interactive shell reachability (#479)
+//
+// Remote one-shot commands (`ssh host 'jaw serve ...'`) run a shell that
+// reads none of the profile files the installer writes to, so `jaw` can be
+// fine here and unresolvable there. doctor itself runs in the shell that
+// works, so it has to ask the question against `getconf PATH` instead of
+// process.env.PATH.
+if (process.platform !== 'win32') {
+    check('Non-interactive PATH (ssh)', () => {
+        // Where jaw actually lives on THIS host. A version-managed Node
+        // (nvm/fnm/Homebrew) installs global bins under a prefix no static
+        // list can predict.
+        const npmPrefix = getNpmPrefix();
+        const knownBinDirs = [
+            npmPrefix ? path.join(npmPrefix, 'bin') : '',
+            findBinaryPath('jaw') ? path.dirname(findBinaryPath('jaw')!) : '',
+        ].filter(Boolean);
+
+        const result = checkNonInteractivePath('jaw', os.homedir(), {
+            baselinePath: () => {
+                try { return execFileSync('getconf', ['PATH'], { encoding: 'utf8', stdio: 'pipe' }).trim() || null; }
+                catch { return null; }
+            },
+            isExecutableFile: (candidate) => {
+                try { return fs.statSync(candidate).isFile() && (fs.statSync(candidate).mode & 0o111) !== 0; }
+                catch { return false; }
+            },
+        }, knownBinDirs);
+
+        if (result.status === 'unknown') return 'skipped (no baseline PATH)';
+        if (result.status === 'reachable') return `jaw resolves in a non-interactive shell (${result.foundIn})`;
+        if (result.status === 'not-installed') return 'jaw not found in any known install dir — skipping';
+
+        throw new Error(
+            `WARN: jaw is in ${result.foundIn} but not on the non-interactive PATH — `
+            + "remote `ssh host 'jaw ...'` will fail with \"No such file or directory\"\n"
+            + nonInteractivePathRemedy('jaw', result.foundIn!).map(line => `     ${line}`).join('\n')
+        );
+    });
+}
 
 if (isWindowsNative()) {
     check('Windows (native)', () => {
