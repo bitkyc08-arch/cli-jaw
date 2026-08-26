@@ -897,6 +897,7 @@ import {
 import { loadCatalogEfforts, resolveCatalogPath, validateModelEffort } from './codex-app-catalog.js';
 import {
     listenCodexAppTurnAdapter,
+    applyCodexAppTextEvent,
     type CodexAppEventResult,
 } from './codex-app-events.js';
 
@@ -2164,33 +2165,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     heartbeatSent = false;
                 }
             }
-            // Track item-level channel (set by item/started for agentMessage items)
-            // so subsequent item/agentMessage/delta events inherit it when they don't
-            // carry their own channel field.
-            if (parsed.channel !== undefined) {
-                ctx.codexAppActiveChannel = parsed.channel;
-            }
-    if (parsed.text) {
-                flushCodexAppThinking();
+            // Sticky channel/item bookkeeping and the durable-vs-live decision live
+            // in applyCodexAppTextEvent so they can be tested without a live runtime.
+            if (parsed.text) flushCodexAppThinking();
+            const textDecision = applyCodexAppTextEvent(ctx, parsed);
+            if (textDecision.durable) {
                 // codex-app streams item/agentMessage/delta at TOKEN granularity;
                 // the segment formatter would inject "\n- " between unjoined
                 // tokens ("이"+"지만" → "이\n- 지만"). Raw-append like the plain
                 // `claude` text_delta path (events/index.ts) instead.
-                // Commentary-channel text is a transient progress update, not part
-                // of the durable response. Broadcast it for live UI preview but do
-                // NOT append to fullText — that way agent_done (and therefore
-                // Slack/Telegram/Discord delivery) contains only the final answer.
-                const effectiveChannel = parsed.channel || ctx.codexAppActiveChannel;
-                if (effectiveChannel === 'commentary') {
-                    broadcastAgentOutput(ctx, agentLabel, cli, parsed.text, empTag, traceAudience);
-                } else {
-                    const segment = appendAssistantRawText(ctx, parsed.text);
-                    if (segment) {
-                        broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
-                        lastVisibleBroadcastTs = Date.now();
-                        heartbeatSent = false;
-                    }
+                const segment = appendAssistantRawText(ctx, textDecision.durable);
+                if (segment) {
+                    broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
+                    lastVisibleBroadcastTs = Date.now();
+                    heartbeatSent = false;
                 }
+            } else if (textDecision.live) {
+                // Commentary is a transient progress update, not part of the durable
+                // response. Broadcast it for live UI preview but keep it out of
+                // fullText — that way agent_done (and therefore Slack/Telegram/
+                // Discord delivery) contains only the final answer.
+                broadcastAgentOutput(ctx, agentLabel, cli, textDecision.live, empTag, traceAudience);
             }
             if (parsed.sessionId && !ctx.sessionId) {
                 ctx.sessionId = parsed.sessionId;

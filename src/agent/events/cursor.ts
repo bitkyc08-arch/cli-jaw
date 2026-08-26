@@ -25,11 +25,63 @@ function cursorAssistantText(event: CliEventRecord): string {
         || extractText(event.content);
 }
 
+/** True when this assistant event begins a NEW message rather than continuing the
+ *  one already accumulating. Cursor stream-json carries no channel tags, so message
+ *  identity is the only seam left on turns that never call a tool.
+ *
+ *  A delta NEVER starts a new message — it is by definition a continuation, and this
+ *  check comes first on purpose: cursor's message-id granularity is unverified, so an
+ *  id-first rule would shred an answer down to its last chunk if ids ever varied per
+ *  chunk. A snapshot that extends the previous text also continues (that is how cursor
+ *  grows one answer). Everything else starts fresh.
+ */
+function cursorStartsNewAssistantMessage(
+    ctx: SpawnContext,
+    event: CliEventRecord,
+    text: string,
+    isDelta: boolean,
+): boolean {
+    if (isDelta) return false;
+    const messageId = fieldString(event.message?.id || event["message_id"]);
+    if (messageId) {
+        return ctx.cursorAssistantMessageId !== undefined
+            && ctx.cursorAssistantMessageId !== messageId;
+    }
+    const previous = ctx.cursorAssistantText || '';
+    if (!previous) return false;
+    return !text.startsWith(previous);
+}
+
 function appendCursorAssistantText(ctx: SpawnContext, event: CliEventRecord): string {
     const text = normalizeAssistantDisplayText(cursorAssistantText(event));
     if (!text) return '';
 
     const isDelta = event.subtype === 'delta' || event.delta?.type === 'text_delta';
+    // LAST-WINS across MESSAGE boundaries — the companion to the tool-boundary rule
+    // below. A turn that never calls a tool, or that narrates after its last tool,
+    // has no tool seam, so successive assistant messages used to concatenate into the
+    // durable answer and reach Slack as one run-on paragraph.
+    //
+    // Two non-continuing snapshots are ambiguous: "narration then answer" and "answer
+    // part 1 then part 2" look identical on the wire. Last-wins is the same tradeoff
+    // the codex NDJSON adapter already makes for untagged agent_messages, and the
+    // observed failures are all the first shape. Cumulative snapshot growth (the
+    // prefix case) is unaffected.
+    if (cursorStartsNewAssistantMessage(ctx, event, text, isDelta)) {
+        ctx.fullText = '';
+        ctx.outputTextStarted = false;
+        // Drop the dedupe baseline too. It describes the message being replaced, and
+        // this snapshot belongs to a different one — keeping it would slice a real
+        // prefix off the new message ('요약' + '요약본입니다.' → '본입니다.'). The
+        // tool guard below keeps its baseline for the opposite reason: there the NEXT
+        // text may still be a cumulative snapshot of the SAME message.
+        ctx.cursorAssistantText = '';
+    }
+    if (!isDelta) {
+        const messageId = fieldString(event.message?.id || event["message_id"]);
+        if (messageId) ctx.cursorAssistantMessageId = messageId;
+    }
+
     const previous = ctx.cursorAssistantText || '';
     const segmentText = isDelta
         ? text

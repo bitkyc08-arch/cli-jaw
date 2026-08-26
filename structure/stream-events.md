@@ -318,10 +318,37 @@ Reasoning config:
 | `item/reasoning/summaryPartAdded` | summary index 증가 | thinking buffer에 줄바꿈 삽입 |
 | `item/completed` | `reasoning` + 기존 buffer 있음 | thinking buffer flush |
 | `item/completed` | `reasoning` + buffer 없음 | completed item의 string/object-shaped `content[]` 우선, 없으면 `summary[]` fallback 표시 |
-| `item/agentMessage/delta` | final answer delta | live output text에 축적 |
+| `item/started` | `agentMessage` | `phase`(→ sticky channel) + `itemId` 기록, 메시지 경계 표시 |
+| `item/agentMessage/delta` | `commentary` | live `agent_output` 으로만 브로드캐스트, `fullText` 제외 |
+| `item/agentMessage/delta` | 그 외 | `fullText` 에 raw 축적 (토큰 단위라 세그먼트 포매터 우회) |
 | `thread/tokenUsage/updated` | token usage | input/output/cached token 저장 |
 
 raw `textDelta`는 app-server/모델 조합이 제공할 때만 온다. 확인된 `gpt-5.4-mini` app-server smoke에서는 raw `textDelta` 대신 `summaryTextDelta` detailed stream이 왔다.
+
+### agentMessage 채널 판정과 LAST-WINS
+
+외부 채널(Slack/Telegram/Discord)이 받는 최종 텍스트는 `ctx.fullText` 에서 나온다
+(`src/agent/lifecycle-handler.ts` 가 `resolve({ text: ctx.fullText })` 로 돌려주고
+`orchestrate_done.text` 가 된다). 그래서 진행 서술을 `fullText` 에서 막지 못하면
+하류에 걸러줄 층이 없다.
+
+판정은 `src/agent/codex-app-events.ts` 의 `applyCodexAppTextEvent` 가 소유한다
+(`spawn.ts` 인라인이 아니라 순수 함수라 테스트 가능):
+
+1. **프로토콜 `phase` 우선.** app-server v2 스키마의 `AgentMessageThreadItem` 은
+   `channel` 이 아니라 `phase`(`commentary | final_answer`)를 싣는다. `commentary` 는
+   live 전용, `final_answer` 는 sticky `final` 로 정규화한다. 레거시 `channel` 과
+   `annotations.channel` 은 비표준 빌드 fallback 으로 남는다.
+2. **아이템 경계 LAST-WINS.** 스키마가 `phase` 를 nullable 로 두고 "providers do not
+   emit this consistently" 라고 명시하므로, 태그 없는 `agentMessage` 아이템이 새로
+   시작되면 직전 누적을 버린다. 태그 없는 서술 여러 개가 최종 답변에 이어붙던 것이
+   이 규칙으로 끊긴다.
+3. **`final` 출처는 보호된다.** `codexAppDurableIsFinal` 이 서면 이후 아이템은
+   누적만 하고 리셋하지 않는다 — 답변 뒤에 붙는 commentary 가 답변을 지우지 못한다.
+4. **`item/started` 유실 대비.** 델타의 `itemId` 가 바뀌면 그것만으로 경계를 잡고,
+   그 아이템의 phase 는 unknown 이므로 sticky 를 비운다(직전 `commentary` 가 답변을
+   삼키는 것 방지). `item/completed` 는 `agentMessage` 에 대해 null 을 반환하므로
+   경계 신호로 쓸 수 없다.
 
 ---
 
@@ -352,9 +379,29 @@ Cursor CLI는 separate effort flag가 없으므로 `src/agent/cursor-runtime.ts`
 | event.type | jaw 처리 |
 | --- | --- |
 | `system` | session id, model, raw cursor metadata 저장 |
-| `assistant` | text delta/snapshot을 `fullText`와 `agent_output` chunk로 누적 |
+| `assistant` | text delta/snapshot을 `fullText`와 `agent_output` chunk로 누적. 단 **새 메시지 경계**에서는 `fullText` 를 버린다 (아래) |
 | `tool_call` | `🔧 {name}` running/done/error step, `stepRef=cursor:tool:{call_id}` |
 | `result` | session id, token usage, duration, cost, finish reason 저장; rejected/error result는 tool error로 기록 |
+
+### cursor LAST-WINS: 툴 경계 + 메시지 경계
+
+cursor stream-json 에는 채널 태그가 없어서 구조적 경계 두 개를 쓴다.
+
+- **툴 경계**: 새 `tool_call`(running) 앞의 텍스트는 계획 서술로 보고 `fullText` 를
+  비운다. 완료 업데이트(`done`/`success`)는 비우지 않는다 — 이미 시작된 답변을
+  지우면 안 되기 때문. dedupe 기준선(`cursorAssistantText`)은 유지한다: 뒤따르는
+  누적 스냅샷이 같은 메시지일 수 있어서다.
+- **메시지 경계**: 툴이 하나도 없는 턴, 또는 마지막 툴 이후의 서술을 잡는다. 델타는
+  정의상 연속이므로 **절대** 경계가 되지 않는다(cursor 의 message id granularity 가
+  미확인이라 id 우선 규칙은 답변을 마지막 청크로 잘라낼 위험이 있다). 비-델타
+  이벤트에서 `message.id` 가 바뀌거나, 스냅샷이 직전 텍스트를 이어받지 않으면
+  새 메시지로 본다. 이때는 dedupe 기준선도 함께 버린다 — 교체된 메시지를 기준으로
+  접두사를 자르면 새 메시지의 앞부분이 날아간다.
+
+이어지지 않는 스냅샷 두 개는 "서술→답변"과 "답변 조각 2개"를 구별할 수 없다.
+마지막만 남기는 쪽을 택했고(codex NDJSON 어댑터와 동일한 트레이드오프), 관측된
+실패는 전부 앞쪽 모양이다. 델타로만 흐르고 id 가 없는 턴은 이 규칙으로 고쳐지지
+않는다 — 알려진 한계다.
 
 ---
 

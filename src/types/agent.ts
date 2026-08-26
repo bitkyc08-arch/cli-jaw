@@ -115,6 +115,9 @@ export interface SpawnContext {
   opencodeLastEventAt?: number;
   opencodeSpawnAudit?: Record<string, unknown>;
   cursorAssistantText?: string;
+  /** Message id of the cursor assistant message currently accumulating into fullText.
+   *  A change on a non-delta event is a message boundary (LAST-WINS). */
+  cursorAssistantMessageId?: string;
   cursorAssistantSeq?: number;
   cursorToolCallIds?: Set<string>;
   acpSubagentToolCallIds?: Set<string>;
@@ -161,6 +164,13 @@ export interface SpawnContext {
    *  Set at item/started, consumed by item/agentMessage/delta to filter commentary
    *  out of fullText so it stays out of agent_done and messaging-channel delivery. */
   codexAppActiveChannel?: string;
+  /** Wire item id of the codex-app agentMessage currently accumulating into fullText.
+   *  A change of id is a message boundary: LAST-WINS discards the previous message
+   *  so progress narration cannot concatenate onto the final answer. */
+  codexAppActiveItemId?: string;
+  /** True once durable text was appended under an explicit 'final' phase. Protects a
+   *  delivered answer from being erased by a trailing commentary/untagged item. */
+  codexAppDurableIsFinal?: boolean;
   scheduleWakeup?: {
     delaySeconds: number;
     prompt: string;
