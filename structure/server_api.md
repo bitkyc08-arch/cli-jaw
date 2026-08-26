@@ -154,6 +154,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 `POST /api/channel/send`에서 `channel`은 `telegram|discord|slack|active` transport다. 대화 ID는 `chat_id` 또는 `target.targetId`에 넣는다. Slack thread를 명시할 때 `target.threadId`는 reply ts가 아닌 parent message ts다. target을 생략하면 검증된 현재 대화와 thread를 사용한다. 빈 `slack.channelIds`는 임의 explicit channel을 열지 않으며, 이미 저장·검증된 `lastActive/latestSeen`과 같은 conversation/thread만 명시적으로 재사용할 수 있다.
 
+`turn_conversation`은 인바운드 턴 프롬프트가 준 `reply_to=` 값을 그대로 돌려주는 필드다. target을 조립할 수 없을 때 생략하는 대신 이걸 echo 하면 그 턴이 답하는 대화로 배달된다 — 생략은 "가장 최근에 말한 대화"로 풀리고, 동시 턴에서는 그게 다른 대화일 수 있다 (#474). 우선순위는 `target` > `turn_conversation` > `lastActive` > `latestSeen`이며, `turn_conversation`도 동일한 allowlist 검증을 받는다. 잘못된 값은 예외 대신 없는 것으로 처리된다.
+
 ---
 
 ## Security / Guards

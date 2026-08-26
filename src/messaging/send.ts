@@ -9,6 +9,7 @@ import { getLastActiveTarget, getLatestSeenTarget, clearTargetState, getHomeChan
 import { slackTargetFromId, slackPeerKind } from './slack-target.js';
 import { readSlackAllowlist, MALFORMED_SLACK_ALLOWLIST } from '../slack/events.js';
 import { buildRemoteBindingKey } from './session-key.js';
+import { decodeTurnConversation, turnConversationForChannel } from './turn-conversation.js';
 import { getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
@@ -60,6 +61,10 @@ export type ChannelSendRequest = {
      *  them) but not a conversational one — so last-active is wrong while failing
      *  outright would be worse than delivering somewhere stable (#438). */
     preferConfiguredTarget?: boolean;
+    /** The conversation the CALLING TURN is answering for, echoed back by the
+     *  agent from its per-turn prompt. Trusted only as far as the same allowlist
+     *  any explicit target faces — a better-informed default, not a bypass. */
+    turnTarget?: RemoteTarget;
 };
 
 // ─── Transport Send Registry ────────────────────────
@@ -135,6 +140,10 @@ export function normalizeChannelSendRequest(body: Record<string, any>): ChannelS
         interactiveFallback: normalizeInteractiveFallback(
             body["interactive_fallback"] ?? body["interactiveFallback"],
         ),
+        // The agent echoes its turn's `reply_to` here. Dropping it in this
+        // allowlist normalizer would leave every HTTP send back on the volatile
+        // slots, which is the bug (#474).
+        turnTarget: decodeTurnConversation(body["turn_conversation"] ?? body["turnConversation"]) ?? undefined,
     });
 }
 
@@ -341,6 +350,18 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     if (!req.target && req.allowActiveFallback !== false) {
         const configuredFirst = req.preferConfiguredTarget ? getConfiguredFallbackTarget(channel) : null;
         if (configuredFirst) req.target = configuredFirst;
+        // The turn's OWN conversation outranks both volatile slots. Those slots
+        // answer "who spoke to the bot most recently", which stops being this
+        // conversation the moment anyone else writes — so a DM turn that omitted
+        // the target was delivering to whichever PUBLIC channel happened to
+        // interleave (#474). This answers "who am I replying to", which does not
+        // move for the life of the turn.
+        //
+        // Still allowlist-checked: it narrows the default, it does not widen access.
+        const turnTarget = req.target ? null : turnConversationForChannel(req.turnTarget, channel);
+        if (turnTarget && validateTarget(turnTarget, channel)) {
+            req.target = turnTarget;
+        }
         const last = req.target ? null : getLastActiveTarget(channel);
         if (last && validateTarget(last, channel)) {
             req.target = last;

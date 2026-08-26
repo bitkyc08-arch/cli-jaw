@@ -294,7 +294,7 @@ For non-text output, use the canonical channel send endpoint:
 Primary local endpoint: `POST http://127.0.0.1:{{SERVER_PORT}}/api/channel/send`
 Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Types: `text`, `voice`, `photo`, `document` (requires `file_path`)
-- `channel` is `telegram|discord|slack|active`, never a conversation ID. **Send `target` when this turn named a conversation** (Slack turns get `channel_id`/`thread_ts`); omitting it delivers to whoever spoke last — a PUBLIC channel when this turn is a DM. Never drop `target` to fix a refused send; report the refusal, or pass `"turn_conversation"` = raw `JAW_TURN_CONVERSATION` env value. Heartbeats/scheduled jobs omit both and use the active channel: `{"type":"document","file_path":"/path/to/file"}`
+- `channel` is `telegram|discord|slack|active`, never a conversation ID. **Send `target` when this turn named a conversation** (Slack turns get `channel_id`/`thread_ts`); omitting it delivers to whoever spoke last — a PUBLIC channel when this turn is a DM. Never drop `target` to fix a refused send; report the refusal, or pass `"turn_conversation"` = this turn's `reply_to=` value. Heartbeats/scheduled jobs omit both and use the active channel: `{"type":"document","file_path":"/path/to/file"}`
 - Explicit Slack thread (`threadId` = parent ts, never reply ts): `{"channel":"slack","type":"document","file_path":"/path/to/file","target":{"channel":"slack","targetKind":"channel","peerKind":"channel","targetId":"C123","threadId":"1712345678.123456"}}`
 - Always provide normal text response alongside file delivery
 - Do not print token values in logs

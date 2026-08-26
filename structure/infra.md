@@ -903,7 +903,7 @@ choke point로 모았다.
 | `registerSendTransport()` | 채널별 send 함수 등록 |
 | `normalizeChannelSendRequest()` | HTTP body → request 정규화 |
 | `validateTarget()` | allowlist + full target shape 검증. 빈 Slack allowlist에서 explicit target은 검증된 `lastActive/latestSeen`의 같은 conversation/thread만 재사용 가능 |
-| `sendChannelOutput()` | explicit target > validated lastActive > validated latestSeen > configured fallback 순으로 전송 |
+| `sendChannelOutput()` | explicit target > **validated turn address** > validated lastActive > validated latestSeen > configured fallback 순으로 전송 |
 
 추가로 `validateTarget()`이 Telegram `allowedChatIds`와 Discord `channelIds`/thread parent를 같이 검사하고, stale cached target이면 `clearTargetState()`로 바로 비운다.
 
@@ -974,6 +974,14 @@ Telegram file upload / retry helper. 텍스트가 아닌 media send와 attachmen
 - Telegram과 Discord는 모두 `src/messaging/runtime.ts`에 자기 transport를 등록한다.
 - Telegram/Discord 설정 변경은 `core/runtime-settings.ts`를 통해 같은 restart 경로를 탄다.
 - `settings.messaging.lastActive/latestSeen`는 forward 대상 복원용 공통 저장소다.
+- **턴 주소(`turnTarget`)는 저장되지 않는다.** 인바운드 턴의 프롬프트에 `reply_to=` 로
+  실려 나가고 에이전트가 `/api/channel/send` 의 `turn_conversation` 으로 돌려준다.
+  `lastActive/latestSeen` 은 채널당 하나뿐인 휘발 슬롯이라 "누가 마지막에 말했나"를
+  답하는데, 멀티세션에서 DM 턴과 채널 턴이 동시에 돌면 그 답이 이 대화가 아니게 된다
+  (#474). 턴 주소는 "지금 누구에게 답하는 중인가"를 답하고 턴이 사는 동안 바뀌지 않는다.
+  프로세스 환경변수가 아닌 **프롬프트** 로 실어 나르는 이유는 `codex-app` 이 풀링된
+  프로세스를 재사용하면서 env 는 생성 시점에만 설정하기 때문이다 — 재사용된 프로세스는
+  자기를 처음 띄운 턴의 주소를 계속 답하게 된다. 턴 주소도 `validateTarget()` 을 거친다.
 - `src/orchestrator/pipeline.ts`는 Telegram/Discord origin에만 21 Elicitation remote-channel guard를 동적으로 붙인다. A1 system prompt는 수정하지 않으며, accidental `elicitation` / `choice-buttons` fence 출력은 remote 응답 직전에 plain text numbered question fallback으로 normalize한다.
 
 ### Dashboard Telegram Hub (`src/manager/telegram-hub/` — 3 files)

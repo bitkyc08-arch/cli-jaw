@@ -28,7 +28,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 ### `src/messaging/send.ts`
 
-- `sendChannelOutput()`는 `explicit target → validated lastActive → validated latestSeen → configured fallback` 순으로 target을 고른다
+- `sendChannelOutput()`는 `explicit target → validated turn address → validated lastActive → validated latestSeen → configured fallback` 순으로 target을 고른다. 턴 주소는 인바운드 턴 프롬프트의 `reply_to=` 를 에이전트가 `turn_conversation` 으로 돌려준 값이다 (#474)
 - `validateTarget()`는 Telegram allowedChatIds와 Discord channelIds / thread parent 허용을 둘 다 검사한다
 - `registerSendTransport()`로 채널별 outbound sender를 주입한다
 
