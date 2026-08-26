@@ -88,6 +88,26 @@ test('extractFromAcpUpdate handles agent_message_chunk content shapes', () => {
     assert.deepEqual(asObject, { text: 'single' });
 });
 
+test('extractFromAcpUpdate preserves messageId when the agent sends one', () => {
+    // NARRATION-BOUNDARY-01: messageId is optional in the ACP session-update
+    // schema, but when present, chunks of one message share it and a change marks
+    // a new assistant message. Preserving it is what lets the consumer drop
+    // narration; without it the chunks accumulate, which is the honest fallback.
+    assert.deepEqual(
+        extractFromAcpUpdate({
+            update: { sessionUpdate: 'agent_message_chunk', content: 'hi', messageId: 'm1' },
+        }),
+        { text: 'hi', messageId: 'm1' },
+    );
+    assert.deepEqual(
+        extractFromAcpUpdate({
+            update: { sessionUpdate: 'agent_message_chunk', content: 'hi' },
+        }),
+        { text: 'hi' },
+    );
+});
+
+
 test('extractFromAcpUpdate handles plan and unknown update types', () => {
     const plan = extractFromAcpUpdate({
         update: {

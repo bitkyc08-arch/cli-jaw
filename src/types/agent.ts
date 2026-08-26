@@ -118,6 +118,10 @@ export interface SpawnContext {
   /** Message id of the cursor assistant message currently accumulating into fullText.
    *  A change on a non-delta event is a message boundary (LAST-WINS). */
   cursorAssistantMessageId?: string;
+  /** ACP messageId of the assistant message currently accumulating into fullText.
+   *  A change is a message boundary (NARRATION-BOUNDARY-01); chunks without an id
+   *  carry no signal and accumulate. */
+  acpAssistantMessageId?: string;
   cursorAssistantSeq?: number;
   cursorToolCallIds?: Set<string>;
   acpSubagentToolCallIds?: Set<string>;

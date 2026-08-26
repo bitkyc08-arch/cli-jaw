@@ -1632,6 +1632,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             if (parsed.text) {
                 flushThinking();
+                // NARRATION-BOUNDARY-01: a changed ACP messageId means a NEW
+                // assistant message, so what accumulated was progress narration
+                // rather than part of this answer. External channels deliver text
+                // derived from ctx.fullText; the live UI keeps the narration via
+                // the agent_output broadcast below. Chunks without a messageId
+                // carry no boundary signal and simply accumulate.
+                if (parsed.messageId && ctx.acpAssistantMessageId !== undefined
+                    && ctx.acpAssistantMessageId !== parsed.messageId) {
+                    ctx.fullText = '';
+                    ctx.outputTextStarted = false;
+                }
+                if (parsed.messageId) ctx.acpAssistantMessageId = parsed.messageId;
                 const segment = appendAssistantTextSegment(ctx, parsed.text);
                 if (segment) {
                     broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);

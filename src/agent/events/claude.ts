@@ -162,10 +162,44 @@ function appendClaudeISnapshotText(ctx: SpawnContext, event: CliEventRecord): st
         return '';
     }
 
+    // Reaching here means this snapshot is NOT a continuation of the message
+    // already accumulating: either the id changed, or there is no id to match.
+    // Either way a new assistant message started, so what came before was progress
+    // narration rather than part of this answer (NARRATION-BOUNDARY-01).
+    //
+    // The guard is claudeILastAssistantText, not the id: an id-LESS snapshot used
+    // to clear the id and thereby blind the NEXT identified event to its own
+    // boundary, letting narration survive. Tracking "a message was accumulating"
+    // covers identified and anonymous streams alike, and still leaves the first
+    // message of a run untouched.
+    if (ctx.claudeILastAssistantText !== undefined) resetClaudeDurableMessage(ctx);
     if (messageId) ctx.claudeILastAssistantId = messageId;
     else delete ctx.claudeILastAssistantId;
     ctx.claudeILastAssistantText = text;
     return appendAssistantTextSegment(ctx, text);
+}
+
+/** Drop the durable accumulation at a claude MESSAGE boundary
+ *  (NARRATION-BOUNDARY-01: external channels read ctx.fullText, so narration that
+ *  survives here reaches Slack).
+ *
+ *  Every field below describes the message being REPLACED, so they must move
+ *  together. A stale streaming anchor makes the next reconcile slice at the wrong
+ *  offset — or skip entirely — and a stale snapshot baseline slices a real prefix
+ *  off the new message. pendingOutputChunk is deliberately untouched: it is the
+ *  live drain buffer, and clearing it would lose text the UI has not read yet.
+ *  liveOutputText is guarded rather than assumed: claude runs never initialize it
+ *  (spawn.ts gates that to kiro-plain/agy/pi), and this mirrors the same defensive
+ *  check the reconcile path already carries. */
+export function resetClaudeDurableMessage(ctx: SpawnContext): void {
+    ctx.fullText = '';
+    if (ctx.liveOutputText !== undefined) ctx.liveOutputText = '';
+    ctx.outputTextStarted = false;
+    delete ctx.fullTextTruncated;
+    ctx.claudeStreamedText = false;
+    ctx.claudeStreamedTextStart = undefined;
+    delete ctx.claudeILastAssistantId;
+    delete ctx.claudeILastAssistantText;
 }
 
 // ─── Flush buffers (public export, called from spawn.ts) ─────
@@ -251,6 +285,16 @@ export function handleClaudeEvent(
         } else {
             // Fallback: no partial text stream seen (e.g. --include-partial-messages
             // absent) → surface the complete assistant text block here.
+            // A CHANGED top-level message id is a new assistant message, so the
+            // previous one was narration (NARRATION-BOUNDARY-01). Key on the id
+            // rather than on "a second event arrived": one message can span several
+            // assistant events, and a boolean would delete the first block's text.
+            const fallbackId = fieldString(evt.message?.id || evt.id);
+            if (fallbackId && ctx.claudeILastAssistantId !== undefined
+                && ctx.claudeILastAssistantId !== fallbackId) {
+                resetClaudeDurableMessage(ctx);
+            }
+            if (fallbackId) ctx.claudeILastAssistantId = fallbackId;
             for (const block of evt.message.content) {
                 if (block.type === 'text') {
                     const segment = appendAssistantTextSegment(ctx, block.text);
