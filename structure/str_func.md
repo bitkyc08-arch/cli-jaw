@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-07-10 (image inlay/channel relay SoT sync)
-> `server.ts` 640L / `src/routes/` 36 TS files (238 route handlers including `/`; 237 API endpoints; `src/routes/` subtotal 199 handlers) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 48 TS files (spawn.ts 2544L + events/ submodules + cursor/claude-e/agy/jwc runtimes + AGY capability probe) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 94 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 9 files (+`hub-callback.ts`) / `src/messaging/` 13 files (+`thread-target.ts`, `extract-images.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
+> `server.ts` 640L / `src/routes/` 36 TS files (238 route handlers including `/`; 237 API endpoints; `src/routes/` subtotal 199 handlers) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 48 TS files (spawn.ts 2544L + events/ submodules + cursor/claude-e/agy/jwc runtimes + AGY capability probe) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 100 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 9 files (+`hub-callback.ts`) / `src/messaging/` 13 files (+`thread-target.ts`, `extract-images.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -57,6 +57,7 @@ cli-jaw/
 │   │   ├── runtime-settings-gate.ts ← settings mutation in-flight gate (41L)
 │   │   ├── codex-config.ts   ← Codex config.toml context window sync (96L)
 │   │   ├── runtime-path.ts   ← buildServicePath() PATH 보강 (nvm/fnm/homebrew/volta/asdf/cargo/bun/yarn/pnpm 14+ dirs) (182L)
+│   │   ├── noninteractive-path.ts ← 비대화형 셸(ssh 원샷)에서 jaw 해석 가능 여부 판정 + 처방 (#479) (116L)
 │   │   ├── cli-detect.ts     ← PATH 후보 spawnability 검사 + rejected candidate reason 수집 (445L)
 │   │   ├── browser-open.ts   ← 브라우저 open 정책/명령 실행 helper (68L)
 │   │   ├── browser-open-default.ts ← OS/headless 기본 open 여부 판별 (21L)
@@ -263,7 +264,7 @@ cli-jaw/
 │   │   └── discord-file.ts   ← Discord 파일 전송 (75L)
 │   ├── slack/                ← Slack 인터페이스 (21 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (407L)
-│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (1350L)
+│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (1345L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (408L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (66L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (283L)
@@ -282,7 +283,7 @@ cli-jaw/
 │   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (72L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (161L)
-│   │   ├── scope-status.ts   ← OAuth grant drift 단일 소유자 (auth.test의 x-oauth-scopes를 manifest 요구 집합과 대조, 미관측을 '이상 없음'과 구분, doctor·health·identity 경고가 공유) (179L) ✨
+│   │   ├── scope-status.ts   ← OAuth grant drift 단일 소유자 (auth.test의 x-oauth-scopes를 manifest 요구 집합과 대조, 미관측을 '이상 없음'과 구분, doctor·health·identity 경고가 공유) (152L) ✨
 │   │   ├── allowlist-audit.ts ← channelIds 변경 방향 분류 + 축소 감사 기록 (게이트 리더 기준 정규화, route·settings watcher 양쪽이 공유) (125L) ✨
 │   │   ├── hot-notify.ts     ← CLI 설정 변경 후 실행 중 서버 hot-reload 통지 (loopback PUT /api/settings → transport 재시작, version skew 감지) (35L)
 │   │   ├── progress.ts       ← 실행 중 진행상황 릴레이 ("정보 수집 중…" placeholder → agent_tool 이벤트로 chat.update rate-limited 편집 → 답변 시 chat.delete, post/edit 모두 자격증명 마스킹) (187L) ✨
@@ -375,7 +376,7 @@ cli-jaw/
 │   │   ├── tool-log-sanitize.ts ← tool log sanitization helpers (247L)
 │   │   └── reminders/tray-triage.ts ← tray reminder badge/count triage helper (30L)
 │   │   └── shell-command-display.ts ← shell command display formatter (48L)
-│   ├── manager/              ← Multi-instance 대시보드 매니저 (94 TS/TSX files; +telegram-hub/ forum topic routing; design workspace routes; embedded-browser routes; project pick; git scm-snapshot/scm-operation)
+│   ├── manager/              ← Multi-instance 대시보드 매니저 (100 TS/TSX files; +telegram-hub/ forum topic routing; design workspace routes; embedded-browser routes; project pick; git scm-snapshot/scm-operation)
 │   ├── team/                 ← Team dispatch planner (5 files, 323L) ✨
 │   │   ├── planner.ts        ← team task planning logic (75L)
 │   │   ├── collector.ts      ← team result collector (66L)
@@ -456,8 +457,8 @@ cli-jaw/
 │       ├── lock.ts           ← instance lock/unlock for process protection (96L)
 │       ├── history.ts        ← 채팅 히스토리 검색 CLI (65L)
 │       ├── init.ts           ← 초기화 마법사 + --safe/--dry-run + --help (516L)
-│       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경, TTY 없으면 프롬프트 생략) (404L)
-│       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1131L)
+│       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (394L)
+│       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1173L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
 │       ├── status.ts         ← 서버 상태 (--json) (115L)
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)

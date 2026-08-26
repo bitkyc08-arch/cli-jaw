@@ -789,6 +789,18 @@ jaw --home C:\jaw\worker-a service restart --port 3458
 jaw --home "$HOME/jaw/worker-a" service stop --port 3458
 ```
 
+### Remote and headless hosts
+
+`ssh host 'jaw serve ...'` runs a non-login, non-interactive shell that reads none of the
+files the installer adds `~/.local/bin` to, so `jaw` can work when you log in and still fail
+over SSH with `nohup: failed to run command 'jaw'`. Run `jaw doctor` and check the
+**Non-interactive PATH (ssh)** row, then call jaw by absolute path or export PATH inside the
+remote command.
+
+On a host with no service manager (a container whose PID 1 is tini, for example),
+`jaw service --backend supervisor` generates a keep-alive loop to wire into your container
+entrypoint or cron. Full guide: [structure/remote-headless.md](structure/remote-headless.md).
+
 ---
 
 ## Development
