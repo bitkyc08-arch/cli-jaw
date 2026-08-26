@@ -456,7 +456,7 @@ cli-jaw/
 │       ├── lock.ts           ← instance lock/unlock for process protection (96L)
 │       ├── history.ts        ← 채팅 히스토리 검색 CLI (65L)
 │       ├── init.ts           ← 초기화 마법사 + --safe/--dry-run + --help (516L)
-│       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (394L)
+│       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경, TTY 없으면 프롬프트 생략) (404L)
 │       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1131L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
 │       ├── status.ts         ← 서버 상태 (--json) (115L)

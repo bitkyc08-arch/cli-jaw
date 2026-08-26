@@ -157,7 +157,14 @@ async function runSetup(): Promise<void> {
     const nonInteractive = !!values['non-interactive'];
     const skipValidate = !!values['skip-validate'];
 
-    const rl = nonInteractive ? null : createInterface({ input: process.stdin, output: process.stdout });
+    // Prompting needs a terminal, not just the absence of --non-interactive.
+    // Under a pipe or </dev/null, readline's question() never calls back — stdin
+    // ends without a line — so the wizard stalls on a promise that can never
+    // settle. That is not catchable: node reports "unsettled top-level await"
+    // and exits 13 with the validated tokens still unwritten (#475). The fix is
+    // to never create the interface when there is no TTY to answer it.
+    const interactive = !nonInteractive && !!process.stdin.isTTY;
+    const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
     const ask = (question: string, defaultVal = ''): Promise<string> => {
         if (!rl) return Promise.resolve(defaultVal);
         return new Promise(r => rl.question(`  ${question} `, (ans) => r(ans.trim() || defaultVal)));
@@ -192,7 +199,10 @@ async function runSetup(): Promise<void> {
         // Best-effort conveniences: copy the manifest to the macOS clipboard
         // and open the app creation page. Failures are silent — the manifest
         // and URL are printed above regardless.
-        if (!nonInteractive) {
+        // Gated on `interactive`, not just the flag: the Enter wait below is a
+        // prompt like any other, and opening a browser is a courtesy aimed at a
+        // person sitting at a terminal (#475).
+        if (interactive) {
             if (process.platform === 'darwin') {
                 const pbcopy = execFile('pbcopy', [], () => { });
                 pbcopy.stdin?.end(slackManifestYaml());
