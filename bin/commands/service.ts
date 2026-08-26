@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 import { instanceId, getNodePath, getJawPath, sanitizeUnitName, buildServicePath } from '../../src/core/instance.js';
 import { defaultLifecycleDeps, verifyOwnership, type OwnershipVerdict } from '../../src/core/instance-lifecycle.js';
+import { manualSupervisionGuidance } from '../../src/manager/manual-supervision.js';
 import type { DashboardLifecycleResult, DashboardServiceState } from '../../src/manager/types.js';
 import { detectServiceState, permInstance, restartServiceInstance, stopServiceInstance, unpermInstance } from '../../src/manager/platform-service.js';
 
@@ -202,9 +203,17 @@ function detectBackend(): Backend {
         return 'systemd';
     } catch { /* no systemctl */ }
 
-    console.error('❌ 지원되지 않는 환경입니다.');
-    console.error('   지원: macOS (launchd), Linux (systemd), Docker');
-    console.error('   수동 설정은 jaw serve를 tmux/screen에서 실행하세요.');
+    // No service manager (#479). tmux/screen used to be suggested here, but a
+    // multiplexer needs an interactive session to attach to and inherits the
+    // same non-interactive PATH that already failed to resolve `jaw` — so it
+    // is unusable from the one-shot ssh command that lands operators here.
+    console.error('❌ ' + manualSupervisionGuidance({
+        nodePath: getNodePath(),
+        jawPath: getJawPath(),
+        home: JAW_HOME,
+        port: PORT,
+        logPath: join(JAW_HOME, 'logs', 'jaw-serve.log'),
+    }).join('\n'));
     process.exit(1);
 }
 
@@ -247,6 +256,21 @@ if (backend === 'docker') {
     console.log('   docker-compose.yml의 restart: unless-stopped 설정을 확인하세요.\n');
     console.log('   상태 확인: docker ps | grep cli-jaw');
     console.log('   로그 확인: docker logs -f cli-jaw');
+
+    // A restart policy only restarts the container, and only when jaw is its
+    // entrypoint. Someone who ran `jaw service` inside an already-running
+    // container (#479's shape: PID 1 = tini, no systemd) is not in that case,
+    // and exiting 0 here told them a daemon existed when none had started.
+    if (!existsSync('/run/systemd/system')) {
+        console.log('\n   If jaw is NOT this container\'s entrypoint, nothing is supervising it.');
+        console.log('   ' + manualSupervisionGuidance({
+            nodePath: getNodePath(),
+            jawPath: getJawPath(),
+            home: JAW_HOME,
+            port: PORT,
+            logPath: join(JAW_HOME, 'logs', 'jaw-serve.log'),
+        }).slice(2).join('\n   '));
+    }
     process.exit(0);
 }
 
