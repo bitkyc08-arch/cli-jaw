@@ -19,11 +19,6 @@ on:
         description: "SHA that must match the checked-out HEAD"
         required: true
         type: string
-      certified-sha:
-        description: "Promotion PR head whose tree equals HEAD; its PR checks certify this publish (260819 release-speed)"
-        required: false
-        default: ""
-        type: string
       dry-run:
         description: "Dry run: build, pack, and validate without publishing"
         required: false
@@ -69,58 +64,16 @@ jobs:
           fi
           echo "Dispatched SHA matches checked-out HEAD."
 
-      - name: Resolve certified SHA (tree-identity fast path)
-        id: certified
-        env:
-          CERTIFIED_SHA: ${{ inputs.certified-sha }}
-        run: |
-          set -euo pipefail
-          # Order matters (audit r8): fetch -> tree-verify -> run-lookup, so an
-          # unreachable or mismatched certified SHA fails on the cheap
-          # deterministic check instead of a confusing empty run list.
-          if [ -z "$CERTIFIED_SHA" ]; then
-            echo "sha=" >> "$GITHUB_OUTPUT"
-            echo "No certified-sha supplied; gates will require main push runs."
-            exit 0
-          fi
-          # The promotion branch auto-deletes on merge, so the PR head may only
-          # be reachable through the pull refs. Fetch them explicitly.
-          git fetch --quiet origin "+refs/pull/*/head:refs/remotes/certified/*" || true
-          if ! git cat-file -e "$CERTIFIED_SHA^{commit}" 2>/dev/null; then
-            echo "::error::certified-sha $CERTIFIED_SHA is not reachable even via pull refs"
-            exit 1
-          fi
-          certified_tree="$(git rev-parse "$CERTIFIED_SHA^{tree}")"
-          head_tree="$(git rev-parse "$GITHUB_SHA^{tree}")"
-          if [ "$certified_tree" != "$head_tree" ]; then
-            echo "::error::certified-sha tree $certified_tree does not equal HEAD tree $head_tree — the squash was re-applied onto a moved base; re-dispatch without certified-sha"
-            exit 1
-          fi
-          echo "sha=$CERTIFIED_SHA" >> "$GITHUB_OUTPUT"
-          echo "Tree identity verified: $CERTIFIED_SHA certifies $GITHUB_SHA"
-
       - name: Require successful Tests for this commit
         env:
           GH_TOKEN: ${{ github.token }}
-          CERTIFIED_SHA: ${{ steps.certified.outputs.sha }}
         run: |
           set -euo pipefail
-          if [ -n "$CERTIFIED_SHA" ]; then
-            # The certified run rode the promotion PR, so its head_branch is
-            # the promotion branch — a --branch filter would always miss it.
-            # Assert the returned run really is for the certified commit, and
-            # accept only pull_request events so a stray run cannot launder in.
-            row="$(gh run list --workflow test.yml --commit "$CERTIFIED_SHA" --event pull_request --status success --limit 1 --json databaseId,headSha --jq '.[0] // empty')"
-            run_id="$(printf '%s' "$row" | jq -r --arg sha "$CERTIFIED_SHA" 'select(.headSha == $sha) | .databaseId // empty')"
-            if [ -z "$run_id" ]; then
-              echo "::error::No successful pull_request run of test.yml found for certified $CERTIFIED_SHA"
-              exit 1
-            fi
-            echo "Found successful certified test run: $run_id"
-            exit 0
-          fi
+          # Promotion fast-forwards main onto the exact commit preview certified
+          # (#480), so the push run recorded on preview is a run for THIS SHA.
+          # Look the run up by commit and accept either branch.
           branch="${GITHUB_REF#refs/heads/}"
-          run_id="$(gh run list --workflow test.yml --branch "$branch" --commit "$GITHUB_SHA" --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          run_id="$(gh run list --workflow test.yml --commit "$GITHUB_SHA" --event push --status success --limit 1 --json databaseId,headSha --jq '.[0] | select(.headSha == "'"$GITHUB_SHA"'") | .databaseId // empty')"
           if [ -z "$run_id" ]; then
             echo "::error::No successful push run of test.yml found for $branch @ $GITHUB_SHA"
             exit 1
@@ -130,7 +83,6 @@ jobs:
       - name: Require platform checks when installer surface changed
         env:
           GH_TOKEN: ${{ github.token }}
-          CERTIFIED_SHA: ${{ steps.certified.outputs.sha }}
         run: |
           set -euo pipefail
           previous_tag="$(git tag --merged "$GITHUB_SHA" --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
@@ -150,30 +102,16 @@ jobs:
               echo "No installer-sensitive changes since $previous_tag"
               ;;
             1)
-              if [ -n "$CERTIFIED_SHA" ]; then
-                # Tree identity (verified above) also guarantees the diff file
-                # set matches, so the certified PR run covers the same
-                # installer surface. No --event filter, matching bc7c19ba.
-                row="$(gh run list \
-                  --workflow postinstall-platform.yml \
-                  --commit "$CERTIFIED_SHA" \
-                  --status success \
-                  --limit 1 --json url,headSha --jq '.[0] // empty')"
-                platform_url="$(printf '%s' "$row" | jq -r --arg sha "$CERTIFIED_SHA" 'select(.headSha == $sha) | .url // empty')"
-                if [ -z "$platform_url" ]; then
-                  echo "::error::No successful Postinstall Platform Checks run found for certified $CERTIFIED_SHA"
-                  exit 1
-                fi
-                echo "platform certified by (PR run): $platform_url"
-                exit 0
-              fi
+              # main is fast-forwarded onto the commit preview certified (#480),
+              # so the preview push run is a run for this exact SHA. Match on the
+              # commit and accept either branch. No --event filter, matching
+              # bc7c19ba.
               branch="${GITHUB_REF#refs/heads/}"
               platform_url="$(gh run list \
                 --workflow postinstall-platform.yml \
-                --branch "$branch" \
                 --commit "$GITHUB_SHA" \
                 --status success \
-                --limit 1 --json url --jq '.[0].url // ""')"
+                --limit 1 --json url,headSha --jq '.[0] | select(.headSha == "'"$GITHUB_SHA"'") | .url // empty')"
               if [ -z "$platform_url" ]; then
                 echo "::error::No successful Postinstall Platform Checks run found for $GITHUB_SHA on $branch"
                 exit 1

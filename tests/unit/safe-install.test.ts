@@ -625,8 +625,11 @@ test('SAF-004j3: publish scripts enforce fresh-machine evidence before push or p
     assert.ok(readmeSrc.includes('bash scripts/promote-to-main.sh'), 'README should show stable promotion script with evidence directories');
 
     const freshEvidencePos = releaseScriptSrc.indexOf('node scripts/require-release-evidence.mjs');
-    const pushPos = releaseScriptSrc.indexOf('git push --set-upstream origin "$PROMOTION_BRANCH"');
+    // ff promotion (#480) pushes refs directly instead of publishing a promotion
+    // branch, so the first ref-moving command is the preview fast-forward.
+    const pushPos = releaseScriptSrc.indexOf('git push --force-with-lease="refs/heads/preview:$PREVIEW_SHA"');
     const publishPos = releaseScriptSrc.indexOf('gh workflow run publish.yml');
+    assert.ok(pushPos >= 0, 'promotion script must still push a ref the evidence gate can precede');
     assert.ok(freshEvidencePos >= 0 && freshEvidencePos < pushPos, 'fresh evidence gate must run before git push');
     if (publishPos >= 0) {
         assert.ok(freshEvidencePos >= 0 && freshEvidencePos < publishPos, 'fresh evidence gate must run before publish dispatch');
