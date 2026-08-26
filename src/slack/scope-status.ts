@@ -98,24 +98,51 @@ function slackReinstallUrl(appId?: string | null): string | null {
     return `https://api.slack.com/apps/${id}/install-on-team`;
 }
 
+/** One reportable group of missing scopes, carrying its own severity. */
+export type SlackScopeGapLine = {
+    /** `warn` only when the transport actually cannot do its job. */
+    level: 'warn' | 'info';
+    text: string;
+};
+
 /**
- * One operator-facing line naming every missing scope at once, or null when
- * there is nothing to say. Returning null for the unknown case is deliberate:
+ * Operator-facing lines for the missing scopes, one per severity, or an empty
+ * array when there is nothing to say. Empty for the unknown case is deliberate:
  * a warning that fires when we did not measure anything trains people to
  * ignore warnings.
+ *
+ * Required and optional are reported SEPARATELY because they are different
+ * claims. Concatenating them let one severity word govern both lists, so a
+ * single missing `chat:write` promoted every optional scope to "the transport
+ * needs", and an app missing only optional ones announced a `missing 4
+ * scope(s)` count at WARN while the socket was connected and answering (#478).
+ * A count that mixes an outage with a degradation is not a count anyone can act
+ * on.
  */
-export function describeSlackScopeGap(status: SlackScopeStatus): string | null {
-    if (status.unknown) return null;
-    const missing = [...status.missingRequired, ...status.missingCapabilities];
-    if (missing.length === 0) return null;
+export function describeSlackScopeGaps(status: SlackScopeStatus): SlackScopeGapLine[] {
+    if (status.unknown) return [];
     const where = status.reinstallUrl
         ? `reinstall: ${status.reinstallUrl}`
         : 'add them under OAuth & Permissions, then reinstall the app to your workspace';
-    const severity = status.missingRequired.length > 0
-        ? 'the transport needs'
-        : 'features degrade without';
-    return `Slack app grant is missing ${missing.length} scope(s) — `
-        + `${severity}: ${missing.join(', ')} — ${where}`;
+    const lines: SlackScopeGapLine[] = [];
+    if (status.missingRequired.length > 0) {
+        lines.push({
+            level: 'warn',
+            text: `the transport needs ${status.missingRequired.length} scope(s): `
+                + `${status.missingRequired.join(', ')} — ${where}`,
+        });
+    }
+    if (status.missingCapabilities.length > 0) {
+        // info, not warn: messaging works without these. The operator who read
+        // the old WARN had no way to tell that from a broken transport, and
+        // reinstalled the app to find out.
+        lines.push({
+            level: 'info',
+            text: `${status.missingCapabilities.length} optional scope(s) not granted: `
+                + `${status.missingCapabilities.join(', ')} — messaging is unaffected; ${where}`,
+        });
+    }
+    return lines;
 }
 
 // ─── Inbound conversation scope ─────────────────────

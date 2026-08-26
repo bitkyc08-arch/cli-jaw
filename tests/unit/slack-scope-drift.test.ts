@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {
     recordSlackScopeObservation,
     getSlackScopeStatus,
-    describeSlackScopeGap,
+    describeSlackScopeGaps,
     resetSlackScopeStatus,
 } from '../../src/slack/scope-status.ts';
 import {
@@ -44,9 +44,10 @@ test('the six scopes from the bug report are reported by name', () => {
     assert.deepEqual(status.missingCapabilities, IDENTITY_SCOPES);
 
     // The whole point: ONE line naming ALL of them, not one per failed call.
-    const line = describeSlackScopeGap(status)!;
+    const lines = describeSlackScopeGaps(status);
+    assert.equal(lines.length, 1, 'nothing required is missing, so there is nothing to warn about');
     for (const scope of status.missingCapabilities) {
-        assert.ok(line.includes(scope), scope + ' missing from the operator line');
+        assert.ok(lines[0]!.text.includes(scope), scope + ' missing from the operator line');
     }
 });
 
@@ -58,7 +59,7 @@ test('a full grant produces no warning at all', () => {
     assert.equal(status.ok, true);
     assert.equal(status.unknown, false);
     // A warning that always fires is a warning nobody reads.
-    assert.equal(describeSlackScopeGap(status), null);
+    assert.deepEqual(describeSlackScopeGaps(status), []);
 });
 
 test('an unobserved header is "cannot check", not "nothing missing"', () => {
@@ -70,7 +71,7 @@ test('an unobserved header is "cannot check", not "nothing missing"', () => {
     assert.equal(status.checkedAt, null);
     // ok stays true so a header-stripping proxy cannot manufacture a false
     // alarm, but the unknown flag is what consumers must branch on.
-    assert.equal(describeSlackScopeGap(status), null, 'no measurement means no claim');
+    assert.deepEqual(describeSlackScopeGaps(status), [], 'no measurement means no claim');
 });
 
 test('a missing required scope is reported as a real break', () => {
@@ -80,17 +81,18 @@ test('a missing required scope is reported as a real break', () => {
 
     assert.deepEqual(status.missingRequired, ['chat:write']);
     assert.equal(status.ok, false);
-    assert.match(describeSlackScopeGap(status)!, /the transport needs/);
+    const required = describeSlackScopeGaps(status).find(l => l.level === 'warn')!;
+    assert.match(required.text, /the transport needs/);
 });
 
 test('the reinstall URL appears only when the app id is known', () => {
     resetSlackScopeStatus();
     recordSlackScopeObservation(OLD_INSTALL_GRANT, 'A123');
-    assert.match(describeSlackScopeGap(getSlackScopeStatus())!, /apps\/A123\/install-on-team/);
+    assert.match(describeSlackScopeGaps(getSlackScopeStatus())[0]!.text, /apps\/A123\/install-on-team/);
 
     resetSlackScopeStatus();
     recordSlackScopeObservation(OLD_INSTALL_GRANT, null);
-    const line = describeSlackScopeGap(getSlackScopeStatus())!;
+    const line = describeSlackScopeGaps(getSlackScopeStatus())[0]!.text;
     // Never guess an app id: a wrong one sends the operator to someone else's app.
     assert.doesNotMatch(line, /api\.slack\.com\/apps/);
     assert.match(line, /OAuth & Permissions/);
@@ -137,3 +139,47 @@ test('a failed call still reports the grant it observed', async () => {
     assert.equal(result.grantedScopes, OLD_INSTALL_GRANT);
 });
 
+// #478: an app installed before v2.17.10 lacks four optional scopes. The single
+// combined line announced `missing 4 scope(s)` at WARN while the socket was
+// connected and answering, so the operator could not tell a degradation from an
+// outage and reinstalled the app to find out. These pin that the two severities
+// stay apart.
+
+const V217_10_SCOPES = ['channels:join', 'chat:write.public', 'team:read', 'mpim:read'];
+
+test('#478: an optional-only gap reports at info, never warn', () => {
+    resetSlackScopeStatus();
+    recordSlackScopeObservation(ALL.filter(s => !V217_10_SCOPES.includes(s)).join(','), null);
+    const status = getSlackScopeStatus();
+
+    assert.deepEqual(status.missingRequired, [], 'the transport itself is intact');
+    const lines = describeSlackScopeGaps(status);
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0]!.level, 'info', 'messaging works — this must not read as a break');
+    // The operator's actual question was "is the bot broken?". Answer it.
+    assert.match(lines[0]!.text, /messaging is unaffected/);
+});
+
+test('#478: a required gap does not drag optional scopes into its severity', () => {
+    resetSlackScopeStatus();
+    // Both kinds missing at once — the case the old single-line output flattened.
+    recordSlackScopeObservation(
+        ALL.filter(s => s !== 'chat:write' && !V217_10_SCOPES.includes(s)).join(','),
+        null,
+    );
+    const lines = describeSlackScopeGaps(getSlackScopeStatus());
+
+    assert.equal(lines.length, 2, 'two severities, two lines');
+    const warn = lines.find(l => l.level === 'warn')!;
+    const info = lines.find(l => l.level === 'info')!;
+
+    assert.match(warn.text, /chat:write/);
+    for (const scope of V217_10_SCOPES) {
+        assert.ok(!warn.text.includes(scope), scope + ' is optional and must stay out of the warning');
+        assert.ok(info.text.includes(scope), scope + ' missing from the optional line');
+    }
+    // The old output said "missing 5 scope(s)" — a count spanning an outage and
+    // a degradation, which no operator can act on.
+    assert.match(warn.text, /needs 1 scope\(s\)/);
+    assert.match(info.text, /4 optional scope\(s\)/);
+});
