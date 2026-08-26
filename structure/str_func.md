@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-07-10 (image inlay/channel relay SoT sync)
-> `server.ts` 640L / `src/routes/` 36 TS files (238 route handlers including `/`; 237 API endpoints; `src/routes/` subtotal 199 handlers) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 48 TS files (spawn.ts 2544L + events/ submodules + cursor/claude-e/agy/jwc runtimes + AGY capability probe) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 94 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 9 files (+`hub-callback.ts`) / `src/messaging/` 13 files (+`thread-target.ts`, `extract-images.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
+> `server.ts` 640L / `src/routes/` 36 TS files (238 route handlers including `/`; 237 API endpoints; `src/routes/` subtotal 199 handlers) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 48 TS files (spawn.ts 2544L + events/ submodules + cursor/claude-e/agy/jwc runtimes + AGY capability probe) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 100 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 9 files (+`hub-callback.ts`) / `src/messaging/` 13 files (+`thread-target.ts`, `extract-images.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -57,6 +57,7 @@ cli-jaw/
 │   │   ├── runtime-settings-gate.ts ← settings mutation in-flight gate (41L)
 │   │   ├── codex-config.ts   ← Codex config.toml context window sync (96L)
 │   │   ├── runtime-path.ts   ← buildServicePath() PATH 보강 (nvm/fnm/homebrew/volta/asdf/cargo/bun/yarn/pnpm 14+ dirs) (182L)
+│   │   ├── noninteractive-path.ts ← 비대화형 셸(ssh 원샷)에서 jaw 해석 가능 여부 판정 + 처방 (#479) (116L)
 │   │   ├── cli-detect.ts     ← PATH 후보 spawnability 검사 + rejected candidate reason 수집 (445L)
 │   │   ├── browser-open.ts   ← 브라우저 open 정책/명령 실행 helper (68L)
 │   │   ├── browser-open-default.ts ← OS/headless 기본 open 여부 판별 (21L)
@@ -375,7 +376,7 @@ cli-jaw/
 │   │   ├── tool-log-sanitize.ts ← tool log sanitization helpers (247L)
 │   │   └── reminders/tray-triage.ts ← tray reminder badge/count triage helper (30L)
 │   │   └── shell-command-display.ts ← shell command display formatter (48L)
-│   ├── manager/              ← Multi-instance 대시보드 매니저 (94 TS/TSX files; +telegram-hub/ forum topic routing; design workspace routes; embedded-browser routes; project pick; git scm-snapshot/scm-operation)
+│   ├── manager/              ← Multi-instance 대시보드 매니저 (100 TS/TSX files; +telegram-hub/ forum topic routing; design workspace routes; embedded-browser routes; project pick; git scm-snapshot/scm-operation)
 │   ├── team/                 ← Team dispatch planner (5 files, 323L) ✨
 │   │   ├── planner.ts        ← team task planning logic (75L)
 │   │   ├── collector.ts      ← team result collector (66L)
@@ -457,7 +458,7 @@ cli-jaw/
 │       ├── history.ts        ← 채팅 히스토리 검색 CLI (65L)
 │       ├── init.ts           ← 초기화 마법사 + --safe/--dry-run + --help (516L)
 │       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (394L)
-│       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1131L)
+│       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1173L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
 │       ├── status.ts         ← 서버 상태 (--json) (115L)
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)

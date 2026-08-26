@@ -87,6 +87,7 @@ graph LR
 | [type-safety-status.md](type-safety-status.md) | tsconfig strict flags + type escape hatch inventory | TypeScript, strict, @ts-nocheck, as any |
 | [CAPABILITY_TRUTH_TABLE.md](CAPABILITY_TRUTH_TABLE.md) | agbrowse/cli-jaw parity claim source of truth | parity, capability, support label |
 | [tui-scrollback.md](tui-scrollback.md) | TUI native scrollback commit architecture (Ghostty 1.3+) | scrollback, DECSTBM, CommitFrontier, fillRows |
+| [remote-headless.md](remote-headless.md) | 원격·무인 상주: 비대화형 SSH 셸의 PATH 부재(#479), systemd 없는 호스트의 supervisor 백엔드, pid 파일 검증 | 원격, ssh, 비대화형, PATH, supervisor, 상주 |
 
 ---
 
