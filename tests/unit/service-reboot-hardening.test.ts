@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildServicePath, resolveBundledNodePath } from '../../src/core/runtime-path.ts';
+import { makeCleanEnv } from '../../src/agent/spawn.ts';
 import { readSource } from './source-normalize.js';
 
 const ROOT = process.cwd();
@@ -98,7 +99,16 @@ test('SRH-005: spawn path and detectCli logic use service-safe PATH handling', (
     const lifecycleSrc = readSource(LIFECYCLE, 'utf8');
     const dbSrc = readSource(DB, 'utf8');
 
-    assert.match(spawnSrc, /env(?:\.PATH|\["PATH"\]) = buildServicePath\(env(?:\.PATH|\["PATH"\]) \|\| ''\)/);
+    // Behavioral, not a source regex: the property this guards is "a spawned
+    // child gets the service-safe PATH", and the old pattern also pinned the
+    // exact ARGUMENT LIST, so adding a parameter broke it without any behavior
+    // changing. AGENTS.md asks for this replacement rather than a string bump.
+    const spawnedPath = makeCleanEnv({}, { PATH: '/usr/bin' }, 'linux')['PATH'] ?? '';
+    assert.ok(spawnedPath.includes('/usr/bin'), 'inherited PATH entries must survive');
+    assert.ok(
+        spawnedPath.includes('/usr/local/bin') && spawnedPath.includes('.claude/local/bin'),
+        'spawned children must receive the service-safe PATH augmentation',
+    );
     assert.match(spawnSrc, /const spawnCommand = cli === 'opencode' && process\.platform !== 'win32'/);
     assert.match(spawnSrc, /\? \(resolvedOpencodeBinary \|\| detected\.path \|\| cli\)/);
     assert.match(spawnSrc, /: \(detected\.path \|\| cli\)/);

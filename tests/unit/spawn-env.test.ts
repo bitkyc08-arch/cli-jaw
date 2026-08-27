@@ -271,3 +271,18 @@ test('MCE-003: POSIX keeps Path and PATH as distinct variables', () => {
     assert.equal(result["Path"], '/some/unrelated/value');
     assert.ok(result["PATH"]!.includes('/usr/bin'));
 });
+
+test('MCE-003b: the platform argument decides, not the host running the test', () => {
+    // makeCleanEnv takes `platform`, but buildServicePath used to read
+    // process.platform instead. The two agreed on every dev machine, so the gap
+    // was invisible until win32 PATH-entry normalization landed and a POSIX env
+    // asserted on the Windows runner had its entries rewritten (#471).
+    const posix = makeCleanEnv({}, { PATH: '/usr/bin:/opt/tools' }, 'linux');
+    assert.ok(posix["PATH"]!.includes('/usr/bin'));
+    assert.ok(posix["PATH"]!.includes('/opt/tools'));
+
+    // and the win32 branch still normalizes, whatever host asks for it.
+    const win = makeCleanEnv({}, { PATH: String.raw`C:\Tools` }, 'win32');
+    assert.ok(win["PATH"]!.includes(String.raw`C:\Tools`));
+    assert.equal(win["PATH"]!.split(';').filter((entry) => entry.startsWith('/')).length, 0);
+});

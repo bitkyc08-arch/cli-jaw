@@ -775,7 +775,12 @@ export function makeCleanEnv(
         }
         env["PATH"] = inheritedPath;
     }
-    env["PATH"] = buildServicePath(env["PATH"] || '');
+    // Pass `platform` through: this function already takes it as a parameter and
+    // every branch above respects it, but buildServicePath was left to read
+    // process.platform. That disagreement was invisible while the two agreed;
+    // win32 PATH-entry normalization made it observable, because a POSIX-only
+    // env asserted on a Windows runner then had its entries rewritten.
+    env["PATH"] = buildServicePath(env["PATH"] || '', [], os.homedir(), platform);
 
     const merged: NodeJS.ProcessEnv = { ...env, ...extraEnv };
     const extraPath = isWindows ? readCaseInsensitivePath(extraEnv) : extraEnv["PATH"];
@@ -784,7 +789,9 @@ export function makeCleanEnv(
             if (key.toLowerCase() === 'path') delete merged[key];
         }
     }
-    merged["PATH"] = buildServicePath(extraPath || env["PATH"] || '');
+    // Same platform passthrough as above. This is the call that produces the
+    // RETURNED PATH, so a win32/POSIX disagreement here reaches the child.
+    merged["PATH"] = buildServicePath(extraPath || env["PATH"] || '', [], os.homedir(), platform);
     return merged;
 }
 
