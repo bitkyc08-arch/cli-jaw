@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildServicePath } from './runtime-path.js';
+import { buildServicePath, splitPathList } from './runtime-path.js';
 import { classifyClaudeInstall } from './claude-install.js';
 
 // This seam has exactly one call site and it always passes encoding:'utf8',
@@ -63,6 +63,40 @@ function uniqueLines(raw: string): string[] {
         out.push(candidate);
     }
     return out;
+}
+
+/**
+ * Summarise the PATH a lookup ran against, without printing it.
+ *
+ * #471 reported `Command failed: where.exe codex` and the report could go no
+ * further: the message names neither the exit status nor the PATH the lookup
+ * used, so "the tool refused this environment" and "the tool is broken" read
+ * identically. A full PATH is too long for an error line and can carry user
+ * directory names, so report its SHAPE — entry count, and whether it holds
+ * POSIX-style entries a win32 lookup tool cannot resolve.
+ */
+export function describePathShape(
+    pathValue: string,
+    platform: NodeJS.Platform = process.platform,
+): string {
+    const entries = splitPathList(pathValue, platform);
+    if (entries.length === 0) return 'PATH empty';
+    // A win32 process can inherit a POSIX-delimited PATH from MSYS/git-bash
+    // (#273). splitPathList already separates those entries; what it cannot do
+    // is make `where.exe` understand '/c/Users/...'. Say so when it happens.
+    const posixLike = platform === 'win32'
+        ? entries.filter((entry) => entry.startsWith('/')).length
+        : 0;
+    const shape = `PATH ${entries.length} entries`;
+    return posixLike > 0 ? `${shape}, ${posixLike} POSIX-style` : shape;
+}
+
+/** First line of a lookup tool's stderr, bounded so an error line stays readable. */
+function firstStderrLine(raw: string | Buffer | null | undefined): string {
+    const text = String(raw ?? '').trim();
+    if (!text) return '';
+    const line = text.split(/\r?\n/, 1)[0]?.trim() ?? '';
+    return line.length > 160 ? `${line.slice(0, 160)}…` : line;
 }
 
 const BUN_DEPRIO_CLIS = new Set(['claude', 'codex', 'copilot', 'opencode']);
@@ -396,13 +430,14 @@ export function listCliBinaryCandidates(name: string, seedPath = readProcessPath
         // a timeout, and a malformed PATH all produced. Keep the distinction
         // so the reported message names what actually happened.
         //
-        // execFileSync errors carry status/stdout/signal at runtime, but
+        // execFileSync errors carry status/stdout/stderr/signal at runtime, but
         // NodeJS.ErrnoException declares none of them — describe the real shape.
         const err = error as Error & {
             code?: string | number;
             status?: number | null;
             signal?: NodeJS.Signals | null;
             stdout?: string | Buffer | null;
+            stderr?: string | Buffer | null;
         };
 
         // `where.exe`/`which` exits 1 with empty stdout when the name simply is
@@ -411,12 +446,25 @@ export function listCliBinaryCandidates(name: string, seedPath = readProcessPath
             return { candidates: [] };
         }
 
-        const scanError = err.code === 'ENOENT'
-            ? `lookup tool '${cmd}' not found`
-            : err.signal === 'SIGTERM'
-                ? `lookup timed out after 3000ms`
-                : (err.message || 'lookup failed');
-        return { candidates: [], scanError };
+        // ETIMEDOUT is the code Node sets on a timeout kill; the SIGTERM signal
+        // check alone also matches a tool killed by something else.
+        if (err.code === 'ENOENT') {
+            return { candidates: [], scanError: `lookup tool '${cmd}' not found` };
+        }
+        if (err.code === 'ETIMEDOUT' || err.signal === 'SIGTERM') {
+            return { candidates: [], scanError: 'lookup timed out after 3000ms' };
+        }
+
+        // Everything else is a tool that RAN and refused. That is the #471
+        // branch, and the three facts below are what its report was missing:
+        // what the tool said, how it exited, and what PATH it was asked about.
+        const detail = [
+            firstStderrLine(err.stderr),
+            typeof err.status === 'number' ? `exit ${err.status}` : '',
+            describePathShape(readProcessPath(buildCliDetectionEnv(seedPath))),
+        ].filter(Boolean).join('; ');
+        const base = err.message || 'lookup failed';
+        return { candidates: [], scanError: detail ? `${base} (${detail})` : base };
     }
 }
 

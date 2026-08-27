@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
     __setLookupExecForTests,
     buildCliDetectionEnv,
+    describePathShape,
     formatCliUnavailableMessage,
     isSpawnableCliFile,
     listCliBinaryCandidates,
@@ -127,6 +128,111 @@ test('CD-SCAN-003: the unavailable message names the scan error', () => {
     });
 
     assert.match(message, /could not be resolved: lookup timed out after 3000ms/);
+});
+
+// ─── #471: a lookup tool that RAN and refused ───
+//
+// The reported failure was 'Command failed: where.exe codex' and nothing else.
+// Exit status, the tool's own stderr, and the PATH it was asked about were all
+// discarded, so the incident could not be narrowed past "resolution failed".
+
+test('CD-SCAN-004: a tool that ran and refused reports status, stderr, and PATH shape', () => {
+    __setLookupExecForTests(() => {
+        const error = new Error('Command failed: where.exe codex') as Error & {
+            status: number; stdout: string; stderr: string;
+        };
+        error.status = 2;
+        error.stdout = '';
+        error.stderr = 'ERROR: The system cannot find the path specified.\r\n';
+        throw error;
+    });
+    try {
+        const scan = listCliBinaryCandidates('codex', '/usr/bin:/bin');
+        const scanError = scan.scanError || '';
+
+        // The original message survives — existing consumers still match on it.
+        assert.match(scanError, /Command failed: where\.exe codex/);
+        // and the three facts #471 could not recover are now attached.
+        assert.match(scanError, /The system cannot find the path specified/);
+        assert.match(scanError, /exit 2/);
+        assert.match(scanError, /PATH \d+ entries/);
+    } finally {
+        __setLookupExecForTests(null);
+    }
+});
+
+test('CD-SCAN-005: a timeout is still reported as a timeout, not as a refusal', () => {
+    // Node sets code ETIMEDOUT and signal SIGTERM when it kills on timeout.
+    __setLookupExecForTests(() => {
+        const error = new Error('spawnSync where.exe ETIMEDOUT') as Error & {
+            code: string; signal: NodeJS.Signals; status: null;
+        };
+        error.code = 'ETIMEDOUT';
+        error.signal = 'SIGTERM';
+        error.status = null;
+        throw error;
+    });
+    try {
+        const scan = listCliBinaryCandidates('codex', '/usr/bin:/bin');
+        assert.equal(scan.scanError, 'lookup timed out after 3000ms');
+    } finally {
+        __setLookupExecForTests(null);
+    }
+});
+
+test('CD-SCAN-006: a refusal with no stderr still names its exit status', () => {
+    __setLookupExecForTests(() => {
+        const error = new Error('Command failed: which -a codex') as Error & {
+            status: number; stdout: string; stderr: string;
+        };
+        error.status = 3;
+        error.stdout = '';
+        error.stderr = '';
+        throw error;
+    });
+    try {
+        const scan = listCliBinaryCandidates('codex', '/usr/bin:/bin');
+        assert.match(scan.scanError || '', /exit 3/);
+    } finally {
+        __setLookupExecForTests(null);
+    }
+});
+
+test('CD-SCAN-007: an exit-1 empty scan is still not a discovery failure', () => {
+    // Guards the ordinary "not installed" path against the new detail branch.
+    __setLookupExecForTests(() => {
+        const error = new Error('Command failed: which -a codex') as Error & {
+            status: number; stdout: string; stderr: string;
+        };
+        error.status = 1;
+        error.stdout = '';
+        error.stderr = '';
+        throw error;
+    });
+    try {
+        const scan = listCliBinaryCandidates('codex', '/usr/bin:/bin');
+        assert.deepEqual(scan.candidates, []);
+        assert.equal(scan.scanError, undefined);
+    } finally {
+        __setLookupExecForTests(null);
+    }
+});
+
+test('describePathShape counts entries and flags POSIX-style ones on win32', () => {
+    // The MSYS shape #471's process tree points at: a win32 lookup tool cannot
+    // resolve '/c/...' or '/mingw64/bin', and the count alone would not say so.
+    const msys = describePathShape('/mingw64/bin:/usr/bin:C:\\Users\\u\\AppData\\Roaming\\npm', 'win32');
+    assert.match(msys, /3 entries/);
+    assert.match(msys, /2 POSIX-style/);
+
+    // A native win32 PATH carries no such warning.
+    const native = describePathShape('C:\\WINDOWS\\System32;C:\\Users\\u\\AppData\\Roaming\\npm', 'win32');
+    assert.match(native, /2 entries/);
+    assert.doesNotMatch(native, /POSIX-style/);
+
+    // POSIX paths are not "POSIX-style entries on a win32 PATH" — no flag there.
+    assert.doesNotMatch(describePathShape('/usr/bin:/bin', 'darwin'), /POSIX-style/);
+    assert.equal(describePathShape('', 'darwin'), 'PATH empty');
 });
 
 test('prioritizeCliCandidates moves bun shims behind managed node bins for claude', () => {
