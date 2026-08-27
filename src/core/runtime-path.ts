@@ -68,6 +68,43 @@ export function splitPathList(raw: string, platform: NodeJS.Platform = process.p
  * Omitting System32 is what #294 reported: without it the agent cannot
  * resolve powershell, where, or cmd, and silently works around the gap.
  */
+
+/**
+ * Convert an MSYS/git-bash PATH entry to a form win32 tools can resolve.
+ *
+ * #273 fixed the DELIMITER — a POSIX-delimited PATH inherited from git-bash
+ * was split on ';' and collapsed into one useless entry. It did not touch the
+ * entry FORMAT, so '/c/Users/u/AppData/Roaming/npm' still reached `where.exe`
+ * verbatim, and `where.exe` is a native Win32 tool that cannot read it. A
+ * server started from git-bash therefore resolves nothing while a natively
+ * started one on the same host resolves fine (#471).
+ *
+ * Two shapes convert; a third deliberately does not:
+ *   '/c/x'        → 'C:\x'   (MSYS drive mapping)
+ *   '/cygdrive/c/x' → 'C:\x' (Cygwin's default prefix)
+ *   '/usr/bin'    → dropped   MSYS-internal, with no Win32 equivalent. Keeping
+ *                             it would leave an unresolvable entry on PATH;
+ *                             the caller re-seeds the real system dirs anyway.
+ */
+export function normalizeWindowsPathEntry(entry: string): string | null {
+    const value = entry.trim();
+    if (!value) return null;
+    // Already a Windows entry (drive-qualified or UNC): leave it alone.
+    if (/^[A-Za-z]:/.test(value) || value.startsWith('\\\\')) return value;
+    if (!value.startsWith('/')) return value;
+
+    const cygwin = /^\/cygdrive\/([A-Za-z])(\/.*)?$/.exec(value);
+    const msys = /^\/([A-Za-z])(\/.*)?$/.exec(value);
+    const match = cygwin ?? msys;
+    if (match) {
+        const drive = (match[1] as string).toUpperCase();
+        const rest = (match[2] ?? '').replace(/\//g, '\\');
+        return `${drive}:${rest || '\\'}`;
+    }
+    // A POSIX path with no drive mapping ('/usr/bin', '/mingw64/bin').
+    return null;
+}
+
 function windowsSystemDirs(env: NodeJS.ProcessEnv): string[] {
     const systemRoot = env['SystemRoot'] || env['windir'] || 'C:\\WINDOWS';
     const system32 = pathWin32.join(systemRoot, 'System32');
@@ -142,8 +179,17 @@ export function buildServicePath(
     env: NodeJS.ProcessEnv = process.env,
 ): string {
     const isWindows = platform === 'win32';
-    const seeded = splitPathList(seedPath, platform);
+    // Normalize BEFORE deduping: '/c/x' and 'C:\x' are the same directory
+    // spelled two ways, and only one of them is resolvable.
+    const seeded = isWindows
+        ? splitPathList(seedPath, platform)
+            .map(normalizeWindowsPathEntry)
+            .filter((entry): entry is string => entry !== null)
+        : splitPathList(seedPath, platform);
 
+    // On win32 this must be normalized too: under git-bash `process.execPath`
+    // can itself be POSIX-spelled, and it is prepended ahead of every seeded
+    // entry — so an unnormalized one puts an unresolvable path FIRST (#471).
     const common = [dirname(process.execPath)];
     const unixDefaults = [
         join(homeDir, '.local', 'bin'),
@@ -175,6 +221,8 @@ export function buildServicePath(
     ];
     const defaults = isWindows
         ? [...common, ...windowsSystemDirs(env), ...windowsUserDirs(env, homeDir)]
+            .map(normalizeWindowsPathEntry)
+            .filter((entry): entry is string => entry !== null)
         : [...common, ...unixDefaults];
 
     const listDelimiter = isWindows ? ';' : ':';
