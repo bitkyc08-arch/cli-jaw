@@ -45,6 +45,7 @@
 // `maxConcurrent` per scope, because that is the assumption it would weaken.
 
 import { createHash } from 'node:crypto';
+import { statSync } from 'node:fs';
 import type { MessengerChannel, RemoteTarget } from './types.js';
 import { buildRemoteSessionKey } from './session-key.js';
 
@@ -69,10 +70,52 @@ export type SelfDeliveryRecord = {
     digest: string | null;
     /** Absolute path of a relayed file, when the send carried one. */
     filePath: string | null;
+    /** Size and mtime of that file AS SENT. A path is not an identity: an agent
+     *  that regenerates `chart.png` and then references it in its answer must
+     *  get the corrected image relayed, not silently skipped because the old one
+     *  went out under the same name. */
+    fileStamp: string | null;
+    /** Position in the strictly increasing sequence. THIS, not `at`, decides
+     *  whether the claim belongs to the turn that is asking. */
+    seq: number;
     at: number;
 };
 
 const records: SelfDeliveryRecord[] = [];
+
+/**
+ * A strictly increasing sequence number, and the ONLY thing that decides which
+ * turn a claim belongs to.
+ *
+ * Wall-clock time cannot carry that decision. `Date.now()` moves backwards on an
+ * NTP correction, which makes an older claim look no-older-than a turn that
+ * began after it — and that turn's answer is then swallowed. Clamping the clock
+ * forward does not fix it either: after a rollback the clamp returns the
+ * previous maximum, so the stale claim and the new turn read the SAME value and
+ * a `>=` comparison still lets the claim through.
+ *
+ * A counter has no such failure: every call returns a value strictly greater
+ * than the last, so "recorded after this turn began" stays decidable whatever
+ * the system clock does. Timestamps stay on the record for the TTL only, where
+ * being wrong costs a duplicate instead of a silence.
+ */
+let sequence = 0;
+export function nextDeliverySeq(): number {
+    sequence += 1;
+    return sequence;
+}
+
+/** Identity of a file as it was sent. Unreadable files stamp as null, which
+ *  makes the skip fail open — the relay sends rather than swallows. */
+function fileStampOf(filePath: string | null): string | null {
+    if (!filePath) return null;
+    try {
+        const stat = statSync(filePath);
+        return `${stat.size}:${stat.mtimeMs}`;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Compare-ready form of an outgoing message.
@@ -114,6 +157,8 @@ export function deliveryTargetKey(target: RemoteTarget | null | undefined): stri
 }
 
 function evict(now: number): void {
+    // A rolled-back clock can make `now - at` negative; only a genuinely aged
+    // entry is dropped, and the size cap below bounds the rest regardless.
     while (records.length && now - records[0]!.at > SELF_DELIVERY_TTL_MS) records.shift();
     while (records.length > MAX_TRACKED) records.shift();
 }
@@ -141,7 +186,10 @@ export function recordSelfDelivery(input: {
     // Nothing identifiable was delivered, so nothing can be matched later.
     if (!digest && !filePath) return null;
     const now = input.now ?? Date.now();
-    const record: SelfDeliveryRecord = { targetKey, channel: input.channel, digest, filePath, at: now };
+    const record: SelfDeliveryRecord = {
+        targetKey, channel: input.channel, digest, filePath,
+        fileStamp: fileStampOf(filePath), seq: nextDeliverySeq(), at: now,
+    };
     records.push(record);
     evict(now);
     return record;
@@ -156,10 +204,11 @@ export function recordSelfDelivery(input: {
 export function wasSelfDelivered(input: {
     target: RemoteTarget | null | undefined;
     text: string | undefined | null;
-    /** When the CURRENT turn started. A claim older than this belongs to an
-     *  earlier turn and must not suppress this one: the user asking the same
-     *  question twice deserves two answers. Required — omitting it would make
-     *  the match "anyone ever said this here", which silently loses replies. */
+    /** The sequence value read when the CURRENT turn began
+     *  (`nextDeliverySeq()`). A claim recorded before that belongs to an earlier
+     *  turn and must not suppress this one: the user asking the same question
+     *  twice deserves two answers. Required — without it the match degrades to
+     *  "anyone ever said this here", which silently loses replies. */
     since: number;
     now?: number;
 }): boolean {
@@ -171,7 +220,7 @@ export function wasSelfDelivered(input: {
     const index = records.findIndex(record =>
         record.targetKey === targetKey
         && record.digest === digest
-        && record.at >= input.since
+        && record.seq > input.since
         && now - record.at <= SELF_DELIVERY_TTL_MS);
     if (index === -1) return false;
     // Consumed, not merely read. A claim answers for exactly one post; leaving
@@ -189,9 +238,9 @@ export function wasSelfDelivered(input: {
  */
 export function selfDeliveredFiles(input: {
     target: RemoteTarget | null | undefined;
-    /** Same turn anchor as `wasSelfDelivered`: a file sent during an earlier
-     *  turn must not cancel this turn's upload, or "send me that chart again"
-     *  silently delivers nothing. */
+    /** Same sequence anchor as `wasSelfDelivered`: a file sent during an
+     *  earlier turn must not cancel this turn's upload, or "send me that chart
+     *  again" silently delivers nothing. */
     since: number;
     now?: number;
 }): Set<string> {
@@ -202,11 +251,24 @@ export function selfDeliveredFiles(input: {
     evict(now);
     for (const record of records) {
         if (record.targetKey !== targetKey || !record.filePath) continue;
-        if (record.at < input.since) continue;
+        if (record.seq <= input.since) continue;
         if (now - record.at > SELF_DELIVERY_TTL_MS) continue;
+        // The bytes must still be the bytes that went out. A regenerated file
+        // under the same name is a different artifact and must be relayed.
+        //
+        // An unreadable file has no identity to compare, so it cannot be proven
+        // to be the same artifact — and an unprovable skip is a silent drop.
+        // Both a missing stamp at send time and a missing one now mean "relay".
+        const stampNow = fileStampOf(record.filePath);
+        if (!record.fileStamp || !stampNow || record.fileStamp !== stampNow) continue;
         out.add(record.filePath);
     }
     return out;
+}
+
+/** Test seam for the sequence. Never called in production paths. */
+export function resetDeliverySeq(): void {
+    sequence = 0;
 }
 
 /** Test seam. Never called in production paths. */

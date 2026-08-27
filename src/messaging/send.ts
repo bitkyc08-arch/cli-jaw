@@ -415,10 +415,18 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     // dispatch post, and only `req.target` is the resolved destination — the
     // caller's target may have been absent and filled in by the chain above.
     if (req.fromAgentSurface && sanitized.ok !== false) {
+        // Only what the transport ACTUALLY put on screen may be claimed. A
+        // `photo`/`document`/`voice` send carries the file and the CAPTION; the
+        // handlers ignore `req.text` entirely. Claiming it anyway would let an
+        // uncaptioned image cancel the turn's real written answer — the exact
+        // silence this module is built to avoid causing.
+        const deliveredText = req.type === 'text' || req.type === 'keyboard'
+            ? (typeof req.text === 'string' ? req.text : null)
+            : (typeof req.caption === 'string' ? req.caption : null);
         recordSelfDelivery({
             target: req.target ?? null,
             channel,
-            text: typeof req.text === 'string' ? req.text : null,
+            text: deliveredText,
             filePath: req.filePath ?? null,
         });
     }

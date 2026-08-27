@@ -32,7 +32,7 @@ import { handleApprovalCommand, handleApprovalCallback, registerProductionTransp
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
-import { selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import { invalidateDiscordSendClient } from './send-only-client.js';
@@ -360,6 +360,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         : null;
 
     if (result.action === 'queued') {
+        // The queued run has not started, so any claim recorded before this
+        // belongs to an earlier turn. A restart drops claims entirely, which
+        // fails open and leaves the orphan delivery (#407) intact.
+        const queuedTurnSeq = nextDeliverySeq();
         log.info(`[discord:queue] agent busy, queued (${result.pending} pending)`);
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
@@ -461,7 +465,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     try {
                         const restToken = msg.client.token;
                         if (!restToken) throw new Error('Discord client token unavailable');
-                        const sendResult = await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal });
+                        // Same rule as the normal dispatch: an answer the queued
+                        // agent already posted itself must not be posted again.
+                        const sendResult = wasSelfDelivered({ target, text: body, since: queuedTurnSeq })
+                            ? { ok: true as const, error: undefined as string | undefined }
+                            : await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal });
                         if (!sendResult.ok) {
                             delivered = false;
                             log.error('[discord:queue-send]', logErrorText(sendResult.error || 'send failed'));
@@ -482,7 +490,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 if (requestId) closeDiscordNoticeRecord(requestId);
                 {
                     const relayScope = discordOutboundRegistry.start();
-                    await relayDiscordImages(msg.client, target, body, { signal: relayScope.signal })
+                    await relayDiscordImages(msg.client, target, body, {
+                        signal: relayScope.signal,
+                        skipPaths: selfDeliveredFiles({ target, since: queuedTurnSeq }),
+                    })
                         .catch(e => log.error('[discord:queue-relay]', logErrorText(e)))
                         .finally(() => relayScope.done());
                 }
@@ -553,7 +564,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     // Anchors the delivery claim: only a send made during THIS turn can
     // suppress this turn's post. An identical answer from an earlier turn must
     // still be delivered.
-    const turnStartedAt = Date.now();
+    const turnStartedAt = nextDeliverySeq();
     void ack?.to('running');
     try {
         const text = String(await orchestrateAndCollect(prompt, stripUndefined({

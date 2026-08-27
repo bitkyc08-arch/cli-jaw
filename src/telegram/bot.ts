@@ -41,7 +41,7 @@ import { createHash } from 'node:crypto';
 import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
-import { selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -807,6 +807,10 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             log.info(`[tg:queue] agent busy, queued (${result.pending} pending)`);
             // 큐 처리 후 응답을 이 채팅으로 전달 — requestId로 request-level 격리
             const requestId = result.requestId;
+            // The queued run has not started, so any claim recorded before this
+            // belongs to an earlier turn. A restart drops claims entirely, which
+            // fails open and leaves the orphan delivery (#407) intact.
+            const queuedTurnSeq = nextDeliverySeq();
             const notice = createQueueNotice({
                 expiredText: t('tg.queueExpired', {}, currentLocale()),
                 onError: (e) => log.info('[tg:queue-notice]', logErrorText(e)),
@@ -879,8 +883,14 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                             const outbound = telegramOutboundRegistry.start();
                             let sendResult;
                             try {
-                                sendResult = await sendTelegramMarkdown(ctx.api, chat.id, body,
-                                    { ...replyOptsOf(ctx), signal: outbound.signal });
+                                // Same rule as the normal dispatch: an answer the
+                                // queued agent already posted itself must not be
+                                // posted again. The notice still closes as
+                                // answered, because the user has the answer.
+                                sendResult = wasSelfDelivered({ target: responseTarget, text: body, since: queuedTurnSeq })
+                                    ? { ok: true as const }
+                                    : await sendTelegramMarkdown(ctx.api, chat.id, body,
+                                        { ...replyOptsOf(ctx), signal: outbound.signal });
                             } finally {
                                 outbound.done();
                             }
@@ -920,7 +930,10 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                         resolve();
                         {
                             const relayScope = telegramOutboundRegistry.start();
-                            void relayTelegramImages(bot, chat.id, body, responseTarget, { signal: relayScope.signal })
+                            void relayTelegramImages(bot, chat.id, body, responseTarget, {
+                                signal: relayScope.signal,
+                                skipPaths: selfDeliveredFiles({ target: responseTarget, since: queuedTurnSeq }),
+                            })
                                 .catch(() => { }).finally(() => relayScope.done());
                         }
                         void sendElicitationKeyboards(chat.id, data["elicitationSpecs"]).catch(() => { });
@@ -1071,7 +1084,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         // Anchors the delivery claim: only a send made during THIS turn can
         // suppress this turn's post. An identical answer from an earlier turn
         // must still be delivered.
-        const turnStartedAt = Date.now();
+        const turnStartedAt = nextDeliverySeq();
         // The started path is the COMMON one — the agent is idle — and it never
         // touched the handle, so an ACK-enabled command got no reaction at all
         // unless it happened to be queued.

@@ -63,7 +63,7 @@ import {
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
-import { selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
@@ -444,7 +444,7 @@ async function slackOrchestrate(
                 // Anchors the delivery claim below. Taken BEFORE the agent runs,
                 // so only a send made during THIS turn can suppress this turn's
                 // post — an identical answer from an earlier turn must not.
-                const turnStartedAt = Date.now();
+                const turnStartedAt = nextDeliverySeq();
                 const text = String(await withSessionScope(
                     { scope: ctx.scope, chatSessionId: ctx.chatSessionId },
                     () => orchestrateAndCollect(prompt, {
@@ -524,6 +524,10 @@ async function slackOrchestrate(
     if (result.action === 'queued') {
         log.info(`[slack:queue] agent busy, queued (${result.pending} pending)`);
         const requestId = result.requestId;
+        // The queued run has not started yet, so any claim recorded before this
+        // point belongs to an earlier turn. A restart loses the claims entirely,
+        // which fails open and keeps the #407 orphan delivery intact.
+        const queuedTurnSeq = nextDeliverySeq();
         let queueTimeout: ReturnType<typeof setTimeout>;
         let disposed = false;
         const notice = createQueueNotice({
@@ -597,8 +601,16 @@ async function slackOrchestrate(
                     const outbound = slackOutboundRegistry.start();
                     let queuedSendResult: { ok: boolean };
                     try {
+                        // Same rule as the normal dispatch: if the queued agent
+                        // already posted this answer itself, posting it again is
+                        // the duplicate. The notice still closes as answered
+                        // because the user does have the answer.
+                        const alreadyDelivered = text
+                            && wasSelfDelivered({ target, text, since: queuedTurnSeq });
                         queuedSendResult = text
-                            ? await sendSlackText(token, target, text, { signal: outbound.signal })
+                            ? (alreadyDelivered
+                                ? { ok: true }
+                                : await sendSlackText(token, target, text, { signal: outbound.signal }))
                             : { ok: false as const };
                     } finally {
                         // Released after the body; the relay below opens its own
@@ -615,7 +627,10 @@ async function slackOrchestrate(
                     await ack?.settle(queuedSendResult.ok ? 'success' : 'failure');
                     if (text) {
                         const relayScope = slackOutboundRegistry.start();
-                        await relaySlackImages(token, target, text, { signal: relayScope.signal })
+                        await relaySlackImages(token, target, text, {
+                            signal: relayScope.signal,
+                            skipPaths: selfDeliveredFiles({ target, since: queuedTurnSeq }),
+                        })
                             .catch(e => log.error('[slack:queue-send]', logErrorText(e)))
                             .finally(() => relayScope.done());
                     }
