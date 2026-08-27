@@ -238,9 +238,19 @@ test('stable promotion fast-forwards instead of squashing through a PR', () => {
     assert.ok(!script.includes('gh pr merge'), 'promotion must not merge a PR');
     assert.ok(!script.includes('--squash'), 'promotion must not squash');
     assert.ok(
-        script.includes('git push origin "$PROMOTION_COMMIT:refs/heads/main"'),
+        script.includes('git -C "$WORKTREE" push origin "$PROMOTION_COMMIT:refs/heads/main"'),
         'promotion must fast-forward main onto the certified commit',
     );
+    // The promotion commit is written inside the promotion checkout and nowhere
+    // else, so a push issued from the main repository cannot find the object it
+    // is asked to send. Every push in this script must run with -C "$WORKTREE".
+    for (const pushLine of script.split('\n').filter(line => /^\s*(if )?git .*\bpush\b/.test(line))) {
+        assert.match(
+            pushLine,
+            /git -C "\$WORKTREE" push/,
+            `promotion push must run from the checkout that holds the commit: ${pushLine.trim()}`,
+        );
+    }
     // A plain push is what makes "fast-forward only" enforced by git rather than
     // by convention: git refuses a non-ff update on its own.
     assert.ok(

@@ -86,7 +86,11 @@ PROMOTION_COMMIT="$(git -C "$WORKTREE" rev-parse HEAD)"
 # take it. --force-with-lease pins the push to the SHA this run certified: if
 # preview moved while the gates ran, the push is refused instead of silently
 # discarding whatever landed.
-git push --force-with-lease="refs/heads/preview:$PREVIEW_SHA" \
+#
+# Every push here runs from the promotion checkout. The promotion commit exists
+# only in that clone, so pushing from the main repository fails with
+# "fatal: bad object" -- the object it is asked to send was never written here.
+git -C "$WORKTREE" push --force-with-lease="refs/heads/preview:$PREVIEW_SHA" \
   origin "$PROMOTION_COMMIT:refs/heads/preview"
 echo "preview fast-forwarded to the promotion commit: $PROMOTION_COMMIT"
 
@@ -150,7 +154,7 @@ if [ "$LIVE_PREVIEW_AFTER" != "$PROMOTION_COMMIT" ]; then
   echo "ERROR: origin/preview moved while waiting for release CI" >&2
   exit 1
 fi
-git push origin "$PROMOTION_COMMIT:refs/heads/main"
+git -C "$WORKTREE" push origin "$PROMOTION_COMMIT:refs/heads/main"
 
 git fetch origin main
 MERGED_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
@@ -183,7 +187,7 @@ echo "stable publish dispatched: cli-jaw@$STABLE_VERSION from $MERGED_MAIN_SHA"
 # main, and the ancestry guard above fails on the following cycle.
 DEV_SHA="$(git ls-remote origin refs/heads/dev | cut -f1)"
 if [ -n "$DEV_SHA" ] && git merge-base --is-ancestor "$DEV_SHA" "$PROMOTION_COMMIT"; then
-  if git push origin "$PROMOTION_COMMIT:refs/heads/dev" 2>/dev/null; then
+  if git -C "$WORKTREE" push origin "$PROMOTION_COMMIT:refs/heads/dev" 2>/dev/null; then
     echo "dev fast-forwarded onto the release: $PROMOTION_COMMIT"
   else
     echo "WARN: could not fast-forward dev; merge origin/main into dev by hand" >&2
