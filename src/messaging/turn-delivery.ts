@@ -33,6 +33,16 @@
 // does not match, a target that does not match. Suppression happens only when
 // the recorded text and the outgoing text agree after normalization — that is,
 // only when the user demonstrably already has these exact words.
+//
+// ORDERING ACROSS TURNS
+//
+// Two turns addressing the SAME conversation cannot interleave here: same-target
+// turns share a scope and serialize through the session lane
+// (`src/orchestrator/session-lanes.ts`), which runs one turn per scope. Turns to
+// DIFFERENT conversations produce different target keys and cannot see each
+// other's claims at all. The safety of this module therefore rests on that lane
+// invariant plus consumption below — worth knowing before anyone raises
+// `maxConcurrent` per scope, because that is the assumption it would weaken.
 
 import { createHash } from 'node:crypto';
 import type { MessengerChannel, RemoteTarget } from './types.js';
