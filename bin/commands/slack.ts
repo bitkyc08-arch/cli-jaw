@@ -22,6 +22,7 @@ import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { slackApi } from '../../src/slack/api.js';
 import { slackManifestYaml, slackManifestCreateUrl } from '../../src/slack/manifest.js';
 import { notifyRunningServer, type HotReload } from '../../src/slack/hot-notify.js';
+import { getHomeChannel } from '../../src/messaging/runtime.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 
 // Mirror of the Slack settings shape (see doctor.ts): unlike the other
@@ -282,9 +283,7 @@ async function runSetup(): Promise<void> {
         const channelIds = channelIdsRaw.split(',').map(s => s.trim()).filter(Boolean);
 
         // Merge: preserve every slack field the wizard does not own
-        // (mentionOnly, replyInThread, forwardAll, allowBots) and never touch
-        // `channel` — a two-token channel must not hijack the active channel
-        // by accident, same rule as the SLACK_BOT_TOKEN env import.
+        // (mentionOnly, replyInThread, forwardAll, allowBots).
         s["slack"] = {
             ...existing,
             enabled: true,
@@ -296,13 +295,47 @@ async function runSetup(): Promise<void> {
             // connection. Clones sharing these tokens will not open a socket.
             attachPort: String((s["port"] as string) || existing.attachPort || '3457'),
         } satisfies SlackSettings;
+        // `slack.enabled` says the channel is configured; `enabledChannels` says
+        // it should RUN. Both are required, and the wizard used to write only the
+        // first — so a correct setup ended with the socket still closed and
+        // `activeInbound` naming some other, disabled channel. Nothing in the
+        // output said a step was left (#477).
+        //
+        // Only inbound-capable setups are enrolled. Without an app token there
+        // is no socket to open, so adding it here would enable a transport that
+        // cannot start and report a fault instead of "outbound only".
+        //
+        // `homeChannel` is deliberately NOT taken. It decides where UNADDRESSED
+        // messages go, so moving it would silently redirect heartbeats and
+        // reminders away from the channel the user already chose — the same
+        // hijack the SLACK_BOT_TOKEN import refuses to do. It is only set when
+        // nothing else is enabled, where there is no other channel to steal from.
+        const enrolledSlack = Boolean(appToken);
+        if (enrolledSlack) {
+            const messaging = (s["messaging"] && typeof s["messaging"] === 'object' && !Array.isArray(s["messaging"]))
+                ? s["messaging"] as Record<string, unknown>
+                : {};
+            const enabled = Array.isArray(messaging["enabledChannels"])
+                ? messaging["enabledChannels"].filter((c): c is string => typeof c === 'string')
+                : [];
+            const others = enabled.filter(c => c !== 'slack');
+            s["messaging"] = {
+                ...messaging,
+                enabledChannels: [...new Set([...enabled, 'slack'])],
+                homeChannel: others.length ? messaging["homeChannel"] : 'slack',
+            };
+        }
         saveSettings(s);
 
         // A file write alone never starts the transport — hot-notify the
         // running server so the Slack socket opens now, not after a restart.
         const hotReload: HotReload = values['no-notify']
             ? 'server-off'
-            : await notifyRunningServer(s["slack"] as Record<string, unknown>);
+            : await notifyRunningServer(
+                s["slack"] as Record<string, unknown>,
+                undefined,
+                enrolledSlack ? s["messaging"] as Record<string, unknown> : undefined,
+            );
         const serverLine =
             hotReload === 'reloaded' ? '    2. (done) the running server picked up the settings — no restart needed' :
             hotReload === 'old-server' ? `    2. Restart the server — it is running an OLDER build without the new Slack code (jaw serve)` :
@@ -316,6 +349,9 @@ async function runSetup(): Promise<void> {
     App token   : ${appToken ? appToken.slice(0, 10) + '…' : '(outbound only)'}
     Team        : ${(s["slack"] as SlackSettings).teamId || '(unknown)'}
     Channels    : ${channelIds.length ? channelIds.join(', ') : 'all conversations allowed'}
+    Inbound     : ${enrolledSlack
+        ? `enabled${getHomeChannel(s) === 'slack' ? ' (home channel)' : ''}`
+        : 'off — no app token, so this instance can post but not receive'}
 
   Next steps:
     1. /invite @cli-jaw in each channel the bot should read

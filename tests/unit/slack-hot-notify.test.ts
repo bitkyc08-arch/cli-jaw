@@ -42,6 +42,40 @@ test('old-server: version skew means no PUT — the old build has no transport t
     assert.equal(calls.some(c => c.method === 'PUT'), false, 'must not merge settings into an old build');
 });
 
+// #477: the transport restart is keyed on `messaging.enabledChannels`
+// (`restartMessagingRuntime`), so a PUT carrying only the slack block wrote
+// credentials the server accepted while the socket stayed closed — the hot path
+// reproducing the same gap as the file write.
+test('the messaging block rides along so the transport actually restarts (#477)', async () => {
+    const { calls, fn } = fakeFetch({
+        '/api/health': { ok: true, json: { version: APP_VERSION } },
+        '/api/settings': { ok: true, json: {} },
+    });
+    const result = await notifyRunningServer(
+        { enabled: true, botToken: 'xoxb-1' },
+        fn,
+        { enabledChannels: ['slack'], homeChannel: 'slack' },
+    );
+    assert.equal(result, 'reloaded');
+    const put = calls.find(c => c.method === 'PUT');
+    assert.deepEqual(put?.body, {
+        slack: { enabled: true, botToken: 'xoxb-1' },
+        messaging: { enabledChannels: ['slack'], homeChannel: 'slack' },
+    });
+});
+
+// An outbound-only setup changes no channel enrolment, so it must not send a
+// messaging patch at all.
+test('no messaging block is sent when the caller did not change one (#477)', async () => {
+    const { calls, fn } = fakeFetch({
+        '/api/health': { ok: true, json: { version: APP_VERSION } },
+        '/api/settings': { ok: true, json: {} },
+    });
+    await notifyRunningServer({ enabled: true }, fn, undefined);
+    const put = calls.find(c => c.method === 'PUT');
+    assert.deepEqual(put?.body, { slack: { enabled: true } });
+});
+
 test('server-off: connection failure is silent, never throws', async () => {
     const { fn } = fakeFetch({});
     const result = await notifyRunningServer({ enabled: true }, fn);

@@ -486,6 +486,29 @@ check('Slack', () => {
 // 6e. Channel consistency
 check('Channel consistency', () => {
     const enabled = getEnabledChannels(settings || {});
+    // The reverse gap, and the one that actually bit: a channel can be fully
+    // configured — tokens validated, `enabled: true` — and still be absent from
+    // `enabledChannels`, which is the set the transport loop reads. Nothing ran,
+    // and every other surface said the setup was complete (#477).
+    //
+    // Slack additionally needs the app token: without it there is no socket to
+    // open, so being out of the set is correct rather than a gap.
+    const stranded: string[] = [];
+    if (settings?.telegram?.enabled && !enabled.includes('telegram')) {
+        stranded.push('Telegram');
+    }
+    if (settings?.discord?.enabled && !enabled.includes('discord')) {
+        stranded.push('Discord');
+    }
+    if (settings?.slack?.enabled && settings?.slack?.appToken && !enabled.includes('slack')) {
+        stranded.push('Slack');
+    }
+    if (stranded.length > 0) {
+        throw new Error(
+            `WARN: ${stranded.join(', ')} 설정은 끝났지만 messaging.enabledChannels 에 없어 인바운드가 뜨지 않습니다 `
+            + `— jaw slack setup 을 다시 실행하거나 settings.json 의 enabledChannels 에 추가하세요`,
+        );
+    }
     if (enabled.length === 0) return 'no enabled channels';
     const issues: string[] = [];
     for (const ch of enabled) {
