@@ -75,26 +75,37 @@ prepare_promotion_checkout() {
   local preview_sha="$2"
   local promotion_branch="$3"
   local checkout_dir="$4"
-  local branch_probe_status
+  local branch_probe_status remote_branch_sha
   promotion_checkout_path_safe "$checkout_dir" || return 1
   if [ ! -d "$checkout_dir" ] || [ -n "$(find "$checkout_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
     promotion_error "promotion checkout directory must exist and be empty: $checkout_dir"
     return 1
   fi
 
-  if git ls-remote --exit-code "$remote_url" "refs/heads/$promotion_branch" >/dev/null 2>&1; then
+  # A pre-existing remote branch is only a hazard when it points somewhere the
+  # promotion did not certify. Since #480 the promotion extends `preview`
+  # itself, so the branch is EXPECTED to exist and to be exactly the certified
+  # head — rejecting that unconditionally made the ff promotion unable to run at
+  # all. What still has to fail is a branch that resolves to any other commit:
+  # that is either leftover state from an aborted run or a head that moved while
+  # the gates ran, and building on it would publish an uncertified tree.
+  remote_branch_sha="$(git ls-remote "$remote_url" "refs/heads/$promotion_branch" 2>/dev/null | awk 'NR==1{print $1}')"
+  branch_probe_status=$?
+  if [ "$branch_probe_status" -ne 0 ]; then
+    promotion_error "could not verify remote promotion branch state: $promotion_branch"
+    return 1
+  fi
+  if [ -n "$remote_branch_sha" ] && [ "$remote_branch_sha" != "$preview_sha" ]; then
     promotion_error "remote promotion branch already exists: $promotion_branch"
     return 1
-  else
-    branch_probe_status=$?
-    if [ "$branch_probe_status" -ne 2 ]; then
-      promotion_error "could not verify remote promotion branch state: $promotion_branch"
-      return "$branch_probe_status"
-    fi
   fi
 
   git clone --quiet --no-recurse-submodules --no-checkout "$remote_url" "$checkout_dir"
-  git -C "$checkout_dir" checkout --quiet -b "$promotion_branch" "$preview_sha"
+  # -B rather than -b: the clone already carries `preview` as a local branch, so
+  # -b would abort on a name the promotion is supposed to be standing on. The
+  # start point is the certified SHA either way, and the check below proves HEAD
+  # landed there.
+  git -C "$checkout_dir" checkout --quiet -B "$promotion_branch" "$preview_sha"
   assert_promotion_checkout_initial "$checkout_dir" "$preview_sha"
 }
 

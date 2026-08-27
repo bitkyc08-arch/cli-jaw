@@ -115,8 +115,29 @@ test('promotion checkout stays isolated when invoked from a submodule and fails 
         bashHelper(child, root, 'cleanup_promotion_checkout "$2"', [checkout]);
         assert.equal(existsSync(checkout), false, 'validated promotion clone must be removed');
 
+        // A remote branch that already resolves to the certified SHA is the
+        // normal ff-promotion case (#480): the promotion stands on `preview`
+        // itself, so demanding the name be absent would block every release.
+        const certifiedBranch = 'codex/promote-certified';
+        run('git', [`--git-dir=${remote}`, 'branch', certifiedBranch, previewSha]);
+        const certifiedCheckout = mkdtempSync(join(root, 'cli-jaw-promote.'));
+        bashHelper(
+            child,
+            root,
+            'prepare_promotion_checkout "$2" "$3" "$4" "$5"',
+            [`file://${remote}`, previewSha, certifiedBranch, certifiedCheckout],
+        );
+        assert.equal(git(certifiedCheckout, 'rev-parse', 'HEAD'), previewSha);
+        bashHelper(child, root, 'cleanup_promotion_checkout "$2"', [certifiedCheckout]);
+
+        // A branch pointing anywhere else is leftover or moved state, and
+        // building the promotion on it would publish an uncertified tree.
+        writeFileSync(join(source, 'README.md'), 'diverged\n');
+        git(source, 'commit', '-am', 'diverged');
+        const divergedSha = git(source, 'rev-parse', 'HEAD');
+        assert.notEqual(divergedSha, previewSha);
         const staleBranch = 'codex/promote-stale';
-        run('git', [`--git-dir=${remote}`, 'branch', staleBranch, previewSha]);
+        run('git', [`--git-dir=${remote}`, 'fetch', `file://${source}`, `+HEAD:refs/heads/${staleBranch}`]);
         const staleCheckout = mkdtempSync(join(root, 'cli-jaw-promote.'));
         const stale = bashHelper(
             child,
@@ -126,7 +147,7 @@ test('promotion checkout stays isolated when invoked from a submodule and fails 
             1,
         );
         assert.match(stale.stderr, /remote promotion branch already exists/);
-        assert.equal(git(source, 'rev-parse', 'HEAD'), previewSha, 'stale-branch failure must not mutate source');
+        assert.equal(git(source, 'rev-parse', 'HEAD'), divergedSha, 'stale-branch failure must not mutate source');
 
         const unsafe = join(root, 'unsafe-checkout');
         mkdirSync(unsafe);
