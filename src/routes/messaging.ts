@@ -14,6 +14,32 @@ import { validateFileSize, sendTelegramFile } from '../telegram/telegram-file.js
 import { assertSendFilePath } from '../security/path-guards.js';
 import { decodeFilenameSafe } from '../security/decode.js';
 import { sendChannelOutput, normalizeChannelSendRequest, validateExplicitChatId } from '../messaging/send.js';
+import { recordSelfDelivery } from '../messaging/turn-delivery.js';
+import type { RemoteTarget } from '../messaging/types.js';
+
+/**
+ * The claim address for a send made through the legacy `/api/telegram/send`.
+ *
+ * It must agree field-for-field with what `buildTelegramTarget` produces on the
+ * dispatch side, because the claim is keyed on the whole address: a key that
+ * disagrees is the same as no claim at all, and the duplicate simply survives.
+ *
+ * `peerKind` is the one field this route cannot observe, having no `Context` to
+ * read `chat.type` from. Telegram's own id convention settles it — group and
+ * supergroup ids are negative, private chats positive — which is the same
+ * distinction `isGroup` makes there. `threadId` follows the dispatch rule of
+ * ignoring the General topic (id 1).
+ */
+function telegramTargetForClaim(chatId: string | number, threadId?: number): RemoteTarget {
+    const targetId = String(chatId);
+    return stripUndefined({
+        channel: 'telegram',
+        targetKind: 'channel',
+        peerKind: targetId.startsWith('-') ? 'group' : 'direct',
+        targetId,
+        threadId: threadId !== undefined && threadId > 1 ? String(threadId) : undefined,
+    }) as RemoteTarget;
+}
 import { validateChannelCredentials } from '../messaging/channel-validate.js';
 import { sendResultHttpStatus } from '../messaging/send-result.js';
 import { getSlackSendClient } from '../slack/send-only-client.js';
@@ -244,6 +270,15 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                     return;
                 }
                 await sendClient.client.api.sendMessage(chatId, redactOutboundText(text), stripUndefined({ message_thread_id: messageThreadId }));
+                // This legacy route is still advertised to agents, and it talks to
+                // the Bot API directly instead of going through sendChannelOutput
+                // — so it needs its own claim, or an answer delivered here would
+                // be posted a second time when the turn settles.
+                recordSelfDelivery({
+                    target: telegramTargetForClaim(chatId, messageThreadId),
+                    channel: 'telegram',
+                    text,
+                });
                 res.json({ ok: true, chat_id: chatId, type });
                 return;
             }
@@ -272,6 +307,11 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 });
                 return;
             }
+            recordSelfDelivery({
+                target: telegramTargetForClaim(chatId, messageThreadId),
+                channel: 'telegram',
+                filePath: safePath,
+            });
             res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
         } catch (e: unknown) {
             log.error('[telegram:send]', logErrorText(e));

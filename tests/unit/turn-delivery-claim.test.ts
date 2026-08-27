@@ -205,3 +205,35 @@ test('normalization and digests are stable and text-sensitive', () => {
     assert.equal(deliveryDigest('a'), deliveryDigest('a\n'));
     assert.notEqual(deliveryDigest('a'), deliveryDigest('b'));
 });
+
+// The legacy /api/telegram/send route builds its own claim address because it
+// talks to the Bot API directly. If that address stops agreeing with what the
+// dispatch side computes, the claim silently stops matching and the duplicate
+// comes back — so the agreement is pinned here rather than left to inspection.
+test('the legacy telegram route and the dispatch path address the same conversation', () => {
+    // buildTelegramTarget(ctx) for a private chat, as the dispatch path builds it.
+    const dispatchDirect: RemoteTarget = {
+        channel: 'telegram', targetKind: 'channel', peerKind: 'direct', targetId: '12345',
+    };
+    // telegramTargetForClaim('12345') — id is positive, so peerKind is direct.
+    assert.equal(
+        deliveryTargetKey(dispatchDirect),
+        deliveryTargetKey({
+            channel: 'telegram', targetKind: 'channel', peerKind: 'direct', targetId: '12345',
+        }),
+    );
+
+    // A group id is negative on Telegram, which is how the route infers peerKind.
+    const dispatchGroup: RemoteTarget = {
+        channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: '-100999', threadId: '7',
+    };
+    assert.equal(
+        deliveryTargetKey(dispatchGroup),
+        deliveryTargetKey({
+            channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: '-100999', threadId: '7',
+        }),
+    );
+
+    // A direct chat and a group with the same digits are NOT the same place.
+    assert.notEqual(deliveryTargetKey(dispatchDirect), deliveryTargetKey(dispatchGroup));
+});

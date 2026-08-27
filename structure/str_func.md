@@ -324,7 +324,7 @@ cli-jaw/
 │   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1200L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (748L)
-│   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (465L)
+│   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (505L)
 │   │   ├── avatar.ts         ← Agent/User 아바타 이미지 업로드/서빙/삭제 + settings.json 메타 저장 + safeResolveUnder 경로 보호 (147L)
 │   │   ├── quota.ts          ← Copilot/Claude/Codex/Grok/OpenCode quota helper readers + Grok weekly credits + Claude 429 cache (541L)
 │   │   ├── quota-kiro-reverse.ts ← Kiro/CodeWhisperer quota reader (239L)
