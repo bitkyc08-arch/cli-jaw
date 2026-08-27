@@ -124,7 +124,7 @@ test('FFP-006: promote-to-main.sh pushes refs instead of merging a PR', () => {
         'promotion must not open a PR: a PR merge always mints a new SHA, which is what broke the ancestry');
     assert.ok(!script.includes('--squash'),
         'promotion must not squash');
-    assert.ok(script.includes('git push origin "$PROMOTION_COMMIT:refs/heads/main"'),
+    assert.ok(script.includes('git -C "$WORKTREE" push origin "$PROMOTION_COMMIT:refs/heads/main"'),
         'promotion must fast-forward main onto the certified commit');
 
     // A plain push (no --force) is what makes "fast-forward only" enforceable by
