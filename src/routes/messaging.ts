@@ -14,7 +14,7 @@ import { validateFileSize, sendTelegramFile } from '../telegram/telegram-file.js
 import { assertSendFilePath } from '../security/path-guards.js';
 import { decodeFilenameSafe } from '../security/decode.js';
 import { sendChannelOutput, normalizeChannelSendRequest, validateExplicitChatId } from '../messaging/send.js';
-import { fileContentStamp, recordSelfDelivery } from '../messaging/turn-delivery.js';
+import { recordSelfDelivery } from '../messaging/turn-delivery.js';
 import type { RemoteTarget } from '../messaging/types.js';
 
 /**
@@ -297,10 +297,6 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             validateFileSize(safePath, type);
 
             const caption = req.body?.caption ? String(req.body.caption) : undefined;
-            // Taken before the upload reads the file, for the same reason as the
-            // canonical path: a file rewritten mid-upload would otherwise be
-            // certified as the bytes the user received.
-            const preSendFileStamp = fileContentStamp(safePath);
             const result = await sendTelegramFile(sendClient.client, chatId, safePath, type, stripUndefined({ caption, threadId: messageThreadId }));
 
             if (!result.ok) {
@@ -315,7 +311,6 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 target: telegramTargetForClaim(chatId, messageThreadId),
                 channel: 'telegram',
                 filePath: safePath,
-                fileStamp: preSendFileStamp,
             });
             res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
         } catch (e: unknown) {

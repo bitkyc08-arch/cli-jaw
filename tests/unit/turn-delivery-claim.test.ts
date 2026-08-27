@@ -11,11 +11,9 @@ import {
     recordSelfDelivery,
     resetTurnDeliveryState,
     resetDeliverySeq,
-    selfDeliveredFiles,
     wasSelfDelivered,
     nextDeliverySeq,
     pendingDeliveryAnchor,
-    fileContentStamp,
     SELF_DELIVERY_TTL_MS,
 } from '../../src/messaging/turn-delivery.js';
 import type { RemoteTarget } from '../../src/messaging/types.js';
@@ -126,16 +124,7 @@ test('a send with no usable target is not recorded', () => {
     );
 });
 
-test('a file the agent already uploaded is not relayed again', () => {
-    resetTurnDeliveryState();
-    const turn = startTurn();
-    const shipped = tempFile('home-v10-backlog-0904.png', 'first');
-    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER, filePath: shipped, fileStamp: fileContentStamp(shipped) });
-    const files = selfDeliveredFiles({ target: channelTarget, since: turn });
-    assert.equal(files.has(shipped), true);
-    assert.equal(files.has(join(shipped, '..', 'other.png')), false);
-    assert.equal(selfDeliveredFiles({ target: otherTarget, since: turn }).size, 0);
-});
+
 
 // ─── The silence cases. These matter more than the duplicate ───────────────
 // A repeated answer is a nuisance; a swallowed one is the user losing work they
@@ -172,45 +161,11 @@ test('one claim answers for exactly one post', () => {
     );
 });
 
-test('a file sent in an earlier turn is uploaded again when asked for again', () => {
-    resetTurnDeliveryState();
-    const turnOne = startTurn();
-    const chart = tempFile('chart.png', 'v1');
-    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER, filePath: chart, fileStamp: fileContentStamp(chart) });
-    assert.equal(selfDeliveredFiles({ target: channelTarget, since: turnOne }).size, 1);
-    const turnTwo = startTurn();
-    assert.equal(
-        selfDeliveredFiles({ target: channelTarget, since: turnTwo }).size,
-        0,
-        'a re-requested file must be uploaded again',
-    );
-});
 
-test('a regenerated file under the same name is relayed, not skipped', () => {
-    resetTurnDeliveryState();
-    const turn = startTurn();
-    const chart = tempFile('chart.png', 'the first draft');
-    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER, filePath: chart, fileStamp: fileContentStamp(chart) });
-    assert.equal(
-        selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart),
-        true,
-        'the file as sent is skipped',
-    );
-    // The agent notices a mistake and rewrites the SAME path, then references it.
-    writeFileSync(chart, 'the corrected chart with different bytes');
-    assert.equal(
-        selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart),
-        false,
-        'a path is not an identity: the corrected artifact must still be relayed',
-    );
-});
 
-test('a missing turn anchor suppresses nothing', () => {
-    resetTurnDeliveryState();
-    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER });
-    assert.equal(wasSelfDelivered({ target: channelTarget, text: ANSWER, since: Number.NaN }), false);
-    assert.equal(selfDeliveredFiles({ target: channelTarget, since: Number.NaN }).size, 0);
-});
+
+
+
 
 test('turn ownership survives a system clock that jumps backwards', () => {
     resetTurnDeliveryState();
@@ -271,34 +226,7 @@ test('the legacy telegram route and the dispatch path address the same conversat
     assert.notEqual(deliveryTargetKey(dispatchDirect), deliveryTargetKey(dispatchGroup));
 });
 
-test('a rewrite that preserves size and mtime is still relayed', () => {
-    resetTurnDeliveryState();
-    const turn = startTurn();
-    const chart = tempFile('chart.png', 'x');
-    writeFileSync(chart, 'draft-one-pixels-AA');
-    // Pinned to a whole second so the rewrite below can restore it exactly;
-    // sub-millisecond rounding otherwise makes the metadata differ by a hair
-    // and the test would pass for the wrong reason.
-    const PINNED = 1_700_000_000;
-    utimesSync(chart, PINNED, PINNED);
-    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER, filePath: chart, fileStamp: fileContentStamp(chart) });
-    assert.equal(selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart), true);
 
-    // Same length, and the mtime is restored afterwards. Metadata alone would
-    // call this the same file and silently drop the corrected artifact.
-    const before = statSync(chart);
-    writeFileSync(chart, 'draft-two-pixels-BB');
-    utimesSync(chart, PINNED, PINNED);
-    const after = statSync(chart);
-    assert.equal(after.size, before.size, 'the test needs an equal-size rewrite');
-    assert.equal(after.mtimeMs, before.mtimeMs, 'the test needs a preserved mtime');
-
-    assert.equal(
-        selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart),
-        false,
-        'content decides identity, not metadata',
-    );
-});
 
 test('an unlatched queued anchor suppresses nothing', () => {
     resetTurnDeliveryState();
@@ -340,36 +268,30 @@ test('a queued turn IS suppressed by its own self-delivery', () => {
     );
 });
 
-test('a file rewritten while the upload was in flight is relayed, not skipped', () => {
+
+
+
+
+// ─── Files are never skipped, and that is the design ──────────────────────
+// Skipping a re-upload would need proof that the bytes on the path now are the
+// bytes the user received, and a path cannot carry that proof: the transports
+// read the file after reserving an upload slot, so the content can change in
+// between — and change back. An unprovable skip is a silent drop, so the relay
+// always sends. The text suppression above is what this module actually proves.
+
+
+
+test('the text claim still works for a turn that also sent a file', () => {
     resetTurnDeliveryState();
     const turn = startTurn();
-    const chart = tempFile('chart.png', 'x');
-    writeFileSync(chart, 'bytes-the-user-actually-got');
-    // The stamp is taken BEFORE the transport reads the file. That is the whole
-    // point: hashing after the upload would certify whatever is on the path when
-    // it finishes, so a file replaced mid-upload would match the relay's later
-    // read and the corrected artifact would be dropped silently.
-    const stampAtSendTime = fileContentStamp(chart);
-    writeFileSync(chart, 'bytes-written-during-the-upload');
+    const chart = tempFile('chart.png', 'the bytes');
+    // The caption is what the transport displays for a file send.
     recordSelfDelivery({
-        target: channelTarget, channel: 'slack', text: ANSWER,
-        filePath: chart, fileStamp: stampAtSendTime,
+        target: channelTarget, channel: 'slack', text: '차트 첨부합니다',
+        filePath: chart,
     });
     assert.equal(
-        selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart),
-        false,
-        'only the bytes the user received may cancel a relay',
-    );
-});
-
-test('a claim with no file stamp never skips a relay', () => {
-    resetTurnDeliveryState();
-    const turn = startTurn();
-    const chart = tempFile('chart.png', 'x');
-    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER, filePath: chart });
-    assert.equal(
-        selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart),
-        false,
-        'an unprovable skip is a silent drop, so it must send',
+        wasSelfDelivered({ target: channelTarget, text: '차트 첨부합니다', since: turn }),
+        true,
     );
 });

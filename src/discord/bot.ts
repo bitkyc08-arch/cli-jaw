@@ -32,7 +32,7 @@ import { handleApprovalCommand, handleApprovalCallback, registerProductionTransp
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
-import { nextDeliverySeq, pendingDeliveryAnchor, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, pendingDeliveryAnchor, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import { invalidateDiscordSendClient } from './send-only-client.js';
@@ -503,8 +503,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 {
                     const relayScope = discordOutboundRegistry.start();
                     await relayDiscordImages(msg.client, target, body, {
-                        signal: relayScope.signal,
-                        skipPaths: selfDeliveredFiles({ target, since: queuedAnchor.value() }),
+                        signal: relayScope.signal
                     })
                         .catch(e => log.error('[discord:queue-relay]', logErrorText(e)))
                         .finally(() => relayScope.done());
@@ -619,8 +618,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             const relayScope = discordOutboundRegistry.start();
             try {
                 await relayDiscordImages(msg.client, target, text, {
-                    signal: relayScope.signal,
-                    skipPaths: selfDeliveredFiles({ target, since: turnStartedAt }),
+                    signal: relayScope.signal
                 });
             } finally {
                 relayScope.done();

@@ -45,7 +45,6 @@
 // `maxConcurrent` per scope, because that is the assumption it would weaken.
 
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
 import type { MessengerChannel, RemoteTarget } from './types.js';
 import { buildRemoteSessionKey } from './session-key.js';
 
@@ -70,12 +69,6 @@ export type SelfDeliveryRecord = {
     digest: string | null;
     /** Absolute path of a relayed file, when the send carried one. */
     filePath: string | null;
-    /** Digest of that file's CONTENT as sent. A path is not an identity: an agent
-     *  that regenerates `chart.png` and then references it in its answer must get
-     *  the corrected image relayed, not silently skipped because the old one went
-     *  out under the same name. Size and mtime were tried and are not enough —
-     *  a rewrite can preserve both. */
-    fileStamp: string | null;
     /** Position in the strictly increasing sequence. THIS, not `at`, decides
      *  whether the claim belongs to the turn that is asking. */
     seq: number;
@@ -129,30 +122,6 @@ export function pendingDeliveryAnchor(): { latch(): void; value(): number } {
             return latched ?? Number.POSITIVE_INFINITY;
         },
     };
-}
-
-/**
- * Identity of a file as it was sent: a digest of its bytes.
- *
- * Metadata is not identity. A regenerated artifact can land on the same path
- * with the same length and even the same mtime, and skipping it because the
- * numbers agree drops the corrected file silently. Only the content answers
- * "are these the bytes the user already has".
- *
- * Bounded so this never reads a large upload into memory: past the cap, and for
- * anything unreadable, the stamp is null — which makes the skip fail open, so
- * the relay sends rather than swallows.
- */
-const MAX_STAMPED_FILE_BYTES = 8 * 1024 * 1024;
-export function fileContentStamp(filePath: string | null): string | null {
-    if (!filePath) return null;
-    try {
-        const stat = statSync(filePath);
-        if (!stat.isFile() || stat.size > MAX_STAMPED_FILE_BYTES) return null;
-        return createHash('sha256').update(readFileSync(filePath)).digest('hex');
-    } catch {
-        return null;
-    }
 }
 
 /**
@@ -215,10 +184,6 @@ export function recordSelfDelivery(input: {
     channel: MessengerChannel;
     text?: string | null;
     filePath?: string | null;
-    /** Content digest taken BEFORE the transport read the file. The caller owns
-     *  this because only it knows when the bytes were handed over; hashing here,
-     *  after the upload, can certify a file that was rewritten in between. */
-    fileStamp?: string | null;
     now?: number;
 }): SelfDeliveryRecord | null {
     const targetKey = deliveryTargetKey(input.target);
@@ -230,7 +195,7 @@ export function recordSelfDelivery(input: {
     const now = input.now ?? Date.now();
     const record: SelfDeliveryRecord = {
         targetKey, channel: input.channel, digest, filePath,
-        fileStamp: input.fileStamp ?? null, seq: nextDeliverySeq(), at: now,
+        seq: nextDeliverySeq(), at: now,
     };
     records.push(record);
     evict(now);
@@ -270,42 +235,6 @@ export function wasSelfDelivered(input: {
     // happened to produce the same words.
     records.splice(index, 1);
     return true;
-}
-
-/**
- * Files the agent already uploaded to this conversation in the current window.
- *
- * The image relay consults this so a suppressed turn does not re-upload a
- * picture the user is already looking at.
- */
-export function selfDeliveredFiles(input: {
-    target: RemoteTarget | null | undefined;
-    /** Same sequence anchor as `wasSelfDelivered`: a file sent during an
-     *  earlier turn must not cancel this turn's upload, or "send me that chart
-     *  again" silently delivers nothing. */
-    since: number;
-    now?: number;
-}): Set<string> {
-    const targetKey = deliveryTargetKey(input.target);
-    const out = new Set<string>();
-    if (!targetKey || !Number.isFinite(input.since)) return out;
-    const now = input.now ?? Date.now();
-    evict(now);
-    for (const record of records) {
-        if (record.targetKey !== targetKey || !record.filePath) continue;
-        if (record.seq <= input.since) continue;
-        if (now - record.at > SELF_DELIVERY_TTL_MS) continue;
-        // The bytes must still be the bytes that went out. A regenerated file
-        // under the same name is a different artifact and must be relayed.
-        //
-        // An unreadable or oversized file has no identity to compare, so it
-        // cannot be proven to be the same artifact — and an unprovable skip is a
-        // silent drop. A missing stamp on either side means "relay".
-        const stampNow = fileContentStamp(record.filePath);
-        if (!record.fileStamp || !stampNow || record.fileStamp !== stampNow) continue;
-        out.add(record.filePath);
-    }
-    return out;
 }
 
 /** Test seam for the sequence. Never called in production paths. */

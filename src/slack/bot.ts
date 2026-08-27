@@ -63,7 +63,7 @@ import {
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
-import { nextDeliverySeq, pendingDeliveryAnchor, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, pendingDeliveryAnchor, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
@@ -494,8 +494,7 @@ async function slackOrchestrate(
                     // Images the agent uploaded itself are skipped for the same
                     // reason as the text: the user is already looking at them.
                     await relaySlackImages(token, target, text, {
-                        signal: outbound.signal,
-                        skipPaths: selfDeliveredFiles({ target, since: turnStartedAt }),
+                        signal: outbound.signal
                     });
                     // Logged either way, and labelled, because the previous
                     // silence here is what made the duplicate hard to see: only
@@ -640,8 +639,7 @@ async function slackOrchestrate(
                     if (text) {
                         const relayScope = slackOutboundRegistry.start();
                         await relaySlackImages(token, target, text, {
-                            signal: relayScope.signal,
-                            skipPaths: selfDeliveredFiles({ target, since: queuedAnchor.value() }),
+                            signal: relayScope.signal
                         })
                             .catch(e => log.error('[slack:queue-send]', logErrorText(e)))
                             .finally(() => relayScope.done());

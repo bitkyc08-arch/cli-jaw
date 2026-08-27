@@ -14,7 +14,7 @@ import { getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
 import { log } from '../core/logger.js';
-import { fileContentStamp, recordSelfDelivery } from './turn-delivery.js';
+import { recordSelfDelivery } from './turn-delivery.js';
 
 export function stampOutboundSend(channel: MessengerChannel, ok: boolean): void {
     log.event('outbound.send', { channel, result: ok ? 'ok' : 'error' });
@@ -401,13 +401,6 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     if (typeof req.text === 'string') {
         req.text = applyOutputPolicy(req.text, { scope: 'main', channel }).text;
     }
-    // Taken BEFORE the transport reads the file. Hashing afterwards would
-    // certify whatever is on the path when the upload finishes, and a file
-    // rewritten mid-upload would then match the relay's later read — skipping a
-    // corrected artifact the user never received.
-    const preSendFileStamp = req.fromAgentSurface && req.filePath
-        ? fileContentStamp(req.filePath)
-        : null;
     // Single choke point for every outbound send. A transport builds its error
     // string from a vendor SDK, and the Telegram Bot API puts the token in the
     // request URL — so the failure result is a credential sink, and it flows
@@ -435,7 +428,6 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
             channel,
             text: deliveredText,
             filePath: req.filePath ?? null,
-            fileStamp: preSendFileStamp,
         });
     }
     return sanitized;

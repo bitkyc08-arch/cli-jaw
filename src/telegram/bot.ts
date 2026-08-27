@@ -41,7 +41,7 @@ import { createHash } from 'node:crypto';
 import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
-import { nextDeliverySeq, pendingDeliveryAnchor, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, pendingDeliveryAnchor, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -943,8 +943,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                         {
                             const relayScope = telegramOutboundRegistry.start();
                             void relayTelegramImages(bot, chat.id, body, responseTarget, {
-                                signal: relayScope.signal,
-                                skipPaths: selfDeliveredFiles({ target: responseTarget, since: queuedAnchor.value() }),
+                                signal: relayScope.signal
                             })
                                 .catch(() => { }).finally(() => relayScope.done());
                         }
@@ -1154,8 +1153,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             {
                 const relayScope = telegramOutboundRegistry.start();
                 void relayTelegramImages(bot, chat.id, collectedText, responseTarget, {
-                    signal: relayScope.signal,
-                    skipPaths: selfDeliveredFiles({ target: responseTarget, since: turnStartedAt }),
+                    signal: relayScope.signal
                 })
                     .catch(() => { }).finally(() => relayScope.done());
             }

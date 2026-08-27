@@ -7,7 +7,6 @@ import { settings } from '../../src/core/config.ts';
 import {
     resetTurnDeliveryState,
     wasSelfDelivered,
-    selfDeliveredFiles,
     nextDeliverySeq,
 } from '../../src/messaging/turn-delivery.ts';
 import type { RemoteTarget } from '../../src/messaging/types.ts';
@@ -132,21 +131,4 @@ test('a failed send is not claimed', async () => {
     );
 });
 
-test('an unreadable claimed file fails open rather than skipping the relay', async () => {
-    resetTurnDeliveryState();
-    stubSlackTransport();
-    allowTarget();
-    const turnStartedAt = nextDeliverySeq();
 
-    await sendChannelOutput({
-        channel: 'slack',
-        type: 'document',
-        filePath: '/tmp/jaw-claim-does-not-exist-9e7f.bin',
-        caption: 'attached',
-        target,
-        fromAgentSurface: true,
-    });
-
-    // The path cannot be stat'd, so its identity is unknown; the relay must send.
-    assert.equal(selfDeliveredFiles({ target, since: turnStartedAt }).size, 0);
-});
