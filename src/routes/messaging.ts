@@ -307,10 +307,19 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 });
                 return;
             }
-            // No claim for a file: whether these bytes reached the user cannot be
-            // proven from a path later (see messaging/turn-delivery.ts), and the
-            // caption on this route is passed to the upload, not sent as its own
-            // message, so there is no delivered text to record either.
+            // The FILE is never claimed: whether those bytes reached the user
+            // cannot be proven from a path later (see messaging/turn-delivery.ts).
+            // The caption is different — Telegram renders it as the message text
+            // under the upload, so the user can see it, and an answer equal to it
+            // would otherwise be posted a second time. Same rule the canonical
+            // route follows for file sends.
+            if (caption) {
+                recordSelfDelivery({
+                    target: telegramTargetForClaim(chatId, messageThreadId),
+                    channel: 'telegram',
+                    text: caption,
+                });
+            }
             res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
         } catch (e: unknown) {
             log.error('[telegram:send]', logErrorText(e));

@@ -293,3 +293,24 @@ test('the text claim still works for a turn that also sent a file', () => {
         true,
     );
 });
+
+test('a file-only send records nothing, so it cannot evict a live text claim', () => {
+    resetTurnDeliveryState();
+    const turn = startTurn();
+    // Nothing about a file can be matched later, so recording one would only
+    // occupy a slot in the bounded table — and enough of them would push out a
+    // text claim that IS used, bringing the duplicate back.
+    assert.equal(
+        recordSelfDelivery({ target: channelTarget, channel: 'slack' }),
+        null,
+    );
+    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER });
+    for (let i = 0; i < 1000; i++) {
+        recordSelfDelivery({ target: channelTarget, channel: 'slack' });
+    }
+    assert.equal(
+        wasSelfDelivered({ target: channelTarget, text: ANSWER, since: turn }),
+        true,
+        'file sends must not be able to evict a text claim',
+    );
+});

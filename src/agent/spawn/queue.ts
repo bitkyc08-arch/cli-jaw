@@ -560,16 +560,20 @@ export function createQueueController(
             }
             if (multiSessionEnabled) {
                 deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true, ...eventScope });
-                // The queued turn is now RUNNING, and this is the only place that
-                // knows which request it is. A listener waiting to anchor its
-                // delivery claim needs that identity: a scope-blind "an agent
-                // started" signal can latch while the PREVIOUS turn is still
-                // going, and a claim that turn records afterwards would then sort
-                // as newer than the anchor and swallow this turn's answer.
-                if (requestId) deps.broadcast('queued_run_started', { requestId, origin, scope: item.scope });
             } else {
                 deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true });
             }
+            // The queued turn is now RUNNING, and this is the only place that
+            // knows which request it is. A listener waiting to anchor its
+            // delivery claim needs that identity: a scope-blind "an agent
+            // started" signal can latch while the PREVIOUS turn is still going,
+            // and a claim that turn records afterwards would then sort as newer
+            // than the anchor and swallow this turn's answer.
+            //
+            // Outside the multi-session branch above: the queue drains the same
+            // way either way, and a single-session install has the same queued
+            // turns with the same duplicate to prevent.
+            if (requestId) deps.broadcast('queued_run_started', { requestId, origin, scope: item.scope });
             deps.broadcast('queue_update', queueUpdatePayload(item.scope));
 
             await withSessionScope(sessionScope, async () => {
