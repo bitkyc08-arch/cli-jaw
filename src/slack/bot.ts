@@ -63,6 +63,7 @@ import {
 import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
+import { selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
@@ -440,6 +441,10 @@ async function slackOrchestrate(
                     if (line) progress.update(line);
                 };
                 if (progress) addBroadcastListener(progressHandler);
+                // Anchors the delivery claim below. Taken BEFORE the agent runs,
+                // so only a send made during THIS turn can suppress this turn's
+                // post — an identical answer from an earlier turn must not.
+                const turnStartedAt = Date.now();
                 const text = String(await withSessionScope(
                     { scope: ctx.scope, chatSessionId: ctx.chatSessionId },
                     () => orchestrateAndCollect(prompt, {
@@ -458,7 +463,17 @@ async function slackOrchestrate(
                 const outbound = slackOutboundRegistry.start();
                 let sendResult: { ok: boolean; error?: string; status?: number; ts?: string };
                 try {
-                    sendResult = await sendSlackText(token, target, text, { signal: outbound.signal });
+                    // The agent may already have posted this exact answer itself
+                    // through /api/channel/send while the turn was still running,
+                    // in which case posting it again is the duplicate the user
+                    // sees. Skipping the POST is all this does: the outcome below
+                    // is still success, because the user has the answer — so the
+                    // ACK still settles (#417) and the notice still closes as
+                    // answered (#418), exactly as if we had sent it.
+                    const alreadyDelivered = wasSelfDelivered({ target, text, since: turnStartedAt });
+                    sendResult = alreadyDelivered
+                        ? { ok: true }
+                        : await sendSlackText(token, target, text, { signal: outbound.signal });
                     // Recorded here, settled once in the finally below. The image
                     // relay can still throw after the text is out, and the user did
                     // get their answer in that case — so the outcome is success and
@@ -476,8 +491,17 @@ async function slackOrchestrate(
                     // while the answer is already visible (#417).
                     await ack?.settle(ackOutcome);
                     ackSettled = true;
-                    await relaySlackImages(token, target, text, { signal: outbound.signal });
-                    log.info(`[slack:out] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
+                    // Images the agent uploaded itself are skipped for the same
+                    // reason as the text: the user is already looking at them.
+                    await relaySlackImages(token, target, text, {
+                        signal: outbound.signal,
+                        skipPaths: selfDeliveredFiles({ target, since: turnStartedAt }),
+                    });
+                    // Logged either way, and labelled, because the previous
+                    // silence here is what made the duplicate hard to see: only
+                    // the dispatch post wrote [slack:out], so the log showed one
+                    // delivery while the user had received two.
+                    log.info(`[slack:out${alreadyDelivered ? ':skipped-self-delivered' : ''}] ${target.targetId}: ${redactOutboundText(text).slice(0, 80)}`);
                 } finally {
                     outbound.done();
                 }

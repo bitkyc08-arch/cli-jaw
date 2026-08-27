@@ -135,7 +135,7 @@ export async function relayTelegramImages(
     chatId: string | number,
     text: string,
     target?: RemoteTarget | null,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; skipPaths?: Set<string> } = {},
 ): Promise<void> {
     for (const candidate of extractLocalImagePaths(text)) {
         if (options.signal?.aborted) return;
@@ -145,6 +145,9 @@ export async function relayTelegramImages(
                 settings["workingDir"] || undefined,
                 settings["projectDirs"] || null,
             );
+            // Already uploaded by the agent itself during this turn. Relaying it
+            // again would put the same picture in the chat twice.
+            if (options.skipPaths?.has(filePath)) continue;
             validateFileSize(filePath, 'photo');
             const result = await sendTelegramFile(
                 bot,

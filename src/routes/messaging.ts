@@ -302,7 +302,13 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
     // Canonical channel send
     app.post('/api/channel/send', requireAuth, async (req, res) => {
         try {
-            const result = await sendChannelOutput(normalizeChannelSendRequest(req.body));
+            // `fromAgentSurface` is set HERE rather than inside the normalizer:
+            // it is a fact about how the send arrived, not about its body, and
+            // an agent must not be able to claim it by putting a field in JSON.
+            const result = await sendChannelOutput({
+                ...normalizeChannelSendRequest(req.body),
+                fromAgentSurface: true,
+            });
             if (!result.ok) {
                 res.status(sendResultHttpStatus(result)).json(result);
                 return;
@@ -321,7 +327,11 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
 
     app.post('/api/discord/send', requireAuth, async (req, res) => {
         try {
-            const result = await sendChannelOutput({ ...normalizeChannelSendRequest(req.body), channel: 'discord' });
+            const result = await sendChannelOutput({
+                ...normalizeChannelSendRequest(req.body),
+                channel: 'discord',
+                fromAgentSurface: true,
+            });
             if (!result.ok) {
                 res.status(sendResultHttpStatus(result)).json(result);
                 return;
@@ -338,7 +348,11 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
 
     app.post('/api/slack/send', requireAuth, async (req, res) => {
         try {
-            const result = await sendChannelOutput({ ...normalizeChannelSendRequest(req.body), channel: 'slack' });
+            const result = await sendChannelOutput({
+                ...normalizeChannelSendRequest(req.body),
+                channel: 'slack',
+                fromAgentSurface: true,
+            });
             if (!result.ok) {
                 res.status(sendResultHttpStatus(result)).json(result);
                 return;

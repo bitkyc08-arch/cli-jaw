@@ -14,6 +14,7 @@ import { getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { applyOutputPolicy } from '../core/policy-hooks.js';
 import { redactChannelSecrets } from './redact.js';
 import { log } from '../core/logger.js';
+import { recordSelfDelivery } from './turn-delivery.js';
 
 export function stampOutboundSend(channel: MessengerChannel, ok: boolean): void {
     log.event('outbound.send', { channel, result: ok ? 'ok' : 'error' });
@@ -65,6 +66,17 @@ export type ChannelSendRequest = {
      *  agent from its per-turn prompt. Trusted only as far as the same allowlist
      *  any explicit target faces — a better-informed default, not a bypass. */
     turnTarget?: RemoteTarget;
+    /** This send arrived over the HTTP surface an AGENT uses, so the message it
+     *  carries is something the user can already see by the time the turn
+     *  settles. Recorded as a delivery claim so the dispatch path does not post
+     *  the same answer a second time.
+     *
+     *  Set ONLY by the agent-facing routes. Every other caller of
+     *  `sendChannelOutput` — heartbeats, reminders, alert escalation, the
+     *  target-reply forwarders — leaves it absent, because recording those
+     *  would let an unrelated background message suppress a real answer, and a
+     *  swallowed answer is far worse than a repeated one. */
+    fromAgentSurface?: boolean;
 };
 
 // ─── Transport Send Registry ────────────────────────
@@ -399,5 +411,16 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
         ? { ...result, error: redactChannelSecrets(result.error) }
         : result;
     stampOutboundSend(channel, sanitized.ok !== false);
+    // Only a send that actually reached the user can excuse skipping the
+    // dispatch post, and only `req.target` is the resolved destination — the
+    // caller's target may have been absent and filled in by the chain above.
+    if (req.fromAgentSurface && sanitized.ok !== false) {
+        recordSelfDelivery({
+            target: req.target ?? null,
+            channel,
+            text: typeof req.text === 'string' ? req.text : null,
+            filePath: req.filePath ?? null,
+        });
+    }
     return sanitized;
 }

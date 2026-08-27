@@ -41,6 +41,7 @@ import { createHash } from 'node:crypto';
 import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
+import { selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -1064,6 +1065,13 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         let finalDeliveryStarted = false;
+        // Set when the agent already delivered this answer itself, so the log
+        // line below can say so instead of implying we posted it.
+        let selfDelivered = false;
+        // Anchors the delivery claim: only a send made during THIS turn can
+        // suppress this turn's post. An identical answer from an earlier turn
+        // must still be delivered.
+        const turnStartedAt = Date.now();
         // The started path is the COMMON one — the agent is idle — and it never
         // touched the handle, so an ACK-enabled command got no reaction at all
         // unless it happened to be queued.
@@ -1092,8 +1100,18 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 const outbound = telegramOutboundRegistry.start();
                 let finalResult;
                 try {
-                    finalResult = await sendTelegramMarkdown(ctx.api, chat.id, collectedText,
-                        { ...replyOptsOf(ctx), signal: outbound.signal });
+                    // The agent may already have posted this exact answer itself
+                    // through /api/channel/send while the turn was running.
+                    // Skipping the POST is all this does — the outcome stays
+                    // success, because the user has the answer, so the ACK and
+                    // the notice lifecycle behave as if we had sent it (#417/#418).
+                    selfDelivered = wasSelfDelivered({
+                        target: responseTarget, text: collectedText, since: turnStartedAt,
+                    });
+                    finalResult = selfDelivered
+                        ? { ok: true as const }
+                        : await sendTelegramMarkdown(ctx.api, chat.id, collectedText,
+                            { ...replyOptsOf(ctx), signal: outbound.signal });
                 } finally {
                     outbound.done();
                 }
@@ -1107,10 +1125,13 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             // The text is what the user was waiting for. Image relay is
             // fire-and-forget below, so it cannot hold the outcome open.
             ackOutcome = 'success';
-            log.info(`[tg:out] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
+            log.info(`[tg:out${selfDelivered ? ':skipped-self-delivered' : ''}] ${chat.id}: ${redactOutboundText(collectedText).slice(0, 80)}`);
             {
                 const relayScope = telegramOutboundRegistry.start();
-                void relayTelegramImages(bot, chat.id, collectedText, responseTarget, { signal: relayScope.signal })
+                void relayTelegramImages(bot, chat.id, collectedText, responseTarget, {
+                    signal: relayScope.signal,
+                    skipPaths: selfDeliveredFiles({ target: responseTarget, since: turnStartedAt }),
+                })
                     .catch(() => { }).finally(() => relayScope.done());
             }
             void sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]).catch(() => { });

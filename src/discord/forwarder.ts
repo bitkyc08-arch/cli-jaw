@@ -16,7 +16,7 @@ export async function relayDiscordImages(
     client: Client,
     target: RemoteTarget,
     text: string,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; skipPaths?: Set<string> } = {},
 ): Promise<void> {
     for (const candidate of extractLocalImagePaths(text)) {
         if (options.signal?.aborted) return;
@@ -26,6 +26,9 @@ export async function relayDiscordImages(
                 settings["workingDir"] || undefined,
                 settings["projectDirs"] || null,
             );
+            // Already uploaded by the agent itself during this turn. Relaying it
+            // again would put the same picture in the channel twice.
+            if (options.skipPaths?.has(filePath)) continue;
             const result = await sendDiscordFile(client, target, filePath,
                 options.signal ? { signal: options.signal } : {});
             if (!result.ok) {

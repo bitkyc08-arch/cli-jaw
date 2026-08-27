@@ -32,6 +32,7 @@ import { handleApprovalCommand, handleApprovalCallback, registerProductionTransp
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
+import { selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import { invalidateDiscordSendClient } from './send-only-client.js';
@@ -549,6 +550,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     // answer in that case.
     let ackOutcome: 'success' | 'failure' = 'failure';
     let ackSettled = false;
+    // Anchors the delivery claim: only a send made during THIS turn can
+    // suppress this turn's post. An identical answer from an earlier turn must
+    // still be delivered.
+    const turnStartedAt = Date.now();
     void ack?.to('running');
     try {
         const text = String(await orchestrateAndCollect(prompt, stripUndefined({
@@ -559,6 +564,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         })));
         const channel = asSendable(msg.channel);
         if (!channel) throw new Error('Discord channel is not text-based');
+        // The agent may already have posted this exact answer itself through
+        // /api/channel/send while the turn was running. Skipping the POST is all
+        // this does — the outcome stays success because the user has the answer,
+        // so the ACK settles and the notice closes as before (#417/#418).
+        const selfDelivered = wasSelfDelivered({ target, text, since: turnStartedAt });
         // REST scheduler, not channel.send(): discord.js's high-level send
         // accepts no AbortSignal, so a shutdown could never cancel the body
         // (#417 3/3). The scheduler owns rate-limit pacing and honours the
@@ -568,8 +578,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             try {
                 const restToken = msg.client.token;
                 if (!restToken) throw new Error('Discord client token unavailable');
-                const sendResult = await sendDiscordTextRest(restToken, msg.channelId, text, { signal: outbound.signal });
-                if (!sendResult.ok) throw new Error(sendResult.error || 'discord send failed');
+                if (!selfDelivered) {
+                    const sendResult = await sendDiscordTextRest(restToken, msg.channelId, text, { signal: outbound.signal });
+                    if (!sendResult.ok) throw new Error(sendResult.error || 'discord send failed');
+                }
             } finally {
                 outbound.done();
             }
@@ -583,12 +595,15 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         {
             const relayScope = discordOutboundRegistry.start();
             try {
-                await relayDiscordImages(msg.client, target, text, { signal: relayScope.signal });
+                await relayDiscordImages(msg.client, target, text, {
+                    signal: relayScope.signal,
+                    skipPaths: selfDeliveredFiles({ target, since: turnStartedAt }),
+                });
             } finally {
                 relayScope.done();
             }
         }
-        log.info(`[discord:out] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
+        log.info(`[discord:out${selfDelivered ? ':skipped-self-delivered' : ''}] ${msg.channelId}: ${redactOutboundText(text).slice(0, 80)}`);
     } catch (err: unknown) {
         log.error('[discord:error]', logErrorText(err));
         await msg.reply(`❌ Error: ${userErrorText(err)}`).catch(() => { });
