@@ -789,7 +789,9 @@ export function makeCleanEnv(
             if (key.toLowerCase() === 'path') delete merged[key];
         }
     }
-    merged["PATH"] = buildServicePath(extraPath || env["PATH"] || '');
+    // Same platform passthrough as above. This is the call that produces the
+    // RETURNED PATH, so a win32/POSIX disagreement here reaches the child.
+    merged["PATH"] = buildServicePath(extraPath || env["PATH"] || '', [], os.homedir(), platform);
     return merged;
 }
 
