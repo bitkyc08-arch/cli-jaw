@@ -98,7 +98,22 @@ function slackHasSendTarget(): boolean {
             && slackPeerKind(lastSlack.targetId) === 'direct';
     }
     if (ids.length) return true;
-    return Boolean(lastSlack?.targetId);
+    // An EMPTY allowlist is "every conversation", not "no destination". That is
+    // the shipped default, and `validateTarget` implements it literally: with no
+    // ids configured it admits every Slack target it is handed. Requiring a
+    // last-active slot on top of that made health disagree with the send path it
+    // reports on — a fresh install reported `missing_channel_id` while every
+    // send would in fact have been permitted, so `jaw slack setup` and
+    // `jaw doctor` called the state "all conversations allowed" while health
+    // called it broken (#476).
+    //
+    // doctor stopped degrading on this in #406 and `slackChannelScope()` names
+    // it `all_conversations`; this is health catching up to that reading.
+    //
+    // The malformed branch above still fails closed, and it must stay above this
+    // line: that sentinel is an unmatchable id, so it denies every channel
+    // target instead of widening to all of them.
+    return true;
 }
 
 export function getTransportCapability(channel: MessengerChannel): TransportCapability {
