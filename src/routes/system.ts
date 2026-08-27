@@ -10,6 +10,7 @@ import { APP_VERSION, settings } from '../core/config.js';
 import { drainLogRing } from '../core/logger.js';
 import { getSession } from '../core/db.js';
 import { buildChannelHealthSnapshot } from '../messaging/channel-health.js';
+import { getAgentReadiness } from '../core/agent-readiness.js';
 import { getCliModelAndEffort } from '../core/main-session.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import {
@@ -33,12 +34,38 @@ function getRuntimeSnapshot() {
 }
 
 export function registerSystemRoutes(app: Router, deps: { jawAuthToken: string }): void {
+    // LIVENESS. `ok` stays a constant on purpose (#471): it was added for
+    // Docker HEALTHCHECK, and Docker restarts the container and the manager
+    // drops the instance when it goes false. A CLI that cannot be resolved is
+    // not "this server does not exist", so it is reported in an ADDITIVE
+    // `agentRuntime` block and enforced by /api/ready below.
     app.get('/api/health', (_req, res) => res.json({
         ok: true,
         version: APP_VERSION,
         uptime: process.uptime(),
         channels: buildChannelHealthSnapshot(),
+        agentRuntime: getAgentReadiness(),
     }));
+
+    // READINESS. Separate from liveness so a watchdog or probe can act on
+    // "the configured agent cannot be launched" without conflating it with a
+    // dead process. 503 is the part that matters: curl, Docker, and k8s-style
+    // probes consume it without parsing a body.
+    //
+    // `unknown` (no CLI configured, or a probe that threw) does NOT return
+    // 503. A fresh install has no CLI yet, and a probe bug is not evidence the
+    // runtime is broken — either would otherwise drive a restart loop that
+    // fixes nothing.
+    app.get('/api/ready', (_req, res) => {
+        const agentRuntime = getAgentReadiness();
+        const status = agentRuntime.state === 'unavailable' ? 503 : 200;
+        res.status(status).json({
+            ok: agentRuntime.ready,
+            version: APP_VERSION,
+            uptime: process.uptime(),
+            agentRuntime,
+        });
+    });
 
     // Canonical Slack app manifest for the settings-page copy button. No
     // secrets — scopes and event names only, same exposure class as

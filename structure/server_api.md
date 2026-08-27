@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 253개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 252개다.
+> 현재 라이브 surface는 총 254개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 253개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -80,7 +80,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Method | Path | 설명 |
 | --- | --- | --- |
 | `GET` | `/` | `public/dist/index.html`이 있으면 Vite build를 서빙, 없으면 static fallback |
-| `GET` | `/api/health` | `{ ok, version, uptime }` |
+| `GET` | `/api/health` | **liveness.** `{ ok, version, uptime, channels, agentRuntime }`. `ok`는 상수다 — Docker HEALTHCHECK가 컨테이너를 재시작하고 manager scan이 인스턴스를 목록에서 제거하는 신호이므로 CLI 미해석을 여기서 표현하지 않는다. 에이전트 런타임 준비 상태는 가산 필드 `agentRuntime: { cli, ready, state, path?, error?, checkedAt }`로만 노출한다 (#471) |
+| `GET` | `/api/ready` | **readiness.** 설정된 CLI가 spawn 가능한지 답한다. `state:"unavailable"`일 때만 **503**, 그 외 200. `unknown`(CLI 미설정 또는 probe 예외)은 503이 아니다 — 신규 설치와 probe 버그가 무의미한 재시작을 유발하면 안 된다. 워치독은 본문 파싱 없이 상태 코드만 소비할 수 있다 (#471) |
 | `GET` | `/api/slack/manifest` | 설정 페이지 "매니페스트 복사"용 canonical Slack 앱 매니페스트. 선택 `?name=`은 1~35자 앱 표시명을 받고 봇 표시명은 자동 파생한다. `{ ok, data: { yaml, json, botDisplayName } }` (비밀값 없음, unauthenticated) |
 | `POST` | `/api/channels/validate` | 온보딩 마법사 라이브 크리덴셜 검증 `{ channel, botToken, appToken?, guildId? }` → `{ ok, identity?, teamId? }` 또는 `{ ok:false, error }`. 저장하지 않고 검증만 수행 |
 | `GET` | `/api/session` | 현재 main session row 반환 |
@@ -117,7 +118,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 | Category | Endpoints |
 | --- | --- |
-| Core/Auth | `GET /api/health` `GET /api/slack/manifest` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/image` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
+| Core/Auth | `GET /api/health` `GET /api/ready` `GET /api/slack/manifest` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/image` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
 | Commands | `POST /api/command` `GET /api/commands?interface=` `POST /api/elicitation/callback` |
 | Events | `GET /api/events` |
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` `DELETE /api/chat-sessions/:id` |
@@ -150,7 +151,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 253개 route handler 기준이다. 이 중 API 엔드포인트는 252개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 254개 route handler 기준이다. 이 중 API 엔드포인트는 253개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 `POST /api/channel/send`에서 `channel`은 `telegram|discord|slack|active` transport다. 대화 ID는 `chat_id` 또는 `target.targetId`에 넣는다. Slack thread를 명시할 때 `target.threadId`는 reply ts가 아닌 parent message ts다. target을 생략하면 검증된 현재 대화와 thread를 사용한다. 빈 `slack.channelIds`는 임의 explicit channel을 열지 않으며, 이미 저장·검증된 `lastActive/latestSeen`과 같은 conversation/thread만 명시적으로 재사용할 수 있다.
 

@@ -45,7 +45,7 @@ cli-jaw/
 │   │   ├── session-generation.ts ← persistent chat_sessions.generation (not process-local spawn tokens) (94L)
 │   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace + tool_log + working_dir migration + closeDb() WAL checkpoint + checkOrphanedWal + busy_timeout + clearMessagesScoped + queued_messages table + model-aware clearEmployeeSession + getRecentMessagesLite + searchMessages(days+recent scope) + getMessageContext(±N range) (812L)
 │   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (233L)
-│   │   ├── rate-limit.ts     ← 클라이언트 클래스별(cli/manager/browser/lan/remote) 슬라이딩 윈도 리미터 + atomic peek/commit + Retry-After 미들웨어 팩토리 (213L)
+│   │   ├── rate-limit.ts     ← 클라이언트 클래스별(cli/manager/browser/lan/remote) 슬라이딩 윈도 리미터 + atomic peek/commit + Retry-After 미들웨어 팩토리 (217L)
 │   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (65L)
 │   │   ├── logger.ts         ← 로거 유틸 + structured log.event (100L)
 │   │   ├── i18n.ts           ← 서버사이드 번역 (90L)
