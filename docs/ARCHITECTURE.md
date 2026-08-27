@@ -174,7 +174,7 @@ Use `structure/server_api.md` for the full table. Major route groups:
 
 | Group | Examples |
 | --- | --- |
-| Core/system | `/api/health`, `/api/session`, `/api/runtime`, `/api/auth/token` |
+| Core/system | `/api/health` (liveness), `/api/ready` (readiness, 503), `/api/session`, `/api/runtime`, `/api/auth/token` |
 | Messages/sessions | `/api/messages`, `/api/messages/count`, `/api/chat-sessions` |
 | Events | `/api/events` SSE |
 | Commands | `/api/command`, `/api/commands`, `/api/message` |

@@ -74,6 +74,10 @@ export function classifyPath(method: string, path: string): RatePathClass {
     if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') return 'mutate';
     if (path === '/api/status'
         || path === '/api/health'
+        // Readiness is polled on the same cadence as health — by watchdogs and
+        // container probes rather than by a browser (#471). Leaving it in the
+        // 'general' bucket would rate-limit the very check meant to run often.
+        || path === '/api/ready'
         || path === '/api/messages/latest'
         || path === '/api/goal') return 'poll';
     return 'general';
