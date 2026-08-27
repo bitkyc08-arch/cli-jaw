@@ -132,9 +132,55 @@ test('setup writes slack settings, preserves unrelated fields, never touches cha
     // Fields the wizard does not own survive the merge.
     assert.equal(s.slack.mentionOnly, false);
     assert.equal(s.slack.replyInThread, false);
-    // A two-token channel must never hijack the active channel.
+    // The home channel is still never hijacked: it decides where UNADDRESSED
+    // output goes, so taking it would redirect heartbeats and reminders away
+    // from the channel the user already chose.
     assert.equal(s.messaging.homeChannel, 'telegram');
-    assert.deepEqual(s.messaging.enabledChannels, ['telegram']);
+    // But being enabled is a different claim from being home, and the wizard
+    // used to write neither — leaving `slack.enabled: true` with the socket
+    // closed, which is #477. Slack joins the enabled set alongside telegram.
+    assert.deepEqual(s.messaging.enabledChannels, ['telegram', 'slack']);
+});
+
+// #477: setup wrote only the `slack` block, so a correct, fully validated
+// configuration ended with `enabledChannels: []` and the socket never opened.
+// `/api/health` then reported `activeInbound` as some other, DISABLED channel
+// while the wizard printed "settings saved" with no sign a step was missing.
+test('setup enrolls slack in the enabled channel set (#477)', (t) => {
+    const { status, output, home } = runSlack([
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
+        '--bot-token', 'xoxb-1-testbot', '--app-token', SAMPLE_APP_TOKEN,
+    ]);
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    assert.equal(status, 0, output);
+
+    const s = readSettings(home);
+    assert.deepEqual(s.messaging.enabledChannels, ['slack'],
+        'a configured slack must be in the set the transport loop reads');
+    // Nothing else was enabled, so there is no channel to steal home from.
+    assert.equal(s.messaging.homeChannel, 'slack');
+    assert.match(output, /Inbound\s+: enabled/, 'the summary must say inbound is on');
+});
+
+// Without an app token there is no socket to open. Enrolling anyway would put a
+// transport in the enabled set that cannot start, turning "outbound only" into a
+// startup fault.
+test('an outbound-only setup is not enrolled for inbound (#477)', (t) => {
+    const seed = {
+        messaging: { enabledChannels: ['telegram'], homeChannel: 'telegram' },
+    };
+    const { status, output, home } = runSlack([
+        'setup', '--non-interactive', '--skip-validate', '--no-notify',
+        '--bot-token', 'xoxb-1-testbot',
+    ], seed);
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    assert.equal(status, 0, output);
+
+    const s = readSettings(home);
+    assert.deepEqual(s.messaging.enabledChannels, ['telegram'],
+        'no app token means no socket, so slack must not join the enabled set');
+    assert.equal(s.messaging.homeChannel, 'telegram');
+    assert.match(output, /Inbound\s+: off/, 'the summary must say why inbound is off');
 });
 
 test('setup without an app token writes outbound-only with a warning', (t) => {

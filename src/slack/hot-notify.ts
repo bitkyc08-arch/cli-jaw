@@ -13,6 +13,7 @@ export type HotReload = 'reloaded' | 'server-off' | 'needs-restart' | 'old-serve
 export async function notifyRunningServer(
     slackBlock: Record<string, unknown>,
     fetchImpl: typeof fetch = fetch,
+    messagingBlock?: Record<string, unknown>,
 ): Promise<HotReload> {
     const base = getServerUrl();
     try {
@@ -25,7 +26,12 @@ export async function notifyRunningServer(
         const put = await fetchImpl(`${base}/api/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slack: slackBlock }),
+            // The messaging block rides along when the caller changed it. The
+            // transport restart is keyed on `enabledChannels`
+            // (`restartMessagingRuntime`), so sending only the slack block wrote
+            // credentials the server accepted while leaving the socket closed —
+            // the hot path reproducing the same gap as the file write (#477).
+            body: JSON.stringify(messagingBlock ? { slack: slackBlock, messaging: messagingBlock } : { slack: slackBlock }),
             signal: AbortSignal.timeout(5000),
         });
         return put.ok ? 'reloaded' : 'needs-restart';
