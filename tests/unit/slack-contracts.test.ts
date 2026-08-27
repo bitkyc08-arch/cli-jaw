@@ -208,11 +208,32 @@ test('slack health reports missing_app_token for outbound-only setups', () => {
     });
 });
 
-test('slack health reports missing_channel_id with both tokens and no target', () => {
+// #476: this used to assert the opposite. An empty allowlist is the SHIPPED
+// DEFAULT meaning "every conversation" — `jaw slack setup` prints "all
+// conversations allowed", `slackChannelScope()` names it `all_conversations`,
+// and doctor stopped degrading on it in #406. Health was the last surface still
+// calling it `missing_channel_id`, so a correctly configured install read as
+// broken on three surfaces that agreed and one that did not.
+//
+// It also disagreed with the send path it reports on: `validateTarget` admits
+// every Slack target when no ids are configured, so the sends health called
+// impossible would all have gone through.
+test('an empty slack allowlist is every conversation, not a missing target', () => {
     withSlackSettings({ enabled: true, botToken: 'xoxb-x', appToken: 'xapp-x', channelIds: [] }, () => {
         const cap = getTransportCapability('slack');
-        assert.equal(cap.sendCapable, false);
-        assert.equal(cap.reason, 'missing_channel_id');
+        assert.equal(cap.sendCapable, true, 'an empty allowlist allows every conversation');
+        assert.equal(cap.reason, undefined, 'the shipped default is not a degraded reason');
+        // The claim health makes must be the one the send path honours.
+        assert.equal(validateTarget(slackTargetFromId('C_ANY'), 'slack'), true);
+    });
+});
+
+// The narrowing case is the one that must NOT widen: a list that names
+// conversations still denies the ones it leaves out.
+test('a narrowed slack allowlist still denies the channels it omits', () => {
+    withSlackSettings({ enabled: true, botToken: 'xoxb-x', appToken: 'xapp-x', channelIds: ['C123'] }, () => {
+        assert.equal(getTransportCapability('slack').sendCapable, true);
+        assert.equal(validateTarget(slackTargetFromId('C999'), 'slack'), false);
     });
 });
 
