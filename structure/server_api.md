@@ -310,6 +310,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `alert_escalation` | repeated failure / capacity fallback escalation alert |
 | `agent_smoke` | smoke auto-continue 안내 |
 | `queue_update` | 대기열 길이 갱신 |
+| `queued_run_started` | 큐에 있던 턴이 **실행을 시작**했다는 신호 — `{ requestId, origin, scope }`. 큐 drain(`src/agent/spawn/queue.ts`)만 발행하며, 그 지점이 어느 요청이 시작되는지 아는 유일한 곳이다. 배달 claim의 턴 앵커를 latch하는 데 쓰인다(`src/messaging/turn-delivery.ts`): 앞 턴이 아직 돌고 있는 enqueue 시점에 앵커를 잡으면 그 턴이 나중에 남긴 claim이 더 새것으로 정렬돼 큐 턴의 답변을 삼킨다. 핸들러는 자기 `requestId`에만 반응한다 |
 | `clear` / `session_reset` | UI clear / session reset broadcast |
 | `new_message` | Telegram/Discord/Slack inbound message |
 | `orc_state` | PABCD 상태 변경 + `taskAnchor`/`resolvedSelection`/`interview` 컨텍스트 |
