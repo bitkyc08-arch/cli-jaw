@@ -65,8 +65,9 @@ export type SelfDeliveryRecord = {
     /** Session key of the conversation the send addressed. */
     targetKey: string;
     channel: MessengerChannel;
-    /** Digest of the normalized text, or null for a file-only send. */
-    digest: string | null;
+    /** Digest of the normalized text that was actually displayed. Never null:
+     *  a send with nothing readable to match is not recorded at all. */
+    digest: string;
     /** Position in the strictly increasing sequence. THIS, not `at`, decides
      *  whether the claim belongs to the turn that is asking. */
     seq: number;
