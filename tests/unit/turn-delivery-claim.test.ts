@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,6 +14,7 @@ import {
     selfDeliveredFiles,
     wasSelfDelivered,
     nextDeliverySeq,
+    pendingDeliveryAnchor,
     SELF_DELIVERY_TTL_MS,
 } from '../../src/messaging/turn-delivery.js';
 import type { RemoteTarget } from '../../src/messaging/types.js';
@@ -267,4 +268,73 @@ test('the legacy telegram route and the dispatch path address the same conversat
         }),
     );
     assert.notEqual(deliveryTargetKey(dispatchDirect), deliveryTargetKey(dispatchGroup));
+});
+
+test('a rewrite that preserves size and mtime is still relayed', () => {
+    resetTurnDeliveryState();
+    const turn = startTurn();
+    const chart = tempFile('chart.png', 'x');
+    writeFileSync(chart, 'draft-one-pixels-AA');
+    // Pinned to a whole second so the rewrite below can restore it exactly;
+    // sub-millisecond rounding otherwise makes the metadata differ by a hair
+    // and the test would pass for the wrong reason.
+    const PINNED = 1_700_000_000;
+    utimesSync(chart, PINNED, PINNED);
+    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER, filePath: chart });
+    assert.equal(selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart), true);
+
+    // Same length, and the mtime is restored afterwards. Metadata alone would
+    // call this the same file and silently drop the corrected artifact.
+    const before = statSync(chart);
+    writeFileSync(chart, 'draft-two-pixels-BB');
+    utimesSync(chart, PINNED, PINNED);
+    const after = statSync(chart);
+    assert.equal(after.size, before.size, 'the test needs an equal-size rewrite');
+    assert.equal(after.mtimeMs, before.mtimeMs, 'the test needs a preserved mtime');
+
+    assert.equal(
+        selfDeliveredFiles({ target: channelTarget, since: turn }).has(chart),
+        false,
+        'content decides identity, not metadata',
+    );
+});
+
+test('an unlatched queued anchor suppresses nothing', () => {
+    resetTurnDeliveryState();
+    const anchor = pendingDeliveryAnchor();
+    // The queued run has not started, so there is no turn to own a claim yet.
+    assert.equal(anchor.value(), Number.POSITIVE_INFINITY);
+    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER });
+    assert.equal(
+        wasSelfDelivered({ target: channelTarget, text: ANSWER, since: anchor.value() }),
+        false,
+        'an anchor that never latched must never suppress an answer',
+    );
+});
+
+test('a queued turn is not suppressed by a claim the PREVIOUS turn made after it queued', () => {
+    resetTurnDeliveryState();
+    // Turn A is running. Turn B arrives and is queued here.
+    const anchor = pendingDeliveryAnchor();
+    // Turn A then self-sends and answers something else, leaving the claim.
+    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: '완료했습니다.' });
+    // Only NOW does turn B actually start running.
+    anchor.latch();
+    assert.equal(
+        wasSelfDelivered({ target: channelTarget, text: '완료했습니다.', since: anchor.value() }),
+        false,
+        'the previous turn\'s claim must not swallow the queued turn\'s answer',
+    );
+});
+
+test('a queued turn IS suppressed by its own self-delivery', () => {
+    resetTurnDeliveryState();
+    const anchor = pendingDeliveryAnchor();
+    anchor.latch();
+    // The queued agent runs and posts its own answer.
+    recordSelfDelivery({ target: channelTarget, channel: 'slack', text: ANSWER });
+    assert.equal(
+        wasSelfDelivered({ target: channelTarget, text: ANSWER, since: anchor.value() }),
+        true,
+    );
 });

@@ -45,7 +45,7 @@
 // `maxConcurrent` per scope, because that is the assumption it would weaken.
 
 import { createHash } from 'node:crypto';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import type { MessengerChannel, RemoteTarget } from './types.js';
 import { buildRemoteSessionKey } from './session-key.js';
 
@@ -70,10 +70,11 @@ export type SelfDeliveryRecord = {
     digest: string | null;
     /** Absolute path of a relayed file, when the send carried one. */
     filePath: string | null;
-    /** Size and mtime of that file AS SENT. A path is not an identity: an agent
-     *  that regenerates `chart.png` and then references it in its answer must
-     *  get the corrected image relayed, not silently skipped because the old one
-     *  went out under the same name. */
+    /** Digest of that file's CONTENT as sent. A path is not an identity: an agent
+     *  that regenerates `chart.png` and then references it in its answer must get
+     *  the corrected image relayed, not silently skipped because the old one went
+     *  out under the same name. Size and mtime were tried and are not enough —
+     *  a rewrite can preserve both. */
     fileStamp: string | null;
     /** Position in the strictly increasing sequence. THIS, not `at`, decides
      *  whether the claim belongs to the turn that is asking. */
@@ -105,13 +106,50 @@ export function nextDeliverySeq(): number {
     return sequence;
 }
 
-/** Identity of a file as it was sent. Unreadable files stamp as null, which
- *  makes the skip fail open — the relay sends rather than swallows. */
+/**
+ * An anchor for a turn that has not started yet.
+ *
+ * A QUEUED turn must not anchor at enqueue time. The turn ahead of it is still
+ * running and can record a claim afterwards, which would then sort as "after
+ * this turn began" and suppress its answer — a silence. But the queued handler
+ * is a listener armed at queue time; it has no natural moment of its own.
+ *
+ * So the anchor is latched by the signal that the run actually started, and
+ * until that happens it reads as `Infinity` — an anchor nothing can be newer
+ * than, so nothing is suppressed. Both the unlatched and the mis-ordered case
+ * therefore fail toward posting.
+ */
+export function pendingDeliveryAnchor(): { latch(): void; value(): number } {
+    let latched: number | null = null;
+    return {
+        latch(): void {
+            latched ??= nextDeliverySeq();
+        },
+        value(): number {
+            return latched ?? Number.POSITIVE_INFINITY;
+        },
+    };
+}
+
+/**
+ * Identity of a file as it was sent: a digest of its bytes.
+ *
+ * Metadata is not identity. A regenerated artifact can land on the same path
+ * with the same length and even the same mtime, and skipping it because the
+ * numbers agree drops the corrected file silently. Only the content answers
+ * "are these the bytes the user already has".
+ *
+ * Bounded so this never reads a large upload into memory: past the cap, and for
+ * anything unreadable, the stamp is null — which makes the skip fail open, so
+ * the relay sends rather than swallows.
+ */
+const MAX_STAMPED_FILE_BYTES = 8 * 1024 * 1024;
 function fileStampOf(filePath: string | null): string | null {
     if (!filePath) return null;
     try {
         const stat = statSync(filePath);
-        return `${stat.size}:${stat.mtimeMs}`;
+        if (!stat.isFile() || stat.size > MAX_STAMPED_FILE_BYTES) return null;
+        return createHash('sha256').update(readFileSync(filePath)).digest('hex');
     } catch {
         return null;
     }
@@ -256,9 +294,9 @@ export function selfDeliveredFiles(input: {
         // The bytes must still be the bytes that went out. A regenerated file
         // under the same name is a different artifact and must be relayed.
         //
-        // An unreadable file has no identity to compare, so it cannot be proven
-        // to be the same artifact — and an unprovable skip is a silent drop.
-        // Both a missing stamp at send time and a missing one now mean "relay".
+        // An unreadable or oversized file has no identity to compare, so it
+        // cannot be proven to be the same artifact — and an unprovable skip is a
+        // silent drop. A missing stamp on either side means "relay".
         const stampNow = fileStampOf(record.filePath);
         if (!record.fileStamp || !stampNow || record.fileStamp !== stampNow) continue;
         out.add(record.filePath);

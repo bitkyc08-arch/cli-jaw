@@ -32,7 +32,7 @@ import { handleApprovalCommand, handleApprovalCallback, registerProductionTransp
 import { parseApprovalCallbackData } from '../messaging/approval-presentation.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
-import { nextDeliverySeq, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, pendingDeliveryAnchor, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import { invalidateDiscordSendClient } from './send-only-client.js';
@@ -360,10 +360,17 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         : null;
 
     if (result.action === 'queued') {
-        // The queued run has not started, so any claim recorded before this
-        // belongs to an earlier turn. A restart drops claims entirely, which
-        // fails open and leaves the orphan delivery (#407) intact.
-        const queuedTurnSeq = nextDeliverySeq();
+        // Anchored when this queued run STARTS, not when it was queued: the turn
+        // ahead of it is still running and can record a claim after this point,
+        // which would otherwise sort as "after this turn began" and swallow the
+        // queued answer. Unlatched it reads as Infinity, so nothing is
+        // suppressed. A restart drops claims entirely, which keeps the orphan
+        // delivery (#407) intact.
+        const queuedAnchor = pendingDeliveryAnchor();
+        const queuedRunStarted = (type: string, data: Record<string, any>) => {
+            if (type === 'agent_status' && data['running'] === true) queuedAnchor.latch();
+        };
+        addBroadcastListener(queuedRunStarted);
         log.info(`[discord:queue] agent busy, queued (${result.pending} pending)`);
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
@@ -377,6 +384,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             disposed = true;
             clearTimeout(queueTimeout);
             removeBroadcastListener(queueHandler);
+            removeBroadcastListener(queuedRunStarted);
             if (requestId) pendingQueueRequestIds.delete(requestId);
         };
         // One terminal outcome per turn, shared by whoever reaches it first.
@@ -467,7 +475,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                         if (!restToken) throw new Error('Discord client token unavailable');
                         // Same rule as the normal dispatch: an answer the queued
                         // agent already posted itself must not be posted again.
-                        const sendResult = wasSelfDelivered({ target, text: body, since: queuedTurnSeq })
+                        const sendResult = wasSelfDelivered({ target, text: body, since: queuedAnchor.value() })
                             ? { ok: true as const, error: undefined as string | undefined }
                             : await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal });
                         if (!sendResult.ok) {
@@ -492,7 +500,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                     const relayScope = discordOutboundRegistry.start();
                     await relayDiscordImages(msg.client, target, body, {
                         signal: relayScope.signal,
-                        skipPaths: selfDeliveredFiles({ target, since: queuedTurnSeq }),
+                        skipPaths: selfDeliveredFiles({ target, since: queuedAnchor.value() }),
                     })
                         .catch(e => log.error('[discord:queue-relay]', logErrorText(e)))
                         .finally(() => relayScope.done());

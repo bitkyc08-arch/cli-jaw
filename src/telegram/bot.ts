@@ -41,7 +41,7 @@ import { createHash } from 'node:crypto';
 import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
-import { nextDeliverySeq, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { nextDeliverySeq, pendingDeliveryAnchor, selfDeliveredFiles, wasSelfDelivered } from '../messaging/turn-delivery.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -807,10 +807,17 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             log.info(`[tg:queue] agent busy, queued (${result.pending} pending)`);
             // 큐 처리 후 응답을 이 채팅으로 전달 — requestId로 request-level 격리
             const requestId = result.requestId;
-            // The queued run has not started, so any claim recorded before this
-            // belongs to an earlier turn. A restart drops claims entirely, which
-            // fails open and leaves the orphan delivery (#407) intact.
-            const queuedTurnSeq = nextDeliverySeq();
+            // Anchored when this queued run STARTS, not when it was queued: the
+            // turn ahead of it is still running and can record a claim after this
+            // point, which would otherwise sort as "after this turn began" and
+            // swallow the queued answer. Unlatched it reads as Infinity, so
+            // nothing is suppressed. A restart drops claims entirely, which keeps
+            // the orphan delivery (#407) intact.
+            const queuedAnchor = pendingDeliveryAnchor();
+            const queuedRunStarted = (type: string, data: Record<string, unknown>) => {
+                if (type === 'agent_status' && data['running'] === true) queuedAnchor.latch();
+            };
+            addBroadcastListener(queuedRunStarted);
             const notice = createQueueNotice({
                 expiredText: t('tg.queueExpired', {}, currentLocale()),
                 onError: (e) => log.info('[tg:queue-notice]', logErrorText(e)),
@@ -836,6 +843,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 const cleanup = () => {
                     clearTimeout(timer);
                     removeBroadcastListener(queueHandler);
+                    removeBroadcastListener(queuedRunStarted);
                 };
                 // Timeout, shutdown and an explicit cancel all land here.
                 const expire = (reason: unknown, signal?: AbortSignal) => claimTerminal(async () => {
@@ -887,7 +895,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                                 // queued agent already posted itself must not be
                                 // posted again. The notice still closes as
                                 // answered, because the user has the answer.
-                                sendResult = wasSelfDelivered({ target: responseTarget, text: body, since: queuedTurnSeq })
+                                sendResult = wasSelfDelivered({ target: responseTarget, text: body, since: queuedAnchor.value() })
                                     ? { ok: true as const }
                                     : await sendTelegramMarkdown(ctx.api, chat.id, body,
                                         { ...replyOptsOf(ctx), signal: outbound.signal });
@@ -932,7 +940,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                             const relayScope = telegramOutboundRegistry.start();
                             void relayTelegramImages(bot, chat.id, body, responseTarget, {
                                 signal: relayScope.signal,
-                                skipPaths: selfDeliveredFiles({ target: responseTarget, since: queuedTurnSeq }),
+                                skipPaths: selfDeliveredFiles({ target: responseTarget, since: queuedAnchor.value() }),
                             })
                                 .catch(() => { }).finally(() => relayScope.done());
                         }
