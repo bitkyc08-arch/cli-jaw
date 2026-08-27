@@ -398,20 +398,22 @@ move buys time; only a new version actually fixes users.
 
 ### 복구 4 — 검증 실패한 커밋이 `main`에 도달함
 
-This is currently reachable. `main` has **no ruleset and no branch protection**
-(`gh api repos/lidge-jun/cli-jaw/rulesets` returns `[]`;
-`gh api repos/lidge-jun/cli-jaw/branches/main/protection` returns 404), so the
-`gh pr checks "$PR_URL" --required --watch --fail-fast` call at
-`scripts/promote-to-main.sh:70` has no required checks to block on. Installing a
-`main` ruleset with required checks needs repo-admin rights and is tracked in
-issue #333; until then, treat the post-merge `test.yml` /
-`postinstall-platform.yml` waits (`:99-159`) as the only real gate — and those
-run *after* the merge has already landed.
+Much less reachable since #480. The promotion certifies the exact SHA **on
+`preview`, before `main` moves**: it waits for `test.yml` (and
+`postinstall-platform.yml` when installer-sensitive files changed) on the
+promotion commit, re-checks that live `preview` still equals it, and only then
+fast-forwards `main` to that same object. There is no PR and no post-merge
+certification window.
+
+`main` still has **no ruleset and no branch protection** (`gh api
+repos/lidge-jun/cli-jaw/rulesets` returns `[]`), so nothing stops a human from
+pushing to it by hand — that, not the promotion path, is how a bad commit
+reaches `main` now. Repo-admin rights to install a ruleset are tracked in #333.
 
 Revert path:
 
-1. Determine the shape of the offending commit first — the merge method is not
-   guaranteed (see the note above):
+1. Determine the shape of the offending commit first. A promotion commit is
+   single-parent by construction, but a hand-pushed one may not be:
 
    ```bash
    git fetch origin main
@@ -431,15 +433,21 @@ Revert path:
 3. If the bad commit already reached npm `latest`, the revert alone changes
    nothing for users — do 복구 3 as well.
 
-4. Do not try to re-promote the same `preview` head afterwards; the ancestry
-   guard (`:37-41`) will reject it. Cut a fresh preview instead.
+4. Do not try to re-promote the same `preview` head afterwards. Its version is
+   now stable-shaped, so the preview-version check rejects it before any other
+   gate runs. Cut a fresh preview instead.
 
 ### 하지 말 것
 
 - Do not push directly to `main` or `preview`.
 - Do not hand-edit a published npm tarball; publish a new version.
 - Do not re-run `promote-to-main.sh` to "retry" a failed publish — see the
-  ancestry guard above; re-dispatch `publish.yml` instead (복구 1).
+  preview-version check above; re-dispatch `publish.yml` instead (복구 1).
+- Do not treat a green script exit as a completed publish. Both release scripts
+  DISPATCH `publish.yml` and return without waiting for it, so a host can
+  reinstall the OLD `latest` while every command in the sequence looked fine.
+  Verify `status=completed`, `conclusion=success`, the exact `headSha`, and the
+  registry version before deploying anything.
 - Do not dispatch `publish.yml` with a stale `expected-sha`; it is the only
   thing standing between a moved branch and a mismatched publish.
 
