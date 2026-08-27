@@ -225,14 +225,16 @@ workflow.
 `test.yml` push run on `preview` for that exact commit.
 
 **3 — promotion.** `promote-to-main.sh` requires `origin/main` to be an ancestor
-of the certified preview SHA (`:37-41`), builds a throwaway worktree at that SHA
-(`:50`), runs `npm version <stable>` (`:54`), `sync-electron-version` (`:55`),
-`npm run gate:all` (`:56`) and `require-release-evidence.mjs` (`:57`), commits
-`chore: promote vX.Y.Z` (`:59`), opens a PR against `main` (`:64-68`), waits on
-required checks (`:70`), merges (`:71`), then re-verifies the merged SHA
-(`:73-91`) and the merged version (`:92-97`), and finally waits for `test.yml`
-(`:99-128`) and `postinstall-platform.yml` (`:130-159`) to go green **on the
-merged `main` commit**.
+of the certified preview SHA, builds a throwaway worktree at that SHA, runs
+`npm version <stable>`, `sync-electron-version`, `npm run gate:all` and
+`require-release-evidence.mjs`, and commits `chore: promote vX.Y.Z` **on top of
+preview**. It then fast-forwards `preview` to that commit, waits for `test.yml`
+(and `postinstall-platform.yml` when installer-sensitive files changed) to go
+green **on that exact SHA**, re-checks that live `preview` still equals it, and
+fast-forwards `main` to the same commit with a plain non-force push.
+
+There is no PR and no squash (#480). `main` and `preview` end up on the SAME
+commit, which is why the ancestry guard keeps holding on the next cycle.
 
 **4 — publish.** Only after all of that:
 
@@ -248,19 +250,16 @@ gh workflow run publish.yml \
 
 (`scripts/promote-to-main.sh:167-173`.)
 
-#### 승격된 커밋은 새 SHA다 — 같은 트리일 뿐이다
+#### 승격된 SHA는 인증된 SHA와 문자 그대로 같다
 
-The commit that lands on `main` is a **new commit with a new SHA**, because the
-promotion adds a version-bump commit and then merges a PR. What the pipeline
-guarantees is *same tree, re-validated on `main`* — not *same SHA*. The
-`v2.3.0` promotion is the worked example: promotion commit `6c36f33f` and merged
-`main` head `0e93a0ae` share the identical tree `0e847516`, and `main` was then
-re-certified by its own `test.yml` and `postinstall-platform.yml` push runs.
+The commit published to npm is the SAME commit CI certified — not a copy of its
+tree. That is the point of the #480 ff promotion: the version bump is committed
+on top of preview, preview is fast-forwarded to it, that exact SHA is certified,
+and `main` is fast-forwarded to the same object.
 
-> `promote-to-main.sh:71` asks for `gh pr merge --squash`, but the repo allows
-> merge, squash and rebase, and PR #343 (`v2.3.0`) actually landed as a
-> two-parent merge commit. Do not assume the shape of the promoted commit —
-> check `git log --graph --oneline origin/main` before choosing revert flags.
+This section previously described a PR + squash promotion in which `main` got a
+NEW SHA sharing only the tree. That implementation is gone; if you are reading
+recovery advice that assumes a differing SHA, it predates #480.
 
 ### ⚠️ 승격 성공 후에는 스크립트를 다시 돌릴 수 없다
 
@@ -269,18 +268,11 @@ re-certified by its own `test.yml` and `postinstall-platform.yml` push runs.
 That is the single most important property of this pipeline: a green script exit
 means *the publish was requested*, never *the publish happened*.
 
-And the script cannot simply be re-run, because of the guard at
-`scripts/promote-to-main.sh:37-41`:
-
-```sh
-if ! git merge-base --is-ancestor "$MAIN_SHA" "$PREVIEW_SHA"; then
-  echo "ERROR: origin/main is not an ancestor of the certified preview SHA" >&2
-```
-
-After a successful promotion the new `main` head is a commit that does not exist
-in `preview`'s history, so it is not an ancestor of the preview SHA and this
-guard fails. (Verified against the live heads: `main` `0e93a0ae` is not an
-ancestor of `preview` `0e6bf08e`.) **Every recovery below is therefore manual.**
+And the script cannot simply be re-run. Under the ff design the rejection comes
+from the preview-version check near the top: after a successful promotion the
+live `preview` head carries the STABLE version, which does not match the
+required `X.Y.Z-preview.TIMESTAMP` shape, so the script refuses before it
+reaches the ancestry guard. **Every recovery below is therefore manual.**
 
 ### 복구 1 — git은 성공, npm은 실패
 
