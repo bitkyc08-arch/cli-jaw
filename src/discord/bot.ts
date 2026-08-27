@@ -368,7 +368,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // delivery (#407) intact.
         const queuedAnchor = pendingDeliveryAnchor();
         const queuedRunStarted = (type: string, data: Record<string, any>) => {
-            if (type === 'agent_status' && data['running'] === true) queuedAnchor.latch();
+            // Keyed on THIS request. A scope-blind "an agent started" signal can
+            // fire for the turn ahead of this one, latching the anchor while that
+            // turn is still running — and a claim it records afterwards would then
+            // sort as newer than the anchor and swallow this answer.
+            if (type === 'queued_run_started' && data['requestId'] === requestId) queuedAnchor.latch();
         };
         addBroadcastListener(queuedRunStarted);
         log.info(`[discord:queue] agent busy, queued (${result.pending} pending)`);

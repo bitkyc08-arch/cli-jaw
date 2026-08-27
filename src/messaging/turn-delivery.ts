@@ -144,7 +144,7 @@ export function pendingDeliveryAnchor(): { latch(): void; value(): number } {
  * the relay sends rather than swallows.
  */
 const MAX_STAMPED_FILE_BYTES = 8 * 1024 * 1024;
-function fileStampOf(filePath: string | null): string | null {
+export function fileContentStamp(filePath: string | null): string | null {
     if (!filePath) return null;
     try {
         const stat = statSync(filePath);
@@ -215,6 +215,10 @@ export function recordSelfDelivery(input: {
     channel: MessengerChannel;
     text?: string | null;
     filePath?: string | null;
+    /** Content digest taken BEFORE the transport read the file. The caller owns
+     *  this because only it knows when the bytes were handed over; hashing here,
+     *  after the upload, can certify a file that was rewritten in between. */
+    fileStamp?: string | null;
     now?: number;
 }): SelfDeliveryRecord | null {
     const targetKey = deliveryTargetKey(input.target);
@@ -226,7 +230,7 @@ export function recordSelfDelivery(input: {
     const now = input.now ?? Date.now();
     const record: SelfDeliveryRecord = {
         targetKey, channel: input.channel, digest, filePath,
-        fileStamp: fileStampOf(filePath), seq: nextDeliverySeq(), at: now,
+        fileStamp: input.fileStamp ?? null, seq: nextDeliverySeq(), at: now,
     };
     records.push(record);
     evict(now);
@@ -297,7 +301,7 @@ export function selfDeliveredFiles(input: {
         // An unreadable or oversized file has no identity to compare, so it
         // cannot be proven to be the same artifact — and an unprovable skip is a
         // silent drop. A missing stamp on either side means "relay".
-        const stampNow = fileStampOf(record.filePath);
+        const stampNow = fileContentStamp(record.filePath);
         if (!record.fileStamp || !stampNow || record.fileStamp !== stampNow) continue;
         out.add(record.filePath);
     }

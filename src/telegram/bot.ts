@@ -815,7 +815,11 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
             // the orphan delivery (#407) intact.
             const queuedAnchor = pendingDeliveryAnchor();
             const queuedRunStarted = (type: string, data: Record<string, unknown>) => {
-                if (type === 'agent_status' && data['running'] === true) queuedAnchor.latch();
+                // Keyed on THIS request. A scope-blind "an agent started" signal
+                // can fire for the turn ahead of this one, latching the anchor
+                // while that turn is still running — and a claim it records
+                // afterwards would then sort as newer and swallow this answer.
+                if (type === 'queued_run_started' && data['requestId'] === requestId) queuedAnchor.latch();
             };
             addBroadcastListener(queuedRunStarted);
             const notice = createQueueNotice({

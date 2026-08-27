@@ -85,7 +85,11 @@ test('TQ-003e: hub target validation allows private direct topic targets', () =>
 
 test('TQ-004: processQueue isolates queue by groupQueueKey', () => {
     const queueStart = queueSrc.indexOf('async function processQueue');
-    const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
+    // Bounded by the end of the drain body rather than a character count: the
+    // last assertion below sat at offset ~6971, so any line added to the drain
+    // pushed it out of a 7000-char window and failed the test for a reason that
+    // had nothing to do with what it checks.
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 9000);
     assert.ok(
         queueBlock.includes('groupQueueKey(item.source, item.target)'),
         'processQueue should use groupQueueKey for group isolation',
@@ -138,7 +142,11 @@ test('TQ-006b: processQueue respects worker busy guards', () => {
 
 test('TQ-009: queue drain schedules captured scope/session without recomputation', () => {
     const queueStart = queueSrc.indexOf('async function processQueue');
-    const queueBlock = queueSrc.slice(queueStart, queueStart + 7000);
+    // Sized past the last assertion below rather than to a round number: that
+    // clause sits at offset ~6994, so any line added to the drain pushed it out
+    // of a 7000-char window and failed this test for a reason unrelated to what
+    // it checks.
+    const queueBlock = queueSrc.slice(queueStart, queueStart + 9000);
     // phase 100: the drain must NOT take the same-scope re-entry shortcut, or a
     // queued run can start while the previous turn's reply is still sending.
     assert.ok(queueBlock.includes('lanes.runDetachedTurn(itemScope'));

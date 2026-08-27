@@ -560,6 +560,13 @@ export function createQueueController(
             }
             if (multiSessionEnabled) {
                 deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true, ...eventScope });
+                // The queued turn is now RUNNING, and this is the only place that
+                // knows which request it is. A listener waiting to anchor its
+                // delivery claim needs that identity: a scope-blind "an agent
+                // started" signal can latch while the PREVIOUS turn is still
+                // going, and a claim that turn records afterwards would then sort
+                // as newer than the anchor and swallow this turn's answer.
+                if (requestId) deps.broadcast('queued_run_started', { requestId, origin, scope: item.scope });
             } else {
                 deps.broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true });
             }
