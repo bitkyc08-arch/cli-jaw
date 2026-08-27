@@ -491,11 +491,11 @@ async function slackOrchestrate(
                     // while the answer is already visible (#417).
                     await ack?.settle(ackOutcome);
                     ackSettled = true;
-                    // Images the agent uploaded itself are skipped for the same
-                    // reason as the text: the user is already looking at them.
-                    await relaySlackImages(token, target, text, {
-                        signal: outbound.signal
-                    });
+                    // Relayed even when the text above was suppressed. Whether
+                    // the agent already uploaded these bytes cannot be proven
+                    // from a path (see turn-delivery.ts), and a skip that cannot
+                    // be proven is a silent drop.
+                    await relaySlackImages(token, target, text, { signal: outbound.signal });
                     // Logged either way, and labelled, because the previous
                     // silence here is what made the duplicate hard to see: only
                     // the dispatch post wrote [slack:out], so the log showed one

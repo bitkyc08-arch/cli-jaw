@@ -284,11 +284,9 @@ test('a queued turn IS suppressed by its own self-delivery', () => {
 test('the text claim still works for a turn that also sent a file', () => {
     resetTurnDeliveryState();
     const turn = startTurn();
-    const chart = tempFile('chart.png', 'the bytes');
     // The caption is what the transport displays for a file send.
     recordSelfDelivery({
         target: channelTarget, channel: 'slack', text: '차트 첨부합니다',
-        filePath: chart,
     });
     assert.equal(
         wasSelfDelivered({ target: channelTarget, text: '차트 첨부합니다', since: turn }),

@@ -307,11 +307,10 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 });
                 return;
             }
-            recordSelfDelivery({
-                target: telegramTargetForClaim(chatId, messageThreadId),
-                channel: 'telegram',
-                filePath: safePath,
-            });
+            // No claim for a file: whether these bytes reached the user cannot be
+            // proven from a path later (see messaging/turn-delivery.ts), and the
+            // caption on this route is passed to the upload, not sent as its own
+            // message, so there is no delivered text to record either.
             res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
         } catch (e: unknown) {
             log.error('[telegram:send]', logErrorText(e));

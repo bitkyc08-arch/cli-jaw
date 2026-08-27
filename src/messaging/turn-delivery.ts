@@ -67,8 +67,6 @@ export type SelfDeliveryRecord = {
     channel: MessengerChannel;
     /** Digest of the normalized text, or null for a file-only send. */
     digest: string | null;
-    /** Absolute path of a relayed file, when the send carried one. */
-    filePath: string | null;
     /** Position in the strictly increasing sequence. THIS, not `at`, decides
      *  whether the claim belongs to the turn that is asking. */
     seq: number;
@@ -183,18 +181,18 @@ export function recordSelfDelivery(input: {
     target: RemoteTarget | null | undefined;
     channel: MessengerChannel;
     text?: string | null;
-    filePath?: string | null;
     now?: number;
 }): SelfDeliveryRecord | null {
     const targetKey = deliveryTargetKey(input.target);
     if (!targetKey) return null;
     const digest = deliveryDigest(input.text);
-    const filePath = input.filePath || null;
-    // Nothing identifiable was delivered, so nothing can be matched later.
-    if (!digest && !filePath) return null;
+    // A send with no text delivers nothing this module can match later: file
+    // bytes cannot be proven delivered from a path, so a file-only send records
+    // nothing rather than sitting in the table where it can only cause pressure.
+    if (!digest) return null;
     const now = input.now ?? Date.now();
     const record: SelfDeliveryRecord = {
-        targetKey, channel: input.channel, digest, filePath,
+        targetKey, channel: input.channel, digest,
         seq: nextDeliverySeq(), at: now,
     };
     records.push(record);

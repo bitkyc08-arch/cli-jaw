@@ -427,7 +427,6 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
             target: req.target ?? null,
             channel,
             text: deliveredText,
-            filePath: req.filePath ?? null,
         });
     }
     return sanitized;

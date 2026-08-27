@@ -122,9 +122,9 @@ cli-jaw/
 │   │   └── events.ts         ← legacy re-export stub → events/ 모듈 (15L)
 │   ├── messaging/            ← 통합 메시징 런타임 (32 files)
 │   │   ├── runtime.ts        ← 채널 lifecycle (init/shutdown/restart) + transport registry (285L)
-│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원, 턴 주소 우선순위) (434L)
+│   │   ├── send.ts           ← 통합 아웃바운드 메시지 라우팅 (ChannelSendRequest, 다중 채널 send 지원, 턴 주소 우선순위) (433L)
 │   │   ├── turn-conversation.ts ← 턴이 답하는 대화 주소 encode/decode + 채널 매칭 (60L) ✨
-│   │   ├── turn-delivery.ts  ← 에이전트 자가 전송 claim (턴 앵커 + digest, 소비형) → dispatch 중복 게시 억제 (253L) ✨
+│   │   ├── turn-delivery.ts  ← 에이전트 자가 전송 claim (턴 앵커 + digest, 소비형) → dispatch 중복 게시 억제 (251L) ✨
 │   │   ├── dedupe.ts         ← 배달 중복 제거 (TTL seen-set, 미만료 항목 보존) (118L) ✨
 │   │   ├── retry.ts          ← 전송 실패 분류 (format/rate-limit/ambiguous) (124L) ✨
 │   │   ├── fold.ts           ← 정규화 폴딩 엔진 (escape 디코드 + invisible 제거 + NFKC, 오프셋 맵 추적) (276L) ✨
@@ -324,7 +324,7 @@ cli-jaw/
 │   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1200L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (748L)
-│   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (505L)
+│   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (504L)
 │   │   ├── avatar.ts         ← Agent/User 아바타 이미지 업로드/서빙/삭제 + settings.json 메타 저장 + safeResolveUnder 경로 보호 (147L)
 │   │   ├── quota.ts          ← Copilot/Claude/Codex/Grok/OpenCode quota helper readers + Grok weekly credits + Claude 429 cache (541L)
 │   │   ├── quota-kiro-reverse.ts ← Kiro/CodeWhisperer quota reader (239L)
