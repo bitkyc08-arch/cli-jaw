@@ -32,3 +32,18 @@ test('the counter is declared before its first use, so it cannot hit the TDZ', (
     // runtime, which would break adding a job entirely.
     assert.ok(declaration < firstUse, 'counter is used before it is declared');
 });
+
+test('the Manager job factory also carries a per-call counter', () => {
+    const manager = readFileSync(
+        join(import.meta.dirname, '..', '..', 'public/manager/src/settings/pages/components/heartbeat-helpers.ts'),
+        'utf8',
+    );
+    const generators = manager.match(/id: `hb_\$\{[^`]*/g) ?? [];
+    assert.ok(generators.length >= 1, 'expected the Manager id source');
+    for (const generator of generators) {
+        assert.match(generator, /idCounter\+\+/, `bare timestamp id: ${generator}`);
+    }
+    const declaration = manager.indexOf('let idCounter');
+    const firstUse = manager.indexOf('idCounter++');
+    assert.ok(declaration >= 0 && declaration < firstUse, 'counter must be declared before use');
+});

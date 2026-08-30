@@ -4,7 +4,7 @@ import { loadHeartbeatFile, saveHeartbeatFile, isHeartbeatDestination, isHeartbe
 import type { HeartbeatDestination, HeartbeatMentionWatch, HeartbeatJob } from '../core/config.js';
 import { startHeartbeat } from '../memory/heartbeat.js';
 import { validateHeartbeatScheduleInput } from '../memory/heartbeat-schedule.js';
-import { approveLegacyFreshStart, quarantineState, detectLegacyMentionWatch } from '../memory/legacy-mention-watch-quarantine.js';
+import { approveLegacyFreshStart, quarantineState, detectLegacyMentionWatch, isQuarantined } from '../memory/legacy-mention-watch-quarantine.js';
 import { verifiedSlackWorkspace } from '../slack/verified-workspace.js';
 import { getEmployees } from '../core/db.js';
 import type { EmployeeRow } from '../core/employees.js';
@@ -88,7 +88,23 @@ export function normalizeHeartbeatPutRunnerFields(
 }
 
 export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddleware): void {
-    app.get('/api/heartbeat', requireAuth, (_req, res) => res.json(loadHeartbeatFile()));
+    // `enabled` is the operator's intent; it is not the same as running.
+    //
+    // A mention-watch job holding an unmigrated ledger is refused before a timer
+    // is even created, yet its file entry still says `enabled: true` — the file is
+    // intent and the hold is the system's judgement, deliberately stored apart.
+    // Every operator surface counts the file flag, so a held job read as ACTIVE.
+    // `held` is additive, so a client that ignores it behaves exactly as before.
+    app.get('/api/heartbeat', requireAuth, (_req, res) => {
+        const file = loadHeartbeatFile();
+        detectLegacyMentionWatch(Date.now());
+        res.json({
+            ...file,
+            jobs: file.jobs.map(job => (job.mentionWatch && job.id && isQuarantined(job.id)
+                ? { ...job, held: 'unmigrated_mention_watch_ledger' as const }
+                : job)),
+        });
+    });
 
     app.put('/api/heartbeat', requireAuth, (req, res) => {
         const data = req.body;

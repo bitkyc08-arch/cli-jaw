@@ -63,7 +63,11 @@ test('validateHHMM rejects 24:00, single digits, and free-form text', () => {
 
 test('makeDefaultJob seeds an enabled `every` job with 30 minutes', () => {
     const job = makeDefaultJob(123);
-    assert.equal(job.id, 'hb_123');
+    // Prefixed with the timestamp, plus a per-call suffix. The exact string is
+    // deliberately not asserted: what matters is that two jobs added in the same
+    // millisecond differ, since the server rejects a duplicate id now.
+    assert.match(job.id, /^hb_123_\d+$/);
+    assert.notEqual(makeDefaultJob(123).id, makeDefaultJob(123).id);
     assert.equal(job.name, '');
     assert.equal(job.enabled, true);
     assert.equal(job.prompt, '');

@@ -322,7 +322,7 @@ cli-jaw/
 │   │   ├── types.ts          ← `AuthMiddleware` shared type (3L)
 │   │   ├── static.ts         ← root/uploads/widgets + guarded local image/video `/api/image` 서빙 (160L)
 │   │   ├── employees.ts      ← employee CRUD 라우트 (123L)
-│   │   ├── heartbeat.ts      ← heartbeat read/write 라우트 (289L)
+│   │   ├── heartbeat.ts      ← heartbeat read/write 라우트 (305L)
 │   │   ├── skills.ts         ← skill list/enable/disable/reset 라우트 (90L)
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (362L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
@@ -467,7 +467,7 @@ cli-jaw/
 │       ├── slack.ts          ← `jaw slack manifest|setup` — 앱 매니페스트 출력 + 가이드 설정 (토큰 prefix 가드 + auth.test/apps.connections.open 라이브 검증 + settings 병합, channel 미변경) (440L)
 │       ├── doctor.ts         ← 진단 (다중 체크 + claude-i helper/underlying claude + headless 감지, --json) (1196L)
 │       ├── jwc.ts            ← optional external-only JWC runtime install/clean/doctor helper (234L)
-│       ├── status.ts         ← 서버 상태 (--json) (115L)
+│       ├── status.ts         ← 서버 상태 (--json) (122L)
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)
 │       ├── skill.ts          ← 스킬 관리 (install/remove/info/list/reset soft·hard) (336L)
 │       ├── employee.ts       ← 직원 관리 (list/reset, REST API 호출, JSON/table 출력, 82L)

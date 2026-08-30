@@ -45,9 +45,17 @@ export function validateHHMM(value: string): boolean {
     return HHMM_RE.test(value.trim());
 }
 
+/** Per-call, because the timestamp alone is not unique.
+ *
+ *  Two jobs added inside one millisecond both became `hb_<same-ms>`. The server
+ *  rejects a duplicate id now — two jobs under one id share one mention-watch
+ *  ledger namespace and the second inherits the first's cursor — so the
+ *  collision would fail the whole save rather than quietly merging them. */
+let idCounter = 0;
+
 export function makeDefaultJob(now: number = Date.now()): HbJob {
     return {
-        id: `hb_${now}`,
+        id: `hb_${now}_${idCounter++}`,
         name: '',
         enabled: true,
         schedule: { kind: 'every', minutes: 30 },

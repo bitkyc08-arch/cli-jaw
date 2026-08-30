@@ -79,8 +79,15 @@ try {
             try {
                 const hbRes = await fetch(`${getServerUrl(resolvedPort)}/api/heartbeat`, { signal: AbortSignal.timeout(2000) });
                 const hb = asRecord(await hbRes.json());
-                const active = asArray<{ enabled?: boolean }>(hb["jobs"]).filter((j) => j.enabled).length;
-                console.log(`  Heartbeat: ${active} job${active !== 1 ? 's' : ''} active`);
+                const jobs = asArray<{ enabled?: boolean; held?: string }>(hb["jobs"]);
+                // A held job is enabled in the file but gets no timer, so counting
+                // the flag alone reports it as active. Held is named separately
+                // rather than folded into the count: an operator needs to know the
+                // job exists and why it is not running.
+                const held = jobs.filter((j) => j.enabled && j.held).length;
+                const active = jobs.filter((j) => j.enabled && !j.held).length;
+                console.log(`  Heartbeat: ${active} job${active !== 1 ? 's' : ''} active`
+                    + (held ? ` (${held} held for an unmigrated mention-watch ledger)` : ''));
             } catch { } // best-effort: heartbeat probe optional when server is down
         }
     } else {

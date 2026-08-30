@@ -138,7 +138,10 @@ export async function saveHeartbeatJobs(): Promise<void> {
 export async function initHeartbeatBadge(): Promise<void> {
     try {
         const d = await api<HeartbeatData>('/api/heartbeat');
-        const active = (d?.jobs || []).map(normalizeHeartbeatJob).filter(j => j.enabled).length;
+        // A held job is enabled in the file but never scheduled, so it must not
+        // be counted as active. `held` comes from the server, which owns that
+        // judgement; the file only carries intent.
+        const active = (d?.jobs || []).filter(j => j.enabled !== false && !(j as { held?: string }).held).length;
         const btn = document.getElementById('hbSidebarBtn');
         if (btn) btn.innerHTML = `${ICONS.heartPulse} Heartbeat (${active})`;
     } catch { /* ignore */ }

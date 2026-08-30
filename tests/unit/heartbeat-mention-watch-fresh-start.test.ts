@@ -408,3 +408,49 @@ test('a token swapped during verification aborts the approval instead of recordi
         });
     } finally { gate.releaseAll(); gate.restore(); }
 });
+
+test('GET reports a held job as held, so operator surfaces stop calling it active', async () => {
+    // `enabled` is intent and the hold is the system's judgement, stored apart on
+    // purpose. Every operator surface counted the file flag, so a job that gets no
+    // timer read as ACTIVE.
+    const jobId = 'hold_listed';
+    seedHeldJob(jobId);
+    await withHeartbeatServer(async baseUrl => {
+        const response = await fetch(baseUrl + '/api/heartbeat');
+        const body = await response.json() as { jobs?: Array<{ id?: string; enabled?: boolean; held?: string }> };
+        const job = body.jobs?.find(candidate => candidate.id === jobId);
+        // Intent is untouched — the operator did enable it.
+        assert.equal(job?.enabled, true);
+        assert.equal(job?.held, 'unmigrated_mention_watch_ledger');
+    });
+});
+
+test('a job with no hold carries no held marker', async () => {
+    const jobId = 'not_held_listed';
+    saveHeartbeatFile({ jobs: [{
+        id: jobId, name: jobId, enabled: true, schedule: { kind: 'every', minutes: 10 }, prompt: 'x',
+    }] });
+    await withHeartbeatServer(async baseUrl => {
+        const response = await fetch(baseUrl + '/api/heartbeat');
+        const body = await response.json() as { jobs?: Array<{ id?: string; held?: string }> };
+        assert.equal(body.jobs?.find(candidate => candidate.id === jobId)?.held, undefined);
+    });
+});
+
+test('clearing the hold clears the marker', async () => {
+    const jobId = 'hold_marker_cleared';
+    seedHeldJob(jobId);
+    const restore = stubSlackAuth(WORKSPACE);
+    try {
+        await withHeartbeatServer(async baseUrl => {
+            await fetch(baseUrl + '/api/heartbeat/' + jobId + '/mention-watch-fresh-start', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ since: '1700000000.000100' }),
+            });
+            const response = await fetch(baseUrl + '/api/heartbeat');
+            const body = await response.json() as { jobs?: Array<{ id?: string; held?: string }> };
+            assert.equal(body.jobs?.find(candidate => candidate.id === jobId)?.held, undefined);
+        });
+    } finally { restore(); }
+});
