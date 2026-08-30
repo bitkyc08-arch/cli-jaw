@@ -1060,9 +1060,15 @@ Advanced memory runtime의 entry point. FTS5 인덱스, search routing, task sna
 
 주기 작업과 스케줄 파싱/실행을 담당한다. 현재 소스 오브 트루스는 `~/.cli-jaw/heartbeat.json`이며, schedule은 `every`/`cron` + `timeZone`을 지원한다. PABCD 활성, heartbeat 중첩, main agent busy 상태에서는 `pendingJobs` 큐로 밀어두고, user message queue가 먼저 비워진 뒤 heartbeat pending을 drain한다. 프롬프트 앞에는 memory search 지시를 자동 주입한다. (#252) job별 opt-in `runner: main|employee|script`(기본 main; employee는 `claimWorker`+`runSingleAgent`, busy 시 `skipped: employee busy` 경고 리포트; script는 argv `execFile` no-shell)와 `reportPolicy: always|anomaly_only|silent` + 구조화 리포트 계약(`heartbeat-report.ts`: status/changed/record_required/user_visible/summary/evidence/next_action)을 지원한다. `[SILENT]`/quiet marker는 정책과 무관하게 우선하며, silent 정책 anchor는 `delivered_at NULL` + "recorded (not sent)" 주입 문구로 구분된다. main runner는 `orchestrateAndCollectData`의 `agyPlannerOnly` 신호(#251)에 1회 한정 재시도한다. `mentionWatch`가 있으면 같은 `runHeartbeatJob`이 일반 prompt path 대신 멘션 항목 루프를 실행한다. PUT `/api/heartbeat`는 UI가 모르는 runner와 mentionWatch 필드를 job id 기준 merge-by-id로 보존한다.
 
-### heartbeat-mention-watch.ts (236L)
+### heartbeat-mention-watch.ts (244L)
 
 `runMentionWatchTick()`은 설정 채널과 tick 시점의 Slack allowlist를 다시 교집합하고 항목마다 PABCD, agent busy, `messageQueue`, pending replay를 재확인한다. 에이전트는 답변 본문만 만들고 서버가 `sendChannelOutput()`으로 원문 스레드에 보낸다. 전송 성공 뒤에만 `mention_watch_seen`을 기록하므로 실패 항목은 다음 tick에서 다시 시도하며 보장 수준은 at-least-once다. `mention_watch_cursor`의 `resume_before`가 끝나지 않은 history walk를 잇고, `mention_watch_rotation`이 다음 시작 채널을 정한다. seen prune은 건수가 아니라 전진한 cursor를 기준으로 한다.
+
+### mention-watch-ledger.ts (104L) / legacy-mention-watch-quarantine.ts (115L)
+
+receipt/cursor/rotation 장부의 유일한 접근 경로다. 모든 읽기·쓰기가 `WatchNamespace = (jobId, workspaceId, userId)`를 받고 SQL predicate에 세 파트를 전부 싣는다. Slack은 사람을 `(team_id, id)`로 식별하고 한 런타임이 재시작 없이 다른 workspace로 재인증할 수 있어서, job만으로 키를 잡으면 한 사람의 cursor가 다른 사람에게 넘어간다. workspace id는 `src/slack/verified-workspace.ts`가 bot token으로 `auth.test`를 1회 호출해 토큰별로 캐시한 값이며 `settings.slack.teamId`를 신뢰하지 않는다(그 값은 비어 있을 때만 기록되고 이후 토큰과 대조되지 않는다). 조회 실패는 추측 대신 그 tick을 건너뛴다. 모듈 경유가 predicate 누락을 구조적으로 막아 주지는 않으므로 최종 보증은 `tests/unit/mention-watch-ledger.test.ts`의 A/B 대칭 테스트다 — 같은 job/channel/ts 위에 workspace나 user만 다른 두 namespace를 만들어 서로를 보거나 건드릴 수 없음을 확인한다.
+
+v1 장부 행에는 workspace/user가 없어서 v2 키로 옮기려면 소유자를 추측해야 하고, 그 추측이 곧 v2가 막으려는 오배정이다. 그렇다고 그냥 새로 시작하면 cursor 없는 watch가 도달 가능한 history를 거꾸로 훑어 이미 답한 것을 다시 답한다. 그래서 v1 행이 남은 job은 `heartbeat.json`의 `enabled`와 무관하게 스케줄에서 보류된다. 보류 marker는 SQLite에 있다 — 파일은 운영자의 의도이고 보류는 시스템의 판단이라, 한 곳에 적으면 서로를 덮어쓰고 파일 재작성을 탐지 시점의 테이블 생성과 원자적으로 묶을 수도 없다. 탐지는 `INSERT OR IGNORE`로 매 load마다 돌며(업그레이드 당시 없던 job이 같은 id로 돌아오는 경로를 one-shot 검사는 놓친다), 구버전으로 downgrade해 v1 행이 다시 생기면 `resolved`를 `pending`으로 재격리한다. 해제는 `POST /api/heartbeat/:jobId/mention-watch-fresh-start`뿐이고 새 `since`를 요구하며, 한 트랜잭션에서 CAS를 먼저 claim한 뒤 v1 행을 archive하고 삭제한다. 순서가 중요한 이유는 better-sqlite3 transaction이 `return`으로는 rollback되지 않아서다 — 파괴적 단계를 먼저 두면 실패를 보고한 승인의 archive/delete가 그대로 commit된다.
 
 ### indexing.ts / keyword-expand.ts / bootstrap.ts
 

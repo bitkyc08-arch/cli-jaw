@@ -19,15 +19,16 @@
 // is written down rather than papered over.
 
 import {
-    findMentionWatchSeen,
-    insertMentionWatchSeen,
-    pruneMentionWatchSeen,
-    getMentionWatchCursor,
-    upsertMentionWatchCursor,
-    setMentionWatchResumeBefore,
-    getMentionWatchRotation,
-    upsertMentionWatchRotation,
-} from '../core/db.js';
+    hasSeenMention,
+    recordSeenMention,
+    pruneSeenMentions,
+    readCursor,
+    advanceCursor,
+    setResumeBefore,
+    readRotation,
+    recordRotation,
+} from './mention-watch-ledger.js';
+import type { WatchNamespace } from './mention-watch-ledger.js';
 import { scanSlackMentions, MENTION_WATCH_DEFAULT_MAX_HITS } from '../slack/mention-watch.js';
 import type { MentionHit } from '../slack/mention-watch.js';
 import type { HeartbeatMentionWatch } from '../core/config.js';
@@ -104,7 +105,7 @@ function authorizedChannels(
 }
 
 export async function runMentionWatchTick(
-    jobId: string,
+    ns: WatchNamespace,
     job: Record<string, unknown>,
     watch: HeartbeatMentionWatch,
     deps: MentionWatchDeps,
@@ -131,28 +132,20 @@ export async function runMentionWatchTick(
     }
     if (allowed.length === 0) return result;
 
-    const rotation = getMentionWatchRotation.get(jobId) as { last_channel_id?: string } | undefined;
+    const rotationAnchor = readRotation(ns);
     const scan = await scanSlackMentions(deps.token, {
         userId: watch.userId,
         channelIds: allowed,
         selfUserId: deps.selfUserId,
         maxHits: watch.maxHits ?? MENTION_WATCH_DEFAULT_MAX_HITS,
         ...(watch.since ? { since: watch.since } : {}),
-        ...(rotation?.last_channel_id ? { startAfterChannelId: rotation.last_channel_id } : {}),
+        ...(rotationAnchor ? { startAfterChannelId: rotationAnchor } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
         ...(deps.signal ? { signal: deps.signal } : {}),
         state: {
-            cursor: (channelId) => {
-                const row = getMentionWatchCursor.get(jobId, channelId) as { last_ts?: string } | undefined;
-                // An empty string is the placeholder a resume-only write leaves
-                // behind; it must not read as a cursor at ts 0.
-                return row?.last_ts ? row.last_ts : undefined;
-            },
-            resumeBefore: (channelId) => {
-                const row = getMentionWatchCursor.get(jobId, channelId) as { resume_before?: string | null } | undefined;
-                return row?.resume_before ? row.resume_before : undefined;
-            },
-            seen: (channelId, ts) => findMentionWatchSeen.get(jobId, channelId, ts) !== undefined,
+            cursor: (channelId) => readCursor(ns, channelId).lastTs,
+            resumeBefore: (channelId) => readCursor(ns, channelId).resumeBefore,
+            seen: (channelId, ts) => hasSeenMention(ns, channelId, ts),
         },
     });
 
@@ -167,9 +160,9 @@ export async function runMentionWatchTick(
     // describe what the SCAN did. Writing them afterwards would lose them
     // whenever the answering loop exits early, and the next tick would repeat the
     // same reads.
-    if (scan.lastChannelId) upsertMentionWatchRotation.run(jobId, scan.lastChannelId, now());
+    if (scan.lastChannelId) recordRotation(ns, scan.lastChannelId, now());
     for (const [channelId, bound] of scan.resumeBounds) {
-        setMentionWatchResumeBefore.run(jobId, channelId, jobId, channelId, bound, now());
+        setResumeBefore(ns, channelId, bound, now());
     }
 
     for (const hit of scan.hits) {
@@ -191,7 +184,7 @@ export async function runMentionWatchTick(
         if (!text) {
             // Deliberate silence is a decision about this message, so record it:
             // otherwise every tick asks again and pays for the same answer.
-            insertMentionWatchSeen.run(jobId, hit.channelId, hit.ts, now());
+            recordSeenMention(ns, hit.channelId, hit.ts, now());
             result.quiet += 1;
             continue;
         }
@@ -202,7 +195,7 @@ export async function runMentionWatchTick(
             log(`mention watch: send failed for ${hit.channelId}/${hit.ts}`);
             continue;
         }
-        insertMentionWatchSeen.run(jobId, hit.channelId, hit.ts, now());
+        recordSeenMention(ns, hit.channelId, hit.ts, now());
         result.answered += 1;
     }
 
@@ -218,7 +211,7 @@ export async function runMentionWatchTick(
     const unsettled = new Set<string>();
     const settledHigh = new Map<string, string>();
     for (const hit of scan.hits) {
-        if (findMentionWatchSeen.get(jobId, hit.channelId, hit.ts) === undefined) {
+        if (!hasSeenMention(ns, hit.channelId, hit.ts)) {
             unsettled.add(hit.channelId);
             continue;
         }
@@ -241,10 +234,10 @@ export async function runMentionWatchTick(
         // One unsettled hit holds the whole channel: the cursor may not pass a
         // message this tick failed to answer, even if a later one succeeded.
         if (unsettled.has(channelId)) continue;
-        upsertMentionWatchCursor.run(jobId, channelId, frontier, now());
+        advanceCursor(ns, channelId, frontier, now());
         // Receipts at or below the frontier can never be consulted again: the
         // next scan reads strictly above it.
-        pruneMentionWatchSeen.run(jobId, channelId, frontier);
+        pruneSeenMentions(ns, channelId, frontier);
     }
 
     return result;

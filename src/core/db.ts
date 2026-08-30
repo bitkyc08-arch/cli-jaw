@@ -191,6 +191,95 @@ db.exec(`
         updated_at      INTEGER NOT NULL
     );
 
+    -- v2: the ledger is keyed by WATCH IDENTITY, not by job id alone.
+    --
+    -- A job id is reusable. PUT /api/heartbeat accepts whatever id the client
+    -- sends and mints hb_<millis>_<index> otherwise, with no uniqueness check,
+    -- so the same id can name a different watch later. Under the v1 key that
+    -- inherited the old cursor, and a cursor outranks the since floor: the new watch
+    -- silently skipped everything below it. Missing a mention is the one outcome
+    -- this feature exists to prevent, so identity belongs in the key.
+    --
+    -- Identity is (workspace, user), not user alone: Slack identifies a person as
+    -- (team_id, id) and the runtime can re-authenticate against another workspace
+    -- without restarting. src/slack/identity.ts keys its cache the same way for
+    -- the same reason.
+    --
+    -- Separate columns rather than one packed string, because a delimiter that
+    -- appears in an id would make two identities collide, and nothing validates
+    -- the shape of a Slack id beyond non-emptiness.
+    --
+    -- With the key carrying identity, stale rows are unreachable rather than
+    -- wrong: a different watch never reads them. That is why there is no
+    -- automatic cleanup — a job absent from the file is not a dead identity, it
+    -- is a dormant one that may return under the same key and should resume.
+    CREATE TABLE IF NOT EXISTS mention_watch_seen_v2 (
+        job_id       TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        user_id      TEXT NOT NULL,
+        channel_id   TEXT NOT NULL,
+        message_ts   TEXT NOT NULL,
+        seen_at      INTEGER NOT NULL,
+        PRIMARY KEY (job_id, workspace_id, user_id, channel_id, message_ts)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mention_watch_seen_v2_ns
+        ON mention_watch_seen_v2 (job_id, workspace_id, user_id, seen_at);
+
+    CREATE TABLE IF NOT EXISTS mention_watch_cursor_v2 (
+        job_id        TEXT NOT NULL,
+        workspace_id  TEXT NOT NULL,
+        user_id       TEXT NOT NULL,
+        channel_id    TEXT NOT NULL,
+        last_ts       TEXT NOT NULL,
+        resume_before TEXT,
+        updated_at    INTEGER NOT NULL,
+        PRIMARY KEY (job_id, workspace_id, user_id, channel_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mention_watch_rotation_v2 (
+        job_id          TEXT NOT NULL,
+        workspace_id    TEXT NOT NULL,
+        user_id         TEXT NOT NULL,
+        last_channel_id TEXT NOT NULL,
+        updated_at      INTEGER NOT NULL,
+        PRIMARY KEY (job_id, workspace_id, user_id)
+    );
+
+    -- v1 rows cannot be migrated: nobody recorded WHICH workspace and user they
+    -- belonged to, and guessing is exactly the misattribution the v2 key exists
+    -- to prevent. Leaving them behind is not free either — a watch that starts
+    -- with no cursor walks backward through all reachable history and re-answers
+    -- what it already answered.
+    --
+    -- So such a job is QUARANTINED: held out of scheduling regardless of the
+    -- enabled flag in heartbeat.json, until an operator explicitly restarts it
+    -- with a fresh since floor. The state is durable and lives here rather than in
+    -- the config file: the file is the operator's intent, quarantine is the
+    -- system's judgement, and writing both to one place lets each erase the other.
+    -- It also has to survive a job being absent at upgrade time and returning
+    -- under the same id later, which a one-shot check at table creation would miss.
+    CREATE TABLE IF NOT EXISTS legacy_mention_watch_quarantine (
+        job_id      TEXT PRIMARY KEY,
+        status      TEXT NOT NULL,
+        detected_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        resolution  TEXT
+    );
+
+    -- Where a resolved job's v1 rows go. Kept rather than dropped: they are the
+    -- record of what that job actually answered, and an operator judging a
+    -- re-quarantine needs to be able to look.
+    CREATE TABLE IF NOT EXISTS legacy_mention_watch_archive (
+        table_name  TEXT NOT NULL,
+        job_id      TEXT NOT NULL,
+        channel_id  TEXT,
+        message_ts  TEXT,
+        payload     TEXT NOT NULL,
+        archived_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_legacy_mention_watch_archive_job
+        ON legacy_mention_watch_archive (job_id, table_name);
+
     CREATE TABLE IF NOT EXISTS heartbeat_events (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         job_id        TEXT,
@@ -797,6 +886,128 @@ export const getMentionWatchRotation = db.prepare(
     'SELECT last_channel_id FROM mention_watch_rotation WHERE job_id = ?');
 export const upsertMentionWatchRotation = db.prepare(
     'INSERT OR REPLACE INTO mention_watch_rotation (job_id, last_channel_id, updated_at) VALUES (?, ?, ?)');
+// ─── Mention watch v2: namespace-scoped ───────────
+// Reached only through src/memory/mention-watch-ledger.ts, which requires a
+// WatchNamespace. Every predicate below names all three parts of it.
+export const findMentionWatchSeenV2 = db.prepare(
+    'SELECT 1 FROM mention_watch_seen_v2 WHERE job_id = ? AND workspace_id = ? AND user_id = ? '
+    + 'AND channel_id = ? AND message_ts = ?');
+export const insertMentionWatchSeenV2 = db.prepare(
+    'INSERT OR IGNORE INTO mention_watch_seen_v2 '
+    + '(job_id, workspace_id, user_id, channel_id, message_ts, seen_at) VALUES (?, ?, ?, ?, ?, ?)');
+/** Bounded by the CURSOR, not by row count. A count-based prune deletes the
+    oldest rows regardless of position, and the cursor legitimately sits behind
+    them: it stops at the first mention still awaiting an answer while later ones
+    in the same window may already be answered. Dropping those receipts would make
+    the next scan answer them again. A row at or below the cursor is unreachable
+    instead, since the next scan reads strictly above it. Compared numerically
+    because a Slack ts is a decimal string whose string order breaks across digit
+    counts. */
+export const pruneMentionWatchSeenV2 = db.prepare(
+    'DELETE FROM mention_watch_seen_v2 WHERE job_id = ? AND workspace_id = ? AND user_id = ? '
+    + 'AND channel_id = ? AND CAST(message_ts AS REAL) <= CAST(? AS REAL)');
+export const getMentionWatchCursorV2 = db.prepare(
+    'SELECT last_ts, resume_before FROM mention_watch_cursor_v2 '
+    + 'WHERE job_id = ? AND workspace_id = ? AND user_id = ? AND channel_id = ?');
+/** Move the frontier. `resume_before` is left alone: the two advance on different
+    conditions, and folding them into one write would clear a pending descent
+    every time a cursor moved. */
+export const upsertMentionWatchCursorV2 = db.prepare(
+    'INSERT INTO mention_watch_cursor_v2 (job_id, workspace_id, user_id, channel_id, last_ts, updated_at) '
+    + 'VALUES (?, ?, ?, ?, ?, ?) '
+    + 'ON CONFLICT(job_id, workspace_id, user_id, channel_id) DO UPDATE SET '
+    + 'last_ts = excluded.last_ts, updated_at = excluded.updated_at');
+/** Store where an unfinished backward walk stopped, so the next tick descends
+    from there instead of re-reading the newest windows. The subquery carries the
+    full namespace too — borrowing another watch's last_ts would be exactly the
+    cross-identity leak this schema exists to prevent. */
+export const setMentionWatchResumeBeforeV2 = db.prepare(
+    'INSERT INTO mention_watch_cursor_v2 '
+    + '(job_id, workspace_id, user_id, channel_id, last_ts, resume_before, updated_at) '
+    + "VALUES (?, ?, ?, ?, COALESCE((SELECT last_ts FROM mention_watch_cursor_v2 "
+    + 'WHERE job_id = ? AND workspace_id = ? AND user_id = ? AND channel_id = ?), \'\'), ?, ?) '
+    + 'ON CONFLICT(job_id, workspace_id, user_id, channel_id) DO UPDATE SET '
+    + 'resume_before = excluded.resume_before, updated_at = excluded.updated_at');
+export const getMentionWatchRotationV2 = db.prepare(
+    'SELECT last_channel_id FROM mention_watch_rotation_v2 '
+    + 'WHERE job_id = ? AND workspace_id = ? AND user_id = ?');
+export const upsertMentionWatchRotationV2 = db.prepare(
+    'INSERT INTO mention_watch_rotation_v2 (job_id, workspace_id, user_id, last_channel_id, updated_at) '
+    + 'VALUES (?, ?, ?, ?, ?) '
+    + 'ON CONFLICT(job_id, workspace_id, user_id) DO UPDATE SET '
+    + 'last_channel_id = excluded.last_channel_id, updated_at = excluded.updated_at');
+
+// ─── Legacy v1 quarantine ─────────────────────────
+// Reached only through src/memory/legacy-mention-watch-quarantine.ts.
+/** Every job id that still has a v1 ledger row, in any of the three tables. */
+export const countLegacyMentionWatchRows = db.prepare(
+    'SELECT job_id FROM mention_watch_seen '
+    + 'UNION SELECT job_id FROM mention_watch_cursor '
+    + 'UNION SELECT job_id FROM mention_watch_rotation');
+export const insertLegacyQuarantine = db.prepare(
+    "INSERT OR IGNORE INTO legacy_mention_watch_quarantine (job_id, status, detected_at) VALUES (?, 'pending', ?)");
+export const getLegacyQuarantine = db.prepare(
+    'SELECT job_id, status, resolution FROM legacy_mention_watch_quarantine WHERE job_id = ?');
+/** Compare-and-set, so two concurrent approvals cannot both report success. */
+export const resolveLegacyQuarantine = db.prepare(
+    "UPDATE legacy_mention_watch_quarantine SET status = 'resolved', resolution = ?, resolved_at = ? "
+    + "WHERE job_id = ? AND status = 'pending'");
+/** A downgrade wrote v1 rows again after this job was resolved. Those receipts
+    exist only in v1, so the hold has to come back. */
+export const requarantineLegacy = db.prepare(
+    "UPDATE legacy_mention_watch_quarantine SET status = 'pending', detected_at = ?, "
+    + 'resolved_at = NULL, resolution = NULL WHERE job_id = ?');
+
+// Archive before delete. v1 rows are the record of what that job actually
+// answered, and an operator judging a re-quarantine needs to be able to look.
+export const archiveLegacySeen = db.prepare(
+    "INSERT INTO legacy_mention_watch_archive (table_name, job_id, channel_id, message_ts, payload, archived_at) "
+    + "SELECT 'mention_watch_seen', job_id, channel_id, message_ts, "
+    + "json_object('seen_at', seen_at), ? FROM mention_watch_seen WHERE job_id = ?");
+export const archiveLegacyCursor = db.prepare(
+    "INSERT INTO legacy_mention_watch_archive (table_name, job_id, channel_id, message_ts, payload, archived_at) "
+    + "SELECT 'mention_watch_cursor', job_id, channel_id, NULL, "
+    + "json_object('last_ts', last_ts, 'resume_before', resume_before, 'updated_at', updated_at), ? "
+    + 'FROM mention_watch_cursor WHERE job_id = ?');
+export const archiveLegacyRotation = db.prepare(
+    "INSERT INTO legacy_mention_watch_archive (table_name, job_id, channel_id, message_ts, payload, archived_at) "
+    + "SELECT 'mention_watch_rotation', job_id, last_channel_id, NULL, "
+    + "json_object('updated_at', updated_at), ? FROM mention_watch_rotation WHERE job_id = ?");
+const deleteLegacySeenForJobStmt = db.prepare('DELETE FROM mention_watch_seen WHERE job_id = ?');
+const deleteLegacyCursorForJobStmt = db.prepare('DELETE FROM mention_watch_cursor WHERE job_id = ?');
+const deleteLegacyRotationForJobStmt = db.prepare('DELETE FROM mention_watch_rotation WHERE job_id = ?');
+
+/** Archive, delete, and flip the status as ONE unit.
+ *
+ *  Split apart these produce two half-states: resolved with v1 rows still there,
+ *  which re-quarantines on the next load, or rows gone while still pending, which
+ *  is safe but makes a retry ambiguous. The caller must already have written the
+ *  new floor to heartbeat.json and seen the rename succeed — a crash between the
+ *  two leaves the file updated and the job still held, which a retry fixes.
+ *
+ *  The CAS runs FIRST. A losing claim returns rather than throwing, and a plain
+ *  return does not roll a better-sqlite3 transaction back — so archiving and
+ *  deleting ahead of it would COMMIT the destructive half of an approval that
+ *  reported failure. Claiming first means the loser touches nothing, and any
+ *  later throw takes the claim down with it.
+ *
+ *  Returns false when no pending row was there to claim, so a concurrent approval
+ *  cannot also report success. */
+export const commitLegacyFreshStart = db.transaction((
+    jobId: string,
+    resolution: string,
+    now: number,
+): boolean => {
+    if (resolveLegacyQuarantine.run(resolution, now, jobId).changes !== 1) return false;
+    archiveLegacySeen.run(now, jobId);
+    archiveLegacyCursor.run(now, jobId);
+    archiveLegacyRotation.run(now, jobId);
+    deleteLegacySeenForJobStmt.run(jobId);
+    deleteLegacyCursorForJobStmt.run(jobId);
+    deleteLegacyRotationForJobStmt.run(jobId);
+    return true;
+});
+
 const deleteMentionWatchSeenForJob = db.prepare('DELETE FROM mention_watch_seen WHERE job_id = ?');
 const deleteMentionWatchCursorForJob = db.prepare('DELETE FROM mention_watch_cursor WHERE job_id = ?');
 const deleteMentionWatchRotationForJob = db.prepare('DELETE FROM mention_watch_rotation WHERE job_id = ?');

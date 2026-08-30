@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 254개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 253개다.
+> 현재 라이브 surface는 총 256개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 255개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -43,7 +43,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/avatar.ts` | 146L | 4 | avatar summary + agent/user image upload/delete/read |
 | `src/routes/traces.ts` | 80L | 3 | public trace summary/event read routes |
 | `src/routes/link-preview.ts` | 319L | 2 | Rich link preview metadata fetch + guarded image proxy |
-| `src/routes/heartbeat.ts` | 47L | 2 | heartbeat GET + validated PUT |
+| `src/routes/heartbeat.ts` | 289L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
 | `src/routes/jaw-ceo.ts` | 321L | 20 | Jaw CEO coordinator: state/message/query/docs-edit/settings/events/pending/watch/audit/voice/confirmations |
 | `src/routes/runtime-context.ts` | 46L | 4 | runtime context entry CRUD (ephemeral prompt injection), mounted at `/api/runtime-context` |
 | `src/routes/security-audit.ts` | 18L | 2 | security audit log entries + verify, mounted at `/api/security-audit` |
@@ -128,7 +128,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | MCP/CLI/Quota | `GET/PUT /api/mcp` `POST /api/mcp/sync` `POST /api/mcp/install` `POST /api/mcp/reset` `GET /api/mcp/registry` `GET /api/cli-registry` `GET /api/cli-status` `GET /api/quota` `POST /api/copilot/refresh` `POST /api/pi/profiles/register` `GET /api/pi/models` |
 | Runtime Context | `GET /api/runtime-context` `POST /api/runtime-context` `DELETE /api/runtime-context/:id` `DELETE /api/runtime-context` |
 | Security Audit | `GET /api/security-audit/entries` `GET /api/security-audit/verify` |
-| Heartbeat | `GET/PUT /api/heartbeat` |
+| Heartbeat | `GET/PUT /api/heartbeat` `GET /api/heartbeat/:jobId/mention-watch-hold` `POST /api/heartbeat/:jobId/mention-watch-fresh-start` |
 | Browser | `POST /api/browser/start` `POST /api/browser/stop` `GET /api/browser/status` `GET /api/browser/doctor` `POST /api/browser/cleanup-runtimes` `GET /api/browser/snapshot` `POST /api/browser/screenshot` `POST /api/browser/act` `POST /api/browser/vision-click` `POST /api/browser/navigate` `POST /api/browser/reload` `POST /api/browser/resize` `GET /api/browser/tabs` `GET /api/browser/active-tab` `POST /api/browser/tab-switch` `POST /api/browser/tab-new` `POST /api/browser/tab-close` `POST /api/browser/tab-cleanup` `POST /api/browser/evaluate` `GET /api/browser/text` `GET /api/browser/dom` `GET /api/browser/console` `GET /api/browser/network` `POST /api/browser/fetch` `POST /api/browser/wait-for-selector` `POST /api/browser/wait-for-text` `POST /api/browser/web-ai/render` `POST /api/browser/web-ai/context-dry-run` `POST /api/browser/web-ai/context-render` `GET /api/browser/web-ai/status` `POST /api/browser/web-ai/send` `GET /api/browser/web-ai/poll` `GET /api/browser/web-ai/watch` `GET /api/browser/web-ai/watchers` `GET /api/browser/web-ai/sessions` `POST /api/browser/web-ai/sessions/prune` `GET /api/browser/web-ai/notifications` `GET /api/browser/web-ai/capabilities` `POST /api/browser/web-ai/query` `POST /api/browser/web-ai/code` `POST /api/browser/web-ai/code-extract` `POST /api/browser/web-ai/stop` `GET /api/browser/web-ai/diagnose` |
 | Code Mode | `GET /api/code/git-info` `GET /api/code/models` `POST /api/code/model-default` `POST /api/code/workspace/pick` `GET /api/code/model-assignments` `PUT /api/code/model-assignments/:role` `DELETE /api/code/model-assignments/:role` `GET /api/code/model-presets` `GET /api/code/sessions` `GET /api/code/sessions/stored` `POST /api/code/sessions/load` `POST /api/code/sessions/:id/ext` `POST /api/code/sessions/:id/fork` `POST /api/code/sessions/:id/model` `POST /api/code/sessions` `POST /api/code/sessions/:id/prompt` `POST /api/code/sessions/:id/cancel` `POST /api/code/sessions/:id/config` `DELETE /api/code/sessions/:id` `GET /api/code/permissions` `POST /api/code/permissions/:id` |
 | Orchestrate | `POST /api/orchestrate/reset` `GET /api/orchestrate/state` `GET /api/orchestrate/workers` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` (also accepts a current/recent `runId`) `GET /api/orchestrate/worker-runs` `GET /api/orchestrate/worker-runs/:runId` `GET /api/orchestrate/worker-runs/:runId/events` `GET /api/orchestrate/worker-runs/:runId/output` `GET /api/orchestrate/snapshot` `DELETE /api/orchestrate/queue/:id` `POST /api/orchestrate/queue/:id/hold` `DELETE /api/orchestrate/queue/:id/hold` `POST /api/orchestrate/queue/:id/steer` `POST /api/orchestrate/dispatch/pending` `GET /api/orchestrate/dispatch/pending/:jti` `POST /api/orchestrate/dispatch` `POST /api/orchestrate/dispatch/batch` `GET /api/orchestrate/worker/:agentId/result` (also accepts a current `runId`) `PUT /api/orchestrate/state` |
@@ -151,9 +151,17 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 254개 route handler 기준이다. 이 중 API 엔드포인트는 253개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 256개 route handler 기준이다. 이 중 API 엔드포인트는 255개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 `PUT /api/heartbeat`의 job은 `mentionWatch: { channel: "slack", userId: "U...", channelIds: ["C..."], maxHits?, since? }`를 선택적으로 받는다. `channelIds`는 비어 있지 않아야 하고 저장 시 `slack.channelIds` allowlist의 부분집합이어야 하며, 실행 tick 직전 현재 allowlist와 다시 교집합한다. job id가 같은 기존 값에 대해 필드가 없으면 상속하고, `null`이면 삭제하며, 잘못된 값은 `400 invalid heartbeat mention watch`다. 파일 로드 정규화에서 잘못된 `mentionWatch`는 해당 job을 `enabled: false`로 내린다. 기본 운영값은 비활성이고, 설정된 watch는 별도 daemon이 아니라 기존 `runHeartbeatJob`에서 실행된다.
+
+같은 job id를 한 요청에 두 번 보내면 `400 duplicate heartbeat job id`다. id는 ledger namespace의 일부라서, 두 job이 한 id를 쓰면 뒤쪽이 앞쪽의 cursor를 물려받아 그 아래 구간을 통째로 건너뛴다.
+
+`since`는 bootstrap 전용 floor다. 이미 cursor가 있는 watch에서는 cursor가 이기므로, `since`만 바꿔서 과거를 다시 읽게 만들 수는 없다.
+
+`GET /api/heartbeat/:jobId/mention-watch-hold` → `{ jobId, held, state }`. v1 ledger가 남은 job은 `heartbeat.json`의 `enabled`와 무관하게 스케줄에서 보류(hold)된다. v1 행에는 workspace/user가 없어서 v2 키로 옮기려면 소유자를 추측해야 하고, 그 추측이 곧 v2가 막으려는 오배정이기 때문이다.
+
+`POST /api/heartbeat/:jobId/mention-watch-fresh-start` `{ since }` → 보류 해제. 빈 `since`는 `400`이다(floor 없는 watch는 도달 가능한 history를 거꾸로 훑어 이미 답한 것을 다시 답한다). workspace 검증(`auth.test`)이 유일한 await이고 그 뒤는 전부 동기다 — 검증 전에 hold와 파일을 snapshot한 뒤 await하면, 패배한 승인이 낡은 파일 사본으로 재개해 승자의 floor를 덮어쓴다(DB는 그 뒤에야 conflict를 알려 주므로 파일 손상은 이미 끝나 있다). 순서는 파일 저장(temp+rename) → 단일 트랜잭션(`pending`→`resolved` CAS → v1 archive → delete) → `startHeartbeat()`이며 교환 불가다. 사이에서 죽으면 새 floor만 저장되고 보류는 남으므로 재시도로 복구된다. 반대 순서는 옛 floor가 살아 있는 채로 보류를 풀어 backlog를 replay한다. 같은 `since`로 재시도하면 `already-resolved`, 다른 `since`면 `409`, 보류 이력이 없으면 `404`다. 일반 `PUT`의 `enabled: true`는 승인으로 읽지 않는다 — 모든 UI가 `mentionWatch`를 생략해 보내므로, 저장 클릭을 동의로 해석하면 무관한 편집이 보류를 풀어 버린다.
 
 `POST /api/channel/send`에서 `channel`은 `telegram|discord|slack|active` transport다. 대화 ID는 `chat_id` 또는 `target.targetId`에 넣는다. Slack thread를 명시할 때 `target.threadId`는 reply ts가 아닌 parent message ts다. target을 생략하면 검증된 현재 대화와 thread를 사용한다. 빈 `slack.channelIds`는 임의 explicit channel을 열지 않으며, 이미 저장·검증된 `lastActive/latestSeen`과 같은 conversation/thread만 명시적으로 재사용할 수 있다.
 

@@ -8,7 +8,10 @@ import assert from 'node:assert/strict';
 import { runMentionWatchTick } from '../../src/memory/heartbeat-mention-watch.ts';
 import type { MentionWatchDeps } from '../../src/memory/heartbeat-mention-watch.ts';
 import type { MentionHit } from '../../src/slack/mention-watch.ts';
-import { clearMentionWatchState, findMentionWatchSeen, getMentionWatchCursor, getMentionWatchRotation } from '../../src/core/db.ts';
+import {
+    watchNamespace, hasSeenMention, readCursor, readRotation,
+} from '../../src/memory/mention-watch-ledger.ts';
+import type { WatchNamespace } from '../../src/memory/mention-watch-ledger.ts';
 import type { HeartbeatMentionWatch } from '../../src/core/config.ts';
 import { recordSelfDelivery, resetTurnDeliveryState, wasSelfDelivered } from '../../src/messaging/turn-delivery.ts';
 
@@ -64,18 +67,23 @@ function deps(
     };
 }
 
-function job(id: string) {
-    clearMentionWatchState(id);
-    return { id, name: id };
+const TEAM = 'T08PYEQA064';
+
+/** A fresh namespace per test. Distinct job ids give isolation without any
+ *  cleanup: the ledger is keyed by identity, so two tests cannot collide. */
+function job(id: string): { id: string; name: string; ns: WatchNamespace } {
+    const ns = watchNamespace(id, TEAM, SUJI);
+    assert.ok(ns);
+    return { id, name: id, ns };
 }
 
 test('answers a mention in its thread and records the receipt', async () => {
-    const id = job('mw_basic').id;
+    const { id, ns } = job('mw_basic');
     const { impl } = historyFetch({
         [CHANNEL]: [{ ts: '100.000100', text: MENTION + ' 이거 어떻게 생각해?', user: 'U0BME0C36SV' }],
     });
     const { deps: d, recorder } = deps(impl);
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
 
     assert.equal(result.answered, 1);
     assert.equal(result.failed, 0);
@@ -86,15 +94,15 @@ test('answers a mention in its thread and records the receipt', async () => {
     // now covers it: the next scan reads strictly above, so it can never be
     // consulted again. Idempotence after this point is the cursor's job, and the
     // next test is the one that proves it.
-    const cursor = getMentionWatchCursor.get(id, CHANNEL) as { last_ts?: string } | undefined;
-    assert.equal(cursor?.last_ts, '100.000100');
-    assert.equal(findMentionWatchSeen.get(id, CHANNEL, '100.000100'), undefined);
+    const cursor = readCursor(ns, CHANNEL) as { lastTs?: string };
+    assert.equal(cursor?.lastTs, '100.000100');
+    assert.equal(hasSeenMention(ns, CHANNEL, '100.000100'), false);
 });
 
 test('an answered mention below an unanswered one keeps the channel pinned', async () => {
     // One failed send holds the whole channel: the cursor may not pass a message
     // this tick could not answer, even though a LATER one succeeded.
-    const id = job('mw_partial').id;
+    const { id, ns } = job('mw_partial');
     const { impl } = historyFetch({
         [CHANNEL]: [
             { ts: '150.000100', text: MENTION + ' 첫 질문', user: 'U0BME0C36SV' },
@@ -104,64 +112,64 @@ test('an answered mention below an unanswered one keeps the channel pinned', asy
     const { deps: d } = deps(impl, {
         send: async (hit) => hit.ts !== '150.000100',
     });
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
     assert.equal(result.failed, 1);
     assert.equal(result.answered, 1);
-    const cursor = getMentionWatchCursor.get(id, CHANNEL) as { last_ts?: string } | undefined;
-    assert.ok(!cursor?.last_ts, 'cursor moved past a mention that failed to send');
+    const cursor = readCursor(ns, CHANNEL) as { lastTs?: string };
+    assert.ok(!cursor?.lastTs, 'cursor moved past a mention that failed to send');
     // The delivered one keeps its receipt, so the retry tick does not re-answer it.
-    assert.notEqual(findMentionWatchSeen.get(id, CHANNEL, '150.000200'), undefined);
+    assert.equal(hasSeenMention(ns, CHANNEL, '150.000200'), true);
 });
 
 test('a second tick does not answer the same message twice', async () => {
-    const id = job('mw_idempotent').id;
+    const { id, ns } = job('mw_idempotent');
     const messages = [{ ts: '200.000100', text: MENTION + ' 확인해줘', user: 'U0BME0C36SV' }];
     for (let tick = 0; tick < 2; tick += 1) {
         const { impl } = historyFetch({ [CHANNEL]: messages });
         const { deps: d, recorder } = deps(impl);
-        const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+        const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
         assert.equal(result.answered, tick === 0 ? 1 : 0, 'tick ' + tick);
         assert.equal(recorder.sent.length, tick === 0 ? 1 : 0, 'tick ' + tick);
     }
 });
 
 test('a failed send leaves no receipt, so the next tick retries it', async () => {
-    const id = job('mw_send_fails').id;
+    const { id, ns } = job('mw_send_fails');
     const messages = [{ ts: '300.000100', text: MENTION + ' 답 좀', user: 'U0BME0C36SV' }];
     const first = historyFetch({ [CHANNEL]: messages });
     const { deps: d1 } = deps(first.impl, { send: async () => false });
-    const failed = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d1);
+    const failed = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d1);
     assert.equal(failed.failed, 1);
     assert.equal(failed.answered, 0);
-    assert.equal(findMentionWatchSeen.get(id, CHANNEL, '300.000100'), undefined);
+    assert.equal(hasSeenMention(ns, CHANNEL, '300.000100'), false);
     // The frontier must NOT have moved past an undelivered message.
-    const stalled = getMentionWatchCursor.get(id, CHANNEL) as { last_ts?: string } | undefined;
-    assert.ok(!stalled?.last_ts, 'cursor moved past an undelivered mention');
+    const stalled = readCursor(ns, CHANNEL) as { lastTs?: string };
+    assert.ok(!stalled?.lastTs, 'cursor moved past an undelivered mention');
 
     const second = historyFetch({ [CHANNEL]: messages });
     const { deps: d2, recorder } = deps(second.impl);
-    const retried = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d2);
+    const retried = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d2);
     assert.equal(retried.answered, 1);
     assert.equal(recorder.sent.length, 1);
 });
 
 test('a quiet answer is recorded, so the agent is not asked again', async () => {
-    const id = job('mw_quiet').id;
+    const { id, ns } = job('mw_quiet');
     const messages = [{ ts: '400.000100', text: MENTION + ' 참고만', user: 'U0BME0C36SV' }];
     const first = historyFetch({ [CHANNEL]: messages });
     const { deps: d1, recorder: r1 } = deps(first.impl, { answer: async () => null });
-    const quiet = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d1);
+    const quiet = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d1);
     assert.equal(quiet.quiet, 1);
     assert.equal(r1.sent.length, 0);
 
     const second = historyFetch({ [CHANNEL]: messages });
     const { deps: d2, recorder: r2 } = deps(second.impl);
-    await runMentionWatchTick(id, { id, name: id }, watchConfig(), d2);
+    await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d2);
     assert.equal(r2.asked.length, 0, 'a decided-quiet message was asked again');
 });
 
 test('a yield between items abandons the rest of the batch', async () => {
-    const id = job('mw_yield').id;
+    const { id, ns } = job('mw_yield');
     const { impl } = historyFetch({
         [CHANNEL]: [
             { ts: '500.000100', text: MENTION + ' 첫째', user: 'U0BME0C36SV' },
@@ -175,57 +183,57 @@ test('a yield between items abandons the rest of the batch', async () => {
         // first answer, and they outrank the rest of this backlog.
         yieldNow: () => { calls += 1; return calls > 1 ? 'yielded' : null; },
     });
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
     assert.equal(result.answered, 1);
     assert.equal(result.stoppedBecause, 'yielded');
     assert.equal(recorder.sent.length, 1);
     // The two it did not reach must remain unrecorded for the next tick.
-    assert.equal(findMentionWatchSeen.get(id, CHANNEL, '500.000200'), undefined);
-    assert.equal(findMentionWatchSeen.get(id, CHANNEL, '500.000300'), undefined);
+    assert.equal(hasSeenMention(ns, CHANNEL, '500.000200'), false);
+    assert.equal(hasSeenMention(ns, CHANNEL, '500.000300'), false);
 });
 
 test('channels outside the live allowlist are skipped, not scanned', async () => {
     // Re-derived every tick: the allowlist can shrink after the job was saved,
     // and an answer addressed to a dropped channel would be refused with a 403.
-    const id = job('mw_allowlist').id;
+    const { id, ns } = job('mw_allowlist');
     const { impl, reads } = historyFetch({ [CHANNEL]: [] });
     const { deps: d } = deps(impl, { allowlist: ['C_ONLY_THIS'] });
     const result = await runMentionWatchTick(
-        id, { id, name: id }, watchConfig({ channelIds: [CHANNEL, 'C_ONLY_THIS'] }), d,
+        ns, { id, name: id }, watchConfig({ channelIds: [CHANNEL, 'C_ONLY_THIS'] }), d,
     );
     assert.deepEqual(result.unauthorized, [CHANNEL]);
     assert.deepEqual(reads, ['C_ONLY_THIS']);
 });
 
 test('every channel being unauthorized asks Slack for nothing', async () => {
-    const id = job('mw_all_denied').id;
+    const { id, ns } = job('mw_all_denied');
     const { impl, reads } = historyFetch({ [CHANNEL]: [] });
     const { deps: d } = deps(impl, { allowlist: ['C_SOMEWHERE_ELSE'] });
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
     assert.deepEqual(reads, []);
     assert.deepEqual(result.unauthorized, [CHANNEL]);
     assert.equal(result.answered, 0);
 });
 
 test('the rotation anchor is persisted for the next tick', async () => {
-    const id = job('mw_rotation').id;
+    const { id, ns } = job('mw_rotation');
     const { impl } = historyFetch({ [CHANNEL]: [], C_SECOND: [] });
     const { deps: d } = deps(impl, { allowlist: [CHANNEL, 'C_SECOND'] });
-    await runMentionWatchTick(id, { id, name: id }, watchConfig({ channelIds: [CHANNEL, 'C_SECOND'] }), d);
-    const rotation = getMentionWatchRotation.get(id) as { last_channel_id?: string } | undefined;
-    assert.equal(rotation?.last_channel_id, 'C_SECOND');
+    await runMentionWatchTick(ns, { id, name: id }, watchConfig({ channelIds: [CHANNEL, 'C_SECOND'] }), d);
+    const rotation = readRotation(ns);
+    assert.equal(rotation, 'C_SECOND');
 });
 
 test('an empty allowlist scans nothing, because those sends would 403', async () => {
     // `authorizeExplicitTarget` vouches only for conversations this process has
     // evidence for when no allowlist is configured, so reading these channels
     // would find mentions, pay for answers, and get 403 on every send.
-    const id = job('mw_no_allowlist').id;
+    const { id, ns } = job('mw_no_allowlist');
     const { impl, reads } = historyFetch({
         [CHANNEL]: [{ ts: '650.000100', text: MENTION + ' 답해줘', user: 'U0BME0C36SV' }],
     });
     const { deps: d, recorder } = deps(impl, { allowlist: [] });
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
     assert.deepEqual(reads, []);
     assert.deepEqual(result.unauthorized, [CHANNEL]);
     assert.equal(recorder.asked.length, 0);
@@ -235,7 +243,7 @@ test('an agent that posted the answer itself is not answered twice', async () =>
     // The prompt tells the agent the server posts, and `/api/channel/send` stays
     // reachable. When it uses it, these words are already in the thread; posting
     // them again is exactly the duplicate the user reported.
-    const id = job('mw_self_delivered').id;
+    const { id, ns } = job('mw_self_delivered');
     const { impl } = historyFetch({
         [CHANNEL]: [{ ts: '800.000100', text: MENTION + ' 이거 어때?', user: 'U0BME0C36SV' }],
     });
@@ -256,7 +264,7 @@ test('an agent that posted the answer itself is not answered twice', async () =>
     // The real path reads its anchor and consults the claim; the fake `send` here
     // would hide that, so the check lives in heartbeat.ts and this test proves the
     // claim is visible and matches at the moment the send would run.
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
     assert.equal(result.answered, 1);
     assert.equal(
         wasSelfDelivered({
@@ -269,10 +277,10 @@ test('an agent that posted the answer itself is not answered twice', async () =>
 });
 
 test('nothing found means the agent is never invoked', async () => {
-    const id = job('mw_empty').id;
+    const { id, ns } = job('mw_empty');
     const { impl } = historyFetch({ [CHANNEL]: [{ ts: '600.000100', text: '관계 없는 잡담', user: 'U0BME0C36SV' }] });
     const { deps: d, recorder } = deps(impl);
-    const result = await runMentionWatchTick(id, { id, name: id }, watchConfig(), d);
+    const result = await runMentionWatchTick(ns, { id, name: id }, watchConfig(), d);
     assert.equal(result.answered, 0);
     assert.equal(recorder.asked.length, 0, 'the agent was invoked with no mentions to answer');
 });

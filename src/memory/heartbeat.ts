@@ -16,6 +16,9 @@ import { nextDeliverySeq, wasSelfDelivered } from '../messaging/turn-delivery.js
 import { isHeartbeatDestination, isHeartbeatMentionWatch } from '../core/config.js';
 import type { HeartbeatDestination, HeartbeatMentionWatch } from '../core/config.js';
 import { runMentionWatchTick } from './heartbeat-mention-watch.js';
+import { watchNamespace } from './mention-watch-ledger.js';
+import { detectLegacyMentionWatch, isQuarantined } from './legacy-mention-watch-quarantine.js';
+import { verifiedSlackWorkspace } from '../slack/verified-workspace.js';
 import type { MentionHit } from '../slack/mention-watch.js';
 import { getSlackSelfUserId } from '../slack/bot.js';
 import { readSlackAllowlist } from '../slack/events.js';
@@ -87,6 +90,10 @@ function pendingSnapshot(reason?: HeartbeatPendingReason, policy?: HeartbeatPend
         pending: pendingJobs.length,
         deferredPending,
         agentBusyPending,
+        // How many jobs actually own a timer. A job held for an unmigrated ledger
+        // is absent here, which is the difference between 'not scheduled' and
+        // 'scheduled and refused on every tick'.
+        scheduled: heartbeatTimers.size,
         ...(reason ? { reason } : {}),
         ...(policy ? { policy } : {}),
     };
@@ -114,8 +121,24 @@ export function getHeartbeatRuntimeState() {
 export function startHeartbeat() {
     stopHeartbeat();
     const { jobs } = loadHeartbeatFile();
+    // Re-run on every (re)start rather than once at table creation. A job that
+    // was absent at upgrade time and returns under the same id later carries the
+    // same unmigrated ledger, and a one-shot check would wave it through.
+    const held = detectLegacyMentionWatch(Date.now());
+    if (held.length) {
+        log.warn(`[heartbeat] ${held.length} job(s) held for an unmigrated mention-watch ledger: ${held.join(', ')}`);
+    }
     for (const job of jobs) {
         if (!job?.enabled || !job.id) continue;
+        // No timer at all for a held job. The tick-time check still has to exist
+        // for a hold that appears while a timer is already live, but stopping only
+        // there would leave the job counted as active and logging a refusal on
+        // every interval — which reads as a broken job rather than a held one.
+        if (job.mentionWatch && isQuarantined(job.id)) {
+            log.warn(`[heartbeat:${job.name}] not scheduled: unmigrated mention-watch ledger. `
+                + `POST /api/heartbeat/${job.id}/mention-watch-fresh-start with a new since to clear it.`);
+            continue;
+        }
         const schedule = normalizeHeartbeatSchedule(job.schedule);
         if (schedule.kind === 'cron') {
             const cronError = validateHeartbeatCron(schedule.cron);
@@ -213,7 +236,32 @@ async function runMentionWatchJob(job: Record<string, any>, watch: HeartbeatMent
         return false;
     }
 
-    const outcome = await runMentionWatchTick(String(job["id"] ?? job["name"] ?? 'unknown'), job, watch, {
+    const jobId = String(job["id"] ?? job["name"] ?? 'unknown');
+    // A job whose v1 ledger was never migrated is HELD until an operator restarts
+    // it with a fresh floor. Checked here rather than at load time because the
+    // enabled flag in heartbeat.json is the operator's intent, while this is the
+    // system's judgement — and a job absent at upgrade time can return under the
+    // same id later.
+    if (isQuarantined(jobId)) {
+        log.error(`[heartbeat:${job["name"]}] held: this job has an unmigrated mention-watch ledger. `
+            + `Restart it with a fresh mentionWatch.since to clear the hold.`);
+        return false;
+    }
+
+    // The ledger is keyed by (workspace, user), so the workspace has to come from
+    // Slack rather than from settings — which records a team id once and never
+    // re-checks it against the token. Taken ONCE here and passed as an immutable
+    // snapshot: re-reading it per write would let a tick that started before a
+    // workspace switch file its later rows under the new one.
+    const verified = await verifiedSlackWorkspace(token);
+    const ns = verified && watchNamespace(jobId, verified.teamId, watch.userId);
+    if (!ns) {
+        log.error(`[heartbeat:${job["name"]}] could not verify the Slack workspace for this token; `
+            + `skipping this tick rather than filing the ledger under a guess`);
+        return false;
+    }
+
+    const outcome = await runMentionWatchTick(ns, job, watch, {
         token,
         selfUserId: getSlackSelfUserId(),
         allowlist: readSlackAllowlist(sc["channelIds"]),

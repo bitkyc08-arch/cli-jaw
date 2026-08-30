@@ -1,9 +1,11 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
-import { loadHeartbeatFile, saveHeartbeatFile, isHeartbeatDestination, isHeartbeatMentionWatch } from '../core/config.js';
-import type { HeartbeatDestination, HeartbeatMentionWatch } from '../core/config.js';
+import { loadHeartbeatFile, saveHeartbeatFile, isHeartbeatDestination, isHeartbeatMentionWatch, settings } from '../core/config.js';
+import type { HeartbeatDestination, HeartbeatMentionWatch, HeartbeatJob } from '../core/config.js';
 import { startHeartbeat } from '../memory/heartbeat.js';
 import { validateHeartbeatScheduleInput } from '../memory/heartbeat-schedule.js';
+import { approveLegacyFreshStart, quarantineState, detectLegacyMentionWatch } from '../memory/legacy-mention-watch-quarantine.js';
+import { verifiedSlackWorkspace } from '../slack/verified-workspace.js';
 import { getEmployees } from '../core/db.js';
 import type { EmployeeRow } from '../core/employees.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -98,6 +100,7 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
         const existingById = new Map(loadHeartbeatFile().jobs.filter(job => job.id).map(job => [job.id, job]));
         const employeeNames = new Set((getEmployees.all() as EmployeeRow[]).map(employee => employee.name));
         const idPrefix = `hb_${Date.now()}`;
+        const seenIds = new Set<string>();
         for (const [index, rawJob] of data.jobs.entries()) {
             const job = (rawJob && typeof rawJob === 'object') ? rawJob as Record<string, unknown> : {};
             const scheduleResult = validateHeartbeatScheduleInput(job["schedule"]);
@@ -114,6 +117,15 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
                 });
                 return;
             }
+            // Two jobs under one id would share a mention-watch ledger namespace,
+            // so the second one inherits the first one's cursor and skips every
+            // message below it. Rejected rather than de-duplicated: silently
+            // dropping one of them loses a job the operator just asked to save.
+            if (seenIds.has(jobId)) {
+                res.status(400).json({ error: 'duplicate heartbeat job id', index, jobId });
+                return;
+            }
+            seenIds.add(jobId);
             const existing = existingById.get(jobId);
             const runnerResult = normalizeHeartbeatPutRunnerFields(job, existing, employeeNames);
             if (!runnerResult.ok) { res.status(400).json({ error: runnerResult.error, index, jobId }); return; }
@@ -136,5 +148,142 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
         saveHeartbeatFile(payload);
         startHeartbeat();
         res.json(payload);
+    });
+
+    // Read the hold, so an operator can tell a held job from a broken one. The
+    // scheduler refuses a quarantined job on every tick and says why in the log,
+    // but a log line is not something the dashboard can show.
+    //
+    // Detection runs here rather than being assumed from startup. `startHeartbeat`
+    // is called after the server is already listening, so a request arriving in
+    // that window would find v1 rows with no marker yet and be told the job is
+    // fine. It is INSERT OR IGNORE, so calling it again is free.
+    app.get('/api/heartbeat/:jobId/mention-watch-hold', requireAuth, (req, res) => {
+        const jobId = String(req.params['jobId'] ?? '').trim();
+        if (!jobId) { res.status(400).json({ error: 'jobId required' }); return; }
+        detectLegacyMentionWatch(Date.now());
+        const state = quarantineState(jobId);
+        res.json({ jobId, held: state?.status === 'pending', state });
+    });
+
+    // Release a held job with a NEW floor.
+    //
+    // A plain `enabled: true` PUT is deliberately not accepted as the approval:
+    // every shipped UI rebuilds a job from a fixed field set and omits
+    // `mentionWatch` entirely, so reading a save click as consent would let any
+    // unrelated edit lift the hold and replay the backlog.
+    //
+    // The order below is the crash-safety argument and is not interchangeable.
+    // `since` lives in heartbeat.json and the hold lives in SQLite, so the two
+    // cannot share a transaction. Writing the file first means a crash before the
+    // database step leaves the new floor saved and the job still held, which a
+    // retry fixes. The reverse lifts the hold while the OLD floor is still live.
+    app.post('/api/heartbeat/:jobId/mention-watch-fresh-start', requireAuth, async (req, res) => {
+        const jobId = String(req.params['jobId'] ?? '').trim();
+        if (!jobId) { res.status(400).json({ error: 'jobId required' }); return; }
+        const since = String((req.body as Record<string, unknown> | undefined)?.['since'] ?? '').trim();
+        // An empty floor is what makes this dangerous: the watch would walk
+        // backward through all reachable history and answer it again.
+        if (!since) { res.status(400).json({ error: 'since required to restart a held mention watch', jobId }); return; }
+
+        // The ONE await comes first, before anything is read.
+        //
+        // Verification needs the network, and every decision after it reads state
+        // that a concurrent request can change. Snapshotting the hold and the file
+        // and THEN awaiting is what lets a losing approval resume with a stale
+        // whole-file copy and write its floor over the winner's — the DB tells it
+        // 'conflict' only after the file damage is already done. Doing the await
+        // up front leaves everything below it synchronous, so Node's single thread
+        // is the mutual exclusion.
+        //
+        // The workspace belongs in the record because the ledger is keyed by it: an
+        // approval granted while the token pointed at workspace A is otherwise
+        // indistinguishable from one granted under B, and the v2 rows the job goes
+        // on to write land in a namespace the operator was not looking at. Failing
+        // verification is a refusal, not a default.
+        const readBotToken = (): string =>
+            String((settings['slack'] as Record<string, unknown> | undefined)?.['botToken'] ?? '').trim();
+        const token = readBotToken();
+        const verified = token ? await verifiedSlackWorkspace(token) : null;
+        if (!verified) {
+            res.status(409).json({
+                error: 'cannot verify the Slack workspace for this token; approving would record a guessed namespace',
+                jobId,
+            });
+            return;
+        }
+        // A settings write during that await can have swapped the token. The
+        // verified team id then describes the OLD credential while the job the
+        // approval is about to release runs under the new one — the recorded
+        // provenance and the namespace actually written would disagree, which is
+        // the exact confusion recording the workspace exists to prevent.
+        if (readBotToken() !== token) {
+            res.status(409).json({
+                error: 'the Slack bot token changed while verifying; retry so the approval records the workspace it will actually run under',
+                jobId,
+            });
+            return;
+        }
+
+        // Everything from here down runs without yielding.
+        //
+        // Same startup-window reason as the GET: without this, a legacy job whose
+        // marker has not been written yet reads as 'never held' and 404s.
+        detectLegacyMentionWatch(Date.now());
+        const state = quarantineState(jobId);
+        if (!state) { res.status(404).json({ error: 'no mention-watch hold for this job', jobId }); return; }
+
+        const file = loadHeartbeatFile();
+        const job = file.jobs.find(candidate => candidate.id === jobId);
+        if (!job?.mentionWatch) {
+            res.status(400).json({ error: 'job has no mention watch to restart', jobId });
+            return;
+        }
+
+        const resolution = JSON.stringify({ since, userId: job.mentionWatch.userId, workspaceId: verified.teamId });
+        // Already resolved with the same decision is the caller retrying after a
+        // lost response; a different one is a second, conflicting decision.
+        if (state.status === 'resolved') {
+            const outcome = approveLegacyFreshStart(jobId, resolution, Date.now());
+            if (outcome === 'conflict') {
+                res.status(409).json({ error: 'this hold was already cleared with a different floor', jobId, state });
+                return;
+            }
+            // The recorded decision matching is not enough. The floor lives in the
+            // file, and an edit after the approval can have moved it — reporting
+            // this floor as in force while another one governs the scan is the one
+            // wrong answer available here. Rewriting silently is worse: it would
+            // undo a later deliberate change.
+            if ((job.mentionWatch.since ?? '') !== since) {
+                res.status(409).json({
+                    error: 'the persisted floor no longer matches this approval',
+                    jobId,
+                    approvedSince: since,
+                    persistedSince: job.mentionWatch.since ?? null,
+                });
+                return;
+            }
+            res.json({ jobId, outcome, since });
+            return;
+        }
+
+        const updated: HeartbeatJob[] = file.jobs.map(candidate => (candidate.id === jobId
+            ? { ...candidate, mentionWatch: { ...job.mentionWatch!, since } }
+            : candidate));
+        // Step 1: the file, and only past this line is the new floor durable.
+        saveHeartbeatFile({ jobs: updated });
+        // Step 2: claim the hold, then archive and delete the v1 rows, as one unit.
+        const outcome = approveLegacyFreshStart(jobId, resolution, Date.now());
+        if (outcome === 'conflict') {
+            res.status(409).json({ error: 'this hold was already cleared with a different floor', jobId, state });
+            return;
+        }
+        if (outcome === 'not-pending') {
+            res.status(409).json({ error: 'the hold changed while restarting; retry', jobId });
+            return;
+        }
+        // Step 3: only now can the job be scheduled again.
+        startHeartbeat();
+        res.json({ jobId, outcome, since });
     });
 }

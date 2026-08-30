@@ -1474,5 +1474,23 @@ function normalizeHeartbeatJob(job: HeartbeatJob): HeartbeatJob {
 }
 
 export function saveHeartbeatFile(data: HeartbeatFile | Record<string, unknown>) {
-    fs.writeFileSync(HEARTBEAT_JOBS_PATH, JSON.stringify(data, null, 2));
+    // Temp file then rename, so a crash or a full disk mid-write cannot leave a
+    // TRUNCATED heartbeat.json behind. Writing in place fails in the worst
+    // possible way: the file still parses as JSON right up until it does not,
+    // and on the next boot every scheduled job is simply gone.
+    //
+    // Callers that pair this with a database write depend on the ordering too:
+    // the rename is the point after which the file is known good, so the
+    // database step belongs strictly after it.
+    //
+    // Same directory on purpose — rename is only atomic within one filesystem.
+    const tmp = `${HEARTBEAT_JOBS_PATH}.${process.pid}.tmp`;
+    try {
+        fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+        fs.renameSync(tmp, HEARTBEAT_JOBS_PATH);
+    } catch (error) {
+        // Leaving the temp file would accumulate one per failed save.
+        try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+        throw error;
+    }
 }
