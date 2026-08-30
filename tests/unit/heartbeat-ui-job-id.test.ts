@@ -32,4 +32,3 @@ test('the counter is declared before its first use, so it cannot hit the TDZ', (
     // runtime, which would break adding a job entirely.
     assert.ok(declaration < firstUse, 'counter is used before it is declared');
 });
-

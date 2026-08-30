@@ -9,6 +9,7 @@ import { abortableDelay } from '../messaging/outbound-lifecycle.js';
 import { chunkSlackMessage, toMrkdwn } from './format.js';
 import { MAX_INLINE_RATE_LIMIT_MS, classifySendFailure, retryAfterMs } from '../messaging/retry.js';
 import { redactOutboundPayload } from '../messaging/redact.js';
+import { log } from '../core/logger.js';
 
 export type SlackSendClientResult =
     | { token: string; reason?: never; status?: never }
@@ -133,6 +134,25 @@ export async function sendSlackText(
             return slackFailure(describeSlackError(result.error, result.data), result.status, result.retryAfterMs, result.grantedScopes);
         }
     }
+    // Recorded HERE, not only at `sendChannelOutput`, because most Slack posts
+    // never pass through that choke point: the dispatch settle path, the queued
+    // reply, the recovered-queue forwarder, and the generic forwarder all call
+    // this transport directly. Instrumenting only the choke point left those
+    // invisible — which is precisely the set a 'did one turn answer twice' audit
+    // needs, so a census over the other record could look complete while missing
+    // them.
+    //
+    // `chunks` matters: one logical answer over the Slack length limit becomes
+    // several posts, and counting posts instead of sends would read a long answer
+    // as a duplicate.
+    //
+    // No body, same reason as elsewhere: destination and shape, never the words.
+    log.event('slack.post', {
+        target: target.targetId,
+        ...(target.threadId ? { threaded: true } : {}),
+        chunks: chunks.length,
+        result: 'ok',
+    });
     // exactOptionalPropertyTypes: omit the key rather than sending undefined.
     return firstTs ? { ok: true, ts: firstTs } : { ok: true };
 }

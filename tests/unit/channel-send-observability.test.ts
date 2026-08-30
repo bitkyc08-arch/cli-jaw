@@ -113,4 +113,3 @@ test('a file send reports its own kind, so it is not counted as a written answer
         assert.equal(sends(cap.events)[0]?.payload['type'], 'photo');
     } finally { cap.restore(); }
 });
-

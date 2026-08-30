@@ -24,10 +24,12 @@ import { recordSelfDelivery } from './turn-delivery.js';
  *  final answer are all `outbound.send` on the same channel, and counting them
  *  together makes a duplicate indistinguishable from ordinary traffic.
  *
- *  Only the inbound bot modules write a human `[slack:out]` line, so every send routed
- *  through `sendChannelOutput` — mention-watch answers, heartbeat reports, agent
- *  `/api/channel/send` tool calls, forwarder relays — is invisible to a
- *  text-log census. Those are the paths most likely to double.
+ *  This records the sends that pass through THIS function: mention-watch
+ *  answers, heartbeat reports, agent `/api/channel/send` tool calls. It is not
+ *  every Slack post — the dispatch settle path, the queued reply, and the
+ *  forwarders call the transport directly, and those are recorded by
+ *  `slack.post` in `src/slack/send-only-client.ts`. A census needs BOTH records;
+ *  neither one alone is complete, which is the mistake devlog 050 documents.
  *
  *  The message body is deliberately absent. A duplicate audit needs the surface
  *  and destination; the body is redacted elsewhere at real cost. */
