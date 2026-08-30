@@ -119,7 +119,15 @@ export async function runMentionWatchTick(
     const { allowed, rejected } = authorizedChannels(watch.channelIds, deps.allowlist);
     result.unauthorized = rejected;
     if (rejected.length) {
-        log(`mention watch: ${rejected.length} channel(s) outside the Slack allowlist, skipped: ${rejected.join(', ')}`);
+        // Two different situations, and an operator needs to be told which. An
+        // empty allowlist is the shipped default and reads as "every conversation"
+        // for an ordinary reply, but an explicitly addressed send still needs a
+        // configured list or prior evidence for that conversation — so a watch
+        // running under it would find mentions it cannot answer.
+        const reason = deps.allowlist.length === 0
+            ? 'slack.channelIds is empty, so an explicitly addressed send has nothing to authorize against; add the watched channels to it'
+            : 'outside slack.channelIds';
+        log(`mention watch: skipped ${rejected.length} channel(s) — ${reason}: ${rejected.join(', ')}`);
     }
     if (allowed.length === 0) return result;
 
