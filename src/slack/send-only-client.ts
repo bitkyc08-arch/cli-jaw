@@ -46,6 +46,34 @@ export async function resolveSlackDmChannel(
     return { ok: true, channelId };
 }
 
+/** One record per Slack message that actually landed.
+ *
+ *  This is the ONLY place every Slack post is visible. `sendChannelOutput` sees
+ *  a subset — the dispatch settle path, the queued reply, the recovered-queue
+ *  forwarder, and the generic forwarder all call this transport directly — so an
+ *  audit that reads only `outbound.send` misses exactly the paths most likely to
+ *  double.
+ *
+ *  The two records are NOT interchangeable and must not be summed: a send routed
+ *  through the choke point emits `outbound.send` AND lands here. `slack.post` is
+ *  the post-level count, `outbound.send` the request-level one.
+ *
+ *  Emitted per chunk rather than once at the end, because a long answer is
+ *  several posts and a failure partway leaves the earlier ones on screen.
+ *  Recording once on full success would report nothing for a send the user can
+ *  already read — the direction that hides a duplicate. `index`/`of` keep the
+ *  pieces recognizable as one answer.
+ *
+ *  No body: destination and shape, never the words. */
+function recordSlackPost(target: RemoteTarget, index: number, of: number): void {
+    log.event('slack.post', {
+        target: target.targetId,
+        ...(target.threadId ? { threaded: true } : {}),
+        index,
+        of,
+    });
+}
+
 export async function sendSlackText(
     token: string,
     target: RemoteTarget,
@@ -85,7 +113,16 @@ export async function sendSlackText(
             },
             callOpts,
         );
-        if (result.ok && index === 0 && result.data?.ts) firstTs = result.data.ts;
+        if (result.ok) {
+            if (index === 0 && result.data?.ts) firstTs = result.data.ts;
+            // Recorded PER CHUNK, at the moment the post lands.
+            //
+            // Recording once after the loop counted a send, not a post: a chunked
+            // answer whose third chunk failed put two messages on screen and
+            // recorded nothing, which is the direction that hides a duplicate.
+            // `index`/`of` keep a long answer readable as one answer.
+            recordSlackPost(target, index, chunks.length);
+        }
         if (!result.ok) {
             // Keep an abort recognizable end to end (#417): describeSlackError
             // would wrap it as 'Slack API error: slack_send_aborted', and
@@ -124,6 +161,10 @@ export async function sendSlackText(
                     // Without this a throttled first send leaves a notice nobody
                     // can delete: the retry is what actually created the message.
                     if (index === 0 && retried.data?.ts) firstTs = retried.data.ts;
+                    // The retry is what put this chunk on screen, so it is the post
+                    // that has to be recorded. Missing it would make every
+                    // throttled answer partly invisible to a duplicate audit.
+                    recordSlackPost(target, index, chunks.length);
                     continue;
                 }
                 if (retried.error === 'slack_send_aborted') {
@@ -134,25 +175,6 @@ export async function sendSlackText(
             return slackFailure(describeSlackError(result.error, result.data), result.status, result.retryAfterMs, result.grantedScopes);
         }
     }
-    // Recorded HERE, not only at `sendChannelOutput`, because most Slack posts
-    // never pass through that choke point: the dispatch settle path, the queued
-    // reply, the recovered-queue forwarder, and the generic forwarder all call
-    // this transport directly. Instrumenting only the choke point left those
-    // invisible — which is precisely the set a 'did one turn answer twice' audit
-    // needs, so a census over the other record could look complete while missing
-    // them.
-    //
-    // `chunks` matters: one logical answer over the Slack length limit becomes
-    // several posts, and counting posts instead of sends would read a long answer
-    // as a duplicate.
-    //
-    // No body, same reason as elsewhere: destination and shape, never the words.
-    log.event('slack.post', {
-        target: target.targetId,
-        ...(target.threadId ? { threaded: true } : {}),
-        chunks: chunks.length,
-        result: 'ok',
-    });
     // exactOptionalPropertyTypes: omit the key rather than sending undefined.
     return firstTs ? { ok: true, ts: firstTs } : { ok: true };
 }

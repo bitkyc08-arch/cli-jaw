@@ -51,7 +51,7 @@ test('a direct transport send is recorded, not only choke-point sends', async ()
         const recorded = posts(cap.events);
         assert.equal(recorded.length, 1);
         assert.equal(recorded[0]?.payload['target'], target.targetId);
-        assert.equal(recorded[0]?.payload['result'], 'ok');
+        assert.equal(recorded[0]?.payload['of'], 1);
     } finally { cap.restore(); }
 });
 
@@ -71,15 +71,19 @@ test('a channel post carries no thread marker', async () => {
     } finally { cap.restore(); }
 });
 
-test('a chunked answer is ONE recorded send carrying its chunk count', async () => {
-    // One logical answer over the Slack length limit becomes several posts.
-    // Counting posts rather than sends would read a long answer as a duplicate.
+test('a chunked answer records one post per chunk, each naming its position', async () => {
+    // One logical answer past the Slack length limit becomes several posts. They
+    // are recorded individually because a failure partway leaves the earlier ones
+    // on screen, and index/of keeps them readable as one answer rather than
+    // several duplicates.
     const cap = captureEvents();
     try {
         await sendSlackText('xoxb-t', target, 'x'.repeat(9000), { fetchImpl: okFetch() });
         const recorded = posts(cap.events);
-        assert.equal(recorded.length, 1);
-        assert.ok((recorded[0]?.payload['chunks'] as number) > 1);
+        assert.ok(recorded.length > 1);
+        const of = recorded[0]?.payload['of'] as number;
+        assert.equal(recorded.length, of);
+        assert.deepEqual(recorded.map(r => r.payload['index']), recorded.map((_, i) => i));
     } finally { cap.restore(); }
 });
 
@@ -101,5 +105,40 @@ test('the record carries no message body', async () => {
     try {
         await sendSlackText('xoxb-t', target, 'SENSITIVE_TRANSPORT_BODY', { fetchImpl: okFetch() });
         assert.doesNotMatch(JSON.stringify(posts(cap.events)[0]?.payload ?? {}), /SENSITIVE_TRANSPORT_BODY/);
+    } finally { cap.restore(); }
+});
+
+test('a chunk that failed after earlier ones landed still records what is on screen', async () => {
+    // The direction that hides a duplicate: recording once on full success meant a
+    // chunked answer whose later chunk failed put messages on screen and recorded
+    // nothing at all.
+    let n = 0;
+    const failLater = (async () => {
+        n += 1;
+        const body = n >= 2
+            ? { ok: false, error: 'channel_not_found' }
+            : { ok: true, ts: '170000000.000100' };
+        return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    const cap = captureEvents();
+    try {
+        const result = await sendSlackText('xoxb-t', target, 'x'.repeat(9000), { fetchImpl: failLater });
+        assert.equal(result.ok, false);
+        // The first chunk did land, so exactly one post is recorded.
+        assert.equal(posts(cap.events).length, 1);
+    } finally { cap.restore(); }
+});
+
+test('the two records are distinct and must not be summed', async () => {
+    // A send through the choke point emits outbound.send AND lands here, so adding
+    // the two counts double-counts every nested path. slack.post is the
+    // post-level count; outbound.send is the request-level one.
+    const cap = captureEvents();
+    try {
+        await sendSlackText('xoxb-t', target, 'hi', { fetchImpl: okFetch() });
+        const names = cap.events.map(e => e.name);
+        assert.deepEqual(names, ['slack.post']);
+        // Named differently on purpose: a census must pick one level, not add them.
+        assert.notEqual('slack.post', 'outbound.send');
     } finally { cap.restore(); }
 });
