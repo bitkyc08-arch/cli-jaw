@@ -857,6 +857,8 @@ A file-backed restart is `tests/integration/messaging-ingress-restart.test.ts`: 
 `sendSlackText` waits a short Slack `ratelimited`/429 and retries that chunk once. A long Retry-After still surfaces. The chunk loop does not restart.
 `sendChannelOutput` emits `outbound.send` on the current messaging ALS. Empty ALS stays empty — no second id.
 
+`forwarder-origin.ts` — 채널 forwarder의 공통 origin 필터다. 자기 채널에서 시작한 턴과 producer가 직접 배달하는 `heartbeat` 결과를 건너뛴다. 하트비트는 지정 destination으로 직접 보내므로, forwarder까지 보내면 last-active 대화에 중복 발화가 생긴다.
+
 
 Telegram/Discord/Slack 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다. Persisted target은 channel/target/peer kind와 optional thread/guild/parent 필드까지 검증한 뒤 복원한다.
 
@@ -1021,9 +1023,17 @@ Channel narrowing helpers and slash-command registration.
 
 ---
 
-## src/memory/ — persistent + advanced memory runtime (13 files, 3155L)
+## src/slack/ — Slack transport
 
-`memory.ts`, `runtime.ts`, `shared.ts`, `heartbeat.ts`, `heartbeat-schedule.ts`, `indexing.ts`, `keyword-expand.ts`, `bootstrap.ts`, `injection.ts`, `identity.ts`, `reflect.ts`, `advanced.ts`, `worklog.ts`.
+### mention-watch.ts (345L)
+
+`scanSlackMentions()`는 봇이 가입한 명시적 채널에서 특정 사용자가 태그된 새 메시지를 찾는다. 봇 토큰으로 쓸 수 없는 user-token 전용 `search.messages` 대신 `conversations.history`를 newest에서 과거 방향으로 읽는다. 커서는 처리가 끝난 메시지까지만 전진하고, 끝내지 못한 backward walk는 `resume_before`에서 이어간다. 채널 시작점을 tick마다 회전해 hot channel의 독점을 막고, 429가 오면 wrapper 재시도 없이 그 tick을 멈춘다. 한 tick의 채널 상한은 60이며 초과분은 `overflowChannels`로 반환한다.
+
+---
+
+## src/memory/ — persistent + advanced memory runtime (14 files, 3391L)
+
+`memory.ts`, `runtime.ts`, `shared.ts`, `heartbeat.ts`, `heartbeat-schedule.ts`, `heartbeat-mention-watch.ts`, `indexing.ts`, `keyword-expand.ts`, `bootstrap.ts`, `injection.ts`, `identity.ts`, `reflect.ts`, `advanced.ts`, `worklog.ts`.
 
 ### memory.ts (154L)
 
@@ -1048,7 +1058,11 @@ Advanced memory runtime의 entry point. FTS5 인덱스, search routing, task sna
 
 ### heartbeat.ts / heartbeat-schedule.ts
 
-주기 작업과 스케줄 파싱/실행을 담당한다. 현재 소스 오브 트루스는 `~/.cli-jaw/heartbeat.json`이며, schedule은 `every`/`cron` + `timeZone`을 지원한다. PABCD 활성, heartbeat 중첩, main agent busy 상태에서는 `pendingJobs` 큐로 밀어두고, user message queue가 먼저 비워진 뒤 heartbeat pending을 drain한다. 프롬프트 앞에는 memory search 지시를 자동 주입한다. (#252) job별 opt-in `runner: main|employee|script`(기본 main; employee는 `claimWorker`+`runSingleAgent`, busy 시 `skipped: employee busy` 경고 리포트; script는 argv `execFile` no-shell)와 `reportPolicy: always|anomaly_only|silent` + 구조화 리포트 계약(`heartbeat-report.ts`: status/changed/record_required/user_visible/summary/evidence/next_action)을 지원한다. `[SILENT]`/quiet marker는 정책과 무관하게 우선하며, silent 정책 anchor는 `delivered_at NULL` + "recorded (not sent)" 주입 문구로 구분된다. main runner는 `orchestrateAndCollectData`의 `agyPlannerOnly` 신호(#251)에 1회 한정 재시도한다. PUT `/api/heartbeat`는 UI가 모르는 runner 필드를 job id 기준 merge-by-id로 보존한다.
+주기 작업과 스케줄 파싱/실행을 담당한다. 현재 소스 오브 트루스는 `~/.cli-jaw/heartbeat.json`이며, schedule은 `every`/`cron` + `timeZone`을 지원한다. PABCD 활성, heartbeat 중첩, main agent busy 상태에서는 `pendingJobs` 큐로 밀어두고, user message queue가 먼저 비워진 뒤 heartbeat pending을 drain한다. 프롬프트 앞에는 memory search 지시를 자동 주입한다. (#252) job별 opt-in `runner: main|employee|script`(기본 main; employee는 `claimWorker`+`runSingleAgent`, busy 시 `skipped: employee busy` 경고 리포트; script는 argv `execFile` no-shell)와 `reportPolicy: always|anomaly_only|silent` + 구조화 리포트 계약(`heartbeat-report.ts`: status/changed/record_required/user_visible/summary/evidence/next_action)을 지원한다. `[SILENT]`/quiet marker는 정책과 무관하게 우선하며, silent 정책 anchor는 `delivered_at NULL` + "recorded (not sent)" 주입 문구로 구분된다. main runner는 `orchestrateAndCollectData`의 `agyPlannerOnly` 신호(#251)에 1회 한정 재시도한다. `mentionWatch`가 있으면 같은 `runHeartbeatJob`이 일반 prompt path 대신 멘션 항목 루프를 실행한다. PUT `/api/heartbeat`는 UI가 모르는 runner와 mentionWatch 필드를 job id 기준 merge-by-id로 보존한다.
+
+### heartbeat-mention-watch.ts (236L)
+
+`runMentionWatchTick()`은 설정 채널과 tick 시점의 Slack allowlist를 다시 교집합하고 항목마다 PABCD, agent busy, `messageQueue`, pending replay를 재확인한다. 에이전트는 답변 본문만 만들고 서버가 `sendChannelOutput()`으로 원문 스레드에 보낸다. 전송 성공 뒤에만 `mention_watch_seen`을 기록하므로 실패 항목은 다음 tick에서 다시 시도하며 보장 수준은 at-least-once다. `mention_watch_cursor`의 `resume_before`가 끝나지 않은 history walk를 잇고, `mention_watch_rotation`이 다음 시작 채널을 정한다. seen prune은 건수가 아니라 전진한 cursor를 기준으로 한다.
 
 ### indexing.ts / keyword-expand.ts / bootstrap.ts
 

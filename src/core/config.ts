@@ -1357,12 +1357,65 @@ export interface HeartbeatJob {
      *  `peerKind` are derived from the id by the channel helpers, so an operator
      *  never has to know Slack's C/D/G prefix rules to fill this in. */
     destination?: HeartbeatDestination | null;
+    /** Watch a person's mentions instead of running on a bare prompt. Absent
+     *  means an ordinary heartbeat, which is every existing job. */
+    mentionWatch?: HeartbeatMentionWatch | null;
+}
+
+/** Watch Slack for messages that tag `userId` and answer in those threads.
+ *
+ *  Slack has no event for a THIRD PARTY being mentioned — `app_mention` fires
+ *  only for the app itself — and `search.messages` needs a user token this bot
+ *  install cannot hold. So the only way to see these messages is to read the
+ *  history of channels the bot is in, which is why this lives on a scheduled job
+ *  rather than on the inbound event path.
+ *
+ *  `channelIds` is required and must be a subset of `slack.channelIds`: an
+ *  answer addressed to a channel is authorized against that allowlist, so a
+ *  channel outside it would be found and then refused with a 403. */
+export interface HeartbeatMentionWatch {
+    channel: 'slack';
+    /** The person whose mentions to watch. */
+    userId: string;
+    channelIds: string[];
+    /** Cap on threads answered in one tick. */
+    maxHits?: number;
+    /** Slack ts floor, so enabling this does not answer last month's backlog. */
+    since?: string;
 }
 
 export interface HeartbeatDestination {
     channel: 'telegram' | 'discord' | 'slack';
     targetId: string;
     threadId?: string;
+}
+
+/** Channels one mention-watch job may cover.
+ *
+ *  A tick's Slack call count is channels x window budget, so this ceiling is what
+ *  keeps it knowable. It is enforced as a REJECTION rather than a truncation: a
+ *  job that quietly watched the first sixty of a longer list would leave an
+ *  operator believing the rest are covered. */
+export const HEARTBEAT_MENTION_WATCH_MAX_CHANNELS = 60;
+
+/** Validate a mention-watch config on its own terms.
+ *
+ *  Membership in `slack.channelIds` is deliberately NOT checked here. That
+ *  allowlist can shrink after a job is saved, so it has to be re-read at tick
+ *  time; checking it here as well would only add a second, staler answer. */
+export function isHeartbeatMentionWatch(value: unknown): value is HeartbeatMentionWatch {
+    if (!value || typeof value !== 'object') return false;
+    const w = value as Record<string, unknown>;
+    if (w['channel'] !== 'slack') return false;
+    if (typeof w['userId'] !== 'string' || !w['userId'].trim()) return false;
+    const ids = w['channelIds'];
+    if (!Array.isArray(ids) || ids.length === 0) return false;
+    if (!ids.every(id => typeof id === 'string' && id.trim().length > 0)) return false;
+    if (ids.length > HEARTBEAT_MENTION_WATCH_MAX_CHANNELS) return false;
+    const maxHits = w['maxHits'];
+    if (maxHits !== undefined && (typeof maxHits !== 'number' || !Number.isInteger(maxHits) || maxHits < 1)) return false;
+    if (w['since'] !== undefined && (typeof w['since'] !== 'string' || !w['since'].trim())) return false;
+    return true;
 }
 
 /** A destination is only usable when it names both a transport and a conversation.
@@ -1408,6 +1461,14 @@ function normalizeHeartbeatJob(job: HeartbeatJob): HeartbeatJob {
     if (reportPolicy !== 'always' && reportPolicy !== 'anomaly_only' && reportPolicy !== 'silent') {
         console.warn(`[heartbeat:${job.name || job.id || 'unknown'}] invalid report policy; falling back to always`);
         return { ...job, runner, reportPolicy: 'always' };
+    }
+    // A malformed mention-watch DISABLES the job rather than losing the field.
+    // Dropping it would leave an enabled job running its prompt as an ordinary
+    // heartbeat, and that prompt says "answer the mention below" — so it would
+    // post an answer to nothing, to whatever destination the job carries.
+    if (job.mentionWatch != null && !isHeartbeatMentionWatch(job.mentionWatch)) {
+        console.warn(`[heartbeat:${job.name || job.id || 'unknown'}] invalid mention watch; disabling job`);
+        return { ...job, runner, reportPolicy, enabled: false };
     }
     return { ...job, runner, reportPolicy };
 }

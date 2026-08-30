@@ -42,6 +42,7 @@ import { telegramInboundEnvelope } from '../messaging/inbound-envelope.js';
 import type { InboundEnvelope } from '../messaging/types.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
 import { nextDeliverySeq, pendingDeliveryAnchor, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { shouldSkipForwarding } from '../messaging/forwarder-origin.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -159,7 +160,9 @@ const telegramForwarderLifecycle = createForwarderLifecycle({
             return chatIds.length ? (chatIds[chatIds.length - 1] ?? null) : null;
         },
         getLastTarget: () => getLastActiveTarget('telegram'),
-        shouldSkip: (data: Record<string, unknown>) => data["origin"] === 'telegram', // handled by tgOrchestrate already
+        // Own origin: handled by tgOrchestrate already. Producer-owned origins
+        // (heartbeat) deliver to their own destination — see forwarder-origin.ts.
+        shouldSkip: (data: Record<string, unknown>) => shouldSkipForwarding(data, 'telegram'),
         log: ({ chatId, preview }: { chatId: string | number; preview: string }) => {
             log.info(`[tg:forward] → chat ${chatId}: ${String(preview).slice(0, 60)}...`);
         },

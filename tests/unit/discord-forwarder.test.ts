@@ -42,8 +42,19 @@ test('chunkDiscordMessage prefers splitting at newlines', async () => {
 test('forwarder skips origin=discord to prevent echo loop', () => {
     assert.match(forwarderSrc, /shouldSkip/,
         'forwarder should have shouldSkip callback');
-    assert.match(botSrc, /data\.origin\s*===\s*['"]discord['"]/,
-        'bot should skip discord-origin messages in forwarder');
+});
+
+test('the shared origin policy skips own-channel turns and keeps forwarding others', async () => {
+    // Behavioural, not textual. The origin rule moved into
+    // `shouldSkipForwarding` so Slack, Discord and Telegram share one policy;
+    // a regex over bot.ts only ever proved where the comparison was WRITTEN.
+    const { shouldSkipForwarding } = await import('../../src/messaging/forwarder-origin.js');
+    assert.equal(shouldSkipForwarding({ origin: 'discord' }, 'discord'), true,
+        'a discord-origin turn is answered by its own dispatch path');
+    assert.equal(shouldSkipForwarding({ origin: 'web' }, 'discord'), false,
+        'a web turn still forwards, which is what the forwarder is for');
+    assert.equal(shouldSkipForwarding({ origin: 'heartbeat' }, 'discord'), true,
+        'a heartbeat job delivers to its own destination');
 });
 
 // ─── Reply path: dcOrchestrate passes chatId ────────

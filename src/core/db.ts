@@ -141,6 +141,56 @@ db.exec(`
         updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Mention-watch bookkeeping, split in two on purpose.
+    --
+    -- The cursor answers "how far did we read this channel", so the next scan
+    -- can ask Slack for a window instead of the same 50 messages forever. The
+    -- seen ledger answers "which messages did we already hand to the agent",
+    -- which is a different question: a tick that dies midway would otherwise
+    -- either re-answer messages it already handled or skip ones it never did.
+    --
+    -- The cursor is a FRONTIER, not an optimistic high-water mark: it stops at
+    -- the first mention still awaiting an answer, so it can sit BEHIND rows the
+    -- seen ledger already holds. That is why the two must be separate, and why
+    -- pruning is bounded by the cursor rather than by row count.
+    --
+    -- resume_before carries an unfinished backward walk across ticks. Reading
+    -- history newest-first means a busy channel needs several windows to reach
+    -- the cursor; without remembering where the descent stopped, the next tick
+    -- restarts at the newest message and the backlog below is never reached.
+    --
+    -- Neither expires on a timer. The slack_event_dedup table above can afford
+    -- a 10-minute horizon because it guards against a vendor REDELIVERING one
+    -- event; here the same message stays visible in channel history forever, so
+    -- a TTL would mean answering it again a day later.
+    CREATE TABLE IF NOT EXISTS mention_watch_seen (
+        job_id     TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        message_ts TEXT NOT NULL,
+        seen_at    INTEGER NOT NULL,
+        PRIMARY KEY (job_id, channel_id, message_ts)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mention_watch_seen_job
+        ON mention_watch_seen (job_id, seen_at);
+
+    CREATE TABLE IF NOT EXISTS mention_watch_cursor (
+        job_id        TEXT NOT NULL,
+        channel_id    TEXT NOT NULL,
+        last_ts       TEXT NOT NULL,
+        resume_before TEXT,
+        updated_at    INTEGER NOT NULL,
+        PRIMARY KEY (job_id, channel_id)
+    );
+
+    -- Which channel the last tick finished on, so the next one starts after it.
+    -- The hit cap is global, so always starting at the first configured channel
+    -- lets a busy channel starve every channel behind it permanently.
+    CREATE TABLE IF NOT EXISTS mention_watch_rotation (
+        job_id          TEXT PRIMARY KEY,
+        last_channel_id TEXT NOT NULL,
+        updated_at      INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS heartbeat_events (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         job_id        TEXT,
@@ -366,6 +416,14 @@ if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'm
 if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'last_run_clean')) db.exec('ALTER TABLE session_buckets ADD COLUMN last_run_clean INTEGER DEFAULT NULL');
 if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'last_run_cwd')) db.exec('ALTER TABLE session_buckets ADD COLUMN last_run_cwd TEXT DEFAULT NULL');
 if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'last_run_meta')) db.exec('ALTER TABLE session_buckets ADD COLUMN last_run_meta TEXT DEFAULT NULL');
+
+// `CREATE TABLE IF NOT EXISTS` above is a no-op on a database that already has
+// the table, so a column added later needs its own migration or the prepared
+// statement below fails at import time — which takes the whole process down.
+const mentionWatchCursorCols = db.prepare('PRAGMA table_info(mention_watch_cursor)').all();
+if (!(mentionWatchCursorCols as Record<string, unknown>[]).some(c => c["name"] === 'resume_before')) {
+    db.exec('ALTER TABLE mention_watch_cursor ADD COLUMN resume_before TEXT DEFAULT NULL');
+}
 
 // ─── Prepared Statements ─────────────────────────────
 
@@ -699,6 +757,55 @@ export const findSlackEventDedup = db.prepare('SELECT expires_at FROM slack_even
 export const insertSlackEventDedup = db.prepare('INSERT OR REPLACE INTO slack_event_dedup (event_key, expires_at) VALUES (?, ?)');
 export const sweepSlackEventDedup = db.prepare('DELETE FROM slack_event_dedup WHERE expires_at <= ?');
 export const clearSlackEventDedup = db.prepare('DELETE FROM slack_event_dedup');
+
+// ─── Mention watch (heartbeat) ───────────────────
+export const findMentionWatchSeen = db.prepare(
+    'SELECT 1 FROM mention_watch_seen WHERE job_id = ? AND channel_id = ? AND message_ts = ?');
+export const insertMentionWatchSeen = db.prepare(
+    'INSERT OR IGNORE INTO mention_watch_seen (job_id, channel_id, message_ts, seen_at) VALUES (?, ?, ?, ?)');
+/** Drop receipts the cursor has already passed.
+ *
+ *  Bounded by the CURSOR, not by row count. A count-based prune deletes the
+ *  oldest rows regardless of position, and the cursor legitimately sits behind
+ *  them: it stops at the first mention still awaiting an answer, while later
+ *  mentions in the same window may already be answered and recorded. Pruning
+ *  those would make the next scan — which re-reads from the stalled cursor —
+ *  answer them a second time.
+ *
+ *  A row at or below the cursor is unreachable instead: the next scan asks Slack
+ *  for messages strictly after it, so its receipt can never be consulted again.
+ *  Compared numerically because a Slack ts is a decimal string and its string
+ *  order breaks across digit counts. */
+export const pruneMentionWatchSeen = db.prepare(
+    'DELETE FROM mention_watch_seen WHERE job_id = ? AND channel_id = ? '
+    + 'AND CAST(message_ts AS REAL) <= CAST(? AS REAL)');
+export const getMentionWatchCursor = db.prepare(
+    'SELECT last_ts, resume_before FROM mention_watch_cursor WHERE job_id = ? AND channel_id = ?');
+/** Move the frontier. `resume_before` is left alone: the two advance on
+    different conditions, and folding them into one write would clear a pending
+    descent every time a cursor moved. */
+export const upsertMentionWatchCursor = db.prepare(
+    'INSERT INTO mention_watch_cursor (job_id, channel_id, last_ts, updated_at) VALUES (?, ?, ?, ?) '
+    + 'ON CONFLICT(job_id, channel_id) DO UPDATE SET last_ts = excluded.last_ts, updated_at = excluded.updated_at');
+/** Store where an unfinished backward walk stopped, so the next tick descends
+    from there instead of re-reading the newest windows. */
+export const setMentionWatchResumeBefore = db.prepare(
+    'INSERT INTO mention_watch_cursor (job_id, channel_id, last_ts, resume_before, updated_at) '
+    + "VALUES (?, ?, COALESCE((SELECT last_ts FROM mention_watch_cursor WHERE job_id = ? AND channel_id = ?), ''), ?, ?) "
+    + 'ON CONFLICT(job_id, channel_id) DO UPDATE SET resume_before = excluded.resume_before, updated_at = excluded.updated_at');
+export const getMentionWatchRotation = db.prepare(
+    'SELECT last_channel_id FROM mention_watch_rotation WHERE job_id = ?');
+export const upsertMentionWatchRotation = db.prepare(
+    'INSERT OR REPLACE INTO mention_watch_rotation (job_id, last_channel_id, updated_at) VALUES (?, ?, ?)');
+const deleteMentionWatchSeenForJob = db.prepare('DELETE FROM mention_watch_seen WHERE job_id = ?');
+const deleteMentionWatchCursorForJob = db.prepare('DELETE FROM mention_watch_cursor WHERE job_id = ?');
+const deleteMentionWatchRotationForJob = db.prepare('DELETE FROM mention_watch_rotation WHERE job_id = ?');
+/** Disabling or renaming a job should not leave its bookkeeping behind. */
+export const clearMentionWatchState = db.transaction((jobId: string): void => {
+    deleteMentionWatchSeenForJob.run(jobId);
+    deleteMentionWatchCursorForJob.run(jobId);
+    deleteMentionWatchRotationForJob.run(jobId);
+});
 
 type QueuedMessageMigrationPayload = Record<string, unknown> & {
     schemaVersion?: number;

@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
-import { loadHeartbeatFile, saveHeartbeatFile, isHeartbeatDestination } from '../core/config.js';
-import type { HeartbeatDestination } from '../core/config.js';
+import { loadHeartbeatFile, saveHeartbeatFile, isHeartbeatDestination, isHeartbeatMentionWatch } from '../core/config.js';
+import type { HeartbeatDestination, HeartbeatMentionWatch } from '../core/config.js';
 import { startHeartbeat } from '../memory/heartbeat.js';
 import { validateHeartbeatScheduleInput } from '../memory/heartbeat-schedule.js';
 import { getEmployees } from '../core/db.js';
@@ -32,6 +32,29 @@ export function resolveHeartbeatDestination(
     if (raw === null) return { ok: true, destination: undefined };
     if (!isHeartbeatDestination(raw)) return { ok: false, error: 'invalid heartbeat destination' };
     return { ok: true, destination: raw };
+}
+
+/** Resolve the mention-watch a PUT should persist.
+ *
+ *  Same inheritance rule as `destination`, for the same reason: every shipped UI
+ *  rebuilds a job from a fixed field set, so a field it does not know about
+ *  arrives absent rather than cleared. An explicit `null` is the deliberate
+ *  unset.
+ *
+ *  A malformed value is a 400 rather than a silent drop. The prompt on such a job
+ *  is written to answer a mention that was handed to it; running it as an
+ *  ordinary heartbeat would post an answer to nothing. */
+export function resolveHeartbeatMentionWatch(
+    job: Record<string, unknown>,
+    existing: HeartbeatMentionWatch | null | undefined,
+): { ok: true; mentionWatch: HeartbeatMentionWatch | undefined } | { ok: false; error: string } {
+    if (!Object.prototype.hasOwnProperty.call(job, 'mentionWatch')) {
+        return { ok: true, mentionWatch: existing ?? undefined };
+    }
+    const raw = job['mentionWatch'];
+    if (raw === null) return { ok: true, mentionWatch: undefined };
+    if (!isHeartbeatMentionWatch(raw)) return { ok: false, error: 'invalid heartbeat mention watch' };
+    return { ok: true, mentionWatch: raw };
 }
 
 export function normalizeHeartbeatPutRunnerFields(
@@ -96,6 +119,8 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
             if (!runnerResult.ok) { res.status(400).json({ error: runnerResult.error, index, jobId }); return; }
             const destResult = resolveHeartbeatDestination(job, existing?.destination);
             if (!destResult.ok) { res.status(400).json({ error: destResult.error, index, jobId }); return; }
+            const watchResult = resolveHeartbeatMentionWatch(job, existing?.mentionWatch);
+            if (!watchResult.ok) { res.status(400).json({ error: watchResult.error, index, jobId }); return; }
             normalizedJobs.push(stripUndefined({
                 id: jobId,
                 name: typeof job["name"] === 'string' ? job["name"] : '',
@@ -104,6 +129,7 @@ export function registerHeartbeatRoutes(app: Express, requireAuth: AuthMiddlewar
                 prompt: typeof job["prompt"] === 'string' ? job["prompt"] : '',
                 ...runnerResult.fields,
                 destination: destResult.destination,
+                mentionWatch: watchResult.mentionWatch,
             }));
         }
         const payload = { jobs: normalizedJobs };

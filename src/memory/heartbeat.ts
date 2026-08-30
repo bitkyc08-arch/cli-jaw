@@ -12,8 +12,13 @@ import { claimWorker, failWorker, finishWorker, markWorkerReplayed, WorkerBusyEr
 import { hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 import { broadcast } from '../core/bus.js';
 import { sendChannelOutput, targetFromChatId } from '../messaging/send.js';
-import { isHeartbeatDestination } from '../core/config.js';
-import type { HeartbeatDestination } from '../core/config.js';
+import { nextDeliverySeq, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { isHeartbeatDestination, isHeartbeatMentionWatch } from '../core/config.js';
+import type { HeartbeatDestination, HeartbeatMentionWatch } from '../core/config.js';
+import { runMentionWatchTick } from './heartbeat-mention-watch.js';
+import type { MentionHit } from '../slack/mention-watch.js';
+import { getSlackSelfUserId } from '../slack/bot.js';
+import { readSlackAllowlist } from '../slack/events.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { getEmployees, insertHeartbeatAnchor } from '../core/db.js';
 import type { EmployeeRow } from '../core/employees.js';
@@ -184,6 +189,147 @@ async function runEmployee(job: Record<string, any>, prompt: string): Promise<He
     }
 }
 
+/** One mention-watch tick, run in place of the ordinary prompt path.
+ *
+ *  The agent is asked per message and never posts: this function sends, then
+ *  records the receipt. See heartbeat-mention-watch.ts for why that ordering is
+ *  the whole point.
+ *
+ *  Returns false when the job is not runnable as a mention watch at all, so the
+ *  caller can say so rather than silently running the prompt against nothing. */
+async function runMentionWatchJob(job: Record<string, any>, watch: HeartbeatMentionWatch): Promise<boolean> {
+    // Per-hit delivery anchor, read before the agent turn and consumed by the
+    // send. Scoped to this call so nothing survives the tick.
+    const answerAnchors = new Map<string, number>();
+    const sc = settings["slack"] || {};
+    const token = String(sc["botToken"] ?? '').trim();
+    if (!sc["enabled"] || !token) {
+        log.error(`[heartbeat:${job["name"]}] mention watch needs Slack enabled with a bot token`);
+        return false;
+    }
+    const { pinned, target } = heartbeatTarget(job["destination"]);
+    if (pinned && !target) {
+        log.error(`[heartbeat:${job["name"]}] malformed destination — mention watch not run`);
+        return false;
+    }
+
+    const outcome = await runMentionWatchTick(String(job["id"] ?? job["name"] ?? 'unknown'), job, watch, {
+        token,
+        selfUserId: getSlackSelfUserId(),
+        allowlist: readSlackAllowlist(sc["channelIds"]),
+        log: (message) => log.info(`[heartbeat:${job["name"]}] ${message}`),
+        // Yield to anything a person is waiting on. Re-read per item because the
+        // previous answer may have taken minutes.
+        yieldNow: () => {
+            if (getState('default') !== 'IDLE') return 'yielded';
+            if (isAgentBusy(HEARTBEAT_SCOPE)) return 'yielded';
+            if (messageQueue.length > 0) return 'yielded';
+            if (hasPendingWorkerReplays(HEARTBEAT_SCOPE)) return 'yielded';
+            return null;
+        },
+        answer: async (hit) => {
+            const prompt = buildMentionWatchPrompt(job, watch, hit);
+            // Anchored BEFORE the turn runs. The agent is told not to post, and
+            // `/api/channel/send` is a tool it can reach anyway; if it does, that
+            // send is recorded as a delivery claim. Reading the anchor first is
+            // what lets the send below tell "the user already has these words"
+            // from "someone said this here an hour ago".
+            const anchor = nextDeliverySeq();
+            const collected = await orchestrateAndCollectData(prompt, {
+                origin: 'heartbeat', requestId: crypto.randomUUID(),
+                scope: HEARTBEAT_SCOPE, chatSessionId: 'default',
+            });
+            const text = applyOutputPolicy(String(collected.text), { scope: 'heartbeat', channel: 'slack' }).text;
+            const quietConfig = loadPolicyHooksConfig()?.flags?.heartbeatQuietOk;
+            const extraQuietMarkers = quietConfig?.enabled ? (quietConfig.markers || []) : [];
+            if (!text.trim() || isHeartbeatQuietOutput(text, extraQuietMarkers)) return null;
+            answerAnchors.set(hit.channelId + '/' + hit.ts, anchor);
+            return text;
+        },
+        send: async (hit, text) => {
+            const key = hit.channelId + '/' + hit.ts;
+            const anchor = answerAnchors.get(key);
+            answerAnchors.delete(key);
+            const target = slackThreadTarget(hit);
+            // The agent was told the server posts, and it can still call
+            // `/api/channel/send` itself. When it did, these exact words are
+            // already in that thread and posting them again is the duplicate the
+            // user reported. Treated as DELIVERED, because it is: the answer is on
+            // screen, so the receipt should be written and the message not asked
+            // about again.
+            //
+            // `wasSelfDelivered` fails open on every uncertain case, so a claim
+            // that does not match still results in a post. A duplicate is
+            // annoying; a swallowed answer is the user losing what they waited for.
+            if (anchor !== undefined && wasSelfDelivered({ target, text, since: anchor })) {
+                log.info(`[heartbeat:${job["name"]}] already delivered by the agent, not posting again`);
+                return true;
+            }
+            // Answer IN THE THREAD that carried the mention. `threadTs` is the
+            // parent when the message was already a reply, so this never starts a
+            // second thread off a reply.
+            const sent = await sendChannelOutput({
+                channel: 'slack', type: 'text', text, target,
+                allowActiveFallback: false,
+                // Deliberately NOT `fromAgentSurface`: a heartbeat is not an agent
+                // surface, and recording a delivery claim here would let this
+                // background post suppress the turn's real answer.
+            });
+            if (!sent.ok) log.error(`[heartbeat:${job["name"]}] slack send failed: ${sent.error}`);
+            return sent.ok;
+        },
+    });
+
+    const stopped = outcome.stoppedBecause ? ' (stopped: ' + outcome.stoppedBecause + ')' : '';
+    log.info(`[heartbeat:${job["name"]}] mention watch: ${outcome.answered} answered, ${outcome.quiet} quiet, ${outcome.failed} failed${stopped}`);
+    return true;
+}
+
+/** Where the answer goes: the thread that carried the mention.
+ *
+ *  Built from the hit rather than from the job destination, because a
+ *  mention-watch answer belongs beside the question. The job destination still
+ *  gates whether the job may run (a malformed one refuses), it just does not
+ *  choose the thread. */
+function slackThreadTarget(hit: MentionHit): RemoteTarget {
+    const base = targetFromChatId('slack', hit.channelId);
+    return { ...base, threadId: hit.threadTs };
+}
+
+/** The per-message prompt.
+ *
+ *  The job's own prompt carries the PERSPECTIVE — whose stance to answer with,
+ *  which notes or wiki paths to ground it in. That stays operator-owned and
+ *  out of code: hard-coding one person's opinions here would make the feature
+ *  unusable for anyone else, and the stance is exactly the part that changes.
+ *  Code supplies only the message that needs answering. */
+function buildMentionWatchPrompt(
+    job: Record<string, any>,
+    watch: HeartbeatMentionWatch,
+    hit: MentionHit,
+): string {
+    const author = hit.authorId ? `<@${hit.authorId}>` : 'unknown';
+    return [
+        `[heartbeat:${job["name"]}] Slack mention watch`,
+        '',
+        `<@${watch.userId}> was mentioned in a message you are asked to answer on their behalf.`,
+        `channel: ${hit.channelId}`,
+        `thread: ${hit.threadTs}`,
+        `author: ${author}`,
+        '',
+        '--- Message ---',
+        hit.text,
+        '--- End Message ---',
+        '',
+        // The server posts the reply. An agent that also posts would double it,
+        // and its own send would not be covered by the per-message receipt.
+        'Reply with the ANSWER TEXT ONLY. Do not call any Slack send API yourself —',
+        'the server posts your reply into that thread. Answer [SILENT] if no reply is warranted.',
+        '',
+        job["prompt"] || '',
+    ].join('\n');
+}
+
 export async function runHeartbeatJob(job: Record<string, any>) {
     const runner = job["runner"] || 'main';
     if (runner === 'main' && getState('default') !== 'IDLE') {
@@ -206,6 +352,19 @@ export async function runHeartbeatJob(job: Record<string, any>) {
     }
     heartbeatBusy = true;
     try {
+        // A mention watch replaces the prompt path entirely: its prompt describes
+        // how to answer a message that has not been found yet, so running it bare
+        // would answer nothing and deliver that to the job's destination. Inside
+        // the try so the finally still clears `heartbeatBusy` and drains.
+        const watch = job["mentionWatch"];
+        if (watch != null) {
+            if (!isHeartbeatMentionWatch(watch)) {
+                log.error(`[heartbeat:${job["name"]}] invalid mention watch — not run`);
+                return;
+            }
+            await runMentionWatchJob(job, watch);
+            return;
+        }
         const schedule = normalizeHeartbeatSchedule(job["schedule"]);
         const timeZone = getHeartbeatScheduleTimeZone(schedule);
         const now = formatHeartbeatNow(schedule);
