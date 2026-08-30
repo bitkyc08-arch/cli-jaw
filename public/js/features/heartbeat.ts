@@ -80,9 +80,21 @@ export function renderHeartbeatJobs(): void {
     if (btn) btn.innerHTML = `${ICONS.heartPulse} Heartbeat (${active})`;
 }
 
+/** Ids must be unique across one save.
+ *
+ *  `Date.now()` alone is not enough. `normalizeHeartbeatJob` runs inside a
+ *  `.map()`, so two jobs missing an id in the same millisecond both become
+ *  `hb_<same-ms>`; two quick clicks on add-job collide the same way. The server
+ *  rejects a duplicate id now — two jobs under one id share one mention-watch
+ *  ledger namespace and the second inherits the first's cursor — so a collision
+ *  that used to silently merge two jobs would fail the entire save. */
+let idCounter = 0;
+
 export function addHeartbeatJob(): void {
     (state.heartbeatJobs as HeartbeatJob[]).push({
-        id: 'hb_' + Date.now(),
+        // Same-millisecond collision matters here too: two quick clicks on
+        // 'add job' would otherwise produce one id twice.
+        id: `hb_${Date.now()}_${idCounter++}`,
         name: '',
         enabled: true,
         schedule: withBrowserTimeZone({ kind: 'every', minutes: 5 }),
@@ -134,7 +146,7 @@ export async function initHeartbeatBadge(): Promise<void> {
 
 function normalizeHeartbeatJob(job: HeartbeatJob): HeartbeatJob {
     return {
-        id: String(job.id || `hb_${Date.now()}`),
+        id: String(job.id || `hb_${Date.now()}_${idCounter++}`),
         name: String(job.name || ''),
         enabled: job.enabled !== false,
         schedule: normalizeSchedule(job.schedule),
