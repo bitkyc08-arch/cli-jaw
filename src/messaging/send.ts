@@ -16,8 +16,33 @@ import { redactChannelSecrets } from './redact.js';
 import { log } from '../core/logger.js';
 import { recordSelfDelivery } from './turn-delivery.js';
 
-export function stampOutboundSend(channel: MessengerChannel, ok: boolean): void {
-    log.event('outbound.send', { channel, result: ok ? 'ok' : 'error' });
+/** The one record of an outbound send attempt.
+ *
+ *  `channel` and `result` alone cannot answer the question this event exists to
+ *  answer. Auditing 'did one turn answer twice' needs to know WHERE it went and
+ *  WHAT KIND of send it was: a heartbeat report, a progress edit, and a turn's
+ *  final answer are all `outbound.send` on the same channel, and counting them
+ *  together makes a duplicate indistinguishable from ordinary traffic.
+ *
+ *  Only the inbound bot modules write a human `[slack:out]` line, so every send routed
+ *  through `sendChannelOutput` — mention-watch answers, heartbeat reports, agent
+ *  `/api/channel/send` tool calls, forwarder relays — is invisible to a
+ *  text-log census. Those are the paths most likely to double.
+ *
+ *  The message body is deliberately absent. A duplicate audit needs the surface
+ *  and destination; the body is redacted elsewhere at real cost. */
+export function stampOutboundSend(
+    channel: MessengerChannel,
+    ok: boolean,
+    detail: { targetId?: string | undefined; type?: string | undefined; viaAgent?: boolean | undefined } = {},
+): void {
+    log.event('outbound.send', {
+        channel,
+        result: ok ? 'ok' : 'error',
+        ...(detail.targetId ? { target: detail.targetId } : {}),
+        ...(detail.type ? { type: detail.type } : {}),
+        ...(detail.viaAgent ? { via: 'agent' } : {}),
+    });
 }
 
 /**
@@ -410,7 +435,11 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     const sanitized = result.ok === false && typeof result.error === 'string'
         ? { ...result, error: redactChannelSecrets(result.error) }
         : result;
-    stampOutboundSend(channel, sanitized.ok !== false);
+    stampOutboundSend(channel, sanitized.ok !== false, {
+        targetId: req.target?.targetId,
+        type: typeof req.type === 'string' ? req.type : undefined,
+        viaAgent: req.fromAgentSurface === true,
+    });
     // Only a send that actually reached the user can excuse skipping the
     // dispatch post, and only `req.target` is the resolved destination — the
     // caller's target may have been absent and filled in by the chain above.
