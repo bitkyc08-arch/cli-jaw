@@ -153,6 +153,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 > 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 254개 route handler 기준이다. 이 중 API 엔드포인트는 253개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
+`PUT /api/heartbeat`의 job은 `mentionWatch: { channel: "slack", userId: "U...", channelIds: ["C..."], maxHits?, since? }`를 선택적으로 받는다. `channelIds`는 비어 있지 않아야 하고 저장 시 `slack.channelIds` allowlist의 부분집합이어야 하며, 실행 tick 직전 현재 allowlist와 다시 교집합한다. job id가 같은 기존 값에 대해 필드가 없으면 상속하고, `null`이면 삭제하며, 잘못된 값은 `400 invalid heartbeat mention watch`다. 파일 로드 정규화에서 잘못된 `mentionWatch`는 해당 job을 `enabled: false`로 내린다. 기본 운영값은 비활성이고, 설정된 watch는 별도 daemon이 아니라 기존 `runHeartbeatJob`에서 실행된다.
+
 `POST /api/channel/send`에서 `channel`은 `telegram|discord|slack|active` transport다. 대화 ID는 `chat_id` 또는 `target.targetId`에 넣는다. Slack thread를 명시할 때 `target.threadId`는 reply ts가 아닌 parent message ts다. target을 생략하면 검증된 현재 대화와 thread를 사용한다. 빈 `slack.channelIds`는 임의 explicit channel을 열지 않으며, 이미 저장·검증된 `lastActive/latestSeen`과 같은 conversation/thread만 명시적으로 재사용할 수 있다.
 
 `turn_conversation`은 인바운드 턴 프롬프트가 준 `reply_to=` 값을 그대로 돌려주는 필드다. target을 조립할 수 없을 때 생략하는 대신 이걸 echo 하면 그 턴이 답하는 대화로 배달된다 — 생략은 "가장 최근에 말한 대화"로 풀리고, 동시 턴에서는 그게 다른 대화일 수 있다 (#474). 우선순위는 `target` > `turn_conversation` > `lastActive` > `latestSeen`이며, `turn_conversation`도 동일한 allowlist 검증을 받는다. 잘못된 값은 예외 대신 없는 것으로 처리된다.

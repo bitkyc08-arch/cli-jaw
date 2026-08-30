@@ -666,6 +666,8 @@ You can enable multiple inbound channels at once. The manager and Web UI setting
 
 Socket Mode bot with the same shared command catalog — mentions, DMs, slash commands, file/image relay, thread replies. Each Slack-triggered agent turn receives the current conversation ID and parent thread timestamp explicitly, so history/member lookups and targeted replies do not depend on parsing an internal session label or enabling multi-session.
 
+Heartbeat jobs can opt into Slack mention watching with `mentionWatch: { channel: "slack", userId, channelIds, maxHits?, since? }`. This runs inside the existing `runHeartbeatJob`, not a separate daemon: it walks explicitly configured, joined channels backward with `conversations.history` because `search.messages` is a user-token method and bot tokens cannot hold `search:read`. The scan keeps a completed-message frontier and unfinished-walk resume bound, rotates the first channel between ticks, stops the tick on 429, and reports channel IDs beyond the 60-channel ceiling. Before each hit it yields to active PABCD, agent work, queued messages, or pending replay; the agent returns answer text only, then the server posts it to the source thread with `sendChannelOutput` and records the message as seen. Failed sends remain eligible for retry, so delivery is at-least-once. Keep watch jobs disabled (`enabled: false`) until the channel subset and target user are configured; every tick intersects `channelIds` with the current `slack.channelIds` allowlist again.
+
 <details>
 <summary>Setup (guided wizard)</summary>
 

@@ -33,6 +33,7 @@ import { parseApprovalCallbackData } from '../messaging/approval-presentation.js
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
 import { createDiscordForwarder, relayDiscordImages } from './forwarder.js';
 import { nextDeliverySeq, pendingDeliveryAnchor, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { shouldSkipForwarding } from '../messaging/forwarder-origin.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import { invalidateDiscordSendClient } from './send-only-client.js';
@@ -694,7 +695,7 @@ async function installDiscordGeneration(
         const forwarder = createDiscordForwarder({
             client,
             getLastTarget: () => getLastActiveTarget('discord'),
-            shouldSkip: (data) => data["origin"] === 'discord',
+            shouldSkip: (data) => shouldSkipForwarding(data, 'discord'),
             log: ({ channelId, preview }) => {
                 log.info(`[discord:forward] → ${channelId}: ${preview}...`);
             },

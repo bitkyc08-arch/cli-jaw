@@ -64,6 +64,7 @@ import { sendSlackText, getSlackSendClient } from './send-only-client.js';
 import { startSlackProgress, statusFromToolEvent } from './progress.js';
 import { createSlackForwarder, relaySlackImages } from './forwarder.js';
 import { nextDeliverySeq, pendingDeliveryAnchor, wasSelfDelivered } from '../messaging/turn-delivery.js';
+import { shouldSkipForwarding } from '../messaging/forwarder-origin.js';
 import { handleSlackSlashCommand } from './commands.js';
 import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
@@ -1274,7 +1275,7 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
     forwarderHandler = createSlackForwarder({
         getToken: () => getSlackSendClient().token,
         getLastTarget: () => getLastActiveTarget('slack'),
-        shouldSkip: (data) => data["origin"] === 'slack',
+        shouldSkip: (data) => shouldSkipForwarding(data, 'slack'),
     });
     addBroadcastListener(forwarderHandler);
     // Deliberately NOT awaited. A workspace with thousands of channels takes

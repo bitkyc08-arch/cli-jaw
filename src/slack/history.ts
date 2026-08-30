@@ -24,7 +24,12 @@ export type SlackHistoryMessage = {
 
 export type SlackHistoryResult =
     | { ok: true; messages: SlackHistoryMessage[]; hasMore: boolean }
-    | { ok: false; error: string };
+    /** `error` is operator prose, for logs and UI. `code` is Slack's raw error
+     *  string, for callers that must BRANCH on the reason — a rate limit means
+     *  "stop asking", while `not_in_channel` means "skip this one and continue".
+     *  Reading that decision out of the prose would break the moment the wording
+     *  changes. Absent when the failure had no Slack error code. */
+    | { ok: false; error: string; code?: string };
 
 export const SLACK_HISTORY_DEFAULT_LIMIT = 50;
 export const SLACK_HISTORY_MAX_LIMIT = 200;
@@ -135,7 +140,11 @@ async function callWithRetry(
     if (!result.ok) {
         // describeSlackError output is operator prose (never echoes tokens);
         // redact defensively anyway since it can embed upstream messages.
-        return { ok: false, error: redactChannelSecrets(describeSlackError(result.error, result.data)) };
+        return {
+            ok: false,
+            error: redactChannelSecrets(describeSlackError(result.error, result.data)),
+            ...(result.error ? { code: result.error } : {}),
+        };
     }
     return {
         ok: true,
