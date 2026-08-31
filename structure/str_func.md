@@ -234,9 +234,9 @@ cli-jaw/
 │   ├── memory/               ← 데이터 영속화 + advanced memory runtime (17 files)
 │   │   ├── advanced.ts       ← Advanced Memory re-export stub (1L)
 │   │   ├── bootstrap.ts      ← legacy memory/bootstrap import + structured root 초기화 (588L)
-│   │   ├── heartbeat.ts      ← Heartbeat 잡 스케줄 + cron/every timer orchestration + minute-slot dedupe + fs.watch (564L)
+│   │   ├── heartbeat.ts      ← Heartbeat 잡 스케줄 + cron/every timer orchestration + minute-slot dedupe + fs.watch (647L)
 │   │   ├── heartbeat-schedule.ts ← Heartbeat schedule normalize + cron validate/match + timezone validate + immediate cron loop helper (410L)
-│   │   ├── heartbeat-mention-watch.ts ← Slack mention 항목 loop + busy yield + server-owned thread send + WatchNamespace 경유 ledger 접근 (244L)
+│   │   ├── heartbeat-mention-watch.ts ← Slack mention 항목 loop + busy yield + server-owned thread send + WatchNamespace 경유 ledger 접근 (249L)
 │   │   ├── mention-watch-ledger.ts ← v2 ledger 단일 접근 경로 (WatchNamespace = job+workspace+user, 모든 SQL이 3파트 predicate 유지, A/B 대칭 테스트가 최종 보증) (104L) ✨
 │   │   ├── legacy-mention-watch-quarantine.ts ← v1 ledger 격리 상태 기계 (durable pending, downgrade 재출현 시 재격리, fresh-start 승인은 archive→delete→CAS 단일 트랜잭션) (115L) ✨
 │   │   ├── identity.ts       ← `shared/soul.md` 관리 + soul runtime helper (87L)

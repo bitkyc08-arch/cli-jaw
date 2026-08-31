@@ -69,8 +69,13 @@ export type MentionWatchDeps = {
      *
      *  Checking once before the loop is not enough: the first answer can take
      *  minutes, and a user message or a PABCD transition arriving in that window
-     *  has to win. Unanswered items are not recorded, so the next tick has them. */
-    yieldNow(): 'yielded' | null;
+     *  has to win. Unanswered items are not recorded, so the next tick has them.
+     *
+     *  The hit is passed because the decision is per CONVERSATION, not global: the
+     *  answer runs in the session bound to that thread, so the work that outranks
+     *  it is the work in that thread. A global check would either block on an
+     *  unrelated conversation or miss the one this item is about to touch. */
+    yieldNow(hit: MentionHit): 'yielded' | null;
     fetchImpl?: typeof fetch | undefined;
     signal?: AbortSignal | undefined;
     now?: () => number;
@@ -170,7 +175,7 @@ export async function runMentionWatchTick(
         // Re-checked per item, not once for the batch: the previous answer may
         // have taken minutes, and a user who started typing during it outranks
         // the rest of this backlog.
-        const yielded = deps.yieldNow();
+        const yielded = deps.yieldNow(hit);
         if (yielded) { result.stoppedBecause = yielded; break; }
 
         let text: string | null;

@@ -19,6 +19,11 @@ import { runMentionWatchTick } from './heartbeat-mention-watch.js';
 import { watchNamespace } from './mention-watch-ledger.js';
 import { detectLegacyMentionWatch, isQuarantined } from './legacy-mention-watch-quarantine.js';
 import { verifiedSlackWorkspace } from '../slack/verified-workspace.js';
+import { buildRemoteBindingKey } from '../messaging/session-key.js';
+import { getRemoteBoundSessionId, resolveOrCreateRemoteSession } from '../core/chat-sessions.js';
+import { hasChatSessionWork } from '../orchestrator/session-work.js';
+import { sessionLanes } from '../orchestrator/session-lanes.js';
+import { channelGateOn } from '../orchestrator/scope.js';
 import type { MentionHit } from '../slack/mention-watch.js';
 import { getSlackSelfUserId } from '../slack/bot.js';
 import { readSlackAllowlist } from '../slack/events.js';
@@ -31,6 +36,16 @@ import { getGoalContinuationPrompt } from '../goal/heartbeat.js';
 import { log } from '../core/logger.js';
 
 const HEARTBEAT_SCOPE = 'default';
+/** Execution scope prefix for a mention-watch answer.
+ *
+ *  The answer belongs to the thread's chat session, but it must NOT run in that
+ *  thread's execution scope. A turn registered there shows up as busy to the next
+ *  human message, which then gets steered into it instead of starting its own run
+ *  (src/orchestrator/gateway.ts, and a steered submission is not `new_run` so
+ *  Slack never installs its reply path) — the person's prompt would be answered as
+ *  if it were the mention. A lane nobody else submits to keeps the background turn
+ *  unsteerable while the session id still puts the answer in the right history. */
+const MENTION_WATCH_SCOPE_PREFIX = 'mention-watch:';
 import { applyOutputPolicy, loadPolicyHooksConfig } from '../core/policy-hooks.js';
 import { setRecordPending } from '../core/policy-flags.js';
 import { parseHeartbeatReport, type HeartbeatReport } from './heartbeat-report.js';
@@ -268,12 +283,12 @@ async function runMentionWatchJob(job: Record<string, any>, watch: HeartbeatMent
         log: (message) => log.info(`[heartbeat:${job["name"]}] ${message}`),
         // Yield to anything a person is waiting on. Re-read per item because the
         // previous answer may have taken minutes.
-        yieldNow: () => {
+        yieldNow: (hit) => {
             if (getState('default') !== 'IDLE') return 'yielded';
             if (isAgentBusy(HEARTBEAT_SCOPE)) return 'yielded';
             if (messageQueue.length > 0) return 'yielded';
             if (hasPendingWorkerReplays(HEARTBEAT_SCOPE)) return 'yielded';
-            return null;
+            return mentionThreadYield(hit);
         },
         answer: async (hit) => {
             const prompt = buildMentionWatchPrompt(job, watch, hit);
@@ -283,10 +298,18 @@ async function runMentionWatchJob(job: Record<string, any>, watch: HeartbeatMent
             // what lets the send below tell "the user already has these words"
             // from "someone said this here an hour ago".
             const anchor = nextDeliverySeq();
-            const collected = await orchestrateAndCollectData(prompt, {
-                origin: 'heartbeat', requestId: crypto.randomUUID(),
-                scope: HEARTBEAT_SCOPE, chatSessionId: 'default',
-            });
+            // The answer runs in the SESSION bound to that thread, so it can see
+            // what was said there and the next human turn can see this reply. Only
+            // now is the session minted: doing it in the guard would create a
+            // permanent, undeletable row for every thread merely looked at.
+            const placement = mentionThreadPlacement(hit, 'mint');
+            const collected = await sessionLanes.runDetachedTurn(
+                placement.scope,
+                () => orchestrateAndCollectData(prompt, {
+                    origin: 'heartbeat', requestId: crypto.randomUUID(),
+                    scope: placement.scope, chatSessionId: placement.chatSessionId,
+                }),
+            );
             const text = applyOutputPolicy(String(collected.text), { scope: 'heartbeat', channel: 'slack' }).text;
             const quietConfig = loadPolicyHooksConfig()?.flags?.heartbeatQuietOk;
             const extraQuietMarkers = quietConfig?.enabled ? (quietConfig.markers || []) : [];
@@ -344,6 +367,66 @@ function slackThreadTarget(hit: MentionHit): RemoteTarget {
     return { ...base, threadId: hit.threadTs };
 }
 
+
+/** Where a mention-watch answer runs: the thread's SESSION, its own SCOPE.
+ *
+ *  Splitting the two is the point. The session id decides which history the turn
+ *  reads and writes, and that has to be the thread the question is in. The scope
+ *  decides which execution lane runs it, and that must be one no inbound message
+ *  can reach — otherwise the next human message in that thread is steered into
+ *  this background turn instead of getting its own.
+ *
+ *  `mode` controls whether a thread with no session yet gets one. The guard looks
+ *  up only ('lookup'); the answer path mints ('mint'). Minting is a permanent row
+ *  the sessions API refuses to delete, so a scan that merely READ a thread must not
+ *  leave one behind. */
+export function mentionThreadPlacement(
+    hit: MentionHit,
+    mode: 'lookup' | 'mint',
+): { scope: string; chatSessionId: string; remoteKey: string } {
+    const remoteKey = buildRemoteBindingKey(slackThreadTarget(hit));
+    // With the gate off there are no per-conversation sessions to bind to, so the
+    // shared one is the only honest answer. The scope stays separate regardless:
+    // steerability does not depend on the gate.
+    const bound = channelGateOn('slack') && settings["multiSession"]?.enabled === true
+        ? (mode === 'mint' ? resolveOrCreateRemoteSession(remoteKey) : getRemoteBoundSessionId(remoteKey))
+        : 'default';
+    return {
+        scope: MENTION_WATCH_SCOPE_PREFIX + remoteKey,
+        chatSessionId: bound ?? 'default',
+        remoteKey,
+    };
+}
+
+/** Whether this thread has work that outranks answering a mention in it.
+ *
+ *  Three conditions, and each covers a case the others miss.
+ *
+ *  - A non-IDLE PABCD state means the thread is mid-cycle even with nothing
+ *    running. Answering into it would let the pipeline's P post-processing save
+ *    this background reply as that thread's plan.
+ *  - `hasChatSessionWork` covers a turn actually in flight for that session,
+ *    plus its queued messages, workers and retries.
+ *  - A pending lane is checked, never awaited. A lane wait is unbounded and
+ *    `heartbeatBusy` is held across this whole tick, so enqueueing behind a long
+ *    human turn would stall every other heartbeat job with it. */
+export function mentionThreadYield(
+    hit: MentionHit,
+    probes: {
+        state?: (scope: string) => string;
+        sessionWork?: (sessionId: string) => boolean;
+        lanePending?: (scope: string) => boolean;
+    } = {},
+): 'yielded' | null {
+    const { remoteKey, chatSessionId } = mentionThreadPlacement(hit, 'lookup');
+    const readState = probes.state ?? getState;
+    const readSessionWork = probes.sessionWork ?? hasChatSessionWork;
+    const readLane = probes.lanePending ?? ((scope: string) => sessionLanes.hasPending(scope));
+    if (readState(remoteKey) !== 'IDLE') return 'yielded';
+    if (chatSessionId !== 'default' && readSessionWork(chatSessionId)) return 'yielded';
+    if (readLane(remoteKey)) return 'yielded';
+    return null;
+}
 /** The per-message prompt.
  *
  *  The job's own prompt carries the PERSPECTIVE — whose stance to answer with,
