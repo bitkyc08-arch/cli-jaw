@@ -148,6 +148,7 @@ const ShortcutsHelp = (
             <li><kbd>{formatShortcut(DEFAULT_MANAGER_SHORTCUT_KEYMAP.focusActiveSession)}</kbd>는 선택된 인스턴스의 Preview 탭으로 이동해요.</li>
             <li><kbd>{formatShortcut(DEFAULT_MANAGER_SHORTCUT_KEYMAP.focusNotes)}</kbd>는 Notes workspace로 이동해요.</li>
             <li><kbd>{formatShortcut(DEFAULT_MANAGER_SHORTCUT_KEYMAP.previousInstance)}</kbd> / <kbd>{formatShortcut(DEFAULT_MANAGER_SHORTCUT_KEYMAP.nextInstance)}</kbd>는 현재 필터된 인스턴스 목록에서 이전/다음 행을 선택해요.</li>
+            <li><kbd>Alt+1</kbd> … <kbd>Alt+9</kbd>는 렌더된 사이드바 행으로 점프하고, Alt를 200ms 누르면 행 오른쪽에 점프 힌트가 떠요.</li>
             <li><kbd>⌘/Ctrl + S</kbd>는 Notes와 Settings처럼 저장 가능한 화면에서 현재 편집 내용을 저장해요.</li>
             <li><kbd>⌘/Ctrl + E</kbd>는 Notes 편집 모드를 순환해요.</li>
             <li>Manager 단축키는 Dashboard settings에서 켜고 끄거나 keymap을 바꿀 수 있어요.</li>

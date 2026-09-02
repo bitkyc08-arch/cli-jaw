@@ -70,6 +70,7 @@ import type { JawCeoVoiceController } from './jaw-ceo/useJawCeoVoice';
 import { ModeSwitch } from './code/ModeSwitch';
 const CodeCanvas = lazy(() => import('./code/CodeCanvas').then(m => ({ default: m.CodeCanvas })));
 import './code/code.css';
+import { registerInstanceJumpSelector } from './components/sidebar-keyboard';
 
 type WorkspaceSurfaceProps = {
     active: boolean;
@@ -172,6 +173,9 @@ type Props = {
     onViewModeChange: (mode: DashboardViewMode) => void;
     port: number;
     workingDir: string;
+    query: string;
+    onQueryChange: (value: string) => void;
+    onSelectInstance: (instance: DashboardInstance) => void;
 };
 
 type RightPanelRenderContext = {
@@ -348,6 +352,17 @@ export function SidebarRailRouter(props: Props) {
         && props.notesSelectedNote
         && !props.notesSelectedNote.tags?.includes(props.notesModel.tagFilter),
     );
+
+    useEffect(() => {
+        registerInstanceJumpSelector(port => {
+            const instance = props.instances.find(row => row.port === port)
+                ?? (props.selectedInstance?.port === port ? props.selectedInstance : null);
+            if (instance) props.onSelectInstance(instance);
+        });
+        return () => {
+            registerInstanceJumpSelector(null);
+        };
+    }, [props.instances, props.selectedInstance, props.onSelectInstance]);
     // External file open: focus/create a Files tab and assign the file to it.
     // Stable identity matters: this is passed as `onLocalFileOpen` into
     // MarkdownRenderer (via CodeCanvas/DocPanel), and a fresh function each
@@ -519,7 +534,18 @@ export function SidebarRailRouter(props: Props) {
                                 <div id="code-session-sidebar-host" className="code-session-sidebar-host" />
                             </section>
                         ) : (
-                            <InstanceNavigator active={props.selectedInstance} hiddenCount={props.instances.filter(instance => instance.hidden).length} collapsed={props.sidebarCollapsed}>
+                            <InstanceNavigator
+                                active={props.selectedInstance}
+                                hiddenCount={props.instances.filter(instance => instance.hidden).length}
+                                collapsed={props.sidebarCollapsed}
+                                query={props.query}
+                                onQueryChange={props.onQueryChange}
+                                onSelectPort={port => {
+                                    const instance = props.instances.find(row => row.port === port)
+                                        ?? (props.selectedInstance?.port === port ? props.selectedInstance : null);
+                                    if (instance) props.onSelectInstance(instance);
+                                }}
+                            >
                                 {props.instanceListContent}
                             </InstanceNavigator>
                         )}

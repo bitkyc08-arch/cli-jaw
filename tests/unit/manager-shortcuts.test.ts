@@ -100,3 +100,14 @@ test('reload shortcuts are owned by the Electron menu and ignored by the rendere
     assert.ok(RENDERER_DISABLED_SHORTCUT_ACTIONS.has('browserReload'));
     assert.ok(RENDERER_DISABLED_SHORTCUT_ACTIONS.has('browserHardReload'));
 });
+
+test('Alt+Digit recovers jumpInstance even when macOS rewrites the key character', () => {
+    assert.equal(
+        actionForShortcutEvent(keyEvent('1', { altKey: true, code: 'Digit1' }), DEFAULT_MANAGER_SHORTCUT_KEYMAP),
+        'jumpInstance1',
+    );
+    assert.equal(
+        actionForShortcutEvent(keyEvent('£', { altKey: true, code: 'Digit3' }), DEFAULT_MANAGER_SHORTCUT_KEYMAP),
+        'jumpInstance3',
+    );
+});
