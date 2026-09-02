@@ -1,7 +1,11 @@
 import { createElement, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { getDesktop, isElectron } from '../panels/desktop-bridge';
-import type { BrowserPickedElement, BrowserWebviewNativeAction, BrowserWebviewScreenshot, BrowserWebviewTabState } from '../panels/desktop-bridge';
+import type { BrowserPickedElement, BrowserWebviewCommand, BrowserWebviewNativeAction, BrowserWebviewScreenshot, BrowserWebviewTabState } from '../panels/desktop-bridge';
 import { DEFAULT_BROWSER_URL, isRestrictedBrowserHost, normalizeBrowserTarget } from './browser-url';
+import { BrowserAddressBar } from './browser-address-bar';
+import { createAddressBarState, displayedAddress, reduceAddressBar, type AddressBarAction, type AddressBarState } from './browser-address-state';
+import { pickFaviconUrl, faviconInitial } from './browser-favicon';
+import { loadBrowserHistory, saveBrowserHistory, upsertBrowserHistory, type BrowserHistoryEntry } from './browser-history-store';
 import './browser-panel.css';
 
 // ---------------------------------------------------------------------------
@@ -69,6 +73,7 @@ type ElectronWebviewEvent = Event & {
     errorDescription?: string;
     validatedURL?: string;
     isMainFrame?: boolean;
+    favicons?: string[];
     details?: {
         reason?: string;
     };
@@ -77,7 +82,6 @@ type ElectronWebviewEvent = Event & {
 type BrowserTabState = {
     id: string;
     url: string;
-    inputUrl: string;
     title: string;
     blocked: boolean;
     loading: boolean;
@@ -85,6 +89,8 @@ type BrowserTabState = {
     error: string | null;
     canGoBack: boolean;
     canGoForward: boolean;
+    faviconUrl: string | null;
+    zoomFactor?: number;
 };
 
 type BrowserPanelProps = {
@@ -265,7 +271,6 @@ function createBrowserTab(id: string, target = DEFAULT_BROWSER_URL): BrowserTabS
     return {
         id,
         url: target,
-        inputUrl: target,
         title: titleFromUrl(target),
         blocked: false,
         loading: false,
@@ -273,7 +278,18 @@ function createBrowserTab(id: string, target = DEFAULT_BROWSER_URL): BrowserTabS
         error: null,
         canGoBack: false,
         canGoForward: false,
+        faviconUrl: null,
     };
+}
+
+function isRecordableBrowserUrl(target: string): boolean {
+    if (!target || target === 'about:blank') return false;
+    try {
+        const parsed = new URL(target);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+        return false;
+    }
 }
 
 export function BrowserPanel(props: BrowserPanelProps = {}) {
@@ -290,8 +306,9 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
     const [tabs, setTabs] = useState<BrowserTabState[]>(() => [initialTab.current]);
     const [activeTabId, setActiveTabId] = useState(initialTab.current.id);
     const inputRef = useRef<HTMLInputElement | null>(null);
-    const editingTabIdRef = useRef<string | null>(null);
-    const inputDraftRef = useRef<{ tabId: string; value: string } | null>(null);
+    const [addressState, setAddressState] = useState<AddressBarState>(() => createAddressBarState(initialTab.current.url));
+    const [historyEntries, setHistoryEntries] = useState<BrowserHistoryEntry[]>(() => loadBrowserHistory());
+    const committedByUserRef = useRef<Set<string>>(new Set());
     const pendingNavigationRefs = useRef<Map<string, string>>(new Map());
     /**
      * The webview `src` attribute is bound ONCE per page tab and never
@@ -311,6 +328,10 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
     const webviewUserAgent = useRef(embeddedBrowserUserAgent());
 
     const activeTab = tabs.find(tab => tab.id === activeTabId) ?? tabs[0] ?? initialTab.current;
+
+    const dispatchAddress = useCallback((action: AddressBarAction) => {
+        setAddressState(current => reduceAddressBar(current, action));
+    }, []);
 
     const updateTab = useCallback((id: string, patch: Partial<BrowserTabState>) => {
         setTabs(current => {
@@ -335,6 +356,10 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
     const registrationIdFor = useCallback((tabId: string): string => (
         moduleTabId ?? `panel:${tabId}`
     ), [moduleTabId]);
+    const moduleTabIdRef = useRef(moduleTabId);
+    moduleTabIdRef.current = moduleTabId;
+    const activeTabIdRef = useRef(activeTabId);
+    activeTabIdRef.current = activeTabId;
 
     const [bridgeStates, setBridgeStates] = useState<Record<string, BrowserWebviewTabState>>({});
     const [lastScreenshot, setLastScreenshot] = useState<BrowserWebviewScreenshot | null>(null);
@@ -400,8 +425,19 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         if (!browserBridge?.onWebviewState) return undefined;
         return browserBridge.onWebviewState(state => {
             setBridgeStates(current => (state.tabId in current ? { ...current, [state.tabId]: state } : current));
+            const liveModuleTabId = moduleTabIdRef.current;
+            const pageTabId = liveModuleTabId && state.tabId === liveModuleTabId
+                ? activeTabIdRef.current
+                : state.tabId.startsWith('panel:')
+                    ? state.tabId.slice('panel:'.length)
+                    : state.tabId;
+            const patch: Partial<BrowserTabState> = {};
+            const faviconUrl = pickFaviconUrl(state.favicons);
+            if (faviconUrl) patch.faviconUrl = faviconUrl;
+            if (typeof state.zoomFactor === 'number') patch.zoomFactor = state.zoomFactor;
+            if (Object.keys(patch).length > 0) updateTab(pageTabId, patch);
         });
-    }, []);
+    }, [updateTab]);
 
     // v5: native inspect returns the REAL element (selector/role/name/bounds).
     // When it fires for this panel's active tab, pin the element and open the
@@ -462,9 +498,6 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
                 }
                 patch.url = current;
                 patch.title = titleFromUrl(current);
-                if (editingTabIdRef.current !== tabId) {
-                    patch.inputUrl = current;
-                }
             }
             updateTab(tabId, patch);
         } catch {
@@ -480,6 +513,14 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         const handleStop = () => {
             updateTab(tabId, { loading: false });
             refreshNavState(tabId);
+            const current = webview.getURL?.() ?? lastKnownUrlRefs.current.get(tabId);
+            if (!current || !isRecordableBrowserUrl(current) || !isUrlAllowed(current, desktop)) return;
+            const title = webview.getTitle?.()?.trim() || titleFromUrl(current);
+            setHistoryEntries(entries => {
+                const next = upsertBrowserHistory(entries, { url: current, title, at: Date.now() });
+                saveBrowserHistory(next);
+                return next;
+            });
         };
         const handleNavigate = (event: Event) => {
             const nextUrl = (event as ElectronWebviewEvent).url;
@@ -496,9 +537,6 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
                     url: nextUrl,
                     title: titleFromUrl(nextUrl),
                 };
-                if (editingTabIdRef.current !== tabId) {
-                    patch.inputUrl = nextUrl;
-                }
                 lastKnownUrlRefs.current.set(tabId, nextUrl);
                 updateTab(tabId, patch);
             }
@@ -507,6 +545,10 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         const handleTitle = (event: Event) => {
             const nextTitle = (event as ElectronWebviewEvent).title?.trim();
             if (nextTitle) updateTab(tabId, { title: nextTitle });
+        };
+        const handleFavicon = (event: Event) => {
+            const faviconUrl = pickFaviconUrl((event as ElectronWebviewEvent).favicons);
+            updateTab(tabId, { faviconUrl });
         };
         const handleFail = (event: Event) => {
             const failure = event as ElectronWebviewEvent;
@@ -538,6 +580,7 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         webview.addEventListener('did-navigate', handleNavigate);
         webview.addEventListener('did-navigate-in-page', handleNavigate);
         webview.addEventListener('page-title-updated', handleTitle);
+        webview.addEventListener('page-favicon-updated', handleFavicon);
         webview.addEventListener('did-fail-load', handleFail);
         webview.addEventListener('render-process-gone', handleRenderGone);
         webview.addEventListener('dom-ready', handleDomReady);
@@ -547,6 +590,7 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
             webview.removeEventListener('did-navigate', handleNavigate);
             webview.removeEventListener('did-navigate-in-page', handleNavigate);
             webview.removeEventListener('page-title-updated', handleTitle);
+            webview.removeEventListener('page-favicon-updated', handleFavicon);
             webview.removeEventListener('did-fail-load', handleFail);
             webview.removeEventListener('render-process-gone', handleRenderGone);
             webview.removeEventListener('dom-ready', handleDomReady);
@@ -610,7 +654,6 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
             pendingNavigationRefs.current.delete(tabId);
             updateTab(tabId, {
                 blocked: true,
-                inputUrl: rawTarget,
                 error: blockedUrlMessage(),
             });
             return;
@@ -620,9 +663,9 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
             blocked: false,
             error: null,
             status: canUseElectronWebview ? null : 'Opened in a new browser tab. Embedded browser is only available in the Electron manager window.',
-            inputUrl: target,
             url: target,
             title: titleFromUrl(target),
+            faviconUrl: null,
         });
         if (canUseElectronWebview) {
             lastKnownUrlRefs.current.set(tabId, target);
@@ -652,7 +695,6 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         const tab = createBrowserTab(`browser-tab-${nextTabIndex.current++}`, allowed ? target : DEFAULT_BROWSER_URL);
         if (!allowed) {
             tab.blocked = true;
-            tab.inputUrl = rawTarget;
             tab.error = blockedUrlMessage();
         }
         setTabs(current => [...current, tab]);
@@ -663,6 +705,7 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         pendingNavigationRefs.current.delete(id);
         initialSrcRefs.current.delete(id);
         lastKnownUrlRefs.current.delete(id);
+        committedByUserRef.current.delete(id);
         stableWebviewRefCallbacks.current.delete(id);
         unregisterWebviewTarget(id);
         setTabs(current => {
@@ -682,30 +725,30 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
     }, [activeTabId, unregisterWebviewTarget]);
 
     const navigate = useCallback(() => {
-        const rawTarget = inputDraftRef.current?.tabId === activeTab.id
-            ? inputDraftRef.current.value
-            : inputRef.current?.value ?? activeTab.inputUrl;
-        editingTabIdRef.current = null;
-        inputDraftRef.current = null;
+        const rawTarget = addressState.focused ? addressState.draft : displayedAddress(addressState);
+        dispatchAddress({ type: 'submit' });
+        const normalized = normalizeBrowserTarget(rawTarget);
+        if (normalized && normalized !== DEFAULT_BROWSER_URL) {
+            committedByUserRef.current.add(activeTab.id);
+        }
         openUrlInTab(activeTab.id, rawTarget);
-    }, [activeTab.id, activeTab.inputUrl, openUrlInTab]);
+        inputRef.current?.blur();
+    }, [activeTab.id, addressState, dispatchAddress, openUrlInTab]);
 
-    const markUrlEditing = useCallback(() => {
-        editingTabIdRef.current = activeTab.id;
-        inputDraftRef.current = {
-            tabId: activeTab.id,
-            value: inputRef.current?.value ?? activeTab.inputUrl,
-        };
-    }, [activeTab.id, activeTab.inputUrl]);
+    const openHistoryEntry = useCallback((url: string) => {
+        committedByUserRef.current.add(activeTab.id);
+        dispatchAddress({ type: 'submit' });
+        openUrlInTab(activeTab.id, url);
+        inputRef.current?.blur();
+    }, [activeTab.id, dispatchAddress, openUrlInTab]);
 
-    const clearUrlEditingSoon = useCallback(() => {
-        window.setTimeout(() => {
-            if (document.activeElement !== inputRef.current && editingTabIdRef.current === activeTab.id) {
-                editingTabIdRef.current = null;
-                refreshNavState(activeTab.id);
-            }
-        }, 150);
-    }, [activeTab.id, refreshNavState]);
+    useEffect(() => {
+        setAddressState({ focused: false, draft: '', liveUrl: activeTab.url });
+    }, [activeTab.id]);
+
+    useEffect(() => {
+        dispatchAddress({ type: 'sync-live', liveUrl: activeTab.url });
+    }, [activeTab.url, dispatchAddress]);
 
     // --- 030 toolbar action handlers ---
 
@@ -908,6 +951,33 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         else webview?.reload();
     }, [activeTab.id]);
 
+    const handleReloadOrStop = useCallback(() => {
+        const webview = webviewRefs.current.get(activeTab.id);
+        if (!webview) return;
+        if (activeTab.loading) {
+            if (typeof webview.stop === 'function') webview.stop();
+            else void getDesktop()?.browser?.controlWebview?.({ kind: 'stop', tabId: activeRegistrationId });
+            return;
+        }
+        webview.reload();
+    }, [activeRegistrationId, activeTab.id, activeTab.loading]);
+
+    const handleZoom = useCallback(async (kind: 'zoomIn' | 'zoomOut' | 'zoomReset') => {
+        const command: BrowserWebviewCommand = { kind, tabId: activeRegistrationId };
+        const result = await getDesktop()?.browser?.controlWebview?.(command);
+        if (result?.ok && result.state) {
+            setBridgeStates(current => ({ ...current, [result.state!.tabId]: result.state! }));
+            const zoomFactor = result.state.zoomFactor;
+            const faviconUrl = pickFaviconUrl(result.state.favicons);
+            const patch: Partial<BrowserTabState> = {};
+            if (typeof zoomFactor === 'number') patch.zoomFactor = zoomFactor;
+            if (faviconUrl) patch.faviconUrl = faviconUrl;
+            if (Object.keys(patch).length > 0) updateTab(activeTab.id, patch);
+        } else if (result && !result.ok) {
+            reportActionError(result.error ?? 'Zoom unavailable');
+        }
+    }, [activeRegistrationId, activeTab.id, reportActionError, updateTab]);
+
     useEffect(() => {
         function handleShortcutAction(e: Event) {
             const detail = (e as CustomEvent).detail;
@@ -992,7 +1062,19 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
                             onClick={() => setActiveTabId(tab.id)}
                             title={tab.title}
                         >
-                            <span className="browser-tab-title">{tab.loading ? 'Loading...' : tab.title}</span>
+                            {tab.faviconUrl ? (
+                                <img
+                                    className="browser-tab-favicon"
+                                    src={tab.faviconUrl}
+                                    alt=""
+                                    width={16}
+                                    height={16}
+                                    onError={() => updateTab(tab.id, { faviconUrl: null })}
+                                />
+                            ) : (
+                                <span className="browser-tab-favicon is-fallback" aria-hidden="true">{faviconInitial(tab.title, tab.url)}</span>
+                            )}
+                            <span className="browser-tab-title">{tab.title}</span>
                         </button>
                         <button
                             type="button"
@@ -1021,24 +1103,12 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
             <div className="browser-toolbar">
                 <button type="button" className="browser-nav-btn" aria-label="Back" data-tooltip="Back" disabled={!canUseElectronWebview || !activeTab.canGoBack} onClick={() => webviewRefs.current.get(activeTab.id)?.goBack()}>‹</button>
                 <button type="button" className="browser-nav-btn" aria-label="Forward" data-tooltip="Forward" disabled={!canUseElectronWebview || !activeTab.canGoForward} onClick={() => webviewRefs.current.get(activeTab.id)?.goForward()}>›</button>
-                <button type="button" className="browser-nav-btn" aria-label="Reload" data-tooltip="Reload" disabled={!canUseElectronWebview} onClick={() => webviewRefs.current.get(activeTab.id)?.reload()}>↻</button>
-                <input
-                    ref={inputRef}
-                    className="browser-url-input"
-                    type="text"
-                    value={activeTab.inputUrl}
-                    onFocus={markUrlEditing}
-                    onBlur={clearUrlEditingSoon}
-                    onChange={event => {
-                        editingTabIdRef.current = activeTab.id;
-                        inputDraftRef.current = {
-                            tabId: activeTab.id,
-                            value: event.target.value,
-                        };
-                        updateTab(activeTab.id, { inputUrl: event.target.value });
-                    }}
-                    onKeyDown={event => { if (event.key === 'Enter') navigate(); }}
-                    aria-label="URL"
+                <button type="button" className="browser-nav-btn" aria-label={activeTab.loading ? 'Stop' : 'Reload'} data-tooltip="Reload" disabled={!canUseElectronWebview} onClick={handleReloadOrStop}>↻</button>
+                <BrowserAddressBar
+                    inputRef={inputRef}
+                    state={addressState}
+                    onDispatch={dispatchAddress}
+                    onSubmit={() => navigate()}
                 />
                 <button type="button" className="browser-go-btn" data-tooltip={canUseElectronWebview ? 'Go' : 'Open'} onMouseDown={event => event.preventDefault()} onClick={navigate}>{canUseElectronWebview ? 'Go' : 'Open'}</button>
                 {canUseElectronWebview && (
@@ -1059,20 +1129,44 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
                                     {activeBridgeState?.devToolsOpen && (
                                         <button type="button" role="menuitem" className="browser-more-item" onClick={handleCloseDevTools}>Close DevTools</button>
                                     )}
+                                    <div className="browser-more-zoom" role="group" aria-label="Page zoom" onClick={event => event.stopPropagation()}>
+                                        <button type="button" className="browser-more-item" onClick={() => void handleZoom('zoomOut')}>Zoom out</button>
+                                        <span className="browser-more-zoom-label">{Math.round((activeTab.zoomFactor ?? 1) * 100)}%</span>
+                                        <button type="button" className="browser-more-item" onClick={() => void handleZoom('zoomIn')}>Zoom in</button>
+                                        <button type="button" className="browser-more-item" onClick={() => void handleZoom('zoomReset')}>Reset</button>
+                                    </div>
                                 </div>
                             )}
                         </div>
                     </div>
                 )}
             </div>
-            {(activeTab.blocked || activeTab.error || activeTab.loading || activeTab.status) && (
+            <div className="browser-loading-track" aria-hidden="true">
+                <div className="browser-loading-bar" data-loading={activeTab.loading ? 'true' : 'false'} />
+            </div>
+            {(activeTab.blocked || activeTab.error) && (
                 <div className={`browser-status${activeTab.error ? ' is-error' : ''}`}>
-                    {activeTab.error ?? (activeTab.loading ? 'Loading...' : activeTab.status ?? 'Blocked')}
+                    {activeTab.error ?? 'Blocked'}
                 </div>
             )}
             {canUseElectronWebview ? (
                 <div className="browser-webview-stack">
                     <div key={activeTab.id} className="browser-webview-host is-active">
+                        {historyEntries.length > 0 && !activeTab.loading && ((addressState.focused && addressState.draft.trim() === '') || !committedByUserRef.current.has(activeTab.id)) && (
+                            <div className="browser-history-empty" aria-label="Recent visits">
+                                {historyEntries.map(entry => (
+                                    <button
+                                        key={`${entry.url}:${entry.at}`}
+                                        type="button"
+                                        className="browser-history-item"
+                                        onClick={() => openHistoryEntry(entry.url)}
+                                    >
+                                        <span className="browser-history-title">{entry.title || entry.url}</span>
+                                        <span className="browser-history-url">{entry.url}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {createElement('webview', {
                             ref: webviewRefCallbackFor(activeTab.id),
                             className: 'browser-webview',
