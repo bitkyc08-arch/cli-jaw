@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { InstanceRow } from './InstanceRow';
 import type {
     DashboardInstance,
@@ -8,6 +8,14 @@ import type {
 } from '../types';
 import { comparePinnedThenLabel } from './instance-row-status';
 import { useSidebarGroupCollapse } from '../hooks/useSidebarGroupCollapse';
+import {
+    SETTLED_TAIL_INITIAL_COUNT,
+    SETTLED_TAIL_PAGE_COUNT,
+    getJumpHintsVisible,
+    isSettledStatus,
+    pageSettledPorts,
+    subscribeJumpHints,
+} from './sidebar-keyboard';
 
 type InstanceGroupsProps = {
     instances: DashboardInstance[];
@@ -44,6 +52,10 @@ type InstanceGroupSectionProps = {
     profileMap: Map<string, DashboardProfile>;
     collapsed: boolean;
     onToggle: () => void;
+    jumpStartIndex: number;
+    showJumpHints: boolean;
+    settledVisibleCount: number;
+    onShowMoreSettled: () => void;
 };
 
 function withoutPorts(instances: DashboardInstance[], used: Set<number>): DashboardInstance[] {
@@ -68,13 +80,13 @@ function groupInstances(instances: DashboardInstance[], selectedPort: number | n
 
     const remaining = withoutPorts(instances, used);
     const running = remaining.filter(instance => instance.status === 'online');
-    const attention = remaining.filter(instance => ['timeout', 'error', 'unknown'].includes(instance.status));
-    const offline = remaining.filter(instance => instance.status === 'offline');
+    const attention = remaining.filter(instance => instance.status === 'error');
+    const settled = remaining.filter(instance => isSettledStatus(instance.status));
     const labelOf = (instance: Pick<DashboardInstance, 'label' | 'port'>) => instance.label || String(instance.port);
     favorites.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
     running.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
     attention.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
-    offline.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
+    settled.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
     for (const group of userGroups.values()) group.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
 
     const groups: DashboardInstanceGroup[] = [
@@ -87,7 +99,7 @@ function groupInstances(instances: DashboardInstance[], selectedPort: number | n
         })),
         { id: 'running', label: 'Running', instances: running },
         { id: 'attention', label: 'Attention', instances: attention },
-        { id: 'offline', label: 'Offline', instances: offline },
+        { id: 'settled', label: 'Settled', instances: settled },
     ];
 
     return groups.filter(group => group.instances.length > 0);
@@ -98,6 +110,7 @@ function renderInstanceRow(
     instance: DashboardInstance,
     profile?: DashboardProfile,
     priority: 'active' | 'normal' = 'normal',
+    jumpHint?: string | null,
 ) {
     return (
         <InstanceRow
@@ -126,16 +139,41 @@ function renderInstanceRow(
             onMarkActivitySeen={props.onMarkActivitySeen}
             onInstanceLabelSave={props.onInstanceLabelSave}
             onLifecycle={props.onLifecycle}
+            jumpHint={jumpHint ?? null}
         />
     );
 }
 
-function InstanceGroupSection(section: InstanceGroupSectionProps) {
-    const { group, props, profileMap, collapsed, onToggle } = section;
-    const selected = group.instances.find(instance => instance.port === props.selectedPort);
-    const visible = group.id === 'active' || !collapsed
-        ? group.instances
+function visibleGroupInstances(
+    group: DashboardInstanceGroup,
+    selectedPort: number | null,
+    collapsed: boolean,
+    settledVisibleCount: number,
+): DashboardInstance[] {
+    const selected = group.instances.find(instance => instance.port === selectedPort);
+    const pagedSettled = group.id === 'settled'
+        ? pageSettledPorts(
+            group.instances.map(instance => instance.port),
+            settledVisibleCount,
+            selectedPort,
+        )
+        : [];
+    const settledByPort = new Map(group.instances.map(instance => [instance.port, instance]));
+    const expandedInstances = group.id === 'settled'
+        ? pagedSettled.map(port => settledByPort.get(port)).filter((instance): instance is DashboardInstance => instance != null)
+        : group.instances;
+    return group.id === 'active' || !collapsed
+        ? expandedInstances
         : selected ? [selected] : [];
+}
+
+function InstanceGroupSection(section: InstanceGroupSectionProps) {
+    const { group, props, profileMap, collapsed, onToggle, jumpStartIndex, showJumpHints, settledVisibleCount, onShowMoreSettled } = section;
+    const settledExpanded = group.id !== 'settled' || !collapsed;
+    const visible = visibleGroupInstances(group, props.selectedPort, collapsed, settledVisibleCount);
+    const hiddenSettled = group.id === 'settled' && settledExpanded
+        ? Math.max(0, group.instances.length - settledVisibleCount)
+        : 0;
     const header = group.id === 'active' ? (
         <div className="instance-group-header">
             <span>{group.label}</span>
@@ -161,13 +199,27 @@ function InstanceGroupSection(section: InstanceGroupSectionProps) {
         <section className="instance-group" key={group.id} aria-label={`${group.label} instances`}>
             {header}
             <div id={`instance-group-body-${group.id}`} hidden={collapsed && visible.length === 0}>
-                {visible.map(instance => renderInstanceRow(
-                    props,
-                    instance,
-                    instance.profileId ? profileMap.get(instance.profileId) : undefined,
-                    group.id === 'active' ? 'active' : 'normal',
-                ))}
+                {visible.map((instance, rowIndex) => {
+                    const jumpIndex = jumpStartIndex + rowIndex;
+                    const jumpHint = showJumpHints && jumpIndex < 9 ? String(jumpIndex + 1) : null;
+                    return renderInstanceRow(
+                        props,
+                        instance,
+                        instance.profileId ? profileMap.get(instance.profileId) : undefined,
+                        group.id === 'active' ? 'active' : 'normal',
+                        jumpHint,
+                    );
+                })}
                 {group.id === 'active' && visible[0] ? props.renderActiveSessionList?.(visible[0].port) : null}
+                {group.id === 'settled' && settledExpanded && hiddenSettled > 0 ? (
+                    <button
+                        type="button"
+                        className="instance-settled-more"
+                        onClick={onShowMoreSettled}
+                    >
+                        Show {Math.min(hiddenSettled, SETTLED_TAIL_PAGE_COUNT)} more
+                    </button>
+                ) : null}
             </div>
         </section>
     );
@@ -177,40 +229,50 @@ export function InstanceGroups(props: InstanceGroupsProps) {
     const groups = groupInstances(props.instances, props.selectedPort);
     const profileMap = new Map((props.profiles || []).map(profile => [profile.profileId, profile]));
     const { isCollapsed, toggle: toggleGroup } = useSidebarGroupCollapse();
+    const showJumpHints = useSyncExternalStore(subscribeJumpHints, getJumpHintsVisible);
+    const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
+
+    useEffect(() => {
+        setSettledVisibleCount(SETTLED_TAIL_INITIAL_COUNT);
+    }, [props.instances]);
 
     if (groups.length === 0 && profileMap.size === 0) {
         return <section className="state">No matching instances found.</section>;
     }
 
+    let jumpCursor = 0;
+    const sections = groups.map(group => {
+        const collapsed = group.id === 'active' ? false : isCollapsed(group.id);
+        const visibleCount = visibleGroupInstances(group, props.selectedPort, collapsed, settledVisibleCount).length;
+        const jumpStartIndex = jumpCursor;
+        jumpCursor += visibleCount;
+        return (
+            <InstanceGroupSection
+                key={group.id}
+                group={group}
+                props={props}
+                profileMap={profileMap}
+                collapsed={collapsed}
+                onToggle={() => toggleGroup(group.id)}
+                jumpStartIndex={jumpStartIndex}
+                showJumpHints={showJumpHints}
+                settledVisibleCount={settledVisibleCount}
+                onShowMoreSettled={() => setSettledVisibleCount(count => count + SETTLED_TAIL_PAGE_COUNT)}
+            />
+        );
+    });
+
     if (profileMap.size > 0) {
         return (
             <div className="instance-groups profile-instance-groups is-profile-merged">
-                {groups.map(group => (
-                    <InstanceGroupSection
-                        key={group.id}
-                        group={group}
-                        props={props}
-                        profileMap={profileMap}
-                        collapsed={group.id === 'active' ? false : isCollapsed(group.id)}
-                        onToggle={() => toggleGroup(group.id)}
-                    />
-                ))}
+                {sections}
             </div>
         );
     }
 
     return (
         <div className="instance-groups">
-            {groups.map(group => (
-                <InstanceGroupSection
-                    key={group.id}
-                    group={group}
-                    props={props}
-                    profileMap={profileMap}
-                    collapsed={group.id === 'active' ? false : isCollapsed(group.id)}
-                    onToggle={() => toggleGroup(group.id)}
-                />
-            ))}
+            {sections}
         </div>
     );
 }

@@ -201,6 +201,7 @@ h2 { font-size: 13px; }
     border-bottom: 1px solid var(--border-subtle);
     background: var(--canvas-deep);
     padding: 10px;
+    flex-wrap: wrap;
 }
 .instance-navigator-header strong {
     display: block;
@@ -218,6 +219,57 @@ h2 { font-size: 13px; }
     flex: 1;
     min-height: 0;
     overflow: auto;
+}
+.instance-navigator-search { flex: 1 1 100%; }
+.instance-navigator-search input {
+    width: 100%;
+    border: 1px solid var(--border-subtle);
+    background: var(--canvas-deep);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: inherit;
+}
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.instance-jump-hint {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    height: 16px;
+    min-width: 16px;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-secondary);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 2;
+}
+.instance-settled-more {
+    width: 100%;
+    margin-top: 4px;
+    border: 0;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+    padding: 6px 4px;
 }
 .instance-group { margin-bottom: 12px; }
 .instance-group-header {

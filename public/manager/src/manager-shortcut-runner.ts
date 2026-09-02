@@ -2,6 +2,7 @@ import type { DashboardDetailTab, DashboardInstance, DashboardShortcutAction, Da
 import { actionForShortcutEvent } from './manager-shortcuts';
 import { panelShortcutBus } from './panels/panel-shortcut-bus';
 import { getDesktop } from './panels/desktop-bridge';
+import { getInstanceJumpSelector, jumpInstanceIndexFromAction, readRenderedInstancePorts } from './components/sidebar-keyboard';
 
 /**
  * Dependencies the manager keyboard-shortcut runner needs from <App>.
@@ -23,6 +24,14 @@ export interface ManagerShortcutRunnerDeps {
 
 export function runManagerShortcut(action: DashboardShortcutAction, deps: ManagerShortcutRunnerDeps): void {
     if (panelShortcutBus.dispatch(action)) return;
+    const jumpIndex = jumpInstanceIndexFromAction(action);
+    if (jumpIndex != null) {
+        const root = document.getElementById('manager-sidebar-list');
+        if (!root) return;
+        const port = readRenderedInstancePorts(root)[jumpIndex];
+        if (port != null) getInstanceJumpSelector()?.(port);
+        return;
+    }
     if (action === 'focusInstances') {
         deps.handleSidebarModeChange('instances');
         deps.setDrawerOpen(false);
