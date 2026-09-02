@@ -231,6 +231,10 @@ settings.ts (barrel)
 
 `AppChrome`이 capture-phase window keydown(`createManagerCaptureKeydownHandler`)으로 `toggleLeftSidebar` / `toggleRightPanel` / `resetSidebarWidth`를 포커스된 에디터보다 먼저 처리한다. `[data-keybinding-capture]` 조상이 있으면 건너뛴다. keymap 기본값(`Meta+B` 우측, `Meta+Shift+B` 좌측)은 바뀌지 않았다. 레일 버튼은 32px, 아이콘 18px stroke 1.5, active는 `--sidebar-row-active` + 왼쪽 2px `--accent`.
 
+### Manager sidebar rows (260902 t3 shell polish, wp3)
+
+`components/instance-row-status.ts`가 행 상태를 정한다: `transitioning`(라이프사이클 진행) > `working`(`busyPorts`) > `attention`(timeout/error/unknown) > `offline` > `online`. `InstanceRow`는 제목 위에 `.instance-row-status-line[data-status]`(pill + working일 때만 행 국소 1s `WorkingDuration`, `Ns`/`Nm`/`Xh Ym`)를 두고, compact/rail density에서는 숨긴다. 툴팁은 `composeInstanceRowTitle`의 native `title`. 퀵 액션(`.instance-row-quick .quick-btn`)은 hover/focus-within/선택 행에서만, 그리고 `:not(:disabled)`만 드러난다. `InstanceGroups` 헤더는 `button.instance-group-header.instance-group-toggle[aria-expanded]`로 접히며(`Active` 그룹은 예외), 접힘 맵은 `hooks/useSidebarGroupCollapse.ts`가 localStorage `jaw.sidebarGroupCollapsed`(`Record<groupId, boolean>`)에 저장한다. 접힌 그룹에서도 선택 인스턴스는 한 줄로 남는다. Pinned는 favorite 우선 후 label 정렬이며 서버 order key가 없어 DnD는 없다. 제네릭 `.instance-row.is-selected {` 선택자는 contract 테스트가 금지한다.
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.

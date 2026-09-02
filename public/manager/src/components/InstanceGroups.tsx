@@ -6,6 +6,8 @@ import type {
     DashboardLifecycleAction,
     DashboardProfile,
 } from '../types';
+import { comparePinnedThenLabel } from './instance-row-status';
+import { useSidebarGroupCollapse } from '../hooks/useSidebarGroupCollapse';
 
 type InstanceGroupsProps = {
     instances: DashboardInstance[];
@@ -21,6 +23,7 @@ type InstanceGroupsProps = {
     showInlineLabelEditor?: boolean;
     showSidebarRuntimeLine?: boolean;
     showSelectedRowActions?: boolean;
+    density?: 'compact' | 'comfortable' | 'rail';
     /** Session disclosure for the Active row (devlog 260806 D2). */
     activeSessionCount?: number;
     activeSessionsOpen?: boolean;
@@ -33,6 +36,14 @@ type InstanceGroupsProps = {
     onMarkActivitySeen: (port: number) => void;
     onInstanceLabelSave: (port: number, label: string | null) => Promise<void>;
     onLifecycle: (action: DashboardLifecycleAction, instance: DashboardInstance) => void;
+};
+
+type InstanceGroupSectionProps = {
+    group: DashboardInstanceGroup;
+    props: InstanceGroupsProps;
+    profileMap: Map<string, DashboardProfile>;
+    collapsed: boolean;
+    onToggle: () => void;
 };
 
 function withoutPorts(instances: DashboardInstance[], used: Set<number>): DashboardInstance[] {
@@ -59,6 +70,12 @@ function groupInstances(instances: DashboardInstance[], selectedPort: number | n
     const running = remaining.filter(instance => instance.status === 'online');
     const attention = remaining.filter(instance => ['timeout', 'error', 'unknown'].includes(instance.status));
     const offline = remaining.filter(instance => instance.status === 'offline');
+    const labelOf = (instance: Pick<DashboardInstance, 'label' | 'port'>) => instance.label || String(instance.port);
+    favorites.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
+    running.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
+    attention.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
+    offline.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
+    for (const group of userGroups.values()) group.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
 
     const groups: DashboardInstanceGroup[] = [
         { id: 'active', label: 'Active', instances: selected },
@@ -97,6 +114,7 @@ function renderInstanceRow(
             {...(props.showInlineLabelEditor !== undefined ? { showInlineLabelEditor: props.showInlineLabelEditor } : {})}
             {...(props.showSidebarRuntimeLine !== undefined ? { showRuntimeLine: props.showSidebarRuntimeLine } : {})}
             {...(props.showSelectedRowActions !== undefined ? { showSelectedActions: props.showSelectedRowActions } : {})}
+            {...(props.density !== undefined ? { density: props.density } : {})}
             {...(priority === 'active' && props.activeSessionCount !== undefined ? { sessionCount: props.activeSessionCount } : {})}
             {...(priority === 'active' && props.activeSessionsOpen !== undefined ? { sessionsOpen: props.activeSessionsOpen } : {})}
             {...(priority === 'active' && props.onToggleActiveSessions ? { onToggleSessions: props.onToggleActiveSessions } : {})}
@@ -112,31 +130,53 @@ function renderInstanceRow(
     );
 }
 
-function renderRows(
-    props: InstanceGroupsProps,
-    instances: DashboardInstance[],
-    profileMap: Map<string, DashboardProfile> = new Map(),
-) {
-    return groupInstances(instances, props.selectedPort).map(group => (
+function InstanceGroupSection(section: InstanceGroupSectionProps) {
+    const { group, props, profileMap, collapsed, onToggle } = section;
+    const selected = group.instances.find(instance => instance.port === props.selectedPort);
+    const visible = group.id === 'active' || !collapsed
+        ? group.instances
+        : selected ? [selected] : [];
+    const header = group.id === 'active' ? (
+        <div className="instance-group-header">
+            <span>{group.label}</span>
+            <strong>{group.instances.length}</strong>
+        </div>
+    ) : (
+        <button
+            type="button"
+            className="instance-group-header instance-group-toggle"
+            aria-expanded={!collapsed}
+            aria-controls={`instance-group-body-${group.id}`}
+            onClick={onToggle}
+        >
+            <span>
+                <svg className="instance-group-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" /></svg>
+                {' '}{group.label}
+            </span>
+            <strong>{group.instances.length}</strong>
+        </button>
+    );
+
+    return (
         <section className="instance-group" key={group.id} aria-label={`${group.label} instances`}>
-            <div className="instance-group-header">
-                <span>{group.label}</span>
-                <strong>{group.instances.length}</strong>
+            {header}
+            <div id={`instance-group-body-${group.id}`} hidden={collapsed && visible.length === 0}>
+                {visible.map(instance => renderInstanceRow(
+                    props,
+                    instance,
+                    instance.profileId ? profileMap.get(instance.profileId) : undefined,
+                    group.id === 'active' ? 'active' : 'normal',
+                ))}
+                {group.id === 'active' && visible[0] ? props.renderActiveSessionList?.(visible[0].port) : null}
             </div>
-            {group.instances.map(instance => renderInstanceRow(
-                props,
-                instance,
-                instance.profileId ? profileMap.get(instance.profileId) : undefined,
-                group.id === 'active' ? 'active' : 'normal',
-            ))}
-            {group.id === 'active' && group.instances[0] ? props.renderActiveSessionList?.(group.instances[0].port) : null}
         </section>
-    ));
+    );
 }
 
 export function InstanceGroups(props: InstanceGroupsProps) {
     const groups = groupInstances(props.instances, props.selectedPort);
     const profileMap = new Map((props.profiles || []).map(profile => [profile.profileId, profile]));
+    const { isCollapsed, toggle: toggleGroup } = useSidebarGroupCollapse();
 
     if (groups.length === 0 && profileMap.size === 0) {
         return <section className="state">No matching instances found.</section>;
@@ -145,14 +185,32 @@ export function InstanceGroups(props: InstanceGroupsProps) {
     if (profileMap.size > 0) {
         return (
             <div className="instance-groups profile-instance-groups is-profile-merged">
-                {renderRows(props, props.instances, profileMap)}
+                {groups.map(group => (
+                    <InstanceGroupSection
+                        key={group.id}
+                        group={group}
+                        props={props}
+                        profileMap={profileMap}
+                        collapsed={group.id === 'active' ? false : isCollapsed(group.id)}
+                        onToggle={() => toggleGroup(group.id)}
+                    />
+                ))}
             </div>
         );
     }
 
     return (
         <div className="instance-groups">
-            {renderRows(props, props.instances)}
+            {groups.map(group => (
+                <InstanceGroupSection
+                    key={group.id}
+                    group={group}
+                    props={props}
+                    profileMap={profileMap}
+                    collapsed={group.id === 'active' ? false : isCollapsed(group.id)}
+                    onToggle={() => toggleGroup(group.id)}
+                />
+            ))}
         </div>
     );
 }

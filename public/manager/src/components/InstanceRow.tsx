@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, MouseEvent } from 'react';
 import type { DashboardInstance, DashboardLifecycleAction, DashboardProfile } from '../types';
+import { composeInstanceRowTitle, formatWorkingDurationLabel, resolveInstanceRowStatus } from './instance-row-status';
 
 type InstanceRowProps = {
     instance: DashboardInstance;
@@ -63,6 +64,21 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
     </svg>
 );
 
+function WorkingDuration(props: { startedAtMs: number | null }) {
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (props.startedAtMs == null) return undefined;
+        const id = window.setInterval(() => setTick(tick => tick + 1), 1000);
+        return () => window.clearInterval(id);
+    }, [props.startedAtMs]);
+    if (props.startedAtMs == null) return null;
+    return (
+        <span className="instance-row-working-duration">
+            {formatWorkingDurationLabel(Date.now() - props.startedAtMs)}
+        </span>
+    );
+}
+
 export function InstanceRow(props: InstanceRowProps) {
     const lifecycle = props.instance.lifecycle;
     const reason = lifecycle?.reason || props.instance.healthReason || 'ok';
@@ -76,7 +92,24 @@ export function InstanceRow(props: InstanceRowProps) {
     }
 
     const transitionLabel = props.transitioning ? TRANSITION_LABELS[props.transitioning] : null;
-    const dotClass = `${statusClass(props.instance.status)}${transitionLabel ? ' is-transitioning' : ''}${props.agentBusy ? ' is-busy' : ''}`;
+    const rowStatus = resolveInstanceRowStatus(props.instance, {
+        busy: Boolean(props.agentBusy),
+        transitioning: props.transitioning || null,
+    });
+    const startedAtRef = useRef<number | null>(null);
+    if (rowStatus === 'working') {
+        if (startedAtRef.current == null) startedAtRef.current = Date.now();
+    } else {
+        startedAtRef.current = null;
+    }
+    const statusLabel = rowStatus === 'transitioning' && transitionLabel
+        ? transitionLabel
+        : rowStatus === 'working' ? 'Working'
+            : rowStatus === 'offline' ? 'Offline'
+                : rowStatus === 'attention' ? 'Attention'
+                    : 'Online';
+    const hideStatusLine = props.density === 'compact' || props.density === 'rail';
+    const dotClass = `${statusClass(props.instance.status)}${transitionLabel ? ' is-transitioning' : ''}${props.agentBusy ? ' is-busy' : ''} is-${rowStatus}`;
     const primaryLabel = props.instance.label || props.profile?.label || props.label;
     async function submitLabel(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
@@ -94,7 +127,10 @@ export function InstanceRow(props: InstanceRowProps) {
     }
 
     return (
-        <article className={`instance-row density-${props.density || 'comfortable'} priority-${props.priority || 'normal'} ${props.selected ? 'is-selected' : ''}${transitionLabel ? ' is-transitioning-row' : ''}`}>
+        <article
+            className={`instance-row density-${props.density || 'comfortable'} priority-${props.priority || 'normal'} ${props.selected ? 'is-selected' : ''}${transitionLabel ? ' is-transitioning-row' : ''} is-${rowStatus}`}
+            title={composeInstanceRowTitle(props.instance)}
+        >
             <button
                 className="instance-row-select"
                 type="button"
@@ -106,6 +142,14 @@ export function InstanceRow(props: InstanceRowProps) {
                 <div className="instance-row-main">
                     <span className={dotClass} aria-label={props.instance.status} />
                     <div className="instance-row-title">
+                        {!hideStatusLine ? (
+                            <div className="instance-row-status-line" data-status={rowStatus}>
+                                <span className={`instance-row-status-pill is-${rowStatus} health-${props.instance.status}`}>
+                                    {statusLabel}
+                                </span>
+                                {rowStatus === 'working' ? <WorkingDuration startedAtMs={startedAtRef.current} /> : null}
+                            </div>
+                        ) : null}
                         <div className="instance-row-title-line">
                             <strong>{props.instance.favorite ? `Pinned ${primaryLabel}` : primaryLabel}</strong>
                             {props.activityUnreadCount ? (
