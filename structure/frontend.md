@@ -225,6 +225,12 @@ settings.ts (barrel)
 
 로드맵: `devlog/_plan/260902_t3_shell_polish/` (000 SoT, 010 토큰, 020 사이드바 셸, 030 행, 040 검색/키보드, 050 커맨드바, 060 브라우저 크롬, 070 Electron, 080 하드닝).
 
+### Manager sidebar shell (260902 t3 shell polish, wp2)
+
+좌측 사이드바 픽셀 폭은 `public/manager/src/hooks/useSidebarWidth.ts`가 단독 소유한다. localStorage 키 `jaw.sidebarWidth`, 기본 300, 최소 220, 최대 `viewport - 640 - (우측 패널 열림 ? 그 폭 : 0)`, 접힘 시 44px 레일. 서버 registry `ui.*`에는 넣지 않는다(`sidebarCollapsed`만 기존대로 서버 영속). `WorkspaceLayout`이 inline style로 `--sidebar-width`를 항상 쓰고, layout/polish/p0-1-1 CSS의 340/360/300/56/44 cascade 상수는 제거됐다(모바일 1열의 `0px`만 남음). `components/SidebarResizeHandle.tsx`(`PanelResizer` 재사용, `role="separator"`, `aria-label="Resize sidebar"`, `aria-valuenow`)는 `.manager-workspace` 직속 자식으로 `left: calc(var(--sidebar-width) - 12px)`에 놓인다 — aside 안에 두면 `overflow: hidden`이 24px 히트 영역 절반을 잘라 드래그가 안 된다. 더블클릭 또는 단축키 `resetSidebarWidth`(기본 `Alt+Shift+B`, `runManagerShortcut`이 `jaw:shortcut-action` CustomEvent를 dispatch하고 `SidebarRailRouter`가 구독)가 300으로 되돌리고 키를 지운다. 접힘 전환은 grid column 180ms(`--motion-base`), `prefers-reduced-motion`이면 `transition: none !important`.
+
+`AppChrome`이 capture-phase window keydown(`createManagerCaptureKeydownHandler`)으로 `toggleLeftSidebar` / `toggleRightPanel` / `resetSidebarWidth`를 포커스된 에디터보다 먼저 처리한다. `[data-keybinding-capture]` 조상이 있으면 건너뛴다. keymap 기본값(`Meta+B` 우측, `Meta+Shift+B` 좌측)은 바뀌지 않았다. 레일 버튼은 32px, 아이콘 18px stroke 1.5, active는 `--sidebar-row-active` + 왼쪽 2px `--accent`.
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.
