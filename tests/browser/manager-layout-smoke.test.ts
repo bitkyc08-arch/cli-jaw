@@ -258,3 +258,73 @@ test('manager preview header toggles and refreshes the iframe', async (t) => awa
 
     assert.equal(afterRefresh, beforeRefresh, 'refresh must reload the existing preview URL without changing target');
 }));
+
+test('manager sidebar shell resizes, persists, resets, and collapses', async (t) => await withManagerBrowserLock(async () => {
+    const page = await pageForManager(t);
+    if (!page) return;
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.dashboard-shell.manager-shell');
+    await page.evaluate(() => localStorage.removeItem('jaw.sidebarWidth'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.sidebar-resize-handle');
+
+    const readSidebar = () => page.evaluate(() => {
+        const sidebar = document.querySelector('.manager-sidebar');
+        const workspace = document.querySelector('.manager-workspace');
+        const handle = document.querySelector('.sidebar-resize-handle');
+        return {
+            width: sidebar ? Math.round(sidebar.getBoundingClientRect().width) : null,
+            cssVar: workspace ? getComputedStyle(workspace).getPropertyValue('--sidebar-width').trim() : null,
+            stored: localStorage.getItem('jaw.sidebarWidth'),
+            role: handle?.getAttribute('role') ?? null,
+            valueNow: handle?.getAttribute('aria-valuenow') ?? null,
+            collapsed: workspace?.classList.contains('is-sidebar-collapsed') ?? false,
+        };
+    });
+
+    const initial = await readSidebar();
+    assert.equal(initial.width, 300, 'sidebar default width is the cli-jaw DEFAULT (300px)');
+    assert.equal(initial.cssVar, '300px', 'WorkspaceLayout owns --sidebar-width');
+    assert.equal(initial.role, 'separator', 'resize handle must be a focusable separator');
+    assert.equal(initial.valueNow, '300', 'resize handle exposes the current width');
+
+    const box = await page.locator('.sidebar-resize-handle').boundingBox();
+    assert.ok(box, 'resize handle must have a layout box');
+    const startX = box.x + box.width / 2;
+    const y = box.y + 200;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 12; step += 1) {
+        await page.mouse.move(startX + step * 10, y);
+        await page.waitForTimeout(16);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const dragged = await readSidebar();
+    assert.equal(dragged.width, 420, 'dragging the handle 120px widens the sidebar to 420px');
+    assert.equal(dragged.stored, '420', 'the width is persisted under jaw.sidebarWidth');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.sidebar-resize-handle');
+    const restored = await readSidebar();
+    assert.equal(restored.width, 420, 'the persisted width survives a reload');
+
+    const box2 = await page.locator('.sidebar-resize-handle').boundingBox();
+    assert.ok(box2, 'resize handle must still be mounted after reload');
+    await page.mouse.dblclick(box2.x + box2.width / 2, box2.y + 200);
+    // the grid column animates 180ms (--motion-base); wait for it to settle
+    await page.waitForTimeout(400);
+    const reset = await readSidebar();
+    assert.equal(reset.width, 300, 'double-click resets the width to the default');
+    assert.equal(reset.stored, null, 'reset removes the persisted key');
+
+    await page.keyboard.press('Meta+Shift+B');
+    await page.waitForFunction(() => document.querySelector('.manager-workspace')?.classList.contains('is-sidebar-collapsed'));
+    await page.waitForTimeout(400);
+    const collapsed = await readSidebar();
+    assert.equal(collapsed.width, 44, 'collapsed sidebar leaves the 44px rail');
+    assert.equal(collapsed.cssVar, '44px', 'collapsed width comes from the hook constant');
+    await page.keyboard.press('Meta+Shift+B');
+}));
+

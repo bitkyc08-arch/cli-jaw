@@ -653,7 +653,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     height: 26px;
     border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--surface);
+    background: var(--surface-raised);
     color: var(--text-primary);
     padding: 0 7px;
     font-size: 12px;
@@ -800,7 +800,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 }
 .project-dirs .label {
     flex: 0 0 auto;
-    color: var(--text-muted);
+    color: var(--text-dim);
     font-size: 11px;
     font-weight: 650;
 }
@@ -819,7 +819,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 .project-dirs.is-empty .project-dir {
     border-style: dashed;
     background: transparent;
-    color: var(--text-muted);
+    color: var(--text-dim);
     font-family: inherit;
 }
 .project-pick-button {

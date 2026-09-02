@@ -69,10 +69,10 @@
     font-size: 9px;
     font-weight: 600;
     color: var(--text-primary);
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
 }
 .browser-tab-item.is-active .browser-tab {
-    color: var(--text-base);
+    color: var(--text-primary);
 }
 .browser-tab-title {
     display: block;
@@ -104,8 +104,8 @@
 .browser-tab-add:focus-visible,
 .browser-collapse-button:hover,
 .browser-collapse-button:focus-visible {
-    color: var(--text-base);
-    background: var(--bg-hover);
+    color: var(--text-primary);
+    background: var(--sidebar-row-hover);
 }
 .browser-tab-add {
     margin-left: 1px;
@@ -140,7 +140,7 @@
     font-size: 13px;
     color: var(--text-dim);
 }
-.browser-nav-btn:hover { background: var(--bg-hover); color: var(--text-base); }
+.browser-nav-btn:hover { background: var(--sidebar-row-hover); color: var(--text-primary); }
 .browser-nav-btn:disabled {
     cursor: default;
     opacity: 0.38;
@@ -156,23 +156,23 @@
     border: 1px solid var(--border-subtle);
     border-radius: 4px;
     background: var(--canvas-deep);
-    color: var(--text-base);
+    color: var(--text-primary);
     font-size: 11px;
-    outline: none;
 }
-.browser-url-input:focus { border-color: var(--accent-primary); }
+.browser-url-input:focus { border-color: var(--accent-primary); outline: none; }
+.browser-url-input:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 .browser-go-btn {
     all: unset;
     cursor: pointer;
     padding: 3px 8px;
     border-radius: 4px;
     border: 1px solid var(--border-subtle);
-    color: var(--text-base);
+    color: var(--text-primary);
     background: var(--bg-raised);
     font-size: 11px;
 }
 .browser-go-btn:hover {
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
     border-color: var(--border-strong);
 }
 .browser-toolbar [data-tooltip] {
@@ -190,7 +190,7 @@
     border: 1px solid var(--border-strong);
     border-radius: 5px;
     background: var(--bg-raised);
-    color: var(--text-base);
+    color: var(--text-primary);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     font-size: 11px;
     line-height: 1.2;
@@ -347,7 +347,7 @@
 }
 
 .browser-external-title {
-    color: var(--text-base);
+    color: var(--text-primary);
     font-size: 13px;
     font-weight: 600;
 }
@@ -366,14 +366,14 @@
     padding: 5px 9px;
     border: 1px solid var(--border-subtle);
     border-radius: 4px;
-    color: var(--text-base);
+    color: var(--text-primary);
     background: var(--bg-raised);
     font-size: 11px;
 }
 
 .browser-external-open:hover,
 .browser-external-open:focus-visible {
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
     border-color: var(--border-strong);
 }
 
@@ -401,8 +401,8 @@
 }
 .browser-action-btn:hover,
 .browser-action-btn:focus-visible {
-    background: var(--bg-hover);
-    color: var(--text-base);
+    background: var(--sidebar-row-hover);
+    color: var(--text-primary);
 }
 .browser-action-btn:focus-visible {
     outline: 2px solid var(--focus-ring);
@@ -410,7 +410,7 @@
 }
 .browser-action-btn.is-active {
     background: var(--bg-raised);
-    color: var(--text-base);
+    color: var(--text-primary);
 }
 .browser-action-btn.is-shared {
     color: var(--accent, #7aa2ff);
@@ -443,13 +443,13 @@
     width: 100%;
     padding: 7px 10px;
     border-radius: 6px;
-    color: var(--text-base);
+    color: var(--text-primary);
     font-size: 12px;
     cursor: pointer;
 }
 .browser-more-item:hover,
 .browser-more-item:focus-visible {
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
 }
 .browser-more-zoom {
     display: flex;
@@ -558,7 +558,7 @@
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     background: var(--bg-panel);
-    color: var(--text-base);
+    color: var(--text-primary);
     font-size: 12px;
 }
 .browser-comment-actions {
@@ -574,8 +574,8 @@
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
-    color: var(--text-base);
-    background: var(--bg-hover);
+    color: var(--text-primary);
+    background: var(--sidebar-row-hover);
     cursor: pointer;
 }
 .browser-comment-save:disabled {
@@ -639,7 +639,7 @@
     font-size: 11px;
 }
 .browser-picked-selector {
-    font-family: var(--mono, ui-monospace, monospace);
+    font-family: var(--font-mono);
     color: #6fa8dc;
     overflow: hidden;
     text-overflow: ellipsis;

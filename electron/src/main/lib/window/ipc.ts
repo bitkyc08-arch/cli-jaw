@@ -15,4 +15,13 @@ export function registerWindowIpc(): void {
         if (!isAllowedSender(event)) return;
         BrowserWindow.fromWebContents(event.sender)?.webContents.reloadIgnoringCache();
     });
+    ipcMain.handle('window:get-fullscreen', (event) => {
+        if (!isAllowedSender(event)) return false;
+        return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() === true;
+    });
+}
+
+export function broadcastFullscreenChanged(win: BrowserWindow, isFullscreen: boolean): void {
+    if (win.isDestroyed()) return;
+    win.webContents.send('window:fullscreen-changed', isFullscreen === true);
 }
