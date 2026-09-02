@@ -98,3 +98,12 @@ test('main index marks owned webview guests on web-contents-created', () => {
 test('destroyed guests are pruned from the registry', () => {
     assert.ok(ipcSource.includes("once('destroyed'"), 'destroyed listener prunes stale ids');
 });
+
+test('tabState emits favicons and zoomFactor; control-webview accepts zoom kinds', () => {
+    assert.ok(ipcSource.includes('page-favicon-updated'), 'guest favicon updates are observed in main');
+    assert.ok(ipcSource.includes('favicons'), 'tabState includes favicons');
+    assert.ok(ipcSource.includes('zoomFactor'), 'tabState includes zoomFactor');
+    assert.ok(ipcSource.includes("case 'zoomIn'"), 'control-webview accepts zoomIn');
+    assert.ok(ipcSource.includes("case 'zoomOut'"), 'control-webview accepts zoomOut');
+    assert.ok(ipcSource.includes("case 'zoomReset'"), 'control-webview accepts zoomReset');
+});
