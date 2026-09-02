@@ -6,6 +6,7 @@ import {
   stripPhaseAttestation,
   checkAttestationGate,
   checkRenderGroundingAdvisory,
+  checkAuditEvidenceAdvisory,
   detectNoStateNarration,
 } from '../../src/orchestrator/attestation.ts';
 
@@ -202,4 +203,98 @@ test('ATT-RENDER-008: C→D gate result has no advisory for non-render work', ()
   const result = checkAttestationGate('C', 'D', att);
   assert.equal(result.ok, true);
   assert.equal(result.advisory, undefined, 'no advisory for non-render work');
+});
+
+// ─── audit and plan-unit keys (AUDIT-LOOP-01) ────────
+// Before this, coerce() dropped every one of these with no error and no warning, so a
+// caller could declare a failed audit and watch A→B succeed. The first test is the
+// regression that used to pass silently.
+
+test('ATT-AUDIT-001: a declared auditVerdict "fail" is REFUSED on A→B', () => {
+  const att = parsePhaseAttestationObject({
+    from: 'A', to: 'B',
+    did: 'reviewer found 2 High blockers in the migration plan',
+    auditVerdict: 'fail',
+    auditOutput: 'VERDICT: FAIL\n1. rollback path missing\n2. caller list incomplete',
+  })!;
+  assert.equal(att.auditVerdict, 'fail', 'the field must survive parsing');
+  const result = checkAttestationGate('A', 'B', att);
+  assert.equal(result.ok, false, 'a failed audit round never exits A');
+  assert.match(result.reason!, /AUDIT-LOOP-01/);
+  assert.match(result.reason!, /SAME reviewer/);
+});
+
+test('ATT-AUDIT-002: "near-pass" without auditResidual is refused', () => {
+  const att = parsePhaseAttestationObject({
+    from: 'A', to: 'B', did: 'audited; folded 2 blockers', auditVerdict: 'near-pass',
+  })!;
+  const result = checkAttestationGate('A', 'B', att);
+  assert.equal(result.ok, false);
+  assert.match(result.reason!, /auditResidual/);
+});
+
+test('ATT-AUDIT-003: "near-pass" WITH auditResidual passes', () => {
+  const att = parsePhaseAttestationObject({
+    from: 'A', to: 'B', did: 'audited; folded 2 blockers', auditVerdict: 'near-pass',
+    auditResidual: 'B1 folded as amendment 3; B2 rebutted — the caller is generated, not hand-written',
+  })!;
+  const result = checkAttestationGate('A', 'B', att);
+  assert.equal(result.ok, true);
+  assert.equal(result.advisory, undefined);
+});
+
+test('ATT-AUDIT-004: an unrecognized auditVerdict is dropped, not guessed at', () => {
+  // A typo must not smuggle a fail past the gate as an unknown value, and must not be
+  // coerced into a pass either. It is simply absent, and absence is advisory.
+  const att = parsePhaseAttestationObject({
+    from: 'A', to: 'B', did: 'audited the plan', auditVerdict: 'FAILED',
+  })!;
+  assert.equal(att.auditVerdict, undefined);
+  const result = checkAttestationGate('A', 'B', att);
+  assert.equal(result.ok, true);
+  assert.match(result.advisory!, /AUDIT-LOOP-01 advisory/);
+});
+
+test('ATT-AUDIT-005: A→B with no audit evidence passes with an advisory', () => {
+  const att = parsePhaseAttestationObject({ from: 'A', to: 'B', did: 'audited the plan against the tree' })!;
+  const result = checkAttestationGate('A', 'B', att);
+  assert.equal(result.ok, true, 'absence advises, it does not block');
+  assert.match(result.advisory!, /auditVerdict/);
+});
+
+test('ATT-AUDIT-006: a bare "pass" is explicit enough to silence the advisory', () => {
+  const att = parsePhaseAttestationObject({ from: 'A', to: 'B', did: 'audited', auditVerdict: 'pass' })!;
+  const result = checkAttestationGate('A', 'B', att);
+  assert.equal(result.ok, true);
+  assert.equal(result.advisory, undefined);
+});
+
+test('ATT-AUDIT-007: planUnit and workPhaseId survive parsing', () => {
+  const att = parsePhaseAttestationObject({
+    from: 'P', to: 'A', did: 'wrote the diff-level plan',
+    planUnit: 'devlog/_plan/260902_slug', workPhaseId: 'wp3',
+  })!;
+  assert.equal(att.planUnit, 'devlog/_plan/260902_slug');
+  assert.equal(att.workPhaseId, 'wp3');
+  assert.equal(checkAttestationGate('P', 'A', att).advisory, undefined);
+});
+
+test('ATT-AUDIT-008: P→A without planUnit advises but does not block', () => {
+  const att = parsePhaseAttestationObject({ from: 'P', to: 'A', did: 'wrote the plan in this reply' })!;
+  const result = checkAttestationGate('P', 'A', att);
+  assert.equal(result.ok, true);
+  assert.match(result.advisory!, /UNIT-RESIDENCE-01 advisory/);
+});
+
+test('ATT-AUDIT-009: checkAuditEvidenceAdvisory is silent once either field is present', () => {
+  const withOutput = parsePhaseAttestationObject({ from: 'A', to: 'B', did: 'x', auditOutput: 'VERDICT: PASS' })!;
+  assert.equal(checkAuditEvidenceAdvisory(withOutput), null);
+  const bare = parsePhaseAttestationObject({ from: 'A', to: 'B', did: 'x' })!;
+  assert.ok(checkAuditEvidenceAdvisory(bare));
+});
+
+test('ATT-AUDIT-010: the new keys do not affect ungated or other edges', () => {
+  // A fail declared on the wrong edge must not block it — the rule is about A→B.
+  const att = parsePhaseAttestationObject({ from: 'B', to: 'C', did: 'implemented', auditVerdict: 'fail' })!;
+  assert.equal(checkAttestationGate('B', 'C', att).ok, true);
 });
