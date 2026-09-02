@@ -411,16 +411,20 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(browserPanel.includes('isRestrictedBrowserHost(parsed.hostname)'), 'web UI browser policy must continue blocking local/private hosts');
     assert.ok(browserPanel.includes('Local, private, and same-origin URLs are blocked.'), 'web UI must keep the explicit local/private URL rejection message');
     assert.ok(browserPanel.includes('const inputRef = useRef<HTMLInputElement | null>(null);'), 'browser Go action must read the visible URL input value for native accessibility value injection');
-    assert.ok(browserPanel.includes('const editingTabIdRef = useRef<string | null>(null);'), 'browser address bar must track when a user is editing the visible URL');
-    assert.ok(browserPanel.includes('const inputDraftRef = useRef<{ tabId: string; value: string } | null>(null);'), 'browser address bar must preserve the latest typed draft across pointer blur/click ordering');
+    // 260902 t3 shell (wp6): the address bar is a reducer (browser-address-state.ts).
+    // While focused, live-URL syncs land in liveUrl and never overwrite the draft;
+    // Go/Enter submit the draft, so the old editing/draft refs are gone.
+    const addressState = read('public/manager/src/browser-panel/browser-address-state.ts');
+    assert.ok(addressState.includes("if (state.focused) return { ...state, liveUrl: action.liveUrl };"), 'browser address bar must not overwrite a draft being edited when the live URL changes');
+    assert.ok(addressState.includes('export function displayedAddress'), 'browser address bar must render liveUrl when blurred and the draft when focused');
+    assert.ok(browserPanel.includes("dispatchAddress({ type: 'sync-live', liveUrl: activeTab.url })"), 'webview navigation must sync the live URL through the reducer');
     assert.ok(browserPanel.includes('const pendingNavigationRefs = useRef<Map<string, string>>(new Map());'), 'browser panel must track pending navigation targets so stale webview events cannot cancel a requested URL');
     assert.ok(browserPanel.includes('function sameBrowserUrl'), 'browser panel must compare pending URLs after URL normalization');
     assert.ok(browserPanel.includes('pendingNavigationRefs.current.set(tabId, target);'), 'opening a URL must mark the requested target as pending before React re-renders the webview');
     assert.ok(browserPanel.includes('if (pendingTarget && !sameBrowserUrl(current, pendingTarget))'), 'stale webview refreshes must not overwrite a pending requested URL');
     assert.ok(browserPanel.includes('const failedUrl = failure.validatedURL ?? failure.url;'), 'old webview load aborts must not clear a different pending target');
-    assert.ok(browserPanel.includes('const rawTarget = inputDraftRef.current?.tabId === activeTab.id'), 'browser Go action must prefer the preserved user draft when click blur races with React state updates');
+    assert.ok(browserPanel.includes('const rawTarget = addressState.focused ? addressState.draft : displayedAddress(addressState);'), 'browser Go action must prefer the user draft while the address bar is focused');
     assert.ok(browserPanel.includes('openUrlInTab(activeTab.id, rawTarget)'), 'browser Go action must not depend only on React change events');
-    assert.ok(browserPanel.includes('if (editingTabIdRef.current !== tabId)'), 'webview navigation events must not overwrite an address currently being edited');
     assert.ok(browserPanel.includes('onMouseDown={event => event.preventDefault()}'), 'Go button must avoid blurring the URL input before click navigation reads it');
     assert.ok(browserUrl.includes("DEFAULT_BROWSER_URL = 'https://www.google.com/'"), 'browser tabs must default to Google instead of example.com');
     assert.ok(browserUrl.includes('GOOGLE_SEARCH_URL'), 'browser URL helper must route search-like input through Google');

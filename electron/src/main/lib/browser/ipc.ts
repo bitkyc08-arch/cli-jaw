@@ -25,10 +25,12 @@ type RegisteredBrowserTab = {
     sharedWithAgent: boolean;
     /** Compatibility state: Manager Browser targets allow actions by default. */
     actionsEnabled: boolean;
+    favicons: string[];
 };
 
 const ownedWebContentsIds = new Set<number>();
 const devToolsListenerIds = new Set<number>();
+const faviconListenerIds = new Set<number>();
 const tabsById = new Map<string, RegisteredBrowserTab>();
 const MAX_ACT_COORD = 100_000;
 const MAX_ACT_TEXT = 2_000;
@@ -54,6 +56,7 @@ export function markOwnedEmbeddedBrowserWebContents(contents: WebContents): void
     contents.once('destroyed', () => {
         ownedWebContentsIds.delete(contents.id);
         devToolsListenerIds.delete(contents.id);
+        faviconListenerIds.delete(contents.id);
         detachCdp(contents);
         for (const [tabId, entry] of tabsById) {
             if (entry.webContentsId === contents.id) tabsById.delete(tabId);
@@ -169,6 +172,10 @@ async function ensureDevToolsOpen(contents: WebContents, preferredMode: 'right' 
     return contents.isDevToolsOpened();
 }
 
+function clampZoom(n: number): number {
+    return Math.min(3, Math.max(0.5, Math.round(n * 10) / 10));
+}
+
 function tabState(entry: RegisteredBrowserTab, contents: WebContents) {
     const targetId = devToolsTargetId(contents);
     return {
@@ -176,6 +183,7 @@ function tabState(entry: RegisteredBrowserTab, contents: WebContents) {
         webContentsId: entry.webContentsId,
         url: contents.getURL(),
         title: contents.getTitle(),
+        favicons: entry.favicons,
         loading: contents.isLoading(),
         canGoBack: contents.navigationHistory?.canGoBack?.() ?? false,
         canGoForward: contents.navigationHistory?.canGoForward?.() ?? false,
@@ -184,6 +192,7 @@ function tabState(entry: RegisteredBrowserTab, contents: WebContents) {
         sharedWithAgent: entry.sharedWithAgent,
         actionsEnabled: entry.actionsEnabled,
         inspecting: isInspecting(contents),
+        zoomFactor: contents.getZoomFactor(),
     };
 }
 
@@ -216,6 +225,19 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
         contents.on('devtools-closed', emit);
     }
 
+    function attachFaviconListener(entry: RegisteredBrowserTab, contents: WebContents): void {
+        if (faviconListenerIds.has(contents.id)) return;
+        faviconListenerIds.add(contents.id);
+        contents.on('page-favicon-updated', (_event, favicons: string[]) => {
+            const live = tabsById.get(entry.tabId);
+            if (!live || live.webContentsId !== contents.id) return;
+            live.favicons = Array.isArray(favicons)
+                ? favicons.filter(item => typeof item === 'string').slice(0, 8)
+                : [];
+            emitState(live, contents);
+        });
+    }
+
     ipcMain.handle('browser:register-webview', (event, input: { tabId?: unknown; webContentsId?: unknown }) => {
         if (!isManagerSender(event)) return { ok: false, error: 'unauthorized' };
         const tabId = typeof input?.tabId === 'string' ? input.tabId.trim() : '';
@@ -230,9 +252,11 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
             // Browser tabs are agent-visible and action-enabled by default.
             sharedWithAgent: prior?.sharedWithAgent ?? true,
             actionsEnabled: true,
+            favicons: prior?.webContentsId === webContentsId ? prior.favicons : [],
         };
         tabsById.set(tabId, entry);
         attachDevToolsListeners(entry, contents);
+        attachFaviconListener(entry, contents);
         return { ok: true, state: tabState(entry, contents) };
     });
 
@@ -277,6 +301,15 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
                 break;
             case 'stop':
                 contents.stop();
+                break;
+            case 'zoomIn':
+                contents.setZoomFactor(clampZoom(contents.getZoomFactor() + 0.1));
+                break;
+            case 'zoomOut':
+                contents.setZoomFactor(clampZoom(contents.getZoomFactor() - 0.1));
+                break;
+            case 'zoomReset':
+                contents.setZoomFactor(1);
                 break;
             default:
                 return { ok: false, error: 'unknown command' };

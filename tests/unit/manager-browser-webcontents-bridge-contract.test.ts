@@ -153,3 +153,11 @@ test('webview src is bound once and navigation is imperative', () => {
     assert.ok(panelSource.includes('initialSrcRefs'), 'initial src is pinned per page tab');
     assert.ok(panelSource.includes('loadURL'), 'navigation goes through loadURL, not src rebinding');
 });
+
+test('desktop-bridge tab state and commands include favicons and zoom kinds', () => {
+    assert.ok(bridgeSource.includes('favicons'), 'BrowserWebviewTabState includes favicons');
+    assert.ok(bridgeSource.includes('zoomFactor'), 'BrowserWebviewTabState includes zoomFactor');
+    assert.ok(bridgeSource.includes("kind: 'zoomIn'"), 'BrowserWebviewCommand includes zoomIn');
+    assert.ok(bridgeSource.includes("kind: 'zoomOut'"), 'BrowserWebviewCommand includes zoomOut');
+    assert.ok(bridgeSource.includes("kind: 'zoomReset'"), 'BrowserWebviewCommand includes zoomReset');
+});

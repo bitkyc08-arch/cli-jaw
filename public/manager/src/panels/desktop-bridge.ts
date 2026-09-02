@@ -191,6 +191,8 @@ export type BrowserWebviewTabState = {
     inspecting?: boolean;
     crashed?: boolean;
     error?: string;
+    favicons?: string[];
+    zoomFactor?: number;
 };
 
 /** v5: element resolved from the native inspect pick (CDP DOM/AX domains). */
@@ -225,7 +227,10 @@ export type BrowserWebviewCommand =
     | { kind: 'reload'; tabId: string; ignoreCache?: boolean }
     | { kind: 'goBack'; tabId: string }
     | { kind: 'goForward'; tabId: string }
-    | { kind: 'stop'; tabId: string };
+    | { kind: 'stop'; tabId: string }
+    | { kind: 'zoomIn'; tabId: string }
+    | { kind: 'zoomOut'; tabId: string }
+    | { kind: 'zoomReset'; tabId: string };
 
 export type BrowserWebviewNativeAction =
     | { kind: 'openExternal'; tabId: string }
