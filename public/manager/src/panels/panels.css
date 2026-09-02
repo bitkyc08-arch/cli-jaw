@@ -22,7 +22,7 @@
 }
 .panel-resizer:hover::after,
 .panel-resizer:focus-visible::after { background: var(--border-strong); }
-.panel-resizer:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -1px; }
+.panel-resizer:focus-visible { outline: var(--focus-ring, 2px solid var(--ring)); outline-offset: -1px; }
 
 .panel-resizer-horizontal {
     width: 24px;
@@ -106,9 +106,9 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 .right-panel-mode-button:focus-visible,
 .right-panel-close:hover,
 .right-panel-close:focus-visible {
-    color: var(--text-base);
+    color: var(--text-primary);
     border-color: var(--border-strong);
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
 }
 .right-panel-mode-button.is-active {
     color: var(--accent-primary);
@@ -223,9 +223,9 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-sub-action:hover,
 .right-sub-action:focus-visible {
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
     border-color: var(--border-strong);
-    color: var(--text-base);
+    color: var(--text-primary);
 }
 .right-sub-action:disabled {
     cursor: default;
@@ -280,12 +280,12 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-launcher-button:hover,
 .right-launcher-button:focus-visible {
-    background: var(--bg-hover);
-    color: var(--text-base);
+    background: var(--sidebar-row-hover);
+    color: var(--text-primary);
 }
 .right-launcher-button.is-active {
     background: var(--bg-raised);
-    color: var(--text-base);
+    color: var(--text-primary);
     border-color: var(--border-subtle);
 }
 .right-launcher-button:focus-visible {
@@ -340,12 +340,12 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-sidebar-tab:hover,
 .right-sidebar-tab:focus-visible {
-    background: var(--bg-hover);
-    color: var(--text-base);
+    background: var(--sidebar-row-hover);
+    color: var(--text-primary);
 }
 .right-sidebar-tab.is-active {
     background: var(--bg-raised);
-    color: var(--text-base);
+    color: var(--text-primary);
     border-color: var(--border-subtle);
 }
 .right-sidebar-tab:focus-visible {
@@ -390,8 +390,8 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-sidebar-tab-close:hover,
 .right-sidebar-tab-close:focus-visible {
-    background: var(--bg-hover);
-    color: var(--text-base);
+    background: var(--sidebar-row-hover);
+    color: var(--text-primary);
 }
 .right-sidebar-tab-close:focus-visible {
     outline: 2px solid var(--focus-ring);
@@ -428,8 +428,8 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-sidebar-plus:hover,
 .right-sidebar-plus:focus-visible {
-    background: var(--bg-hover);
-    color: var(--text-base);
+    background: var(--sidebar-row-hover);
+    color: var(--text-primary);
 }
 .right-sidebar-plus:focus-visible {
     outline: 2px solid var(--focus-ring);
@@ -459,13 +459,13 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     height: 32px;
     padding: 0 10px;
     border-radius: 6px;
-    color: var(--text-base);
+    color: var(--text-primary);
     font-size: 13px;
     cursor: pointer;
 }
 .right-sidebar-plus-menu-item:hover,
 .right-sidebar-plus-menu-item:focus-visible {
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
 }
 
 /* Empty state */
@@ -494,9 +494,9 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-sidebar-empty-plus:hover,
 .right-sidebar-empty-plus:focus-visible {
-    color: var(--text-base);
+    color: var(--text-primary);
     border-color: var(--border-strong);
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
 }
 
 /* ==========================================================================
@@ -542,8 +542,8 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-files-load-folder:hover:not(:disabled),
 .right-files-load-folder:focus-visible {
-    background: var(--bg-hover);
-    color: var(--text-base);
+    background: var(--sidebar-row-hover);
+    color: var(--text-primary);
 }
 .right-files-load-folder:disabled {
     opacity: 0.4;
@@ -559,7 +559,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     padding: 0 10px;
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
-    color: var(--text-base);
+    color: var(--text-primary);
     background: var(--bg-raised);
     font-size: 12px;
     font-weight: 500;
@@ -569,7 +569,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-files-open-file:hover,
 .right-files-open-file:focus-visible {
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
     border-color: var(--border-strong);
 }
 
@@ -591,9 +591,9 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
 }
 .right-files-folder-toggle:hover,
 .right-files-folder-toggle:focus-visible {
-    color: var(--text-base);
+    color: var(--text-primary);
     border-color: var(--border-strong);
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
 }
 .right-files-folder-toggle[aria-pressed="true"] {
     color: var(--accent-primary);
@@ -635,7 +635,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     flex-shrink: 1;
 }
 .right-breadcrumb-segment.is-final {
-    color: var(--text-base);
+    color: var(--text-primary);
     font-weight: 600;
     /* Final file name keeps a readable floor and truncates only when narrow. */
     min-width: 56px;
@@ -685,9 +685,9 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     color: var(--text-dim);
     transition: color 0.1s;
 }
-.bottom-tab:hover { color: var(--text-base); }
+.bottom-tab:hover { color: var(--text-primary); }
 .bottom-tab.is-active {
-    color: var(--text-base);
+    color: var(--text-primary);
 }
 .bottom-tab-close {
     all: unset;
@@ -705,7 +705,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     transition: background 0.1s, color 0.1s;
 }
 .bottom-tab-close:hover,
-.bottom-tab-close:focus-visible { background: var(--bg-hover); color: var(--text-base); }
+.bottom-tab-close:focus-visible { background: var(--sidebar-row-hover); color: var(--text-primary); }
 
 .bottom-collapse-button {
     all: unset;
@@ -716,7 +716,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     color: var(--text-dim);
     border-radius: 3px;
 }
-.bottom-collapse-button:hover { background: var(--bg-hover); color: var(--text-base); }
+.bottom-collapse-button:hover { background: var(--sidebar-row-hover); color: var(--text-primary); }
 
 .bottom-panel-content {
     flex: 1;
@@ -765,7 +765,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     gap: 8px;
     padding: 16px;
     font-size: 12px;
-    color: var(--text-base);
+    color: var(--text-primary);
 }
 .panel-error-title {
     font-weight: 600;
@@ -785,7 +785,7 @@ body.is-resizing-vertical { cursor: row-resize !important; user-select: none; }
     box-sizing: border-box;
     padding: 5px 10px;
     border-radius: 6px;
-    background: var(--bg-hover);
+    background: var(--sidebar-row-hover);
     cursor: pointer;
 }
 .panel-error-retry:hover {

@@ -131,6 +131,7 @@ export function InstanceRow(props: InstanceRowProps) {
         <article
             className={`instance-row density-${props.density || 'comfortable'} priority-${props.priority || 'normal'} ${props.selected ? 'is-selected' : ''}${transitionLabel ? ' is-transitioning-row' : ''} is-${rowStatus}`}
             title={composeInstanceRowTitle(props.instance)}
+            aria-current={props.selected ? 'true' : undefined}
         >
             <button
                 className="instance-row-select"

@@ -20,7 +20,7 @@
     grid-template-rows: minmax(0, 1fr) var(--bottom-panel-height, var(--activity-dock-height, 150px));
     grid-template-areas: "sidebar center right" "sidebar bottom right";
     overflow: hidden;
-    transition: grid-template-columns 180ms ease;
+    transition: grid-template-columns var(--motion-base, 180ms) ease;
 }
 .manager-workspace.is-side-panel-open {
     --right-panel-width: 50vw;
@@ -79,7 +79,7 @@
     border-right: 1px solid var(--border-subtle);
     background: var(--canvas-deep);
     position: relative;
-    transition: width 180ms ease;
+    transition: width var(--motion-base, 180ms) ease;
 }
 .manager-command {
     grid-area: command;
