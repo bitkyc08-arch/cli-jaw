@@ -1,32 +1,33 @@
 /* ──────────────────────────────────────────────────────────────────────────
- * 10.6.9a — Theme tokens for the manager dashboard.
+ * Theme tokens for the manager dashboard (260902 t3 shell polish, wp1).
  *
  * Three-tier hierarchy:
- *   primitive  raw color values (referenced only inside this file)
+ *   primitive  raw scale values (referenced only inside this file)
  *   semantic   intent-based aliases (consumed by all other CSS)
  *   component  declared in component CSS only when truly divergent
  *
- * The semantic layer keeps the legacy variable names so existing CSS files
- * (styles, layout, components, persistence, polish) keep rendering without
- * being rewritten in this slice. New `--surface-*` and `--ink-*` aliases are
- * exposed for future code; they map to the same legacy values.
+ * Every legacy variable name is preserved; only values moved to the
+ * zinc/neutral oklch scale with a single oklch primary accent
+ * (devlog/_plan/260902_t3_shell_polish/010_design_tokens.md).
+ * `--accent` is the CTA primary, not a surface tint.
  *
  * Theme resolution lives on <html data-theme="dark|light|auto">. The inline
  * boot script in index.html sets this attribute before paint to prevent FOUC.
  * ────────────────────────────────────────────────────────────────────────── */
 
-/* Primitive scale ─ never consumed outside this file. */
+/* Primitive scale — never consumed outside this file (radius/font/motion are
+ * theme-independent semantics that also live here). */
 :root {
-    --jp-gray-50:  #f7f8fa;
-    --jp-gray-100: #eef0f3;
-    --jp-gray-200: #e2e6ec;
-    --jp-gray-300: #cdd3dc;
-    --jp-gray-400: #a8b0bc;
-    --jp-gray-500: #6b7382;
-    --jp-gray-600: #4d5662;
-    --jp-gray-700: #2f3742;
-    --jp-gray-800: #1a2027;
-    --jp-gray-900: #111418;
+    --jp-gray-50:  oklch(98.5% 0 0);
+    --jp-gray-100: oklch(96.7% 0.001 286.375);
+    --jp-gray-200: oklch(92% 0.004 286.32);
+    --jp-gray-300: oklch(87.1% 0.006 286.286);
+    --jp-gray-400: oklch(70.5% 0.015 286.067);
+    --jp-gray-500: oklch(55.2% 0.016 285.938);
+    --jp-gray-600: oklch(44.2% 0.017 285.786);
+    --jp-gray-700: oklch(37% 0.013 285.805);
+    --jp-gray-800: oklch(27.4% 0.006 286.033);
+    --jp-gray-900: oklch(21% 0.006 285.885);
 
     --jp-blue-100: #dbe7ff;
     --jp-blue-300: #8fb8f7;
@@ -35,44 +36,59 @@
     --jp-blue-600: #1f6feb;
     --jp-blue-700: #155bbb;
 
-    --jp-green-400: #34d399;
-    --jp-green-600: #15803d;
-    --jp-amber-400: #f5a524;
-    --jp-amber-600: #b45309;
-    --jp-red-400:   #f87171;
-    --jp-red-600:   #b91c1c;
-    --jp-slate-400: #7b8797;
-    --jp-slate-500: #6b7382;
+    --jp-green-400: oklch(76.5% 0.177 163.223);
+    --jp-green-600: oklch(59.6% 0.145 163.225);
+    --jp-amber-400: oklch(82.8% 0.189 84.429);
+    --jp-amber-600: oklch(66.6% 0.179 58.318);
+    --jp-red-400:   oklch(70.4% 0.191 22.216);
+    --jp-red-600:   oklch(57.7% 0.245 27.325);
+    --jp-slate-400: oklch(70.5% 0.015 286.067);
+    --jp-slate-500: oklch(55.2% 0.016 285.938);
+
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.625rem;
+    --radius-xl: 0.875rem;
+    --control-radius: 0.5rem;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+        "Pretendard", "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans KR", sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", "SFMono-Regular", Menlo,
+        Consolas, "Liberation Mono", monospace;
+    --motion-fast: 120ms;
+    --motion-base: 180ms;
+    --workspace-topbar-height: 44px;
+    --scrollbar-size: 6px;
+    --scrollbar-radius: 3px;
 }
 
-/* Default = dark (matches the previous behavior). */
+/* Default = dark. */
 :root,
 :root[data-theme="dark"] {
     color-scheme: dark;
 
     /* legacy variable names — keep so existing CSS still renders */
-    --bg-base:        #080b0f;
-    --bg-panel:       #10161d;
-    --bg-raised:      #151c25;
-    --bg-elevated:    #1a2430;
-    --border-subtle:  #202a35;
-    --border-strong:  #2d3b4c;
-    --text-primary:   #e7edf5;
-    --text-secondary: #9aa6b5;
-    --text-dim:       #657283;
-    --accent:         #62a8f5;
-    --accent-soft:    #1e2b3d;
+    --bg-base:        #0a0a0a;
+    --bg-panel:       color-mix(in srgb, #0a0a0a 97%, white);
+    --bg-raised:      color-mix(in srgb, white 4%, transparent);
+    --bg-elevated:    color-mix(in srgb, #0a0a0a 97%, white);
+    --border-subtle:  color-mix(in srgb, white 8%, transparent);
+    --border-strong:  color-mix(in srgb, white 10%, transparent);
+    --text-primary:   #f1f3f7;
+    --text-secondary: #a3a3a3;
+    --text-dim:       color-mix(in srgb, oklch(55.6% 0 0) 90%, white);
+    --accent:         oklch(0.571 0.21 264);
+    --accent-soft:    color-mix(in srgb, var(--accent) 12%, transparent);
     --selection-bg:   color-mix(in srgb, var(--accent) 40%, transparent);
-    --status-running: #34d399;
-    --status-success: #4caf50;
-    --status-warn:    #f5a524;
-    --status-error:   #f87171;
-    --status-idle:    #7b8797;
-    --shadow-panel:    0 22px 70px rgba(0, 0, 0, 0.28);
-    --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.18);
-    --scrim-overlay:   rgba(5, 8, 12, 0.68);
+    --status-running: oklch(69.6% 0.17 162.48);
+    --status-success: oklch(69.6% 0.17 162.48);
+    --status-warn:    oklch(76.9% 0.188 70.08);
+    --status-error:   color-mix(in srgb, oklch(63.7% 0.237 25.331) 90%, white);
+    --status-idle:    color-mix(in srgb, oklch(55.2% 0.016 285.938) 90%, white);
+    --shadow-panel:    inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%);
+    --shadow-elevated: 0 1px 2px color-mix(in srgb, var(--text-primary) 12%, transparent);
+    --scrim-overlay:   color-mix(in srgb, var(--bg-base) 64%, transparent);
 
-    /* new semantic aliases — used by 10.6.9 components and onward */
+    /* semantic aliases */
     --surface-base:    var(--bg-base);
     --surface-panel:   var(--bg-panel);
     --surface-raised:  var(--bg-raised);
@@ -84,69 +100,84 @@
     --ink-on-accent:   #ffffff;
     --ring:            var(--accent);
 
-    /* common composite values previously inlined as raw hex */
-    --button-bg:       #142133;
-    --button-bg-hover: #1a2b42;
-    --button-border-hover: #3a5470;
-    --row-bg:          #111b26;
-    --row-bg-hover:    rgba(21, 28, 37, 0.62);
-    --canvas-deep:     #0b1016;
-    --canvas-mid:      #0c1218;
-    --canvas-soft:     #0d141c;
-    --shell-tint:      rgba(98, 168, 245, 0.12);
-    --error-border:    #70303a;
-    --error-text:      #ffc0c6;
-    --lifecycle-border:#315a82;
-    --lifecycle-text:  #cfe8ff;
-    --highlight-bg:    #20344e;
-    --highlight-border:#426483;
-    --placeholder-ink: #728093;
-    --segment-track:   rgba(255, 255, 255, 0.03);
-    --segment-border:  rgba(255, 255, 255, 0.05);
-    --segment-hover:   rgba(255, 255, 255, 0.05);
-    --segment-active:  #232c38;
-    --segment-active-ink: #e2e8f0;
-    --link-border:     rgba(255, 255, 255, 0.12);
-    --link-bg-hover:   rgba(255, 255, 255, 0.06);
-    --link-border-hover: rgba(255, 255, 255, 0.2);
-    --link-ink:        #a1b0c0;
-    --inset-glow:      rgba(255, 255, 255, 0.03);
-    --rail-top:        #0d141c;
-    --rail-bottom:     #0a1017;
+    /* common composite values */
+    --button-bg:       color-mix(in srgb, #0a0a0a 97%, white);
+    --button-bg-hover: color-mix(in srgb, white 4%, transparent);
+    --button-border-hover: color-mix(in srgb, white 10%, transparent);
+    --row-bg:          #000000;
+    --row-bg-hover:    color-mix(in srgb, white 4%, transparent);
+    --canvas-deep:     #000000;
+    --canvas-mid:      color-mix(in srgb, #0a0a0a 97%, white);
+    --canvas-soft:     color-mix(in srgb, white 4%, transparent);
+    --shell-tint:      color-mix(in srgb, var(--accent) 6%, transparent);
+    --error-border:    color-mix(in srgb, var(--status-error) 16%, transparent);
+    --error-text:      var(--jp-red-400);
+    --lifecycle-border:color-mix(in srgb, var(--accent) 30%, transparent);
+    --lifecycle-text:  color-mix(in srgb, var(--accent) 60%, white);
+    --highlight-bg:    color-mix(in srgb, var(--accent) 12%, transparent);
+    --highlight-border:color-mix(in srgb, white 10%, transparent);
+    --placeholder-ink: var(--text-dim);
+    --segment-track:   color-mix(in srgb, white 3%, transparent);
+    --segment-border:  color-mix(in srgb, white 8%, transparent);
+    --segment-hover:   color-mix(in srgb, white 4%, transparent);
+    --segment-active:  #000000;
+    --segment-active-ink: #f1f3f7;
+    --link-border:     color-mix(in srgb, white 8%, transparent);
+    --link-bg-hover:   color-mix(in srgb, white 4%, transparent);
+    --link-border-hover: color-mix(in srgb, white 10%, transparent);
+    --link-ink:        #a3a3a3;
+    --inset-glow:      color-mix(in srgb, white 3%, transparent);
+    --rail-top:        #000000;
+    --rail-bottom:     #000000;
 
-    /* alias tokens for notes/panels (previously undeclared) */
-    --canvas-panel:       oklch(16% 0.01 260);
-    --canvas-base:        oklch(13% 0.005 260);
-    --danger-soft:        color-mix(in srgb, var(--status-error) 12%, transparent);
+    /* alias tokens for notes/panels */
+    --canvas-panel:       color-mix(in srgb, #0a0a0a 97%, white);
+    --canvas-base:        #000000;
+    --danger-soft:        color-mix(in srgb, var(--status-error) 16%, transparent);
     --accent-primary:     var(--accent);
     --surface-secondary:  var(--surface-raised);
     --text-tertiary:      var(--text-dim);
+    --text-danger:        var(--error-text);
+
+    /* sidebar surface + status tokens (260902 t3 shell, consumed from wp2/wp3) */
+    --sidebar-row-hover:    color-mix(in srgb, #f1f3f7 8%, transparent);
+    --sidebar-row-active:   color-mix(in srgb, #f1f3f7 11%, transparent);
+    --sidebar-row-selected: color-mix(in srgb, #f1f3f7 7%, transparent);
+    --sidebar-row-working:   #38bdf8;
+    --sidebar-row-attention: var(--jp-amber-400);
+    --sidebar-row-error:     var(--jp-red-400);
+    --sidebar-row-ready:     var(--text-dim);
+    --sidebar-border:        color-mix(in srgb, white 8%, transparent);
+    --sidebar-control-surface: #0a0a0a;
+    --focus-ring:            2px solid color-mix(in srgb, var(--ring) 50%, transparent);
+    --scrollbar-thumb:       rgb(255 255 255 / 8%);
+    --scrollbar-thumb-hover: rgb(255 255 255 / 12%);
 }
 
 /* Light palette. */
 :root[data-theme="light"] {
     color-scheme: light;
 
-    --bg-base:        var(--jp-gray-50);
+    --bg-base:        oklch(99.2% 0 0);
     --bg-panel:       #ffffff;
-    --bg-raised:      var(--jp-gray-100);
+    --bg-raised:      var(--jp-gray-50);
     --bg-elevated:    #ffffff;
     --border-subtle:  var(--jp-gray-200);
     --border-strong:  var(--jp-gray-300);
-    --text-primary:   var(--jp-gray-900);
+    --text-primary:   var(--jp-gray-800);
     --text-secondary: var(--jp-gray-600);
     --text-dim:       var(--jp-gray-500);
-    --accent:         var(--jp-blue-600);
-    --accent-soft:    var(--jp-blue-100);
+    --accent:         oklch(0.488 0.217 264);
+    --accent-soft:    color-mix(in srgb, var(--accent) 8%, transparent);
     --selection-bg:   color-mix(in srgb, var(--accent) 30%, transparent);
     --status-running: var(--jp-green-600);
     --status-success: var(--jp-green-600);
     --status-warn:    var(--jp-amber-600);
     --status-error:   var(--jp-red-600);
     --status-idle:    var(--jp-slate-500);
-    --shadow-panel:    0 18px 50px rgba(17, 20, 24, 0.08);
-    --shadow-elevated: 0 1px 3px rgba(17, 20, 24, 0.08);
-    --scrim-overlay:   rgba(17, 20, 24, 0.32);
+    --shadow-panel:    0 24px 64px -24px rgb(0 0 0 / 18%);
+    --shadow-elevated: 0 1px 2px color-mix(in srgb, var(--text-primary) 12%, transparent);
+    --scrim-overlay:   color-mix(in srgb, var(--bg-base) 60%, transparent);
 
     --surface-base:    var(--bg-base);
     --surface-panel:   var(--bg-panel);
@@ -157,43 +188,57 @@
     --ink-secondary:   var(--text-secondary);
     --ink-muted:       var(--text-dim);
     --ink-on-accent:   #ffffff;
-    --ring:            var(--jp-blue-500);
+    --ring:            var(--accent);
 
     --button-bg:       #ffffff;
     --button-bg-hover: var(--jp-gray-100);
     --button-border-hover: var(--jp-gray-400);
     --row-bg:          #ffffff;
-    --row-bg-hover:    rgba(31, 111, 235, 0.06);
+    --row-bg-hover:    oklch(99.2% 0 0);
     --canvas-deep:     var(--jp-gray-50);
     --canvas-mid:      #ffffff;
     --canvas-soft:     var(--jp-gray-100);
-    --shell-tint:      rgba(31, 111, 235, 0.05);
-    --error-border:    #f5b7bd;
-    --error-text:      #8a1f2a;
-    --lifecycle-border:#b3d2f5;
-    --lifecycle-text:  #1f4e84;
-    --highlight-bg:    var(--jp-blue-100);
-    --highlight-border: var(--jp-blue-300);
+    --shell-tint:      color-mix(in srgb, var(--accent) 6%, transparent);
+    --error-border:    color-mix(in srgb, var(--status-error) 8%, transparent);
+    --error-text:      oklch(50.5% 0.213 27.518);
+    --lifecycle-border:color-mix(in srgb, var(--accent) 25%, transparent);
+    --lifecycle-text:  var(--accent);
+    --highlight-bg:    var(--jp-gray-100);
+    --highlight-border: var(--jp-gray-300);
     --placeholder-ink: var(--jp-gray-500);
-    --segment-track:   var(--jp-gray-100);
+    --segment-track:   var(--jp-gray-50);
     --segment-border:  var(--jp-gray-200);
-    --segment-hover:   rgba(17, 20, 24, 0.04);
+    --segment-hover:   oklch(99.2% 0 0);
     --segment-active:  #ffffff;
-    --segment-active-ink: var(--jp-gray-900);
+    --segment-active-ink: var(--jp-gray-800);
     --link-border:     var(--jp-gray-200);
-    --link-bg-hover:   var(--jp-gray-100);
+    --link-bg-hover:   oklch(99.2% 0 0);
     --link-border-hover: var(--jp-gray-300);
     --link-ink:        var(--jp-gray-600);
     --inset-glow:      rgba(0, 0, 0, 0.02);
     --rail-top:        #ffffff;
-    --rail-bottom:     var(--jp-gray-50);
+    --rail-bottom:     oklch(99.2% 0 0);
 
-    --canvas-panel:       oklch(97% 0.005 260);
-    --canvas-base:        oklch(99% 0.002 260);
+    --canvas-panel:       #ffffff;
+    --canvas-base:        oklch(99.2% 0 0);
     --danger-soft:        color-mix(in srgb, var(--status-error) 8%, transparent);
     --accent-primary:     var(--accent);
     --surface-secondary:  var(--surface-raised);
     --text-tertiary:      var(--text-dim);
+    --text-danger:        var(--error-text);
+
+    --sidebar-row-hover:    oklch(99.2% 0 0);
+    --sidebar-row-active:   #ffffff;
+    --sidebar-row-selected: #ffffff;
+    --sidebar-row-working:   #0284c7;
+    --sidebar-row-attention: var(--jp-amber-600);
+    --sidebar-row-error:     var(--jp-red-600);
+    --sidebar-row-ready:     var(--text-dim);
+    --sidebar-border:        var(--border-subtle);
+    --sidebar-control-surface: var(--jp-gray-100);
+    --focus-ring:            2px solid color-mix(in srgb, var(--ring) 50%, transparent);
+    --scrollbar-thumb:       rgb(217 217 217);
+    --scrollbar-thumb-hover: rgb(191 191 191);
 }
 
 /* Auto: follow OS, default to dark when query is unsupported. */
@@ -201,26 +246,26 @@
     :root[data-theme="auto"] {
         color-scheme: light;
 
-        --bg-base:        var(--jp-gray-50);
+        --bg-base:        oklch(99.2% 0 0);
         --bg-panel:       #ffffff;
-        --bg-raised:      var(--jp-gray-100);
+        --bg-raised:      var(--jp-gray-50);
         --bg-elevated:    #ffffff;
         --border-subtle:  var(--jp-gray-200);
         --border-strong:  var(--jp-gray-300);
-        --text-primary:   var(--jp-gray-900);
+        --text-primary:   var(--jp-gray-800);
         --text-secondary: var(--jp-gray-600);
         --text-dim:       var(--jp-gray-500);
-        --accent:         var(--jp-blue-600);
-        --accent-soft:    var(--jp-blue-100);
+        --accent:         oklch(0.488 0.217 264);
+        --accent-soft:    color-mix(in srgb, var(--accent) 8%, transparent);
         --selection-bg:   color-mix(in srgb, var(--accent) 30%, transparent);
         --status-running: var(--jp-green-600);
         --status-success: var(--jp-green-600);
         --status-warn:    var(--jp-amber-600);
         --status-error:   var(--jp-red-600);
         --status-idle:    var(--jp-slate-500);
-        --shadow-panel:    0 18px 50px rgba(17, 20, 24, 0.08);
-        --shadow-elevated: 0 1px 3px rgba(17, 20, 24, 0.08);
-        --scrim-overlay:   rgba(17, 20, 24, 0.32);
+        --shadow-panel:    0 24px 64px -24px rgb(0 0 0 / 18%);
+        --shadow-elevated: 0 1px 2px color-mix(in srgb, var(--text-primary) 12%, transparent);
+        --scrim-overlay:   color-mix(in srgb, var(--bg-base) 60%, transparent);
 
         --surface-base:    var(--bg-base);
         --surface-panel:   var(--bg-panel);
@@ -231,42 +276,57 @@
         --ink-secondary:   var(--text-secondary);
         --ink-muted:       var(--text-dim);
         --ink-on-accent:   #ffffff;
-        --ring:            var(--jp-blue-500);
+        --ring:            var(--accent);
 
         --button-bg:       #ffffff;
         --button-bg-hover: var(--jp-gray-100);
         --button-border-hover: var(--jp-gray-400);
         --row-bg:          #ffffff;
-        --row-bg-hover:    rgba(31, 111, 235, 0.06);
+        --row-bg-hover:    oklch(99.2% 0 0);
         --canvas-deep:     var(--jp-gray-50);
         --canvas-mid:      #ffffff;
         --canvas-soft:     var(--jp-gray-100);
-        --shell-tint:      rgba(31, 111, 235, 0.05);
-        --error-border:    #f5b7bd;
-        --error-text:      #8a1f2a;
-        --lifecycle-border:#b3d2f5;
-        --lifecycle-text:  #1f4e84;
-        --highlight-bg:    var(--jp-blue-100);
-        --highlight-border: var(--jp-blue-300);
+        --shell-tint:      color-mix(in srgb, var(--accent) 6%, transparent);
+        --error-border:    color-mix(in srgb, var(--status-error) 8%, transparent);
+        --error-text:      oklch(50.5% 0.213 27.518);
+        --lifecycle-border:color-mix(in srgb, var(--accent) 25%, transparent);
+        --lifecycle-text:  var(--accent);
+        --highlight-bg:    var(--jp-gray-100);
+        --highlight-border: var(--jp-gray-300);
         --placeholder-ink: var(--jp-gray-500);
-        --segment-track:   var(--jp-gray-100);
+        --segment-track:   var(--jp-gray-50);
         --segment-border:  var(--jp-gray-200);
-        --segment-hover:   rgba(17, 20, 24, 0.04);
+        --segment-hover:   oklch(99.2% 0 0);
         --segment-active:  #ffffff;
-        --segment-active-ink: var(--jp-gray-900);
+        --segment-active-ink: var(--jp-gray-800);
         --link-border:     var(--jp-gray-200);
-        --link-bg-hover:   var(--jp-gray-100);
+        --link-bg-hover:   oklch(99.2% 0 0);
         --link-border-hover: var(--jp-gray-300);
         --link-ink:        var(--jp-gray-600);
         --inset-glow:      rgba(0, 0, 0, 0.02);
         --rail-top:        #ffffff;
-        --rail-bottom:     var(--jp-gray-50);
+        --rail-bottom:     oklch(99.2% 0 0);
 
-        --canvas-panel:       oklch(97% 0.005 260);
-        --canvas-base:        oklch(99% 0.002 260);
+        --canvas-panel:       #ffffff;
+        --canvas-base:        oklch(99.2% 0 0);
         --danger-soft:        color-mix(in srgb, var(--status-error) 8%, transparent);
         --accent-primary:     var(--accent);
         --surface-secondary:  var(--surface-raised);
         --text-tertiary:      var(--text-dim);
+        --text-danger:        var(--error-text);
+
+        --sidebar-row-hover:    oklch(99.2% 0 0);
+        --sidebar-row-active:   #ffffff;
+        --sidebar-row-selected: #ffffff;
+        --sidebar-row-working:   #0284c7;
+        --sidebar-row-attention: var(--jp-amber-600);
+        --sidebar-row-error:     var(--jp-red-600);
+        --sidebar-row-ready:     var(--text-dim);
+        --sidebar-border:        var(--border-subtle);
+        --sidebar-control-surface: var(--jp-gray-100);
+        --focus-ring:            2px solid color-mix(in srgb, var(--ring) 50%, transparent);
+        --scrollbar-thumb:       rgb(217 217 217);
+        --scrollbar-thumb-hover: rgb(191 191 191);
     }
 }
+

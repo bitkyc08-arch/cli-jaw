@@ -115,7 +115,7 @@ h2 { font-size: 13px; }
     width: 100%;
     min-height: 30px;
     border: 1px solid var(--border-strong);
-    border-radius: 7px;
+    border-radius: var(--control-radius);
     background: var(--canvas-deep);
     color: var(--text-primary);
     padding: 6px 9px;
@@ -125,14 +125,14 @@ h2 { font-size: 13px; }
 .command-mini-stat {
     border: 1px solid var(--border-subtle);
     background: var(--canvas-soft);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: 11px;
     padding: 5px 7px;
     white-space: nowrap;
 }
 .command-mini-stat {
-    font-family: "Geist Mono", "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
     color: var(--text-primary);
 }
 .state {
@@ -225,7 +225,7 @@ h2 { font-size: 13px; }
 }
 .instance-row {
     position: relative; display: grid; gap: 8px; margin-bottom: 7px;
-    border: 1px solid transparent; border-radius: 8px; background: transparent; padding: 10px;
+    border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; padding: 10px;
 }
 .instance-row.density-compact {
     gap: 6px;
@@ -233,12 +233,12 @@ h2 { font-size: 13px; }
 }
 .instance-row.priority-active {
     border-color: var(--border-strong);
-    background: var(--row-bg);
+    background: var(--sidebar-row-active);
 }
-.instance-row:hover, .instance-row:focus-within { border-color: transparent; background: var(--row-bg-hover); }
+.instance-row:hover, .instance-row:focus-within { border-color: transparent; background: var(--sidebar-row-hover); }
 .instance-row-select {
     width: 100%; min-height: 0; min-width: 0; display: grid; gap: 8px; border: 0;
-    background: transparent; color: inherit; border-radius: 6px; padding: 0;
+    background: transparent; color: inherit; border-radius: var(--radius-sm); padding: 0;
     grid-template-columns: minmax(0, 1fr);
     justify-self: stretch; justify-content: start; justify-items: stretch;
     align-content: start; align-items: start;
@@ -250,10 +250,10 @@ h2 { font-size: 13px; }
     transform: none;
 }
 .instance-row-select:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-ring);
     outline-offset: 2px;
 }
-.instance-row.priority-active.is-selected { border-color: transparent; background: var(--surface-raised); }
+.instance-row.priority-active.is-selected { border-color: transparent; background: var(--sidebar-row-selected); }
 .instance-row:not(.priority-active).is-selected {
     border-color: color-mix(in srgb, var(--accent) 42%, transparent);
     background: color-mix(in srgb, var(--accent) 6%, transparent);
@@ -290,11 +290,11 @@ h2 { font-size: 13px; }
     min-height: 24px;
     padding: 0;
     border: 1px solid var(--border-subtle);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: color 0.12s, border-color 0.12s, background 0.12s;
+    transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
 }
 .quick-btn:hover { color: var(--text-primary); background: var(--surface-raised); }
 .quick-btn.action-stop { border-color: color-mix(in srgb, var(--status-error) 30%, var(--border-subtle)); color: var(--status-error); }
