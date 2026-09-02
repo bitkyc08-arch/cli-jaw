@@ -55,11 +55,11 @@ export const CLI_META: Record<string, CliMeta> = {
         // A persisted legacy value still renders: optionList() prepends the
         // current value even when it is absent from this catalog.
         models: [
+            'Gemini 3.7 Flash (Medium)',
             'Gemini 3.6 Flash (Medium)',
-            'Gemini 3.5 Flash (Medium)',
         ],
         efforts: [],
-        modelNote: 'AGY model override is version-dependent. Observed AGY 1.1.4 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',
+        modelNote: 'AGY model override is version-dependent. Observed AGY 1.1.13 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',
         effortNote: 'AGY has no separate effort flag.',
     },
     pi: {
