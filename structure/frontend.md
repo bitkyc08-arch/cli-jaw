@@ -235,6 +235,11 @@ settings.ts (barrel)
 
 `components/instance-row-status.ts`가 행 상태를 정한다: `transitioning`(라이프사이클 진행) > `working`(`busyPorts`) > `attention`(timeout/error/unknown) > `offline` > `online`. `InstanceRow`는 제목 위에 `.instance-row-status-line[data-status]`(pill + working일 때만 행 국소 1s `WorkingDuration`, `Ns`/`Nm`/`Xh Ym`)를 두고, compact/rail density에서는 숨긴다. 툴팁은 `composeInstanceRowTitle`의 native `title`. 퀵 액션(`.instance-row-quick .quick-btn`)은 hover/focus-within/선택 행에서만, 그리고 `:not(:disabled)`만 드러난다. `InstanceGroups` 헤더는 `button.instance-group-header.instance-group-toggle[aria-expanded]`로 접히며(`Active` 그룹은 예외), 접힘 맵은 `hooks/useSidebarGroupCollapse.ts`가 localStorage `jaw.sidebarGroupCollapsed`(`Record<groupId, boolean>`)에 저장한다. 접힌 그룹에서도 선택 인스턴스는 한 줄로 남는다. Pinned는 favorite 우선 후 label 정렬이며 서버 order key가 없어 DnD는 없다. 제네릭 `.instance-row.is-selected {` 선택자는 contract 테스트가 금지한다.
 
+### Manager sidebar search, keyboard, settled shelf (260902 t3 shell polish, wp4)
+
+`InstanceNavigator` 헤더의 `#manager-sidebar-search`는 CommandBar와 같은 `App.query`를 소비한다(두 번째 필터 없음). Escape는 쿼리를 비우고 IME 조합 중에는 무시한다. `components/sidebar-keyboard.ts`가 순수 헬퍼를 가진다: `resolveAdjacentPort`(wrap 없음), `handleInstanceListKeyDown`(Arrow/Home/End는 `[data-instance-port]` 버튼 포커스만 이동, Enter가 선택), `createJumpHintVisibilityController`(Alt 200ms 유지 시 렌더된 행 1..9 오른쪽 상단 `.instance-jump-hint` 오버레이), `readRenderedInstancePorts(#manager-sidebar-list)`, `registerInstanceJumpSelector`(SidebarRailRouter가 등록). 단축키 `jumpInstance1..9`(기본 `Alt+1..9`)는 `resolveEventKey`의 Digit 코드 폴백으로 macOS Alt+숫자 특수문자에도 매칭되며 서버 keymap whitelist에는 넣지 않는다(switchTab과 동일하게 기본값 복원). offline/unknown/timeout은 `Settled` 그룹(id `settled`, 접힘은 wp3 `useSidebarGroupCollapse`)으로 내려가고 `pageSettledPorts`로 10개 → "Show N more" 25개씩 페이징되며 선택 인스턴스는 항상 렌더된다. Attention은 error만.
+
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.
