@@ -160,9 +160,9 @@
 }
 
 .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .rail-button {
-    width: 30px;
-    min-width: 30px;
-    min-height: 30px;
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
 }
 
 .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .rail-spacer {

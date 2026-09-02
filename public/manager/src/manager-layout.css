@@ -137,6 +137,7 @@
 }
 .manager-sidebar-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .manager-shell.is-sidebar-collapsed .manager-sidebar-list { display: none; }
+.manager-shell.is-sidebar-collapsed .manager-sidebar > .mode-switch { display: none; }
 .manager-shell.is-sidebar-collapsed .sidebar-rail { height: 100%; min-height: 0; flex-direction: column; border-bottom: 0; padding: 10px 8px; }
 .manager-shell.is-sidebar-collapsed .rail-spacer { flex: 1; }
 
@@ -303,13 +304,17 @@
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
-.sidebar-resize-handle.panel-resizer-horizontal {
+/* The handle is a workspace child (not inside the aside) because
+   .manager-sidebar clips overflow to its padding box, which would hide the
+   half of the 24px hit zone that hangs past the border. */
+.manager-workspace > .sidebar-resize-handle.panel-resizer-horizontal {
     position: absolute;
     top: 0;
-    right: 0;
     bottom: 0;
+    left: calc(var(--sidebar-width) - 12px);
+    width: 24px;
+    margin: 0;
     z-index: 3;
-    margin: 0 -12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
