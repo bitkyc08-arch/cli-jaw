@@ -3,6 +3,7 @@ import {
     ensureWorkingDirSkillsLinks, initMcpConfig,
 } from '../../lib/mcp-sync.js';
 import { syncCodexContextWindow } from './codex-config.js';
+import { JWC_PROVIDER_MODEL_DEFAULTS } from '../code-mode/model-options.js';
 import {
     settings, persistAndCommit, snapshotSettingsState, migrateSettings, normalizeProjectDirs,
     RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
@@ -136,14 +137,21 @@ export async function withMultiSessionDefaultMigrationLock<T>(work: () => Promis
     }
 }
 
-function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
+export function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
     try {
         const cli = currentSettings["cli"];
         if (cli !== 'jwc') return;
         const ao = currentSettings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
         const pc = currentSettings["perCli"]?.['jwc'] as Record<string, string> | undefined;
-        const model = ao?.['model'] || pc?.['model'] || 'claude-sonnet-4-6';
         const provider = ao?.['provider'] || pc?.['provider'] || 'anthropic';
+        // Derive the unconfigured fallback from the provider's own default list instead of
+        // repeating a literal here. The literal had drifted to claude-sonnet-4-6, seventh
+        // in the anthropic list and a generation behind its head, and a catalog refresh
+        // could not carry it: nothing links the two. Taking the head means a user who
+        // never picked a model gets what the rest of the system already calls that
+        // provider's default, and the next refresh moves this with it.
+        const model = ao?.['model'] || pc?.['model'] || JWC_PROVIDER_MODEL_DEFAULTS[provider]?.[0];
+        if (!model) return;
         const modelRole = provider !== 'anthropic' ? `${provider}/${model}` : `${provider}/${model}`;
         const agentDir = process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent');
         const configPath = join(agentDir, 'config.yml');
