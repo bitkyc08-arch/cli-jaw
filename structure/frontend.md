@@ -245,6 +245,11 @@ settings.ts (barrel)
 탑바는 한 줄 `[brand][search][actions]` 그리드다. 높이는 `--workspace-topbar-height`(브라우저 44px, `:root[data-cli-jaw-desktop="true"]`에서 52px). Electron에서는 `--electron-titlebar-left-reserve`가 90px(t3 값)이고 `html[data-window-fullscreen="true"]`이면 12px로 접힌다; 바 자체는 `-webkit-app-region: drag`, 모든 인터랙티브 자식은 `no-drag`(p0-1-1.css 상단 블록이 권위). 브랜드 13px/600/0.02em(`--manager-brand-cyan` 유지), 검색은 28px ghost(`--sidebar-control-surface`), 액션은 28px `.command-icon-button`. 드로어 트리거는 SVG이며 1024px 이상에서는 숨고 그 아래에서는 `drawer` 열을 따로 가진다. `hooks/useWindowFullscreen.ts`가 `getDesktop()?.window?.getFullscreenState?.()`를 읽어 `data-window-fullscreen` 속성을 생산한다(fullscreen이 아니면 속성 제거); IPC 생산자는 wp7. Mod+B 기본값(`Meta+B` 우측 패널, `Meta+Shift+B` 좌측)은 바꾸지 않았다.
 
 
+### Manager browser panel chrome (260902 t3 shell polish, wp6)
+
+`browser-panel/browser-address-state.ts`가 주소창 상태기계다: blur 상태에서는 live URL, focus 시 draft(전체 선택), Enter는 `submit` → `openUrlInTab` → blur, Escape는 live로 되돌리고 blur, 포커스 중 도착한 `sync-live`는 draft를 덮지 않는다. 탭이 바뀌면 상태를 재생성한다. `BrowserAddressBar`(placeholder "Search or enter URL")가 옛 `inputUrl`/`editingTabIdRef`/draft ref를 대체하며 Go 버튼과 `data-tooltip="Reload"`는 유지된다. 로딩은 툴바 아래 2px `.browser-loading-bar`(`scaleX .04→.9` 5.3s, reduced-motion이면 정적 .9)만 보이고 status 줄은 blocked/error에만 남는다. 탭 스트립은 16px favicon(`browser-favicon.ts`, 없으면 이니셜 원)을 달고, Electron `ipc.ts`가 guest `page-favicon-updated`를 contents-id 가드로 한 번만 구독해 `favicons`/`zoomFactor`를 `browser:webview-state` payload에 싣는다. 최근 방문은 `browser-history-store.ts`(localStorage `jaw.browserHistory`, 최대 20)로 empty/new tab 위에 표시된다. more 메뉴의 zoom in/out/reset은 `control-webview` kind `zoomIn|zoomOut|zoomReset`(0.5-3, 0.1 단계)이다. mini player·device viewport·cookie/cache 삭제는 범위 밖.
+
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.
