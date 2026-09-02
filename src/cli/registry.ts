@@ -60,7 +60,7 @@ export const CLI_REGISTRY = {
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         effortNote: 'Pi thinking level via RPC set_thinking_level',
-        models: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
+        models: ['grok-composer-2.5-fast', 'grok-4.6', 'grok-4.5', 'grok-4.3'],
     },
     'ai-e': {
         label: 'AI-E',

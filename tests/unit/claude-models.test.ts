@@ -87,7 +87,12 @@ test('CM-011: getDefaultClaudeModel returns Opus 4.8 full ID', () => {
 test('CM-012: getDefaultClaudeChoices returns aliases + verified pinned full IDs', () => {
     const choices = getDefaultClaudeChoices();
     assert.deepEqual([...choices].sort(), [
+        // claude-fable-5-1 added 2026-09-02 from opencodex ANTHROPIC_MODELS
+        // (src/providers/registry.ts:341). No [1m] sibling: opencodex's 1M rows
+        // cover only opus-4-6/4-7/4-8 and sonnet-4-6, so a [1m] variant here
+        // would be an id nothing traces to.
         'claude-fable-5',
+        'claude-fable-5-1',
         'claude-fable-5[1m]',
         'claude-haiku-4-5',
         'claude-opus-4-6',

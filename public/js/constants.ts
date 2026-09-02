@@ -91,6 +91,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'sonnet',
             'sonnet[1m]',
             'haiku',
+            'claude-fable-5-1',
             'claude-fable-5',
             'claude-fable-5[1m]',
             'claude-sonnet-5',
