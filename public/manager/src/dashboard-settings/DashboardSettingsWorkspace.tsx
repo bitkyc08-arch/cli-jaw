@@ -105,6 +105,11 @@ const COPY = {
                 scope: '단축키',
                 description: '기본 300으로 되돌리고 \'jaw.sidebarWidth\' 키를 지운다.',
             },
+            shortcutJumpInstance: {
+                label: '인스턴스 점프',
+                scope: '단축키',
+                description: '렌더된 사이드바 행 1–9로 이동합니다. Meta+1–4는 탭 전환에 남아 있어 Alt를 씁니다.',
+            },
         },
         support: {
             ariaLabel: '작업 제목 출처 준비 상태',
@@ -185,6 +190,11 @@ const COPY = {
                 label: 'Reset sidebar width',
                 scope: 'Shortcut',
                 description: 'Restore the default 300px width and delete the \'jaw.sidebarWidth\' key.',
+            },
+            shortcutJumpInstance: {
+                label: 'Jump to instance',
+                scope: 'Shortcut',
+                description: 'Jump to rendered sidebar rows 1–9. Meta+1–4 stay on tab switching, so these use Alt.',
             },
         },
         support: {
@@ -267,6 +277,11 @@ const COPY = {
                 scope: '快捷键',
                 description: '恢复默认 300px 宽度并删除 \'jaw.sidebarWidth\' 键。',
             },
+            shortcutJumpInstance: {
+                label: '跳转到实例',
+                scope: '快捷键',
+                description: '跳转到已渲染的侧边栏第 1–9 行。Meta+1–4 仍用于切换标签，因此这里使用 Alt。',
+            },
         },
         support: {
             ariaLabel: '活动标题来源就绪状态',
@@ -347,6 +362,11 @@ const COPY = {
                 label: 'サイドバー幅をリセット',
                 scope: 'ショートカット',
                 description: '既定の 300px に戻し、\'jaw.sidebarWidth\' キーを削除します。',
+            },
+            shortcutJumpInstance: {
+                label: 'インスタンスへジャンプ',
+                scope: 'ショートカット',
+                description: '描画済みサイドバー行 1–9 へ移動します。Meta+1–4 はタブ切替のままなので Alt を使います。',
             },
         },
         support: {
@@ -466,6 +486,7 @@ function shortcutCopyKey(action: DashboardShortcutAction): keyof typeof COPY.ko.
     if (action === 'focusNotes') return 'shortcutFocusNotes';
     if (action === 'previousInstance') return 'shortcutPreviousInstance';
     if (action === 'resetSidebarWidth') return 'shortcutResetSidebarWidth';
+    if (action.startsWith('jumpInstance')) return 'shortcutJumpInstance';
     return 'shortcutNextInstance';
 }
 

@@ -28,6 +28,15 @@ export const MANAGER_SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
     'terminalNewTab',
     'toggleLeftSidebar',
     'resetSidebarWidth',
+    'jumpInstance1',
+    'jumpInstance2',
+    'jumpInstance3',
+    'jumpInstance4',
+    'jumpInstance5',
+    'jumpInstance6',
+    'jumpInstance7',
+    'jumpInstance8',
+    'jumpInstance9',
 ];
 
 export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
@@ -58,6 +67,15 @@ export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
     terminalNewTab: 'Meta+T',
     toggleLeftSidebar: 'Meta+Shift+B',
     resetSidebarWidth: 'Alt+Shift+B',
+    jumpInstance1: 'Alt+1',
+    jumpInstance2: 'Alt+2',
+    jumpInstance3: 'Alt+3',
+    jumpInstance4: 'Alt+4',
+    jumpInstance5: 'Alt+5',
+    jumpInstance6: 'Alt+6',
+    jumpInstance7: 'Alt+7',
+    jumpInstance8: 'Alt+8',
+    jumpInstance9: 'Alt+9',
 };
 
 const MANAGER_SHORTCUT_ALIASES: Partial<Record<DashboardShortcutAction, string[]>> = {
@@ -119,6 +137,7 @@ export function normalizeManagerShortcutKeymap(value: unknown): DashboardShortcu
 
 function resolveEventKey(event: KeyboardEvent): string {
     if (event.code === 'Backquote') return '`';
+    if (event.altKey && event.code?.startsWith('Digit')) return event.code.slice(5);
     const k = normalizeKey(event.key);
     if (k.length === 1) return k;
     // macOS Option+letter produces special chars (e.g. ∆ for Alt+J).

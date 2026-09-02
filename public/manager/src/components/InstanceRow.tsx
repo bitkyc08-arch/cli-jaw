@@ -29,6 +29,7 @@ type InstanceRowProps = {
     onMarkActivitySeen: (port: number) => void;
     onInstanceLabelSave: (port: number, label: string | null) => Promise<void>;
     onLifecycle: (action: DashboardLifecycleAction, instance: DashboardInstance) => void;
+    jumpHint?: string | null;
 };
 
 const TRANSITION_LABELS: Record<DashboardLifecycleAction, string> = {
@@ -134,6 +135,7 @@ export function InstanceRow(props: InstanceRowProps) {
             <button
                 className="instance-row-select"
                 type="button"
+                data-instance-port={props.instance.port}
                 aria-pressed={props.selected}
                 onClick={() => {
                     props.onSelect(props.instance);
@@ -263,6 +265,7 @@ export function InstanceRow(props: InstanceRowProps) {
                     </svg>
                 </button>
             ) : null}
+            {props.jumpHint ? <span className="instance-jump-hint" aria-hidden="true">{props.jumpHint}</span> : null}
             {props.showSelectedActions !== false && (
             <div className="instance-actions">
                 <button

@@ -40,7 +40,10 @@ export type DashboardShortcutAction =
     | 'terminalClear'
     | 'terminalNewTab'
     | 'toggleLeftSidebar'
-    | 'resetSidebarWidth';
+    | 'resetSidebarWidth'
+    | 'jumpInstance1' | 'jumpInstance2' | 'jumpInstance3'
+    | 'jumpInstance4' | 'jumpInstance5' | 'jumpInstance6'
+    | 'jumpInstance7' | 'jumpInstance8' | 'jumpInstance9';
 export type DashboardShortcutKeymap = Record<DashboardShortcutAction, string>;
 export type DashboardDiffMode = 'unstaged' | 'staged' | 'head' | 'base';
 export type DashboardDiffRootPolicy = 'project-first' | 'working-dir-first' | 'manual';
