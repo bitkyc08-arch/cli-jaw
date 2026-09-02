@@ -229,19 +229,120 @@ h2 { font-size: 13px; }
     font-weight: 700;
     padding: 7px 4px 6px;
 }
+.instance-group-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 4px 6px;
+}
+.instance-group-toggle,
+button.instance-group-header,
+button.instance-group-toggle {
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 4px 6px;
+    justify-content: space-between;
+    cursor: pointer;
+    text-align: left;
+}
+button.instance-group-header:hover:not(:disabled),
+button.instance-group-toggle:hover:not(:disabled) {
+    background: var(--sidebar-row-hover);
+    border-color: transparent;
+    color: var(--text-secondary);
+}
+button.instance-group-header:active:not(:disabled) { transform: none; }
+.instance-group-toggle > span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.instance-group-toggle:focus-visible,
+button.instance-group-header:focus-visible,
+button.instance-group-toggle:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: 2px;
+}
+.instance-group-chevron {
+    display: inline-block;
+    flex-shrink: 0;
+    transition: transform var(--motion-fast);
+}
+.instance-group-toggle[aria-expanded="false"] .instance-group-chevron,
+button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
+    transform: rotate(-90deg);
+}
 .instance-row {
-    position: relative; display: grid; gap: 8px; margin-bottom: 7px;
-    border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; padding: 10px;
+    position: relative;
+    display: grid;
+    gap: 8px;
+    margin-bottom: 7px;
+    min-height: 56px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    padding: 10px;
 }
 .instance-row.density-compact {
+    min-height: 36px;
     gap: 6px;
     padding: 8px;
+}
+.instance-row.density-rail {
+    min-height: 36px;
 }
 .instance-row.priority-active {
     border-color: var(--border-strong);
     background: var(--sidebar-row-active);
 }
 .instance-row:hover, .instance-row:focus-within { border-color: transparent; background: var(--sidebar-row-hover); }
+.instance-row-status-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: var(--sidebar-row-ready);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+}
+.instance-row.density-compact .instance-row-status-line,
+.instance-row.density-rail .instance-row-status-line {
+    display: none;
+}
+.instance-row-status-line[data-status="working"] {
+    color: var(--sidebar-row-working);
+}
+.instance-row-status-line[data-status="attention"] {
+    color: var(--sidebar-row-attention);
+}
+.instance-row-status-line[data-status="error"] {
+    color: var(--sidebar-row-error);
+}
+.instance-row-status-line[data-status="ready"],
+.instance-row-status-line[data-status="online"],
+.instance-row-status-line[data-status="offline"] {
+    color: var(--sidebar-row-ready);
+}
+.instance-row-status-pill,
+.instance-row-working-duration {
+    color: inherit;
+    font: inherit;
+    background: transparent;
+}
+/* The compact sidebar polish hides every span inside .instance-row-title
+   (secondary metadata); the status line is primary and must stay visible. */
+.manager-sidebar .instance-row-title .instance-row-status-line span {
+    display: inline;
+    color: inherit;
+    font-size: 10px;
+}
 .instance-row-select {
     width: 100%; min-height: 0; min-width: 0; display: grid; gap: 8px; border: 0;
     background: transparent; color: inherit; border-radius: var(--radius-sm); padding: 0;
@@ -287,6 +388,17 @@ h2 { font-size: 13px; }
     gap: 4px;
     flex-shrink: 0;
 }
+.instance-row .instance-row-quick .quick-btn {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
+}
+.instance-row:hover .instance-row-quick .quick-btn:not(:disabled),
+.instance-row:focus-within .instance-row-quick .quick-btn:not(:disabled),
+.instance-row.is-selected .instance-row-quick .quick-btn:not(:disabled) {
+    opacity: 1;
+    pointer-events: auto;
+}
 .quick-btn {
     display: inline-grid;
     place-items: center;
@@ -330,6 +442,11 @@ h2 { font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .instance-session-list { animation: none; }
+    .instance-group-chevron,
+    .instance-row .instance-row-quick .quick-btn,
+    .quick-btn {
+        transition: none;
+    }
 }
 .instance-session-row {
     display: flex;
