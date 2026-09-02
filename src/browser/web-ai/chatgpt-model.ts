@@ -81,15 +81,19 @@ const CHATGPT_EFFORT_TRIGGER_SELECTORS = [
     '[role="menuitem"][aria-label*="Reasoning" i]',
 ] as const;
 
+// Ordered newest-first; every older id stays as a fallback. The web app rolls a new model
+// slug into these test-ids without warning, and a released client still has to drive the
+// version the user's account is actually being served -- which is why gpt-5-3 is still here
+// behind gpt-5-5. Label matching backs all of it up when no test-id matches at all.
 export const CHATGPT_MODEL_OPTIONS: Record<ChatGptModelChoice, { testIds: string[]; labels: string[] }> = {
-    instant: { testIds: ['model-switcher-gpt-5-5', 'model-switcher-gpt-5-3'], labels: ['Instant', '즉시'] },
-    thinking: { testIds: ['model-switcher-gpt-5-5-thinking', 'model-switcher-gpt-5-5-thinking-thinking-effort'], labels: ['Thinking', 'Medium', 'High', 'Extra High', '중간', '높음', '매우 높음'] },
-    pro: { testIds: ['model-switcher-gpt-5-5-pro', 'model-switcher-gpt-5-5-pro-thinking-effort'], labels: ['Pro', 'Heavy', 'Pro Standard', 'Pro Extended', 'Pro 확장', '프로 확장'] },
+    instant: { testIds: ['model-switcher-gpt-5-6', 'model-switcher-gpt-5-5', 'model-switcher-gpt-5-3'], labels: ['Instant', '즉시'] },
+    thinking: { testIds: ['model-switcher-gpt-5-6-thinking', 'model-switcher-gpt-5-6-thinking-thinking-effort', 'model-switcher-gpt-5-5-thinking', 'model-switcher-gpt-5-5-thinking-thinking-effort'], labels: ['Thinking', 'Medium', 'High', 'Extra High', '중간', '높음', '매우 높음'] },
+    pro: { testIds: ['model-switcher-gpt-5-6-pro', 'model-switcher-gpt-5-6-pro-thinking-effort', 'model-switcher-gpt-5-5-pro', 'model-switcher-gpt-5-5-pro-thinking-effort'], labels: ['Pro', 'Heavy', 'Pro Standard', 'Pro Extended', 'Pro 확장', '프로 확장'] },
 };
 
 export const CHATGPT_MODEL_EFFORT_OPTIONS: Record<'thinking' | 'pro', { triggerTestIds: string[]; efforts: Partial<Record<ChatGptEffortChoice, string>> }> = {
     thinking: {
-        triggerTestIds: ['model-switcher-gpt-5-5-thinking-thinking-effort'],
+        triggerTestIds: ['model-switcher-gpt-5-6-thinking-thinking-effort', 'model-switcher-gpt-5-5-thinking-thinking-effort'],
         efforts: {
             light: 'Light',
             standard: 'Standard',
@@ -98,7 +102,7 @@ export const CHATGPT_MODEL_EFFORT_OPTIONS: Record<'thinking' | 'pro', { triggerT
         },
     },
     pro: {
-        triggerTestIds: ['model-switcher-gpt-5-5-pro-thinking-effort'],
+        triggerTestIds: ['model-switcher-gpt-5-6-pro-thinking-effort', 'model-switcher-gpt-5-5-pro-thinking-effort'],
         efforts: {
             standard: 'Standard',
             extended: 'Extended',
