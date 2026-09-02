@@ -2,12 +2,20 @@
  * defaults and base control reset. */
 
 :root {
-    font-family: 'Outfit', 'Geist', 'Satoshi', 'Inter', 'Pretendard',
-        'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans KR',
-        system-ui, sans-serif;
+    font-family: var(--font-sans);
     background: var(--bg-base);
     color: var(--text-primary);
 }
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+html::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+html::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--scrollbar-radius);
+}
+html::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
 * { box-sizing: border-box; }
 
@@ -20,7 +28,7 @@ body {
         radial-gradient(circle at 12% 0%, var(--shell-tint), transparent 32rem),
         var(--bg-base);
     color: var(--text-primary);
-    transition: background-color 200ms ease, color 200ms ease;
+    transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 
 #manager-root { height: 100dvh; overflow: hidden; }
@@ -32,14 +40,14 @@ button, .open-link {
     border: 1px solid var(--border-strong);
     background: var(--button-bg);
     color: var(--text-primary);
-    border-radius: 7px;
+    border-radius: var(--control-radius);
     padding: 5px 10px;
     font-size: 12px;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    transition: background var(--motion-base) ease, border-color var(--motion-base) ease, transform var(--motion-fast) ease;
 }
 
 button:hover:not(:disabled),
@@ -58,7 +66,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible {
-    outline: 2px solid var(--ring);
+    outline: var(--focus-ring);
     outline-offset: 2px;
 }
 
