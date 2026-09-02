@@ -231,21 +231,40 @@ export const CLI_REGISTRY = {
     opencode: {
         label: 'OpenCode',
         binary: 'opencode',
-        defaultModel: 'opencode-go/kimi-k2.6',
+        defaultModel: 'opencode-go/kimi-k2.7-code',
         defaultEffort: '',
         efforts: ['minimal', 'low', 'high', 'max'],
+        // The full opencode-go roster, refreshed 2026-09-02 against
+        // opencodex src/generated/model-metadata.ts:50 (24 ids). `defaultModel`
+        // follows opencodex's own default for the provider
+        // (src/providers/registry.ts:1458, `kimi-k2.7-code`); the previous
+        // kimi-k2.6 is kept in the list rather than dropped, since the provider
+        // still serves it.
         models: [
             'opencode-go/kimi-k2.7-code',
+            'opencode-go/kimi-k3',
+            'opencode-go/kimi-k2.6',
+            'opencode-go/kimi-k2.5',
+            'opencode-go/glm-5.3',
             'opencode-go/glm-5.2',
             'opencode-go/glm-5.1',
-            'opencode-go/kimi-k2.6',
-            'opencode-go/mimo-v2.5-pro',
-            'opencode-go/mimo-v2.5',
+            'opencode-go/glm-5',
+            'opencode-go/grok-4.6',
+            'opencode-go/grok-4.5',
+            'opencode-go/minimax-m3',
             'opencode-go/minimax-m2.7',
+            'opencode-go/minimax-m2.5',
+            'opencode-go/qwen3.7-max',
             'opencode-go/qwen3.7-plus',
             'opencode-go/qwen3.6-plus',
+            'opencode-go/qwen3.5-plus',
+            'opencode-go/mimo-v2.5-pro',
+            'opencode-go/mimo-v2.5',
+            'opencode-go/mimo-v2-pro',
+            'opencode-go/mimo-v2-omni',
             'opencode-go/deepseek-v4-pro',
             'opencode-go/deepseek-v4-flash',
+            'opencode-go/hy3',
         ],
     },
     copilot: {
@@ -255,7 +274,20 @@ export const CLI_REGISTRY = {
         defaultEffort: 'high',
         efforts: ['low', 'medium', 'high'],
         effortNote: '→ ~/.copilot/config.json',
+        // gpt-5.6 trio added 2026-09-02 from opencodex
+        // src/providers/registry.ts:2866, and they are real routed models rather
+        // than seeds -- each carries an explicit `openai-responses` wire
+        // declaration at :2874-2881.
+        //
+        // The cli-jaw-only Claude ids below are deliberately KEPT. opencodex marks
+        // this provider `liveModels: true` and calls its own array a cold-start
+        // fallback (:2854-2856), so absence there is weak evidence of retirement,
+        // not proof of it. Removing a model a user can still select would be a
+        // regression dressed as a sync.
         models: [
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
             'gpt-5.5',
             'claude-fable-5',
             'claude-opus-4.8',

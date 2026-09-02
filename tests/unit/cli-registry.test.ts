@@ -50,7 +50,11 @@ test('every CLI defaultModel is included in its models list', () => {
 });
 
 test('registry defaults for opencode are updated', () => {
-    assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode-go/kimi-k2.6');
+    assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode-go/kimi-k2.7-code');
+    // The default has to be selectable. That invariant is what caught the AGY
+    // default pointing at a retired generation, so assert it here too rather than
+    // only pinning the string.
+    assert.ok(CLI_REGISTRY.opencode.models.includes(CLI_REGISTRY.opencode.defaultModel));
 });
 
 test('JWC registry exposes package-backed runtime metadata', () => {
@@ -274,21 +278,38 @@ test('grok registry includes build and composer models with effort disabled', ()
     assert.match(CLI_REGISTRY.grok.effortNote || '', /unsupported by grok-build/);
 });
 
-test('opencode registry exposes only the curated OpenCode Go models', () => {
+test('opencode registry mirrors the full opencode-go roster', () => {
+    // 24 ids, refreshed 2026-09-02 against opencodex
+    // src/generated/model-metadata.ts:50. Every id is traceable to that line; none
+    // is invented.
     const models = CLI_REGISTRY.opencode.models;
     assert.deepEqual(models, [
         'opencode-go/kimi-k2.7-code',
+        'opencode-go/kimi-k3',
+        'opencode-go/kimi-k2.6',
+        'opencode-go/kimi-k2.5',
+        'opencode-go/glm-5.3',
         'opencode-go/glm-5.2',
         'opencode-go/glm-5.1',
-        'opencode-go/kimi-k2.6',
-        'opencode-go/mimo-v2.5-pro',
-        'opencode-go/mimo-v2.5',
+        'opencode-go/glm-5',
+        'opencode-go/grok-4.6',
+        'opencode-go/grok-4.5',
+        'opencode-go/minimax-m3',
         'opencode-go/minimax-m2.7',
+        'opencode-go/minimax-m2.5',
+        'opencode-go/qwen3.7-max',
         'opencode-go/qwen3.7-plus',
         'opencode-go/qwen3.6-plus',
+        'opencode-go/qwen3.5-plus',
+        'opencode-go/mimo-v2.5-pro',
+        'opencode-go/mimo-v2.5',
+        'opencode-go/mimo-v2-pro',
+        'opencode-go/mimo-v2-omni',
         'opencode-go/deepseek-v4-pro',
         'opencode-go/deepseek-v4-flash',
+        'opencode-go/hy3',
     ]);
+    assert.equal(new Set(models).size, models.length, 'no duplicate opencode ids');
 });
 
 test('copilot registry excludes deprecated claude-opus-4.6-fast', () => {
