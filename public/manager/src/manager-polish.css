@@ -28,7 +28,7 @@
 
 .rail-button-short {
     display: none;
-    font-family: "Geist Mono", "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
 }
 
@@ -189,7 +189,7 @@
 .manager-sidebar .instance-row {
     gap: 4px;
     margin-bottom: 4px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 7px 8px;
 }
 
@@ -273,6 +273,7 @@
 .manager-sidebar .instance-actions button,
 .manager-sidebar .instance-actions .open-link {
     min-height: 24px;
+    border-radius: var(--control-radius);
     padding-inline: 5px;
     font-size: 10.5px;
 }
