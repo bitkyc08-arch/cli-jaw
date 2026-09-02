@@ -163,10 +163,16 @@ test('ai-e per-model efforts are provider-scoped, never a flat colliding map', a
 test('Antigravity registry exposes AGY as a top-level runtime, not an ai-e provider', () => {
     assert.equal(CLI_REGISTRY.agy.label, 'Antigravity');
     assert.equal(CLI_REGISTRY.agy.binary, 'agy');
-    assert.equal(CLI_REGISTRY.agy.defaultModel, 'Gemini 3.5 Flash (Medium)');
+    assert.equal(CLI_REGISTRY.agy.defaultModel, 'Gemini 3.7 Flash (Medium)');
     assert.deepEqual(CLI_REGISTRY.agy.efforts, []);
     assert.ok(CLI_REGISTRY.agy.models.length >= 8);
-    assert.ok(CLI_REGISTRY.agy.models.includes('Gemini 3.5 Flash (Medium)'));
+    assert.ok(CLI_REGISTRY.agy.models.includes('Gemini 3.7 Flash (Medium)'));
+    // The default must be selectable, which is the invariant that broke: AGY
+    // 1.1.13 no longer lists any 3.5 Flash tier, so the previous default was
+    // unreachable. Asserting membership rather than only the string keeps a
+    // future generation bump from re-introducing that gap silently.
+    assert.ok(CLI_REGISTRY.agy.models.includes(CLI_REGISTRY.agy.defaultModel));
+    assert.equal(CLI_REGISTRY.agy.models.some((m) => m.includes('3.5 Flash')), false);
     assert.equal(CLI_REGISTRY['ai-e'].providers.includes('agy'), false);
 });
 
