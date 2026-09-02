@@ -47,7 +47,11 @@ test('Cursor model inventory mirrors observed cursor-agent list-models support',
     // Checked against a live `cursor-agent models` run (2026-08-20): the account
     // listed 204 ids, 92 of which this registry had never heard of. The count is
     // kept as a regrowth guard, but the assertions below are what carry meaning.
-    assert.equal(CURSOR_MODEL_IDS.length, 237);
+    // 237 -> 240 on 2026-09-02: glm-5.3 low/high/max, traceable to opencodex
+    // src/adapters/cursor/catalog.ts:184-188.
+    assert.equal(CURSOR_MODEL_IDS.length, 240);
+    assert.ok(CURSOR_MODEL_IDS.includes('glm-5.3-low'));
+    assert.ok(CURSOR_MODEL_IDS.includes('glm-5.3-max'));
     assert.ok(CURSOR_MODEL_IDS.includes('composer-2.5-fast'));
     assert.ok(!CURSOR_MODEL_IDS.includes('grok-composer-2.5-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('gpt-5.5-extra-high-fast'));
