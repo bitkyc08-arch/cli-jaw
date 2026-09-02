@@ -103,15 +103,15 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
             {props.drawerOpen && <div className="drawer-backdrop" onClick={props.onCloseDrawer} />}
             <aside className="manager-sidebar" aria-label={props.navigatorLabel ?? 'Jaw instances'}>
                 {props.navigator}
-                {!props.sidebarCollapsed && viewportWidth >= 1024 && (
-                    <SidebarResizeHandle
-                        width={props.sidebarWidth}
-                        onDelta={props.onSidebarWidthDelta}
-                        onEnd={props.onSidebarWidthEnd}
-                        onDoubleClick={props.onSidebarWidthReset}
-                    />
-                )}
             </aside>
+            {!props.sidebarCollapsed && viewportWidth >= 1024 && (
+                <SidebarResizeHandle
+                    width={props.sidebarWidth}
+                    onDelta={props.onSidebarWidthDelta}
+                    onEnd={props.onSidebarWidthEnd}
+                    onDoubleClick={props.onSidebarWidthReset}
+                />
+            )}
             <section className="manager-detail" aria-label="Manager workbench">{props.workbench}</section>
             <section className="manager-activity" aria-label="Manager inspector">{props.inspector}</section>
             {props.sidePanel && <aside className="manager-ceo-panel" aria-label="Jaw CEO console">{props.sidePanel}</aside>}
