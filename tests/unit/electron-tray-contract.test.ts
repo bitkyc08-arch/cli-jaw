@@ -30,7 +30,7 @@ test('main process wires reminder popover, typed IPC bridge, and origin guard', 
     const preload = read('electron/src/preload/index.ts');
     const desktopBridge = read('public/manager/src/panels/desktop-bridge.ts');
 
-    assert.match(index, /import \{ app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, session, shell \} from 'electron';/);
+    assert.match(index, /import \{ app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, screen, session, shell \} from 'electron';/);
     assert.ok(index.includes("from './lib/reminder-popover.js'"));
     assert.ok(index.includes('setTrayClickHandler'));
     assert.ok(index.includes('popUpTrayMenu'));
