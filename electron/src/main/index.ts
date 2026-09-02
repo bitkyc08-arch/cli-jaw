@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, screen, session, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { fileURLToPath, URL } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -46,7 +46,8 @@ import { registerFolderIpc, cleanupFolderWatchers } from './lib/folder/ipc.js';
 import { registerBrowserIpc, markOwnedEmbeddedBrowserWebContents } from './lib/browser/ipc.js';
 import { registerClipboardIpc } from './lib/clipboard/ipc.js';
 import { registerPermissionDiagnosticsIpc } from './lib/permission-diagnostics/ipc.js';
-import { registerWindowIpc } from './lib/window/ipc.js';
+import { broadcastFullscreenChanged, registerWindowIpc } from './lib/window/ipc.js';
+import { resolveWindowChromeOptions } from './lib/window/chrome-options.js';
 import { isAllowedSender, setAllowedOrigin } from './lib/ipc-origin-guard.js';
 import { primeMacAutomationPermission } from './lib/mac-automation-permission.js';
 import { showQuitProgress } from './lib/quit-progress.js';
@@ -165,7 +166,8 @@ type ManagerShortcutAction =
   | 'browserForward'
   | 'terminalClear'
   | 'terminalNewTab'
-  | 'toggleLeftSidebar';
+  | 'toggleLeftSidebar'
+  | 'resetSidebarWidth';
 
 type DesktopKeyboardInput = {
   type?: string;
@@ -840,6 +842,20 @@ function sendManagerShortcut(action: ManagerShortcutAction): void {
   mainWindow?.webContents.send('manager:shortcut', action);
 }
 
+const MAIN_ZOOM_MIN = 0.5;
+const MAIN_ZOOM_MAX = 3;
+const MAIN_ZOOM_STEP = 0.1;
+
+function applyMainWindowZoom(direction: 'in' | 'out' | 'reset'): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const current = win.webContents.getZoomFactor();
+  const next = direction === 'reset'
+    ? 1
+    : Math.min(MAIN_ZOOM_MAX, Math.max(MAIN_ZOOM_MIN, current + (direction === 'in' ? MAIN_ZOOM_STEP : -MAIN_ZOOM_STEP)));
+  win.webContents.setZoomFactor(next);
+}
+
 function installManagerApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
@@ -878,6 +894,15 @@ function installManagerApplicationMenu(): void {
           label: 'Toggle Right Sidebar',
           accelerator: 'CommandOrControl+B',
           click: () => sendManagerShortcut('toggleRightPanel'),
+        },
+        {
+          label: 'Toggle Left Sidebar',
+          accelerator: 'CommandOrControl+Shift+B',
+          click: () => sendManagerShortcut('toggleLeftSidebar'),
+        },
+        {
+          label: 'Reset Sidebar Width',
+          click: () => sendManagerShortcut('resetSidebarWidth'),
         },
         {
           label: 'Reveal Terminal',
@@ -937,15 +962,9 @@ function installManagerApplicationMenu(): void {
           click: () => sendManagerShortcut('nextTab'),
         },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        {
-          label: 'Toggle Left Sidebar',
-          accelerator: 'CommandOrControl+Shift+B',
-          click: () => sendManagerShortcut('toggleLeftSidebar'),
-        },
+        { label: 'Reset Zoom', accelerator: 'CommandOrControl+0', click: () => applyMainWindowZoom('reset') },
+        { label: 'Zoom In', accelerator: 'CommandOrControl+=', click: () => applyMainWindowZoom('in') },
+        { label: 'Zoom Out', accelerator: 'CommandOrControl+-', click: () => applyMainWindowZoom('out') },
         { type: 'separator' },
         { role: 'togglefullscreen' },
       ],
@@ -1207,13 +1226,13 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
 
 async function createWindow(): Promise<void> {
   const initialWindowBounds = getInitialWindowBounds();
+  const chrome = resolveWindowChromeOptions(process.platform, nativeTheme.shouldUseDarkColors);
   mainWindow = new BrowserWindow({
     ...initialWindowBounds,
     minWidth: MIN_VISIBLE_WINDOW_WIDTH,
     minHeight: MIN_VISIBLE_WINDOW_HEIGHT,
     show: true,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
+    ...chrome,
     icon: app.isPackaged
       ? join(process.resourcesPath, 'icon.png')
       : join(__dirname, '..', '..', 'build', 'icon.png'),
@@ -1266,6 +1285,22 @@ async function createWindow(): Promise<void> {
   });
   registerGlobalWebContentsHardening();
   installDesktopShortcutForwarder(mainWindow.webContents);
+
+  const emitFullscreen = () => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+    broadcastFullscreenChanged(win, win.isFullScreen());
+  };
+  mainWindow.on('enter-full-screen', emitFullscreen);
+  mainWindow.on('leave-full-screen', emitFullscreen);
+
+  const applyOverlay = () => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+    const next = resolveWindowChromeOptions(process.platform, nativeTheme.shouldUseDarkColors);
+    if (next.titleBarOverlay) win.setTitleBarOverlay(next.titleBarOverlay);
+  };
+  nativeTheme.on('updated', applyOverlay);
 
   // The Manager renderer must never die into a permanently blank window
   // (observed with embedded-browser webview attach in packaged builds).
