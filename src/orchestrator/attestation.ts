@@ -27,6 +27,24 @@ export interface PhaseAttestation {
   checkOutput?: string;
   /** Optional exit code; if present and non-zero, C→D is rejected. */
   exitCode?: number;
+  /**
+   * P→A: the plan unit this cycle is working out of, e.g. `devlog/_plan/260902_slug`.
+   * Advisory-only — a missing unit does not block, but it is no longer discarded.
+   */
+  planUnit?: string;
+  /** Optional work-phase id, for multi-cycle work under one objective. */
+  workPhaseId?: string;
+  /** A→B: pasted tail of the reviewer's verdict. */
+  auditOutput?: string;
+  /**
+   * A→B: the MAIN agent's judgement of the audit round (AUDIT-LOOP-01). A declared
+   * `fail` BLOCKS the transition; the other values pass. Unrecognized strings are
+   * dropped rather than guessed at, so a typo cannot smuggle a fail past the gate as
+   * an unknown value — it is simply absent, and absence is advisory.
+   */
+  auditVerdict?: 'pass' | 'near-pass' | 'fail';
+  /** A→B, near-pass only: each residual blocker and its disposition. */
+  auditResidual?: string;
   /** The raw source the attestation was parsed from (block text or JSON string). */
   raw: string;
 }
@@ -52,6 +70,18 @@ function coerce(obj: Record<string, unknown>, raw: string): PhaseAttestation | n
   if (typeof obj['checkOutput'] === 'string') att.checkOutput = obj['checkOutput'].trim();
   if (typeof obj['exitCode'] === 'number' && Number.isFinite(obj['exitCode'])) {
     att.exitCode = obj['exitCode'] as number;
+  }
+  // Audit and plan-unit fields. These used to be dropped here with no error and no
+  // warning, which meant a caller could write `auditVerdict: "fail"` and watch the
+  // transition succeed — the field vanished before any gate saw it. Parsing them does
+  // not by itself make them required; see checkAttestationGate for what each one does.
+  for (const key of ['planUnit', 'workPhaseId', 'auditOutput', 'auditResidual'] as const) {
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim()) att[key] = v.trim();
+  }
+  const verdict = obj['auditVerdict'];
+  if (verdict === 'pass' || verdict === 'near-pass' || verdict === 'fail') {
+    att.auditVerdict = verdict;
   }
   return att;
 }
@@ -136,6 +166,42 @@ export function checkAttestationGate(
       reason: `${from} → ${to} attestation needs a specific "did" narrative (not empty or a placeholder) describing what you actually did.`,
     };
   }
+  if (key === 'A>B') {
+    // AUDIT-LOOP-01: a FAIL round never exits A. This is the one audit rule a form-only
+    // gate can actually enforce — it needs no cross-check against runtime state, only
+    // the agent's own recorded judgement. Blocking here cannot break an existing caller
+    // because nothing sent this field until now; the field's absence stays advisory.
+    if (att.auditVerdict === 'fail') {
+      return {
+        ok: false,
+        reason:
+          `A → B is refused: the attestation declares auditVerdict "fail". A failed audit round ` +
+          `never exits A (AUDIT-LOOP-01). Record the synthesis (per-blocker root cause, conflicts, ` +
+          `accept/rebut per point), amend the plan, and re-audit with the SAME reviewer. After 3 ` +
+          `failed rounds, return to P with a changed plan instead.`,
+      };
+    }
+    if (att.auditVerdict === 'near-pass' && !att.auditResidual) {
+      return {
+        ok: false,
+        reason:
+          `A → B declares auditVerdict "near-pass" but carries no "auditResidual". Near-pass means ` +
+          `every High/Critical blocker was folded in as a concrete amendment or explicitly rebutted ` +
+          `with recorded rationale — name each residual and its disposition, or declare "pass".`,
+      };
+    }
+    const advisory = checkAuditEvidenceAdvisory(att);
+    if (advisory) return { ok: true, advisory };
+  }
+  if (key === 'P>A' && !att.planUnit) {
+    return {
+      ok: true,
+      advisory:
+        `[UNIT-RESIDENCE-01 advisory] P → A carries no "planUnit". The diff-level plan should ` +
+        `live in a real devlog/_plan/YYMMDD_slug/ unit rather than only in this narrative. ` +
+        `Pass it as "planUnit" so a later reader can find the plan this cycle was built from.`,
+    };
+  }
   if (key === 'C>D') {
     if (!att.checkOutput) {
       return {
@@ -158,6 +224,28 @@ export function checkAttestationGate(
     }
   }
   return { ok: true };
+}
+
+// ─── Audit-evidence soft warning (AUDIT-LOOP-01) ────────────────
+// A→B is where a plan audit is supposed to have happened. The gate cannot verify that a
+// reviewer really ran — that is the faithful-execution obligation the form-only gate
+// explicitly does not cover — but it CAN notice that the attestation offers no evidence
+// either way, and say so instead of passing in silence.
+
+/**
+ * Returns advisory text when an A→B attestation records no audit evidence at all: no
+ * verdict, and no pasted reviewer output. Returns null once either is present, since a
+ * `pass` with output is a complete claim and a bare `pass` is at least an explicit one.
+ */
+export function checkAuditEvidenceAdvisory(att: PhaseAttestation): string | null {
+  if (att.auditVerdict || att.auditOutput) return null;
+  return (
+    '[AUDIT-LOOP-01 advisory] A → B carries no "auditVerdict" and no "auditOutput". ' +
+    'A is a loop — audit, synthesize, amend, re-audit — and it exits only on a ' +
+    'main-agent-judged pass or near-pass. Record the judgement as "auditVerdict" ' +
+    '("pass" | "near-pass" | "fail") and paste the reviewer\'s verdict tail as ' +
+    '"auditOutput", so the round is re-readable later. A declared "fail" is refused.'
+  );
 }
 
 // ─── Render-grounding soft warning (C-RENDER-GROUNDING-01) ──────

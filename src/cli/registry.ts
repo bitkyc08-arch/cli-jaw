@@ -17,24 +17,33 @@ export const CLI_REGISTRY = {
         label: 'Antigravity',
         binary: 'agy',
         experimental: true,
-        defaultModel: 'Gemini 3.5 Flash (Medium)',
+        defaultModel: 'Gemini 3.7 Flash (Medium)',
         defaultEffort: '',
         efforts: [],
         // Tier-bearing label form, which is what `agy --model` accepts on its
         // own. cli-jaw never sends --effort for AGY, and a tier-less slug is
-        // rejected in that shape ("requires --effort"). `agy models` prints a
-        // DIFFERENT, effort-suffixed slug form (gemini-3.6-flash-medium) — do
-        // not paste that output here. Refreshed 2026-07-25 against AGY 1.1.4,
-        // which added the Gemini 3.6 Flash tier. `defaultModel` intentionally
-        // stays on 3.5 Flash: promoting a default changes every new session's
-        // model, which is a policy decision, not a catalog sync.
+        // rejected in that shape ("requires --effort"). `agy models` prints two
+        // columns; the SECOND is this form. Do not paste the first (the
+        // effort-suffixed slug `gemini-3.7-flash-medium`) here.
+        //
+        // Refreshed 2026-09-02 against AGY 1.1.13 by reading `agy models`.
+        // Google pulls the previous Flash generation from Antigravity soon
+        // after the next ships, so this list is checked against the binary
+        // rather than derived: 1.1.13 offers 3.7 and 3.6 and no longer offers
+        // 3.5 at all.
+        //
+        // `defaultModel` moved off 3.5 Flash because the earlier note here --
+        // "promoting a default is a policy decision, not a catalog sync" --
+        // stopped applying once 3.5 disappeared from the binary. Keeping it
+        // was no longer a conservative choice; it pointed every new AGY
+        // session at a model AGY cannot serve.
         models: [
+            'Gemini 3.7 Flash (High)',
+            'Gemini 3.7 Flash (Medium)',
+            'Gemini 3.7 Flash (Low)',
             'Gemini 3.6 Flash (High)',
             'Gemini 3.6 Flash (Medium)',
             'Gemini 3.6 Flash (Low)',
-            'Gemini 3.5 Flash (Medium)',
-            'Gemini 3.5 Flash (High)',
-            'Gemini 3.5 Flash (Low)',
             'Gemini 3.1 Pro (High)',
             'Gemini 3.1 Pro (Low)',
             'Claude Sonnet 4.6 (Thinking)',
@@ -51,7 +60,7 @@ export const CLI_REGISTRY = {
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         effortNote: 'Pi thinking level via RPC set_thinking_level',
-        models: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
+        models: ['grok-composer-2.5-fast', 'grok-4.6', 'grok-4.5', 'grok-4.3'],
     },
     'ai-e': {
         label: 'AI-E',
@@ -222,21 +231,40 @@ export const CLI_REGISTRY = {
     opencode: {
         label: 'OpenCode',
         binary: 'opencode',
-        defaultModel: 'opencode-go/kimi-k2.6',
+        defaultModel: 'opencode-go/kimi-k2.7-code',
         defaultEffort: '',
         efforts: ['minimal', 'low', 'high', 'max'],
+        // The full opencode-go roster, refreshed 2026-09-02 against
+        // opencodex src/generated/model-metadata.ts:50 (24 ids). `defaultModel`
+        // follows opencodex's own default for the provider
+        // (src/providers/registry.ts:1458, `kimi-k2.7-code`); the previous
+        // kimi-k2.6 is kept in the list rather than dropped, since the provider
+        // still serves it.
         models: [
             'opencode-go/kimi-k2.7-code',
+            'opencode-go/kimi-k3',
+            'opencode-go/kimi-k2.6',
+            'opencode-go/kimi-k2.5',
+            'opencode-go/glm-5.3',
             'opencode-go/glm-5.2',
             'opencode-go/glm-5.1',
-            'opencode-go/kimi-k2.6',
-            'opencode-go/mimo-v2.5-pro',
-            'opencode-go/mimo-v2.5',
+            'opencode-go/glm-5',
+            'opencode-go/grok-4.6',
+            'opencode-go/grok-4.5',
+            'opencode-go/minimax-m3',
             'opencode-go/minimax-m2.7',
+            'opencode-go/minimax-m2.5',
+            'opencode-go/qwen3.7-max',
             'opencode-go/qwen3.7-plus',
             'opencode-go/qwen3.6-plus',
+            'opencode-go/qwen3.5-plus',
+            'opencode-go/mimo-v2.5-pro',
+            'opencode-go/mimo-v2.5',
+            'opencode-go/mimo-v2-pro',
+            'opencode-go/mimo-v2-omni',
             'opencode-go/deepseek-v4-pro',
             'opencode-go/deepseek-v4-flash',
+            'opencode-go/hy3',
         ],
     },
     copilot: {
@@ -246,7 +274,20 @@ export const CLI_REGISTRY = {
         defaultEffort: 'high',
         efforts: ['low', 'medium', 'high'],
         effortNote: '→ ~/.copilot/config.json',
+        // gpt-5.6 trio added 2026-09-02 from opencodex
+        // src/providers/registry.ts:2866, and they are real routed models rather
+        // than seeds -- each carries an explicit `openai-responses` wire
+        // declaration at :2874-2881.
+        //
+        // The cli-jaw-only Claude ids below are deliberately KEPT. opencodex marks
+        // this provider `liveModels: true` and calls its own array a cold-start
+        // fallback (:2854-2856), so absence there is weak evidence of retirement,
+        // not proof of it. Removing a model a user can still select would be a
+        // regression dressed as a sync.
         models: [
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
             'gpt-5.5',
             'claude-fable-5',
             'claude-opus-4.8',

@@ -219,6 +219,9 @@ export const CURSOR_MODEL_IDS = [
     'gemini-3.7-flash-medium',
     'glm-5.2-high',
     'glm-5.2-max',
+    'glm-5.3-low',
+    'glm-5.3-high',
+    'glm-5.3-max',
     'gpt-5.6-luna-high',
     'gpt-5.6-luna-high-fast',
     'gpt-5.6-luna-low',
@@ -303,6 +306,12 @@ export const CURSOR_REGISTRY_MODELS = [
     'grok-4.6',
     'gpt-5-mini',
     'glm-5.2',
+    'glm-5.3',
+    // Single-rung base: `gpt-5.5-extra`'s only level is `high`
+    // (opencodex src/adapters/cursor/catalog.ts:273-277), so the wire id is
+    // always `gpt-5.5-extra-high`. It is account-verified rather than
+    // documented publicly, which is why it was missing here.
+    'gpt-5.5-extra',
     'kimi-k2.7-code',
     'kimi-k3',
 ] as const;

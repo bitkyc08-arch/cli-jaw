@@ -55,18 +55,18 @@ export const CLI_META: Record<string, CliMeta> = {
         // A persisted legacy value still renders: optionList() prepends the
         // current value even when it is absent from this catalog.
         models: [
+            'Gemini 3.7 Flash (Medium)',
             'Gemini 3.6 Flash (Medium)',
-            'Gemini 3.5 Flash (Medium)',
         ],
         efforts: [],
-        modelNote: 'AGY model override is version-dependent. Observed AGY 1.1.4 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',
+        modelNote: 'AGY model override is version-dependent. Observed AGY 1.1.13 supports --model; cli-jaw probes the installed binary and emits this field only when supported. Leave empty to use native AGY selection.',
         effortNote: 'AGY has no separate effort flag.',
     },
     pi: {
         label: 'Pi',
         defaultProvider: 'progrok',
         providers: ['progrok'],
-        models: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
+        models: ['grok-composer-2.5-fast', 'grok-4.6', 'grok-4.5', 'grok-4.3'],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         effortNote: 'Pi runs through --mode rpc. grok-composer-2.5-fast is the verified default; bare grok-composer-2.5 currently has no team access.',
     },
@@ -108,6 +108,7 @@ export const CLI_META: Record<string, CliMeta> = {
             'sonnet',
             'sonnet[1m]',
             'haiku',
+            'claude-fable-5-1',
             'claude-fable-5',
             'claude-fable-5[1m]',
             'claude-sonnet-5',
@@ -180,7 +181,7 @@ export const CLI_META: Record<string, CliMeta> = {
             'claude-4.6-opus', 'claude-4.6-sonnet',
             'claude-4.5-opus-high', 'claude-4.5-sonnet', 'claude-4-sonnet',
             'gemini-3.1-pro', 'gemini-3-flash', 'gemini-3-pro', 'gemini-3.5-flash',
-            'grok-4.6', 'grok-4.5', 'gpt-5-mini', 'glm-5.2', 'kimi-k2.7-code', 'kimi-k3',
+            'grok-4.6', 'grok-4.5', 'gpt-5-mini', 'glm-5.2', 'glm-5.3', 'gpt-5.5-extra', 'kimi-k2.7-code', 'kimi-k3',
             'gemini-3.6-flash', 'gemini-3.7-flash',
         ],
         efforts: ['none', 'none-fast', 'low', 'low-fast', 'medium', 'medium-fast', 'high', 'high-fast', 'xhigh', 'xhigh-fast', 'max', 'max-fast'],
@@ -231,7 +232,7 @@ export const CLI_META: Record<string, CliMeta> = {
     },
     copilot: {
         label: 'Copilot',
-        models: ['gpt-5.5', 'claude-fable-5', 'claude-opus-4.8', 'claude-opus-4.7', 'claude-sonnet-4.6', 'gpt-5.4'],
+        models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'claude-fable-5', 'claude-opus-4.8', 'claude-opus-4.7', 'claude-sonnet-4.6', 'gpt-5.4'],
         efforts: ['low', 'medium', 'high'],
     },
 };

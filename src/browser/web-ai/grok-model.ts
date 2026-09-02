@@ -1,7 +1,7 @@
 import type { Page } from 'playwright-core';
 import type { CapabilityProbeResult } from './capability-probe.js';
 
-export type GrokModelChoice = 'auto' | 'fast' | 'expert' | 'grok-4.3' | 'heavy';
+export type GrokModelChoice = 'auto' | 'fast' | 'expert' | 'grok-4.3' | 'grok-4.6' | 'heavy';
 
 export interface GrokModelSelectionResult {
     requested: GrokModelChoice;
@@ -20,6 +20,7 @@ const GROK_MODEL_OPTIONS: Record<GrokModelChoice, { labels: string[] }> = {
     fast: { labels: ['Fast'] },
     expert: { labels: ['Expert'] },
     'grok-4.3': { labels: ['Grok 4.3'] },
+    'grok-4.6': { labels: ['Grok 4.6'] },
     heavy: { labels: ['Heavy'] },
 };
 
@@ -35,13 +36,24 @@ const GROK_MODEL_ALIASES: Record<string, GrokModelChoice> = {
     'grok43': 'grok-4.3',
     'grok-43': 'grok-4.3',
     beta: 'grok-4.3',
+    'grok-4.6': 'grok-4.6',
+    'grok46': 'grok-4.6',
+    'grok-46': 'grok-4.6',
     heavy: 'heavy',
 };
 
 export function normalizeGrokModelChoice(model: string | undefined): GrokModelChoice | null {
     const key = String(model || '').trim().toLowerCase();
     if (!key) return null;
-    return GROK_MODEL_ALIASES[key] || null;
+    const direct = GROK_MODEL_ALIASES[key];
+    if (direct) return direct;
+    // The alias table is keyed in id form ("grok-4.6"), but readGrokModel feeds this the
+    // menu button's VISIBLE text, which is spaced ("Grok 4.6"). Without this, every
+    // version-labelled choice normalized to null while the word-labelled ones (Auto,
+    // Expert) worked, so selecting a Grok version always failed its own post-selection
+    // verification. Collapsing whitespace to the id separator covers the current labels
+    // and whatever version ships next, rather than needing a new alias per release.
+    return GROK_MODEL_ALIASES[key.replace(/\s+/g, '-')] || null;
 }
 
 export async function selectGrokModel(page: Page, model: string | undefined): Promise<GrokModelSelectionResult | null> {
@@ -68,7 +80,7 @@ export async function selectGrokModel(page: Page, model: string | undefined): Pr
 }
 
 async function openGrokModelMenu(page: Page, usedFallbacks: string[]): Promise<void> {
-    if (await page.locator('[role="menuitem"]').filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.3\b|^Heavy\b/i }).first().isVisible().catch(() => false)) return;
+    if (await page.locator('[role="menuitem"]').filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.\d|^Heavy\b/i }).first().isVisible().catch(() => false)) return;
     const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
         for (const selector of GROK_MODEL_MENU_BUTTONS) {
@@ -76,12 +88,12 @@ async function openGrokModelMenu(page: Page, usedFallbacks: string[]): Promise<v
             if (!(await loc.isVisible().catch(() => false))) continue;
             await loc.click({ timeout: 5_000 });
             await page.waitForTimeout(350).catch(() => undefined);
-            if (await page.locator('[role="menuitem"]').filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.3\b|^Heavy\b/i }).first().isVisible().catch(() => false)) return;
+            if (await page.locator('[role="menuitem"]').filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.\d|^Heavy\b/i }).first().isVisible().catch(() => false)) return;
         }
         await page.waitForTimeout(150).catch(() => undefined);
     }
     usedFallbacks.push('model-menu-text-button');
-    const textButton = page.locator('button').filter({ hasText: /^Auto$|^Fast$|^Expert$|^Grok 4\.3|^Heavy$/i }).first();
+    const textButton = page.locator('button').filter({ hasText: /^Auto$|^Fast$|^Expert$|^Grok 4\.\d|^Heavy$/i }).first();
     if (await textButton.isVisible().catch(() => false)) {
         await textButton.click({ timeout: 5_000 });
         await page.waitForTimeout(350).catch(() => undefined);
@@ -120,7 +132,7 @@ async function readGrokModel(page: Page): Promise<GrokModelChoice | null> {
 async function closeGrokModelMenu(page: Page): Promise<void> {
     for (let i = 0; i < 3; i += 1) {
         const menuVisible = await page.locator('[role="menuitem"]')
-            .filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.3\b|^Heavy\b/i }).first().isVisible().catch(() => false);
+            .filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.\d|^Heavy\b/i }).first().isVisible().catch(() => false);
         if (!menuVisible) return;
         await page.keyboard.press('Escape').catch(() => undefined);
         await page.waitForTimeout(250).catch(() => undefined);
