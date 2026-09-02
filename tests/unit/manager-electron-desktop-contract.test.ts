@@ -702,13 +702,22 @@ test('workspace polish keeps current center/right/bottom grid areas intact', () 
         polish.includes('--activity-dock-height: 0px'),
         'collapsed inspector polish must collapse the dock without replacing the workspace grid template',
     );
+    // 260902 t3 shell (wp2): the sidebar width variable is owned by JS
+    // (useSidebarWidth -> WorkspaceLayout inline style), so the CSS polish
+    // files must NOT reassign it — the grid template only consumes it.
+    const workspaceLayout = read('public/manager/src/components/WorkspaceLayout.tsx');
+    const sidebarWidthHook = read('public/manager/src/hooks/useSidebarWidth.ts');
     assert.ok(
-        polish.includes('--sidebar-width: 300px'),
-        'wide-sidebar polish must adjust the sidebar variable instead of replacing grid columns',
+        !/--sidebar-width:\s*(300|280|44|56)px/.test(polish) && !/--sidebar-width:\s*44px/.test(compact),
+        'polish/compact CSS must not reassign --sidebar-width; the width is JS-owned',
     );
     assert.ok(
-        compact.includes('--sidebar-width: 44px'),
-        'collapsed-sidebar compact polish must adjust the sidebar variable instead of replacing grid columns',
+        workspaceLayout.includes("'--sidebar-width': props.sidebarCollapsed"),
+        'WorkspaceLayout must write --sidebar-width from state instead of replacing grid columns',
+    );
+    assert.ok(
+        sidebarWidthHook.includes('SIDEBAR_COLLAPSED_WIDTH = 44'),
+        'collapsed sidebar rail width is the hook constant (44px)',
     );
     assert.ok(
         !compact.includes('grid-template-columns: 44px minmax(0, 1fr)'),
