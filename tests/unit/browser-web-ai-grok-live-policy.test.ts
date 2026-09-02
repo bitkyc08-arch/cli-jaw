@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isGrokUrl } from '../../src/browser/web-ai/grok-live.ts';
+import { normalizeGrokModelChoice } from '../../src/browser/web-ai/grok-model.ts';
 
 const root = process.cwd();
 const grokLiveSrc = readFileSync(join(root, 'src/browser/web-ai/grok-live.ts'), 'utf8');
@@ -58,4 +59,44 @@ test('BWAG-007: Grok soft warning fires only when override flag is set', () => {
     assert.match(grokLiveSrc, /grok-context-pack-not-recommended/);
     assert.match(grokLiveSrc, /hasContextPackaging\(input\) && input\.allowGrokContextPack === true/);
     assert.match(grokLiveSrc, /warnings\.push\(GROK_CONTEXT_PACK_WARNING\)/);
+});
+
+// ─── model-choice normalization (behavior, not source regex) ─────
+// The rest of this file matches source strings; these call the function instead, because
+// the bug below was invisible to a source match -- every string it needed was present.
+
+test('BWAG-008: the menu button\'s VISIBLE label normalizes, not just the id form', () => {
+    // readGrokModel feeds this the button's inner text, which is spaced. Before the fix
+    // the alias table only had id form, so a version-labelled choice normalized to null
+    // and selection always failed its own post-selection verification. The word-labelled
+    // choices worked, which is why it went unnoticed.
+    assert.equal(normalizeGrokModelChoice('Grok 4.6'), 'grok-4.6');
+    assert.equal(normalizeGrokModelChoice('Grok 4.3'), 'grok-4.3');
+    assert.equal(normalizeGrokModelChoice('Expert'), 'expert');
+    assert.equal(normalizeGrokModelChoice('Auto'), 'auto');
+});
+
+test('BWAG-009: id form, compact form, and aliases still resolve', () => {
+    assert.equal(normalizeGrokModelChoice('grok-4.6'), 'grok-4.6');
+    assert.equal(normalizeGrokModelChoice('grok46'), 'grok-4.6');
+    assert.equal(normalizeGrokModelChoice('grok-46'), 'grok-4.6');
+    assert.equal(normalizeGrokModelChoice('thinking'), 'expert');
+    assert.equal(normalizeGrokModelChoice('quick'), 'fast');
+});
+
+test('BWAG-010: whitespace collapse is general, and unknown input stays null', () => {
+    assert.equal(normalizeGrokModelChoice('  Grok  4.6  '), 'grok-4.6');
+    assert.equal(normalizeGrokModelChoice('nonsense'), null);
+    assert.equal(normalizeGrokModelChoice(''), null);
+    assert.equal(normalizeGrokModelChoice(undefined), null);
+});
+
+test('BWAG-011: the menu-open probe accepts any Grok 4.x, not one pinned release', () => {
+    // A version pinned into the probe regex means the day the web UI ships a different
+    // Grok 4.x, an open menu stops being recognized as open.
+    const probes = grokModelSrc.match(/\^Grok 4\\\.[^|/]*/g) || [];
+    assert.ok(probes.length >= 3, `expected the version probes to be present, found ${probes.length}`);
+    for (const probe of probes) {
+        assert.ok(probe.includes('\\d'), `probe is pinned to one release: ${probe}`);
+    }
 });
