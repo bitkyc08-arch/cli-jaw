@@ -240,6 +240,11 @@ settings.ts (barrel)
 `InstanceNavigator` 헤더의 `#manager-sidebar-search`는 CommandBar와 같은 `App.query`를 소비한다(두 번째 필터 없음). Escape는 쿼리를 비우고 IME 조합 중에는 무시한다. `components/sidebar-keyboard.ts`가 순수 헬퍼를 가진다: `resolveAdjacentPort`(wrap 없음), `handleInstanceListKeyDown`(Arrow/Home/End는 `[data-instance-port]` 버튼 포커스만 이동, Enter가 선택), `createJumpHintVisibilityController`(Alt 200ms 유지 시 렌더된 행 1..9 오른쪽 상단 `.instance-jump-hint` 오버레이), `readRenderedInstancePorts(#manager-sidebar-list)`, `registerInstanceJumpSelector`(SidebarRailRouter가 등록). 단축키 `jumpInstance1..9`(기본 `Alt+1..9`)는 `resolveEventKey`의 Digit 코드 폴백으로 macOS Alt+숫자 특수문자에도 매칭되며 서버 keymap whitelist에는 넣지 않는다(switchTab과 동일하게 기본값 복원). offline/unknown/timeout은 `Settled` 그룹(id `settled`, 접힘은 wp3 `useSidebarGroupCollapse`)으로 내려가고 `pageSettledPorts`로 10개 → "Show N more" 25개씩 페이징되며 선택 인스턴스는 항상 렌더된다. Attention은 error만.
 
 
+### Manager command bar (260902 t3 shell polish, wp5)
+
+탑바는 한 줄 `[brand][search][actions]` 그리드다. 높이는 `--workspace-topbar-height`(브라우저 44px, `:root[data-cli-jaw-desktop="true"]`에서 52px). Electron에서는 `--electron-titlebar-left-reserve`가 90px(t3 값)이고 `html[data-window-fullscreen="true"]`이면 12px로 접힌다; 바 자체는 `-webkit-app-region: drag`, 모든 인터랙티브 자식은 `no-drag`(p0-1-1.css 상단 블록이 권위). 브랜드 13px/600/0.02em(`--manager-brand-cyan` 유지), 검색은 28px ghost(`--sidebar-control-surface`), 액션은 28px `.command-icon-button`. 드로어 트리거는 SVG이며 1024px 이상에서는 숨고 그 아래에서는 `drawer` 열을 따로 가진다. `hooks/useWindowFullscreen.ts`가 `getDesktop()?.window?.getFullscreenState?.()`를 읽어 `data-window-fullscreen` 속성을 생산한다(fullscreen이 아니면 속성 제거); IPC 생산자는 wp7. Mod+B 기본값(`Meta+B` 우측 패널, `Meta+Shift+B` 좌측)은 바꾸지 않았다.
+
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.
