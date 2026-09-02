@@ -19,8 +19,10 @@ export function CommandBar(props: CommandBarProps) {
     return (
         <CommandCenter
             mobileMenuButton={(
-                <button className="drawer-trigger" type="button" onClick={props.onOpenDrawer} aria-label="Open sidebar">
-                    ☰
+                <button className="drawer-trigger command-icon-button" type="button" onClick={props.onOpenDrawer} aria-label="Open sidebar">
+                    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" focusable="false">
+                        <path d="M4 6h12M4 10h12M4 14h12" />
+                    </svg>
                 </button>
             )}
             title={(
@@ -30,7 +32,7 @@ export function CommandBar(props: CommandBarProps) {
                 </h1>
             )}
             search={(
-                <div className="search-input-wrapper">
+                <div className="search-input-wrapper is-ghost">
                     <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input
                         value={props.query}
@@ -54,8 +56,18 @@ export function CommandBar(props: CommandBarProps) {
                         <span aria-hidden="true">⌘K</span>
                     </button>
                     <ThemeSwitch theme={props.theme} onChange={props.onThemeChange} />
-                    <button type="button" onClick={props.onRefresh} disabled={props.loading}>
-                        {props.loading ? 'Scanning' : 'Refresh'}
+                    <button
+                        type="button"
+                        className="command-icon-button"
+                        onClick={props.onRefresh}
+                        disabled={props.loading}
+                        aria-label={props.loading ? 'Scanning' : 'Refresh'}
+                        title={props.loading ? 'Scanning' : 'Refresh'}
+                    >
+                        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M16 10a6 6 0 1 1-2-4.5" />
+                            <path d="M16 4v4h-4" />
+                        </svg>
                     </button>
                 </div>
             )}

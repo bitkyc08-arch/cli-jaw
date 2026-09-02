@@ -42,31 +42,8 @@
     display: inline;
 }
 
-.command-bar {
-    gap: 4px;
-    padding: 6px 10px;
-}
-.command-bar.is-electron-titlebar {
-    padding-left: 132px;
-}
-
-.command-primary {
-    gap: 8px;
-    grid-template-columns: minmax(108px, 150px) max-content minmax(max-content, 1fr);
-}
-
 .command-title .eyebrow {
     display: none;
-}
-
-.command-title h1 {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 700;
 }
 
 .command-filter-strip {

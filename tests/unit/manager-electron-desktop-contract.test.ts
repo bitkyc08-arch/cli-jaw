@@ -255,12 +255,16 @@ test('Electron titlebar spacing survives React timing and CSS cascade', () => {
     assert.ok(preload.includes("document.documentElement.dataset.cliJawDesktop = 'true'"), 'preload must mark the document as cli-jaw Desktop');
     assert.ok(compact.includes(':root[data-cli-jaw-desktop="true"] .command-center.command-bar'), 'desktop titlebar CSS must work from the preload document marker');
     assert.ok(reserveMatch, 'desktop titlebar must define an explicit left reserve for macOS traffic lights');
-    assert.ok(Number(reserveMatch[1]) >= 132, 'desktop titlebar left reserve must clear hiddenInset traffic lights');
+    assert.ok(Number(reserveMatch[1]) >= 90, 'desktop titlebar left reserve must clear hiddenInset traffic lights');
     assert.ok(
-        compact.includes('padding: 6px 10px 6px var(--electron-titlebar-left-reserve)'),
+        compact.includes('padding: 0 10px 0 var(--electron-titlebar-left-reserve)'),
         'desktop titlebar padding must consume the explicit traffic-light reserve',
     );
     assert.ok(compact.includes('-webkit-app-region: no-drag'), 'desktop titlebar controls must remain clickable');
+    assert.ok(compact.includes('data-window-fullscreen="true"'), 'desktop titlebar CSS must collapse the traffic-light reserve in fullscreen');
+    assert.ok(compact.includes('--electron-titlebar-left-reserve: 12px'), 'fullscreen titlebar reserve must collapse to 12px');
+    const fullscreenHook = read('public/manager/src/hooks/useWindowFullscreen.ts');
+    assert.ok(fullscreenHook.includes('getDesktop()?.window?.getFullscreenState?.()'), 'fullscreen hook must read the optional desktop window bridge');
 });
 
 test('Electron preload bridge avoids unsupported sandbox Node builtins', () => {

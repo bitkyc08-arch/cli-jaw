@@ -150,7 +150,6 @@
     .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace.is-side-panel-open {
         --right-panel-width: 50vw;
     }
-    .command-primary { grid-template-columns: minmax(120px, 180px) max-content minmax(max-content, 1fr); }
     .command-search { width: clamp(260px, 38vw, 620px); }
     .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -207,11 +206,9 @@
     }
     .command-primary {
         grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-areas: "drawer title actions" "search search search";
+        grid-template-areas: "title search actions";
     }
-    .command-actions { grid-area: actions; justify-self: end; }
-    .command-title { grid-area: title; }
-    .command-search { grid-area: search; }
+    .drawer-trigger { display: inline-flex; }
     .command-search { width: 100%; }
     .command-filter-strip .home-input { display: none; }
     .preview-frame { min-height: 300px; }
@@ -243,11 +240,7 @@
         width: min(90vw, var(--right-panel-width, 340px));
         max-width: min(90vw, 360px);
     }
-    .command-bar {
-        gap: 8px;
-        padding: 9px 10px;
-    }
-    .command-primary { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "drawer search actions"; }
+    .command-primary { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "title search actions"; }
     .command-title { display: none; }
     .command-actions { grid-area: actions; }
     .command-filter-strip {
