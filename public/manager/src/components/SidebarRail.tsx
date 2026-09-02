@@ -18,11 +18,11 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
         <svg
             className="rail-collapse-chevron"
             viewBox="0 0 16 20"
-            width="14"
-            height="14"
+            width="18"
+            height="18"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.6"
+            strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
@@ -35,7 +35,7 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 
 function MonitorIcon() {
     return (
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <rect x="3" y="4" width="14" height="10" rx="1.5" />
             <path d="M8 17h4M10 14v3" />
         </svg>
@@ -44,7 +44,7 @@ function MonitorIcon() {
 
 function NoteIcon() {
     return (
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <path d="M6 3h6l3 3v11H6z" />
             <path d="M12 3v4h3M8 10h5M8 13h5" />
         </svg>
@@ -53,7 +53,7 @@ function NoteIcon() {
 
 function BoardIcon() {
     return (
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <rect x="3" y="4" width="14" height="12" rx="1.5" />
             <path d="M7 4v12M13 4v12" />
         </svg>
@@ -62,7 +62,7 @@ function BoardIcon() {
 
 function ScheduleIcon() {
     return (
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <rect x="3" y="5" width="14" height="12" rx="1.5" />
             <path d="M3 9h14M7 3v4M13 3v4" />
         </svg>
@@ -71,7 +71,7 @@ function ScheduleIcon() {
 
 function ReminderIcon() {
     return (
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <path d="M5 4h10v13H5z" />
             <path d="M8 2v4M12 2v4M8 10h4M8 13h3" />
         </svg>
@@ -80,7 +80,7 @@ function ReminderIcon() {
 
 function SettingsIcon() {
     return (
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
             <circle cx="12" cy="12" r="3" />
         </svg>
@@ -89,7 +89,7 @@ function SettingsIcon() {
 
 function HelpIcon() {
     return (
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
             <circle cx="10" cy="10" r="7" />
             <path d="M7.6 7.6a2.4 2.4 0 0 1 4.8 0c0 1.4-1.6 1.7-2.2 2.5-.3.4-.3.8-.3 1.2" />
             <circle cx="10" cy="14.2" r="0.6" fill="currentColor" stroke="none" />

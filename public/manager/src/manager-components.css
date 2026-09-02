@@ -1,12 +1,18 @@
 .rail-button {
-    width: 34px;
-    min-height: 34px;
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
     border-color: transparent;
     background: transparent;
     color: var(--text-secondary);
     font-weight: 600;
 }
-.rail-button.is-active { background: var(--bg-raised); border-color: var(--border-strong); color: var(--text-primary); }
+.rail-button.is-active {
+    background: var(--sidebar-row-active, var(--bg-raised));
+    border-color: transparent;
+    color: var(--text-primary);
+    box-shadow: inset 2px 0 0 var(--accent);
+}
 .rail-collapse-button { margin-left: auto; }
 .manager-shell.is-sidebar-collapsed .rail-collapse-button { margin-left: 0; }
 .rail-spacer { flex: 1; }

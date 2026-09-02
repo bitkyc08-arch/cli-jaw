@@ -2,10 +2,6 @@
     --activity-dock-height: 0px;
 }
 
-.dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace {
-    --sidebar-width: 300px;
-}
-
 .manager-workspace.is-inspector-collapsed .manager-activity {
     display: none;
 }
@@ -30,10 +26,6 @@
     display: none;
     font-family: var(--font-mono);
     font-weight: 700;
-}
-
-.rail-button.is-active {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .manager-shell.is-sidebar-collapsed .rail-button {
@@ -159,11 +151,6 @@
     border-radius: 4px;
 }
 
-.manager-shell.is-sidebar-collapsed .manager-workspace,
-.manager-workspace.is-sidebar-collapsed {
-    --sidebar-width: 44px;
-}
-
 .manager-shell.is-sidebar-collapsed .sidebar-rail {
     padding: 6px 4px;
 }
@@ -283,12 +270,8 @@
 }
 
 @media (max-width: 1279px) and (min-width: 1024px) {
-    .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace {
-        --sidebar-width: 280px;
-    }
-
     .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace.is-right-panel-open {
-        grid-template-columns: var(--sidebar-width, 300px) minmax(0, 1fr) var(--right-panel-width, 320px);
+        grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--right-panel-width, 320px);
         grid-template-areas: "sidebar center right" "sidebar bottom right";
     }
 

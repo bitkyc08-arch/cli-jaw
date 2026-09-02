@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { CommandBar } from './components/CommandBar';
 import { CommandPalette } from './components/CommandPalette';
 import { ManagerShell } from './components/ManagerShell';
@@ -18,7 +18,8 @@ import type { NotesSidebarMode } from './notes/NotesSidebar';
 import type { CommandPaletteApi } from './hooks/useCommandPalette';
 import type { ThemeApi } from './hooks/useTheme';
 import type { useDashboardView } from './hooks/useDashboardView';
-import type { DashboardDetailTab, DashboardInstance, DashboardNotesAuthoringMode, DashboardNotesGraphSettings, DashboardNotesViewMode, DashboardScanResult, ManagerEvent, NoteMetadata } from './types';
+import type { DashboardDetailTab, DashboardInstance, DashboardNotesAuthoringMode, DashboardNotesGraphSettings, DashboardNotesViewMode, DashboardScanResult, DashboardShortcutAction, ManagerEvent, NoteMetadata } from './types';
+import { createManagerCaptureKeydownHandler } from './manager-shortcut-runner';
 
 type AppChromeProps = {
     view: ReturnType<typeof useDashboardView>;
@@ -100,9 +101,20 @@ type AppChromeProps = {
     activityUnreadOpenAndMarkSeen: () => void;
     panelInitialState?: Partial<PanelLayoutState> | undefined;
     onPanelStateChange?: ((state: PanelLayoutState) => void) | undefined;
+    onShortcutAction: (action: DashboardShortcutAction) => void;
 };
 
 export function AppChrome(props: AppChromeProps) {
+    useEffect(() => {
+        if (!props.view.dashboardShortcutsEnabled) return undefined;
+        const handler = createManagerCaptureKeydownHandler(
+            () => props.view.dashboardShortcutKeymap,
+            props.onShortcutAction,
+        );
+        window.addEventListener('keydown', handler, true);
+        return () => window.removeEventListener('keydown', handler, true);
+    }, [props.view.dashboardShortcutsEnabled, props.view.dashboardShortcutKeymap, props.onShortcutAction]);
+
     return (
         <>
             <IframeBridge />

@@ -100,6 +100,11 @@ const COPY = {
                 scope: '단축키',
                 description: '현재 필터 목록에서 다음 인스턴스를 선택합니다.',
             },
+            shortcutResetSidebarWidth: {
+                label: '사이드바 폭 리셋',
+                scope: '단축키',
+                description: '기본 300으로 되돌리고 \'jaw.sidebarWidth\' 키를 지운다.',
+            },
         },
         support: {
             ariaLabel: '작업 제목 출처 준비 상태',
@@ -175,6 +180,11 @@ const COPY = {
                 label: 'Next instance',
                 scope: 'Shortcut',
                 description: 'Select the next instance in the current filtered list.',
+            },
+            shortcutResetSidebarWidth: {
+                label: 'Reset sidebar width',
+                scope: 'Shortcut',
+                description: 'Restore the default 300px width and delete the \'jaw.sidebarWidth\' key.',
             },
         },
         support: {
@@ -252,6 +262,11 @@ const COPY = {
                 scope: '快捷键',
                 description: '选择当前筛选列表中的下一个实例。',
             },
+            shortcutResetSidebarWidth: {
+                label: '重置侧边栏宽度',
+                scope: '快捷键',
+                description: '恢复默认 300px 宽度并删除 \'jaw.sidebarWidth\' 键。',
+            },
         },
         support: {
             ariaLabel: '活动标题来源就绪状态',
@@ -327,6 +342,11 @@ const COPY = {
                 label: '次のインスタンス',
                 scope: 'ショートカット',
                 description: '現在のフィルタ一覧で次のインスタンスを選択します。',
+            },
+            shortcutResetSidebarWidth: {
+                label: 'サイドバー幅をリセット',
+                scope: 'ショートカット',
+                description: '既定の 300px に戻し、\'jaw.sidebarWidth\' キーを削除します。',
             },
         },
         support: {
@@ -445,6 +465,7 @@ function shortcutCopyKey(action: DashboardShortcutAction): keyof typeof COPY.ko.
     if (action === 'focusActiveSession') return 'shortcutFocusActiveSession';
     if (action === 'focusNotes') return 'shortcutFocusNotes';
     if (action === 'previousInstance') return 'shortcutPreviousInstance';
+    if (action === 'resetSidebarWidth') return 'shortcutResetSidebarWidth';
     return 'shortcutNextInstance';
 }
 
