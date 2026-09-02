@@ -17,24 +17,33 @@ export const CLI_REGISTRY = {
         label: 'Antigravity',
         binary: 'agy',
         experimental: true,
-        defaultModel: 'Gemini 3.5 Flash (Medium)',
+        defaultModel: 'Gemini 3.7 Flash (Medium)',
         defaultEffort: '',
         efforts: [],
         // Tier-bearing label form, which is what `agy --model` accepts on its
         // own. cli-jaw never sends --effort for AGY, and a tier-less slug is
-        // rejected in that shape ("requires --effort"). `agy models` prints a
-        // DIFFERENT, effort-suffixed slug form (gemini-3.6-flash-medium) — do
-        // not paste that output here. Refreshed 2026-07-25 against AGY 1.1.4,
-        // which added the Gemini 3.6 Flash tier. `defaultModel` intentionally
-        // stays on 3.5 Flash: promoting a default changes every new session's
-        // model, which is a policy decision, not a catalog sync.
+        // rejected in that shape ("requires --effort"). `agy models` prints two
+        // columns; the SECOND is this form. Do not paste the first (the
+        // effort-suffixed slug `gemini-3.7-flash-medium`) here.
+        //
+        // Refreshed 2026-09-02 against AGY 1.1.13 by reading `agy models`.
+        // Google pulls the previous Flash generation from Antigravity soon
+        // after the next ships, so this list is checked against the binary
+        // rather than derived: 1.1.13 offers 3.7 and 3.6 and no longer offers
+        // 3.5 at all.
+        //
+        // `defaultModel` moved off 3.5 Flash because the earlier note here --
+        // "promoting a default is a policy decision, not a catalog sync" --
+        // stopped applying once 3.5 disappeared from the binary. Keeping it
+        // was no longer a conservative choice; it pointed every new AGY
+        // session at a model AGY cannot serve.
         models: [
+            'Gemini 3.7 Flash (High)',
+            'Gemini 3.7 Flash (Medium)',
+            'Gemini 3.7 Flash (Low)',
             'Gemini 3.6 Flash (High)',
             'Gemini 3.6 Flash (Medium)',
             'Gemini 3.6 Flash (Low)',
-            'Gemini 3.5 Flash (Medium)',
-            'Gemini 3.5 Flash (High)',
-            'Gemini 3.5 Flash (Low)',
             'Gemini 3.1 Pro (High)',
             'Gemini 3.1 Pro (Low)',
             'Claude Sonnet 4.6 (Thinking)',

@@ -46,8 +46,8 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         // renderCliSettings appends an absent selected value as a custom option
         // (public/js/features/settings-core.ts).
         models: [
+            'Gemini 3.7 Flash (Medium)',
             'Gemini 3.6 Flash (Medium)',
-            'Gemini 3.5 Flash (Medium)',
         ],
     },
     'ai-e': {
