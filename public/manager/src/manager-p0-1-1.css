@@ -1,34 +1,56 @@
 .command-bar {
-    gap: 4px;
-    padding: 6px 10px;
+    box-sizing: border-box;
+    height: var(--workspace-topbar-height);
+    min-height: var(--workspace-topbar-height);
+    gap: 0;
+    padding: 0 10px;
 }
 .command-center.command-bar.is-electron-titlebar,
 :root[data-cli-jaw-desktop="true"] .command-center.command-bar {
-    --electron-titlebar-left-reserve: 132px;
-    padding: 6px 10px 6px var(--electron-titlebar-left-reserve);
+    --electron-titlebar-left-reserve: 90px;
+    padding: 0 10px 0 var(--electron-titlebar-left-reserve);
 }
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar {
-    -webkit-app-region: drag;
+:root[data-window-fullscreen="true"] .command-center.command-bar.is-electron-titlebar,
+:root[data-cli-jaw-desktop="true"][data-window-fullscreen="true"] .command-center.command-bar {
+    --electron-titlebar-left-reserve: 12px;
 }
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar button,
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar input,
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar select,
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar a,
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar .command-actions,
-:root[data-cli-jaw-desktop="true"] .command-center.command-bar .command-search {
+:root[data-cli-jaw-desktop="true"] .command-center.command-bar { -webkit-app-region: drag; }
+:root[data-cli-jaw-desktop="true"] .command-center.command-bar :is(button, input, select, a, .command-actions, .command-search, .drawer-trigger, .theme-switch, .command-panel-controls, .search-input-wrapper, .desktop-open-button, .desktop-status-badge) {
     -webkit-app-region: no-drag;
 }
 
 .command-primary {
+    height: 100%;
     gap: 8px;
-    grid-template-columns: minmax(112px, 148px) max-content minmax(max-content, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "title search actions";
 }
+.drawer-trigger { grid-area: title; }
+/* .command-icon-button is more specific than the components display:none;
+   keep the mobile drawer trigger hidden on desktop. */
+.command-primary .drawer-trigger.command-icon-button { display: none; }
+@media (max-width: 1023px) {
+    .command-primary {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-areas: "drawer title search actions";
+    }
+    .command-primary .drawer-trigger.command-icon-button { display: inline-grid; grid-area: drawer; }
+}
+@media (max-width: 767px) {
+    .command-primary {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas: "drawer search actions";
+    }
+}
+.command-title { grid-area: title; }
+.command-search { grid-area: search; width: 100%; max-width: none; }
+.command-actions { grid-area: actions; }
 
 .command-title {
     --manager-brand-cyan: #21e6f3;
     position: relative;
-    display: flex;
-    gap: 0;
+    display: inline-flex;
+    gap: 8px;
     align-content: center;
     align-items: center;
     min-width: 0;
@@ -37,16 +59,16 @@
 
 .command-title h1,
 .command-title .manager-brand-heading {
-    max-width: 136px;
+    max-width: 148px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--manager-brand-cyan);
     font-family: "Satoshi", "Geist Mono", "IBM Plex Mono", monospace;
-    font-size: 14px;
-    font-weight: 850;
-    letter-spacing: 0;
-    line-height: 0.95;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1;
     text-shadow: 0 0 16px color-mix(in srgb, var(--manager-brand-cyan) 28%, transparent);
 }
 
@@ -60,6 +82,7 @@
 
 .manager-brand-wordmark {
     flex: 0 0 auto;
+    letter-spacing: 0.02em;
 }
 
 .manager-brand-dash {
@@ -89,18 +112,21 @@
     gap: 4px;
 }
 
+.command-icon-button,
 .command-panel-toggle {
-    width: 30px;
-    min-width: 30px;
-    height: 30px;
-    min-height: 30px;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
     display: inline-grid;
     place-items: center;
+    padding: 0;
+    border-radius: var(--control-radius);
+}
+.command-panel-toggle {
     border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
-    border-radius: 8px;
     background: color-mix(in srgb, var(--accent) 7%, transparent);
     color: var(--text-primary);
-    padding: 0;
 }
 
 .command-panel-toggle:hover,
@@ -112,6 +138,21 @@
 .command-panel-toggle.is-active {
     border-color: color-mix(in srgb, var(--accent) 70%, var(--border-strong));
     background: color-mix(in srgb, var(--accent) 18%, var(--bg-raised));
+}
+
+.search-input-wrapper.is-ghost input {
+    height: 28px;
+    min-height: 28px;
+    border: 1px solid transparent;
+    background: var(--sidebar-control-surface);
+    border-radius: var(--control-radius);
+    padding: 0 8px 0 32px;
+    font-size: 12px;
+}
+.command-palette-trigger {
+    height: 28px;
+    min-height: 28px;
+    border-radius: var(--control-radius);
 }
 
 .workbench-preview .workbench-header {

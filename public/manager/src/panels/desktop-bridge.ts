@@ -281,6 +281,11 @@ export type PermissionDiagnosticsBridgeApi = {
     getLastDenials: () => Promise<{ ok: boolean; denials?: PermissionDenial[]; error?: string }>;
 };
 
+export type DesktopWindowBridgeApi = {
+    getFullscreenState?: () => boolean;
+    onFullscreenStateChange?: (cb: (fullscreen: boolean) => void) => () => void;
+};
+
 export type DesktopShellCapability = 'terminal' | 'diff' | 'git' | 'folder' | 'shortcuts' | 'browser' | 'clipboard' | 'permissions';
 
 /**
@@ -306,6 +311,7 @@ export type CliJawDesktopApi = {
     browser?: BrowserBridgeApi | undefined;
     reloadWindow?: (() => void) | undefined;
     hardReloadWindow?: (() => void) | undefined;
+    window?: DesktopWindowBridgeApi | undefined;
 };
 
 export function getDesktop(): CliJawDesktopApi | null {

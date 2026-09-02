@@ -17,6 +17,7 @@ import type { NotesModelState } from './notes/useNotesModel';
 import type { NotesSidebarMode } from './notes/NotesSidebar';
 import type { CommandPaletteApi } from './hooks/useCommandPalette';
 import type { ThemeApi } from './hooks/useTheme';
+import { useWindowFullscreen } from './hooks/useWindowFullscreen';
 import type { useDashboardView } from './hooks/useDashboardView';
 import type { DashboardDetailTab, DashboardInstance, DashboardNotesAuthoringMode, DashboardNotesGraphSettings, DashboardNotesViewMode, DashboardScanResult, DashboardShortcutAction, ManagerEvent, NoteMetadata } from './types';
 import { createManagerCaptureKeydownHandler } from './manager-shortcut-runner';
@@ -105,6 +106,7 @@ type AppChromeProps = {
 };
 
 export function AppChrome(props: AppChromeProps) {
+    useWindowFullscreen();
     useEffect(() => {
         if (!props.view.dashboardShortcutsEnabled) return undefined;
         const handler = createManagerCaptureKeydownHandler(

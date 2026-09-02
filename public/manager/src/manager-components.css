@@ -56,18 +56,19 @@
 .command-bar {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 10px 14px;
+    gap: 0;
+    padding: 0 14px;
+    height: var(--workspace-topbar-height);
+    min-height: var(--workspace-topbar-height);
 }
 .command-primary {
     width: 100%;
     min-width: 0;
+    height: 100%;
     display: grid;
     align-items: center;
-    gap: 10px;
-}
-.command-primary {
-    grid-template-columns: minmax(128px, 190px) max-content minmax(max-content, 1fr);
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
 }
 .drawer-trigger { display: none; }
 .eyebrow {
@@ -83,24 +84,23 @@ h1 { font-size: 14px; }
 h2 { font-size: 13px; }
 .command-search {
     min-width: 0;
-    width: clamp(280px, 34vw, 820px);
+    width: 100%;
     max-width: 100%;
-    justify-self: start;
-    display: grid;
-    grid-template-columns: minmax(160px, 1fr);
-    gap: 8px;
+    justify-self: stretch;
 }
 .command-actions { justify-self: end; }
 .is-electron-titlebar {
     -webkit-app-region: drag;
-    padding-left: 132px;
+    padding-left: var(--electron-titlebar-left-reserve, 90px);
 }
 .is-electron-titlebar button,
 .is-electron-titlebar input,
 .is-electron-titlebar select,
 .is-electron-titlebar a,
 .is-electron-titlebar .command-actions,
-.is-electron-titlebar .command-search {
+.is-electron-titlebar .command-search,
+.is-electron-titlebar .drawer-trigger,
+.is-electron-titlebar .theme-switch {
     -webkit-app-region: no-drag;
 }
 .command-filter-strip {

@@ -102,7 +102,12 @@ test('manager command bar exposes polished dashboard brand', () => {
     assert.equal(command.includes('🦈'), false, 'top dashboard brand must not use emoji');
     assert.ok(compact.includes('manager-brand-heading'), 'brand heading must have explicit polish styling');
     assert.ok(compact.includes('manager-brand-dash'), 'DASH label must be styled as secondary context');
-    assert.ok(compact.includes('font-weight: 850'), 'brand heading must use stronger typography');
+    assert.ok(compact.includes('font-weight: 600'), 'brand heading must use stronger typography');
+    assert.ok(compact.includes('font-size: 13px'), 'brand heading must use compact dashboard type');
+    assert.ok(compact.includes('letter-spacing: 0.02em'), 'brand heading must keep tracked wordmark spacing');
+    assert.equal(command.includes('☰'), false, 'drawer trigger must not use a hamburger text glyph');
+    assert.ok(command.includes('drawer-trigger'), 'command bar must keep the drawer trigger');
+    assert.ok(/drawer-trigger[\s\S]*<svg[\s\S]*<path/.test(command), 'drawer trigger must render an SVG path');
 });
 
 test('manager frontend exposes one-instance preview controls', () => {
