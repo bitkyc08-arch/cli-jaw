@@ -415,9 +415,14 @@ test('manager frontend keeps rows compact while preserving model visibility', ()
     );
     assert.ok(compact.includes('.manager-sidebar .instance-row-version'), 'sidebar polish must hide secondary row metadata in compact mode');
     assert.ok(compact.includes('.manager-sidebar .instance-actions'), 'sidebar polish must control action-row density');
-    assert.ok(compact.includes('.manager-shell.is-sidebar-collapsed .manager-workspace'), 'sidebar collapse must reclaim detail width');
-    assert.ok(polish.includes('--sidebar-width: 300px'), 'expanded sidebar must stay compact enough to leave preview room');
-    assert.ok(polish.includes('--sidebar-width: 280px'), 'mid-width sidebar must tighten by the same compact offset');
+    // 260902 t3 shell (wp2): width lives in useSidebarWidth (default 300,
+    // min 220, collapsed 44) and WorkspaceLayout writes the variable.
+    const sidebarWidthHook = read('public/manager/src/hooks/useSidebarWidth.ts');
+    const workspaceLayout = read('public/manager/src/components/WorkspaceLayout.tsx');
+    assert.ok(sidebarWidthHook.includes('SIDEBAR_WIDTH_DEFAULT = 300'), 'expanded sidebar default must stay compact enough to leave preview room');
+    assert.ok(sidebarWidthHook.includes('SIDEBAR_MAIN_CONTENT_MIN_WIDTH = 640'), 'sidebar max must reserve main content width');
+    assert.ok(workspaceLayout.includes('SIDEBAR_COLLAPSED_WIDTH'), 'sidebar collapse must reclaim detail width through the collapsed constant');
+    assert.ok(!/--sidebar-width:\s*(300|280)px/.test(polish), 'polish CSS must not reassign --sidebar-width (JS-owned)');
 });
 
 test('manager sidebar actions stay compact and active-group owned', () => {

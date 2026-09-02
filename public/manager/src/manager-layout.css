@@ -5,22 +5,26 @@
     grid-template-areas: "command" "workspace";
     background: var(--bg-base);
 }
+@property --sidebar-width {
+    syntax: '<length>';
+    inherits: true;
+    initial-value: 300px;
+}
 .manager-workspace {
     grid-area: workspace;
     position: relative;
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-columns: var(--sidebar-width, 340px) minmax(0, 1fr) var(--right-panel-width, 0px);
+    grid-template-columns: var(--sidebar-width, 300px) minmax(0, 1fr) var(--right-panel-width, 0px);
     grid-template-rows: minmax(0, 1fr) var(--bottom-panel-height, var(--activity-dock-height, 150px));
     grid-template-areas: "sidebar center right" "sidebar bottom right";
     overflow: hidden;
+    transition: grid-template-columns 180ms ease;
 }
 .manager-workspace.is-side-panel-open {
     --right-panel-width: 50vw;
 }
-.manager-shell.is-sidebar-collapsed .manager-workspace,
-.manager-workspace.is-sidebar-collapsed { --sidebar-width: 56px; }
 .manager-workspace.is-right-panel-closed { --right-panel-width: 0px; }
 .manager-workspace.is-right-panel-closed .right-panel,
 .manager-workspace.is-right-panel-closed .manager-ceo-panel { display: none; }
@@ -74,6 +78,8 @@
     flex-direction: column;
     border-right: 1px solid var(--border-subtle);
     background: var(--canvas-deep);
+    position: relative;
+    transition: width 180ms ease;
 }
 .manager-command {
     grid-area: command;
@@ -131,21 +137,16 @@
 }
 .manager-sidebar-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .manager-shell.is-sidebar-collapsed .manager-sidebar-list { display: none; }
+.manager-shell.is-sidebar-collapsed .manager-sidebar > .mode-switch { display: none; }
 .manager-shell.is-sidebar-collapsed .sidebar-rail { height: 100%; min-height: 0; flex-direction: column; border-bottom: 0; padding: 10px 8px; }
 .manager-shell.is-sidebar-collapsed .rail-spacer { flex: 1; }
 
 @media (min-width: 1440px) {
-    .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace {
-        --sidebar-width: 360px;
-    }
     .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace.is-side-panel-open {
         --right-panel-width: 50vw;
     }
 }
 @media (max-width: 1279px) and (min-width: 1024px) {
-    .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace {
-        --sidebar-width: 300px;
-    }
     .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace.is-side-panel-open {
         --right-panel-width: 50vw;
     }
@@ -301,4 +302,21 @@
 }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* The handle is a workspace child (not inside the aside) because
+   .manager-sidebar clips overflow to its padding box, which would hide the
+   half of the 24px hit zone that hangs past the border. */
+.manager-workspace > .sidebar-resize-handle.panel-resizer-horizontal {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--sidebar-width) - 12px);
+    width: 24px;
+    margin: 0;
+    z-index: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .manager-workspace, .manager-sidebar { transition: none !important; }
 }

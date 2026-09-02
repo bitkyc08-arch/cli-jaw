@@ -1,4 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { SidebarResizeHandle } from './SidebarResizeHandle';
+import { SIDEBAR_COLLAPSED_WIDTH } from '../hooks/useSidebarWidth';
 
 type WorkspaceLayoutProps = {
     navigator: ReactNode;
@@ -19,11 +21,15 @@ type WorkspaceLayoutProps = {
     bottomPanelContent?: ReactNode;
     bottomPanelHeight?: number;
     bottomPanelOpen?: boolean;
+    sidebarWidth: number;
+    onSidebarWidthDelta: (delta: number) => void;
+    onSidebarWidthEnd: () => void;
+    onSidebarWidthReset: () => void;
 };
 
 type WorkspaceLayoutStyle = CSSProperties & {
     '--activity-dock-height': string;
-    '--sidebar-width'?: string | undefined;
+    '--sidebar-width': string;
     '--right-panel-width'?: string | undefined;
     '--bottom-panel-height'?: string | undefined;
 };
@@ -48,13 +54,10 @@ function useViewportWidth(): number {
     return viewportWidth;
 }
 
-function clampRightPanelRenderWidth(width: number | undefined, sidebarCollapsed: boolean, viewportWidth: number): number {
+function clampRightPanelRenderWidth(width: number | undefined, sidebarWidth: number, viewportWidth: number): number {
     const desired = typeof width === 'number' && Number.isFinite(width)
         ? Math.round(width)
         : 480;
-    const sidebarWidth = sidebarCollapsed
-        ? 56
-        : viewportWidth >= 1440 ? 360 : 300;
     const maxByViewport = Math.max(
         RIGHT_PANEL_RENDER_MIN_WIDTH,
         viewportWidth - sidebarWidth - WORKSPACE_CENTER_MIN_WIDTH,
@@ -67,13 +70,14 @@ function clampRightPanelRenderWidth(width: number | undefined, sidebarCollapsed:
 
 export function WorkspaceLayout(props: WorkspaceLayoutProps) {
     const viewportWidth = useViewportWidth();
+    const sidebarRenderWidth = props.sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : props.sidebarWidth;
     const rightPanelWidth = props.rightPanelOpen
-        ? clampRightPanelRenderWidth(props.rightPanelWidth, props.sidebarCollapsed, viewportWidth)
+        ? clampRightPanelRenderWidth(props.rightPanelWidth, sidebarRenderWidth, viewportWidth)
         : 0;
 
     const style: WorkspaceLayoutStyle = {
         '--activity-dock-height': `${props.inspectorHeight}px`,
-        '--sidebar-width': props.sidebarCollapsed ? '56px' : undefined,
+        '--sidebar-width': props.sidebarCollapsed ? `${SIDEBAR_COLLAPSED_WIDTH}px` : `${props.sidebarWidth}px`,
         '--right-panel-width': props.rightPanelOpen
             ? `${rightPanelWidth}px`
             : props.sidePanel ? undefined : '0px',
@@ -97,7 +101,17 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
     return (
         <div className={cls} style={style}>
             {props.drawerOpen && <div className="drawer-backdrop" onClick={props.onCloseDrawer} />}
-            <aside className="manager-sidebar" aria-label={props.navigatorLabel ?? 'Jaw instances'}>{props.navigator}</aside>
+            <aside className="manager-sidebar" aria-label={props.navigatorLabel ?? 'Jaw instances'}>
+                {props.navigator}
+            </aside>
+            {!props.sidebarCollapsed && viewportWidth >= 1024 && (
+                <SidebarResizeHandle
+                    width={props.sidebarWidth}
+                    onDelta={props.onSidebarWidthDelta}
+                    onEnd={props.onSidebarWidthEnd}
+                    onDoubleClick={props.onSidebarWidthReset}
+                />
+            )}
             <section className="manager-detail" aria-label="Manager workbench">{props.workbench}</section>
             <section className="manager-activity" aria-label="Manager inspector">{props.inspector}</section>
             {props.sidePanel && <aside className="manager-ceo-panel" aria-label="Jaw CEO console">{props.sidePanel}</aside>}
