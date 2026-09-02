@@ -217,6 +217,14 @@ settings.ts (barrel)
 
 `public/manager/`는 메인 채팅 UI와 별개의 React 19 앱이다. `vite.config.ts`의 `manager` entry가 `public/manager/index.html`을 빌드한다.
 
+### Manager design tokens (260902 t3 shell polish, wp1)
+
+`public/manager/src/manager-tokens.css`는 primitive → semantic 2계층으로, t3code(pingdotgg/t3code `apps/web/src/index.css`) zinc/neutral oklch 스케일을 값으로 쓴다. 다크 기본은 캔버스 `#0a0a0a` / 사이드바·레일 `#000`, 라이트는 zinc-25(`oklch(99.2% 0 0)`) 캔버스에 흰 카드. `--accent`는 표면 틴트가 아니라 CTA primary(`oklch(0.571 0.21 264)` 다크 / `oklch(0.488 0.217 264)` 라이트)이고 `--ring`도 같은 값이다. 다크 보더는 `color-mix(in srgb, white 8%, transparent)`부터 시작한다(contrast 슬라이더가 없으므로 t3의 6%보다 한 단계 진하게). Tailwind 전용 `--alpha()`는 쓰지 않는다.
+
+레거시 변수 이름 88개(`--bg-base`, `--text-primary`, `--accent`, `--surface-*`, `--ink-*` 등)는 전부 보존되며 값만 바뀌었다. 추가된 semantic 토큰: `--radius-sm/md/lg/xl`(0.375/0.5/0.625/0.875rem), `--control-radius`(0.5rem), `--font-sans`(시스템 스택 + CJK 폴백), `--font-mono`(Geist Mono 우선), `--focus-ring`, `--motion-fast`(120ms) / `--motion-base`(180ms), `--workspace-topbar-height`(44px), `--sidebar-row-hover/active/selected`, `--sidebar-row-working/attention/error/ready`(행 상태 색, wp3 소비), `--sidebar-border`, `--sidebar-control-surface`, `--text-danger`, `--scrollbar-*`. 라이트 블록은 `:root[data-theme="light"]`와 `@media (prefers-color-scheme: light) :root[data-theme="auto"]`에 동일하게 복제되어야 한다.
+
+로드맵: `devlog/_plan/260902_t3_shell_polish/` (000 SoT, 010 토큰, 020 사이드바 셸, 030 행, 040 검색/키보드, 050 커맨드바, 060 브라우저 크롬, 070 Electron, 080 하드닝).
+
 ### Manager preview memory note
 
 2026-06-14 점검 기준, Chrome에서 manager Web UI를 열었을 때 1GB 근처까지 올라갔다가 약 10분 뒤 300MB대 근처로 안정화되는 패턴은 `jaw dashboard serve` manager 서버 누수보다 preview iframe의 cold-load peak로 해석한다. 실제 관찰에서는 manager 서버 `dist/src/manager/server.js` RSS가 약 170~220MB 수준이었고, 큰 RSS는 Chrome renderer와 각 `jaw serve` worker(`dist/server.js`) 쪽에 있었다.
