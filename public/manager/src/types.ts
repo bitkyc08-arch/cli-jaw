@@ -39,7 +39,8 @@ export type DashboardShortcutAction =
     | 'browserForward'
     | 'terminalClear'
     | 'terminalNewTab'
-    | 'toggleLeftSidebar';
+    | 'toggleLeftSidebar'
+    | 'resetSidebarWidth';
 export type DashboardShortcutKeymap = Record<DashboardShortcutAction, string>;
 export type DashboardDiffMode = 'unstaged' | 'staged' | 'head' | 'base';
 export type DashboardDiffRootPolicy = 'project-first' | 'working-dir-first' | 'manual';

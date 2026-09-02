@@ -7,6 +7,9 @@ type PanelResizerProps = {
     onDelta: (delta: number) => void;
     onEnd?: (() => void) | undefined;
     className?: string | undefined;
+    ariaLabel?: string | undefined;
+    ariaValueNow?: number | undefined;
+    onDoubleClick?: (() => void) | undefined;
 };
 
 export function PanelResizer(props: PanelResizerProps) {
@@ -136,12 +139,14 @@ export function PanelResizer(props: PanelResizerProps) {
                 role="separator"
                 tabIndex={0}
                 className={`panel-resizer panel-resizer-${direction} ${props.className ?? ''}`}
-                aria-label={`Resize ${direction === 'horizontal' ? 'width' : 'height'}`}
+                aria-label={props.ariaLabel ?? `Resize ${direction === 'horizontal' ? 'width' : 'height'}`}
+                aria-valuenow={props.ariaValueNow}
                 aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
                 onPointerDown={handlePointerDown}
                 onMouseDown={handleMouseDown}
                 onLostPointerCapture={stopDragging}
                 onKeyDown={handleKeyDown}
+                onDoubleClick={props.onDoubleClick}
             />
             {isDragging && (
                 <div

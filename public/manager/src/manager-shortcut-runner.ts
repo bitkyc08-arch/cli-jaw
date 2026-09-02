@@ -1,4 +1,5 @@
-import type { DashboardDetailTab, DashboardInstance, DashboardShortcutAction, DashboardSidebarMode } from './types';
+import type { DashboardDetailTab, DashboardInstance, DashboardShortcutAction, DashboardShortcutKeymap, DashboardSidebarMode } from './types';
+import { actionForShortcutEvent } from './manager-shortcuts';
 import { panelShortcutBus } from './panels/panel-shortcut-bus';
 import { getDesktop } from './panels/desktop-bridge';
 
@@ -106,4 +107,30 @@ export function runManagerShortcut(action: DashboardShortcutAction, deps: Manage
         deps.handleSidebarToggle();
         return;
     }
+    if (action === 'resetSidebarWidth') {
+        document.dispatchEvent(new CustomEvent('jaw:shortcut-action', { detail: 'resetSidebarWidth' }));
+        return;
+    }
+}
+
+const CAPTURE_TOGGLE_ACTIONS = new Set<DashboardShortcutAction>([
+    'toggleLeftSidebar',
+    'toggleRightPanel',
+    'resetSidebarWidth',
+]);
+
+export function createManagerCaptureKeydownHandler(
+    getKeymap: () => DashboardShortcutKeymap,
+    onAction: (action: DashboardShortcutAction) => void,
+): (event: KeyboardEvent) => void {
+    return (event: KeyboardEvent) => {
+        if (event.defaultPrevented) return;
+        const target = event.target;
+        if (target instanceof Element && target.closest('[data-keybinding-capture]')) return;
+        const action = actionForShortcutEvent(event, getKeymap());
+        if (!action || !CAPTURE_TOGGLE_ACTIONS.has(action)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onAction(action);
+    };
 }

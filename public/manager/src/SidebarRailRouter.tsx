@@ -61,7 +61,9 @@ import type {
     DashboardLocale,
     ManagerEvent,
     DashboardRegistryUi,
+    DashboardShortcutAction,
 } from './types';
+import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { JawCeoConsole } from './jaw-ceo/JawCeoConsole';
 import type { JawCeoController } from './jaw-ceo/useJawCeo';
 import type { JawCeoVoiceController } from './jaw-ceo/useJawCeoVoice';
@@ -432,12 +434,30 @@ export function SidebarRailRouter(props: Props) {
         props.onDashboardSettingsPatch({ rightFolderRootPath: primaryProjectDir });
     }, [panelLayout, primaryProjectDir, props.onDashboardSettingsPatch]);
 
+    const sidebar = useSidebarWidth({
+        rightPanelOpen,
+        rightPanelWidth: panelLayout.state.rightPanel.width,
+    });
+
+    useEffect(() => {
+        function onShortcutAction(event: Event) {
+            const detail = (event as CustomEvent<DashboardShortcutAction>).detail;
+            if (detail === 'resetSidebarWidth') sidebar.reset();
+        }
+        document.addEventListener('jaw:shortcut-action', onShortcutAction);
+        return () => document.removeEventListener('jaw:shortcut-action', onShortcutAction);
+    }, [sidebar.reset]);
+
     return (
         <NotesCommandProvider>
         {props.jawCeoVoiceOverlay}
         <WorkspaceLayout
             navigatorLabel={props.viewMode === 'code' && props.sidebarMode === 'instances' ? 'Code sessions' : undefined}
             sidebarCollapsed={props.sidebarCollapsed}
+            sidebarWidth={sidebar.width}
+            onSidebarWidthDelta={sidebar.addDelta}
+            onSidebarWidthEnd={sidebar.persist}
+            onSidebarWidthReset={sidebar.reset}
             inspectorCollapsed={props.activityDockCollapsed}
             inspectorHeight={props.activityDockCollapsed ? 48 : props.activityDockHeight}
             drawerOpen={props.drawerOpen}

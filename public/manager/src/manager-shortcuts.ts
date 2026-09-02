@@ -27,6 +27,7 @@ export const MANAGER_SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
     'terminalClear',
     'terminalNewTab',
     'toggleLeftSidebar',
+    'resetSidebarWidth',
 ];
 
 export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
@@ -56,6 +57,7 @@ export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
     terminalClear: 'Meta+K',
     terminalNewTab: 'Meta+T',
     toggleLeftSidebar: 'Meta+Shift+B',
+    resetSidebarWidth: 'Alt+Shift+B',
 };
 
 const MANAGER_SHORTCUT_ALIASES: Partial<Record<DashboardShortcutAction, string[]>> = {

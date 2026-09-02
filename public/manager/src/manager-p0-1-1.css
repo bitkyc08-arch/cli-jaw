@@ -132,11 +132,6 @@
     border-radius: 4px;
 }
 
-.manager-shell.is-sidebar-collapsed .manager-workspace,
-.manager-workspace.is-sidebar-collapsed {
-    --sidebar-width: 44px;
-}
-
 .manager-shell.is-sidebar-collapsed .sidebar-rail {
     padding: 6px 4px;
 }
