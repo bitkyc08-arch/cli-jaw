@@ -15,6 +15,8 @@ type PanelResizerProps = {
 export function PanelResizer(props: PanelResizerProps) {
     const dragging = useRef(false);
     const lastPos = useRef(0);
+    const startPos = useRef(0);
+    const moved = useRef(false);
     const onDeltaRef = useRef(props.onDelta);
     const onEndRef = useRef(props.onEnd);
     const [isDragging, setIsDragging] = useState(false);
@@ -28,6 +30,12 @@ export function PanelResizer(props: PanelResizerProps) {
     const applyPointerPosition = useCallback((clientX: number, clientY: number) => {
         if (!dragging.current) return;
         const pos = direction === 'horizontal' ? clientX : clientY;
+        // A double-click is two mousedowns a few pixels apart; do not treat
+        // that jitter as a resize (t3 sidebar rail uses the same 2px guard).
+        if (!moved.current) {
+            if (Math.abs(pos - startPos.current) <= 2) return;
+            moved.current = true;
+        }
         const delta = pos - lastPos.current;
         lastPos.current = pos;
         if (delta !== 0) onDeltaRef.current(delta);
@@ -97,8 +105,10 @@ export function PanelResizer(props: PanelResizerProps) {
 
     function startDragging(clientX: number, clientY: number) {
         dragging.current = true;
+        moved.current = false;
         setIsDragging(true);
-        lastPos.current = direction === 'horizontal' ? clientX : clientY;
+        startPos.current = direction === 'horizontal' ? clientX : clientY;
+        lastPos.current = startPos.current;
         document.body.classList.add(direction === 'horizontal' ? 'is-resizing-horizontal' : 'is-resizing-vertical');
     }
 
@@ -141,6 +151,7 @@ export function PanelResizer(props: PanelResizerProps) {
                 className={`panel-resizer panel-resizer-${direction} ${props.className ?? ''}`}
                 aria-label={props.ariaLabel ?? `Resize ${direction === 'horizontal' ? 'width' : 'height'}`}
                 aria-valuenow={props.ariaValueNow}
+                aria-valuetext={props.ariaValueNow === undefined ? undefined : `${props.ariaValueNow}px`}
                 aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
                 onPointerDown={handlePointerDown}
                 onMouseDown={handleMouseDown}
