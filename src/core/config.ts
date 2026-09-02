@@ -257,7 +257,7 @@ function createDefaultSettings() {
                 supportsReasoningEffort: true,
             }],
             discoveredModels: {
-                progrok: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
+                progrok: ['grok-composer-2.5-fast', 'grok-4.6', 'grok-4.5', 'grok-4.3'],
             },
         },
         heartbeat: {

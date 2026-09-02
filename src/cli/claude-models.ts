@@ -26,6 +26,12 @@ export type ClaudeCanonicalModel = (typeof CLAUDE_CANONICAL_MODELS)[number];
 // `claude-opus-5` at 200k and `claude-opus-5[1m]` at 1M. Evidence:
 // devlog/_fin/260725_model_catalog_sync/001_audit_findings.md.
 export const CLAUDE_PINNED_FULL_IDS = [
+  // claude-fable-5-1 added 2026-09-02 from opencodex ANTHROPIC_MODELS
+  // (src/providers/registry.ts:341). No [1m] variant: opencodex's own
+  // 1M-context metadata rows cover only claude-opus-4-6/4-7/4-8 and
+  // claude-sonnet-4-6 (src/generated/model-metadata.ts:41), so offering
+  // claude-fable-5-1[1m] would be an id nothing traces to.
+  'claude-fable-5-1',
   'claude-fable-5',
   'claude-fable-5[1m]',
   'claude-sonnet-5',
