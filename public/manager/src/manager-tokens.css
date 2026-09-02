@@ -330,3 +330,6 @@
     }
 }
 
+:root[data-cli-jaw-desktop="true"] {
+    --workspace-topbar-height: 52px;
+}
