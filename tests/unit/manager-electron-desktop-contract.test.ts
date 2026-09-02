@@ -265,6 +265,9 @@ test('Electron titlebar spacing survives React timing and CSS cascade', () => {
     assert.ok(compact.includes('--electron-titlebar-left-reserve: 12px'), 'fullscreen titlebar reserve must collapse to 12px');
     const fullscreenHook = read('public/manager/src/hooks/useWindowFullscreen.ts');
     assert.ok(fullscreenHook.includes('getDesktop()?.window?.getFullscreenState?.()'), 'fullscreen hook must read the optional desktop window bridge');
+    assert.ok(preload.includes("ipcRenderer.invoke('window:get-fullscreen')"), 'preload must invoke window:get-fullscreen');
+    assert.ok(preload.includes("ipcRenderer.on('window:fullscreen-changed'"), 'preload must listen for window:fullscreen-changed');
+    assert.equal(preload.includes('sendSync'), false, 'preload must not use ipcRenderer.sendSync');
 });
 
 test('Electron preload bridge avoids unsupported sandbox Node builtins', () => {

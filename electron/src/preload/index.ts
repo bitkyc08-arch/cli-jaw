@@ -55,6 +55,22 @@ function getHomePath(): string {
   }
 }
 
+let cachedFullscreen = false;
+const fullscreenListeners = new Set<(value: boolean) => void>();
+
+function setCachedFullscreen(value: boolean): void {
+  cachedFullscreen = value === true;
+  for (const listener of fullscreenListeners) listener(cachedFullscreen);
+}
+
+void ipcRenderer.invoke('window:get-fullscreen').then((value) => {
+  setCachedFullscreen(value === true);
+}).catch(() => { /* manager origin not ready */ });
+
+ipcRenderer.on('window:fullscreen-changed', (_event, value: unknown) => {
+  setCachedFullscreen(value === true);
+});
+
 contextBridge.exposeInMainWorld('cliJawDesktop', {
   identify: () => DESKTOP_IDENTITY,
   getMetrics: () => getLatestMetrics(),
@@ -171,6 +187,14 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
   },
   reloadWindow: () => ipcRenderer.invoke('window:reload'),
   hardReloadWindow: () => ipcRenderer.invoke('window:hardReload'),
+  window: {
+    getFullscreenState: () => cachedFullscreen,
+    onFullscreenStateChange: (cb: (value: boolean) => void) => {
+      fullscreenListeners.add(cb);
+      cb(cachedFullscreen);
+      return () => { fullscreenListeners.delete(cb); };
+    },
+  },
 });
 
 markDesktopDocument();
