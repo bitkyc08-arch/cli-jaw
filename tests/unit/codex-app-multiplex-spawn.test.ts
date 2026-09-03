@@ -213,6 +213,9 @@ test.mock.module('../../src/core/config.js', {
 test.mock.module('../../src/agent/codex-app-client.js', {
     namedExports: {
         CodexAppClient: FakeCodexAppClient,
+        // wp2: spawn.ts imports the typed steer error; the fake client never
+        // throws it, but the export must exist for the module mock to link.
+        CodexSteerError: class CodexSteerError extends Error {},
         isRecoverableResumeError: (message: string) => /not found|no rollout|unknown thread/i.test(message),
     },
 });

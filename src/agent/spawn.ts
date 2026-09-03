@@ -186,6 +186,14 @@ export type MainRunState = {
     meta: MainSessionMeta;
     cancelPending?: (reason: string) => void;
     cancelTurn?: (reason: string) => void;
+    /**
+     * In-band same-turn steer for runtimes that support it (codex-app turn/steer).
+     * Installed only while a steerable turn is actually in flight, so its mere
+     * presence is the capability check. 'unavailable' = race/lost turn (caller
+     * queues); 'rejected' = the turn kind rejects steer (review/compact; caller
+     * queues with a reason broadcast).
+     */
+    steerTurnInBand?: (text: string) => Promise<'steered' | 'unavailable' | 'rejected'>;
 };
 
 export const activeMainProcesses = new Map<string, MainRunState>();
@@ -742,15 +750,19 @@ export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
 
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
-    return run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true;
+    if (run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true) return true;
+    // codex-app: the hook exists exactly while a steerable turn is in flight.
+    return typeof run?.steerTurnInBand === 'function';
 }
+
+export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run';
 
 export async function steerAgent(
     scopeKey: string,
     newPrompt: string,
     source: string,
     meta?: { chatSessionId?: string; target?: RemoteTarget; chatId?: string | number; requestId?: string; remoteKey?: string; replyViaTarget?: boolean },
-) {
+): Promise<SteerOutcome> {
     const run = activeMainProcesses.get(scopeKey);
     const runtime = runtimeForScope(scopeKey);
     const chatSessionId = meta?.chatSessionId || run?.meta.chatSessionId || getActiveChatSession();
@@ -763,7 +775,32 @@ export async function steerAgent(
         // event will ever carry this id. Settling here is what stops a caller
         // from waiting for an answer that structurally cannot arrive.
         settleOnce(meta?.requestId, 'steered');
-        return;
+        return 'steered';
+    }
+    if (typeof run?.steerTurnInBand === 'function') {
+        // codex-app same-turn steer. The user row is written only AFTER the
+        // server accepts — a fallback must not leave a duplicate insert for the
+        // queued path to write again.
+        let outcome: 'steered' | 'unavailable' | 'rejected';
+        try {
+            outcome = await run.steerTurnInBand(newPrompt);
+        } catch (err) {
+            console.error('[jaw:steer] codex-app in-band steer failed:', (err as Error).message);
+            return 'fallback-queue';
+        }
+        if (outcome !== 'steered') {
+            if (outcome === 'rejected') {
+                // review/compact turns structurally reject steer — tell the user
+                // their message was queued instead, not silently swallowed.
+                broadcast('steer_rejected', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, reason: 'turn-not-steerable', requestId: meta?.requestId }));
+            }
+            return 'fallback-queue';
+        }
+        insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
+        broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget }));
+        settleOnce(meta?.requestId, 'steered');
+        return 'steered';
     }
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
     // Snapshot BEFORE the kill: the interrupted partial-output row is identified
@@ -798,6 +835,9 @@ export async function steerAgent(
         broadcast('orchestrate_done', stripUndefined({ text: `[error] ${err.message}`, error: true, origin, requestId: meta?.requestId }));
         settleOnce(meta?.requestId, 'failed', { error: err.message });
     });
+    // The follow-up was started as a new run (kill-path or idle race). The caller
+    // must NOT also queue the message.
+    return 'new-run';
 }
 
 
@@ -950,7 +990,7 @@ export { buildMediaPrompt, buildMediaPromptMany };
 // ─── Spawn Agent ─────────────────────────────────────
 
 import { AcpClient } from '../cli/acp-client.js';
-import { CodexAppClient, isRecoverableResumeError } from './codex-app-client.js';
+import { CodexAppClient, CodexSteerError, isRecoverableResumeError } from './codex-app-client.js';
 import {
     acquireCodexAppRuntime,
     acquirePiRuntime,
@@ -2347,6 +2387,23 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             };
             const cancelHook = (_reason: string) => { void requestLeaseCancel(); };
             if (lease && mainRun) mainRun.cancelTurn = cancelHook;
+            // Same-turn steer (turn/steer) for the duration of THIS turn only:
+            // installed and torn down with cancelHook so capability reads never
+            // outlive the steerable window.
+            const steerHook = async (text: string): Promise<'steered' | 'unavailable' | 'rejected'> => {
+                try {
+                    await appClient.steerTurn(laneScope, text, { clientUserMessageId: crypto.randomUUID() });
+                    return 'steered';
+                } catch (err) {
+                    if (err instanceof CodexSteerError) {
+                        // review/compact turns reject steer; a mismatched/finished
+                        // turn raced us. Both are queue-fallback territory.
+                        return err.code === 'not-steerable' ? 'rejected' : 'unavailable';
+                    }
+                    throw err;
+                }
+            };
+            if (mainRun) mainRun.steerTurnInBand = steerHook;
             const watchdogTimeout = (kind: 'idle' | 'absolute') => {
                 if (watchdogCancel) return;
                 console.warn(`[codex-app:turn] watchdog stall (${kind}, idleMs=${idleMs}, absoluteMs=${absoluteMs})`);
@@ -2466,6 +2523,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 markCodexProgress = () => {};
                 if (watchdogCancel) await watchdogCancel;
                 if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
+                if (mainRun?.steerTurnInBand === steerHook) delete mainRun.steerTurnInBand;
                 listener.dispose();
                 if (lease) lease.release();
                 else {
