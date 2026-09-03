@@ -188,6 +188,11 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 - `src/messaging/channel-health.ts` adds `activeInboundChannels` (running channels) while keeping the legacy scalar `activeInbound` as `homeChannel` for backward compatibility. Both Classic and Manager parsers prefer the new array and fall back to the legacy scalar.
 - Outbound routing in `src/messaging/send.ts` resolves `target.channel > explicit channel > homeChannel`; proactive sends with no target use `homeChannel`.
 
+### Mid-run steer (기본 정책)
+
+- `multiSession.midRunPolicy` 기본값은 `'steer'`다 (기본값·마이그레이션·검증 모두 steer로 정규화). 런타임이 in-band steer를 지원하면(jwc 항상, codex-app은 steer 가능한 turn 진행 중에 `MainRunState.steerTurnInBand` 훅으로) kill 없이 같은 턴에 주입된다. codex-app은 app-server `turn/steer`를 사용하므로 이전 맥락 손실이 없다. race(턴 종료)·review/compact 턴·미지원 런타임은 kill이 아니라 큐로 강등된다.
+- 명시적 `/steer`·`/queue steer`는 in-band 불가 런타임에서 kill-path를 쓰되, 중단된 턴의 부분 출력이 exit-settle 배리어(`armExitSettle`/`settleExit`/`waitForExitSettled`)와 pre-kill MAX(id) 스냅샷으로 salvage되어 `withSteerContext` 블록으로 follow-up 프롬프트에 주입된다. 정책 표와 결정 순서는 `structure/prompt_flow.md` §Mid-run 메시지 정책 참고. Manager 설정(Agent 페이지)에서 정책을 바꿀 수 있다.
+
 ### Korean Content Skill Routing
 
 Korean promotional/content writing (홍보 쓰레드, 인스타 카드뉴스, 링크드인, 웹/블로그 게시물)는 active `k-writing` skill이 소유한다. 임의 산문으로 바로 작성하지 말고 channel routing → mandatory pre-search → hook 3안 scoring → tone/module formatting → anti-AI-tell + 인간다움 checklist를 거친다. `k-thread-gen`은 retired label로만 언급하고 새 라우팅 이름으로 쓰지 않는다.

@@ -436,6 +436,32 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     {sessionMigrationError ? <span className="settings-field-error" role="alert">{sessionMigrationError}</span> : null}
                 </div>
             ) : null}
+            <label
+                className="settings-field settings-field-select"
+                htmlFor="midrun-policy-select"
+            >
+                <span className="settings-field-label">실행 중 메시지 처리 (mid-run policy)</span>
+                <select
+                    id="midrun-policy-select"
+                    value={String((settingsData['multiSession'] as { midRunPolicy?: string } | undefined)?.midRunPolicy || 'steer')}
+                    onChange={(event) => {
+                        const next = event.target.value;
+                        setEntry('multiSession.midRunPolicy', {
+                            value: next,
+                            original: String((settingsData['multiSession'] as { midRunPolicy?: string } | undefined)?.midRunPolicy || 'steer'),
+                            valid: true,
+                        });
+                    }}
+                >
+                    <option value="steer">steer (기본) — 실행 중인 턴에 즉시 주입</option>
+                    <option value="followup">followup — 끝나면 순서대로 실행</option>
+                    <option value="collect">collect — 모아서 한 번에 실행</option>
+                    <option value="interrupt">interrupt — 현재 실행을 중단하고 즉시 실행</option>
+                </select>
+                <span className="settings-field-hint">
+                    다중 세션이 켜져 있을 때 적용됩니다. steer는 jwc·codex-app 런타임에서 진행 중인 턴을 중단하지 않고 맥락을 유지한 채 주입하며, 그 외 런타임은 대기열로 처리됩니다.
+                </span>
+            </label>
             <CliProbeNotice status={cliStatus[draft.cli]} exhausted={cliStatusExhausted} />
             <RuntimeHeader
                 cli={draft.cli}

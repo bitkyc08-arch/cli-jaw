@@ -139,4 +139,9 @@ export interface SettingsData {
     settingsSchemaVersion?: number;
     runtimeDefaultMigration?: RuntimeDefaultMigration | null;
     multiSessionDefaultMigration?: MultiSessionDefaultMigration | null;
+    multiSession?: {
+        enabled?: boolean;
+        /** Mid-run message policy; server normalizes every invalid value to 'steer'. */
+        midRunPolicy?: 'steer' | 'followup' | 'collect' | 'interrupt';
+    };
 }

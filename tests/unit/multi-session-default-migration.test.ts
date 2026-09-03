@@ -49,6 +49,14 @@ test('ON-25: a v2 document with no multiSession block at all stays off', () => {
     assert.equal(s["multiSessionDefaultMigration"].state, 'pending');
 });
 
+// wp3 — the policy default is load-bearing everywhere, so an unparsable stored
+// value must normalize to 'steer' rather than crash or leak through.
+test('ON-27: an invalid midRunPolicy normalizes to steer', () => {
+    writeSettings({ ...V2_BASE, multiSession: { enabled: true, midRunPolicy: 'nonsense' } });
+    const s = load();
+    assert.equal(s["multiSession"].midRunPolicy, 'steer');
+});
+
 test('ON-25: an explicit false is still false, and still asked about', () => {
     writeSettings({ ...V2_BASE, multiSession: { enabled: false } });
     const s = load();
