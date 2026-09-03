@@ -215,7 +215,14 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
 ### `/steer <prompt>`
 
 - Web/Telegram/Discord/Slack에서 실행 가능. CLI slash registry에는 노출되지 않는다.
-- 실행 중 agent가 없으면 에러. 실행 중이면 kill 후 재지시.
+- 실행 중 agent가 없으면 에러.
+- 런타임이 in-band steer를 지원하면(jwc, 또는 steer 가능한 turn이 진행 중인 codex-app)
+  **kill 없이** 진행 중 턴에 주입된다. codex-app은 app-server `turn/steer`로 같은 턴에
+  합류하므로 이전 맥락 손실이 없다. 주입이 불가한 경우(턴 종료 race, review/compact 턴)
+  kill 대신 follow-up 큐로 간다.
+- 그 외 런타임은 kill 후 재지시(kill-path). 이때 중단된 턴의 부분 출력이 salvage되어
+  follow-up run 프롬프트에 구조화 블록으로 주입된다 (wp1: exit-settle 배리어 +
+  `withSteerContext`). 즉 kill-path에서도 "이전 맥락"이 모델에 도달한다.
 
 ### `/fork`
 

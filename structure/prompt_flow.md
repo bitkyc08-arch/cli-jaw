@@ -169,6 +169,26 @@ snapshot에 남는다고 명시한다.
 
 추가로 `skills/jaw-dev-pabcd/SKILL.md`가 있으면 `## PABCD Orchestration Guide`가 이어 붙는다. 이 인라인 가이드는 loop/multi-pass 작업을 명시한다 — 큰/"loop" 작업은 work-phase(결과 슬라이스)마다 풀 PABCD 한 바퀴를 돌고, goal 모드에서 D 이후 D→IDLE→P로 다음 work-phase의 P에 재진입하며, 각 phase의 실제 작업을 충실히 수행한다(anti-skip). devlog/_fin/260624_goal_work_phase_pabcd_loop/ 참고.
 
+### Mid-run 메시지 정책 (midRunPolicy)
+
+실행 중인 agent에 새 메시지가 도착하면 (`isAgentBusy` && multiSession enabled)
+gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
+요청 `meta.midRunPolicy` > 세션 `active_run_policy` > `settings.multiSession.midRunPolicy`
+> 기본값 `'steer'` (config.ts 기본값/마이그레이션/검증 모두 steer로 정규화).
+
+런타임별 `steer` 정책의 실제 동작:
+
+| 런타임 | busy + steer 정책 | 맥락 보존 |
+|--------|-------------------|-----------|
+| jwc | in-band (pi `session.prompt` streamingBehavior 'steer') | 완전 (같은 턴) |
+| codex-app | in-band (app-server `turn/steer` — `MainRunState.steerTurnInBand` 훅이 active-turn 동안만 설치됨) | 완전 (같은 턴) |
+| 그 외 (codex legacy exec, claude, cursor, grok, opencode, pi, agy, copilot, kiro) | 큐 강등 (`canSteerAgent` false) | — |
+
+in-band 시도가 race(턴 종료)나 turn kind(review/compact)로 실패하면 kill이 아니라
+큐로 강등된다. 명시적 `/steer`·`/queue steer`는 kill-path를 쓰되, 중단된 턴의
+부분 출력이 exit-settle 배리어 + `withSteerContext`로 follow-up 프롬프트에 주입된다
+(structure/commands.md `/steer` 참고).
+
 ### PABCD evidence gate (`--attest`)
 
 Forward phase transitions **P→A, A→B, B→C, C→D** require a narrative attestation — not a boolean checkbox. Implementation: `src/orchestrator/attestation.ts`, enforced in `state-machine.ts` via `checkAttestationGate()`.
