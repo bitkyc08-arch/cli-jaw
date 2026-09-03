@@ -555,10 +555,12 @@ export function settleExit(scopeKey: string): void {
 export function waitForExitSettled(scopeKey: string, timeoutMs = 5000): Promise<void> {
     const entry = exitSettlers.get(scopeKey);
     if (!entry) return Promise.resolve();
-    return Promise.race([entry.promise, new Promise<void>(r => {
-        const t = setTimeout(r, timeoutMs);
-        t.unref?.();
-    })]).then(() => {
+    // The timer is NOT unref'd and is always cleared: an unref'd timer can vanish
+    // with a drained event loop (test runner), leaving the waiter pending forever.
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<void>(r => { timer = setTimeout(r, timeoutMs); });
+    return Promise.race([entry.promise, timeout]).then(() => {
+        clearTimeout(timer);
         if (exitSettlers.get(scopeKey) === entry) exitSettlers.delete(scopeKey);
     });
 }
