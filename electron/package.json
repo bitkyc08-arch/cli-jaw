@@ -1,6 +1,6 @@
 {
   "name": "cli-jaw-electron",
-  "version": "2.17.30",
+  "version": "2.17.35-preview.20260904030821",
   "description": "Electron desktop shell for cli-jaw manager dashboard",
   "private": true,
   "main": "out/main/index.js",
