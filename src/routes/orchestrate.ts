@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import { fail } from '../http/response.js';
-import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
+import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, waitForExitSettled, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
 import { getLiveRun } from '../agent/live-run-state.js';
 import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
@@ -406,8 +406,21 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         void (async () => {
             try {
                 if (wasBusyBeforeSteer) {
+                    // Snapshot before the kill: the salvage row is the first
+                    // ⏹️-tagged assistant message above this mark.
+                    const { getMaxMessageId, getSteerSalvageAfter } = await import('../core/db.js');
+                    const maxIdBeforeKill = getMaxMessageId(chatSessionId);
                     const stopped = killActiveAgent(scope, 'steer');
-                    if (stopped) await waitForProcessEnd(scope, steerWaitMs);
+                    if (stopped) {
+                        await waitForProcessEnd(scope, steerWaitMs);
+                        // The kill drops the scope's map entry synchronously, so the
+                        // wait above can precede the exit handler's salvage insert.
+                        await waitForExitSettled(scope);
+                        const salvage = getSteerSalvageAfter(chatSessionId, maxIdBeforeKill);
+                        if (salvage) {
+                            (steerMeta as { _steerContext?: string })._steerContext = salvage.replace(/^⏹️ \[interrupted\]\s*/, '');
+                        }
+                    }
                 }
                 setSteerInProgress(scope, false);
                 const task = isResetIntent(prompt)

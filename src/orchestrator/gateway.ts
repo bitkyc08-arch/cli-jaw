@@ -57,6 +57,8 @@ type SubmitMeta = {
     replyViaTarget?: boolean;
     external?: boolean;
     midRunPolicy?: ActiveRunPolicy;
+    /** Salvaged partial output of a steer-interrupted turn (kill-path callers). */
+    _steerContext?: string;
 };
 
 function resolveMidRunPolicy(meta: SubmitMeta, chatSessionId: string): ActiveRunPolicy {
@@ -301,8 +303,8 @@ export function submitMessage(
         runDetached(
             sessionLanes.run(scope, () => (
                 multiSessionEnabled
-                    ? withSessionScope(sessionScope, () => orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget })))
-                    : orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }))
+                    ? withSessionScope(sessionScope, () => orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}), _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget, _steerContext: meta._steerContext })))
+                    : orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget, _steerContext: meta._steerContext }))
             )),
             'orchestrate',
             { ...meta, requestId, ...(eventScope ? { eventScope } : {}) },

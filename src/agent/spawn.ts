@@ -24,6 +24,7 @@ import {
     clearEmployeeSession, getSession, insertMessage, insertMessageWithTraceRun, getRecentMessages,
     listQueuedMessages, insertQueuedMessage, deleteQueuedMessage, migrateQueuedMessagesV1ToV2,
     getSessionBucket, clearSessionBucket, setSessionBucketSnapshot,
+    getMaxMessageId, getSteerSalvageAfter,
 } from '../core/db.js';
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
@@ -55,7 +56,7 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions, mergeEnvWindowsSafe } from './spawn-env.js';
-import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt } from './prompt-context.js';
+import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -522,6 +523,46 @@ function consumeKillReason(pid: number | undefined): string | null {
     return reason;
 }
 
+// ─── Steer exit-settle barrier ─────────────────────
+// killActiveAgent removes the scope's activeMainProcesses entry synchronously,
+// so waitForProcessEnd() resolves immediately on a steer kill — long before the
+// exit handler has written the interrupted partial output to the messages table.
+// A follow-up spawn could then read history without the salvage row. The barrier
+// is armed at kill time (never at exit-handler entry — that is already too late)
+// and settled by the exit handler's completion, success or failure.
+const exitSettlers = new Map<string, { promise: Promise<void>; resolve: () => void }>();
+
+/** Arm the barrier. Idempotent: a repeated steer keeps the first arm. */
+export function armExitSettle(scopeKey: string): void {
+    if (exitSettlers.has(scopeKey)) return;
+    let resolve!: () => void;
+    const promise = new Promise<void>(r => { resolve = r; });
+    exitSettlers.set(scopeKey, { promise, resolve });
+}
+
+/** Settle the barrier; a no-op when no steer kill armed it. */
+export function settleExit(scopeKey: string): void {
+    const entry = exitSettlers.get(scopeKey);
+    if (!entry) return;
+    exitSettlers.delete(scopeKey);
+    entry.resolve();
+}
+
+/**
+ * Await the armed exit handler's completion, bounded. A timeout releases the
+ * waiter and drops the arm — a wedged exit handler must not hang the steer.
+ */
+export function waitForExitSettled(scopeKey: string, timeoutMs = 5000): Promise<void> {
+    const entry = exitSettlers.get(scopeKey);
+    if (!entry) return Promise.resolve();
+    return Promise.race([entry.promise, new Promise<void>(r => {
+        const t = setTimeout(r, timeoutMs);
+        t.unref?.();
+    })]).then(() => {
+        if (exitSettlers.get(scopeKey) === entry) exitSettlers.delete(scopeKey);
+    });
+}
+
 /**
  * Fix A: 사용자 stop은 메모리 큐 + DB persisted_queue + frontend pending row를
  * 모두 폐기한다. exit handler의 scoped queue 자동 드레인이 stop 직후 잔존
@@ -585,6 +626,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     if (run?.cancelTurn && (getActiveMainCli(scopeKey) === 'codex-app' || getActiveMainCli(scopeKey) === 'pi')) {
         if (run.process?.pid) killReasons.set(run.process.pid, reason);
         console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey)} action=lease.cancel`);
+        if (reason === 'steer' || reason === 'interrupt') armExitSettle(scopeKey);
         run.cancelTurn(reason);
         if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') activeMainProcesses.delete(scopeKey);
         return true;
@@ -597,6 +639,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     const policy = getKillPolicy(scopeKey, reason);
     console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey) || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
     if (activeProcess.pid) killReasons.set(activeProcess.pid, reason);
+    if (reason === 'steer' || reason === 'interrupt') armExitSettle(scopeKey);
     const proc = activeProcess;
     // One owner runs the whole termination: tree walk with the policy signal,
     // then escalation after policy.escalationMs that re-checks the ORIGINAL
@@ -721,18 +764,33 @@ export async function steerAgent(
         return;
     }
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
+    // Snapshot BEFORE the kill: the interrupted partial-output row is identified
+    // as the first ⏹️-tagged assistant message with id above this mark. A
+    // created_at comparison is not safe (second-resolution UTC column).
+    const maxIdBeforeKill = getMaxMessageId(chatSessionId);
     const wasRunning = killActiveAgent(scopeKey, 'steer');
     if (wasRunning) await waitForProcessEnd(scopeKey, steerWaitMs);
+    // The kill removes the scope's map entry synchronously, so the wait above can
+    // return before the exit handler's salvage insert. Wait for the settle barrier
+    // armed by the kill so the follow-up run actually sees the partial output.
+    if (wasRunning) await waitForExitSettled(scopeKey);
+    let steerContext: string | null = null;
+    if (wasRunning) {
+        const salvage = getSteerSalvageAfter(chatSessionId, maxIdBeforeKill);
+        // The ⏹️ tag is a human-facing marker; the model gets the payload only.
+        steerContext = salvage ? salvage.replace(/^⏹️ \[interrupted\]\s*/, '') : null;
+    }
     insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
     broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
     broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, requestId: meta?.requestId }));
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
+    const steerMeta = stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true, _steerContext: steerContext || undefined });
     const task = isResetIntent(newPrompt)
-        ? orchestrateReset(stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }))
+        ? orchestrateReset(steerMeta)
         : isContinueIntent(newPrompt)
-            ? orchestrateContinue(stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }))
-            : orchestrate(newPrompt, stripUndefined({ origin, scope: scopeKey, chatSessionId, requestId: meta?.requestId, _skipInsert: true }));
+            ? orchestrateContinue(steerMeta)
+            : orchestrate(newPrompt, steerMeta);
     task.catch(async (err: Error) => {
         console.error('[steer:orchestrate]', err.message);
         broadcast('orchestrate_done', stripUndefined({ text: `[error] ${err.message}`, error: true, origin, requestId: meta?.requestId }));
@@ -956,6 +1014,13 @@ interface SpawnOpts {
     lifecycle?: SpawnLifecycle;
     _settingsGateWaited?: boolean;
     _heartbeatAnchorId?: number;
+    /**
+     * Salvaged partial output of a steer-interrupted turn. When present, it is
+     * prepended to the outgoing prompt (resume and fresh paths alike) via
+     * withSteerContext so the follow-up model sees what the interrupted turn
+     * had been doing. Empty/undefined keeps prompts byte-identical.
+     */
+    steerContext?: string;
 }
 
 type SpawnResult = {
@@ -1372,6 +1437,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         sysPrompt,
         isResume,
     });
+    promptForArgs = withSteerContext(promptForArgs, opts.steerContext);
     const agyResumeReplayPrefix = cli === 'agy' && isResume
         ? getLatestAssistantContentForAgyResume(settings["workingDir"], chatSessionId)
         : null;
@@ -1755,7 +1821,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const acpPrompt = needsHistoryFallback
                     ? withHistoryPrompt(prompt, fallbackHistory)
                     : (isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
-                const { promise: promptPromise } = acp.prompt(acpPrompt);
+                const acpPromptWithSteer = withSteerContext(acpPrompt, opts.steerContext);
+                const { promise: promptPromise } = acp.prompt(acpPromptWithSteer);
                 const promptResult = await promptPromise;
                 promptCompleted = true;
                 if (process.env["DEBUG"]) console.log('[acp:prompt:result]', JSON.stringify(promptResult).slice(0, 200));
@@ -1833,7 +1900,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 processQueue,
             }).catch((err: Error) => {
                 console.error('[jaw:lifecycle] handleAgentExit failed (ACP):', err.message);
-            });
+            }).finally(() => settleExit(scopeKey));
         });
 
         return { child, promise: resultPromise };
@@ -1849,7 +1916,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         const piSessionId = isResume && bucketSessionId ? bucketSessionId : '';
         console.log(`[jaw:pi] isResume=${isResume}, bucketSessionId=${bucketSessionId || 'none'}, piSessionId=${piSessionId || 'new'}`);
-        const piPrompt = piSessionId ? prompt : withHistoryPrompt(prompt, historyBlock);
+        const piPrompt = withSteerContext(piSessionId ? prompt : withHistoryPrompt(prompt, historyBlock), opts.steerContext);
         const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
         const ctx: SpawnContext = {
             fullText: '',
@@ -2013,7 +2080,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                     processQueue,
-                });
+                }).finally(() => settleExit(scopeKey));
             }).catch(async (err: Error) => {
                 piWatchdog.stop();
                 await releaseLease().catch(() => {});
@@ -2038,7 +2105,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     processQueue,
                 }).catch((handleErr: Error) => {
                     console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
-                });
+                }).finally(() => settleExit(scopeKey));
             });
         };
 
@@ -2357,8 +2424,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const codexAppPrompt = (shouldPrependHistory && historyBlock)
                     ? `${historyBlock}\n\n[User Message]\n${prompt}`
                     : prompt;
+                const codexAppPromptWithSteer = withSteerContext(codexAppPrompt, opts.steerContext);
 
-                const startTurn = appClient.startTurn(laneScope, codexAppPrompt);
+                const startTurn = appClient.startTurn(laneScope, codexAppPromptWithSteer);
                 await Promise.race([startTurn, turnDone]);
                 await turnDone;
                 turnCompleted = !turnReportedFailure;
@@ -2440,7 +2508,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 processQueue,
             }).catch((err: Error) => {
                 console.error('[jaw:lifecycle] handleAgentExit failed (codex-app):', err.message);
-            });
+            }).finally(() => settleExit(scopeKey));
         };
 
         if (opts.agentId) {
@@ -2742,18 +2810,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     if (cli === 'claude') {
-        child.stdin.write(isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
+        child.stdin.write(withSteerContext(isResume ? prompt : withHistoryPrompt(prompt, historyBlock), opts.steerContext));
     } else if (cli === 'claude-e' || (cli === 'ai-e' && effectiveProvider === 'claude')) {
-        child.stdin.write(isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
+        child.stdin.write(withSteerContext(isResume ? prompt : withHistoryPrompt(prompt, historyBlock), opts.steerContext));
     } else if (cli === 'codex' && !isResume) {
         const codexStdin = historyBlock
             ? `${historyBlock}\n\n[User Message]\n${prompt}`
             : `[User Message]\n${prompt}`;
-        child.stdin.write(codexStdin);
+        child.stdin.write(withSteerContext(codexStdin, opts.steerContext));
     } else if (cli === 'codex' && isResume) {
         // Resume passes '-' in argv (see args.ts) so the prompt travels on stdin,
         // matching the fresh path.
-        child.stdin.write(prompt || '');
+        child.stdin.write(withSteerContext(prompt || '', opts.steerContext));
     }
     child.stdin.end();
 
@@ -3323,7 +3391,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ...(agyTotalOutputLen > 0 ? { outputLen: agyTotalOutputLen } : {}),
         }).catch((err: Error) => {
             console.error('[jaw:lifecycle] handleAgentExit failed (CLI):', err.message);
-        });
+        }).finally(() => settleExit(scopeKey));
     });
 
     return { child, promise: resultPromise };

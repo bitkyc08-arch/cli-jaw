@@ -473,6 +473,11 @@ export async function orchestrate(
         } : {}),
         _skipInsert: !!meta["_skipInsert"],
         _heartbeatAnchorId: meta["_heartbeatAnchorId"],
+        // Kill-path steer salvage: the interrupted turn's partial output,
+        // prepended to this run's prompt by spawn (see withSteerContext).
+        ...(typeof meta["_steerContext"] === 'string' && meta["_steerContext"]
+            ? { steerContext: meta["_steerContext"] as string }
+            : {}),
         ...(overrides?.model ? { model: overrides.model } : {}),
         ...(overrides?.systemPrompt ? { sysPrompt: overrides.systemPrompt } : {}),
     });

@@ -152,6 +152,7 @@ export async function handleSlackSlashCommand(payload: Record<string, unknown>):
             const reply = String(await withSessionScope(sessionScope, () => orchestrateAndCollect(steerPrompt, {
                 origin: 'slack', target, chatId: channelId,
                 ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope, _skipInsert: true,
+                ...(result.steerContext ? { _steerContext: result.steerContext } : {}),
             })));
             await sendSlackText(token, target, reply);
             return;

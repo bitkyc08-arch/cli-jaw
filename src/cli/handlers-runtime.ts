@@ -237,15 +237,27 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     }
     const { currentSessionScope } = await import('../core/session-context.js');
     const scopeKey = currentSessionScope()?.scope ?? 'default';
-    const { isAgentBusy, killActiveAgent, waitForProcessEnd, getSteerWaitMsForActiveAgent } = await import('../agent/spawn.js');
+    const { isAgentBusy, killActiveAgent, waitForProcessEnd, waitForExitSettled, getSteerWaitMsForActiveAgent } = await import('../agent/spawn.js');
     if (!isAgentBusy(scopeKey)) {
         return { ok: false, type: 'error', text: t('cmd.steer.noAgent', {}, L) };
     }
 
     // Kill running agent (or cancel retry timer) and wait for clean exit
+    // Snapshot before the kill: the interrupted partial-output row is the first
+    // ⏹️-tagged assistant message above this mark (second-resolution created_at
+    // comparisons are not race-safe).
+    const { getMaxMessageId, getSteerSalvageAfter } = await import('../core/db.js');
+    const steerSessionId = sessionScopeMeta().chatSessionId
+        || (await import('../core/chat-sessions.js')).getActiveChatSession();
+    const maxIdBeforeKill = getMaxMessageId(steerSessionId);
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
     killActiveAgent(scopeKey, 'steer');
     await waitForProcessEnd(scopeKey, steerWaitMs);
+    // killActiveAgent drops the scope's map entry synchronously, so the wait above
+    // can return before the exit handler has saved the interrupted partial output.
+    await waitForExitSettled(scopeKey);
+    const salvage = getSteerSalvageAfter(steerSessionId, maxIdBeforeKill);
+    const steerContext = salvage ? salvage.replace(/^⏹️ \[interrupted\]\s*/, '') : undefined;
 
     // Remote interfaces: clear stale session before re-orchestrate
     const iface = ctx.interface || 'cli';
@@ -253,14 +265,14 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
         if (typeof ctx.clearSession === 'function') {
             await ctx.clearSession();
         }
-        return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L), steerPrompt: prompt };
+        return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L), steerPrompt: prompt, ...(steerContext ? { steerContext } : {}) };
     }
 
     // Web/CLI: fire orchestration directly via submitMessage
     const { submitMessage } = await import('../orchestrator/gateway.js');
     // Same session carry-through as the other slash handlers: steering a run
     // must land in the lane that run belongs to.
-    submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' | 'slack', ...sessionScopeMeta() });
+    submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' | 'slack', ...sessionScopeMeta(), ...(steerContext ? { _steerContext: steerContext } : {}) });
     return { ok: true, type: 'success', text: t('cmd.steer.started', {}, L) };
 }
 

@@ -149,11 +149,15 @@ test('DI-008: steerAgent passes _skipInsert: true to orchestrate calls', () => {
     const steerStart = spawnSrc.indexOf('export async function steerAgent');
     const steerEnd = spawnSrc.indexOf('// ─── Helpers', steerStart);
     const steerBlock = spawnSrc.slice(steerStart, steerEnd > 0 ? steerEnd : steerStart + 5000);
-    assert.equal(
-        steerBlock.match(/_skipInsert:\s*true/g)?.length,
-        3,
-        'reset, continue, and normal steer paths must all suppress duplicate inserts',
+    // wp1: the three intent branches share one steerMeta object, so the flag is
+    // declared once and every branch consumes it.
+    assert.ok(
+        steerBlock.includes('_skipInsert: true'),
+        'shared steer metadata must suppress duplicate inserts',
     );
+    for (const branch of ['orchestrateReset(steerMeta)', 'orchestrateContinue(steerMeta)', 'orchestrate(newPrompt, steerMeta)']) {
+        assert.ok(steerBlock.includes(branch), 'steer branch must use shared metadata: ' + branch);
+    }
 });
 
 // ─── DI-009: processQueue retains its own insertMessage (existing behavior) ───
