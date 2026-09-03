@@ -40,7 +40,10 @@ test('/api/message slash steerPrompt rejects visibly when submitMessage rejects'
     const normalStart = block.indexOf('const result = submitMessage(trimmed');
     assert.ok(steerStart >= 0 && normalStart > steerStart, 'steerPrompt branch should precede normal submit');
     const steerBlock = block.slice(steerStart, normalStart);
-    assert.match(steerBlock, /const submit = submitMessage\(cmdResult\.steerPrompt, submitMeta\);/);
+    // wp1: the submit meta may carry _steerContext from the interrupted turn;
+    // the contract is that steering goes through submitMessage with the shared meta.
+    assert.match(steerBlock, /const submit = submitMessage\(cmdResult\.steerPrompt, \{/);
+    assert.match(steerBlock, /\.\.\.submitMeta/);
     assert.match(steerBlock, /submit\.action === 'rejected'/);
     assert.match(steerBlock, /res\.status\(status\)\.json\(\{ ok: false, command: true, error: submit\.reason, \.\.\.publicSubmitResult\(submit\) \}\);/);
 });
