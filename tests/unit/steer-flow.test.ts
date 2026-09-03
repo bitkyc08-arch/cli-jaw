@@ -50,13 +50,16 @@ test('SF-001: steerAgent flow: kill → wait → insert → orchestrate', () => 
     assert.ok(orchestrateIdx > broadcastIdx, 'should orchestrate AFTER broadcast');
 });
 
-test('SF-001b: policy steer capability is native JWC only', () => {
+test('SF-001b: policy steer capability is JWC-busy or a codex-app in-band hook', () => {
     const src = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     const start = src.indexOf('export function canSteerAgent');
     const end = src.indexOf('export async function steerAgent', start);
     const capability = src.slice(start, end);
     assert.ok(capability.includes("run?.meta.cli === 'jwc'"));
     assert.ok(capability.includes('jawRuntimesByScope.get(scopeKey)?.busy === true'));
+    // wp2: codex-app advertises same-turn steer by installing steerTurnInBand
+    // for exactly the duration of a steerable turn.
+    assert.ok(capability.includes('steerTurnInBand'), 'codex-app in-band steer capability');
 });
 
 // ─── SF-002: steerAgent saves interrupted output via exit handler ───

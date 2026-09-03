@@ -95,6 +95,11 @@ function applyMidRunPolicy(
 
     if (policy === 'steer') {
         if (!canSteerAgent(ctx.scopeKey)) return queue();
+        // submitMessage is a sync contract, so the response stays optimistic
+        // ('steered'). What changed: the outcome is no longer fire-and-forget.
+        // A raced ('unavailable') or kind-rejected ('rejected': review/compact)
+        // in-band steer joins the queue — with its queue_update broadcast —
+        // instead of dying silently. Kill is never the fallback here.
         runDetached(
             steerAgent(ctx.scopeKey, ctx.text, ctx.meta.origin, stripUndefined({
                 chatSessionId: ctx.chatSessionId,
@@ -103,7 +108,9 @@ function applyMidRunPolicy(
                 requestId: ctx.requestId,
                 remoteKey: ctx.remoteKey,
                 replyViaTarget: ctx.meta.replyViaTarget,
-            })),
+            })).then(outcome => {
+                if (outcome === 'fallback-queue') queue();
+            }),
             'steer',
             { ...ctx.meta, requestId: ctx.requestId, eventScope: { scope: ctx.scopeKey, sessionId: ctx.chatSessionId } },
         );

@@ -237,9 +237,25 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     }
     const { currentSessionScope } = await import('../core/session-context.js');
     const scopeKey = currentSessionScope()?.scope ?? 'default';
-    const { isAgentBusy, killActiveAgent, waitForProcessEnd, waitForExitSettled, getSteerWaitMsForActiveAgent } = await import('../agent/spawn.js');
+    const { isAgentBusy, killActiveAgent, waitForProcessEnd, waitForExitSettled, getSteerWaitMsForActiveAgent, canSteerAgent, steerAgent } = await import('../agent/spawn.js');
     if (!isAgentBusy(scopeKey)) {
         return { ok: false, type: 'error', text: t('cmd.steer.noAgent', {}, L) };
+    }
+
+    const iface = ctx.interface || 'cli';
+
+    // Prefer in-band same-turn steer when the runtime supports it (jwc always;
+    // codex-app while a steerable turn is in flight). No kill, no context loss.
+    // A steer that the runtime cannot accept falls back to the QUEUE — never to
+    // killing a turn we failed to steer.
+    if (canSteerAgent(scopeKey)) {
+        const outcome = await steerAgent(scopeKey, prompt, iface, sessionScopeMeta());
+        if (outcome === 'steered') {
+            return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L) };
+        }
+        const { submitMessage } = await import('../orchestrator/gateway.js');
+        submitMessage(prompt, { origin: iface, ...sessionScopeMeta(), midRunPolicy: 'followup' });
+        return { ok: true, type: 'success', text: 'Steer unavailable for the current turn — message queued as follow-up.' };
     }
 
     // Kill running agent (or cancel retry timer) and wait for clean exit
@@ -260,7 +276,6 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     const steerContext = salvage ? salvage.replace(/^⏹️ \[interrupted\]\s*/, '') : undefined;
 
     // Remote interfaces: clear stale session before re-orchestrate
-    const iface = ctx.interface || 'cli';
     if (iface === 'telegram' || iface === 'discord' || iface === 'slack') {
         if (typeof ctx.clearSession === 'function') {
             await ctx.clearSession();

@@ -10,6 +10,22 @@ import { createTextStreamReader } from './stream-text.js';
 import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { createInterface, type Interface as ReadlineInterface } from 'readline';
+import { stripUndefined } from '../core/strip-undefined.js';
+
+export type CodexSteerErrorCode = 'no-active-turn' | 'not-steerable' | 'turn-mismatch' | 'rpc-error';
+
+/** Typed steer rejection. `not-steerable` carries the server-reported turnKind
+ *  (review|compact); `turn-mismatch` means the tracked turn raced to completion. */
+export class CodexSteerError extends Error {
+    readonly code: CodexSteerErrorCode;
+    readonly turnKind?: string;
+    constructor(code: CodexSteerErrorCode, message: string, opts: { turnKind?: string } = {}) {
+        super(message);
+        this.name = 'CodexSteerError';
+        this.code = code;
+        if (opts.turnKind) this.turnKind = opts.turnKind;
+    }
+}
 
 // A bogus thread/resume on codex-cli 0.146.0 returns "no rollout found for thread id ...".
 const RECOVERABLE_RESUME_RE = /not found|no rollout found|unknown thread|no such thread|invalid thread|thread.*missing/i;
@@ -442,6 +458,51 @@ export class CodexAppClient extends EventEmitter {
             return;
         }
         await this.sendInterrupt(state, state.activeTurnId);
+    }
+
+    /**
+     * Same-turn user input injection (app-server `turn/steer`).
+     *
+     * The steered text joins the ACTIVE turn's pending input and is drained at
+     * the next tool-call boundary — the model keeps the full prior context.
+     * Success means "accepted into the queue", not a new turn: no turn/started
+     * fires, and the existing turn's item/completion stream continues.
+     *
+     * This primitive deliberately performs no fallback: callers own the policy
+     * (queue the message, retry with the actual turn id, or give up).
+     */
+    async steerTurn(scope: string, text: string, opts: { clientUserMessageId?: string } = {}): Promise<{ turnId: string }> {
+        this.assertReusable();
+        const state = this.requireScope(scope);
+        if (!state.threadId) throw new CodexSteerError('no-active-turn', `No active thread for scope ${scope}`);
+        if (!state.activeTurnId) throw new CodexSteerError('no-active-turn', `No active turn for scope ${scope}`);
+        try {
+            const result = await this.request('turn/steer', stripUndefined({
+                threadId: state.threadId,
+                expectedTurnId: state.activeTurnId,
+                input: [{ type: 'text', text, text_elements: [] }],
+                clientUserMessageId: opts.clientUserMessageId,
+            })) as { turnId?: string };
+            const turnId = result?.turnId;
+            if (!turnId) throw new CodexSteerError('rpc-error', `turn/steer returned no turn id for scope ${scope}`);
+            if (turnId !== state.activeTurnId) {
+                console.warn(`[codex-app:steer] accepted by ${turnId} while tracking ${state.activeTurnId} for scope ${scope}`);
+            }
+            return { turnId };
+        } catch (err) {
+            if (err instanceof CodexSteerError) throw err;
+            const data = (err as { data?: unknown } | null)?.data as
+                { codexErrorInfo?: { activeTurnNotSteerable?: { turnKind?: string } } } | undefined;
+            const turnKind = data?.codexErrorInfo?.activeTurnNotSteerable?.turnKind;
+            if (turnKind) {
+                throw new CodexSteerError('not-steerable', (err as Error).message, { turnKind });
+            }
+            const message = (err as Error).message || '';
+            if (/expectedTurnId|turn .* not active|no active turn/i.test(message)) {
+                throw new CodexSteerError('turn-mismatch', message);
+            }
+            throw err;
+        }
     }
 
     async closeScope(scope: string): Promise<void> {
@@ -1319,9 +1380,14 @@ export class CodexAppClient extends EventEmitter {
             this.pending.delete(id);
             const error = this.recordField(msg, 'error');
             if (error) {
-                handler.reject(new Error(
+                const err = new Error(
                     `JSON-RPC error ${String(error['code'] ?? '')}: ${String(error['message'] ?? '')}`,
-                ));
+                );
+                // Preserve the structured payload: turn/steer rejections carry
+                // data.codexErrorInfo.activeTurnNotSteerable.turnKind, which the
+                // caller needs to distinguish "queue instead" from real failures.
+                if (error['data'] !== undefined) (err as Error & { data?: unknown }).data = error['data'];
+                handler.reject(err);
             } else {
                 handler.resolve(msg['result']);
             }
