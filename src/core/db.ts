@@ -546,6 +546,27 @@ export const insertMessage = db.prepare('INSERT INTO messages (role, content, cl
 export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
 export const insertMessageWithTraceRun = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, trace_run_id, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
 export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? ORDER BY id ASC');
+const maxMessageIdStmt = db.prepare('SELECT MAX(id) AS maxId FROM messages WHERE session_id = ?');
+const steerSalvageStmt = db.prepare(`SELECT content FROM messages
+    WHERE session_id = ? AND id > ? AND role = 'assistant' AND content LIKE '⏹️ [interrupted]%'
+    ORDER BY id ASC LIMIT 1`);
+
+/** Snapshot of the newest message id in a session, taken before a steer kill. */
+export function getMaxMessageId(sessionId: string): number {
+    const row = maxMessageIdStmt.get(sessionId) as { maxId?: number | null } | undefined;
+    return typeof row?.maxId === 'number' ? row.maxId : 0;
+}
+
+/**
+ * Salvage identity for kill-path steer. The interrupted assistant row is the
+ * first ⏹️-tagged assistant message with id greater than the pre-kill snapshot.
+ * created_at comparisons are NOT safe here: the column is second-resolution UTC
+ * and same-second collisions across concurrent scopes misattribute salvage.
+ */
+export function getSteerSalvageAfter(sessionId: string, afterId: number): string | null {
+    const row = steerSalvageStmt.get(sessionId, afterId) as { content?: string } | undefined;
+    return typeof row?.content === 'string' ? row.content : null;
+}
 export const searchMessages = db.prepare(`
     SELECT id, role, content, cli, tool_log, created_at,
            CASE WHEN content LIKE '%' || $q || '%' THEN 'content' ELSE 'tool_log' END AS match_field

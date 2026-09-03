@@ -10,6 +10,8 @@ export interface SlashResult {
     type?: string;
     code?: string;
     steerPrompt?: string;
+    /** Salvaged partial output of the turn this steer interrupted (kill-path). */
+    steerContext?: string;
     text?: string;
     originalText?: string;
     recovery?: UnknownCommandRecovery;

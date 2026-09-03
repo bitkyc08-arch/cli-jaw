@@ -198,7 +198,10 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                         )
                         : await executeCommand(parsed, makeWebCommandCtx(req, locale));
                     if (cmdResult?.steerPrompt) {
-                        const submit = submitMessage(cmdResult.steerPrompt, submitMeta);
+                        const submit = submitMessage(cmdResult.steerPrompt, {
+                            ...submitMeta,
+                            ...(cmdResult.steerContext ? { _steerContext: cmdResult.steerContext as string } : {}),
+                        });
                         if (submit.action === 'rejected') {
                             const status = (submit.reason === 'busy' || submit.reason === 'duplicate') ? 409 : 400;
                             res.status(status).json({ ok: false, command: true, error: submit.reason, ...publicSubmitResult(submit) });

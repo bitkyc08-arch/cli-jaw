@@ -768,6 +768,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
         prompt: string,
         displayMsg: string,
         ackInput: { anchorId?: number; isMention?: boolean } = {},
+        steerContext?: string,
     ) {
         const chatId = ctx.chat?.id;
         if (!ctx.chat) return;
@@ -1111,6 +1112,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 scope: result.sessionContext?.scope,
                 chatSessionId: result.sessionContext?.chatSessionId,
                 remoteKey: result.sessionContext?.remoteKey,
+                _steerContext: steerContext,
             }));
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
@@ -1216,7 +1218,7 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                 const steerPrompt = result.steerPrompt;
                 await ctx.reply(redactOutboundText(result.text || '🔄'));
                 try {
-                    await tgOrchestrate(ctx, steerPrompt, steerPrompt);
+                    await tgOrchestrate(ctx, steerPrompt, steerPrompt, {}, result.steerContext as string | undefined);
                 } catch (err: unknown) {
                     log.error('[tg:steer]', logErrorText(err));
                     await ctx.reply(`❌ Steer failed: ${userErrorText(err)}`.slice(0, 500)).catch(() => {});

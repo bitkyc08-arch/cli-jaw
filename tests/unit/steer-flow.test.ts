@@ -237,7 +237,9 @@ test('SF-006: queued web steer accepts item before background old-process wait',
 
     const routeIdx = routeSrc.indexOf("app.post('/api/orchestrate/queue/:id/steer'");
     assert.ok(routeIdx > 0, 'queued steer route should exist');
-    const routeBlock = routeSrc.slice(routeIdx, routeIdx + 3200);
+    // Window sized to cover the background steer block including the wp1
+    // exit-settle/salvage wait between the kill and the re-orchestrate.
+    const routeBlock = routeSrc.slice(routeIdx, routeIdx + 5200);
 
     const waitConfigIdx = routeBlock.indexOf('const steerWaitMs = getSteerWaitMsForActiveAgent(scope)');
     const busyCaptureIdx = routeBlock.indexOf('const wasBusyBeforeSteer = isAgentBusy(scope)');
