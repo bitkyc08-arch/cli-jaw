@@ -31,7 +31,12 @@ function sanitizeBroadcastData(type: string, data: BroadcastPayload): BroadcastP
 export function inferTopic(type: string): EventTopic {
     if (type.startsWith('agent:claude-e:')) return 'trace';
     if (type === 'agent_added' || type === 'agent_updated' || type === 'agent_deleted') return 'agents';
-    if (type.startsWith('agent_') || type.startsWith('agent:') || type === 'steer_started') return 'agent';
+    // `steer_*` events are named after the action, not the subsystem, so the
+    // `agent_` prefix above does not catch them and each has to be listed. Both
+    // topics reach a subscribed client today (the browser dispatches on type,
+    // not topic), so this is taxonomy rather than delivery — but a steer event
+    // filed under `system` is a lie about what it describes (#523).
+    if (type.startsWith('agent_') || type.startsWith('agent:') || type.startsWith('steer_')) return 'agent';
     if (type.startsWith('orc_') || type.startsWith('orchestrate_')
         || type === 'worklog_created' || type === 'round_start' || type === 'round_done') return 'orchestrate';
     if (type.startsWith('goal_')) return 'goal';

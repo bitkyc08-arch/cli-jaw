@@ -1129,6 +1129,10 @@ function handleServerEvent(msg: WsMessage): void {
         handleReplayGap();
     } else if (msg.type === 'worker_stalled') {
         addSystemMsg(`⚠️ Worker stalled: ${escapeHtml(msg.employeeName || msg.agentId || '')}`, 'tool-activity');
+    } else if (msg.type === 'steer_context_lost') {
+        // A kill-steer that salvaged nothing looks exactly like a normal steer
+        // until the new answer contradicts what was on screen a moment ago (#523).
+        addSystemMsg('⚠️ 이전 턴의 진행 내용을 살리지 못했습니다 — 새 턴은 그 맥락 없이 시작합니다.', 'tool-activity');
     } else if (msg.type === 'worker_disconnected') {
         addSystemMsg(`🔌 Worker disconnected: ${escapeHtml(msg.agentId || '')} (exit ${escapeHtml(String(msg.exitCode ?? '?'))})`, 'tool-activity');
     } else if (msg.type === 'worker_timeout') {
