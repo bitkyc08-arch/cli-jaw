@@ -47,7 +47,13 @@ function renderMemoryInjectionBlock(opts: { role: MemoryInjectionRole; profile: 
     const parts: string[] = ['---', '## Memory Runtime'];
     parts.push('- indexed memory context is active');
     parts.push(`- injection role: ${opts.role}`);
-    parts.push('- use task snapshot and profile context before assuming missing memory');
+    // Framing inverted (#518): the old wording invited the agent to trust this
+    // block over a live lookup, which is how a stale cached count became a
+    // confidently stated number. Memory is a PAST snapshot; anything that can
+    // change since it was written has to be re-read before it is asserted.
+    parts.push('- this is a PAST SNAPSHOT, not current state');
+    parts.push('- counts, statuses and any other volatile fact must be verified live before you assert them');
+    parts.push('- when you cannot verify, say what you checked and when the snapshot was taken');
     if (opts.profile) {
         parts.push('', '## Profile Context', opts.profile);
     }

@@ -193,7 +193,11 @@ export function fetchSlackReplies(
     }, opts);
 }
 
-const FORMAT_CHAR_CAP = 6000;
+// Bounds the rendered history handed to the preamble. It has to be at least as
+// large as PREAMBLE_TOTAL_CAP or it becomes the real limit and raising the
+// preamble's own cap changes nothing — this cut runs FIRST and in the same
+// direction (#518).
+const FORMAT_CHAR_CAP = 12000;
 
 /**
  * Chronological plain-text rendering for the agent prompt. Mentions like
@@ -223,5 +227,25 @@ export function formatHistoryForAgent(
         const suffix = m.replyCount ? ` [${m.replyCount} replies]` : '';
         lines.push(`[${when}] ${who}: ${m.text}${suffix}`);
     }
-    return redactChannelSecrets(lines.join('\n')).slice(0, FORMAT_CHAR_CAP);
+    // Keep the NEWEST lines when the history overflows. Slicing from the front
+    // dropped the most recent messages, which are the ones a follow-up question
+    // refers to; whole lines only, since half a timestamp is worse than a
+    // missing message (#518).
+    return keepNewestLines(redactChannelSecrets(lines.join('\n')), FORMAT_CHAR_CAP);
+}
+
+/** Trim to a character bound from the FRONT, dropping whole lines. */
+function keepNewestLines(text: string, max: number): string {
+    if (text.length <= max) return text;
+    const lines = text.split('\n');
+    const kept: string[] = [];
+    let size = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i] as string;
+        const cost = size === 0 ? line.length : line.length + 1;
+        if (size + cost > max) break;
+        kept.push(line);
+        size += cost;
+    }
+    return kept.reverse().join('\n');
 }

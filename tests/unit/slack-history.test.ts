@@ -120,11 +120,16 @@ test('formatHistoryForAgent renders chronologically, marks self, caps length', (
     assert.match(lines[0]!, /bot\(self\): first/);
     assert.match(lines[1]!, /<@U2>: second/);
     assert.match(lines[2]!, /bot:B9: third \[2 replies\]/);
-    // cap
+    // cap — raised to 12000 with the preamble in #518, because this cut runs
+    // first and in the same direction, so at 6000 it was the real ceiling and
+    // raising PREAMBLE_TOTAL_CAP alone changed nothing.
     const big = formatHistoryForAgent(
-        Array.from({ length: 200 }, (_, i) => ({ ts: `${i}.0`, user: 'U1', text: 'x'.repeat(100) })),
+        Array.from({ length: 400 }, (_, i) => ({ ts: `${i}.0`, user: 'U1', text: 'x'.repeat(100) })),
     );
-    assert.ok(big.length <= 6000);
+    assert.ok(big.length <= 12000, `history render stays bounded, got ${big.length}`);
+    // The bound keeps the NEWEST messages: an overflowing history that dropped
+    // its tail is what made the agent answer about the wrong part of a thread.
+    assert.ok(big.includes('[1970-01-01 00:06]'), 'the most recent rendered line survives the cut');
 });
 
 test('a token pasted into a Slack message is redacted from formatted output', () => {

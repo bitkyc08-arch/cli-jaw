@@ -8,10 +8,19 @@ import {
     getActiveChatSession,
     forkChatSession,
 } from '../../core/chat-sessions.js';
+import { clearResumableSessionForScope } from '../../core/session-ops.js';
+import { bumpGenerationForSessionLocalReset } from '../../agent/session-persistence.js';
 
 export async function newSessionHandler(args: string[]): Promise<SlashResult> {
     const label = args.join(' ').trim() || undefined;
     const { seq } = createChatSession(label);
+    // A new session must not resume the old one's vendor thread, and the Slack
+    // prefetch latch reads the same resumable-session signal to decide whether
+    // history needs re-injecting — so without this, /new left the runtime
+    // resuming the conversation the user just left AND withheld the history
+    // that would have replaced it (#518).
+    await clearResumableSessionForScope();
+    bumpGenerationForSessionLocalReset();
     return { ok: true, text: `✅ New session #${seq} created${label ? ` (${label})` : ''}. Switched.` };
 }
 

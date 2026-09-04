@@ -84,6 +84,40 @@ export function resetSessionOnly(): void {
     resetSessionPreservingHistory();
 }
 
+/** Drop the resumable vendor session for the current scope, keeping history.
+ *
+ *  `/new` used to switch the chat session and stop there. The vendor session
+ *  bucket survived, so the runtime resumed the very conversation the user had
+ *  just asked to leave — and because a resumable session still existed, the
+ *  Slack prefetch latch also concluded there was nothing to re-inject and the
+ *  thread's history was never handed back (#518).
+ *
+ *  This is the bucket half of `clearSessionState` without the history deletion,
+ *  which is the whole difference between `/new` and `/clear`. */
+export async function clearResumableSessionForScope(): Promise<void> {
+    try {
+        const { clearSessionBucket, clearSessionBucketsByPrefix } = await import('./db.js');
+        const { aiEProviderForBucket, resolveSessionBucket } = await import('../agent/args.js');
+        const cli = settings["cli"] || 'claude';
+        const model = settings["model"] || '';
+        const scope = currentSessionScope()?.scope ?? 'default';
+        const base = resolveSessionBucket(cli, model, aiEProviderForBucket(cli, model, settings));
+        // Same prefix pair `clearSessionState` uses: codex-app folds lane mode and
+        // effort into its key, so an exact name built with those blank matches nothing.
+        const scoped = `${base}:${scope}`;
+        clearSessionBucketsByPrefix.run(scoped, `${scoped}:`);
+        if (scope === 'default') clearSessionBucket.run(base);
+        try {
+            const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
+            invalidateCodexAppLanesForScope(scope);
+        } catch (e) {
+            console.warn('[jaw:new] lane invalidation failed:', (e as Error).message);
+        }
+    } catch (e) {
+        console.warn('[jaw:new] session bucket clear failed:', (e as Error).message);
+    }
+}
+
 export async function applySettingsPatch(rawPatch: Record<string, unknown> = {}) {
     bumpSessionOwnershipGeneration();
     return applyRuntimeSettingsPatch(rawPatch, {

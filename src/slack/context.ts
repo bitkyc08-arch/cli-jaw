@@ -84,6 +84,24 @@ function capPoints(text: string, max: number): string {
     return points.length <= max ? text : `${points.slice(0, max - 1).join('')}…`;
 }
 
+/** The same bound, keeping the END instead of the beginning.
+ *
+ *  Thread history is rendered oldest-first, so head-truncation drops the most
+ *  recent messages — precisely the ones a user means by "방금 네가 말한". The
+ *  preamble is the one caller that reads chronologically, so it is the one
+ *  caller that keeps the tail.
+ *
+ *  `max <= 0` returns empty explicitly: `slice(-0)` is `slice(0)`, which
+ *  returns the WHOLE array — an unbounded return from the function whose only
+ *  job is the bound. */
+function capPointsTail(text: string, max: number): string {
+    if (max <= 0) return '';
+    const points = [...text];
+    if (points.length <= max) return text;
+    if (max === 1) return '…';
+    return `…${points.slice(-(max - 1)).join('')}`;
+}
+
 /** Render one participant, marking ourselves so the agent does not reply to itself. */
 function renderParticipant(
     participant: { id: string; name: string; isBot: boolean; userId?: string },
@@ -215,7 +233,7 @@ export function applySlackContext(block: string, text: string): string {
  * the earlier conversation, so the worst-case prompt overhead is statable
  * (~3300 points total) rather than "whatever 50 messages happen to weigh".
  */
-export const PREAMBLE_TOTAL_CAP = 2100;
+export const PREAMBLE_TOTAL_CAP = 8000;
 
 /**
  * Render the thread's earlier messages, injected once when the agent first
@@ -232,7 +250,10 @@ export function buildThreadPreamble(rendered: string, replyCount: number): strin
     // Budget the delimiters first so the TOTAL is bounded, not just the body.
     const framing = `[${label}]\n\n[/앞선 대화]`;
     const room = Math.max(PREAMBLE_TOTAL_CAP - [...framing].length, 0);
-    return `[${label}]\n${capPoints(body, room)}\n[/앞선 대화]`;
+    // Tail, not head: the rendered history is oldest-first (history.ts sorts
+    // ascending), so cutting from the front kept the oldest messages and threw
+    // away the newest — the ones "방금" refers to (#518).
+    return `[${label}]\n${capPointsTail(body, room)}\n[/앞선 대화]`;
 }
 
 /** Exported for tests that assert the note survives every input size. */
