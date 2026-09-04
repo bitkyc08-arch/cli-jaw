@@ -174,7 +174,15 @@ export interface SpawnContext {
   codexAppActiveItemId?: string;
   /** True once durable text was appended under an explicit 'final' phase. Protects a
    *  delivered answer from being erased by a trailing commentary/untagged item. */
-  codexAppDurableIsFinal?: boolean;
+    codexAppDurableIsFinal?: boolean;
+    /** Text the PREVIOUS codex-app item left behind, pending a restatement check.
+     *  Set at an item boundary and cleared the moment the new item either covers
+     *  it (collapse) or diverges from it (genuine continuation). See #517. */
+    codexAppRestatementCandidate?: string | undefined;
+    /** The current item's text so far, accumulated only while a candidate is
+     *  pending — deltas are token-granular, so the prefix test needs the whole
+     *  item rather than one delta. */
+    codexAppItemText?: string | undefined;
   scheduleWakeup?: {
     delaySeconds: number;
     prompt: string;
