@@ -3,7 +3,7 @@
 // Replaces duplicated intent/queue/orchestrate logic in server.ts + bot.ts.
 
 import { randomUUID } from 'node:crypto';
-import { canSteerAgent, isAgentBusy, enqueueMessage, killActiveAgent, messageQueue, purgeQueueOnStop, steerAgent } from '../agent/spawn.js';
+import { isAgentBusy, enqueueMessage, killActiveAgent, messageQueue, purgeQueueOnStop, steerAgent } from '../agent/spawn.js';
 import { hasBlockingWorkers } from './worker-registry.js';
 import { insertMessage } from '../core/db.js';
 import { getActiveChatSession, getSessionRunPolicy, isActiveRunPolicy, resolveOrCreateRemoteSession, type ActiveRunPolicy } from '../core/chat-sessions.js';
@@ -94,12 +94,19 @@ function applyMidRunPolicy(
     };
 
     if (policy === 'steer') {
-        if (!canSteerAgent(ctx.scopeKey)) return queue();
+        // 'steer' means the message steers the agent — never a silent queue.
+        // In-band runtimes (jwc, codex-app with a steerable turn) inject into the
+        // running turn; every other runtime takes the kill-steer path, which
+        // salvages the interrupted turn's partial output into the follow-up run
+        // (withSteerContext), so the redirect preserves context. Queueing is
+        // what the 'followup'/'collect' policies are for.
+        //
         // submitMessage is a sync contract, so the response stays optimistic
-        // ('steered'). What changed: the outcome is no longer fire-and-forget.
-        // A raced ('unavailable') or kind-rejected ('rejected': review/compact)
-        // in-band steer joins the queue — with its queue_update broadcast —
-        // instead of dying silently. Kill is never the fallback here.
+        // ('steered'). The outcome is not fire-and-forget: a raced
+        // ('unavailable') or kind-rejected ('rejected': review/compact) in-band
+        // steer joins the queue — with its queue_update broadcast — instead of
+        // dying silently. Queue is the fallback only for in-band failures,
+        // never for missing capability.
         runDetached(
             steerAgent(ctx.scopeKey, ctx.text, ctx.meta.origin, stripUndefined({
                 chatSessionId: ctx.chatSessionId,

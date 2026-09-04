@@ -190,7 +190,7 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Mid-run steer (기본 정책)
 
-- `multiSession.midRunPolicy` 기본값은 `'steer'`다 (기본값·마이그레이션·검증 모두 steer로 정규화). 런타임이 in-band steer를 지원하면(jwc 항상, codex-app은 steer 가능한 turn 진행 중에 `MainRunState.steerTurnInBand` 훅으로) kill 없이 같은 턴에 주입된다. codex-app은 app-server `turn/steer`를 사용하므로 이전 맥락 손실이 없다. race(턴 종료)·review/compact 턴·미지원 런타임은 kill이 아니라 큐로 강등된다.
+- `multiSession.midRunPolicy` 기본값은 `'steer'`다 (기본값·마이그레이션·검증 모두 steer로 정규화). 런타임이 in-band steer를 지원하면(jwc 항상, codex-app은 steer 가능한 turn 진행 중에 `MainRunState.steerTurnInBand` 훅으로) kill 없이 같은 턴에 주입된다. codex-app은 app-server `turn/steer`를 사용하므로 이전 맥락 손실이 없다. **in-band 미지원 런타임도 큐가 아니라 kill-steer다** — 진행 턴을 kill하고 새 run을 시작하되 salvage가 맥락을 이어준다. 큐로 물러나는 것은 in-band 시도의 race(턴 종료)·review/compact 거부뿐이며, 큐 대기를 원하면 `'followup'`/`'collect'` 정책을 쓴다.
 - 명시적 `/steer`·`/queue steer`는 in-band 불가 런타임에서 kill-path를 쓰되, 중단된 턴의 부분 출력이 exit-settle 배리어(`armExitSettle`/`settleExit`/`waitForExitSettled`)와 pre-kill MAX(id) 스냅샷으로 salvage되어 `withSteerContext` 블록으로 follow-up 프롬프트에 주입된다. 정책 표와 결정 순서는 `structure/prompt_flow.md` §Mid-run 메시지 정책 참고. Manager 설정(Agent 페이지)에서 정책을 바꿀 수 있다.
 
 ### Korean Content Skill Routing

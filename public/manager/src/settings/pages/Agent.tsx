@@ -459,7 +459,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     <option value="interrupt">interrupt — 현재 실행을 중단하고 즉시 실행</option>
                 </select>
                 <span className="settings-field-hint">
-                    다중 세션이 켜져 있을 때 적용됩니다. steer는 jwc·codex-app 런타임에서 진행 중인 턴을 중단하지 않고 맥락을 유지한 채 주입하며, 그 외 런타임은 대기열로 처리됩니다.
+                    다중 세션이 켜져 있을 때 적용됩니다. steer는 jwc·codex-app 런타임에서 진행 중인 턴을 중단하지 않고 맥락을 유지한 채 주입하며, 그 외 런타임은 중단된 출력을 이어받아 즉시 리다이렉트(kill-steer)합니다. 대기열을 원하면 followup을 선택하세요.
                 </span>
             </label>
             <CliProbeNotice status={cliStatus[draft.cli]} exhausted={cliStatusExhausted} />

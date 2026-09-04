@@ -182,11 +182,12 @@ gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
 |--------|-------------------|-----------|
 | jwc | in-band (pi `session.prompt` streamingBehavior 'steer') | 완전 (같은 턴) |
 | codex-app | in-band (app-server `turn/steer` — `MainRunState.steerTurnInBand` 훅이 active-turn 동안만 설치됨) | 완전 (같은 턴) |
-| 그 외 (codex legacy exec, claude, cursor, grok, opencode, pi, agy, copilot, kiro) | 큐 강등 (`canSteerAgent` false) | — |
+| 그 외 (codex legacy exec, claude, cursor, grok, opencode, pi, agy, copilot, kiro) | **kill-steer**: 진행 턴을 kill하고 새 run — 단, 중단된 부분 출력이 `withSteerContext`로 재주입됨 | 부분 출력 보존 |
 
-in-band 시도가 race(턴 종료)나 turn kind(review/compact)로 실패하면 kill이 아니라
-큐로 강등된다. 명시적 `/steer`·`/queue steer`는 kill-path를 쓰되, 중단된 턴의
-부분 출력이 exit-settle 배리어 + `withSteerContext`로 follow-up 프롬프트에 주입된다
+큐로 물러나는 것은 in-band 시도가 race(턴 종료)나 turn kind(review/compact)로
+실패한 경우뿐이다. 큐 대기를 원하면 `followup`/`collect` 정책을 쓴다.
+명시적 `/steer`·`/queue steer`도 같은 kill-path를 쓰며, 중단된 턴의 부분 출력이
+exit-settle 배리어 + `withSteerContext`로 follow-up 프롬프트에 주입된다
 (structure/commands.md `/steer` 참고).
 
 ### PABCD evidence gate (`--attest`)

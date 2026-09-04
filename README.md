@@ -559,7 +559,7 @@ The quota/status panel keeps the same runtime keyset as the registry. Cold statu
 
 > Switch engines live: `/cli codex`. Switch models: `/model gpt-5.5`. Works from Web, Terminal, Telegram, Discord, or Slack.
 
-**Mid-run steering**: sending a message while the agent is working steers the running turn by default (`multiSession.midRunPolicy: 'steer'`). On the JWC and Codex App runtimes the message joins the in-flight turn itself — the model keeps its full context. Other runtimes queue the message instead, and an explicit `/steer` still interrupts with the interrupted turn's partial output carried into the follow-up run, so nothing the agent was doing is lost. Change the policy in Settings → Agent.
+**Mid-run steering**: sending a message while the agent is working steers the running turn by default (`multiSession.midRunPolicy: 'steer'`). On the JWC and Codex App runtimes the message joins the in-flight turn itself — the model keeps its full context. On every other runtime the current turn is redirected (kill-steer) with the interrupted turn's partial output carried into the follow-up run, so nothing the agent was doing is lost. Prefer waiting in line? Set the policy to `followup` or `collect` in Settings → Agent.
 
 ---
 
