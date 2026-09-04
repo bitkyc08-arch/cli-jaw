@@ -50,7 +50,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |
 | `prebuild`, `pretest`, `pretest:all`, `pretest:integration`, `pretest:smoke` | `npm run ensure:native` |
-| `test` | `tsx --experimental-test-module-mocks tests/run.mts` — programmatic driver, `isolation:'process'` for subprocess DB isolation |
+| `test` | `tsx --experimental-test-module-mocks tests/run.mts` — programmatic driver, `isolation:'process'` + `concurrency:true` |
 | `test:all` | `tsx --experimental-test-module-mocks tests/run.mts --all` |
 | `test:integration` | `tsx --experimental-test-module-mocks --test tests/integration/*.test.ts` |
 | `test:coverage` | `tsx --experimental-test-module-mocks --experimental-test-coverage tests/run.mts --all` |
@@ -126,6 +126,26 @@ The policy change is user-scoped. Operators who must not change policy can use
 the cmd shim or direct Node entry point instead.
 
 ### Direct smoke utilities
+
+#### 테스트 격리는 프로세스 단위지 DB 단위가 아니다
+
+`tests/run.mts` 는 `isolation:'process'` 로 파일마다 자식 프로세스를 띄우지만, **모든
+자식이 `tests/setup/test-home.ts` 가 한 번 정한 같은 `CLI_JAW_HOME` 을 상속한다.** 즉
+프로세스는 갈라져도 `jaw.db` 는 하나다. 이 문장을 "subprocess DB isolation" 으로 읽으면
+없는 보장을 있다고 믿게 된다 (#521 조사에서 실제로 그 오독으로 잘못된 가설을 세웠다).
+
+실제로 스위트를 지켜주는 것은 두 가지다:
+
+- `src/core/db.ts` 의 `journal_mode = WAL` + `busy_timeout = 5000`. WAL 에서 리더는
+  라이터를 막지 않으므로 평범한 동시 접근은 잠금이 되지 않는다.
+- 파일별 opt-in 격리 `tests/setup/isolated-home.ts`. 이건 좁고 구체적인 위험
+  — `isAlive` 를 스텁한 전역 파괴적 sweep 이 다른 프로세스의 행을 지우는 경우 —
+  에만 필요하며, DB 를 여는 파일 전부가 아니라 그런 sweep 을 하는 파일만 넣는다.
+
+로그에서 `database is locked` 를 봤다고 곧장 경합이라고 결론내지 말 것.
+`tests/unit/memory-search-provider.test.ts` 는 `BEGIN IMMEDIATE` 를 4.2초 잡는 자식을
+**의도적으로** 띄워 재시도 경로를 검증하며, 그건 `jaw.db` 가 아니라 메모리 인덱스 DB다.
+통과하는 테스트의 정상 출력이다.
 
 | utility | command | purpose |
 | --- | --- | --- |
