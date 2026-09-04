@@ -76,3 +76,47 @@ test('SKILL-446f: a missing directory yields an empty list', () => {
     assert.deepEqual(dedupeSkillDirEntries(join(tmpdir(), 'cli-jaw-does-not-exist-446')), []);
 });
 
+// ── SKILL-446g: the doctor path counts what the prompt loads (#524) ──
+//
+// `jaw doctor` used to filter dirents by `isDirectory()`, which is false for a
+// POSIX symlink. That skipped alias links by accident on this platform — and it
+// also skipped a skill symlinked in from OUTSIDE the directory, so a home whose
+// skills are all links reported "skills directory is empty" and told the user to
+// re-clone a working install. On Windows the same filter counted junction
+// aliases twice. Both are the same defect: the count did not match what
+// `loadActiveSkills` actually loads.
+//
+// Only the COUNT is asserted. Which name survives a fold is readdir order, which
+// is not a guarantee this suite should pin.
+
+test('SKILL-446g: skills reachable only through links are counted, not dropped', () => {
+    const dir = scratch();
+    const store = mkdtempSync(join(tmpdir(), 'cli-jaw-446g-store-'));
+    fs.mkdirSync(join(store, 'jaw-outside'));
+    fs.writeFileSync(join(store, 'jaw-outside', 'SKILL.md'), '# outside\n');
+    fs.mkdirSync(join(dir, 'jaw-real'));
+    try {
+        symlinkSync(join(store, 'jaw-outside'), join(dir, 'jaw-outside'));
+    } catch {
+        return; // no symlink privilege (unprivileged Windows); nothing to observe
+    }
+
+    const counted = dedupeSkillDirEntries(dir);
+    assert.equal(counted.length, 2, 'a skill linked in from outside is a skill, not absent');
+
+    // The shape the old doctor line used, kept here as the contrast that makes
+    // the assertion above mean something: it sees one, and a link-only home zero.
+    const direntOnly = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory());
+    assert.equal(direntOnly.length, 1, 'the dirent filter is what made a populated home read as empty');
+});
+
+test('SKILL-446h: an in-directory alias folds to one skill', () => {
+    const dir = scratch();
+    fs.mkdirSync(join(dir, 'jaw-dev'));
+    try {
+        symlinkSync(join(dir, 'jaw-dev'), join(dir, 'dev'));
+    } catch {
+        return;
+    }
+    assert.equal(dedupeSkillDirEntries(dir).length, 1, 'an alias and its target are one skill');
+});

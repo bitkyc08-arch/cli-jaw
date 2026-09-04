@@ -15,7 +15,7 @@ import { sendFileAllowedRoots } from '../../src/security/path-guards.js';
 import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
 import { migrateAllJawHomes, hasPendingLegacySkillDirs, discoverJawHomes } from '../../lib/mcp/skills-migration.js';
-import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
+import { dedupeSkillDirEntries } from '../../lib/mcp/skills-utils.js';
 import { classifyClaudeInstall } from '../../src/core/claude-install.js';
 import { isWsl, isWindowsNative, resolvePlatformKind } from '../../src/core/platform-kind.js';
 import { checkNonInteractivePath, nonInteractivePathRemedy } from '../../src/core/noninteractive-path.js';
@@ -600,8 +600,12 @@ check('에이전트 타임아웃', () => {
 check('Skills directory', () => {
     const skillsDir = settings?.skillsDir || path.join(JAW_HOME, 'skills');
     if (!fs.existsSync(skillsDir)) throw new Error('WARN: not found');
-    const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
-        .filter(d => d.isDirectory() && isDiscoverableSkillDirName(d.name));
+    // Count each skill once, whatever the platform calls an alias. A Dirent for a
+    // POSIX symlink reports isDirectory() === false, so the old filter skipped the
+    // 30-odd alias links by accident — and skipped a skill symlinked in from
+    // outside the directory too, reporting a populated home as empty. A Windows
+    // junction reports true and was counted twice (#446, #524).
+    const entries = dedupeSkillDirEntries(skillsDir);
     if (entries.length === 0) {
         const refDir = path.join(JAW_HOME, 'skills_ref').replace(/\\/g, '/');
         throw new Error(

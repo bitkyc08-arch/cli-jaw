@@ -118,3 +118,48 @@ test('RH-008: root npm package stays lean and excludes Electron app/deps', () =>
     assert.equal(includesElectronApp, false, 'published npm files must not include electron/');
     assert.deepEqual(files, ['dist/', '!dist/src/lib/native/*.node', 'public/', 'scripts/', 'package.json']);
 });
+
+// ── RH-009: the npm description's skill counts must be true (#524) ──
+//
+// The published blurb claimed "107 built-in skills", a number matching nothing on
+// disk. Both counts are recomputed here the way an install computes them, not read
+// from a set that install MUTATES: skills-distribution.ts adds every registry entry
+// with category 'orchestration' to OPENCLAW_ACTIVE at copy time, so importing that
+// singleton yields 18 or 33 depending on what else touched it first in the same
+// process. Deriving the union instead makes this test independent of process order.
+
+test('RH-009: the package description reports the real skill counts', () => {
+    const pkg = JSON.parse(fs.readFileSync(join(root, 'package.json'), 'utf8'));
+    const description: string = pkg.description || '';
+
+    const registryPath = join(root, 'skills_ref', 'registry.json');
+    if (!fs.existsSync(registryPath)) return; // skills_ref is a submodule; absent in some checkouts
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    const skills: Record<string, { category?: string }> = registry.skills || {};
+
+    const utils = fs.readFileSync(join(root, 'lib', 'mcp', 'skills-utils.ts'), 'utf8');
+    const staticIds = (name: string): string[] => {
+        const start = utils.indexOf(`export const ${name} = new Set([`);
+        if (start < 0) return [];
+        const body = utils.slice(start, utils.indexOf(']', start));
+        return [...body.matchAll(/'([^']+)'/g)].map(m => m[1] as string);
+    };
+    const autoActivate = new Set([
+        ...staticIds('CODEX_ACTIVE'),
+        ...staticIds('OPENCLAW_ACTIVE'),
+        ...Object.entries(skills).filter(([, meta]) => meta?.category === 'orchestration').map(([id]) => id),
+    ]);
+    const referenceSkills = Object.keys(skills)
+        .filter(id => fs.existsSync(join(root, 'skills_ref', id, 'SKILL.md')));
+
+    assert.ok(autoActivate.size > 0, 'the auto-activate set must be derivable, or this test proves nothing');
+
+    const claimed = [...description.matchAll(/(\d+)[- ]skill|(\d+) skills/g)]
+        .map(m => Number(m[1] ?? m[2]));
+    assert.ok(claimed.includes(autoActivate.size),
+        `description must state the real auto-activate count (${autoActivate.size}); got ${JSON.stringify(claimed)}`);
+    assert.ok(claimed.some(n => n <= referenceSkills.length && n > referenceSkills.length - 10),
+        `description must state the reference-library size near ${referenceSkills.length}; got ${JSON.stringify(claimed)}`);
+    assert.ok(!/built-in skills/.test(description),
+        'skills_ref is npmignored and cloned at install, so they are not "built-in"');
+});
