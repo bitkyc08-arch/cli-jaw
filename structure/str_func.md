@@ -94,7 +94,7 @@ cli-jaw/
 │   │   ├── agy-capabilities.ts ← AGY `--help`/`--version` capability probe + cached optional flag support map + legacy emit-all fallback marker (124L)
 │   │   ├── agy-transcript-watcher.ts ← AGY transcript/log watcher and session-id extraction support (291L)
 │   │   ├── pi-runtime.ts     ← Pi profile 정규화 + isolated `PI_CODING_AGENT_DIR` models/settings 생성 + `pi --offline --list-models` discovery + `pi --mode rpc` JSONL parser/spawner (803L) ✨
-│   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers + goal continuation boundary row (1227L)
+│   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers + goal continuation boundary row (1260L)
 │   │   ├── jwc-runtime.ts    ← resident/in-process JWC runtime bridge and event handling (222L)
 │   │   ├── kiro-auth.ts      ← Kiro CLI auth store reader (resolveKiroDataPath, readKiroAuthFromStore, resolveKiroProfileArn, regionFromProfileArn, listKiroConversationIdsForCwd, resolveKiroSessionIdAfterSpawn, extractKiroSessionIdFromV2Store) (253L)
 │   │   ├── kiro-models.ts    ← Kiro live model inventory (KiroModelEntry, KiroModelInventory, parseKiroModelListJson, fetchKiroModelInventory) (98L)
@@ -102,12 +102,12 @@ cli-jaw/
 │   │   ├── cursor-runtime.ts ← Cursor CLI event adapter + session management (395L) ✨
 │   │   ├── agy-runtime.ts    ← AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + stdout/log conversation id 추출 + quiet completion/replay/prompt-echo stripping helper (321L)
 │   │   ├── claude-e-runtime.ts ← `jaw_runtime` helper event를 internal `agent:claude-e:*` broadcast로 변환 (46L)
-│   │   ├── alert-escalation.ts ← alert escalation event helper (88L)
+│   │   ├── alert-escalation.ts ← alert escalation event helper (94L)
 │   │   ├── cli-helpers.ts    ← Claude-like CLI 판별 helper (9L)
 │   │   ├── codex-app-client.ts ← Codex App stdio server client (1496L)
 │   │   ├── codex-host-pool.ts ← Codex App shared host generation + lane lease/FIFO/reaper/shutdown owner (494L)
 │   │   ├── codex-app-events.ts ← Codex App turn/tool/message event adapter + phase 판정 + applyCodexAppTextEvent (531L)
-│   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 + shouldAnnounceStallTruncation (부분 출력 워치독 종료를 독자에게 알릴지 판정) (111L)
+│   │   ├── error-classifier.ts ← stderr/result 기반 에러 분류 헬퍼 + shouldAnnounceStallTruncation (부분 출력 워치독 종료를 독자에게 알릴지 판정) (160L)
 │   │   ├── stall-notice.ts   ← 워치독 중단 통지 문구 + 접미사 전용 제거 (사람에겐 보이고 모델 컨텍스트엔 안 들어가도록 db 조회 경계가 사용) (21L) ✨
 │   │   ├── grok-trace-backfill.ts ← Grok trace backfill helper (167L) ✨
 │   │   ├── live-run-state.ts ← active run snapshot / hydrate helper (108L)
@@ -265,7 +265,7 @@ cli-jaw/
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (153L)
 │   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (201L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
-│   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (92L)
+│   │   ├── forwarder.ts      ← Discord text chunk 포워딩 + guarded local-image attachment relay (98L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (75L)
 │   ├── slack/                ← Slack 인터페이스 (23 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (407L)
@@ -286,7 +286,7 @@ cli-jaw/
 │   │   ├── inbound-file.ts   ← 인바운드 첨부 단일 IO owner (files.info → 인증 스트리밍 다운로드 → saveUpload, 파일/메시지 바이트 예산, 고정 error code) (280L) ✨
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (180L)
-│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (72L)
+│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (81L)
 │   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (161L)
 │   │   ├── scope-status.ts   ← OAuth grant drift 단일 소유자 (auth.test의 x-oauth-scopes를 manifest 요구 집합과 대조, 미관측을 '이상 없음'과 구분, doctor·health·identity 경고가 공유) (179L) ✨

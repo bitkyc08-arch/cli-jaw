@@ -11,6 +11,7 @@ import { assertSendFilePath } from '../security/path-guards.js';
 import { sendSlackFile } from './slack-file.js';
 import { sendSlackText } from './send-only-client.js';
 import { logErrorText } from '../messaging/redact.js';
+import { renderAgentErrorBlock } from '../messaging/error-block.js';
 
 export async function relaySlackImages(
     token: string,
@@ -52,19 +53,27 @@ export function createSlackForwarder(opts: {
 }) {
     return async (type: string, data: Record<string, unknown>) => {
         const text = data?.["text"];
-        if (type !== 'agent_done' || typeof text !== 'string' || !text || data["error"]) return;
+        if (type !== 'agent_done' || typeof text !== 'string' || !text) return;
+        // A failure the classifier tagged is the one thing worth interrupting a
+        // conversation with; every other error payload carries raw exception
+        // text, a slice of the model's own output, or an internal diagnostic, and
+        // those stay in the trace (#519).
+        const errorBlock = data["error"] ? renderAgentErrorBlock(data) : null;
+        if (data["error"] && !errorBlock) return;
         if (opts.shouldSkip?.(data)) return;
         const target = opts.getLastTarget();
         const token = opts.getToken();
         if (!target?.targetId || !token) return;
         try {
-            const result = await sendSlackText(token, target, `${opts.prefix || ''}${text}`);
+            const body = errorBlock ?? text;
+            const result = await sendSlackText(token, target, `${opts.prefix || ''}${body}`);
             if (!result.ok) {
                 log.error('[slack:forward]', logErrorText(result.error || 'send failed'));
                 return;
             }
-            await relaySlackImages(token, target, text);
-            opts.log?.({ channelId: target.targetId, preview: text.slice(0, 60) });
+            // An error block names no image; relaying would re-scan the failure text.
+            if (!errorBlock) await relaySlackImages(token, target, text);
+            opts.log?.({ channelId: target.targetId, preview: body.slice(0, 60) });
         } catch (e) {
             log.error('[slack:forward]', logErrorText(e));
         }

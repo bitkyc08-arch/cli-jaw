@@ -2,6 +2,7 @@ import { broadcast, addBroadcastListener } from '../core/bus.js';
 import { settings } from '../core/config.js';
 import { sendChannelOutput } from '../messaging/send.js';
 import type { MessengerChannel } from '../messaging/types.js';
+import { getHomeChannel } from '../messaging/runtime.js';
 
 interface ErrorRecord {
     ts: number;
@@ -26,7 +27,10 @@ function getConfig() {
         threshold: (cfg["threshold"] as number) ?? 3,
         windowMs: (cfg["windowMs"] as number) ?? 600_000,
         cooldownMs: (cfg["cooldownMs"] as number) ?? 1_800_000,
-        channels: (cfg["channels"] as string[]) ?? ['telegram'],
+        // An operator alert belongs wherever this install actually talks. The
+        // old hardcoded 'telegram' meant a Slack-only deployment escalated into
+        // a channel nobody had configured, so the alert was simply lost (#519).
+        channels: (cfg["channels"] as string[]) ?? [getHomeChannel()],
     };
 }
 
@@ -66,7 +70,9 @@ export function initAlertDelivery(): void {
 
     addBroadcastListener((type, data) => {
         if (type !== 'alert_escalation') return;
-        const channels = (data["channels"] as string[]) ?? ['telegram'];
+        // The payload normally carries the configured list; this fallback is the
+        // second hardcoded 'telegram' and had the same effect as the first.
+        const channels = (data["channels"] as string[]) ?? [getHomeChannel()];
         const text = data["message"] as string;
         if (!text) return;
 
