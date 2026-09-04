@@ -4,6 +4,7 @@
 import type { ChannelSendRequest } from '../messaging/send.js';
 import { slackTargetFromId } from '../messaging/slack-target.js';
 import { log } from '../core/logger.js';
+import { logErrorText } from '../messaging/redact.js';
 import type { ChannelOperation } from '../messaging/types.js';
 import { getSlackSendClient, resolveSlackDmChannel, sendSlackText } from './send-only-client.js';
 import { sendSlackFile } from './slack-file.js';
@@ -71,10 +72,10 @@ export async function slackSendHandler(
                 const status = (error as { statusCode?: number }).statusCode;
                 const body = (req.caption ?? req.text ?? '').trim();
                 if (status !== 413 || !body) throw error;
-                log.warn('[slack:send] file exceeds transport limit — delivering caption as text', {
-                    filePath: req.filePath,
-                    error: error instanceof Error ? error.message : String(error),
-                });
+                // The filename is agent-chosen text and the message quotes the
+                // size; both go through the masker like every other channel sink
+                // (gate:redaction-sinks).
+                log.warn('[slack:send] file exceeds transport limit — delivering caption as text', logErrorText(error));
                 const operation: ChannelOperation = req.type === 'voice' ? 'voice' : 'fileUpload';
                 const fallback = await sendSlackText(client.token, target, body);
                 return fallback.ok
