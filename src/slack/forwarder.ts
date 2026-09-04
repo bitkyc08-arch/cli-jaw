@@ -7,6 +7,7 @@ import { settings } from '../core/config.js';
 import { log } from '../core/logger.js';
 import { extractLocalImagePaths } from '../messaging/extract-images.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import { basename } from 'node:path';
 import { assertSendFilePath } from '../security/path-guards.js';
 import { sendSlackFile } from './slack-file.js';
 import { sendSlackText } from './send-only-client.js';
@@ -27,8 +28,13 @@ export async function relaySlackImages(
                 settings["workingDir"] || undefined,
                 settings["projectDirs"] || null,
             );
-            const result = await sendSlackFile(token, target, filePath,
-                options.signal ? { signal: options.signal } : {});
+            // The answer text was already posted by the caller; a bare file row
+            // under it read as "empty message" in the field (#517). Caption with
+            // the image's own name so the row says what it is, never the answer again.
+            const result = await sendSlackFile(token, target, filePath, {
+                caption: basename(filePath),
+                ...(options.signal ? { signal: options.signal } : {}),
+            });
             if (!result.ok) {
                 log.warn('[slack:image-relay] send failed', {
                     path: candidate,

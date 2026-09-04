@@ -702,7 +702,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         // bypasses the generic retry/fallback path below. Surface that reason
         // before the final resolver turns the empty process output into the
         // channel's generic "no response" message.
-        const { message: errMsg } = classifyExitError(
+        const { message: errMsg, errorKind } = classifyExitError(
             runtimeCli,
             code,
             ctx.stderrBuf,
@@ -721,7 +721,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
         broadcast(
             'agent_done',
-            { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag },
+            // Classified like the retry-exhausted site below: a watchdog kill is
+            // the one failure the channel MUST show, and the forwarder gate
+            // drops anything without errorKind (#519 round 2).
+            { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, errorKind, cli: runtimeCli, origin, ...empTag },
             isEmployee ? 'internal' : 'public',
         );
         finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
@@ -822,7 +825,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 }
                 insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, chatSessionId);
             }
-            broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
+            broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, errorKind, cli: runtimeCli, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
             resolve({ text: '', code: 1 });
             if (mainManaged && !opts.internal) processQueue(scopeKey);

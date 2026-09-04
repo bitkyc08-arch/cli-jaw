@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, openSync, ftruncateSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -869,4 +869,43 @@ test('SOR-004: the filename is masked everywhere it reaches Slack', async () => 
     const files = bodyOf(complete!).files as Array<{ title?: string }>;
     assert.ok(files?.[0]?.title, 'the file must still have a title');
     assert.ok(!files[0]!.title!.includes(FAKE_APP_TOKEN));
+});
+
+
+// ─── #517 round 2: oversized file → caption-as-text downgrade ──────
+
+test('SO-413: an oversized file send delivers its caption as text instead of losing the answer', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'slack-huge-'));
+    const path = join(dir, 'huge.bin');
+    const fh = openSync(path, 'w'); ftruncateSync(fh, 50 * 1024 * 1024 + 1); closeSync(fh); // sparse
+    const seen: string[] = [];
+    const impl = (async (url: string | URL | Request, init?: RequestInit) => {
+        seen.push(`${String(url)}|${String(init?.body)}`);
+        return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, ts: '1.2' }) } as unknown as Response;
+    // justified: same minimal Response harness as the keyboard downgrade test
+    }) as unknown as typeof fetch;
+    const priorFetch = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+        const result = await withSlack({ enabled: true, botToken: 'xoxb-t' }, () =>
+            slackSendHandler({ type: 'photo', filePath: path, caption: 'the answer body', target: slackTargetFromId('C1') }));
+        assert.equal(result.ok, true);
+        assert.deepEqual(result['downgraded'], { operation: 'fileUpload', to: 'text' });
+        assert.equal(seen.length, 1, 'zero upload calls, one chat.postMessage');
+        assert.ok(seen[0]!.includes('chat.postMessage') && seen[0]!.includes('the answer body'));
+    } finally {
+        globalThis.fetch = priorFetch;
+    }
+});
+
+test('SO-413b: an oversized file with no text still refuses (nothing to downgrade to)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'slack-huge-'));
+    const path = join(dir, 'huge.bin');
+    const fh = openSync(path, 'w'); ftruncateSync(fh, 50 * 1024 * 1024 + 1); closeSync(fh);
+    await withSlack({ enabled: true, botToken: 'xoxb-t' }, async () => {
+        await assert.rejects(
+            () => slackSendHandler({ type: 'document', filePath: path, target: slackTargetFromId('C1') }),
+            (e: { statusCode?: number }) => e.statusCode === 413,
+        );
+    });
 });
