@@ -86,7 +86,7 @@ SSE behavior:
 | `agent_status` | `{ running? \| status?, agentId, cli?, isEmployee?, phase?, phaseLabel? }` | `spawn.ts`, `lifecycle-handler.ts`, `orchestrator/distribute.ts`; agent 실행/종료/worker phase |
 | `agent_tool` | `{ agentId, icon, label, toolType?, detail?, stepRef?, status?, isEmployee? }` | `agent/events.ts`, `spawn.ts`; CLI/ACP tool, thinking, search, subagent step |
 | `agent_output` | `{ agentId, cli, text, isEmployee? }` | `spawn.ts`; live preview chunk, including AGY plain stdout |
-| `agent_done` | `{ text, toolLog?, error?, origin?, isEmployee? }` | `lifecycle-handler.ts`, `spawn.ts`, `server.ts`; authoritative final/error |
+| `agent_done` | `{ text, toolLog?, error?, errorKind?, cli?, origin?, isEmployee? }` | `lifecycle-handler.ts`, `spawn.ts`, `server.ts`; authoritative final/error. `errorKind` (`rate_limit|auth|stall|connection|exit`) + `cli` 는 분류된 실패에만 실리며, Slack/Discord forwarder 는 이 필드가 없는 error 페이로드를 채널로 내보내지 않는다 (#519) |
 | `agent_retry` | `{ cli, delay, reason, attempt?, maxRetries?, isEmployee? }` | 429/transient retry 안내. Main runs use exponential backoff up to 3 attempts; employee transient retries use a shorter backoff up to 2 attempts. |
 | `agent_fallback` | `{ from, to, reason, isEmployee? }` | fallback CLI 전환 안내 |
 | `agent_smoke` | `{ cli, confidence, reason, agentId, isEmployee? }` | smoke response auto-continue 안내 |

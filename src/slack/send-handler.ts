@@ -3,6 +3,8 @@
 
 import type { ChannelSendRequest } from '../messaging/send.js';
 import { slackTargetFromId } from '../messaging/slack-target.js';
+import { log } from '../core/logger.js';
+import type { ChannelOperation } from '../messaging/types.js';
 import { getSlackSendClient, resolveSlackDmChannel, sendSlackText } from './send-only-client.js';
 import { sendSlackFile } from './slack-file.js';
 
@@ -56,9 +58,30 @@ export async function slackSendHandler(
         }
         case 'photo':
         case 'document':
-        case 'voice':
+        case 'voice': {
             if (!req.filePath) return { ok: false, error: 'missing_file_path', status: 400 };
-            return sendSlackFile(client.token, target, req.filePath, req.caption ? { caption: req.caption } : {});
+            try {
+                return await sendSlackFile(client.token, target, req.filePath, req.caption ? { caption: req.caption } : {});
+            } catch (error) {
+                // validateSlackFileSize throws 413 BEFORE any upload call. After
+                // caption promotion (messaging/send.ts) the answer text lives only
+                // in req.caption, so an oversized file used to take the whole
+                // answer down with it — three 50 MiB+ refusals on suji, each with
+                // a full answer attached (#517 round 2). Deliver the words.
+                const status = (error as { statusCode?: number }).statusCode;
+                const body = (req.caption ?? req.text ?? '').trim();
+                if (status !== 413 || !body) throw error;
+                log.warn('[slack:send] file exceeds transport limit — delivering caption as text', {
+                    filePath: req.filePath,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                const operation: ChannelOperation = req.type === 'voice' ? 'voice' : 'fileUpload';
+                const fallback = await sendSlackText(client.token, target, body);
+                return fallback.ok
+                    ? { ...fallback, downgraded: { operation, to: 'text' } }
+                    : fallback;
+            }
+        }
         default:
             return { ok: false, error: `unsupported_outbound_type_${String(req.type)}`, status: 400 };
     }

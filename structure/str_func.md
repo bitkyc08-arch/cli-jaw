@@ -94,7 +94,7 @@ cli-jaw/
 │   │   ├── agy-capabilities.ts ← AGY `--help`/`--version` capability probe + cached optional flag support map + legacy emit-all fallback marker (124L)
 │   │   ├── agy-transcript-watcher.ts ← AGY transcript/log watcher and session-id extraction support (291L)
 │   │   ├── pi-runtime.ts     ← Pi profile 정규화 + isolated `PI_CODING_AGENT_DIR` models/settings 생성 + `pi --offline --list-models` discovery + `pi --mode rpc` JSONL parser/spawner (803L) ✨
-│   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers + goal continuation boundary row (1262L)
+│   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers + goal continuation boundary row (1265L)
 │   │   ├── jwc-runtime.ts    ← resident/in-process JWC runtime bridge and event handling (222L)
 │   │   ├── kiro-auth.ts      ← Kiro CLI auth store reader (resolveKiroDataPath, readKiroAuthFromStore, resolveKiroProfileArn, regionFromProfileArn, listKiroConversationIdsForCwd, resolveKiroSessionIdAfterSpawn, extractKiroSessionIdFromV2Store) (253L)
 │   │   ├── kiro-models.ts    ← Kiro live model inventory (KiroModelEntry, KiroModelInventory, parseKiroModelListJson, fetchKiroModelInventory) (98L)
@@ -286,8 +286,8 @@ cli-jaw/
 │   │   ├── inbound-file.ts   ← 인바운드 첨부 단일 IO owner (files.info → 인증 스트리밍 다운로드 → saveUpload, 파일/메시지 바이트 예산, 고정 error code) (280L) ✨
 │   │   ├── inbound-url.ts    ← 인바운드 다운로드 URL 검증 (Slack host allowlist + https-only hop + 사설망 거부) (44L) ✨
 │   │   ├── send-only-client.ts ← bot-token 전용 outbound + conversations.open DM 해석 (180L)
-│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (81L)
-│   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 (65L)
+│   │   ├── forwarder.ts      ← agent_done 포워딩 + guarded local-image relay (filename caption) (87L)
+│   │   ├── send-handler.ts   ← ChannelSendRequest → Slack Web API 어댑터 + 413 텍스트 다운그레이드 (88L)
 │   │   ├── manifest.ts       ← Slack 앱 표시명 검증 + bot 표시명 결정적 파생을 포함한 매니페스트 single source (`jaw slack manifest`/`setup`이 사용) (161L)
 │   │   ├── scope-status.ts   ← OAuth grant drift 단일 소유자 (auth.test의 x-oauth-scopes를 manifest 요구 집합과 대조, 미관측을 '이상 없음'과 구분, doctor·health·identity 경고가 공유) (179L) ✨
 │   │   ├── allowlist-audit.ts ← channelIds 변경 방향 분류 + 축소 감사 기록 (게이트 리더 기준 정규화, route·settings watcher 양쪽이 공유) (125L) ✨
