@@ -488,7 +488,18 @@ export function isAgentBusy(scopeKey: string | null = 'default'): boolean {
 
 // [I2] Per-process kill reason map (replaces global variable to avoid cross-process confusion)
 const killReasons = new Map<number, string>();
-const DEFAULT_STEER_WAIT_MS = 3_000;
+/** How long a steer waits for the killed child to actually exit.
+ *
+ *  This is the bound on a WEDGED child, not on the common case: a healthy child
+ *  exits in milliseconds and the interval resolves immediately, so raising this
+ *  costs nothing when things work. What it buys is that a slow-to-die child is
+ *  waited for rather than raced past. The cost is real and worth stating: a truly
+ *  wedged child now holds the steer for 10s instead of 3s before the caller
+ *  proceeds anyway.
+ *
+ *  Salvage is NOT the reason — `waitForExitSettled` below already absorbs the
+ *  case where the exit handler has not finished writing (#523). */
+const DEFAULT_STEER_WAIT_MS = 10_000;
 const DEFAULT_KILL_ESCALATION_MS = 2_000;
 const CLAUDE_E_STEER_WAIT_MS = 30_000;
 const CLAUDE_E_STEER_KILL_ESCALATION_MS = 8_000;
@@ -721,9 +732,15 @@ export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default'
     if (!activeMainProcesses.has(scopeKey)) return Promise.resolve();
     return new Promise<void>(resolve => {
         const check = setInterval(() => {
-            if (!activeMainProcesses.has(scopeKey)) { clearInterval(check); resolve(); }
+            if (!activeMainProcesses.has(scopeKey)) { clearInterval(check); clearTimeout(deadline); resolve(); }
         }, 100);
-        setTimeout(() => { clearInterval(check); resolve(); }, timeoutMs);
+        // The deadline has to be CLEARED on the fast path, not just left to fire.
+        // A child normally exits in milliseconds, so the common case resolved the
+        // promise and then held a live timer for the rest of the budget — and
+        // unlike the teardown timer below it is not unref'd, so it kept the event
+        // loop alive. The sibling waitForAllProcessesEnd already does exactly
+        // this (#523).
+        const deadline = setTimeout(() => { clearInterval(check); resolve(); }, timeoutMs);
     });
 }
 
@@ -818,6 +835,18 @@ export async function steerAgent(
         const salvage = getSteerSalvageAfter(chatSessionId, maxIdBeforeKill);
         // The ⏹️ tag is a human-facing marker; the model gets the payload only.
         steerContext = salvage ? salvage.replace(/^⏹️ \[interrupted\]\s*/, '') : null;
+        // A kill-steer that salvages nothing means the new turn starts blind: the
+        // interrupted work is gone and the model will not know it happened. That is
+        // survivable, but it is invisible — it looks exactly like a normal steer
+        // until the answer contradicts what the user just saw. Say so (#523).
+        if (!steerContext) {
+            broadcast('steer_context_lost', stripUndefined({
+                origin: source || 'web',
+                scope: scopeKey,
+                sessionId: chatSessionId,
+                requestId: meta?.requestId,
+            }));
+        }
     }
     insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
     broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
