@@ -3,6 +3,11 @@ name: Tests
 on:
   push:
     branches:
+      # `dev` runs the suite so its HEAD is never unverified live code (#521).
+      # It does NOT become a release branch: publish.yml only accepts a
+      # certifying Tests run from `preview`/`main` (see its headBranch filter),
+      # and promote-to-main.sh pins `--branch preview`.
+      - dev
       - preview
       - main
   pull_request:

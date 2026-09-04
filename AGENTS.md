@@ -45,10 +45,18 @@ rebase 중 만나는 충돌은 대개 두 종류이고 해소법이 정해져 �
 - **`structure/str_func.md`**: 어느 쪽도 고르지 말고 실제 트리에서 다시 만든다.
   줄 수는 파생값이다 — `bash structure/verify-counts.sh --fix` 후 재검증.
 
-**`dev` 푸시는 CI를 돌리지 않는다.** `test.yml` 과 `postinstall-platform.yml` 은
-`preview`/`main` push와 `pull_request` 에만 반응한다. exact-head CI 증거가
-필요하면 **PR 을 열어야** 하며, `dev` 에 푸시해 두고 "CI 통과"를 주장하면 안 된다 —
-애초에 아무것도 돌지 않는다. 확인은 SHA 대조로 한다:
+**`dev` 푸시는 `test.yml` 을 돌린다 (#521부터).** 예전에는 아무것도 돌지 않아서
+`a241c6222` 같은 커밋이 check-run 0개로 `dev` 위에 앉아 있었다. 다만
+`postinstall-platform.yml` 은 여전히 `preview`/`main` push 와 `pull_request` 에만
+반응하므로 **설치 표면(installer surface) 증거는 `dev` 푸시로 얻을 수 없고**,
+피처 브랜치는 여전히 PR 을 열어야 CI 가 돈다.
+
+`dev` 가 릴리스 브랜치가 된 것은 아니다. `publish.yml` 은 인증 런을 SHA 로 찾되
+**`preview`/`main` 런만** 받아들이고(`:76` 의 `headBranch` 필터, #521 에서 좁힘),
+승격은 `--branch preview` 로 찾는다(`scripts/promote-to-main.sh:28-34`). 이 필터가
+필요한 이유는 위 ★ 단계가 매 사이클 `dev` 를 preview head 로 맞추기 때문이다 —
+같은 SHA 에 양쪽 런이 생기므로, 필터가 없으면 `dev` 런이 릴리스를 인증할 수 있었다.
+확인은 어느 경우든 SHA 대조로 한다:
 
 ```bash
 git rev-parse HEAD

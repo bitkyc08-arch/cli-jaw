@@ -115,6 +115,7 @@ export const SKILL_EMOJI_TO_ICON: Record<string, IconName> = {
     '💚': 'heart',
     '💰': 'money',
     '💼': 'briefcase',
+    '📆': 'calendar',
     '📍': 'mapPin',
     '📓': 'notebook',
     '📘': 'read',
