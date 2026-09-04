@@ -27,6 +27,12 @@ export type MentionHit = {
      *  message itself. Replying to `ts` when the message already lives in a
      *  thread would start a second thread off a reply. */
     threadTs: string;
+    /** True when `threadTs` is the message's OWN ts — a reply address for a
+     *  thread that does not exist yet, not a conversation. The session key must
+     *  fall back to the channel, exactly as the inbound path does, or the two
+     *  producers key the same top-level message differently and a mention answer
+     *  lands in a session the conversation cannot read (#520). */
+    threadIsSynthetic?: boolean;
     authorId: string | null;
     text: string;
 };
@@ -341,6 +347,10 @@ export async function scanSlackMentions(
                     channelId,
                     ts: message.ts,
                     threadTs: message.threadTs || message.ts,
+                    // Same promotion as the inbound path, so it carries the same
+                    // flag: without it this producer keeps minting one session
+                    // per top-level mention (#520).
+                    ...(message.threadTs ? {} : { threadIsSynthetic: true }),
                     authorId: message.user ?? null,
                     text: message.text,
                 });

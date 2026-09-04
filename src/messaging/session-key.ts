@@ -34,7 +34,14 @@ export function buildRemoteSessionKey(target: RemoteTarget): string {
 export function buildRemoteBindingKey(target: RemoteTarget): string {
     const part = (value: string) => encodeURIComponent(value);
     const base = `jaw:${part(target.channel)}:${part(target.peerKind)}:${part(target.targetId)}`;
-    const threadId = normalizedThreadId(target);
+    // A SYNTHETIC thread id addresses a reply; it does not identify a
+    // conversation. Keying on it made every top-level Slack message its own
+    // session (#520). The check lives here and NOT in `normalizedThreadId`,
+    // which `buildRemoteSessionKey` also uses: that one feeds
+    // `deliveryTargetKey`, where a thread reply and a channel post genuinely are
+    // different destinations, and folding it would break per-turn delivery
+    // dedupe.
+    const threadId = target.threadIsSynthetic === true ? undefined : normalizedThreadId(target);
     return threadId ? `${base}:thread:${part(threadId)}` : base;
 }
 

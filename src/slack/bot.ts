@@ -17,7 +17,7 @@ import {
     setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget,
     transportStarted, transportNotStarted, type TransportStartOutcome,
 } from '../messaging/runtime.js';
-import { slackTargetFromId, resolveSlackThreadTs } from '../messaging/slack-target.js';
+import { slackTargetFromId, resolveSlackThreadPlacement } from '../messaging/slack-target.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildMediaPromptMany } from '../agent/spawn.js';
 import {
@@ -295,10 +295,15 @@ function gateConfig() {
 
 function buildSlackTarget(event: SlackMessageEvent): RemoteTarget {
     const replyInThread = settings["slack"]?.replyInThread !== false;
-    const threadTs = resolveSlackThreadTs(event, replyInThread);
+    // Reply address and session identity are separate questions: a top-level
+    // message's own ts is where a reply would open a thread, but it does not
+    // name a conversation (#520). Both callers of this function reach the
+    // journal and dispatch paths through the returned target.
+    const placement = resolveSlackThreadPlacement(event, replyInThread);
     const teamId = settings["slack"]?.teamId;
     return slackTargetFromId(event.channel as string, {
-        ...(threadTs ? { threadTs } : {}),
+        ...(placement.threadTs ? { threadTs: placement.threadTs } : {}),
+        ...(placement.synthetic ? { threadIsSynthetic: true } : {}),
         ...(teamId ? { teamId: String(teamId) } : {}),
     });
 }

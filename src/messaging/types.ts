@@ -14,6 +14,14 @@ export type RemoteTarget = {
     peerKind: RemotePeerKind;
     targetId: string;
     threadId?: string;
+    /** The thread named by `threadId` does not exist yet: it is the ts of a
+     *  TOP-LEVEL message, carried so a reply can open a thread under it.
+     *
+     *  It is a REPLY ADDRESS only and must never key a session. Keying on it
+     *  meant every top-level message minted its own `chat_sessions` row, a table
+     *  with no eviction, no TTL and no cap — one live database reached 186MB
+     *  (#520). Slack only; see `resolveSlackThreadPlacement`. */
+    threadIsSynthetic?: boolean;
     guildId?: string;
     parentTargetId?: string;
 };
@@ -94,6 +102,12 @@ export function isRemoteTarget(value: unknown): value is RemoteTarget {
     for (const field of ['threadId', 'guildId', 'parentTargetId'] as const) {
         if (target[field] != null && typeof target[field] !== 'string') return false;
     }
+    // `threadIsSynthetic` is deliberately NOT validated into a rejection. This
+    // predicate guards a routing address, and a malformed flag on an otherwise
+    // valid address would discard the whole target — sending the reply down the
+    // last-active fallback chain and into a different conversation (#474). The
+    // flag is read only through `=== true`, so anything else is simply not
+    // synthetic, which is the safe default: a real thread keeps its own key.
     return true;
 }
 

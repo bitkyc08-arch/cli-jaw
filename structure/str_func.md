@@ -133,9 +133,9 @@ cli-jaw/
 │   │   ├── channel-health.ts ← 채널 헬스 체크 helper + additive ingress/metrics snapshot (202L) ✨
 │   │   ├── channel-validate.ts ← 온보딩 마법사 라이브 크리덴셜 검증 (telegram getMe / discord users@me / slack auth.test+connections.open, 토큰 비로깅) (139L) ✨
 │   │   ├── send-result.ts    ← send result type helper (14L) ✨
-│   │   ├── session-key.ts    ← 세션 키 헬퍼 (49L)
+│   │   ├── session-key.ts    ← 세션 키 헬퍼 (56L)
 │   │   ├── thread-target.ts  ← Telegram forum topic `message_thread_id` 정규화 helper (21L)
-│   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (123L)
+│   │   ├── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (137L)
 │   │   ├── extract-images.ts ← Markdown AST 로컬 이미지 후보 추출 + 확장자 필터/중복 제거/4개 cap (36L)
 │   │   ├── access-policy.ts   ← remote command access-policy substrate (deny/allowlist/paired/all) (45L)
 │   │   ├── approval-presentation.ts ← Telegram/Discord/Slack Approve/Deny keyboards + opaque appr/aprd ids (128L)
@@ -155,7 +155,7 @@ cli-jaw/
 │   │   ├── channel-capabilities.ts ← closed capability set + generated matrix (101L)
 │   │   ├── delivery-outcome.ts ← DeliveryReceipt classification (145L)
 │   │   ├── draft-stream.ts   ← draft stream helper (180L)
-│   │   └── slack-target.ts   ← Slack target helper (56L)
+│   │   └── slack-target.ts   ← Slack target helper (74L)
 │   ├── orchestrator/         ← 직원 오케스트레이션 + 인터페이스 통합 (19 files)
 │   │   ├── state-machine.ts ← IPABCD 상태 머신 (I=Interview pre-plan) + broadcast(state,title) + worklog 타이틀 파싱 + employee terminology + OrcContext.workingDir + OrcContext.interview + Project root dispatch contract + Phase60 actor-aware canTransition(GateInput) form-only evidence gate + STATE_PROMPTS --attest instructions (806L)
 │   │   ├── pipeline.ts       ← IPABCD orchestration (explicit entry only) + interview first-turn detection + plan context persistence + memorySnapshot injection + reset clears boss session + OrcContext workingDir init + Approved Plan Project root guard + remote-channel elicitation guard + bounded delayed worker replay notice + Phase60 phase_attestation strip/fallback + no-state narration warn (771L)
@@ -234,7 +234,7 @@ cli-jaw/
 │   ├── memory/               ← 데이터 영속화 + advanced memory runtime (17 files)
 │   │   ├── advanced.ts       ← Advanced Memory re-export stub (1L)
 │   │   ├── bootstrap.ts      ← legacy memory/bootstrap import + structured root 초기화 (588L)
-│   │   ├── heartbeat.ts      ← Heartbeat 잡 스케줄 + cron/every timer orchestration + minute-slot dedupe + fs.watch (647L)
+│   │   ├── heartbeat.ts      ← Heartbeat 잡 스케줄 + cron/every timer orchestration + minute-slot dedupe + fs.watch (653L)
 │   │   ├── heartbeat-schedule.ts ← Heartbeat schedule normalize + cron validate/match + timezone validate + immediate cron loop helper (410L)
 │   │   ├── heartbeat-mention-watch.ts ← Slack mention 항목 loop + busy yield + server-owned thread send + WatchNamespace 경유 ledger 접근 (249L)
 │   │   ├── mention-watch-ledger.ts ← v2 ledger 단일 접근 경로 (WatchNamespace = job+workspace+user, 모든 SQL이 3파트 predicate 유지, A/B 대칭 테스트가 최종 보증) (104L) ✨
@@ -269,7 +269,7 @@ cli-jaw/
 │   │   └── discord-file.ts   ← Discord 파일 전송 (75L)
 │   ├── slack/                ← Slack 인터페이스 (23 files, Socket Mode + Web API, SDK 없음)
 │   │   ├── socket.ts         ← Socket Mode client (apps.connections.open → wss, ack-before-work, envelope dedupe TTL, hello deadline, backoff 재연결) (407L)
-│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (1404L)
+│   │   ├── bot.ts            ← Slack 봇 lifecycle + envelope routing + orchestrate 경로 + queued-result waiter (1409L)
 │   │   ├── api.ts            ← Slack Web API fetch wrapper (HTTP 200 + ok:false를 실패로 처리, credential/URL redaction, Retry-After) (408L)
 │   │   ├── format.ts         ← CommonMark → mrkdwn 변환 + code-fence 보존 chunking (66L)
 │   │   ├── events.ts         ← inbound gating (self-echo/bot/subtype/allowlist/mention) + Block Kit 텍스트 추출 (283L)
@@ -278,7 +278,7 @@ cli-jaw/
 │   │   ├── conversation.ts   ← 대화/스레드 컨텍스트 (conversations.info + replies, 참여자는 author 유도, method별 억제·시작률) (347L)
 │   │   ├── context.ts        ← 프롬프트 컨텍스트 블록 조립 (채널 id·thread_ts 무절단, 섹션별 코드포인트 예산, 신뢰 경계 문구 보존) (260L)
 │   │   ├── history.ts        ← 동적 조회 (conversations.history/replies form-encoded 래퍼 + 재시도 + 에이전트용 포맷/redact) (251L)
-│   │   ├── mention-watch.ts  ← 가입 채널 backward mention scan + frontier/resume/round-robin/429 stop/60-channel overflow (359L)
+│   │   ├── mention-watch.ts  ← 가입 채널 backward mention scan + frontier/resume/round-robin/429 stop/60-channel overflow (369L)
 │   │   ├── attachment-recovery.ts ← app_mention 봉투에 없는 첨부를 channel+ts 재조회로 복구 (oldest+inclusive+limit=1) (53L)
 │   │   ├── commands.ts       ← slash command → 공유 parseCommand/executeCommand 파이프라인 (166L)
 │   │   ├── slack-file.ts     ← files.getUploadURLExternal → upload → completeUploadExternal 3단계 업로드 (파일명·캡션 모두 아웃바운드 마스킹) (117L)
