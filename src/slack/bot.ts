@@ -826,7 +826,11 @@ async function runSlackMessageEvent(
  * that outlives the deadline keeps running and warms the cache, so the next
  * message in the same conversation gets the full block.
  */
-const INBOUND_CONTEXT_DEADLINE_MS = 700;
+// Two round trips against Slack, so 700ms lost the race often enough that the
+// first message in a thread — the only one carrying history — regularly arrived
+// with no context at all. The socket acks BEFORE dispatch (socket.ts), so a
+// longer deadline cannot cause redelivery; it only delays this one reply (#518).
+const INBOUND_CONTEXT_DEADLINE_MS = 2500;
 
 async function buildInboundContextBlock(
     event: SlackMessageEvent, identity: SlackIdentity, signal: AbortSignal,
