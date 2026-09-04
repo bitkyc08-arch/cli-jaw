@@ -14,6 +14,7 @@ import { classifyExitError, shouldAnnounceStallTruncation, STALL_TRUNCATION_NOTI
 import { backfillGrokTraceTools } from './grok-trace-backfill.js';
 import { shouldClearHighTurnSessionBucket, shouldUseTurnCountRefresh } from './spawn/resume.js';
 import { recordError, clearErrors } from './alert-escalation.js';
+import { noteRuntimeCooldown, isRuntimeCoolingDown, clearRuntimeCooldown, DEFAULT_COOLDOWN_MS } from './error-cooldown.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { clearLiveRun, getLiveRun } from './live-run-state.js';
 import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../shared/tool-log-sanitize.js';
@@ -501,6 +502,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         fallbackState.delete(cli);
     }
     if (code === 0) clearErrors(cli);
+    // Capacity came back: only a successful run proves it, so the park is
+    // cleared here and nowhere else. Same key space as the write (#519).
+    if (code === 0) clearRuntimeCooldown(runtimeCli);
 
     if (code === 0 && runtimeCli === 'grok') {
         const recovered = backfillGrokTraceTools(ctx);
@@ -727,7 +731,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     } else if (mainManaged && code !== 0 && !wasKilled) {
         // ─── Error handling ───
         const diagnosticText = `${ctx.fullText}\n${ctx.traceLog.join('\n')}`;
-        const { is429, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, isConnection, message: errMsg } = classifyExitError(
+        const { is429, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, isConnection, message: errMsg, errorKind, detail: errDetail, retryAfterMs } = classifyExitError(
             runtimeCli,
             code,
             ctx.stderrBuf,
@@ -744,6 +748,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         // on ConnectRPC loss with no retry (2026-08-24).
         const effectiveIs429 = is429 || isClaudeRateLimit || isTransientStartup || isConnection;
         recordError(cli, isStall ? 'stall' : isModelCapacity ? 'model_capacity' : effectiveIs429 ? '429' : 'error');
+        // Park the runtime that just refused us so the fallback search below —
+        // and the next turn's — can skip it instead of walking back into the
+        // same exhausted provider. Keyed by runtimeCli on write AND read (#519).
+        if (is429) noteRuntimeCooldown(runtimeCli, retryAfterMs ?? DEFAULT_COOLDOWN_MS);
+        // The raw child output is evidence for the trace, not a channel message.
+        if (errDetail) ctx.traceLog.push(`[exit-detail] ${errDetail}`);
 
         const invalidatedResume = isResume
             && shouldInvalidateResumeSession(runtimeCli, code, ctx.stderrBuf, diagnosticText);
@@ -830,7 +840,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             && !performedSideEffects(ctx)
             && mainAttempt < MAIN_MAX_RETRIES
         ) {
-            const delayMs = computeBackoff(mainAttempt);
+            // Obey a provider that stated its own wait, when it asked for longer
+            // than our backoff: retrying before it expires just burns an attempt
+            // against a runtime that already said no (#519).
+            const delayMs = Math.max(computeBackoff(mainAttempt), retryAfterMs ?? 0);
             const delaySec = Math.round(delayMs / 1000);
             console.log(`[jaw:retry] ${cli} 429 detected — waiting ${delaySec}s before retry (attempt ${mainAttempt + 1}/${MAIN_MAX_RETRIES})`);
             broadcast('agent_retry', { cli, delay: delaySec, reason: errMsg, attempt: mainAttempt + 1, maxRetries: MAIN_MAX_RETRIES, ...empTag }, isEmployee ? 'internal' : 'public');
@@ -870,7 +883,15 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         // the protection is trivially bypassed.
         if (!opts.internal && !opts._isFallback && !suppressClaudeRateLimitFallback && !performedSideEffects(ctx)) {
             const fallbackCli = (settings["fallbackOrder"] || [])
-                .find((fc: string) => fc !== cli && detectCli(fc).available);
+                // Skip a runtime that just told us it was out of capacity: the
+                // whole point of falling back is to reach one that can answer.
+                //
+                // `fc` is a REGISTRY name from settings while cooldowns are keyed
+                // by RUNTIME name, and `ai-e` maps to `claude-e`. Comparing the
+                // two key spaces directly would make the skip a silent no-op for
+                // exactly the aliased runtime, so the name is mapped first.
+                .find((fc: string) => fc !== cli && detectCli(fc).available
+                    && !isRuntimeCoolingDown(lifecycleRuntimeCli(fc, settings["perCli"]?.[fc]?.provider)));
             if (fallbackCli) {
                 const st = fallbackState.get(cli);
                 if (st) {
@@ -907,7 +928,21 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 return;
             }
         }
-        broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
+        // The `{ ...runTag(ctx),` opening stays on this line: RID-001 in
+        // tests/unit/web-sse-replay-idempotency.test.ts matches that exact shape
+        // to prove every agent_done carries its trace run id.
+        broadcast('agent_done', { ...runTag(ctx),
+            text: `❌ ${errMsg}`,
+            error: true,
+            // Classified here so a forwarder never re-parses Korean prose to
+            // decide what happened, and so an untagged error payload stays out
+            // of the channel entirely (#519).
+            errorKind,
+            cli: runtimeCli,
+            origin,
+            ...(isEmployee ? { audience: 'internal' } : {}),
+            ...empTag,
+        }, isEmployee ? 'internal' : 'public');
     } else if (isEmployee && code !== 0 && !wasKilled && !opts._isFallback) {
         // ─── Employee transient retry (exponential backoff, up to EMP_MAX_RETRIES) ───
         const diagnosticText = `${ctx.fullText}\n${ctx.traceLog.join('\n')}`;

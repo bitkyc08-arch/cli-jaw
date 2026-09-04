@@ -11,6 +11,7 @@ import { assertSendFilePath } from '../security/path-guards.js';
 import { asSendable } from './channel-types.js';
 import { sendDiscordFile } from './discord-file.js';
 import { redactOutboundText, logErrorText } from '../messaging/redact.js';
+import { renderAgentErrorBlock } from '../messaging/error-block.js';
 
 export async function relayDiscordImages(
     client: Client,
@@ -71,7 +72,11 @@ export function createDiscordForwarder(opts: {
 }) {
     return async (type: string, data: Record<string, unknown>) => {
         const text = data?.["text"];
-        if (type !== 'agent_done' || typeof text !== 'string' || !text || data["error"]) return;
+        if (type !== 'agent_done' || typeof text !== 'string' || !text) return;
+        // Same opt-in rule as the Slack forwarder: only a classified failure is
+        // worth posting, and only to a non-internal audience (#519).
+        const errorBlock = data["error"] ? renderAgentErrorBlock(data) : null;
+        if (data["error"] && !errorBlock) return;
         if (opts.shouldSkip?.(data)) return;
         const target = opts.getLastTarget();
         if (!target?.targetId || !opts.client) return;
@@ -79,12 +84,13 @@ export function createDiscordForwarder(opts: {
             const channel = await opts.client.channels.fetch(target.targetId);
             const sendable = asSendable(channel);
             if (!sendable) return;
-            const chunks = chunkDiscordMessage(`${opts.prefix || ''}${text}`);
+            const body = errorBlock ?? text;
+            const chunks = chunkDiscordMessage(`${opts.prefix || ''}${body}`);
             for (const chunk of chunks) {
                 await sendable.send(chunk);
             }
-            await relayDiscordImages(opts.client, target, text);
-            opts.log?.({ channelId: target.targetId, preview: redactOutboundText(text).slice(0, 60) });
+            if (!errorBlock) await relayDiscordImages(opts.client, target, text);
+            opts.log?.({ channelId: target.targetId, preview: redactOutboundText(body).slice(0, 60) });
         } catch (e) {
             log.error('[discord:forward]', logErrorText(e));
         }

@@ -1,6 +1,7 @@
 // ─── Error Classification for Agent Exit ─────────────
 
 import { isClaudeLikeCli } from './cli-helpers.js';
+import type { ErrorKind } from '../messaging/error-block.js';
 
 export interface ErrorClassification {
     is429: boolean;
@@ -15,6 +16,15 @@ export interface ErrorClassification {
      *  fixed by respawning. */
     isConnection: boolean;
     message: string;
+    /** The classification a forwarder can act on without re-parsing prose.
+     *  Carried on the `agent_done` payload; a payload without one is not
+     *  rendered into a channel at all (#519). */
+    errorKind: ErrorKind;
+    /** Raw child output, bounded, for the TRACE only. Never a channel message:
+     *  it is unbounded, frequently carries paths, and is not actionable. */
+    detail: string;
+    /** Provider-requested wait, when the provider stated one. */
+    retryAfterMs?: number | undefined;
 }
 
 /** Transport failures as the wrapped CLIs actually print them. `unavailable`
@@ -74,9 +84,48 @@ export function classifyExitError(
     else if (is429) message = '⚡ API 용량 초과 (429)';
     else if (isAuth) message = '🔐 인증 오류 — CLI 로그인 상태를 확인해주세요';
     else if (isConnection) message = `🔌 ${cli} 연결 오류 — 재시도합니다`;
-    else if (combined.trim()) message = combined.trim().slice(0, 200);
 
-    return { is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup, isConnection, message };
+    // The raw stderr slice used to become the user-facing message. It is
+    // unbounded child output — paths, stack frames, sometimes credentials — and
+    // the user cannot act on any of it. It stays in `detail` for the trace, and
+    // the message keeps the exit line, which is the part that says what happened.
+    const detail = combined.trim() ? combined.trim().slice(0, 200) : '';
+
+    // What the next action depends on, decided once here instead of re-parsed
+    // from Korean prose by each forwarder (#519).
+    const errorKind: ErrorKind = isStall ? 'stall'
+        : is429 ? 'rate_limit'
+        : isAuth ? 'auth'
+        : isConnection ? 'connection'
+        : 'exit';
+
+    return {
+        is429, isAuth, isStall, isModelCapacity, isClaudeRateLimit, isTransientStartup,
+        isConnection, message, errorKind, detail,
+        retryAfterMs: parseRetryAfterMs(combined),
+    };
+}
+
+/** How long the provider asked us to wait, when it said so.
+ *
+ *  Providers report this three ways and the units differ: `retry_after_ms` is
+ *  milliseconds while `Retry-After` is seconds. The millisecond spelling is
+ *  matched FIRST — otherwise `retry_after_ms: 1500` matches the second-based
+ *  pattern, `ms` is swallowed as part of the key, and a 1.5-second wait becomes
+ *  a 25-minute one. */
+export function parseRetryAfterMs(text: string): number | undefined {
+    const ms = /retry[-_ ]?after[-_ ]?ms["'\s:=]+(\d+)/i.exec(text);
+    if (ms?.[1]) return capRetryAfter(Number(ms[1]));
+    const secs = /retry[-_ ]?after["'\s:=]+(\d+)/i.exec(text);
+    if (secs?.[1]) return capRetryAfter(Number(secs[1]) * 1000);
+    return undefined;
+}
+
+/** A provider that asks for an hour is not worth obeying literally: the turn is
+ *  already lost and a bounded wait lets the fallback runtime take over. */
+function capRetryAfter(ms: number): number | undefined {
+    if (!Number.isFinite(ms) || ms <= 0) return undefined;
+    return Math.min(ms, 600_000);
 }
 
 // Lives in its own leaf module so `core/db` can strip it without importing the
