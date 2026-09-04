@@ -215,6 +215,18 @@ export function checkAttestationGate(
         reason: `C → D requires a passing check, but the attestation reports exitCode ${att.exitCode}. Fix the failure (orchestrate B) before advancing.`,
       };
     }
+    // A produced BINARY document is the one artifact class where "it compiled" says
+    // nothing: a PDF with tofu boxes for every Korean glyph passes every static gate
+    // and is unreadable (#522). That is a refusal, not a warning.
+    //
+    // BEFORE the advisory, and the order is load-bearing: the widened
+    // RENDER_ARTIFACT_PATTERN now matches a produced document too, so an
+    // advisory-first arrangement would return ok:true here and leave this
+    // block unreachable.
+    const binaryBlock = checkBinaryArtifactGrounding(att);
+    if (binaryBlock) {
+      return { ok: false, reason: binaryBlock };
+    }
     // Render-grounding soft warning (C-RENDER-GROUNDING-01): when the did/checkOutput
     // mentions render-artifact file types but lacks observation vocabulary, emit an
     // advisory. The gate remains a pass — this is a warning, never a block.
@@ -255,7 +267,7 @@ export function checkAuditEvidenceAdvisory(att: PhaseAttestation): string | null
 // emit an advisory warning. The gate result always remains ok:true.
 
 /** File-type keywords that indicate a render artifact was likely involved. */
-const RENDER_ARTIFACT_PATTERN = /(?:\b|\.)(html|svg|css|jsx|tsx|canvas|chart|animation)\b|\b(ui|game)\b/i;
+const RENDER_ARTIFACT_PATTERN = /(?:\b|\.)(html|svg|css|jsx|tsx|canvas|chart|animation|pdf|docx|pptx|xlsx|hwpx?|png|jpe?g)\b|\b(ui|game)\b/i;
 
 /** Observation vocabulary that indicates the agent actually ran and observed the artifact. */
 const RENDER_OBSERVATION_PATTERN = /\b(screenshot|render|rendered|observed|headless|viewport|render-not-applicable|visual|browser|puppeteer|playwright|pdftoppm|opened|displayed|inspected)\b/i;
@@ -275,6 +287,59 @@ export function checkRenderGroundingAdvisory(att: PhaseAttestation): string | nu
     '(screenshot/render/observed/headless/viewport). If this work-phase produced a ' +
     'visual artifact, consider running and observing it before advancing. ' +
     'If render grounding does not apply, mention "render-not-applicable" in the did.'
+  );
+}
+
+/** A document format whose correctness only exists when someone opens it.
+ *
+ *  The extension must be TERMINAL. Matching `.pdf` anywhere would refuse
+ *  `export.pdf.ts` — a source file — because `.` is a word boundary, turning a
+ *  pure code change into a demand to screenshot a document it never produced. */
+const BINARY_DOCUMENT_PATTERN = /\.(pdf|docx|pptx|xlsx|hwpx?)(?![\p{L}\p{N}._-])/iu;
+
+/** Evidence that someone actually LOOKED AT the document.
+*
+ *  `render`/`rendered`/`렌더` are deliberately ABSENT. Rendering is how the
+ *  document was PRODUCED, not evidence that anyone saw the result — and
+ *  "rendered the report to report.pdf" is the exact sentence this gate exists
+ *  to question.
+ *
+*  Korean terms are included deliberately: attestations in this repo are
+*  routinely written in Korean, and an English-only vocabulary would refuse an
+*  agent that DID open the file and said so. */
+const BINARY_OBSERVATION_PATTERN = /\b(screenshot|observed|headless|pdftoppm|opened|displayed|inspected|viewed|render-not-applicable|preview|thumbnail)\b|열어|열었|확인했|확인함|검토했|스크린샷|미리보기/i;
+
+/** Work that NAMES a document without producing one.
+ *
+ *  A filename is also how you refer to a file you changed, replaced or deleted.
+ *  Without this, `replaced the stale fixtures/invoice.docx test input` is
+ *  refused — and an agent that learns the gate fires on work it did not do
+ *  learns to reach for the override, which is worse than no gate. */
+const BINARY_NON_PRODUCTION_PATTERN = /\b(fixture|fixtures|golden|snapshot|test input|deleted|removed|obsolete|stale|documented|documentation|readme|parser|writer|import|imports|imported|parse|parsing)\b|삭제|제거|픽스처|문서화/i;
+
+/**
+ * Refuse a C→D that claims a produced binary document with no sign anyone looked
+ * at it. Returns the refusal reason, or null when the phase may advance.
+ *
+ * Separate from the advisory on purpose: `html` without observation must stay a
+ * warning (three existing tests assert exactly that), while a produced PDF is
+ * the case where passing static gates proves nothing at all.
+ */
+export function checkBinaryArtifactGrounding(att: PhaseAttestation): string | null {
+  // `did` only. A fixture path in pasted command output is not a claim to have
+  // produced a document.
+  const did = att.did || '';
+  if (!BINARY_DOCUMENT_PATTERN.test(did)) return null;
+  if (BINARY_OBSERVATION_PATTERN.test(did)) return null;
+  if (BINARY_OBSERVATION_PATTERN.test(att.checkOutput || '')) return null;
+  if (BINARY_NON_PRODUCTION_PATTERN.test(did)) return null;
+  return (
+    '[C-RENDER-GROUNDING-01] This attestation says it produced a binary document, ' +
+    'but nothing in it says anyone opened the result. A document can satisfy every ' +
+    'static gate and still be unreadable — missing CJK fonts render every Korean ' +
+    'glyph as a tofu box, and no test catches that. Open the output (pdftoppm, a ' +
+    'screenshot, a viewer), say what you saw, and attest again. ' +
+    'If you did not produce this document, say "render-not-applicable" in the did.'
   );
 }
 
