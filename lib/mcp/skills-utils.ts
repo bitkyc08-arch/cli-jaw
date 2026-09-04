@@ -123,6 +123,10 @@ export const OPENCLAW_ACTIVE = new Set([
     'jaw-github', 'jaw-telegram-send',
     'jaw-video', 'jaw-pdf-vision', 'jaw-diagram', 'jaw-structured-renderers',
     'jaw-desktop-control', 'jaw-goal',
+    // macOS-only, like jaw-screen-capture: it activates everywhere and the
+    // SKILL.md declares its own os/bins requirement. Gating activation by
+    // platform would split this set from the Electron mirror (SNM-019).
+    'jaw-calendar-reminders',
 ]);
 
 /** Walk up from current file to find package.json → package root */

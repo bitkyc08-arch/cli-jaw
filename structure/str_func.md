@@ -28,7 +28,7 @@ cli-jaw/
 │   │   ├── skills-distribution.ts ← 스킬 배포/복사 로직 (346L)
 │   │   ├── skills-reset.ts   ← 스킬 리셋 core (285L)
 │   │   ├── skills-symlinks.ts ← 스킬 심링크 관리 (373L)
-│   │   ├── skills-utils.ts   ← 스킬 유틸리티 (242L)
+│   │   ├── skills-utils.ts   ← 스킬 유틸리티 (246L)
 │   │   ├── unified-config.ts ← 통합 MCP 설정 (99L)
 │   │   └── mcp-install.ts    ← MCP 설치 헬퍼 (108L)
 │   ├── upload.ts             ← 파일 업로드 + Telegram 다운로드 guards(status/timeout/maxBytes) + 유니코드 파일명 (228L)
@@ -493,7 +493,7 @@ cli-jaw/
 ├── scripts/                  ← 도구 스크립트 (TypeScript + Shell + CJS; atomic build, sidecar bundle, release gates, install-risk evidence)
 ├── officecli/                ← OfficeCLI 포크 서브모듈 (lidge-jun/OfficeCLI, Apache 2.0)
 ├── skills_ref/               ← 레퍼런스 스킬 (244 top-level dirs)
-│   ├── registry.json         ← public reference skill registry + `codex-imagegen` metadata (3350L)
+│   ├── registry.json         ← public reference skill registry + `codex-imagegen` metadata (3367L)
 │   └── codex-imagegen/
 │       └── SKILL.md          ← Codex native image generation, uploads 저장, web/channel 중복 방지 계약 (93L)
 ├── docs/                     ← 프로젝트 문서

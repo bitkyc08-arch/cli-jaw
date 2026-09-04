@@ -29,6 +29,7 @@ const BASE_AUTO_ACTIVATE = new Set([
 	"jaw-structured-renderers",
 	"jaw-desktop-control",
 	"jaw-goal",
+	"jaw-calendar-reminders",
 ]);
 
 // Pre-jaw-* names. A legacy directory is moved aside, never deleted (it may
