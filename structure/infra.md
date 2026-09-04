@@ -308,7 +308,12 @@ The workflow re-checks, and will refuse if any of these no longer hold:
 - `expected-sha` equals the checked-out `GITHUB_SHA` (`publish.yml:54-65`) — so
   if `main` moved after the audit, the dispatch fails instead of publishing a
   different tree.
-- a successful `test.yml` push run exists for that commit (`publish.yml:67-78`).
+- a successful `test.yml` push run exists for that commit **on `preview` or
+  `main`** (`publish.yml:67-84`). The branch filter matters because `test.yml`
+  also runs on `dev` pushes (#521) and every cycle fast-forwards `dev` onto the
+  preview head, so one SHA carries runs from both branches; the lookup scans the
+  run list rather than the newest single run, or a newer `dev` run would be
+  selected and then discarded, falsely blocking a certified release.
 - `postinstall-platform.yml` is green for that commit when the installer surface
   changed since the previous stable tag (`publish.yml:80-120`).
 - `package.json` version equals `version` (`publish.yml:179-182`).

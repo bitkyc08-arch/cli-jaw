@@ -71,9 +71,18 @@ jobs:
           set -euo pipefail
           # Promotion fast-forwards main onto the exact commit preview certified
           # (#480), so the push run recorded on preview is a run for THIS SHA.
-          # Look the run up by commit and accept either branch.
+          # Look the run up by commit, but accept ONLY a release-branch run.
+          #
+          # test.yml also runs on `dev` pushes (#521), and every release cycle
+          # fast-forwards `dev` onto the preview head (AGENTS.md ★ step,
+          # promote-to-main.sh), so the SAME SHA carries runs from both branches.
+          # Without this filter a `dev` run could certify a release.
+          #
+          # The list scan is load-bearing: with `--limit 1` the newest run for a
+          # SHA can be the `dev` one, which `select` would then discard, turning
+          # a properly certified release into a false "no successful run found".
           branch="${GITHUB_REF#refs/heads/}"
-          run_id="$(gh run list --workflow test.yml --commit "$GITHUB_SHA" --event push --status success --limit 1 --json databaseId,headSha --jq '.[0] | select(.headSha == "'"$GITHUB_SHA"'") | .databaseId // empty')"
+          run_id="$(gh run list --workflow test.yml --commit "$GITHUB_SHA" --event push --status success --limit 20 --json databaseId,headSha,headBranch --jq '[.[] | select(.headSha == "'"$GITHUB_SHA"'") | select(.headBranch == "preview" or .headBranch == "main")] | .[0].databaseId // empty')"
           if [ -z "$run_id" ]; then
             echo "::error::No successful push run of test.yml found for $branch @ $GITHUB_SHA"
             exit 1

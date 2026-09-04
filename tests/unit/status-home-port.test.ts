@@ -19,7 +19,12 @@ function statusJson(home: string, extraArgs: string[] = []): { port?: string } {
     try {
         const out = execFileSync(
             process.execPath,
-            [join(projectRoot, 'node_modules/.bin/tsx'), join(projectRoot, 'bin/cli-jaw.ts'), 'status', ...extraArgs],
+            // '--import tsx', not node_modules/.bin/tsx: that path is a POSIX shell
+            // wrapper under some installer layouts, and node parses it as CommonJS
+            // and dies on line 2 before any test code runs, leaving stdout empty and
+            // every assertion below matching against '' (#521). The 13 other
+            // subprocess tests in this suite already spawn tsx this way.
+            ['--import', 'tsx', join(projectRoot, 'bin/cli-jaw.ts'), 'status', ...extraArgs],
             { cwd: projectRoot, encoding: 'utf8', env: { ...process.env, CLI_JAW_HOME: home, PORT: '' }, timeout: 60000 },
         );
         return { port: out };

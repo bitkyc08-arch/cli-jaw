@@ -322,6 +322,14 @@ test('npm publish workflow uses dev/preview/main branch policy without release r
     assert.ok(workflow.includes('expected-sha'), 'publish dispatch must require the expected SHA');
     assert.ok(workflow.includes('Verify dispatched SHA'), 'publish workflow must verify the dispatched SHA matches HEAD');
     assert.ok(workflow.includes('Require successful Tests for this commit'), 'publish workflow must require a passing test run for the same commit');
+    // test.yml runs on dev too (#521), and every release cycle fast-forwards dev
+    // onto the preview head, so one SHA carries runs from both branches. Without
+    // the branch filter a dev run certifies a release; without the list scan a
+    // newer dev run is selected and discarded, falsely blocking a real release.
+    assert.ok(workflow.includes('.headBranch == "preview" or .headBranch == "main"'),
+        'the certifying Tests run must come from a release branch, never from dev');
+    assert.ok(!workflow.includes('--limit 1 --json databaseId,headSha --jq'),
+        'the Tests lookup must scan the run list, not just the newest run');
     assert.ok(workflow.includes('Check registry package version'), 'publish workflow must detect already-published versions');
     assert.ok(workflow.includes('SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published'),
         'publish workflow must skip npm publish when the exact version already exists');
@@ -359,11 +367,26 @@ test('release branch policy is reflected in CI workflows, release script, instal
     ].join('\n');
 
     for (const workflow of [testWorkflow, postinstallWorkflow]) {
-        assert.ok(!workflow.includes('- dev'), 'CI workflows must not run on dev after M0');
         assert.ok(workflow.includes('- preview'), 'CI workflows must run on preview');
         assert.ok(workflow.includes('- main'), 'CI workflows must run on main');
         assert.ok(!workflow.includes('- master'), 'CI workflows must not run on removed master');
     }
+
+    // M0 (b029c67d5) barred '- dev' from both workflows because dev is not a
+    // release branch. It still is not — publish.yml accepts a certifying run only
+    // from preview/main, and promote-to-main.sh pins --branch preview. What M0
+    // also cost was any CI at all for dev HEAD, which is how a241c6222 came to
+    // carry live product code with zero check-runs (#521). So test.yml — and only
+    // test.yml — now runs on dev. The assertion is structural rather than a bare
+    // substring, so a comment mentioning '- dev' cannot satisfy it.
+    const testPushBranches = testWorkflow.slice(
+        testWorkflow.indexOf('on:'),
+        testWorkflow.indexOf('pull_request:'),
+    );
+    assert.ok(/^\s*- dev$/m.test(testPushBranches),
+        'test.yml must run on dev so dev HEAD is never unverified (#521)');
+    assert.ok(!postinstallWorkflow.includes('- dev'),
+        'installer-surface certification stays on preview/main only');
     assert.ok(pagesWorkflow.includes('branches: [main]'), 'Pages deploy must publish docs from main');
     assert.ok(!pagesWorkflow.includes('branches: [master]'), 'Pages deploy must not depend on master');
 
