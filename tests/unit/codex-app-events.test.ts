@@ -134,6 +134,49 @@ test('codex-app trailing untagged item does not erase a delivered final answer',
     assert.equal(ctx.fullText, '설정했습니다.(추가 메모)', 'protected text accumulates, never resets');
 });
 
+// ── #517: an item that RESTATES the previous one must not print it twice ──
+//
+// The live Slack artifact: one paragraph delivered, then a second final item that
+// began by repeating the whole first paragraph before continuing. Both items are
+// tagged final, so the latch protects the accumulation — correctly, for a genuine
+// continuation — and the user saw the opening sentence twice.
+//
+// The three tests directly above are the fence. Clearing the latch fixes this
+// case and breaks all of them.
+
+test('WP2-517-a: a final item restating the previous one collapses to one copy', () => {
+    const ctx = createCtx() as unknown as SpawnContext;
+    feedMessage(ctx, 'msg_1', ['스레드에 업무 요청 전송 완료했습니다.'], { phase: 'final_answer' });
+    feedMessage(ctx, 'msg_2', ['스레드에 업무 요청 전송 완료했습니다. 코드 탐색도 끝났습니다.'], { phase: 'final_answer' });
+    assert.equal(
+        ctx.fullText,
+        '스레드에 업무 요청 전송 완료했습니다. 코드 탐색도 끝났습니다.',
+        'the restated opening is removed, not printed a second time',
+    );
+});
+
+test('WP2-517-b: the collapse survives token-granular deltas', () => {
+    // Deltas arrive a token at a time, so the prefix test has to hold across
+    // partial text rather than seeing the finished item in one event.
+    const ctx = createCtx() as unknown as SpawnContext;
+    feedMessage(ctx, 'msg_1', ['완료했습니다.'], { phase: 'final_answer' });
+    feedMessage(ctx, 'msg_2', ['완료', '했습니다.', ' 이어서 정리합니다.'], { phase: 'final_answer' });
+    assert.equal(ctx.fullText, '완료했습니다. 이어서 정리합니다.', 'a restatement split across deltas still collapses');
+});
+
+test('WP2-517-c: an item that merely starts similarly is NOT collapsed', () => {
+    // The guard has to distinguish "repeats the previous item" from "happens to
+    // begin with the same word", or a genuine continuation loses its opening.
+    const ctx = createCtx() as unknown as SpawnContext;
+    feedMessage(ctx, 'msg_1', ['완료했습니다. 첫 번째 항목입니다.'], { phase: 'final_answer' });
+    feedMessage(ctx, 'msg_2', ['완료했습니다만 두 번째는 다릅니다.'], { phase: 'final_answer' });
+    assert.equal(
+        ctx.fullText,
+        '완료했습니다. 첫 번째 항목입니다.완료했습니다만 두 번째는 다릅니다.',
+        'divergence after a shared prefix keeps both items whole',
+    );
+});
+
 test('codex-app detects a message boundary from a changed delta itemId alone', () => {
     // item/started can be dropped or buffered; item/completed returns null for
     // agentMessage, so the delta's itemId is the only remaining seam.

@@ -32,20 +32,52 @@ function allowTarget(): void {
     settings['slack'] = { ...(settings['slack'] || {}), channelIds: [target.targetId] };
 }
 
-test('a file send does not claim text the transport never delivered', async () => {
+test('WP2-SEND-001: a file send promotes its text into the caption and claims it (#517)', async () => {
     resetTurnDeliveryState();
     stubSlackTransport();
     allowTarget();
     const turnStartedAt = nextDeliverySeq();
 
-    // The agent uploads a chart and passes its written answer in `text`. The
-    // Slack/Telegram/Discord file handlers all ignore `text` and send only
-    // `caption` — so nothing of this string reached the user.
+    // The agent uploads a chart and passes its written answer in `text`. This
+    // used to be dropped on the floor: the file handlers read `caption` and
+    // nothing else, so the user got a bare upload under no explanation — 33% of
+    // one bot's posts were empty messages with a file attached (#517).
+    const answer = 'the full written answer the user is waiting for';
+    const sent: Record<string, unknown>[] = [];
+    registerSendTransport('slack', async (req) => { sent.push(req as Record<string, unknown>); return { ok: true }; });
+
+    await sendChannelOutput({
+        channel: 'slack',
+        type: 'photo',
+        filePath: '/tmp/never-read-by-this-test.png',
+        text: answer,
+        target,
+        fromAgentSurface: true,
+    });
+
+    assert.equal(sent[0]?.['caption'], answer, 'the answer must reach the field the transport displays');
+    assert.equal(
+        wasSelfDelivered({ target, text: answer, since: turnStartedAt }),
+        true,
+        'now that the text is on screen, the claim is honest and the dispatch post must not repeat it',
+    );
+});
+
+test('WP2-SEND-001b: an explicit caption still wins, and the unsent text is not claimed', async () => {
+    resetTurnDeliveryState();
+    stubSlackTransport();
+    allowTarget();
+    const turnStartedAt = nextDeliverySeq();
+
+    // The invariant the original test protected, on the input where it still
+    // applies: when the caller chose a caption, THAT is what ships, and claiming
+    // the unshipped `text` would let an invisible string cancel the real answer.
     await sendChannelOutput({
         channel: 'slack',
         type: 'photo',
         filePath: '/tmp/never-read-by-this-test.png',
         text: 'the full written answer the user is waiting for',
+        caption: 'chart',
         target,
         fromAgentSurface: true,
     });
@@ -57,7 +89,7 @@ test('a file send does not claim text the transport never delivered', async () =
             since: turnStartedAt,
         }),
         false,
-        'an uncaptioned file must never suppress the written answer',
+        'text that lost to an explicit caption never reached the user, so it cannot be claimed',
     );
 });
 
@@ -130,5 +162,4 @@ test('a failed send is not claimed', async () => {
         'nothing reached the user, so nothing may be suppressed',
     );
 });
-
 

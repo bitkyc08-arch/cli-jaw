@@ -47,6 +47,37 @@ export function stampOutboundSend(
     });
 }
 
+/** How long a caption may be before the channel refuses the whole send.
+ *
+ *  These are rejection ceilings, not style guidance. Telegram caps a caption at
+ *  1024 characters and answers 400 — which `isTransient` in
+ *  `src/telegram/telegram-file.ts` correctly does NOT retry, so the upload fails
+ *  outright. Discord's `content` caps at 2000 and returns
+ *  `BASE_TYPE_MAX_LENGTH`; `payload_json` is only the multipart wrapper and does
+ *  not lift it. Slack posts `initial_comment` as message text, where the ceiling
+ *  is the 40000-character message limit and overflow truncates rather than
+ *  refuses.
+ *
+ *  This matters because an answer promoted into a caption is arbitrarily long.
+ *  Without a clamp, fixing the empty-message bug would convert a working bare
+ *  attachment into a hard failure on two of three channels — a worse outcome
+ *  than the defect. `src/manager/routes/telegram-hub.ts` already clamps this way. */
+const CAPTION_LIMITS: Record<MessengerChannel, number> = {
+    slack: 40_000,
+    telegram: 1024,
+    discord: 2000,
+};
+
+/** Fit a promoted answer into the caption field without losing that it was cut. */
+export function clampCaptionForChannel(text: string, channel: MessengerChannel): string {
+    const limit = CAPTION_LIMITS[channel];
+    if (!limit || [...text].length <= limit) return text;
+    // Count by code point: a Korean or emoji-heavy answer is what pushes a
+    // caption over, and slicing by UTF-16 unit can split a surrogate pair.
+    const ellipsis = '…';
+    return [...text].slice(0, limit - ellipsis.length).join('') + ellipsis;
+}
+
 /**
  * The outbound side of the same allowlist the inbound gate reads.
  *
@@ -428,6 +459,24 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     if (typeof req.text === 'string') {
         req.text = applyOutputPolicy(req.text, { scope: 'main', channel }).text;
     }
+    // A file send renders exactly one piece of text: its caption. An agent that
+    // wrote its answer into `text` and attached a chart had that answer dropped
+    // on the floor — the transports read `caption` and nothing else, so the user
+    // received a bare upload under no explanation. 33% of one bot's Slack posts
+    // were empty messages with a file attached (#517).
+    //
+    // Promoted here rather than in a transport handler because `deliveredText`
+    // below is computed from `req`: a handler-side fallback would put the caption
+    // on screen while the ledger recorded `null`, and the turn's dispatch post
+    // would then fire again with the same words.
+    //
+    // Only when `caption` is absent. An explicit caption is a deliberate choice
+    // about what belongs beside the file.
+    if ((req.type === 'photo' || req.type === 'document' || req.type === 'voice')
+        && !req.caption?.trim()
+        && typeof req.text === 'string' && req.text.trim()) {
+        req.caption = clampCaptionForChannel(req.text, channel);
+    }
     // Single choke point for every outbound send. A transport builds its error
     // string from a vendor SDK, and the Telegram Bot API puts the token in the
     // request URL — so the failure result is a credential sink, and it flows
@@ -447,10 +496,13 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
     // caller's target may have been absent and filled in by the chain above.
     if (req.fromAgentSurface && sanitized.ok !== false) {
         // Only what the transport ACTUALLY put on screen may be claimed. A
-        // `photo`/`document`/`voice` send carries the file and the CAPTION; the
-        // handlers ignore `req.text` entirely. Claiming it anyway would let an
-        // uncaptioned image cancel the turn's real written answer — the exact
-        // silence this module is built to avoid causing.
+        // `photo`/`document`/`voice` send carries the file and the CAPTION, and
+        // reading `req.caption` here is what keeps that true: the promotion above
+        // already moved `text` into it, clamped to what the channel will accept,
+        // so this names the string the transport displayed. Reading `req.text`
+        // directly would go wrong the moment a caller passes BOTH — the explicit
+        // caption is what ships, and claiming the unshipped text would let an
+        // invisible string cancel the turn's real written answer.
         const deliveredText = req.type === 'text' || req.type === 'keyboard'
             ? (typeof req.text === 'string' ? req.text : null)
             : (typeof req.caption === 'string' ? req.caption : null);

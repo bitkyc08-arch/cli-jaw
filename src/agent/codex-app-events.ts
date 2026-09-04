@@ -365,6 +365,17 @@ export function applyCodexAppTextEvent(
             ctx.fullText = '';
             ctx.outputTextStarted = false;
         }
+        // RESTATEMENT COLLAPSE (#517). The protected accumulation above is what
+        // makes a multi-item answer whole; it is also what lets an item that
+        // REPEATS the previous one arrive as one paragraph printed twice. So the
+        // surviving text becomes a candidate: if the incoming item turns out to
+        // start with it, the earlier copy is removed and the new item stands
+        // alone. Clearing the latch instead would fix this case and truncate
+        // every genuine continuation.
+        ctx.codexAppItemText = '';
+        ctx.codexAppRestatementCandidate = hadPreviousItem && ctx.fullText
+            ? ctx.fullText
+            : undefined;
     }
     // After the boundary, so this event's own phase wins over the cleared sticky.
     if (parsed.channel !== undefined) ctx.codexAppActiveChannel = parsed.channel;
@@ -373,6 +384,22 @@ export function applyCodexAppTextEvent(
     const effectiveChannel = parsed.channel || ctx.codexAppActiveChannel;
     if (effectiveChannel === 'commentary') return { durable: '', live: parsed.text };
     if (effectiveChannel === 'final') ctx.codexAppDurableIsFinal = true;
+    // Deltas are token-granular, so the decision is made incrementally: keep the
+    // candidate alive while this item is still a PREFIX of it, drop it the moment
+    // the two diverge, and collapse as soon as the item covers it entirely. The
+    // comparison stops the first time the item outgrows the candidate either way,
+    // so it is bounded by the candidate's own length rather than by the stream.
+    if (ctx.codexAppRestatementCandidate !== undefined) {
+        const candidate = ctx.codexAppRestatementCandidate;
+        const itemText = (ctx.codexAppItemText ?? '') + parsed.text;
+        ctx.codexAppItemText = itemText;
+        if (itemText.startsWith(candidate)) {
+            ctx.fullText = ctx.fullText.slice(candidate.length);
+            ctx.codexAppRestatementCandidate = undefined;
+        } else if (!candidate.startsWith(itemText)) {
+            ctx.codexAppRestatementCandidate = undefined;
+        }
+    }
     return { durable: parsed.text, live: parsed.text };
 }
 
