@@ -24,7 +24,7 @@ export function slackTargetKind(conversationId: string): RemoteTargetKind {
 
 export function slackTargetFromId(
     conversationId: string,
-    options: { threadTs?: string; teamId?: string } = {},
+    options: { threadTs?: string; teamId?: string; threadIsSynthetic?: boolean } = {},
 ): RemoteTarget {
     const target: RemoteTarget = {
         channel: 'slack',
@@ -33,6 +33,9 @@ export function slackTargetFromId(
         targetId: conversationId,
     };
     if (options.threadTs) target.threadId = options.threadTs;
+    // Only meaningful alongside a threadTs: it says that ts names a message, not
+    // an existing thread, so the session key must not use it (#520).
+    if (options.threadTs && options.threadIsSynthetic) target.threadIsSynthetic = true;
     if (options.teamId) target.guildId = options.teamId;
     return target;
 }
@@ -53,4 +56,19 @@ export function resolveSlackThreadTs(
 ): string | undefined {
     if (!replyInThread) return undefined;
     return event.thread_ts || event.ts;
+}
+
+/** The same resolution, with the two concerns kept apart.
+ *
+ *  `threadTs` is where a reply goes. `synthetic` says the thread does not exist
+ *  yet, so the SESSION key must fall back to the conversation. Returning one
+ *  value for both is what made every top-level message its own session (#520):
+ *  the reply address and the conversation identity are not the same question. */
+export function resolveSlackThreadPlacement(
+    event: { ts?: string; thread_ts?: string },
+    replyInThread: boolean,
+): { threadTs?: string; synthetic: boolean } {
+    if (!replyInThread) return { synthetic: false };
+    if (event.thread_ts) return { threadTs: event.thread_ts, synthetic: false };
+    return { ...(event.ts ? { threadTs: event.ts } : {}), synthetic: Boolean(event.ts) };
 }

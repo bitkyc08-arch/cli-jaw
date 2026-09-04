@@ -364,7 +364,13 @@ async function runMentionWatchJob(job: Record<string, any>, watch: HeartbeatMent
  *  choose the thread. */
 function slackThreadTarget(hit: MentionHit): RemoteTarget {
     const base = targetFromChatId('slack', hit.channelId);
-    return { ...base, threadId: hit.threadTs };
+    // The flag rides along or this target keys a thread that does not exist,
+    // which is the #520 defect on the mention-watch side.
+    return {
+        ...base,
+        threadId: hit.threadTs,
+        ...(hit.threadIsSynthetic ? { threadIsSynthetic: true } : {}),
+    };
 }
 
 
