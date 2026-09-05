@@ -21,12 +21,14 @@ test.mock.module('../../src/agent/runtime/events.js', {
 type Deferred<T> = {
     promise: Promise<T>;
     resolve(value: T): void;
+    reject(error: Error): void;
 };
 
 function deferred<T>(): Deferred<T> {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>((done) => { resolve = done; });
-    return { promise, resolve };
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
 }
 
 type TurnHandlers = {
@@ -48,6 +50,7 @@ const harness = {
     alwaysPrepareStale: false,
     recoverableResumeFailure: false,
     acquireGate: null as Deferred<FakeLaneLease> | null,
+    acquireSignal: null as (() => void) | null,
     prepareGate: null as Deferred<{ laneMode: 'fallback' }> | null,
     hostClient: null as FakeCodexAppClient | null,
     laneThreads: new Map<string, string>(),
@@ -250,6 +253,7 @@ test.mock.module('../../src/agent/codex-host-pool.js', {
         },
         acquireCodexAppLane: async (_prepared: unknown, options: Record<string, unknown>) => {
             harness.laneAcquires.push(options);
+            harness.acquireSignal?.();
             if (harness.acquireStale > 0) {
                 harness.acquireStale -= 1;
                 throw new CodexHostGenerationStaleError('acquire stale');
@@ -365,6 +369,9 @@ const {
     activeMainProcesses,
     activeProcesses,
     killActiveAgent,
+    armExitSettle,
+    waitForExitSettled,
+    settleExit,
     spawnAgent,
 } = await import('../../src/agent/spawn.ts');
 
@@ -374,6 +381,7 @@ const effort = 'high';
 
 function resetHarness(): void {
     runtimeEvents.length = 0;
+    harness.acquireSignal = null;
     harness.throwDirectSpawn = false;
     harness.clients.length = 0;
     harness.directSpawns = 0;
@@ -815,4 +823,54 @@ test("employee synchronous spawn failure closes its canonical attempt before pro
     assert.equal(ends.length, 1);
     assert.equal(ends[0]?.status, "error");
     assert.equal(ends[0]?.finalText, null);
+});
+
+test('late ordinary Codex acquisition error cannot settle a replacement owner', async context => {
+    resetHarness();
+    setMultiplex(true);
+    context.mock.timers.enable({ apis: ['setTimeout'] });
+    const entered = deferred<void>();
+    const gate = deferred<FakeLaneLease>();
+    harness.acquireGate = gate;
+    harness.acquireSignal = () => { entered.resolve(undefined); };
+    const scope = 'codex-replacement-error';
+    const first = spawnAgent('old request', spawnOptions(scope));
+    let resolutions = 0;
+    void first.promise.then(() => { resolutions++; });
+    let barrier: Promise<void> | undefined;
+    let barrierSettled = false;
+    const cleanupEvents: string[] = [];
+    const listener = (type: string) => {
+        if (type === 'agent_status' || type === 'agent_done') cleanupEvents.push(type);
+    };
+    try {
+        await entered.promise;
+        const old = activeMainProcesses.get(scope)!;
+        const replacement = { ...old, starting: true };
+        delete replacement.cancelPending;
+        delete replacement.cancelTurn;
+        activeMainProcesses.set(scope, replacement);
+        armExitSettle(scope);
+        barrier = waitForExitSettled(scope).then(() => { barrierSettled = true; });
+        addBroadcastListener(listener);
+        gate.reject(new Error('ordinary old acquisition error'));
+        assert.deepEqual(await first.promise, { text: '', code: 1 });
+        await new Promise<void>(resolve => { setImmediate(resolve); });
+        assert.equal(resolutions, 1);
+        assert.equal(harness.finalized.at(-1)?.status, 'error');
+        assert.equal(runtimeEvents.filter(event => event.kind === 'turn-end').length, 1);
+        assert.deepEqual({ owner: activeMainProcesses.get(scope) === replacement,
+            starting: replacement.starting, barrierSettled, cleanupEvents,
+            liveClears: harness.clearLiveRunCalls, queueDrains: harness.processQueueCalls }, {
+            owner: true, starting: true, barrierSettled: false, cleanupEvents: [], liveClears: [], queueDrains: [],
+        });
+    } finally {
+        gate.reject(new Error('fixture cleanup'));
+        removeBroadcastListener(listener);
+        settleExit(scope);
+        await barrier;
+        await first.promise;
+        activeMainProcesses.delete(scope);
+        context.mock.timers.reset();
+    }
 });
