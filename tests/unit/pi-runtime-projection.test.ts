@@ -2,7 +2,11 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { parsePiRpcRecord, type PiRuntimeEvent } from '../../src/agent/pi-runtime.ts';
 // Recorders are injected here; module loading must not initialize shared SQLite.
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+let unexpectedDefaultWrites = 0;
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => {
+    unexpectedDefaultWrites++; throw new Error('Pure projection test reached the default trace writer');
+} } });
+test.after(() => assert.equal(unexpectedDefaultWrites, 0));
 const { PiProjection, parsePiActivityRecord } = await import('../../src/agent/runtime/pi-projection.ts');
 const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';

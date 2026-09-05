@@ -1,7 +1,11 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 // Recorders are injected here; module loading must not initialize shared SQLite.
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+let unexpectedDefaultWrites = 0;
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => {
+    unexpectedDefaultWrites++; throw new Error('Pure projection test reached the default trace writer');
+} } });
+test.after(() => assert.equal(unexpectedDefaultWrites, 0));
 const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 const { CodexProjection } = await import('../../src/agent/runtime/codex-projection.ts');
 import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
