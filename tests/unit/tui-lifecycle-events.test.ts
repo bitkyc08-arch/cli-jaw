@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
+import { computeStablePrefixIndex } from '../../bin/commands/tui/fullscreen-mode.ts';
 
 function makeCtx(): TuiContext {
     return {
@@ -67,6 +68,54 @@ test('steer_started renders a status line with origin and prompt preview', () =>
     send(ctx, { type: 'steer_started', prompt: 'redirect the work to the failing test', origin: 'web' });
     assert.match(lastStatusText(ctx), /steer \(web\): redirect the work/);
 });
+
+for (const collapsed of [true, false]) {
+    test(`cancel-reprompt receipt is nonterminal and a late same-scope receipt cannot retag B, collapsed=${collapsed}`, () => {
+        const ctx = makeCtx();
+        ctx.activityIdentity = { sessionId: 'cursor-chat', scope: 'local:cursor-chat' };
+        ctx.activityIdentityGeneration = 0;
+        const event = (runId: string, body: Record<string, unknown>) => send(ctx, {
+            type: 'agent_runtime', version: 1, ...ctx.activityIdentity, runId, turnId: runId, ...body,
+        });
+        const receipt = () => send(ctx, { type: 'steer_started', ...ctx.activityIdentity,
+            mode: 'cancel-reprompt', localDispatch: true, requestId: 'request-A', prompt: 'redirect A', origin: 'web' });
+        const finish = (runId: string, text: string) => {
+            event(runId, { seq: 9, kind: 'turn-end', status: 'done', finalText: text });
+            send(ctx, { type: 'agent_done', traceRunId: runId, ...ctx.activityIdentity,
+                runtimeFinality: 'present', runtimeStatus: 'done', text });
+        };
+        try {
+            event('A', { seq: 1, kind: 'turn-start', provider: 'cursor' });
+            for (const runId of ['A', 'B']) {
+                if (runId === 'B') {
+                    finish('A', 'A final');
+                    event('B', { seq: 1, kind: 'turn-start', provider: 'cursor' });
+                }
+                const item = ctx.store.transcript.items.find(item => item.type === 'activity' && item.model.identity.runId === runId);
+                assert.ok(item?.type === 'activity');
+                item.collapsed = collapsed;
+                ctx.inputActive = false;
+                const before = { key: ctx.activeActivityKey, clock: ctx.turnStartedAt, generation: ctx.activityActiveGeneration,
+                    seq: item.model.seq, revision: item.revision, frontier: computeStablePrefixIndex(ctx.store.transcript.items) };
+                const timer = ctx.footerTimer;
+                receipt();
+                assert.deepEqual({ key: ctx.activeActivityKey, clock: ctx.turnStartedAt, generation: ctx.activityActiveGeneration,
+                    seq: item.model.seq, revision: item.revision, frontier: computeStablePrefixIndex(ctx.store.transcript.items) }, before);
+                assert.equal(item.terminalStatus, null);
+                assert.equal(item.compatibilityDone, false);
+                assert.equal(item.collapsed, collapsed);
+                assert.equal(ctx.streaming, true);
+                assert.equal(ctx.inputActive, false);
+                assert.equal(ctx.footerTimer, timer);
+            }
+            finish('B', 'B exact final');
+            assert.deepEqual(ctx.store.transcript.items.filter(item => item.type === 'assistant').map(item => item.text), ['A final', 'B exact final']);
+            assert.equal(ctx.streaming, false);
+        } finally {
+            if (ctx.footerTimer) clearInterval(ctx.footerTimer);
+        }
+    });
+}
 
 test('agent_retry renders delayed and immediate variants', () => {
     const ctx = makeCtx();
