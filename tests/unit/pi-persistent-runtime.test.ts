@@ -36,6 +36,7 @@ for await (const line of rl) {
   } else if (row.type === 'set_thinking_level') {
     process.stdout.write(JSON.stringify({ id: row.id, type: 'response', command: row.type, success: true }) + '\\n');
   } else if (row.type === 'prompt') {
+    if (process.env.PI_FAKE_BAD_JSON === '1') process.stdout.write('{"password":"MALFORMED_PRIVATE_CANARY"\\n');
     process.stdout.write(JSON.stringify({ id: row.id, type: 'response', command: 'prompt', success: true }) + '\\n');
     if (row.message !== 'LONG') setImmediate(() => {
       process.stdout.write(JSON.stringify({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'reply:' + row.message } }) + '\\n');
@@ -363,5 +364,35 @@ for (const throws of [false, true]) {
             assert.ok(order.indexOf('raw:message_update') < order.indexOf('event:text'));
             assert.ok(order.includes('raw:agent_end'));
         } finally { child.kill(); }
+    });
+}
+
+for (const oneShot of [false, true]) {
+    test('malformed Pi frame diagnostics omit private payload, one-shot=' + oneShot, async t => {
+        const old = process.env['PI_FAKE_BAD_JSON'];
+        process.env['PI_FAKE_BAD_JSON'] = '1';
+        const warnings: string[] = [];
+        t.mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args.join(' ')); });
+        let cleanup = () => {};
+        try {
+            if (oneShot) {
+                const run = spawnPiRpc(DEFAULT_PI_PROFILE, DEFAULT_PI_SETTINGS, {
+                    prompt: 'SAFE', model: DEFAULT_PI_PROFILE.model, cwd: fakeRoot,
+                    root: join(fakeRoot, 'malformed-one-shot'),
+                });
+                cleanup = () => { run.child.kill(); };
+                assert.equal((await run.done).text, 'reply:SAFE');
+            } else {
+                const session = spawnSession();
+                cleanup = () => { session.kill(); };
+                assert.equal((await session.sendPrompt('SAFE')).text, 'reply:SAFE');
+            }
+            assert.ok(warnings.some(message => message.includes('JSON parse failed')));
+            assert.ok(warnings.every(message => !message.includes('MALFORMED_PRIVATE_CANARY')));
+        } finally {
+            cleanup();
+            if (old === undefined) delete process.env['PI_FAKE_BAD_JSON'];
+            else process.env['PI_FAKE_BAD_JSON'] = old;
+        }
     });
 }

@@ -570,7 +570,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         let raw: unknown;
         try { raw = JSON.parse(line); }
         catch {
-            console.warn(`[jaw:pi] JSON parse failed: ${line.slice(0, 200)}`);
+            console.warn(`[jaw:pi] JSON parse failed (${line.length} chars; payload omitted)`);
             return;
         }
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
@@ -772,7 +772,7 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
             try { parsed = JSON.parse(line); }
             catch {
                 parseFailures++;
-                console.warn(`[jaw:pi] JSON parse failed (${parseFailures}): ${line.slice(0, 200)}`);
+                console.warn(`[jaw:pi] JSON parse failed (${parseFailures}; ${line.length} chars; payload omitted)`);
                 return;
             }
             notifyPiRawRecord(options.onRawRecord, parsed);
