@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createServer, get } from 'node:http';
+import express from 'express';
 import type { AcpSession } from '../../src/agent/runtime/acp/session.ts';
+import type { ActivityPage, ActivityRunSummary } from '../../src/trace/activity-journal.ts';
 
 const root = fs.mkdtempSync(join(tmpdir(), 'native-cursor-spawn-'));
 const binary = join(root, 'cursor-agent.mjs');
@@ -47,11 +50,6 @@ test.mock.module('../../src/agent/runtime/acp/cursor-session.js', { namedExports
         const session = await factory.createCursorSession(input); sessions.push(session); return session;
     } } });
 const trace = await import('../../src/trace/store.ts');
-let failJournal = false;
-test.mock.module('../../src/trace/store.js', { namedExports: { ...trace,
-    appendTraceEvent: (...args: Parameters<typeof trace.appendTraceEvent>) => {
-        if (failJournal) throw new Error('fixture journal failure'); return trace.appendTraceEvent(...args);
-    } } });
 const { spawnAgent, killActiveAgent, waitForExitSettled, activeMainProcesses, enqueueMessage, messageQueue, removeQueuedMessage } = await import('../../src/agent/spawn.ts');
 const { db, getMaxMessageId, getSteerSalvageAfter } = await import('../../src/core/db.ts');
 const database = await import('../../src/core/db.ts');
@@ -61,9 +59,12 @@ const { beginLiveRun, setLiveRunTraceId, getLiveRun, appendLiveRunTool } = await
 const { clearGoalTimers } = await import('../../src/agent/lifecycle-handler.ts');
 const { poolStats } = await import('../../src/agent/runtime-pool.ts');
 const { beginRuntimeSettingsMutation } = await import('../../src/core/runtime-settings-gate.ts');
+const { createChatSession, forkChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
+const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
+const { registerTraceRoutes } = await import('../../src/routes/traces.ts');
 let serial = 0;
 test.beforeEach(t => {
-    failJournal = false; inputs.length = 0; beforeFactory = undefined;
+    inputs.length = 0; beforeFactory = undefined;
     config.settings.cli = 'cursor'; config.settings.workingDir = root; config.settings.projectDirs = [root];
     config.settings.permissions = 'auto'; config.settings.fallbackOrder = []; config.settings.activeOverrides = {};
     config.settings.perCli = { ...config.settings.perCli, cursor: { model: 'm1', effort: 'low', transport: 'native' } };
@@ -82,9 +83,105 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 function options() {
     const id = ++serial;
     return { cli: 'cursor', model: 'm1', effort: 'low', origin: 'web', scopeKey: 'native-scope-' + id,
-        chatSessionId: 'native-chat-' + id, requestId: 'native-request-' + id,
+        chatSessionId: createChatSession('native-chat-' + id).id, requestId: 'native-request-' + id,
         sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true };
 }
+
+for (const multiSession of [true, false]) test(`native main journal HTTP preserves exact owner, fork denial and replay (multiSession=${multiSession})`, { timeout: 15_000 }, async () => {
+    config.settings.multiSession.enabled = multiSession;
+    const opts = options();
+    const other = createChatSession('unrelated-active-chat');
+    const app = express();
+    registerTraceRoutes(app, (_req, _res, next) => next());
+    const server = createServer(app);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address(); assert.ok(address && typeof address === 'object');
+    const base = `http://127.0.0.1:${address.port}/api/traces`;
+    const read = <T = ActivityPage>(path: string, status = 200) => new Promise<{ data: T }>((resolve, reject) => {
+        const req = get(base + path, { signal: AbortSignal.timeout(3_000) }, res => {
+            let body = '';
+            res.setEncoding('utf8'); res.on('data', value => { body += value; });
+            res.on('end', () => {
+                try {
+                    assert.equal(res.statusCode, status, path);
+                    assert.equal(res.headers['cache-control'], 'no-store');
+                    resolve(JSON.parse(body));
+                } catch (error) { reject(error); }
+            });
+        });
+        req.on('error', reject);
+    });
+    const ready = Promise.withResolvers<string>();
+    const off = subscribe(event => {
+        if (event.event === 'agent_runtime' && event.data['kind'] === 'message'
+            && event.data['sessionId'] === opts.chatSessionId) ready.resolve(String(event.data['runId']));
+    });
+    let pending: ReturnType<typeof spawnAgent> | undefined;
+    const timeout = setTimeout(() => ready.reject(new Error('native message not journaled')), 3_000);
+    try {
+        pending = spawnAgent('HOLD_NATIVE_FIXTURE', opts);
+        const heldId = await ready.promise;
+        clearTimeout(timeout);
+        const path = `/${heldId}/activity?session=${opts.chatSessionId}`;
+        const live = (await read(path)).data;
+        assert.equal(live.status, 'running'); assert.equal(live.scope, opts.scopeKey);
+        assert.equal(live.sessionId, opts.chatSessionId); assert.ok(live.events.length >= 2);
+        assert.equal(live.incomplete, false);
+        assert.ok(live.events.every((event: { sessionId: string; scope: string }) =>
+            event.sessionId === opts.chatSessionId && event.scope === opts.scopeKey));
+        await read(`/${heldId}/activity?session=${other.id}`, 404);
+        await read(`/${heldId}?session=${other.id}`, 404);
+        await read(`/${heldId}`, 404);
+        await read(`/${heldId}?session=${opts.chatSessionId}`);
+        assert.equal(killActiveAgent(opts.scopeKey, 'user'), true);
+        await pending.promise; pending = undefined;
+        const frozen = (await read(path + `&through=${live.through}`)).data;
+        assert.deepEqual(frozen.events, live.events);
+        assert.equal(frozen.through, live.through);
+        const stopped = (await read(path + `&after=${live.through}`)).data;
+        assert.equal(stopped.events.at(-1)?.kind, 'turn-end');
+        assert.equal(stopped.events.at(-1)?.status, 'stopped');
+
+        const result = await spawnAgent('complete journal fixture', opts).promise;
+        assert.equal(result.text, 'NATIVE_MAIN_FINAL'); assert.ok(result.traceRunId);
+        const runId = result.traceRunId;
+        const row = trace.getTraceRun(runId)!;
+        assert.equal(row.session_id, opts.chatSessionId); assert.equal(row.scope_key, opts.scopeKey);
+        const message = db.prepare('SELECT content,trace_run_id FROM messages WHERE id=? AND session_id=?').get(row.message_id, opts.chatSessionId);
+        assert.deepEqual(message, { content: 'NATIVE_MAIN_FINAL', trace_run_id: runId });
+        const replayPath = `/${runId}/activity?session=${opts.chatSessionId}`;
+        const first = (await read(replayPath + '&limit=1')).data;
+        let page = first; const replay = [...first.events];
+        while (page.hasMore) {
+            const previous = page.nextAfter;
+            page = (await read(replayPath + `&limit=1&after=${page.nextAfter}&through=${first.through}`)).data;
+            assert.ok(page.nextAfter > previous, 'fixed-through replay must advance');
+            assert.equal(page.through, first.through); replay.push(...page.events);
+        }
+        assert.equal(page.incomplete, false);
+        assert.equal(replay.filter(event => event.kind === 'turn-end').length, 1);
+        const end = replay.at(-1); assert.ok(end?.kind === 'turn-end');
+        assert.equal(end.finalText, 'NATIVE_MAIN_FINAL');
+        assert.ok(replay.some(event => event.kind === 'tool'));
+        assert.doesNotMatch(JSON.stringify(replay), /private-native-session|private-tool/);
+        const listed = (await read<{ runs: ActivityRunSummary[] }>(`/activity-runs?session=${opts.chatSessionId}`)).data.runs;
+        assert.ok(listed.some((run: { id: string }) => run.id === runId));
+        const fork = forkChatSession(opts.chatSessionId);
+        assert.ok(fork.copiedCount > 0);
+        assert.ok(db.prepare('SELECT id FROM messages WHERE session_id=? AND trace_run_id=?').get(fork.id, runId));
+        await read(`/${runId}/activity?session=${fork.id}`, 404);
+        await read(`/${runId}?session=${fork.id}`, 404);
+        assert.deepEqual((await read<{ runs: ActivityRunSummary[] }>(`/activity-runs?session=${fork.id}`)).data.runs, []);
+        await read(replayPath);
+    } finally {
+        clearTimeout(timeout); off();
+        if (pending) { killActiveAgent(opts.scopeKey, 'user'); await pending.promise; }
+        server.closeAllConnections();
+        await new Promise<void>(resolve => server.close(() => resolve()));
+        setActiveChatSession('default');
+    }
+});
+
 test('main actual factory/protocol/pool/lifecycle produces final-only MESSAGE and correlated native events', async () => {
     const opts = options(), events: Array<{ type: string; data: Record<string, any> }> = [];
     const off = subscribe(event => events.push({ type: event.event, data: event.data }));
@@ -106,7 +203,9 @@ test('main actual factory/protocol/pool/lifecycle produces final-only MESSAGE an
     } finally { off(); }
 });
 test('journal failure cannot suppress full final, scoped non-text I/O liveness or completion', async () => {
-    failJournal = true; const opts = options(); const liveness: Record<string, any>[] = [];
+    const opts = options(); const liveness: Record<string, any>[] = [];
+    db.exec("CREATE TRIGGER cursor_journal_fault BEFORE INSERT ON trace_events WHEN new.source='runtime' BEGIN SELECT RAISE(ABORT,'fixture journal failure'); END");
+    try {
     const result = await spawnAgent('fixture', { ...opts, lifecycle: {
         onActivity: (source, identity) => { assert.equal(source, 'native-runtime'); liveness.push(identity!); },
         onExit: () => { throw new Error('observer-only failure'); },
@@ -115,6 +214,11 @@ test('journal failure cannot suppress full final, scoped non-text I/O liveness o
     assert.ok(liveness.length > 0);
     assert.ok(liveness.every(value => value.scope === opts.scopeKey && value.sessionId === opts.chatSessionId && value.requestId === opts.requestId));
     assert.deepEqual(db.prepare('SELECT content FROM messages WHERE session_id=? AND role=?').all(opts.chatSessionId, 'assistant'), [{ content: 'NATIVE_MAIN_FINAL' }]);
+    const run = db.prepare('SELECT id FROM trace_runs WHERE session_id=?').get(opts.chatSessionId) as { id: string };
+    const page = readActivityPage({ runId: run.id, sessionId: opts.chatSessionId, after: 0, limit: 40 });
+    assert.ok(page?.incomplete, 'real runtime insert failure reached durable loss reporting');
+    assert.deepEqual(page.events, []);
+    } finally { db.exec('DROP TRIGGER cursor_journal_fault'); }
 });
 test('native kill-steer preserves partial MESSAGE before the exact exit barrier', async () => {
     const opts = options(), watermark = getMaxMessageId(opts.chatSessionId);
