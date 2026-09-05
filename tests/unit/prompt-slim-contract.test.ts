@@ -42,6 +42,9 @@ test('PSC-002: desktop control stays persisted but runtime routing is conditiona
     assert.ok(a1Src.includes('## Desktop / Browser Control (MANDATORY)'), 'persisted A-1 keeps desktop control');
     assert.equal(shouldIncludeDesktopControlSection('브라우저에서 이 페이지를 확인해', 'codex-app'), true);
     assert.equal(shouldIncludeDesktopControlSection('릴리스 노트를 요약해', 'codex-app'), false);
+    // An Office document is a file to produce, not an app to drive (verifier residual).
+    assert.equal(shouldIncludeDesktopControlSection('Excel 파일 만들어', 'codex-app'), false);
+    assert.equal(shouldIncludeDesktopControlSection('use Chrome to open it', 'codex-app'), true);
     assert.ok(a1Src.includes('### Compact Handoff Interpretation'), 'compact interpretation stays always-on');
     assert.ok(a1Src.includes('## Goal System'), 'goal CLI command list stays in A-1');
     assert.ok(!a1Src.includes('### Goal Mode Rules'), 'goal mode rules stay in continuation only');

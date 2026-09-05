@@ -314,7 +314,9 @@ const SESSION_POLL_ANCHOR_CLOSE = '<!-- /anchor:session-poll -->';
 const DESKTOP_CONTROL_INTENT_RE = /(?:\$?computer-use|\bdesktop\b|\bbrowser\b|\bcdp\b|\burl\b|\bui[\s-]*qa\b|브라우저|화면|스크린샷)/iu;
 // Proper-noun app names: word-bounded and case-sensitive so that "release notes",
 // "keyword", or "search" do not read as Notes / Word / Arc and pull in the 8K block.
-const DESKTOP_APP_NAME_RE = /\b(?:Finder|System Settings|Chrome|Safari|Microsoft Edge|Firefox|Arc|Spotify|Excel|Word|PowerPoint|Slack|Discord|Telegram|Calendar|Reminders|Notes)\b/u;
+// Excel / Word / PowerPoint are deliberately absent: those names almost always
+// mean a FILE to produce (the officecli path), not an app to drive.
+const DESKTOP_APP_NAME_RE = /\b(?:Finder|System Settings|Chrome|Safari|Microsoft Edge|Firefox|Arc|Spotify|Slack|Discord|Telegram|Calendar|Reminders|Notes)\b/u;
 const DESKTOP_SKILL_METADATA_RE = /(?:desktop|browser|computer-use|\bcdp\b|브라우저|화면|스크린샷)/iu;
 
 export function shouldIncludeDesktopControlSection(currentPrompt: string, activeCli?: string | null): boolean {
