@@ -419,5 +419,7 @@ for (const cli of ['cursor', 'grok', 'opencode', 'claude']) {
         assert.equal(ctx.fullText, 'Existing legacy answer');
         assert.equal(observed.tool.mock.callCount(), 2);
         assert.equal(observed.tool.mock.calls[1]?.result?.status, 'done');
+        assert.equal(observed.tool.mock.calls[1]?.result?.stepRef, observed.tool.mock.calls[0]?.result?.stepRef,
+            'unreadable raw storage must not split one observed tool identity');
     });
 }

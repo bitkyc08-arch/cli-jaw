@@ -350,6 +350,7 @@ export function handleClaudeEvent(
                             toolType: 'tool',
                             label: 'tool',
                             ...base,
+                            stepRef: `claude:tooluse:${block.tool_use_id}`,
                             icon: block["is_error"] ? '❌' : '✅',
                             status: block["is_error"] ? 'error' : 'done',
                             traceRunId: pointer.traceRunId,
