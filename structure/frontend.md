@@ -17,6 +17,8 @@ TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock st
 
 `presentation.mode` selects `activity` (default) or `legacy` independently of runtime transport. Manager Display edits the instance setting through the existing dirty-store save path. Classic applies the normalized server value to `data-presentation-mode`; initial settings reads and `settings_change` refreshes share a generation fence so late responses cannot overwrite a newer choice. Failed refreshes retain the applied mode. Presentation saves do not change permissions, provider selection, or messaging delivery.
 
+Native `agent_runtime` events pass the shared parser and the server snapshot's `activityIdentity` before entering the bounded Activity reducer. A turn retains tool/commentary previews in native disclosures; explicit expansion survives updates and completion. The existing `.msg-content` owns the full final answer and its actions. Compatibility events remain available for legacy display and supply terminal fallback if semantic recording fails. A late terminal from another run cannot finalize the active answer. Reconnect buffers semantic ingress, rebinds retained views after snapshot reconstruction, and removes orphan projections when virtual rows outlive their retained model.
+
 ---
 
 ## 파일 구조

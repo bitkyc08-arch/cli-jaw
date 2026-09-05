@@ -507,12 +507,13 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
                 else if (encoded) pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
-            if (durableToolLogJson) {
+            if (durableToolLogJson && !div.dataset['activityKey']) {
                 vs.appendItem(buildLazyVirtualMessageItem({
                     role: 'assistant',
                     content: finalText,
                     cli: null,
                     tool_log: durableToolLogJson,
+                    trace_run_id: div.dataset['traceRunId'] ?? null,
                 }, vs.count));
                 releaseProcessBlockDetails(div);
                 vs.scrollToBottom();

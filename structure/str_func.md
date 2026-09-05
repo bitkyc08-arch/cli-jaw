@@ -449,8 +449,8 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 572 files source/assets, ~101100L; generated `public/dist` and `public/public/dist` excluded)
-│   ├── index.html            ← 뼈대 + header project/git status anchor (1223L)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 575 files source/assets, ~101700L; generated `public/dist` and `public/public/dist` excluded)
+│   ├── index.html            ← 뼈대 + header project/git status anchor (1224L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)

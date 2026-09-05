@@ -22,6 +22,7 @@ import { canFollowAfterRestore, ensureScrollTracking, markFollowingBottom, settl
 import { updateStatMsgs } from './ui-status.js';
 import { seedCompletedElicitationsFromMessages } from './elicitation-state.js';
 import { withCurrentSessionQuery } from './session-hub.js';
+import { remountLiveActivity } from './activity-live.js';
 
 export function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
     return msgs.map((m, index) => buildLazyVirtualMessageItem(normalizeMessageToolLog(m), index));
@@ -98,6 +99,7 @@ export function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualS
         }
     };
     vs.onPostRender = (viewport: HTMLElement) => {
+        remountLiveActivity(viewport);
         activateWidgets(viewport);
         hydrateElicitationBlocks(viewport);
         hydrateSearchResultsBlocks(viewport);
