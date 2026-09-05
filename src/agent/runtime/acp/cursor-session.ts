@@ -52,7 +52,8 @@ export async function createCursorSession(options: CursorSessionOptions): Promis
     };
     options.signal?.addEventListener('abort', abort, { once: true });
     try {
-        if (options.signal?.aborted) { abort(); throw new Error('cursor_acp_acquire_aborted'); }
+        // Install the lifecycle before checking the post-spawn abort race so
+        // failure uses the session's bounded close/reap without sending an RPC.
         session = new AcpSession(child, { permissions, promptTimeoutMs: options.promptTimeoutMs,
             ...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
             ...(options.controlTimeoutMs === undefined ? {} : { controlTimeoutMs: options.controlTimeoutMs }),
@@ -60,6 +61,7 @@ export async function createCursorSession(options: CursorSessionOptions): Promis
             ...(options.registry === undefined ? {} : { registry: options.registry }),
             ...(options.failed === undefined ? {} : { failed: options.failed }),
             clientMetadata: { parameterizedModelPicker: true } });
+        if (options.signal?.aborted) { abort(); throw new Error('cursor_acp_acquire_aborted'); }
         await session.start({ cwd, authMethodId: 'cursor_login',
             ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}) });
         await configureAcpModel(session, { model: options.model, effort: options.effort });
