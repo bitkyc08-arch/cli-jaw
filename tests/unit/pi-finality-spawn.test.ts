@@ -83,6 +83,9 @@ test.after(() => {
 });
 function options() {
     const id=++serial;
+    // Journal admission requires an existing jaw chat-session owner.
+    db.prepare("INSERT INTO chat_sessions(id,seq,label) VALUES(?,?,?)").run(
+        'pi-final-chat-'+id, 9100+id, 'Pi finality fixture');
     return {cli:'pi',model:'fixture',effort:'high',scopeKey:'pi-final-scope-'+id,chatSessionId:'pi-final-chat-'+id,
         requestId:'pi-final-request-'+id,origin:'web',sysPrompt:'',_skipInsert:true,_skipHistory:true,_skipResume:true,
         _skipSessionPersist:true,_isSmokeContinuation:true};
