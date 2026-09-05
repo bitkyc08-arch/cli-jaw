@@ -1,4 +1,4 @@
-// Phase 2 — single CLI row (model + effort + fastMode).
+// Per-CLI model, effort, runtime transport, and fast mode defaults.
 
 import { useState } from 'react';
 import { TextField, SelectField, ToggleField } from '../../fields';
@@ -8,6 +8,7 @@ import { coerceEffortForModel, effortChoicesForModel } from './agent/agent-meta'
 import type { CliMeta, PerCliEntry } from './agent/agent-meta';
 import { PiProfileDialog } from './PiProfileDialog';
 import { piModelOptions, piProfileOptions, type PiSettingsView } from './pi-profile';
+import { canSelectRuntimeTransport, transportFieldValue, transportFieldPatch } from './runtime-transport-field';
 
 type Props = {
     cli: string;
@@ -140,6 +141,25 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                     </div>
                 ) : meta.effortNote ? (
                     <p className="settings-percli-note settings-percli-note--effort">{meta.effortNote}</p>
+                ) : null}
+                {canSelectRuntimeTransport(cli) ? (
+                    <SelectField
+                        id={`percli-${cli}-transport`}
+                        label="Runtime transport"
+                        value={transportFieldValue(value.transport)}
+                        options={[
+                            { value: 'native', label: 'Native session' },
+                            { value: 'print', label: 'Print compatibility' },
+                        ]}
+                        onChange={(next) => {
+                            const patch = transportFieldPatch(cli, next);
+                            if (next !== 'native' && next !== 'print') return;
+                            setValue({ ...value, transport: next });
+                            setEntry(`perCli.${cli}.transport`, entryFor(
+                                patch[`perCli.${cli}.transport`], transportFieldValue(original.transport),
+                            ));
+                        }}
+                    />
                 ) : null}
                 <ToggleField
                     id={`percli-${cli}-fastmode`}

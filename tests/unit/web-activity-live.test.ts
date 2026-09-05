@@ -16,10 +16,17 @@ let ws: typeof import('../../public/js/ws.ts');
 let serial = 0;
 let activeRun: Record<string, unknown> | null = null;
 let holdSnapshot: (() => Promise<void>) | null = null;
+let pendingRequests: Record<string,unknown>[]=[];
+let requestReads=0;
 test.before(async () => {
     setupWebUiDom();
     mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
         const path = String(input);
+        if(path.includes('/api/runtime/requests?')){
+            requestReads++;
+            return new Response(JSON.stringify({ok:true,data:{requests:pendingRequests}}),{headers:{'Content-Type':'application/json'}});
+        }
+        if(path.includes('/api/traces/activity-runs'))return new Response(JSON.stringify({ok:true,data:{runs:[],pageSize:40}}),{headers:{'Content-Type':'application/json'}});
         if (path.includes('/orchestrate/snapshot') && holdSnapshot) await holdSnapshot();
         const data = path.includes('/orchestrate/snapshot') ? {
             activityIdentity: { sessionId: 'chat', scope: 'local:chat' },
@@ -37,6 +44,7 @@ test.before(async () => {
 });
 test.beforeEach(async () => {
     activeRun = null; holdSnapshot = null;
+    pendingRequests=[];
     ui.cleanupToolActivity(); live.clearLiveActivity();
     document.getElementById('chatMessages')!.replaceChildren();
     await ws.syncOrchestrateSnapshot('activity-test', { hydrateRun: true });
@@ -165,4 +173,37 @@ test('virtual restore strips an evicted Activity projection without hiding its a
     assert.equal(viewport.querySelector('.activity-turn'), null);
     assert.equal(viewport.querySelector('[data-activity-key]'), null);
     assert.equal(viewport.querySelector('.msg-content')?.getAttribute('data-raw'), 'answer to retain');
+});
+
+function requestFixture(runId:string){
+    return {runId,sessionId:'chat',scope:'local:chat',turnId:'turn',requestId:'request',requestType:'approval',expiresAt:Date.now()+60000,
+        view:{title:'Read fixture',fields:[{id:'choice',label:'Allow the read?',multiSelect:false,allowFreeform:false,options:[{id:'allow',label:'Allow'}]}]}};
+}
+test('clear followed by a live native request remounts actionable controls',async()=>{
+    dispatch({event:'clear'});
+    const run=start();const pending=requestFixture(run);pendingRequests=[pending];
+    runtime(run,2,{kind:'request',requestId:'request',requestType:'approval',view:pending.view});
+    try{
+        await new Promise<void>(resolve=>setImmediate(resolve));
+        assert.ok([...document.querySelectorAll('.native-requests button')].some(button=>button.textContent==='Allow'));
+    }finally{
+        pendingRequests=[];runtime(run,3,{kind:'request-settled',requestId:'request'});
+        await new Promise<void>(resolve=>setImmediate(resolve));
+    }
+});
+test('live canonical-first terminal refreshes requests when settled notification was missed',async()=>{
+    const run=start();const pending=requestFixture(run);pendingRequests=[pending];
+    runtime(run,2,{kind:'request',requestId:'request',requestType:'approval',view:pending.view});
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    const before=requestReads;pendingRequests=[];
+    try{
+        runtime(run,4,{kind:'turn-end',status:'done',finalText:'done'});
+        dispatch({event:'agent_done',traceRunId:run,text:'done',runtimeFinality:'present'});
+        await new Promise<void>(resolve=>setImmediate(resolve));
+        assert.ok(requestReads>before);
+        assert.equal(document.querySelector<HTMLElement>('.native-requests')?.hidden,true);
+    }finally{
+        runtime(run,5,{kind:'request-settled',requestId:'request'});
+        await new Promise<void>(resolve=>setImmediate(resolve));
+    }
 });

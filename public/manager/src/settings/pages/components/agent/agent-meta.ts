@@ -1,3 +1,5 @@
+import type { RuntimeTransport as SharedRuntimeTransport } from '../../../../../../../src/shared/runtime-contract';
+
 export type CliMeta = {
     label: string;
     models: ReadonlyArray<string>;
@@ -31,6 +33,7 @@ export type PerCliEntry = {
     model?: string;
     effort?: string;
     fastMode?: boolean;
+    transport?: SharedRuntimeTransport;
     contextWindowSize?: number;
     contextWindowCompactLimit?: number;
     [key: string]: unknown;

@@ -6,6 +6,7 @@ import { parseRuntimeEvent } from '../../src/shared/runtime-event-parse.js';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.js';
 import { clearLiveActivity, degradeLiveActivity, findLiveActivity, ingestLiveActivity, rebindLiveActivity, setLiveActivityIdentity, settleLiveActivity } from './features/activity-live.js';
 import { discoverActivityHistory, observeActivityHistory, setActivityHistoryIdentity } from './features/activity-history.js';
+import { mountNativeRequests } from './features/native-requests.js';
 import { connectEventChannel, subscribe, onChannelOpen, onChannelDisconnect, onChannelUnavailable } from './event-channel.js';
 import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore, showChatRestoreIndicator, markSteered, clearSteer, isRecentSteer } from './ui.js';
 import { renderPendingQueue } from './features/pending-queue.js';
@@ -237,6 +238,22 @@ let activitySnapshotGeneration = 0;
 let pendingRuntimeBytes = 0;
 let pendingRuntime: Array<{ event: RuntimeEvent; replay: boolean }> = [];
 let runtimeBufferLost = false;
+let nativePanel: ReturnType<typeof mountNativeRequests> | null = null;
+let nativePanelKey = '';
+
+function disposeNativePanel(): void {
+    nativePanel?.dispose(); nativePanel=null; nativePanelKey='';
+}
+
+function refreshNativePanel(): void {
+    const identity=state.activityIdentity;
+    const host=document.querySelector<HTMLElement>('.chat-area');
+    if (!identity || !host) {disposeNativePanel();return;}
+    const key=JSON.stringify([identity.sessionId,identity.scope]);
+    if (!nativePanel || key!==nativePanelKey) {
+        disposeNativePanel();nativePanelKey=key;nativePanel=mountNativeRequests(host,identity);
+    } else void nativePanel.refresh();
+}
 
 function suspendRuntimeAdmission(): void {
     ++activitySnapshotGeneration;
@@ -271,6 +288,7 @@ function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
     // A late A terminal may settle A's ledger while B owns the singleton answer.
     if (finalized || (liveTraceRunId && liveTraceRunId !== event.runId)
         || state.currentAgentDiv !== turn.message) return;
+    if (!replay) void nativePanel?.refresh();
     markRunFinalized(event.runId);
     // Capture the full authoritative answer BEFORE using the reducer's preview.
     finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId);
@@ -310,6 +328,7 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     state.activityIdentity = parseActivityIdentity(snap.activityIdentity);
     setLiveActivityIdentity(state.activityIdentity);
     setActivityHistoryIdentity(state.activityIdentity, event => handleRuntimeEvent(event,true));
+    refreshNativePanel();
     currentOrcScope = String(snap.orc.scope || '');
     applyOrcState(snap.orc.state);
     applyOrcContext(snap.orc.ctx || null);
@@ -933,6 +952,7 @@ function clearChannelDownToastTimer(): void {
 function handleChannelDown(): void {
     console.log('[channel] disconnected');
     suspendRuntimeAdmission();
+    nativePanel?.suspend();
     import('./ui.js').then(m => m.cleanupToolActivity());
     if (channelDownToastTimer !== null) return; // earliest outage owns the deadline
     channelDownToastTimer = window.setTimeout(() => {
@@ -1028,7 +1048,12 @@ function wireEventChannel(): void {
 function handleServerEvent(msg: WsMessage): void {
     if (msg.type === 'agent_runtime') {
         const event = parseRuntimeEvent(msg);
-        if (event) handleRuntimeEvent(event, msg.sseReplay === true);
+        if (event) {
+            const identity=state.activityIdentity;
+            if (msg.sseReplay!==true && (event.kind==='request' || event.kind==='request-settled')
+                && identity?.sessionId===event.sessionId && identity.scope===event.scope) void nativePanel?.refresh();
+            handleRuntimeEvent(event, msg.sseReplay === true);
+        }
         return;
     }
     if (msg.type === 'agent_runtime_gap') {
@@ -1165,6 +1190,7 @@ function handleServerEvent(msg: WsMessage): void {
             if (isFinalizedRun(doneRunId)) return;
             if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
             settleLiveActivity(doneRunId, msg.runtimeStatus);
+            void nativePanel?.refresh();
             markRunFinalized(doneRunId);
             finalizeAgent(msg.text || '', msg.toolLog,
                 msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined, doneRunId ?? undefined);
@@ -1175,15 +1201,18 @@ function handleServerEvent(msg: WsMessage): void {
         if (isFinalizedRun(doneRunId)) return;
         if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
         settleLiveActivity(doneRunId, msg.runtimeStatus);
+        void nativePanel?.refresh();
         markRunFinalized(doneRunId);
         finalizeAgent(msg.text || '', undefined,
             msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined, doneRunId ?? undefined);
         notifyUnreadResponse();
     } else if (msg.type === 'clear') {
+        disposeNativePanel();
         const retainedIdentity = state.activityIdentity;
         clearLiveActivity(); setLiveActivityIdentity(retainedIdentity);
         setActivityHistoryIdentity(null,event=>handleRuntimeEvent(event,true));
         setActivityHistoryIdentity(retainedIdentity,event=>handleRuntimeEvent(event,true));
+        refreshNativePanel();
         pendingRuntime = []; pendingRuntimeBytes = 0; runtimeBufferLost = false;
         cancelPostRender();
         cleanupToolActivity();

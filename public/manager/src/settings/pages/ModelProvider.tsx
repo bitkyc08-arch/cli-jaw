@@ -168,8 +168,11 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
         >
             <SettingsSection
                 title="Model defaults"
-                hint="Per-CLI defaults applied when no active override is set on the Agent page."
+                hint="Per-CLI model and effort defaults apply when no active override is set on the Agent page. Runtime transport is selected separately."
             >
+                <p className="settings-percli-note">
+                    Native sessions and print compatibility use the same permissions. Transport changes apply to the next run. Changing presentation does not change this selection.
+                </p>
                 {cliKeys.length === 0 ? (
                     <p className="settings-empty">No CLIs registered for this instance.</p>
                 ) : (
