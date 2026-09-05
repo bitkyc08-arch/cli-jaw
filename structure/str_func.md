@@ -74,7 +74,7 @@ cli-jaw/
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
 │   │   │   ├── acp/          ← shared v1 wire boundary and bounded native transport
 │   │   │   │   ├── session.ts ← protocol session, prompt/cancel fences and drain (276L)
-│   │   │   │   ├── cursor-session.ts ← existing-login factory and owned startup abort (78L)
+│   │   │   │   ├── cursor-session.ts ← existing-login factory and owned startup abort (80L)
 │   │   │   │   ├── config.ts ← bounded negotiated model/effort selection (185L)
 │   │   │   │   ├── notification-queue.ts ← per-turn serialized work with byte/count caps (87L)
 │   │   │   │   ├── wire.ts  ← strict single-envelope decoder shared with Copilot (43L)
