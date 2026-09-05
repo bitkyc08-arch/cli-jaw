@@ -34,10 +34,11 @@ export async function apiJson<T = JsonRecord>(ctx: Pick<TuiContext, 'apiUrl'>, p
 
 /** No inferred local/default session: old or unavailable servers stay unbound. */
 export async function refreshActivityIdentity(
-    ctx: Pick<TuiContext, 'apiUrl' | 'activityIdentity' | 'activityIdentityGeneration' | 'isRaw'>,
+    ctx: Pick<TuiContext, 'apiUrl' | 'activityIdentity' | 'activitySettlementIdentity' | 'activityIdentityGeneration' | 'isRaw'>,
 ): Promise<void> {
     const generation = (ctx.activityIdentityGeneration ?? 0) + 1;
     ctx.activityIdentityGeneration = generation;
+    if (ctx.activityIdentity) ctx.activitySettlementIdentity = ctx.activityIdentity;
     ctx.activityIdentity = null;
     if (ctx.isRaw) return;
     try {
@@ -45,6 +46,7 @@ export async function refreshActivityIdentity(
         if (ctx.activityIdentityGeneration !== generation) return;
         const snapshot = asRecord(response['data'] ?? response);
         ctx.activityIdentity = parseActivityIdentity(snapshot['activityIdentity']);
+        ctx.activitySettlementIdentity = ctx.activityIdentity;
     } catch {
         // A missing/failed snapshot must not authorize another conversation's events.
     }
@@ -53,6 +55,11 @@ export async function refreshActivityIdentity(
 export async function refreshInfo(ctx: TuiContext): Promise<boolean> {
     const generation = (ctx.settingsRefreshGeneration ?? 0) + 1;
     ctx.settingsRefreshGeneration = generation;
+    if (ctx.activityIdentity) ctx.activitySettlementIdentity = ctx.activityIdentity;
+    // A settings refresh supersedes an older snapshot even before this refresh
+    // reaches its own snapshot request (the /api/session read may still wait).
+    ctx.activityIdentityGeneration = (ctx.activityIdentityGeneration ?? 0) + 1;
+    ctx.activityIdentity = null;
     let freshSettings = false;
     try {
         await getCliAuthToken(ctx.apiUrl);
@@ -86,7 +93,7 @@ export async function refreshInfo(ctx: TuiContext): Promise<boolean> {
     ctx.label = cliLabel[ctx.info.cli] || ctx.info.cli;
     ctx.dir = ctx.info.workingDir.replace(homedir(), '~');
     await refreshActivityIdentity(ctx);
-    return freshSettings;
+    return ctx.settingsRefreshGeneration === generation && freshSettings;
 }
 
 export function makeCliCommandCtx(ctx: TuiContext) {

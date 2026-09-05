@@ -1,0 +1,138 @@
+import type { RuntimeEvent, RuntimeTurnOutcome } from '../../../src/shared/runtime-contract.js';
+import { activityKey } from '../../../src/shared/activity-state.js';
+import { presentationMode } from '../../../src/shared/presentation.js';
+import { createActivityItem, updateActivityItem, renderActivityItem, releaseActivityPreview,
+    type ActivityTranscriptItem } from '../../../src/cli/tui/activity.js';
+import { appendActivityAnswer, renderActivityAnswer } from '../../../src/cli/tui/activity-answer.js';
+import { isVerboseRenderMode, appendStatusItem } from '../../../src/cli/tui/transcript.js';
+import { wrapActivityTerminalText } from '../../../src/cli/tui/activity-terminal-text.js';
+import type { TuiContext } from './types.js';
+import { activityLinearDelta, closeActivityLinear } from '../../../src/cli/tui/activity-linear.js';
+
+const MAX_ACTIVITY_MODELS = 16;
+
+function ownsIdentity(ctx: TuiContext, identity: { sessionId: unknown; scope: unknown }): boolean {
+    return !ctx.isRaw && Boolean(ctx.activityIdentity
+        && identity.sessionId === ctx.activityIdentity.sessionId && identity.scope === ctx.activityIdentity.scope);
+}
+
+export function activityForCompatibility(ctx: TuiContext, wire: Record<string, unknown>): ActivityTranscriptItem | undefined {
+    if (ctx.isRaw || typeof wire['traceRunId'] !== 'string') return;
+    return ctx.store.transcript.items.find((item): item is ActivityTranscriptItem => item.type === 'activity'
+        && item.model.identity.runId === wire['traceRunId'] && ownsAdmittedItem(ctx, item)
+        && (wire['sessionId'] === undefined || wire['sessionId'] === item.model.identity.sessionId)
+        && (wire['scope'] === undefined || wire['scope'] === item.model.identity.scope));
+}
+
+function ownsAdmittedItem(ctx: TuiContext, item: ActivityTranscriptItem): boolean {
+    const identity = ctx.activityIdentity ?? ctx.activitySettlementIdentity;
+    return !ctx.isRaw && Boolean(identity && identity.sessionId === item.model.identity.sessionId
+        && identity.scope === item.model.identity.scope);
+}
+
+function admitActivity(ctx: TuiContext, event: RuntimeEvent): ActivityTranscriptItem | null {
+    const key = activityKey(event);
+    const existing = ctx.store.transcript.items.find((item): item is ActivityTranscriptItem => item.type === 'activity' && item.key === key);
+    if (existing) return existing;
+    const retained = ctx.store.transcript.items.filter((item): item is ActivityTranscriptItem => item.type === 'activity' && !item.released);
+    if (retained.length >= MAX_ACTIVITY_MODELS) {
+        const oldest = retained.find(item => item.terminalStatus);
+        if (!oldest) return null;
+        releaseActivityPreview(oldest);
+    }
+    const item = createActivityItem(event, isVerboseRenderMode());
+    item.presentation = presentationMode(ctx.settingsSnapshot);
+    ctx.store.transcript.items.push(item);
+    return item;
+}
+
+function printSettledActivity(ctx: TuiContext, item: ActivityTranscriptItem, newAnswer: boolean): void {
+    if (ctx.displayMode === 'fullscreen') return;
+    const width = process.stdout.columns || 80;
+    if (item.presentation === 'legacy') process.stdout.write(closeActivityLinear(item));
+    const rows = item.presentation === 'legacy' ? [item.terminalStatus === 'done' ? 'Complete'
+        : item.terminalStatus === 'stopped' ? 'Stopped' : 'Failed'] : renderActivityItem(item, width);
+    process.stdout.write('\r\x1b[2K' + rows.join('\n') + '\n');
+    if (!newAnswer) return;
+    const answer = ctx.store.transcript.items.find(row => row.type === 'assistant' && row.activityKey === item.key);
+    if (answer?.type === 'assistant' && answer.text) process.stdout.write(renderActivityAnswer(answer, width).join('\n') + '\n');
+}
+
+/** Returns true only for a newly admitted event; duplicates must not restart clocks. */
+export function handleActivityRuntime(ctx: TuiContext, event: RuntimeEvent): boolean {
+    const existing = ctx.store.transcript.items.find((row): row is ActivityTranscriptItem => row.type === 'activity' && row.key === activityKey(event));
+    // Refresh revokes admission, not the right to settle the exact run already
+    // displayed. Explicit session switches still reject the old conversation.
+    if (!ownsIdentity(ctx, event) && !(existing && ownsAdmittedItem(ctx, existing))) return false;
+    const item = existing ?? admitActivity(ctx, event);
+    if (!item || item.released || event.seq <= item.model.seq) return false;
+    const wasTerminal = Boolean(item.terminalStatus);
+    item.presentation = presentationMode(ctx.settingsSnapshot);
+    const previous = ctx.store.transcript.items.find(row => row.type === 'activity' && row.key === ctx.activeActivityKey);
+    if (!wasTerminal && (event.kind === 'turn-start' || !ctx.activeActivityKey
+        || (previous?.type === 'activity' && previous.terminalStatus))) ctx.activeActivityKey = item.key;
+    let newAnswer = false;
+    // Capture the full final before the shared reducer bounds its preview.
+    if (event.kind === 'turn-end') newAnswer = appendActivityAnswer(ctx.store.transcript, item.key, event);
+    try {
+        if (!updateActivityItem(item, event)) return false;
+    } catch {
+        item.degraded = true;
+        item.recordingGap = true;
+        item.revision++;
+        ctx.requestFrame?.();
+        return false;
+    }
+    if (ctx.displayMode !== 'fullscreen' && !wasTerminal) {
+        if (item.presentation === 'legacy' && event.kind !== 'message' && event.kind !== 'reasoning' && event.kind !== 'tool') {
+            process.stdout.write(closeActivityLinear(item));
+        }
+        if (event.kind === 'turn-end' && !wasTerminal) printSettledActivity(ctx, item, newAnswer);
+        else if (event.kind === 'request') {
+            process.stdout.write('\r\x1b[2K' + wrapActivityTerminalText(`Waiting for ${event.requestType}: ${event.view.title}`,
+                process.stdout.columns || 80).join('\n') + '\n');
+        } else if (item.presentation === 'legacy' && (event.kind === 'message' || event.kind === 'reasoning' || event.kind === 'tool')) {
+            const entry = item.model.entries.get(event.itemId);
+            if (entry) process.stdout.write(activityLinearDelta(item, entry));
+        } else {
+            process.stdout.write('\r\x1b[2K' + (renderActivityItem(item, process.stdout.columns || 80)[0] ?? ''));
+        }
+    }
+    ctx.requestFrame?.();
+    return !wasTerminal;
+}
+
+/** A compatibility terminal can settle presentation after journal failure, without
+ * inventing a semantic event or stealing another run's final/lifecycle cleanup. */
+export function settleActivityCompatibility(ctx: TuiContext, wire: Record<string, unknown>): boolean {
+    const item = activityForCompatibility(ctx, wire);
+    if (!item || (wire['runtimeFinality'] !== 'present' && wire['runtimeFinality'] !== 'absent')) return false;
+    const status = wire['runtimeStatus'];
+    if (status !== 'done' && status !== 'error' && status !== 'stopped') return false;
+    const outcome: Pick<RuntimeTurnOutcome, 'status' | 'finalText'> = {
+        status, finalText: wire['runtimeFinality'] === 'absent' ? null : typeof wire['text'] === 'string' ? wire['text'] : '',
+    };
+    const newAnswer = appendActivityAnswer(ctx.store.transcript, item.key, outcome);
+    if (!item.terminalStatus) {
+        item.terminalStatus = status;
+        item.degraded = true;
+        item.model.requests.clear();
+        item.revision++;
+        printSettledActivity(ctx, item, newAnswer);
+    }
+    ctx.requestFrame?.();
+    return true;
+}
+
+export function markActivityGap(ctx: TuiContext, identity: { sessionId: unknown; scope: unknown; runId: unknown }): void {
+    const item = ctx.store.transcript.items.find((row): row is ActivityTranscriptItem => row.type === 'activity'
+        && row.model.identity.runId === identity.runId && row.model.identity.sessionId === identity.sessionId
+        && row.model.identity.scope === identity.scope && ownsAdmittedItem(ctx, row));
+    if (!item && !ownsIdentity(ctx, identity)) return;
+    if (item) { item.degraded = true; item.recordingGap = true; item.revision++; }
+    else {
+        const text = 'Activity unavailable; using legacy output.';
+        if (!ctx.store.transcript.items.some(row => row.type === 'status' && row.text === text)) appendStatusItem(ctx.store.transcript, text);
+    }
+    ctx.requestFrame?.();
+}

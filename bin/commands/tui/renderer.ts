@@ -78,11 +78,14 @@ export function rebuildFooter(ctx: TuiContext): void {
         ? `  ${theme.fg('accent', theme.bold('\u276F'))} `
         : `  ${ctx.accent}${c.bold}\u276F${c.reset} `;
     if (ctx.displayMode === 'fullscreen') return;
+    const preserveCursor = ctx.store.transcript.items.some(item => item.type === 'activity' && item.lineActiveItemId !== null);
+    if (preserveCursor) process.stdout.write('\x1b7');
     setupScrollRegion(
         ctx.footer,
         `  ${c.dim}${hrLine()}${c.reset}`,
         resolveShellLayout(process.stdout.columns || 80, getRows(), ctx.store.panes),
     );
+    if (preserveCursor) process.stdout.write('\x1b8');
 }
 
 export function shortenProjectPathForFooter(projectRoot: string): string {

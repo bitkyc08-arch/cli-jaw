@@ -161,7 +161,12 @@ export class Viewport {
 
         if (!newFrontier.preludeCommitted && this.preludeLines.length > 0) {
             const end = this.preludeLines.length;
-            if (end <= safeUntil) { newFrontier.preludeCommitted = true; rowCursor = end; }
+            // The flat row stream starts with the complete prelude. If it cannot
+            // commit yet, counting item rows from zero would publish welcome
+            // pixels but mark answers committed, hiding them without printing.
+            if (end > safeUntil) return null;
+            newFrontier.preludeCommitted = true;
+            rowCursor = end;
         }
 
         const maxItem = Math.min(stablePrefixIndex, this.cells.length);
@@ -255,6 +260,7 @@ export class Viewport {
 
     private itemCacheKey(item: TranscriptItem): string {
         switch (item.type) {
+            case 'activity': return `activity|${item.key}|${item.revision}|${item.presentation}`;
             case 'user': return `u|${item.displayText.length}|${hashText(item.displayText)}|${item.agentId ?? ''}`;
             case 'assistant': return `a|${item.text.length}|${hashText(item.text)}|${item.streaming ? 1 : 0}|${item.agentId ?? ''}`;
             case 'thinking': return `h|${item.text.length}|${hashText(item.text)}|${item.streaming ? 1 : 0}|${item.collapsed ? 1 : 0}|${item.stepRef ?? ''}|${item.agentId ?? ''}`;

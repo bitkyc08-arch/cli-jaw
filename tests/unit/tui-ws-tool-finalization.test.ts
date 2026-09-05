@@ -7,9 +7,11 @@ import { createTuiStore } from '../../src/cli/tui/store.ts';
 import { appendUserItem, replaceNativeAssistantFinal } from '../../src/cli/tui/transcript.ts';
 import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
 import { stopSpinner } from '../../src/cli/tui/spinner.ts';
-import { refreshInfo } from '../../bin/commands/tui/api.ts';
+import { refreshInfo, refreshActivityIdentity } from '../../bin/commands/tui/api.ts';
 import { applySettingsSelection } from '../../bin/commands/tui/overlays.ts';
 import { buildAppearanceRows } from '../../src/cli/tui/settings-screen.ts';
+import { computeStablePrefixIndex } from '../../bin/commands/tui/fullscreen-mode.ts';
+import xterm from '@xterm/xterm';
 
 function makeCtx(): TuiContext {
     return {
@@ -84,6 +86,228 @@ function assistantTexts(ctx: TuiContext): string[] {
         .map(item => item.type === 'assistant' ? item.text : '');
 }
 
+const runtimeIdentity = { version: 1, sessionId: 'activity-chat', scope: 'local:activity-chat', runId: 'activity-run', turnId: 'activity-turn' };
+function activityContext(): TuiContext {
+    const ctx = makeCtx();
+    ctx.activityIdentity = { sessionId: runtimeIdentity.sessionId, scope: runtimeIdentity.scope };
+    ctx.activityIdentityGeneration = 0;
+    return ctx;
+}
+function runtime(ctx: TuiContext, body: Record<string, unknown>): void {
+    handleWsMessage(ctx, msg({ type: 'agent_runtime', ...runtimeIdentity, ...body }));
+}
+function compatibility(ctx: TuiContext, text: string, extra: Record<string, unknown> = {}): void {
+    handleWsMessage(ctx, msg({ type: 'agent_done', traceRunId: runtimeIdentity.runId,
+        runtimeFinality: 'present', runtimeStatus: 'done', text, ...extra }));
+}
+
+test('semantic tool/commentary and mirrored compatibility produce one complete full answer', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 7, kind: 'tool', itemId: 'tool', name: 'Read', status: 'running', output: 'tool output' });
+        runtime(ctx, { seq: 9, kind: 'message', itemId: 'work', phase: 'commentary', operation: 'append', text: 'work preview' });
+        handleWsMessage(ctx, msg({ type: 'agent_output', traceRunId: runtimeIdentity.runId, text: 'work preview' }));
+        const full = 'a'.repeat(33_000) + ' SENTINEL_FULL_FINAL';
+        runtime(ctx, { seq: 15, kind: 'turn-end', status: 'done', finalText: full });
+        compatibility(ctx, full);
+        compatibility(ctx, full);
+        assert.deepEqual(assistantTexts(ctx), [full]);
+        assert.equal(ctx.store.transcript.items.filter(item => item.type === 'activity').length, 1);
+        assert.equal(ctx.streaming, false);
+        assert.equal(ctx.footerTimer, null);
+        assert.equal(ctx.inputActive, true);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('journal terminal loss keeps compatibility final and settles the commit barrier', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 3, kind: 'message', itemId: 'work', phase: 'unknown', operation: 'append', text: 'partial work' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        compatibility(ctx, 'full fallback answer');
+        const item = ctx.store.transcript.items.find(item => item.type === 'activity');
+        assert.equal(item?.type, 'activity');
+        if (item?.type === 'activity') {
+            assert.equal(item.terminalStatus, 'done');
+            assert.equal(item.degraded, true);
+            assert.equal(item.model.end, null);
+        }
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+        assert.deepEqual(assistantTexts(ctx), ['full fallback answer']);
+        runtime(ctx, { seq: 1, runId: 'next', kind: 'turn-start', provider: 'codex-app' });
+        assert.equal(ctx.streaming, true);
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), 2);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('late completion from an older Activity cannot stop a newer run', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 5, kind: 'turn-end', status: 'done', finalText: 'old answer' });
+        runtime(ctx, { seq: 1, runId: 'new-run', kind: 'turn-start', provider: 'codex-app' });
+        ctx.inputActive = false;
+        compatibility(ctx, 'old answer');
+        assert.equal(ctx.streaming, true);
+        assert.equal(ctx.inputActive, false);
+        assert.ok(ctx.footerTimer);
+        assert.deepEqual(assistantTexts(ctx), ['old answer']);
+    } finally { cleanupCtx(ctx); }
+});
+
+for (const actualGap of [false, true]) {
+    test(`compatibility before canonical end preserves one answer and ${actualGap ? 'keeps real gap' : 'clears provisional gap'}`, () => {
+        const ctx = activityContext();
+        try {
+            runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+            if (actualGap) handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+            compatibility(ctx, 'canonical answer');
+            runtime(ctx, { seq: 7, kind: 'message', itemId: 'late-work', phase: 'commentary', operation: 'append', text: 'queued work' });
+            handleWsMessage(ctx, msg({ type: 'agent_output', traceRunId: runtimeIdentity.runId, text: 'queued work' }));
+            handleWsMessage(ctx, msg({ type: 'agent_tool', traceRunId: runtimeIdentity.runId, icon: 'tool', label: 'Read', status: 'running' }));
+            assert.equal(ctx.streaming, false);
+            runtime(ctx, { seq: 9, kind: 'turn-end', status: 'done', finalText: 'canonical answer' });
+            const item = ctx.store.transcript.items.find(item => item.type === 'activity');
+            if (item?.type !== 'activity') assert.fail('Activity absent');
+            assert.equal(item.degraded, actualGap);
+            assert.equal(item.model.end?.seq, 9);
+            assert.equal(item.model.entries.size, 1);
+            assert.deepEqual(assistantTexts(ctx), ['canonical answer']);
+            assert.equal(ctx.footerTimer, null);
+        } finally { cleanupCtx(ctx); }
+    });
+}
+
+test('identity refresh still permits exact admitted-run terminal settlement', async () => {
+    const ctx = activityContext();
+    ctx.apiUrl = 'http://127.0.0.1:3457';
+    let finish!: (response: Response) => void;
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => new Promise(resolve => { finish = resolve; });
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        const pending = refreshActivityIdentity(ctx);
+        assert.equal(ctx.activityIdentity, null);
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: 'complete while refreshing' });
+        compatibility(ctx, 'complete while refreshing');
+        finish(Response.json({ activityIdentity: { sessionId: runtimeIdentity.sessionId, scope: runtimeIdentity.scope } }));
+        await pending;
+        assert.equal(ctx.streaming, false);
+        assert.deepEqual(assistantTexts(ctx), ['complete while refreshing']);
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+    } finally { globalThis.fetch = original; cleanupCtx(ctx); }
+});
+
+test('older completion during refresh cannot fall into newer-run legacy cleanup', async () => {
+    const ctx = activityContext();
+    ctx.apiUrl = 'http://127.0.0.1:3457';
+    let finish!: (response: Response) => void;
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => new Promise(resolve => { finish = resolve; });
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 5, kind: 'turn-end', status: 'done', finalText: 'old answer' });
+        runtime(ctx, { seq: 1, runId: 'new-run', kind: 'turn-start', provider: 'codex-app' });
+        ctx.inputActive = false;
+        const pending = refreshActivityIdentity(ctx);
+        compatibility(ctx, 'old answer');
+        assert.equal(ctx.streaming, true);
+        assert.equal(ctx.inputActive, false);
+        assert.deepEqual(assistantTexts(ctx), ['old answer']);
+        finish(Response.json({ activityIdentity: { sessionId: runtimeIdentity.sessionId, scope: runtimeIdentity.scope } }));
+        await pending;
+    } finally { globalThis.fetch = original; cleanupCtx(ctx); }
+});
+
+test('new run missing its start takes lifecycle ownership after the previous run settled', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        compatibility(ctx, 'old');
+        const identity = ctx.activityIdentity;
+        ctx.activityIdentity = null;
+        runtime(ctx, { seq: 1, runId: 'new', kind: 'turn-start', provider: 'codex-app' });
+        ctx.activityIdentity = identity;
+        runtime(ctx, { seq: 7, runId: 'new', kind: 'tool', itemId: 'read', name: 'Read', status: 'running' });
+        assert.equal(ctx.streaming, true);
+        ctx.inputActive = false;
+        compatibility(ctx, 'new answer', { traceRunId: 'new' });
+        assert.equal(ctx.streaming, false);
+        assert.equal(ctx.inputActive, true);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('classic legacy display emits canonical commentary and tool details before final', () => {
+    const ctx = activityContext();
+    ctx.displayMode = 'line';
+    ctx.settingsSnapshot = { presentation: { mode: 'legacy' } };
+    const original = process.stdout.write;
+    let output = '';
+    process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
+        output += String(chunk);
+        const callback = args.find((arg): arg is () => void => typeof arg === 'function');
+        callback?.(); return true;
+    }) as typeof process.stdout.write;
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 3, kind: 'message', itemId: 'm', phase: 'commentary', operation: 'append', text: 'VISIBLE_WORK' });
+        const beforeNotice = output.length;
+        runtime(ctx, { seq: 4, kind: 'request', requestId: 'question', requestType: 'question', view: { title: 'Question', fields: [] } });
+        assert.match(output.slice(beforeNotice), /^\n\r\x1b\[2KWaiting for question/);
+        runtime(ctx, { seq: 5, kind: 'message', itemId: 'm', phase: 'commentary', operation: 'replace', text: 'VISIBLE_WORK with suffix' });
+        runtime(ctx, { seq: 7, kind: 'tool', itemId: 't', name: 'Read', status: 'running', output: 'VISIBLE_TOOL_OUTPUT' });
+        runtime(ctx, { seq: 8, kind: 'tool', itemId: 't', name: 'Read', status: 'running', output: 'VISIBLE_TOOL_OUTPUT suffix' });
+        assert.match(output, /VISIBLE_WORK/);
+        assert.match(output, /VISIBLE_TOOL_OUTPUT/);
+        assert.equal(output.match(/VISIBLE_WORK/g)?.length, 1);
+        assert.equal(output.match(/VISIBLE_TOOL_OUTPUT/g)?.length, 1);
+        assert.equal(assistantTexts(ctx).length, 0);
+    } finally { process.stdout.write = original; cleanupCtx(ctx); }
+});
+
+test('classic footer repaint preserves the cell cursor between streamed suffixes', async () => {
+    const ctx = activityContext();
+    ctx.displayMode = 'line';
+    ctx.settingsSnapshot = { presentation: { mode: 'legacy' } };
+    const original = process.stdout.write;
+    let output = '';
+    process.stdout.write = ((chunk: string | Uint8Array) => { output += String(chunk); return true; }) as typeof process.stdout.write;
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 3, kind: 'message', itemId: 'm', phase: 'commentary', operation: 'replace', text: 'Checking' });
+        runtime(ctx, { seq: 5, kind: 'message', itemId: 'm', phase: 'commentary', operation: 'replace', text: 'Checking files' });
+    } finally { process.stdout.write = original; cleanupCtx(ctx); }
+    const terminal = new xterm.Terminal({ cols: 80, rows: 24, allowProposedApi: true });
+    try {
+        // A real PTY applies ONLCR to stdout; the mocked writer captures before it.
+        await new Promise<void>(resolve => terminal.write(output.replace(/\r?\n/g, '\r\n'), resolve));
+        const rows = Array.from({ length: terminal.buffer.active.length }, (_, i) => terminal.buffer.active.getLine(i)?.translateToString(true) ?? '');
+        assert.ok(rows.some(row => row.includes('Checking files')), rows.join('\n'));
+    } finally { terminal.dispose(); }
+});
+
+test('Activity rejects foreign identities and retains at most16 preview models without native commits', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, sessionId: 'provider-session', kind: 'turn-start', provider: 'codex-app' });
+        runtime(ctx, { seq: 1, scope: 'foreign', kind: 'turn-start', provider: 'codex-app' });
+        assert.equal(ctx.store.transcript.items.length, 0);
+        for (let i = 0; i < 17; i++) {
+            runtime(ctx, { seq: 1, runId: `run-${i}`, kind: 'turn-start', provider: 'codex-app' });
+            runtime(ctx, { seq: 3, runId: `run-${i}`, kind: 'message', itemId: 'm', phase: 'commentary', operation: 'append', text: 'preview' });
+            runtime(ctx, { seq: 5, runId: `run-${i}`, kind: 'turn-end', status: 'done', finalText: `final-${i}` });
+            compatibility(ctx, `final-${i}`, { traceRunId: `run-${i}` });
+        }
+        const turns = ctx.store.transcript.items.filter(item => item.type === 'activity');
+        assert.equal(turns.filter(item => !item.released).length, 16);
+        assert.equal(ctx.store.transcript.items.length, 34);
+        assert.deepEqual(assistantTexts(ctx), Array.from({ length: 17 }, (_, i) => `final-${i}`));
+        assert.equal(turns[0]?.model.entries.size, 0);
+    } finally { cleanupCtx(ctx); }
+});
+
 test('interactive raw prints semantic frames once without mutating display state', () => {
     const ctx = makeCtx();
     ctx.isRaw = true;
@@ -126,6 +350,45 @@ test('overlapping settings refreshes retain the newest presentation response', a
         pending[0]!(Response.json({ presentation: { mode: 'activity' } }));
         assert.equal(await first, false);
         assert.deepEqual(ctx.settingsSnapshot['presentation'], { mode: 'legacy' });
+    } finally { globalThis.fetch = original; cleanupCtx(ctx); }
+});
+
+test('a newer settings refresh also invalidates the older in-flight snapshot', async () => {
+    const ctx = makeCtx();
+    ctx.apiUrl = 'http://127.0.0.1:3457';
+    let resolveSnapshot!: (response: Response) => void;
+    let resolveSession!: (response: Response) => void;
+    let snapshotStarted!: () => void;
+    let sessionStarted!: () => void;
+    const snapshotReady = new Promise<void>(resolve => { snapshotStarted = resolve; });
+    const sessionReady = new Promise<void>(resolve => { sessionStarted = resolve; });
+    let settings = 0;
+    let sessions = 0;
+    let snapshots = 0;
+    const original = globalThis.fetch;
+    globalThis.fetch = async input => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/api/settings') return Response.json({ presentation: { mode: ++settings === 1 ? 'activity' : 'legacy' } });
+        if (path === '/api/session' && ++sessions === 2) return new Promise(resolve => {
+            resolveSession = resolve; sessionStarted();
+        });
+        if (path === '/api/orchestrate/snapshot') {
+            if (++snapshots === 1) return new Promise(resolve => { resolveSnapshot = resolve; snapshotStarted(); });
+            return Response.json({ activityIdentity: { sessionId: 'new', scope: 'local:new' } });
+        }
+        return Response.json({});
+    };
+    try {
+        const first = refreshInfo(ctx);
+        await snapshotReady;
+        const second = refreshInfo(ctx);
+        await sessionReady;
+        resolveSnapshot(Response.json({ activityIdentity: { sessionId: 'stale', scope: 'local:stale' } }));
+        assert.equal(await first, false);
+        assert.equal(ctx.activityIdentity, null);
+        resolveSession(Response.json({}));
+        assert.equal(await second, true);
+        assert.deepEqual(ctx.activityIdentity, { sessionId: 'new', scope: 'local:new' });
     } finally { globalThis.fetch = original; cleanupCtx(ctx); }
 });
 

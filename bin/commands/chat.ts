@@ -200,6 +200,7 @@ const ctx: TuiContext = {
     tuiConfig,
     settingsSnapshot,
     activityIdentity: null,
+    activitySettlementIdentity: null,
     activityIdentityGeneration: 0,
     values: { port: values.port as string, raw: !!values.raw, simple: !!values.simple },
     isRaw: !!values.raw,

@@ -110,8 +110,10 @@ export interface TuiContext {
     tuiConfig: { pasteCollapseLines: number; pasteCollapseChars: number; [k: string]: unknown };
     settingsSnapshot: Record<string, unknown>;
     activityIdentity: ActivityIdentity | null;
+    activitySettlementIdentity?: ActivityIdentity | null;
     activityIdentityGeneration: number;
     settingsRefreshGeneration?: number;
+    activeActivityKey?: string;
     values: { port: string; raw: boolean; simple: boolean };
     isRaw: boolean;
 

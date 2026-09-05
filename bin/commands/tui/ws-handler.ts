@@ -23,6 +23,8 @@ import { openPromptBlock, rebuildFooter } from './renderer.js';
 import { dismissOverlay, openBgtaskOverlay } from './overlays.js';
 import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
 import { refreshInfo } from './api.js';
+import { handleActivityRuntime, activityForCompatibility, settleActivityCompatibility, markActivityGap } from './activity-handler.js';
+import { activityKey } from '../../../src/shared/activity-state.js';
 
 function isFullscreen(ctx: TuiContext): boolean {
     return ctx.displayMode === 'fullscreen';
@@ -83,7 +85,23 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
         const nativeFinality = wire?.runtimeFinality === 'present' || wire?.runtimeFinality === 'absent';
         const nativeOrchestrateDone = !ctx.isRaw && nativeFinality && wire?.type === 'orchestrate_done';
         const event = normalizeTuiWsEvent(nativeOrchestrateDone ? { ...wire, type: 'agent_done' } : wire);
+        const mirroredActivity = event.kind === 'assistant-output' || event.kind === 'agent-tool' || event.kind === 'agent-status'
+            ? activityForCompatibility(ctx, wire) : undefined;
+        if (mirroredActivity && (mirroredActivity.terminalStatus || !mirroredActivity.degraded)) return;
         switch (event.kind) {
+            case 'runtime':
+                if (handleActivityRuntime(ctx, event.event) && event.event.kind !== 'turn-end'
+                    && ctx.activeActivityKey === activityKey(event.event)) {
+                    clearEphemeralStatus(transcript);
+                    ensureTurnClock(ctx, event.event.kind === 'tool' ? 'tool' : 'responding');
+                }
+                break;
+            case 'runtime-gap':
+                markActivityGap(ctx, event);
+                break;
+            case 'runtime-invalid':
+                markActivityGap(ctx, { sessionId: event.raw['sessionId'], scope: event.raw['scope'], runId: event.raw['runId'] });
+                break;
             case 'assistant-output':
                 if (ov.helpOpen || ov.paletteOpen || ov.bgtaskOpen) dismissOverlay(ctx);
                 if (ctx.isRaw) {
@@ -130,6 +148,15 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 const nativeFinal = nativeFinality && !ctx.isRaw;
                 const runId = typeof event.raw['traceRunId'] === 'string' ? event.raw['traceRunId'] : '';
                 const receipt = nativeTerminalReceipts.get(ctx);
+                const activity = activityForCompatibility(ctx, event.raw);
+                if (activity?.compatibilityDone) break;
+                const semanticFinal = settleActivityCompatibility(ctx, event.raw);
+                // A delayed terminal can finish its own history without closing
+                // a newer run's composer, clocks or IDE lifecycle.
+                if (semanticFinal && activity && ctx.activeActivityKey && ctx.activeActivityKey !== activity.key) {
+                    activity.compatibilityDone = true;
+                    break;
+                }
                 if (nativeOrchestrateDone) delete ctx.orchPhase;
                 if (nativeFinal && receipt && (runId ? receipt.runs.includes(runId)
                     : !ctx.streaming && receipt.items === transcript.items && receipt.length === transcript.items.length
@@ -140,17 +167,19 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 if (nativeFinal) replaceNativeAssistantFinal(transcript, '');
                 stopSpinner();
                 clearEphemeralStatus(transcript);
-                for (const tool of event.toolLog) {
+                for (const tool of semanticFinal && !activity?.degraded ? [] : event.toolLog) {
                     if (isThinkingToolEvent(tool)) {
                         commitThinkingItemOnce(transcript, tool, { updateCommitted: true });
                     } else {
                         commitToolItemOnce(transcript, tool, { updateCommitted: true });
                     }
                 }
-                commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
+                if (!semanticFinal || activity?.degraded) commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
                 resetTurnToolDedup(transcript);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
+                } else if (semanticFinal) {
+                    ctx.streamSink = null;
                 } else if (nativeFinal) {
                     ctx.streamSink = null; // never flush a provisional buffer as final
                     replaceNativeAssistantFinal(transcript, event.text, event.agentId);
@@ -241,6 +270,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 rebuildFooter(ctx); // safe point: turn finished, before reopening the prompt
                 ctx.inputActive = true;
                 openPromptBlock(ctx);
+                if (semanticFinal && activity) activity.compatibilityDone = true;
                 if (nativeFinal) {
                     const runs = receipt?.runs ?? [];
                     if (runId) { runs.push(runId); if (runs.length > 8) runs.shift(); }

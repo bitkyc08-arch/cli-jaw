@@ -97,6 +97,31 @@ Logical frontier survives width reflow (unlike physical row counts).
 - **Terminal compatibility**: designed for Ghostty 1.3+; unsupported terminals silently skip commits
 - **No commit during overlays**: help/palette/settings screens block commits
 
+## Native Activity presentation
+
+Interactive chat binds semantic events to the server's `activityIdentity` from
+`GET /api/orchestrate/snapshot`. `presentation.mode` selects grouped Activity (default)
+or linear legacy rows independently of provider native/print transport. Ctrl+O toggles
+the latest uncommitted Activity; explicit disclosure survives completion. Raw NDJSON
+does not pass through the display projection.
+
+The shared reducer holds bounded previews; the existing assistant transcript owns
+the full authoritative answer. Empty and absent answers leave distinct invisible
+receipts. Compatibility completion may precede the semantic end, so provisional record
+status clears when that end arrives. An actual recording gap remains visible. Exact
+retained-run settlement continues during identity refresh without admitting new runs.
+Late completions cannot close a newer run's composer or clock.
+
+Commit selection refreshes viewport cells before calculating the frontier. A prelude
+that cannot yet fit in the commit range blocks item commitment too: printing welcome
+rows must never mark unseen answers committed. Classic linear updates append safe
+suffixes; footer repaint saves/restores an open text cursor, while notices close the
+line before clearing it. Activity provider text cannot emit VT actions.
+
+At most16 Activity preview models retain text; completed previews release in-place,
+preserving transcript indices and uncommitted full answers. Retained history inspection
+and reconnect restoration are the next TUI slice; native scrollback pixels stay immutable.
+
 ## Research
 
 Full design history at `devlog/_plan/260618_cli_jaw_jwc_unified_roadmap/04_260615_native_scrollback_commit/` (21 documents including 4x GPT Pro audits).
