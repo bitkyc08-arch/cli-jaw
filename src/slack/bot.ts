@@ -71,7 +71,7 @@ import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.
 import { admitSlackRun, claimSlackEvent, commitSlackEvent, currentIngressGeneration, enqueueSlackIngress, isIngressGenerationCurrent, resetSlackIngress, resolveSlackScopeForTarget, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
 import {
-    cachedNameMap, resolveConversationInfo, resolveThreadInfo, THREAD_FETCH_LIMIT,
+    admitHistoryStart, cachedNameMap, resolveConversationInfo, resolveThreadInfo, THREAD_FETCH_LIMIT,
 } from './conversation.js';
 import { fetchSlackHistory, formatHistoryForAgent } from './history.js';
 import { buildSlackContextBlock, applySlackContext, buildThreadPreamble, ROSTER_PREVIEW } from './context.js';
@@ -870,7 +870,9 @@ async function buildInboundContextBlock(
             threadTs
                 ? resolveThreadInfo(token, channel, threadTs, { teamId, signal })
                 : Promise.resolve(undefined),
-            shouldPrefetch && isTopLevelChannel && event.ts
+            // Paced like the other Tier-3 lookups: declined rather than queued,
+            // and a declined window just means this message goes without.
+            shouldPrefetch && isTopLevelChannel && event.ts && admitHistoryStart()
                 ? fetchSlackHistory(token, channel, {
                     latest: event.ts, limit: THREAD_FETCH_LIMIT,
                     noRetryOnRateLimit: true, signal,

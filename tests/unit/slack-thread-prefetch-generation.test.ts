@@ -59,6 +59,7 @@ mock.module('../../src/slack/history.ts', { namedExports: {
 mock.module('../../src/slack/conversation.ts', {
     namedExports: {
         THREAD_FETCH_LIMIT: 50,
+        admitHistoryStart: () => true,
         resolveConversationInfo: async () => ({
             id: 'C1', name: 'general', kind: 'channel', resolved: true,
         }),

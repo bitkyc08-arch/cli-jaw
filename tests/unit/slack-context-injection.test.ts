@@ -48,6 +48,7 @@ let threadResolves = true;
 mock.module('../../src/slack/conversation.ts', {
     namedExports: {
         THREAD_FETCH_LIMIT: 50,
+        admitHistoryStart: () => true,
         resolveConversationInfo: async () => {
             conversationCalls += 1;
             return { id: 'C0A1B2C3', name: 'eng-platform', kind: 'channel', resolved: true };

@@ -139,6 +139,16 @@ function admitStartFor(method: string): boolean {
 }
 
 /**
+ * The top-level channel prefetch (bot.ts) calls conversations.history directly —
+ * it wants a raw window, not a cached snapshot — so it borrows this clock rather
+ * than bypassing it. A busy channel with an unbound session would otherwise
+ * fire one Tier-3 call per message with no pacing at all (#518 r2).
+ */
+export function admitHistoryStart(): boolean {
+    return admitStartFor('conversations.history');
+}
+
+/**
  * Capability keys are per method. `conversations.info` answering missing_scope
  * proves nothing about `conversations.replies` — they require different scopes,
  * so one must not lock the other out for 30 minutes.

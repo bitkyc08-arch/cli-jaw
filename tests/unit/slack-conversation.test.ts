@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    admitHistoryStart,
     resolveConversationInfo,
     resolveThreadInfo,
     cachedNameMap,
@@ -371,6 +372,16 @@ test('the start-rate gate declines rather than queueing', async () => {
     const info = await resolveConversationInfo(TOKEN, 'C2', { teamId: TEAM, fetchImpl: second.impl });
     assert.equal(second.calls.length, 0, 'a declined start must not call Slack');
     assert.equal(info.resolved, false, 'and must degrade immediately, not wait');
+});
+
+test('the top-level history prefetch borrows the same per-method clock', () => {
+    // conversations.history is its own Tier-3 method: it must not be starved
+    // by conversations.info, and it must not fire unpaced in a busy channel.
+    resetSlackConversationCache();
+    assert.equal(admitHistoryStart(), true, 'first start in a fresh window is admitted');
+    assert.equal(admitHistoryStart(), false, 'a second start inside 1.2s is declined, not queued');
+    resetSlackConversationCache();
+    assert.equal(admitHistoryStart(), true, 'the runtime reset clears the clock');
 });
 
 test('an empty channel or token degrades without calling', async () => {
