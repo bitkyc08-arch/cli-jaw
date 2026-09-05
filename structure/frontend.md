@@ -15,6 +15,8 @@ aliases: [CLI-JAW Frontend, public architecture, frontend.md]
 
 TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock startup from answer-sink startup. Thinking may start the clock without an answer sink; the first later assistant chunk creates that sink once, keeping the same clock/footer and thinking transcript. Completed markdown blocks stream before the terminal, and finalization flushes the remaining answer once. Fullscreen/raw behavior is unchanged.
 
+`presentation.mode` selects `activity` (default) or `legacy` independently of runtime transport. Manager Display edits the instance setting through the existing dirty-store save path. Classic applies the normalized server value to `data-presentation-mode`; initial settings reads and `settings_change` refreshes share a generation fence so late responses cannot overwrite a newer choice. Failed refreshes retain the applied mode. Presentation saves do not change permissions, provider selection, or messaging delivery.
+
 ---
 
 ## 파일 구조

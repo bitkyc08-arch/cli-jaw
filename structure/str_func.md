@@ -401,7 +401,7 @@ cli-jaw/
 │   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
 │   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
 │   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (50L)
-│   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
+│   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (92L)
 │   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
 │   │   ├── structured-fence.ts ← structured renderer fence scanner/parser helper (80L)
 │   │   ├── tool-log-sanitize.ts ← tool log sanitization helpers (247L)
@@ -449,7 +449,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 571 files source/assets, ~100900L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 572 files source/assets, ~101100L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1223L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
