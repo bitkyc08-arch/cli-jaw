@@ -3,7 +3,8 @@ import type { AuthMiddleware } from './types.js';
 import { fail } from '../http/response.js';
 import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, waitForExitSettled, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
 import { getLiveRun } from '../agent/live-run-state.js';
-import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
+import { listToolEntriesForRun } from '../trace/store.js';
+import { mergeLatestTools } from '../agent/merge-tool-log.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
@@ -76,17 +77,15 @@ function getSafeLiveRun(scope: string) {
     const liveRun = getLiveRun(scope);
     let toolLog = sanitizeToolLogForDurableStorage(liveRun.toolLog);
     if (liveRun.running && liveRun.traceRunId) {
-        const bossCount = toolLog.filter(t => t.isEmployee !== true && !isToolLogOverflowMarker(t)).length;
-        const ramBehind = toolLog.length === 0
-            || toolLog.some(isToolLogOverflowMarker)
-            || countToolTraceRows(liveRun.traceRunId) > bossCount;
-        if (ramBehind) {
-            const boss = listToolEntriesForRun(liveRun.traceRunId);
-            if (boss.length > bossCount) {
-                const mirrors = toolLog.filter(t => t.isEmployee === true);
-                toolLog = sanitizeToolLogForDurableStorage([...boss, ...mirrors]);
-            }
-        }
+        // Updates replace rows in place, so equal counts still need a durable read.
+        // All RAM entries remain fallback when storage missed a tool, including boss tools.
+        const boss = listToolEntriesForRun(liveRun.traceRunId, 400);
+        // Durable reconstruction recalculates omissions; an old RAM marker is not a tool.
+        // Without durable rows, retain the marker documenting RAM-only history loss.
+        const mirrors = boss.length
+            ? liveRun.toolLog.filter(tool => !isToolLogOverflowMarker(tool))
+            : liveRun.toolLog;
+        toolLog = sanitizeToolLogForDurableStorage(mergeLatestTools(boss, mirrors, liveRun.traceRunId));
     }
     return { ...liveRun, toolLog };
 }

@@ -1,13 +1,11 @@
-// WP4 (devlog 260703 doc 12): /api/orchestrate/snapshot falls back to durable
-// trace_events tool rows when the in-RAM live-run toolLog is empty or behind,
-// preserves RAM-only isEmployee mirrors, and passes RAM through untouched when
-// it is healthy. Route-level harness per tests/unit/trace-routes.test.ts.
+// Snapshots converge from durable rows even at equal counts, preserving RAM fallback.
+import '../setup/test-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { registerOrchestrateRoutes } from '../../src/routes/orchestrate.ts';
-import { startTraceRun, stampTraceTool } from '../../src/trace/store.ts';
+import { startTraceRun, stampTraceTool, updateTraceToolRow, countToolTraceRows } from '../../src/trace/store.ts';
 import { beginLiveRun, setLiveRunTraceId, appendLiveRunTool, clearLiveRun } from '../../src/agent/live-run-state.ts';
 import type { ToolEntry } from '../../src/types/agent.ts';
 
@@ -73,18 +71,101 @@ test('snapshot hydration preserves RAM-only isEmployee mirror entries', async ()
     clearLiveRun(SCOPE);
 });
 
-test('snapshot passes the RAM toolLog through when RAM is healthy (no fallback)', async () => {
+// Intentionally replaces the old equal-count => RAM-label-wins expectation (devlog 030/031).
+// Equal row counts do not prove freshness: updateTraceToolRow changes the existing SQL row.
+// This strengthens the behavioral oracle: assert durable terminal status, updated detail,
+// and an explicit detail clear through the snapshot route, while the row count stays one.
+test('snapshot observes equal-count durable terminal and detail updates', async () => {
     clearLiveRun(SCOPE);
     const runId = startTraceRun({ cli: 'claude', audience: 'public' });
     beginLiveRun(SCOPE, 'claude');
     setLiveRunTraceId(SCOPE, runId);
-    // One trace row and one RAM entry with a DIFFERENT label: counts are equal, so
-    // hydration must NOT replace RAM — the RAM version is what the snapshot returns.
-    const tool: ToolEntry = { icon: '🔧', label: 'trace-version', toolType: 'tool' };
+    const tool: ToolEntry = { icon: '🔧', label: 'working', toolType: 'tool', status: 'running', detail: 'started' };
     stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' }, 'tool');
     appendLiveRunTool(SCOPE, { ...tool, label: 'ram-version' });
+    updateTraceToolRow({ ...tool, label: 'finished', status: 'done', detail: 'result' });
+    assert.equal(countToolTraceRows(runId), 1, 'completion updates the same SQL row');
 
     const activeRun = await fetchActiveRun();
-    assert.deepEqual(activeRun.toolLog.map(t => t.label), ['ram-version']);
+    assert.deepEqual(activeRun.toolLog.map(t => [t.label, t.status, t.detail]), [['finished', 'done', 'result']]);
+    updateTraceToolRow({ ...tool, label: 'finished', status: 'done', detail: '' });
+    const cleared = await fetchActiveRun();
+    assert.equal(cleared.toolLog.length, 1);
+    assert.equal(cleared.toolLog[0]?.detail ?? '', '', 'empty durable detail must not resurrect stale RAM detail');
+    clearLiveRun(SCOPE);
+});
+
+test('snapshot keeps all RAM tools when storage has no rows or only some rows', async () => {
+    clearLiveRun(SCOPE);
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    beginLiveRun(SCOPE, 'claude');
+    setLiveRunTraceId(SCOPE, runId);
+    appendLiveRunTool(SCOPE, { icon: '🔧', label: 'unstored-boss', toolType: 'tool', stepRef: 'lost' });
+    appendLiveRunTool(SCOPE, { icon: '🤖', label: 'unstored-worker', toolType: 'tool', isEmployee: true });
+    assert.equal(countToolTraceRows(runId), 0);
+    assert.deepEqual((await fetchActiveRun()).toolLog.map(t => t.label), ['unstored-boss', 'unstored-worker']);
+    seedTraceTools(runId, ['stored-boss']);
+    assert.deepEqual((await fetchActiveRun()).toolLog.map(t => t.label), ['stored-boss', 'unstored-boss', 'unstored-worker']);
+    setLiveRunTraceId(SCOPE, 'tr_missing000000000000000000');
+    assert.deepEqual((await fetchActiveRun()).toolLog.map(t => t.label), ['unstored-boss', 'unstored-worker']);
+    clearLiveRun(SCOPE);
+});
+
+test('snapshot preserves cross-run and unscoped workers with the boss stepRef', async () => {
+    clearLiveRun(SCOPE);
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const workerRunId = startTraceRun({ cli: 'claude', audience: 'internal' });
+    const boss: ToolEntry = { icon: '🔧', label: 'boss', toolType: 'tool', stepRef: 'shared', status: 'done' };
+    stampTraceTool(boss, { traceRunId: runId, traceAudience: 'public' });
+    beginLiveRun(SCOPE, 'claude');
+    setLiveRunTraceId(SCOPE, runId);
+    appendLiveRunTool(SCOPE, { ...boss, label: 'stale-boss', status: 'running' });
+    appendLiveRunTool(SCOPE, { ...boss, traceRunId: workerRunId, label: 'worker', isEmployee: true });
+    appendLiveRunTool(SCOPE, { icon: '🤖', label: 'unknown-worker', toolType: 'tool', stepRef: 'shared', isEmployee: true });
+    const tools = (await fetchActiveRun()).toolLog;
+    assert.deepEqual(tools.map(t => t.label), ['boss', 'worker', 'unknown-worker']);
+    assert.equal(tools[0]?.status, 'done');
+    clearLiveRun(SCOPE);
+});
+
+test('snapshot reads only the latest 400 durable rows before applying inline caps', async () => {
+    clearLiveRun(SCOPE);
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    seedTraceTools(runId, Array.from({ length: 405 }, (_, i) => `boss-${i + 1}`));
+    beginLiveRun(SCOPE, 'claude');
+    setLiveRunTraceId(SCOPE, runId);
+    const tools = (await fetchActiveRun()).toolLog;
+    assert.equal(tools.length, 160);
+    assert.equal(tools[0]?.label, '241 tool events omitted', 'inline cap saw 400 rows, not the whole run');
+    assert.equal(tools[1]?.label, 'boss-247');
+    assert.equal(tools.at(-1)?.label, 'boss-405');
+    clearLiveRun(SCOPE);
+});
+
+test('snapshot recalculates one omission marker for 161 durable tools and preserves it without DB rows', async () => {
+    clearLiveRun(SCOPE);
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    beginLiveRun(SCOPE, 'claude');
+    for (let seq = 1; seq <= 161; seq++) {
+        const tool: ToolEntry = { icon: '🔧', label: `boss-${seq}`, toolType: 'tool', status: 'done' };
+        stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' });
+        appendLiveRunTool(SCOPE, tool);
+    }
+    assert.equal(countToolTraceRows(runId), 161);
+    const newestSequences = Array.from({ length: 159 }, (_, i) => i + 3);
+    // With no durable rows, the RAM marker still accounts for its two evicted tools.
+    setLiveRunTraceId(SCOPE, 'tr_missing000000000000000000');
+    const fallback = (await fetchActiveRun()).toolLog;
+    assert.equal(fallback.length, 160);
+    assert.equal(fallback[0]?.label, '2 tool events omitted');
+    assert.deepEqual(fallback.slice(1).map(t => t.traceSeq), newestSequences);
+
+    // Reconstructing from all durable tools must replace, not append, the RAM marker.
+    setLiveRunTraceId(SCOPE, runId);
+    const reconstructed = (await fetchActiveRun()).toolLog;
+    assert.equal(reconstructed.length, 160);
+    assert.equal(reconstructed.filter(t => t.traceSeq === undefined).length, 1, 'exactly one omission marker');
+    assert.equal(reconstructed[0]?.label, '2 tool events omitted');
+    assert.deepEqual(reconstructed.slice(1).map(t => t.traceSeq), newestSequences, 'all 159 newest real tools survive');
     clearLiveRun(SCOPE);
 });

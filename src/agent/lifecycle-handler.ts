@@ -20,6 +20,7 @@ import { clearLiveRun, getLiveRun } from './live-run-state.js';
 import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../shared/tool-log-sanitize.js';
 import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
+import { mergeLatestTools } from './merge-tool-log.js';
 import type { TraceRunStatus } from '../trace/types.js';
 import type { RuntimeEventBody, RuntimeTransport, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 import { lifecycleRuntimeOutcome, runtimeOutcomeExitCode } from './runtime/outcome.js';
@@ -363,8 +364,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 });
             } catch { console.warn('[runtime:projection] lifecycle observer failed'); }
         }
-        if (nativeOutcome === undefined) finalizeTraceRun(ctx.traceRunId, status, error);
-        else {
+        if (nativeOutcome === undefined) {
+            try { finalizeTraceRun(ctx.traceRunId, status, error); }
+            catch { console.warn('[trace] print finalization failed'); }
+        } else {
             try { finalizeTraceRun(nativeTraceRunId, status, error); }
             catch { console.warn('[runtime] outcome trace finalization failed'); }
         }
@@ -640,14 +643,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     if (nativeOutcome !== undefined) {
         let finalContent = nativeOutcome.finalText;
         if (mainManaged && !opts.internal) {
-            const seen = new Set<string>();
-            const combined: unknown[] = [];
-            for (const tool of [...ctx.toolLog, ...getLiveRun(liveScope).toolLog]) {
-                if (tool.stepRef && seen.has(tool.stepRef)) continue;
-                if (tool.stepRef) seen.add(tool.stepRef);
-                combined.push(tool);
-            }
-            const safeTools = sanitizeToolLogForDurableStorage(combined);
+            const safeTools = sanitizeToolLogForDurableStorage(
+                mergeLatestTools(ctx.toolLog, getLiveRun(liveScope).toolLog, nativeTraceRunId || ''),
+            );
             if (finalContent !== null) {
                 finalContent = applyOutputPolicy(finalContent, { scope: 'main' }).text;
                 evaluateRecordPending(ctx.toolLog, finalContent);
@@ -773,21 +771,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 });
             }
             const liveRun = getLiveRun(liveScope);
-            // Union, not pick-one: boss tools (ctx.toolLog) + worker mirrors (liveRun.toolLog,
-            // preserved across syncs by replaceLiveRunTools). Key on stepRef (durable, never
-            // stripped by the sanitizer); identity-less entries append (no false dedup). The
-            // old ternary kept only the longer array and discarded the other, dropping worker
-            // mirrors whenever the boss tool log was longer (claude). (devlog 260620 R1.)
-            const unionSeen = new Set<string>();
-            const unionToolLog: unknown[] = [];
-            const pushUnionTool = (t: { stepRef?: unknown }): void => {
-                const ref = typeof t.stepRef === 'string' && t.stepRef ? t.stepRef : null;
-                if (ref) { if (unionSeen.has(ref)) return; unionSeen.add(ref); }
-                unionToolLog.push(t);
-            };
-            for (const t of ctx.toolLog) pushUnionTool(t);
-            for (const t of liveRun.toolLog) pushUnionTool(t);
-            const sanitizedToolLog = sanitizeToolLogForDurableStorage(unionToolLog);
+            const sanitizedToolLog = sanitizeToolLogForDurableStorage(
+                mergeLatestTools(ctx.toolLog, liveRun.toolLog, ctx.traceRunId || ''),
+            );
             const toolLogJson = serializeSanitizedToolLog(sanitizedToolLog);
             const info = insertMessageWithTraceRun.run(
                 'assistant', finalContent, cli, model,
@@ -795,7 +781,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 ctx.traceRunId || null, chatSessionId,
             );
             const messageId = Number(info.lastInsertRowid || 0);
-            if (ctx.traceRunId && Number.isInteger(messageId) && messageId > 0) linkTraceRunToMessage(ctx.traceRunId, messageId);
+            if (ctx.traceRunId && Number.isInteger(messageId) && messageId > 0) {
+                try { linkTraceRunToMessage(ctx.traceRunId, messageId); }
+                catch { console.warn('[trace] print link failed'); }
+            }
             broadcast('agent_done', { ...runTag(ctx), text: finalContent, toolLog: sanitizedToolLog, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) });
 
             if (opts._heartbeatAnchorId) {
