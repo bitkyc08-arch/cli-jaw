@@ -9,7 +9,7 @@ const event = (seq: number, text = 'part'): RuntimeEvent => ({
 });
 function page(events: unknown[] = [], overrides: Record<string, unknown> = {}) {
     return { runId: identity.runId, sessionId: identity.sessionId, scope: identity.scope,
-        events, through: 100, nextAfter: 100, hasMore: false, incomplete: false, loss: null, ...overrides };
+        events, through: 100, nextAfter: 100, hasMore: false, incomplete: false, loss: null, status:'done', ...overrides };
 }
 function fixture(pages: unknown[]) {
     const controller = new AbortController();
@@ -31,7 +31,7 @@ test('fixed snapshot uses exact encoded route and the injected signal, with spar
         page([event(37), event(100)])]);
     const result = await readActivityRun(input);
     assert.deepEqual(result, { events: [event(2), event(9), event(37), event(100)],
-        through: 100, scope: identity.scope, incomplete: false, loss: null });
+        through: 100, scope: identity.scope, incomplete: false, loss: null, status:'done' });
     const query = new URLSearchParams({ session: identity.sessionId, after: '0', limit: '40' });
     assert.equal(input.paths[0], `/api/traces/${identity.runId}/activity?${query}`);
     query.set('after', '9'); query.set('through', '100');
@@ -42,6 +42,14 @@ test('run ID is encoded as one path component', async () => {
     const input = fixture([page([], { runId: 'run/a?b', through: 0, nextAfter: 0 })]);
     await readActivityRun({ ...input, runId: 'run/a?b' });
     assert.ok(input.paths[0]!.startsWith('/api/traces/run%2Fa%3Fb/activity?'));
+});
+
+test('tail catch-up starts after the fixed seed cursor and permits an empty terminal tail', async () => {
+    const input=fixture([page([], {through:100,nextAfter:100})]);
+    const result=await readActivityRun({...input,after:100});
+    assert.equal(new URL(input.paths[0]!, 'http://fixture').searchParams.get('after'),'100');
+    assert.deepEqual(result.events,[]);
+    await assert.rejects(readActivityRun({...input,after:-1}),/invalid_activity_cursor/);
 });
 
 for (const [name, patch] of Object.entries({

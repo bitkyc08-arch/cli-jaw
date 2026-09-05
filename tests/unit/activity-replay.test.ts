@@ -342,3 +342,122 @@ test('restore started by a failed-read drain callback inherits remaining admitte
     await next;
     assert.equal(text(replay.turns.get(key)!), 'abc');
 });
+
+test('failed-read drain serializes reentrant live after all admitted pending events', async () => {
+    const seen: Array<string | undefined> = [];
+    const admitted: boolean[] = [];
+    const replay = new ActivityReplay(state => {
+        seen.push(text(state));
+        if (state.seq === 2) admitted.push(replay.live(delta(4, 'd')));
+    });
+    replay.live(delta(1, 'a'));
+    const read = deferred();
+    const work = replay.restore(read.read);
+    replay.live(delta(2, 'b'));
+    replay.live(delta(3, 'c'));
+    const failure = new Error('read failed');
+    read.reject(failure);
+    await assert.rejects(work, error => error === failure);
+    assert.equal(text(replay.turns.get(key)!), 'abcd');
+    assert.deepEqual(seen, ['a', 'ab', 'abc', 'abcd']);
+    assert.deepEqual(admitted, [true]);
+});
+
+test('previous abort listener reset settles the new restore without starting its uncooperative read', async () => {
+    let calls = 0;
+    let reads = 0;
+    const replay = new ActivityReplay(() => { calls++; });
+    const first = deferred();
+    const oldWork = replay.restore(first.read);
+    first.signal.addEventListener('abort', () => replay.reset(), { once: true });
+    const second = deferred();
+    const work = replay.restore(signal => { reads++; return second.read(signal); });
+    try {
+        // Cancellation must settle in microtasks, without needing the reader to finish.
+        const result = await Promise.race([work.then(() => 'settled'),
+            new Promise<string>(resolve => setImmediate(() => resolve('pending')))]);
+        assert.equal(result, 'settled');
+        assert.equal(reads, 0);
+        assert.equal(calls, 0);
+        assert.equal(replay.turns.size, 0);
+    } finally {
+        second.resolve([delta(1, 'late')]);
+        await Promise.all([oldWork, work]);
+    }
+});
+
+test('16 incomplete historical states marked settled admit live without fabricated ends or callbacks', async () => {
+    let calls = 0;
+    const replay = new ActivityReplay(() => { calls++; });
+    await replay.restore(async () => Array.from({ length: 16 }, (_, i) => delta(1, 'partial', `r${i}`)));
+    const states = [...replay.turns.values()];
+    const before = structuredClone(states);
+    for (let i = 0; i < 16; i++) replay.markSettled(`r${i}`);
+    assert.deepEqual(states, before);
+    assert.ok(states.every(state => state.end === null));
+    assert.equal(calls, 16);
+    for (let i = 0; i < 16; i++) assert.equal(replay.live(delta(1, 'live', `new${i}`)), true);
+    assert.equal(replay.turns.size, 16);
+    assert.throws(() => replay.live(delta(1, 'overflow', 'extra')), /activity_turn_capacity/);
+});
+
+test('settlement marks only existing exact run keys and never future or neighboring runs', () => {
+    const replay = new ActivityReplay(() => {});
+    for (let i = 0; i < 1000; i++) replay.markSettled(`future${i}`);
+    replay.live(delta(1, 'partial', 'r'));
+    replay.live({ ...delta(1, 'partial', 'r'), turnId: 'second' });
+    replay.markSettled('r');
+    for (let i = 0; i < 14; i++) replay.live(delta(1, 'running', `future${i}`));
+    replay.live(delta(1, 'new', 'new0'));
+    replay.live(delta(1, 'new', 'new1'));
+    assert.ok([...replay.turns.values()].every(state => state.identity.runId !== 'r'));
+    assert.throws(() => replay.live(delta(1, 'overflow', 'extra')), /activity_turn_capacity/);
+});
+
+test('settlement markers are removed on live eviction and reset before identity reuse', () => {
+    const replay = new ActivityReplay(() => {});
+    for (let i = 0; i < 16; i++) replay.live(delta(1, 'partial', `r${i}`));
+    replay.markSettled('r0');
+    replay.live(delta(1, 'new', 'new'));
+    replay.markSettled('r1');
+    replay.live(delta(1, 'reused', 'r0'));
+    assert.throws(() => replay.live(delta(1, 'overflow', 'extra')), /activity_turn_capacity/);
+    replay.markSettled('r0');
+    replay.reset();
+    for (let i = 0; i < 16; i++) replay.live(delta(1, 'running', `r${i}`));
+    assert.throws(() => replay.live(delta(1, 'overflow', 'extra')), /activity_turn_capacity/);
+});
+
+test('failed transactional eviction preserves settlement markers and successful publish prunes them', async () => {
+    const replay = new ActivityReplay(() => {});
+    for (let i = 0; i < 16; i++) replay.live(delta(1, 'partial', `r${i}`));
+    replay.markSettled('r0');
+    const before = structuredClone(replay.turns);
+    await assert.rejects(replay.restore(async () => [delta(1, 'new', 'new0'), delta(1, 'new', 'new1')]),
+        /activity_turn_capacity/);
+    assert.deepEqual(replay.turns, before);
+    await replay.restore(async () => [delta(1, 'new', 'new0')]);
+    assert.equal(replay.turns.size, 16);
+    assert.ok([...replay.turns.values()].every(state => state.identity.runId !== 'r0'));
+    replay.markSettled('r1');
+    replay.live(delta(1, 'reused', 'r0'));
+    assert.throws(() => replay.live(delta(1, 'overflow', 'extra')), /activity_turn_capacity/);
+});
+
+test('settled incomplete seeds still accept canonical final events and pending live can evict them', async () => {
+    const replay = new ActivityReplay(() => {});
+    replay.live(delta(1, 'partial', 'final'));
+    replay.markSettled('final');
+    assert.equal(replay.live(end(2, 'final')), true);
+    assert.equal([...replay.turns.values()][0]?.end?.status, 'done');
+    replay.reset();
+    for (let i = 0; i < 16; i++) replay.live(delta(1, 'partial', `r${i}`));
+    const read = deferred();
+    const work = replay.restore(read.read);
+    replay.markSettled('r0');
+    replay.live(delta(1, 'new', 'new'));
+    read.resolve([]);
+    await work;
+    assert.equal(replay.turns.size, 16);
+    assert.ok([...replay.turns.values()].every(state => state.identity.runId !== 'r0' && state.end === null));
+});
