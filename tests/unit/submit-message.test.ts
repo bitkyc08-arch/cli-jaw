@@ -182,21 +182,8 @@ test('SM-015: mid-run policy precedence is request, session, then global default
     assert.ok(requestIdx >= 0 && sessionIdx > requestIdx && globalIdx > sessionIdx);
 });
 
-test('SM-016: steer policy never queues for missing capability — steerAgent owns in-band vs kill-steer', () => {
-    const policy = gatewaySrc.slice(
-        gatewaySrc.indexOf('function applyMidRunPolicy'),
-        gatewaySrc.indexOf('// ── 5s dedup window'),
-    );
-    const steer = policy.slice(policy.indexOf("if (policy === 'steer')"), policy.indexOf("if (policy === 'collect')"));
-    // The steer policy's promise is that the message steers the agent: in-band
-    // where supported, kill-steer (with salvage) everywhere else. A capability
-    // gate that silently queues would break that promise; queueing lives in
-    // the followup/collect policies and in the in-band failure outcome handler.
-    assert.ok(!steer.includes('canSteerAgent'), 'no capability queue-gate in the steer branch');
-    assert.ok(steer.includes('steerAgent(ctx.scopeKey'));
-    assert.ok(!steer.includes('killActiveAgent'), 'kill stays inside steerAgent, not the gateway');
-    assert.ok(steer.includes("outcome === 'fallback-queue'"), 'in-band failure still lands in queue');
-});
+// SM-016 is executed in steer-input-handoff.test.ts: actual gateway delegation,
+// forbidden capability/kill seams, new-run without queue, and real fallback enqueue.
 
 test('SM-017: collect and interrupt remain scoped queue operations', () => {
     const policy = gatewaySrc.slice(
