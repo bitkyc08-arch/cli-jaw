@@ -1,7 +1,7 @@
 export type TraceAudience = 'public' | 'internal';
 export type TraceRunStatus = 'running' | 'done' | 'error' | 'interrupted';
 export type TraceRetentionStatus = 'available' | 'spilled' | 'redacted' | 'internal' | 'missing';
-export type TraceEventSource = 'cli_raw' | 'acp_raw' | 'codex_app_raw' | 'tool' | 'stderr' | 'system';
+export type TraceEventSource = 'runtime' | 'cli_raw' | 'acp_raw' | 'codex_app_raw' | 'tool' | 'stderr' | 'system';
 
 export interface TraceRunInput {
     cli: string;

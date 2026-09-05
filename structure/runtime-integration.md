@@ -6,6 +6,14 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 
 > 2026-08-02 native runtime integration 유닛(`devlog/_fin/260802_native_runtime_integration/`)의 SoT 요약. 풀 계약, 취소 의미론, 모델 발견 규칙, pi rpc 판정을 다룬다.
 
+## Shared event contract foundation
+
+`src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
+
+`src/agent/runtime/events.ts` records a validated, redacted body through the existing trace writer before publishing `agent_runtime` on the agent event topic. The trace writer owns sequence allocation; sequence gaps are valid. The tuple codec in `src/trace/runtime-body-codec.ts` preserves numeric usage without weakening raw-trace secret masking. Known structured fragments must be sanitized before clipping by their producer. Recording failure returns null, never a fabricated event or another inference.
+
+This additive foundation does not yet select provider adapters, change default settings or deliver channel messages. Existing Codex/Pi and legacy final/ACK/queue owners remain active until their integration slices are connected. Runtime consumers must treat journal failure independently from authoritative turn completion.
+
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
 
 - boss/main 실행은 메시지당 spawn 대신 상주 런타임 풀을 탄다. 키 = 엔진별 독립 스토어 + `chat:${getActiveChatSession()}` + cwd + 모델/effort/(pi는 profile/endpoint/apiKind/profileFp).
