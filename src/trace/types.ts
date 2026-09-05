@@ -10,6 +10,8 @@ export interface TraceRunInput {
     agentLabel?: string | null;
     audience?: TraceAudience;
     parentRunId?: string | null;
+    sessionId?: string;
+    scopeKey?: string;
 }
 
 export interface TraceEventInput {

@@ -345,6 +345,17 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_trace_events_run_seq ON trace_events(run_id, seq);
 `);
 
+// Additive owner metadata: legacy rows remain readable without invented scopes.
+const traceRunCols = new Set((db.prepare('PRAGMA table_info(trace_runs)').all() as { name: string }[]).map(c => c.name));
+if (!traceRunCols.has('session_id')) db.exec('ALTER TABLE trace_runs ADD COLUMN session_id TEXT');
+if (!traceRunCols.has('scope_key')) db.exec('ALTER TABLE trace_runs ADD COLUMN scope_key TEXT');
+db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_trace_runs_session ON trace_runs(session_id, id);
+    CREATE INDEX IF NOT EXISTS idx_trace_runtime ON trace_events(run_id, seq) WHERE source = 'runtime';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_trace_runtime_control ON trace_events(run_id)
+        WHERE source = 'system' AND event_type = 'runtime.control.v1';
+`);
+
 // Lightweight migration for existing DBs created before `trace` column existed.
 const messageCols = db.prepare('PRAGMA table_info(messages)').all();
 if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'trace')) {
@@ -373,6 +384,10 @@ if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'session
     db.exec("ALTER TABLE messages ADD COLUMN session_id TEXT DEFAULT 'default'");
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)');
+// Only the original message link can establish a historical owner. Forked copies
+// also carry trace_run_id, so backfilling from that column would steal ownership.
+db.exec(`UPDATE trace_runs SET session_id = (SELECT session_id FROM messages WHERE id = trace_runs.message_id)
+    WHERE session_id IS NULL AND message_id IS NOT NULL`);
 
 const SEARCH_FTS_SQL = `
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(

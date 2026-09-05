@@ -193,6 +193,7 @@ export function deleteChatSession(sessionId: string): boolean {
         const result = deleteStmt.run(sessionId);
         if (result.changes === 0) return null;
         deleteMessagesStmt.run(sessionId);
+        db.prepare('DELETE FROM trace_runs WHERE session_id = ?').run(sessionId);
         return row;
     })();
     if (deleted) {
