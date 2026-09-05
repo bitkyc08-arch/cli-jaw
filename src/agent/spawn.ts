@@ -1865,7 +1865,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     if (capturedExit && exitSettlers.get(scopeKey) === capturedExit) {
                         exitSettlers.delete(scopeKey); capturedExit.resolve();
                     }
-                    if (queueRequested) void processQueue(scopeKey);
+                    // Exceptional settlement can release the slot before lifecycle requests its normal wake.
+                    if (queueRequested || !activeMainProcesses.has(scopeKey)) void processQueue(scopeKey);
                 }
             },
         });
