@@ -8,6 +8,11 @@ import type { RuntimeEventContext } from '../../src/agent/runtime/events.ts';
 import type { RuntimeEnd } from '../../src/agent/runtime/projection.ts';
 
 const runtimeEvents: RuntimeEvent[] = [];
+// Keep the unrelated provider adapter outside this Codex-only seam fixture.
+// The real cross-provider imports are exercised by native-claude-spawn tests.
+test.mock.module('../../src/agent/claude-runtime-run.js', {
+    namedExports: { startClaudeNativeRun: () => { throw new Error('Claude is outside this fixture'); } },
+});
 test.mock.module('../../src/agent/runtime/events.js', {
     namedExports: {
         recordRuntimeEvent: (context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent => {
@@ -288,6 +293,7 @@ test.mock.module('../../src/agent/runtime-pool.js', {
             };
         },
         acquirePiRuntime: async () => { throw new Error('Pi is outside this fixture'); },
+        acquireCursorRuntime: async () => { throw new Error('Cursor is outside this fixture'); },
     },
 });
 
@@ -335,6 +341,7 @@ test.mock.module('../../src/trace/store.js', {
         stampTraceTool() {}, stampTraceToolEntries() {},
         updateTraceToolRow() {}, getTraceEvent: () => null, linkTraceRunToMessage() {},
         startTraceRun: () => 'tr_multiplexfixture0001',
+        createTraceId: () => 'tr_multiplexfixture0001',
         finalizeTraceRun: (runId: string | null | undefined, status: string) => {
             harness.finalized.push({ runId, status });
         },
