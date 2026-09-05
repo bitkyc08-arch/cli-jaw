@@ -208,9 +208,14 @@ for (const mode of ['aggregate', 'invalid', 'absent', 'zero'] as const) {
         f.reply(original.id, result);
         const outcome = await pending;
         assert.equal(outcome.status, 'done'); assert.equal(outcome.finalText, data.expectedFinal);
-        assert.ok(outcome.partialText.startsWith("I'll read"));
-        assert.ok(f.events.some(event => event.kind === 'tool' && event.status === 'done'));
-        assert.ok(f.events.every(event => event.runId === 'run-1' && event.sessionId === 'chat' && event.scope === 'scope'));
+        assert.equal(outcome.partialText,
+            "I'll read `fixture.txt` with the file-reading tool and reply with its exact contents.GROK_TOOL_7689_CEDAR\n[ -f file ]");
+        const tools = f.events.filter(event => event.kind === 'tool');
+        assert.deepEqual(tools.map(event => event.status), ['running', 'running', 'done']);
+        assert.equal(new Set(tools.map(event => event.itemId)).size, 1);
+        assert.match(tools.at(-1)!.output!, /GROK_TOOL_7689_CEDAR/);
+        assert.ok(f.events.every(event => event.runId === 'run-1' && event.sessionId === 'chat' && event.scope === 'scope'
+            && event.turnId === 'turn-1' && 'audience' in event && event.audience === 'internal'));
         const usage = f.events.filter(event => event.kind === 'usage');
         assert.deepEqual(usage.map(event => ({ inputTokens: event.inputTokens, outputTokens: event.outputTokens, cachedTokens: event.cachedTokens })),
             mode === 'aggregate' ? [{ inputTokens: 35136, outputTokens: 123, cachedTokens: 17408 }]
