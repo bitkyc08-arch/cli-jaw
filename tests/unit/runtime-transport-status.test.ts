@@ -87,7 +87,7 @@ test('actual status route adds transport support without rewriting cached readin
     assert.deepEqual(Object.keys(payload), Object.keys(cached));
     for (const cli of ['cursor', 'grok', 'claude']) {
         assert.deepEqual(payload[cli]?.runtimeSelection, {
-            transport: 'native', nativeAdapterImplemented: false, nativeWorkerImplemented: false,
+            transport: 'native', nativeAdapterImplemented: cli === 'cursor', nativeWorkerImplemented: false,
         }, cli);
     }
     for (const cli of ['codex-app', 'pi']) {
@@ -111,7 +111,7 @@ for (const [query, forced] of [['?force=1', true], ['?force=true', true], ['?for
         assert.equal(getForced.mock.callCount(), forced ? 1 : 0);
         assert.equal(getCached.mock.callCount(), forced ? 0 : 1);
         assert.deepEqual(payload['cursor']?.runtimeSelection, {
-            transport: 'native', nativeAdapterImplemented: false, nativeWorkerImplemented: false,
+            transport: 'native', nativeAdapterImplemented: true, nativeWorkerImplemented: false,
         });
         assert.deepEqual(cached, originalCache);
         assert.equal(forbidden.mock.callCount(), 0, 'the route adds no capability probe');
@@ -123,7 +123,7 @@ test('transport diagnostics follow settings changes without refreshing or mutati
     try {
         const payload = await readStatus();
         assert.deepEqual(payload['cursor']?.runtimeSelection, {
-            transport: 'print', nativeAdapterImplemented: false, nativeWorkerImplemented: false,
+            transport: 'print', nativeAdapterImplemented: true, nativeWorkerImplemented: false,
         });
         assert.deepEqual(cached, originalCache);
         assert.equal(getCached.mock.callCount(), 1);

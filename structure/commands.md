@@ -215,6 +215,14 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
 
 ### `/steer <prompt>`
 
+- Native Cursor는 `replaceTurn` 훅을 쓴다. 원래 prompt의 취소 응답과 drain 뒤
+  같은 native session에 재요청하는 `cancel-reprompt`이며, native-input은 아니다.
+  원래 요청·수락된 추가 지시·제한된 부분 출력을 문맥으로 복원한다. 입력 기록은
+  로컬 전송 완료와 소유권 재검사 뒤 한 번만 한다. 진행 중인 replacement는 후속 입력을
+  큐로 보낼 수 있지만, 불확실한 전송·기록 실패는 자동 재시도하지 않는다.
+  Stop으로 취소된 대기 지시는 `cancelled`로 끝내며, 큐에 되살리지 않는다.
+- `/queue steer <n>`은 별도 큐 항목 우선 실행이다. 기존 항목 제거·interrupt·exit-settle·
+  salvage 뒤 새 run을 시작하며, 같은 세션 replacement로 바꾸지 않는다.
 - Web/Telegram/Discord/Slack에서 실행 가능. CLI slash registry에는 노출되지 않는다.
 - 실행 중 agent가 없으면 에러.
 - 런타임이 in-band steer를 지원하면(jwc, 또는 steer 가능한 turn이 진행 중인 codex-app)
