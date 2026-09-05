@@ -160,6 +160,17 @@ for (const rejects of [false, true]) test(`async dispatch observers are rejected
     assert.equal(f.session.alive, false); assert.equal(f.kills.length, 1);
 });
 
+test('the production boundary observes a fresh rejecting observer promise', { timeout: 5000 }, async t => {
+    const f = await fixture(t), unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    t.after(() => process.off('unhandledRejection', onUnhandled));
+    const result = f.prompt({ onDispatched: () => Promise.reject(new Error('fixture fresh async rejection')) });
+    const rejected = assert.rejects(result, { message: 'acp_dispatch_observer_failed' });
+    f.finishWrite(); await rejected; await tick();
+    assert.deepEqual(unhandled, []); assert.equal(f.session.alive, false);
+});
+
 test('retirement before a completed write never invokes the observer, including a late write callback', { timeout: 5000 }, async t => {
     const f = await fixture(t); let observed = 0;
     const result = f.prompt({ onDispatched: () => { observed++; } });
