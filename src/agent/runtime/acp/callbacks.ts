@@ -18,6 +18,7 @@ const CALLBACK_LIMIT = 32;
 /** Connection-scoped callback owner. Human waits never block notification parsing. */
 export class AcpCallbacks {
     private readonly active = new Map<RpcId, Work>();
+    private readonly operations = new Map<Promise<void>, string | null>();
     private readonly permissions: ReturnType<typeof normalizeNativePermissions>;
     private readonly registry: RuntimeRequests;
     private disposed = false;
@@ -29,13 +30,20 @@ export class AcpCallbacks {
         this.permissions = normalizeNativePermissions(options.permissions);
         this.registry = options.registry ?? runtimeRequests;
     }
+    get idle(): boolean { return this.active.size === 0 && this.operations.size === 0; }
+    /** A new protocol attempt may reuse a logical run only after every old write drained. */
+    beginRun(): void {
+        if (!this.idle || this.disposed || !this.connection.alive) throw new Error('acp_callbacks_busy');
+        this.cancelledRunId = null;
+    }
 
     handle(frame: RpcFrame): void {
         if (!('method' in frame) || !('id' in frame) || this.disposed || !this.connection.alive) return;
         if (this.active.has(frame.id)) {
+            const runId = this.active.get(frame.id)!.runId;
             this.dispose();
-            void this.connection.refuse(frame.id, -32600, 'Duplicate request').catch(() => undefined)
-                .finally(() => this.connection.close(new Error('acp_duplicate_request')));
+            this.observe(this.connection.refuse(frame.id, -32600, 'Duplicate request')
+                .finally(() => this.connection.close(new Error('acp_duplicate_request'))), runId);
             return;
         }
         let owner: AcpRequestOwner | null;
@@ -43,7 +51,7 @@ export class AcpCallbacks {
         catch { this.fatal(new Error('acp_callback_owner_failed')); return; }
         if (!owner || !this.current(owner)) { this.refuse(frame.id, -32600, 'No active turn'); return; }
         if (this.cancelledRunId !== owner.binding.runId) this.cancelledRunId = null;
-        if (this.active.size >= CALLBACK_LIMIT) { this.refuse(frame.id, -32000, 'Request capacity reached'); return; }
+        if (this.active.size >= CALLBACK_LIMIT) { this.refuse(frame.id, -32000, 'Request capacity reached', owner.binding.runId); return; }
         const work: Work = { id: frame.id, runId: owner.binding.runId,
             cancelled: this.cancelledRunId === owner.binding.runId, selectedReplyInFlight: false };
         this.active.set(frame.id, work);
@@ -82,6 +90,20 @@ export class AcpCallbacks {
         if (works.some(work => work.selectedReplyInFlight)) this.connection.close(new Error('acp_selected_reply_cancelled'));
     }
 
+    /** Caller seals admission first and owns the bounded session drain deadline. */
+    async drain(runId?: string): Promise<void> {
+        for (;;) {
+            const pending = [...this.operations].filter(([, owner]) => runId === undefined || owner === null || owner === runId)
+                .map(([operation]) => operation);
+            if (!pending.length) {
+                if (this.disposed || !this.connection.alive) throw new Error('acp_callbacks_closed');
+                return;
+            }
+            const results = await Promise.allSettled(pending);
+            if (results.some(result => result.status === 'rejected')) throw new Error('acp_callback_drain_failed');
+        }
+    }
+
     private captureOwner(): AcpRequestOwner | null {
         const source = this.options.getOwner();
         if (!source) return null;
@@ -97,13 +119,24 @@ export class AcpCallbacks {
     private emit(owner: AcpRequestOwner, body: RuntimeEventBody): RuntimeEvent | null {
         try { return owner.emit(body); } catch { return null; }
     }
-    private refuse(id: RpcId, code: number, message: string): void {
-        void this.connection.refuse(id, code, message).catch(() => this.fatal(new Error('acp_callback_write_failed')));
+    private refuse(id: RpcId, code: number, message: string, runId: string | null = null): void {
+        this.observe(this.connection.refuse(id, code, message), runId);
     }
     private track(work: Work, operation: Promise<void>): void {
-        void operation.catch(() => this.fatal(new Error('acp_callback_failed'))).finally(() => {
-            if (this.active.get(work.id) === work) this.active.delete(work.id);
-        });
+        this.observe(operation, work.runId, work);
+    }
+    private observe(operation: Promise<void>, runId: string | null, work?: Work): void {
+        if (this.operations.size >= 1024) {
+            void operation.catch(() => undefined);
+            this.fatal(new Error('acp_callback_operation_limit'));
+            return;
+        }
+        this.operations.set(operation, runId);
+        const finish = () => {
+            this.operations.delete(operation);
+            if (work && this.active.get(work.id) === work) this.active.delete(work.id);
+        };
+        void operation.then(finish, () => { finish(); this.fatal(new Error('acp_callback_failed')); });
     }
     private fatal(error: Error): void {
         this.connection.close(error);

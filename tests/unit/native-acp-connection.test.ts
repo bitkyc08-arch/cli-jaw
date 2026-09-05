@@ -359,3 +359,44 @@ test('refusal preserves peer ID and error code on wire', async t => {
     await f.connection.refuse(7, -32601, 'Unsupported method');
     assert.deepEqual(decodeFrame(f.writes[0]!), { jsonrpc: '2.0', id: 7, error: { code: -32601, message: 'Unsupported method' } });
 });
+
+test('matched response observer runs before the next frame in a coalesced chunk and before promise jobs', async t => {
+    const order: string[] = [];
+    const f = fixture(t, { frame: () => { order.push('notification'); } });
+    const request = f.connection.request('session/prompt', {}, 1000, () => { order.push('response'); });
+    await request.dispatched;
+    const done = request.result.then(() => { order.push('promise'); });
+    f.child.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: null }) + '\n'
+        + '{"jsonrpc":"2.0","method":"session/update"}\n');
+    assert.deepEqual(order, ['response', 'notification']);
+    await done;
+    assert.deepEqual(order, ['response', 'notification', 'promise']);
+});
+test('unmatched and reentrant duplicate replies do not invoke the response observer twice', async t => {
+    const f = fixture(t);
+    let count = 0;
+    const request = f.connection.request('session/prompt', {}, 1000, () => {
+        count++;
+        f.feed({ jsonrpc: '2.0', id: request.id, result: 'reentrant' });
+    });
+    await request.dispatched;
+    f.feed({ jsonrpc: '2.0', id: 'unknown', result: null });
+    assert.equal(count, 0);
+    f.feed({ jsonrpc: '2.0', id: request.id, result: 'first' });
+    assert.equal(await request.result, 'first');
+    f.feed({ jsonrpc: '2.0', id: request.id, result: 'duplicate' });
+    assert.equal(count, 1);
+});
+for (const throws of [false, true]) test(`response observer ${throws ? 'throw' : 'close'} rejects its still-registered request`, async t => {
+    const f = fixture(t);
+    const request = f.connection.request('session/prompt', {}, 1000, () => {
+        if (throws) throw new Error('private observer text');
+        f.connection.close();
+    });
+    const other = f.connection.request('other', {});
+    await Promise.all([request.dispatched, other.dispatched]);
+    f.feed({ jsonrpc: '2.0', id: request.id, result: null });
+    await assert.rejects(request.result, throws ? /acp_response_observer_failed/ : /acp_closed/);
+    await assert.rejects(other.result, /^Error: acp_/);
+    assert.equal(f.failures.length, 1);
+});
