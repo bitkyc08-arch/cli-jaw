@@ -38,6 +38,7 @@ const { spawnAgent, activeMainProcesses, activeProcesses } = await import('../..
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
 const { db } = await import('../../src/core/db.ts');
+const { createChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
 
 test('real print child traverses spawn, accepted parser, lifecycle and durable journal with captured identity', { timeout: 15_000 }, async t => {
     t.mock.method(globalThis, 'fetch', async () => { throw new Error('unexpected network'); });
@@ -49,16 +50,19 @@ test('real print child traverses spawn, accepted parser, lifecycle and durable j
     mkdirSync(join(home, 'prompts'), { recursive: true });
     const seen: Array<{ event: string; data: Record<string, unknown> }> = [];
     const unsubscribe = subscribe(event => seen.push(event));
+    const owner = createChatSession('captured-print-owner');
+    const scope = 'captured-print-scope';
+    setActiveChatSession('default');
     try {
         const run = spawnAgent('fixture input', { cli: 'codex', model: 'fixture', sysPrompt: 'fixture system',
-            scopeKey: 'ignored-scope', chatSessionId: 'ignored-chat', origin: 'web',
+            scopeKey: scope, chatSessionId: owner.id, origin: 'web',
             _skipInsert: true, _skipHistory: true, _skipResume: true, _skipSessionPersist: true, _isSmokeContinuation: true });
         const result = await run.promise;
         assert.equal(result.code, 0); assert.equal(launches, 1);
         const start = seen.find(e => e.event === 'agent_runtime' && e.data['kind'] === 'turn-start')!;
         assert.ok(start);
         const runId = String(start.data['runId']);
-        const replay = readActivityPage({ runId, sessionId: 'default', after: 0, limit: 40 })!;
+        const replay = readActivityPage({ runId, sessionId: owner.id, after: 0, limit: 40 })!;
         assert.equal(replay.incomplete, false);
         const end = replay.events.at(-1); assert.ok(end?.kind === 'turn-end'); assert.equal(end.finalText, 'print fixture final');
         assert.ok(replay.events.some(e => e.kind === 'message' && e.phase === 'commentary' && e.text === 'kept commentary'));
@@ -66,7 +70,7 @@ test('real print child traverses spawn, accepted parser, lifecycle and durable j
         assert.ok(!JSON.stringify(replay).includes('stderr-not-an-assistant-message'));
         for (const packet of seen.filter(e => e.event === 'agent_output' || e.event === 'agent_tool')) {
             assert.equal(packet.data['traceRunId'], runId);
-            assert.equal(packet.data['sessionId'], 'default'); assert.equal(packet.data['scope'], 'default');
+            assert.equal(packet.data['sessionId'], owner.id); assert.equal(packet.data['scope'], scope);
         }
         assert.ok(seen.some(e => e.event === 'agent_output'));
         assert.ok(seen.some(e => e.event === 'agent_tool'));

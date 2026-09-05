@@ -30,6 +30,10 @@ admission, including internal workers. Historical backfill uses only the origina
 not grant access. Deleting a chat removes its owned traces. Clearing messages alone
 does not securely erase retained trace history.
 
+Native Cursor main captures these same owner fields at its trace admission, alongside
+the four existing Copilot/Pi/Codex App/ordinary print admissions. Explicit captured
+execution bindings remain authoritative even when multi-session is disabled.
+
 `trace/activity-journal.ts` commits a bounded body and one mutable control row atomically
 before SSE publication. Limits are32KiB/body,4096 rows/4MiB/run,20000 rows/32MiB global,
 plus configured trace row admission. Loss closes projection admission without interrupting
