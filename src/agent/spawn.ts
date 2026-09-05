@@ -814,6 +814,7 @@ export async function steerAgent(
         return 'steered';
     }
     if (typeof run?.replaceTurn === 'function') {
+        const capturedSessionOwner = getSessionOwnershipGeneration(scopeKey);
         const owner = run.meta;
         const ownerTarget = isRemoteTarget(owner.target) ? owner.target : undefined;
         const ownerRemoteKey = owner.remoteKey ?? (ownerTarget ? buildRemoteBindingKey(ownerTarget) : undefined);
@@ -833,7 +834,8 @@ export async function steerAgent(
         const workingDir = settings['workingDir'] || null;
         let attempted = false;
         const outcome = await run.replaceTurn(newPrompt, () => {
-            if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration) {
+            if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
+                || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
                 throw new MainReplacementOwnerMismatchError();
             }
             if (attempted) throw new Error('native_replacement_duplicate_input');

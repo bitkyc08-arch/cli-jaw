@@ -26,9 +26,12 @@ const { db } = await import('../../src/core/db.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { admitRequest, settleAllPending } = await import('../../src/orchestrator/request-registry.ts');
 const { clearGoalTimers } = await import('../../src/agent/lifecycle-handler.ts');
+const { bumpScopeSessionGeneration, bumpSessionOwnershipGeneration, resetSessionOwnershipGenerationForTest }
+    = await import('../../src/agent/session-persistence.ts');
 
 let serial = 0;
 test.beforeEach(t => {
+    resetSessionOwnershipGenerationForTest();
     t.mock.method(globalThis, 'fetch', forbidden('fetch'));
     t.mock.method(console, 'log', () => {});
     t.mock.method(console, 'warn', () => {});
@@ -64,7 +67,7 @@ function heldReplacement(opts: ReturnType<typeof options>) {
     return { run, entered, dispatch, get stopped() { return stopped; } };
 }
 
-for (const invalidation of ['map replacement', 'generation change'] as const) {
+for (const invalidation of ['map replacement', 'generation change', 'canonical scope reset', 'canonical global reset'] as const) {
     test(`deferred replacement refuses stale input after ${invalidation}`, async () => {
         const opts = options(), f = heldReplacement(opts), { events, off } = capture();
         const before = db.prepare('SELECT COUNT(*) AS n FROM messages').get();
@@ -77,7 +80,13 @@ for (const invalidation of ['map replacement', 'generation change'] as const) {
         try {
             await f.entered.promise;
             if (invalidation === 'map replacement') activeMainProcesses.set(opts.scopeKey, { ...f.run });
-            else f.run.ownerGeneration++;
+            else if (invalidation === 'generation change') f.run.ownerGeneration++;
+            else {
+                if (invalidation === 'canonical scope reset') bumpScopeSessionGeneration(opts.scopeKey);
+                else bumpSessionOwnershipGeneration();
+                assert.equal(activeMainProcesses.get(opts.scopeKey), f.run);
+                assert.equal(f.run.ownerGeneration, 7, 'canonical resets leave the captured run field unchanged');
+            }
             const rejected = assert.rejects(steering, error => error instanceof MainReplacementOwnerMismatchError
                 && error.code === 'native_replacement_owner_mismatch' && error.message === error.code);
             f.dispatch.resolve(); await rejected;
