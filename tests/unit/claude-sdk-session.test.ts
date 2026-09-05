@@ -266,3 +266,14 @@ test('unexpected SDK background start retires query instead of returning an appl
     assert.equal(f.session.lastError, 'claude_background_tasks_unsupported'); await f.session.close();
     assert.equal(f.closed, 1); assert.ok(!f.events.some(event => event.parentItemId && event.status === 'stopped'));
 });
+test('late background violation invalidates deferred candidate before successful finalization', async () => {
+    const f = await fixture({ deferTurnEnd: true });
+    const turn = f.session.send({ text: 'one' }, () => {}); f.output.push(result('candidate')); await turn;
+    f.output.push({ type: 'system', subtype: 'task_started', task_id: 'late', is_backgrounded: true });
+    await new Promise(resolve => setImmediate(resolve)); await f.session.close();
+    assert.equal(f.session.getTurnOutcome('turn1')?.status, 'error');
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), false);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end').length, 0);
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'error', finalText: null }), true);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, null);
+});

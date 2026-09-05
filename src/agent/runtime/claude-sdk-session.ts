@@ -59,7 +59,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private reader: Promise<void> = Promise.resolve();
     private readonly exits = new Set<(code: number | null) => void>();
     private turn: Turn | null = null;
-    private pendingFinal: { turn: Turn; outcome: RuntimeTurnResult } | null = null;
+    private pendingFinal: { turn: Turn; outcome: RuntimeTurnResult; failed?: boolean } | null = null;
     private finalizing = false;
     private id = '';
     private closing = false;
@@ -144,12 +144,17 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     finalizeTurn(turnId: string, end: RuntimeEnd): boolean {
         const pending = this.pendingFinal;
         if (!pending || pending.turn.context.turnId !== turnId) return false;
+        if (pending.failed && end.status === 'done') return false;
         this.pendingFinal = null;
         this.finalizing = true; pending.turn.passiveFinalizing = true;
         try { pending.turn.mapper.finish({ ...pending.outcome, status: end.status, finalText: end.finalText }, end); }
         finally { pending.turn.passiveFinalizing = false; this.finalizing = false; }
         if (this.deferredTurnIds.size >= 512) this.kill();
         return true;
+    }
+    getTurnOutcome(turnId: string): RuntimeTurnResult | null {
+        const pending = this.pendingFinal;
+        return pending?.turn.context.turnId === turnId ? { ...pending.outcome } : null;
     }
     kill(): void { void this.close().catch(() => console.warn('[claude-native] cleanup_failed')); }
     onExit(cb: (code: number | null) => void): () => void {
@@ -183,6 +188,10 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private fail(reason: string): void {
         this.failureCode ??= reason;
         this.failure = true;
+        if (this.pendingFinal) {
+            this.pendingFinal.failed = true;
+            this.pendingFinal.outcome = { ...this.pendingFinal.outcome, status: 'error', finalText: null };
+        }
         this.settle({ status: 'error', finalText: null, partialText: this.turn?.mapper.partialText ?? '' });
         this.kill();
     }
