@@ -141,6 +141,18 @@ test('a token pasted into a Slack message is redacted from formatted output', ()
     assert.ok(!text.includes(pastedToken.slice(0, 18)), 'pasted token must be redacted');
 });
 
+test('fetchSlackReplies forwards and returns the pagination cursor', async () => {
+    const { impl, calls } = makeFetch([{
+        ok: true, messages: [], response_metadata: { next_cursor: 'cursor-next' },
+    }]);
+    const result = await fetchSlackReplies(TOKEN, 'C1', '1.0', {
+        cursor: 'cursor-current', fetchImpl: impl,
+    });
+    assert.ok(result.ok);
+    assert.equal(calls[0]?.body['cursor'], 'cursor-current');
+    assert.equal(result.nextCursor, 'cursor-next');
+});
+
 // ─── route contract (handler-level, slack-manifest-route pattern) ──
 
 test('GET /api/slack/history rejects a missing channel and reports slack-off', async () => {

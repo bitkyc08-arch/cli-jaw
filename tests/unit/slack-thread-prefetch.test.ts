@@ -153,9 +153,12 @@ test('releasing with no token is a no-op', () => {
     assert.equal(claimThreadPrefetch('C1', '100.1'), 0, 'the claim still stands');
 });
 
-test('an empty channel or thread never claims', () => {
+test('an empty channel is invalid but an empty thread identifies channel history', () => {
     assert.equal(claimThreadPrefetch('', '100.1'), 0);
-    assert.equal(claimThreadPrefetch('C1', ''), 0);
+    const channel = claimThreadPrefetch('C1', '');
+    assert.ok(channel > 0);
+    assert.equal(claimThreadPrefetch('C1', ''), 0, 'channel history is singleflight');
+    assert.ok(claimThreadPrefetch('C1', '100.1') > 0, 'thread history remains a separate subject');
 });
 
 test('reset clears every claim', () => {

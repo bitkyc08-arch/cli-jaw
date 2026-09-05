@@ -231,7 +231,7 @@ export function applySlackContext(block: string, text: string): string {
  *
  * The context block has its own 1200-point cap; this is the separate budget for
  * the earlier conversation, so the worst-case prompt overhead is statable
- * (~3300 points total) rather than "whatever 50 messages happen to weigh".
+ * (~9200 points total) rather than "whatever 50 messages happen to weigh".
  */
 export const PREAMBLE_TOTAL_CAP = 8000;
 

@@ -242,6 +242,7 @@ export function admitSlackRun(params: {
     const result = submitMessage(params.prompt, {
         origin: 'slack', displayText: params.displayText, skipOrchestrate: true,
         target: params.target, chatId: params.chatId,
+        ...(params.target.threadIsSynthetic === true ? { midRunPolicy: 'followup' as const } : {}),
         ...(remoteKey ? { remoteKey } : {}), chatSessionId, scope,
     });
     if (result.disposition !== 'new_run') return result;

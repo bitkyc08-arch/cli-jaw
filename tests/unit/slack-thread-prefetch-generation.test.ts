@@ -46,8 +46,19 @@ mock.module('../../src/slack/attachment-recovery.ts', {
     },
 });
 
+const channelHistoryCalls: Array<Record<string, unknown>> = [];
+mock.module('../../src/slack/history.ts', { namedExports: {
+    fetchSlackHistory: async (_token: string, _channel: string, opts: Record<string, unknown>) => {
+        channelHistoryCalls.push(opts);
+        return { ok: true, hasMore: false, messages: [{ ts: '199.9', user: 'U2', text: 'earlier channel context' }] };
+    },
+    fetchSlackReplies: async () => ({ ok: true, hasMore: false, messages: [] }),
+    formatHistoryForAgent: (messages: Array<{ text: string }>) => messages.map(m => m.text).join('\n'),
+} });
+
 mock.module('../../src/slack/conversation.ts', {
     namedExports: {
+        THREAD_FETCH_LIMIT: 50,
         resolveConversationInfo: async () => ({
             id: 'C1', name: 'general', kind: 'channel', resolved: true,
         }),
@@ -71,6 +82,7 @@ test.beforeEach(async () => {
     await resetSlackIngress();
     clearSlackEventDedupForTest();
     submitted.length = 0;
+    channelHistoryCalls.length = 0;
     threadMessages = [
         { ts: '100.1', user: 'U2', text: 'earlier context' },
         { ts: '100.3', user: 'U1', text: 'current' },
@@ -113,6 +125,24 @@ async function deliver(ts: string, text = 'current'): Promise<string> {
     assert.equal(submitted.length, expected, 'the envelope must reach admission');
     return submitted.at(-1) ?? '';
 }
+
+async function deliverTopLevel(ts: string): Promise<string> {
+    const expected = submitted.length + 1;
+    await handleSlackEnvelope({ envelope_id: `E-top-${ts}`, type: 'events_api', payload: { event: {
+        type: 'app_mention', channel: 'C1', channel_type: 'channel', user: 'U1', text: 'current', ts,
+    } } });
+    for (let i = 0; submitted.length < expected && i < 20; i += 1) await new Promise(r => setImmediate(r));
+    return submitted.at(-1) ?? '';
+}
+
+test('top-level channel history fires once per channel owner generation', async () => {
+    assert.match(await deliverTopLevel('200.1'), /earlier channel context/);
+    assert.equal(channelHistoryCalls[0]?.['latest'], '200.1'); assert.equal(channelHistoryCalls[0]?.['limit'], 50);
+    assert.doesNotMatch(await deliverTopLevel('200.2'), /earlier channel context/);
+    bumpScopeSessionGeneration('jaw:slack:channel:C1');
+    assert.match(await deliverTopLevel('200.3'), /earlier channel context/);
+    assert.equal(channelHistoryCalls.length, 2);
+});
 
 test('a scoped reset re-arms prefetch for the next message', async () => {
     assert.match(await deliver('100.3'), /earlier context/);
