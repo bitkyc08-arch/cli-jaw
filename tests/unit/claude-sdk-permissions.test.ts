@@ -206,6 +206,16 @@ test('multi-select joins original labels comma-space and original question keys 
     f.registry.respond(f.registry.list('chat')[0]!.requestId, context, { answers: { q0: { selected: ['o1', 'o0'] } } });
     assert.deepEqual(await pending, { behavior: 'allow', updatedInput: { ...input, answers: { 'Choose with TOKEN=private': 'Python, TypeScript' } } });
 });
+test('question cancellation uses exact optionId null and never fabricates an answer', async t => {
+    const f = fixture(t);
+    const answer = f.api.canUseTool('AskUserQuestion', questionInput(), options()); await f.published;
+    const pending = f.registry.list('chat')[0]!;
+    for (const response of [{ optionId: 'allow' }, { optionId: null, answers: {} }]) {
+        assert.throws(() => f.registry.respond(pending.requestId, context, response));
+    }
+    f.registry.respond(pending.requestId, context, { optionId: null });
+    assert.equal((await answer)?.behavior, 'deny'); assert.equal(f.registry.list('chat').length, 0);
+});
 
 test('duplicate and malformed questions deny without publishing', async t => {
     const f = fixture(t);

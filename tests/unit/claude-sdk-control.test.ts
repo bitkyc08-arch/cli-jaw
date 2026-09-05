@@ -1,7 +1,9 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClaudeClose } from '../../src/agent/runtime/claude-sdk-close.ts';
-import { createClaudeSdkSession } from '../../src/agent/runtime/claude-sdk-session.ts';
+// Recorders are injected here; module loading must not initialize shared SQLite.
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 test('close latches before reentrant callbacks and awaits the actual barrier', async () => {
     let release!: () => void;

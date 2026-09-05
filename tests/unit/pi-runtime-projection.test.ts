@@ -1,8 +1,10 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { parsePiRpcRecord, type PiRuntimeEvent } from '../../src/agent/pi-runtime.ts';
-import { PiProjection, parsePiActivityRecord } from '../../src/agent/runtime/pi-projection.ts';
-import { RuntimeProjection } from '../../src/agent/runtime/projection.ts';
+// Recorders are injected here; module loading must not initialize shared SQLite.
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+const { PiProjection, parsePiActivityRecord } = await import('../../src/agent/runtime/pi-projection.ts');
+const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
 import { encodeRuntimeBody, decodeRuntimeBody } from '../../src/trace/runtime-body-codec.ts';
 import { stringifyTraceValue } from '../../src/trace/redact.ts';

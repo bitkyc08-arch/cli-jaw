@@ -1,6 +1,8 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClaudeSdkSession } from '../../src/agent/runtime/claude-sdk-session.ts';
+// Recorders are injected here; module loading must not initialize shared SQLite.
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 import { createClaudeProcessOwner } from '../../src/agent/runtime/claude-sdk-process.ts';
 import { RuntimeRequests } from '../../src/agent/runtime/requests.ts';
 
@@ -276,4 +278,27 @@ test('late background violation invalidates deferred candidate before successful
     assert.equal(f.events.filter(e => e.kind === 'turn-end').length, 0);
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'error', finalText: null }), true);
     assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, null);
+});
+test('context outside the shared event and response ID bounds is rejected before input', async t => {
+    const f = await fixture({ getTurnContext: () => ({ runId: 'r', sessionId: 's', scope: 'x'.repeat(241), turnId: 't', audience: 'internal', isCurrent: () => true }) });
+    t.after(() => f.session.close());
+    await assert.rejects(f.session.send({ text: 'must not run' }, () => {}), /invalid_context/);
+    assert.equal(f.sent.length, 0);
+});
+test('Stop after physical candidate updates the pending logical outcome without changing completed standalone semantics', async () => {
+    const f = await fixture({ deferTurnEnd: true });
+    const turn = f.session.send({ text: 'one' }, () => {}); f.output.push(result('candidate')); await turn;
+    await f.session.cancel();
+    assert.equal(f.session.getTurnOutcome('turn1')?.status, 'stopped');
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), false);
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+});
+test('idle result capacity retires neutrally without turning a deferred done candidate into Stop', async () => {
+    const f = await fixture({ deferTurnEnd: true });
+    const turn = f.session.send({ text: 'one' }, () => {}); f.output.push({ ...result('candidate'), uuid: 'first' }); await turn;
+    for (let i = 0; i < 511; i++) f.output.push({ ...result('idle'), uuid: `idle-${i}` });
+    await new Promise(resolve => setImmediate(resolve)); await f.session.close();
+    assert.equal(f.session.getTurnOutcome('turn1')?.status, 'done');
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), true);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, 'candidate');
 });

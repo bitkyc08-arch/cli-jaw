@@ -1,7 +1,9 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaudeSdkEvents } from '../../src/agent/runtime/claude-sdk-events.ts';
-import { RuntimeProjection } from '../../src/agent/runtime/projection.ts';
+// Recorders are injected here; module loading must not initialize shared SQLite.
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+const { ClaudeSdkEvents } = await import('../../src/agent/runtime/claude-sdk-events.ts');
+const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
 import type { RuntimeEventContext } from '../../src/agent/runtime/events.ts';
 import type { ClaudeChildOwner } from '../../src/agent/runtime/claude-sdk-children.ts';

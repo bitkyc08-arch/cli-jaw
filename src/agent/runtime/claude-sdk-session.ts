@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { RuntimeCapabilities, RuntimeEvent, RuntimeEventBody } from '../../shared/runtime-contract.js';
+import { parseRuntimeEvent } from '../../shared/runtime-event-parse.js';
 import { recordRuntimeEvent, type RuntimeEventContext } from './events.js';
 import type { NativeRuntimeSession, RuntimePrompt, RuntimeTurnResult, RuntimeInputAcceptance } from './session.js';
 import { runtimeRequests, type RuntimeRequests } from './requests.js';
@@ -106,8 +107,9 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         const message = makeClaudeUserMessage(prompt);
         const context = Object.freeze({ ...this.options.getTurnContext() });
         if (!this.current(context)) throw new Error('claude_owner_stale');
-        for (const value of [context.runId, context.sessionId, context.scope, context.turnId]) {
-            if (typeof value !== 'string' || !value || value.length > 1024) throw new Error('claude_invalid_context');
+        // Schema preflight only; the real seq is still allocated by the trace writer.
+        if (!parseRuntimeEvent({ ...context, version: 1, seq: 1, kind: 'turn-start', provider: 'claude' })) {
+            throw new Error('claude_invalid_context');
         }
         if (this.options.deferTurnEnd) {
             if (this.deferredTurnIds.has(context.turnId)) throw new Error('claude_turn_identity_reused');
@@ -139,12 +141,17 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         if (!this.turn || !this.alive) throw new Error('request_not_current');
         this.registry.respond(requestId, this.turn.context, response);
     }
-    interrupt(): Promise<void> { return this.close(); }
-    cancel(): Promise<void> { return this.close(); }
+    interrupt(): Promise<void> { return this.cancel(); }
+    cancel(): Promise<void> {
+        if (this.pendingFinal && !this.pendingFinal.failed && !this.failure) {
+            this.pendingFinal.outcome = { ...this.pendingFinal.outcome, status: 'stopped', finalText: null };
+        }
+        return this.close();
+    }
     finalizeTurn(turnId: string, end: RuntimeEnd): boolean {
         const pending = this.pendingFinal;
         if (!pending || pending.turn.context.turnId !== turnId) return false;
-        if (pending.failed && end.status === 'done') return false;
+        if (pending.outcome.status !== 'done' && end.status === 'done') return false;
         this.pendingFinal = null;
         this.finalizing = true; pending.turn.passiveFinalizing = true;
         try { pending.turn.mapper.finish({ ...pending.outcome, status: end.status, finalText: end.finalText }, end); }
@@ -156,7 +163,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         const pending = this.pendingFinal;
         return pending?.turn.context.turnId === turnId ? { ...pending.outcome } : null;
     }
-    kill(): void { void this.close().catch(() => console.warn('[claude-native] cleanup_failed')); }
+    kill(): void { void this.cancel().catch(() => console.warn('[claude-native] cleanup_failed')); }
     onExit(cb: (code: number | null) => void): () => void {
         if (this.exited) { cb(this.failure ? 1 : 0); return () => {}; }
         this.exits.add(cb); return () => { this.exits.delete(cb); };
@@ -179,11 +186,13 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         this.permissions.cancelAll(); this.owners.cancelPending();
         if (outcome.status !== 'done') this.children.stopOwner(turn.context);
         this.owners.retire(turn.context);
-        if (this.options.deferTurnEnd) this.pendingFinal = { turn, outcome };
+        if (this.options.deferTurnEnd) this.pendingFinal = { turn, outcome, failed: outcome.status === 'error' };
         else turn.mapper.finish(outcome, outcome.status === 'error' && this.failureCode
             ? { kind: 'turn-end', status: 'error', finalText: null, error: this.failureCode } : undefined);
         turn.resolve(outcome);
-        if (this.owners.saturated || this.terminalIds.size >= 512) this.kill();
+        if (this.owners.saturated || this.terminalIds.size >= 512) {
+            void this.close().catch(() => console.warn('[claude-native] cleanup_failed'));
+        }
     }
     private fail(reason: string): void {
         this.failureCode ??= reason;
@@ -233,7 +242,10 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
                     if (this.terminalIds.size >= 512) { this.fail('claude_terminal_capacity'); break; }
                     this.terminalIds.add(resultId);
                 }
-                if (!turn) { if (this.terminalIds.size >= 512) this.kill(); continue; }
+                if (!turn) {
+                    if (this.terminalIds.size >= 512) void this.close().catch(() => console.warn('[claude-native] cleanup_failed'));
+                    continue;
+                }
                 // A resume/startup handshake with no consumed user turn is not
                 // the answer to input that merely happened to be offered meanwhile.
                 if (raw['type'] === 'result' && raw['subtype'] === 'success' && raw['is_error'] === false

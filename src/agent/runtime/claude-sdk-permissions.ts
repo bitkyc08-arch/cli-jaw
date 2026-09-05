@@ -136,7 +136,14 @@ function questionRequest(input: Record<string, unknown>): PreparedRequest {
         options: q.labels.map((label, j) => ({ id: `o${j}`, label: safeLabel(label) })),
     })) });
     if (!view) throw new Error('invalid_questions');
-    return { view, requestType: 'question', validate: value => questionAnswers(value, questions) };
+    return { view, requestType: 'question', validate: value => {
+        if (record(value) && Object.hasOwn(value, 'optionId')) {
+            exact(value, ['optionId']);
+            if (value['optionId'] !== null) throw new Error('invalid_response');
+            return 'cancel';
+        }
+        return questionAnswers(value, questions);
+    } };
 }
 function questionAnswers(value: unknown, questions: Question[]): Record<string, string> {
     // Copy the untrusted response before validating, so accessors/mutation cannot change a decision.
