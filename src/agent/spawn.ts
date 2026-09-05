@@ -69,6 +69,7 @@ import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type { RuntimeEvent, RuntimeLivenessIdentity, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
+import { MainReplacementOwnerMismatchError, type MainReplacementResult } from './runtime/replace-turn.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { syncLiveTools } from './events/helpers.js';
 import { RuntimeProjection, type RuntimeEnd } from './runtime/projection.js';
@@ -78,7 +79,8 @@ import { PiProjection } from './runtime/pi-projection.js';
 import { PiRawTrace } from './runtime/pi-raw-trace.js';
 import { isNativeAdapterImplemented, isNativeWorkerImplemented, isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket } from './runtime/selection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
-import type { RemoteTarget } from '../messaging/types.js';
+import { isRemoteTarget, type RemoteTarget } from '../messaging/types.js';
+import { buildRemoteBindingKey } from '../messaging/session-key.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntimesByScope, runtimeForScope } from './jwc-runtime.js';
 import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
@@ -206,6 +208,8 @@ export type MainRunState = {
      * queues with a reason broadcast).
      */
     steerTurnInBand?: (text: string) => Promise<'steered' | 'unavailable' | 'rejected'>;
+    /** Native local-dispatch hook; failure must never become queued input. */
+    replaceTurn?: (text: string, commitInput: () => void) => Promise<MainReplacementResult>;
 };
 
 export const activeMainProcesses = new Map<string, MainRunState>();
@@ -782,8 +786,9 @@ export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
     if (run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true) return true;
-    // codex-app: the hook exists exactly while a steerable turn is in flight.
-    return typeof run?.steerTurnInBand === 'function';
+    // Route CLI steering through either the in-band hook or the native replacement hook.
+    // Each owning hook decides whether the current turn can still accept the input.
+    return typeof run?.steerTurnInBand === 'function' || typeof run?.replaceTurn === 'function';
 }
 
 export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run';
@@ -807,6 +812,42 @@ export async function steerAgent(
         // from waiting for an answer that structurally cannot arrive.
         settleOnce(meta?.requestId, 'steered');
         return 'steered';
+    }
+    if (typeof run?.replaceTurn === 'function') {
+        const owner = run.meta;
+        const ownerTarget = isRemoteTarget(owner.target) ? owner.target : undefined;
+        const ownerRemoteKey = owner.remoteKey ?? (ownerTarget ? buildRemoteBindingKey(ownerTarget) : undefined);
+        const suppliedTarget = meta?.target;
+        if ((meta?.chatSessionId !== undefined && meta.chatSessionId !== owner.chatSessionId)
+            || (meta?.remoteKey !== undefined && meta.remoteKey !== ownerRemoteKey)
+            || (suppliedTarget !== undefined && (!isRemoteTarget(suppliedTarget)
+                || buildRemoteBindingKey(suppliedTarget) !== ownerRemoteKey
+                || (ownerTarget !== undefined && (buildRemoteBindingKey(suppliedTarget) !== buildRemoteBindingKey(ownerTarget)
+                    || suppliedTarget.targetKind !== ownerTarget.targetKind
+                    || suppliedTarget.guildId !== ownerTarget.guildId
+                    || suppliedTarget.parentTargetId !== ownerTarget.parentTargetId))))) {
+            throw new MainReplacementOwnerMismatchError();
+        }
+        const capturedMeta = { ...meta, ...(suppliedTarget === undefined ? {} : { target: { ...suppliedTarget } }) };
+        const workingDir = settings['workingDir'] || null;
+        let attempted = false;
+        const outcome = await run.replaceTurn(newPrompt, () => {
+            if (attempted) throw new Error('native_replacement_duplicate_input');
+            attempted = true; // A partial recording failure must never retry this input.
+            insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
+            broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+            broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+                sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
+                requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
+                mode: 'cancel-reprompt', localDispatch: true }));
+            settleOnce(capturedMeta.requestId, 'steered');
+        });
+        if (outcome.kind === 'failed') throw outcome.error;
+        if ((outcome.kind === 'dispatched') !== attempted) throw new Error('native_replacement_inconsistent_receipt');
+        if (outcome.kind === 'dispatched') return 'steered';
+        broadcast('steer_rejected', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+            sessionId: chatSessionId, reason: outcome.reason, requestId: capturedMeta.requestId }));
+        return 'fallback-queue';
     }
     if (typeof run?.steerTurnInBand === 'function') {
         // codex-app same-turn steer. The user row is written only AFTER the
