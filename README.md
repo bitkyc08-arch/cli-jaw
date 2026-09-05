@@ -409,6 +409,8 @@ Cursor, Grok and Claude retain `print` compatibility mode. Their optional `perCl
 
 Cursor main turns support the native ACP path with explicit `transport: "native"` and literal `permissions: "auto"`; restrictive native permissions and workers are rejected before prompt-file or session preparation. Model/effort use native advertised choices (Composer models may require unset effort). Canonical tool/commentary activity is separate from the full final answer; interrupted text remains available for steer salvage. Native I/O refreshes only its own collector through a private, text-free callback. Display defaults and owned history UI remain separate rollout layers.
 
+Native Cursor redirects use **cancel-reprompt**, not in-band input: the original prompt's cancelled response and pending updates finish before the replacement is sent in the same native session. cli-jaw restores the original request, accepted redirects and bounded incomplete output as context while keeping current instructions active. `/steer` uses this path; another pending redirect may queue, but a failed or indeterminate dispatch is not automatically retried. `/queue steer <n>` retains its separate interrupt-and-run-now behavior.
+
 Native decision APIs are available at `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id`. They use the existing instance authentication policy, exact run/session/scope/turn matching and opaque choice handles. Decisions expire after two minutes; accepting a response records a choice, not tool completion. Provider activation and Activity approval controls remain separate follow-on layers; messaging behavior is unchanged.
 
 ### Instance Manager
@@ -567,7 +569,7 @@ The quota/status panel keeps the same runtime keyset as the registry. Cold statu
 
 > Switch engines live: `/cli codex`. Switch models: `/model gpt-5.5`. Works from Web, Terminal, Telegram, Discord, or Slack.
 
-**Mid-run steering**: sending a message while the agent is working steers the running turn by default (`multiSession.midRunPolicy: 'steer'`). On the JWC and Codex App runtimes the message joins the in-flight turn itself — the model keeps its full context. On every other runtime the current turn is redirected (kill-steer) with the interrupted turn's partial output carried into the follow-up run, so nothing the agent was doing is lost. Prefer waiting in line? Set the policy to `followup` or `collect` in Settings → Agent.
+**Mid-run steering**: the default policy is `multiSession.midRunPolicy: 'steer'`. JWC and Codex App accept in-flight input; native Cursor cancels and drains the active prompt, then re-prompts in the same session with application-restored context. Other paths interrupt the current run and carry bounded partial output into a new run; this is not a guarantee of complete history retention. Prefer waiting in line? Choose `followup` or `collect` in Settings → Agent.
 
 ---
 

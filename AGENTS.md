@@ -206,8 +206,9 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Mid-run steer (기본 정책)
 
-- `multiSession.midRunPolicy` 기본값은 `'steer'`다 (기본값·마이그레이션·검증 모두 steer로 정규화). 런타임이 in-band steer를 지원하면(jwc 항상, codex-app은 steer 가능한 turn 진행 중에 `MainRunState.steerTurnInBand` 훅으로) kill 없이 같은 턴에 주입된다. codex-app은 app-server `turn/steer`를 사용하므로 이전 맥락 손실이 없다. **in-band 미지원 런타임도 큐가 아니라 kill-steer다** — 진행 턴을 kill하고 새 run을 시작하되 salvage가 맥락을 이어준다. 큐로 물러나는 것은 in-band 시도의 race(턴 종료)·review/compact 거부뿐이며, 큐 대기를 원하면 `'followup'`/`'collect'` 정책을 쓴다.
-- 명시적 `/steer`·`/queue steer`는 in-band 불가 런타임에서 kill-path를 쓰되, 중단된 턴의 부분 출력이 exit-settle 배리어(`armExitSettle`/`settleExit`/`waitForExitSettled`)와 pre-kill MAX(id) 스냅샷으로 salvage되어 `withSteerContext` 블록으로 follow-up 프롬프트에 주입된다. 정책 표와 결정 순서는 `structure/prompt_flow.md` §Mid-run 메시지 정책 참고. Manager 설정(Agent 페이지)에서 정책을 바꿀 수 있다.
+- `multiSession.midRunPolicy` 기본값은 `'steer'`다. JWC와 steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor는 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. 원래 요청·수락된 추가 지시·제한된 부분 출력은 읽기 전용 문맥으로, 현재 운영 지침은 활성 지침으로 복원한다.
+- Native Cursor는 전송 완료 뒤에도 main 객체·세대·정규 소유권을 재검사하고 입력을 한 번만 기록한다. 진행 중인 replacement의 후속 입력은 큐로 갈 수 있지만, 취소·전송·기록 실패는 자동 재시도하지 않는다. 나머지 런타임의 기존 in-band/kill-steer 동작과 `followup`/`collect` 대기는 유지한다.
+- `/steer`는 런타임 훅을 사용한다. 별도 `/queue steer <n>`은 기존 항목을 중단 후 우선 실행하는 동작을 유지한다. Kill 경로의 제한된 부분 출력은 pre-kill MAX(id)와 정확한 exit-settle 배리어 뒤 `withSteerContext`로 복원한다. 전체 과거 맥락 보존을 보장하지 않는다. 정책 표는 `structure/prompt_flow.md`를 참고한다.
 
 ### Korean Content Skill Routing
 
