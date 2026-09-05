@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { settings } from '../../src/core/config.ts';
 import { broadcast } from '../../src/core/bus.ts';
 import { registerSendTransport, sendChannelOutput } from '../../src/messaging/send.ts';
+import * as sendModule from '../../src/messaging/send.ts';
 import { loadLocales, t } from '../../src/core/i18n.ts';
 import { fileURLToPath } from 'node:url';
 import { log } from '../../src/core/logger.ts';
@@ -23,13 +24,31 @@ let hubResponse: Record<string, unknown> | null = null;
 const hubRequests: Record<string, unknown>[] = [];
 const outboundResults: unknown[] = [];
 const reportedErrors: unknown[][] = [];
+const routed: Array<{ request: Parameters<typeof sendChannelOutput>[0]; promise: ReturnType<typeof sendChannelOutput> }> = [];
+let senderGate: { entered(): void; wait: Promise<void> } | null = null;
 const handlers = new Map<string, (ctx: any) => Promise<void>>();
 const send = async (channel: string, text: string, opts?: { requireBodyDelivery?: boolean }) => {
+    if (channel === 'telegram' && senderGate) {
+        senderGate.entered();
+        await senderGate.wait;
+    }
     optionsSeen.push(opts?.requireBodyDelivery === true);
     if (eraseBody && opts?.requireBodyDelivery) return { ok: false, error: 'empty_message' };
     operations.push(`post:${channel}:${text}`);
     return { ok: true, ts: 'notice-ts' };
 };
+
+// Observe the existing router promise without cloning the request: native
+// guards bind the original object through a private WeakSet in each producer.
+mock.module('../../src/messaging/send.ts', { namedExports: {
+    ...sendModule,
+    sendChannelOutput: (request: Parameters<typeof sendChannelOutput>[0]) => {
+        const promise = sendModule.sendChannelOutput(request);
+        routed.push({ request, promise });
+        void promise.catch(() => undefined); // caller still observes the original rejection
+        return promise;
+    },
+} });
 
 mock.method(globalThis, 'fetch', async (url: unknown, init?: RequestInit) => {
     if (hubResponse && String(url) === 'http://127.0.0.1:24576/api/dashboard/telegram-hub/outbound') {
@@ -139,6 +158,18 @@ const client = { token: 'fake', user: { id: 'BOT' }, rest: {
 } };
 
 async function drain() { for (let n = 0; n < 20; n++) await new Promise(resolve => setImmediate(resolve)); }
+function standingTarget(data: Record<string, unknown>) {
+    const from = routed.length;
+    broadcast('orchestrate_done', data);
+    return routed.slice(from);
+}
+async function settleStanding(data: Record<string, unknown>, expectedTelegramDispatches = 1) {
+    const dispatched = standingTarget(data);
+    if (data['origin'] === 'telegram') assert.equal(dispatched.length, expectedTelegramDispatches);
+    const results = await Promise.all(dispatched.map(entry => entry.promise));
+    await drain(); // settle already-completed handler bookkeeping, not transport admission
+    return results;
+}
 async function run(channel: string) {
     activeRequest = `native-delivery-${++id}`;
     if (channel === 'slack') {
@@ -173,6 +204,7 @@ test.after(async () => { await telegram.shutdownTelegram(); });
 test.beforeEach(() => {
     operations.length = 0; optionsSeen.length = 0; completion = {}; body = 'answer';
     eraseBody = false; selfDelivered = false; queued = false;
+    senderGate = null; routed.length = 0;
     hubResponse = null; hubRequests.length = 0; outboundResults.length = 0; reportedErrors.length = 0;
     delete (settings as Record<string, unknown>)['telegramHub'];
 });
@@ -197,10 +229,10 @@ test('native hub relay requires exact body receipt; legacy keeps ok truthiness a
     ]) {
         hubResponse = response;
         hubRequests.length = 0; outboundResults.length = 0; reportedErrors.length = 0;
-        broadcast('orchestrate_done', { origin: 'telegram', text: 'answer', replyViaTarget: true,
+        const results = await settleStanding({ origin: 'telegram', text: 'answer', replyViaTarget: true,
             target: remoteTarget, runtimeFinality: 'present', runtimeStatus: 'done' });
-        await drain();
         const confirmed = response.ok === true && response.bodyDelivered === true;
+        assert.equal(results[0]?.ok, confirmed);
         assert.deepEqual(outboundResults, [confirmed ? 'ok' : 'error']);
         assert.deepEqual(hubRequests, [{ chatId: '123', threadId: '42', type: 'text', text: 'answer' }]);
         if (!confirmed && response.ok !== false) {
@@ -211,6 +243,39 @@ test('native hub relay requires exact body receipt; legacy keeps ok truthiness a
         assert.equal(legacy.ok, Boolean(response.ok));
         assert.deepEqual(outboundResults, [response.ok ? 'ok' : 'error']);
         assert.deepEqual(hubRequests, [{ chatId: '123', threadId: '42', type: 'text', text: 'answer' }]);
+    }
+});
+
+test('standing Telegram delivery awaits its exact router promise after a deferred sender', { timeout: 3_000 }, async t => {
+    for (const native of [false, true]) {
+        optionsSeen.length = 0;
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const abort = () => { entered.reject(new Error('deferred sender did not enter')); release.resolve(); };
+        t.signal.addEventListener('abort', abort, { once: true });
+        senderGate = { entered: entered.resolve, wait: release.promise };
+        const from = routed.length;
+        const completion = settleStanding({ origin: 'telegram', text: 'answer', replyViaTarget: true,
+            target: target('telegram'), ...(native ? { runtimeFinality: 'present', runtimeStatus: 'done' } : {}) });
+        const dispatched = routed.slice(from);
+        let barrierSettled = false;
+        void completion.then(() => { barrierSettled = true; }, () => { barrierSettled = true; });
+        try {
+            assert.equal(dispatched.length, 1);
+            await entered.promise;
+            await drain();
+            assert.deepEqual(optionsSeen, [], 'event-loop yields are not a transport completion barrier');
+            assert.equal(barrierSettled, false, 'the helper must still await the exact dispatch');
+            release.resolve();
+            assert.equal((await completion)[0]?.ok, true);
+            assert.deepEqual(optionsSeen, [native], 'the real router preserves private request identity');
+        } finally {
+            release.resolve();
+            senderGate = null;
+            t.signal.removeEventListener('abort', abort);
+            await Promise.allSettled([completion]);
+            await Promise.allSettled(dispatched.map(entry => entry.promise));
+        }
     }
 });
 
@@ -262,9 +327,9 @@ for (const channel of ['slack', 'discord', 'telegram']) {
             { runtimeFinality: 'invalid', runtimeStatus: 'done' }, { runtimeFinality: 'present', runtimeStatus: 'invalid' },
             { runtimeFinality: 'absent', runtimeStatus: 'error' } ]) {
             optionsSeen.length = 0;
-            broadcast('orchestrate_done', { origin: channel, text: 'answer', fromQueue: true, replyViaTarget: true,
+            const results = await settleStanding({ origin: channel, text: 'answer', fromQueue: true, replyViaTarget: true,
                 target: target(channel), ...tags });
-            await drain();
+            for (const result of results) assert.equal(result.ok, true);
             assert.deepEqual(optionsSeen, [tags.runtimeStatus === 'error']);
         }
     });
@@ -303,14 +368,15 @@ for (const channel of ['slack', 'discord', 'telegram']) {
         assert.equal(operations.includes('ack:success'), false);
     });
     test(`${channel} standing target empty native and formatter failure cannot claim success`, async () => {
-        broadcast('orchestrate_done', { origin: channel, text: ' \n', fromQueue: true, replyViaTarget: true,
-            target: target(channel), runtimeFinality: 'absent', runtimeStatus: 'done' });
-        await drain();
+        await settleStanding({ origin: channel, text: ' \n', fromQueue: true, replyViaTarget: true,
+            target: target(channel), runtimeFinality: 'absent', runtimeStatus: 'done' }, 0);
         assert.deepEqual(optionsSeen, []);
         assert.deepEqual(operations, []);
         eraseBody = true;
-        broadcast('orchestrate_done', { origin: channel, text: 'removed', fromQueue: true, replyViaTarget: true,
+        const failed = settleStanding({ origin: channel, text: 'removed', fromQueue: true, replyViaTarget: true,
             target: target(channel), runtimeFinality: 'present', runtimeStatus: 'done' });
+        if (channel === 'telegram') await assert.rejects(failed, /empty_message/);
+        else for (const result of await failed) assert.equal(result.ok, false);
         await drain();
         assert.deepEqual(optionsSeen, [true]);
         assert.deepEqual(operations, []);

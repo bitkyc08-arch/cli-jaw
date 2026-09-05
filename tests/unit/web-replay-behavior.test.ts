@@ -156,3 +156,47 @@ for (const kind of ['legacy-done', 'legacy-error', 'legacy-stall', 'native-done'
         if (kind.startsWith('native')) assert.equal(params.ctx.traceRunId, 'replacement-owner-must-not-leak', 'mutation seam executed');
     });
 }
+
+for (const withTools of [false, true]) {
+    test(`F9 ${withTools ? 'lazy tool-backed' : 'live'} VS promotion removes transient Mermaid queue metadata before snapshot`, async t => {
+        const { getVirtualScroll } = await import('../../public/js/virtual-scroll.ts');
+        const vs = getVirtualScroll();
+        vs.clear();
+        const container = document.getElementById('chatMessages')!;
+        // jsdom lacks the browser scrollTo API; rendering and snapshots remain real.
+        Object.defineProperty(container, 'scrollTo', { configurable: true, value() {} });
+        vs.setItems([{ id: 'existing-item', html: '<div class="msg">history</div>', height: 80 }]);
+        assert.equal(vs.active, true);
+        ui.appendAgentText('preview');
+        const div = state.currentAgentDiv!;
+        assert.equal(div.isConnected, true);
+        const queued = document.createElement('div');
+        queued.className = 'mermaid-pending';
+        queued.dataset['mermaidQueued'] = '1';
+        queued.dataset['mermaidQueuedAt'] = '100';
+        queued.dataset['mermaidCodeRaw'] = 'Z3JhcGggVEQ7QTtC';
+        // A prior diagram in the agent body/tool area survives replacement of
+        // the answer's .msg-content. Its queue ownership must not survive VS.
+        div.querySelector('.agent-body')!.prepend(queued);
+        const snapshots: string[] = [];
+        const live = vs.appendLiveItem.bind(vs);
+        const lazy = vs.appendItem.bind(vs);
+        t.mock.method(vs, 'appendLiveItem', node => { snapshots.push(node.outerHTML); live(node); });
+        t.mock.method(vs, 'appendItem', item => { snapshots.push(div.outerHTML); lazy(item); });
+        try {
+            ui.finalizeAgent('final answer', withTools ? [{ label: 'Tool', detail: 'done', status: 'done' }] : [], 'present');
+            assert.equal(snapshots.length, 1, 'the intended promotion path executed');
+            assert.equal(vs.count, 2);
+            const captured = document.createElement('div');
+            captured.innerHTML = snapshots[0]!;
+            const diagram = captured.querySelector<HTMLElement>('.mermaid-pending');
+            assert.ok(diagram, 'the seeded diagram reached the snapshot boundary');
+            assert.equal(diagram.dataset['mermaidQueued'], undefined);
+            assert.equal(diagram.dataset['mermaidQueuedAt'], undefined);
+            assert.equal(diagram.dataset['mermaidCodeRaw'], 'Z3JhcGggVEQ7QTtC', 'diagram source is retained');
+            assert.equal(state.currentAgentDiv, null);
+        } finally {
+            vs.clear();
+        }
+    });
+}
