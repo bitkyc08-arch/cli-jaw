@@ -1,8 +1,9 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DashboardLifecycleManager } from '../../src/manager/lifecycle.js';
@@ -34,6 +35,28 @@ class FakeChild extends EventEmitter {
 
 function tmpRoot(): string {
     return mkdtempSync(join(tmpdir(), 'jaw-persist-test-'));
+}
+
+// These serial fixtures trigger fire-and-forget prune writes. Capture the real
+// public store promises and drain them before deleting their filesystem root.
+function capturePersistence(t: TestContext): () => Promise<void> {
+    const pending: Promise<void>[] = [];
+    for (const method of ['save', 'deleteMarker'] as const) {
+        const original = LifecycleStore.prototype[method];
+        t.mock.method(LifecycleStore.prototype, method, function (this: LifecycleStore, ...args: unknown[]) {
+            const operation = Reflect.apply(original, this, args) as Promise<void>;
+            pending.push(operation); return operation;
+        });
+    }
+    return async () => {
+        let seen = 0, failure: PromiseRejectedResult | undefined;
+        while (seen < pending.length) {
+            const batch = pending.slice(seen); seen = pending.length;
+            const results = await Promise.allSettled(batch);
+            failure ??= results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        }
+        if (failure) throw failure.reason;
+    };
 }
 
 function makeOnline(port: number): DashboardInstance {
@@ -390,7 +413,8 @@ test('stopAll on hydrated detached registry sends SIGTERM and prunes persisted s
 
 test('activeEntry prunes detached entry whose PID is gone', async (t) => {
     const root = tmpRoot();
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const drain = capturePersistence(t);
+    t.after(async () => { try { await drain(); } finally { rmSync(root, { recursive: true, force: true }); } });
     const home = join(root, '.cli-jaw-3458');
     await plantPersistedEntry(root, 3458, 99030, 'l'.repeat(32), home);
     let alive = true;
@@ -411,9 +435,33 @@ test('activeEntry prunes detached entry whose PID is gone', async (t) => {
     assert.equal(row.lifecycle?.owner, 'external');
 });
 
+test('fixture drain awaits queued registry writes and marker deletion before cleanup', async t => {
+    const root = tmpRoot(), home = join(root, 'home');
+    const drain = capturePersistence(t);
+    let release!: () => void, wrote!: () => void, deleted!: () => void, gated = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const writeEntered = new Promise<void>(resolve => { wrote = resolve; });
+    const deleteEntered = new Promise<void>(resolve => { deleted = resolve; });
+    t.after(async () => { release(); try { await drain(); } finally { rmSync(root, { recursive: true, force: true }); } });
+    const store = new LifecycleStore({ managerPort: MGR, storageRoot: root, fsImpl: {
+        mkdir, readFile, rename, existsSync,
+        writeFile: async (...args: Parameters<typeof writeFile>) => { if (gated) { wrote(); await gate; } return writeFile(...args); },
+        rm: async (...args: Parameters<typeof rm>) => { deleted(); await gate; return rm(...args); },
+    } });
+    await store.writeMarker(home, { schemaVersion: 1, managedBy: 'cli-jaw-dashboard', managerPort: MGR,
+        port: 3458, pid: 99030, token: 'fixture-token', startedAt: '2026-09-06T00:00:00Z' });
+    gated = true;
+    const saving = store.save([]), deleting = store.deleteMarker(home);
+    let drained = false; const waiting = drain().then(() => { drained = true; });
+    await Promise.all([writeEntered, deleteEntered]); assert.equal(drained, false);
+    release(); await waiting; await Promise.all([saving, deleting]);
+    assert.equal(drained, true); assert.equal(existsSync(join(home, '.dashboard-managed.json')), false);
+});
+
 test('decorateScanResult prunes detached entry when scan reports offline', async (t) => {
     const root = tmpRoot();
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const drain = capturePersistence(t);
+    t.after(async () => { try { await drain(); } finally { rmSync(root, { recursive: true, force: true }); } });
     const home = join(root, '.cli-jaw-3458');
     await plantPersistedEntry(root, 3458, 99040, 'm'.repeat(32), home);
     const manager = new DashboardLifecycleManager({
