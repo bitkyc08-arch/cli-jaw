@@ -262,7 +262,7 @@ export class Viewport {
         switch (item.type) {
             case 'activity': return `activity|${item.key}|${item.revision}|${item.presentation}`;
             case 'user': return `u|${item.displayText.length}|${hashText(item.displayText)}|${item.agentId ?? ''}`;
-            case 'assistant': return `a|${item.text.length}|${hashText(item.text)}|${item.streaming ? 1 : 0}|${item.agentId ?? ''}`;
+            case 'assistant': return `a|${item.text.length}|${hashText(item.text)}|${item.streaming ? 1 : 0}|${item.agentId ?? ''}|${item.activityStatus ?? ''}|${item.activityCorrection ? 1 : 0}|${item.activityFinality ?? ''}|${item.activityDiagnostic ? 1 : 0}`;
             case 'thinking': return `h|${item.text.length}|${hashText(item.text)}|${item.streaming ? 1 : 0}|${item.collapsed ? 1 : 0}|${item.stepRef ?? ''}|${item.agentId ?? ''}`;
             case 'tool': return `t|${item.text.length}|${hashText(item.text)}|${item.collapsed ? 1 : 0}|${item.detail ? hashText(item.detail) : ''}|${item.status ?? ''}|${item.stepRef ?? ''}|${item.agentId ?? ''}`;
             case 'command': return `c|${item.text.length}|${hashText(item.text)}|${item.commandName ?? ''}|${typeof item.ok === 'boolean' ? Number(item.ok) : ''}`;

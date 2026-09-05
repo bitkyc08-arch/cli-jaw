@@ -26,6 +26,7 @@ import { handleWsMessage } from './ws-handler.js';
 import { redrawInputWithAutocomplete, dismissOverlay, closeAutocompleteForCtx } from './overlays.js';
 import { rebuildFooter } from './renderer.js';
 import { renderActivityAnswer } from '../../../src/cli/tui/activity-answer.js';
+import { wrapActivityTerminalText } from '../../../src/cli/tui/activity-terminal-text.js';
 import { renderActivityItem, toggleLatestActivity } from '../../../src/cli/tui/activity.js';
 import { presentationMode } from '../../../src/shared/presentation.js';
 import { renderActivityHistory } from '../../../src/cli/tui/activity-history.js';
@@ -69,6 +70,13 @@ function renderUserBlock(item: Extract<TranscriptItem, { type: 'user' }>, width:
 }
 
 export function renderTranscriptItem(item: TranscriptItem, width: number): string[] {
+    if ((item.type === 'assistant' || item.type === 'thinking') && item.activityPreviewKey) {
+        if (item.activityPreviewSettled) return [];
+        const rows = wrapActivityTerminalText(item.text, width);
+        const label = item.type === 'thinking' ? 'Provisional reasoning' : 'Provisional output';
+        return [...wrapActivityTerminalText(label, width),
+            ...(rows.length > 12 ? wrapActivityTerminalText('Earlier provisional output omitted.', width) : []), ...rows.slice(-12)];
+    }
     const gutter = '  ';
     const w = Math.max(20, width - gutter.length);
     switch (item.type) {

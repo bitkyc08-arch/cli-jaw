@@ -12,7 +12,7 @@ export interface ActivityTranscriptItem {
     collapsed: boolean;
     timestamp: number;
     revision: number;
-    terminalStatus: RuntimeTurnOutcome['status'] | null;
+    terminalStatus: RuntimeTurnOutcome['status'] | 'finished' | null;
     degraded: boolean;
     recordingGap: boolean;
     displayGap: boolean;
@@ -88,7 +88,7 @@ export function renderActivityItem(
     const rows: string[] = [];
     const append = (text: string) => rows.push(...wrapActivityTerminalText(text, cols));
     const status = item.retired && !item.terminalStatus ? 'Conversation changed' : item.terminalStatus === 'done' ? 'Complete' : item.terminalStatus === 'stopped'
-        ? 'Stopped' : item.terminalStatus === 'error' ? 'Failed' : 'Working';
+        ? 'Stopped' : item.terminalStatus === 'error' ? 'Failed' : item.terminalStatus === 'finished' ? 'Finished' : 'Working';
     const label = mode === 'activity' ? `${item.collapsed ? '>' : 'v'} Activity: ${status}` : status;
     append(label + (item.model.latestAction ? ` | ${item.model.latestAction}` : ''));
     if (item.degraded) append(item.recordingGap ? 'Activity record incomplete.'

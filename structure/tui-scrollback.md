@@ -99,6 +99,23 @@ Logical frontier survives width reflow (unlike physical row counts).
 
 ## Native Activity presentation
 
+Print compatibility terminals intentionally have no native finality/status markers.
+An untagged terminal can settle an already admitted run with matching trace/session/scope
+as presentation-only `Finished`; its original final bytes stay on the same answer receipt.
+The later canonical terminal supplies status without duplicating the body. Waiting for
+that record does not activate legacy tool-log backfill; an actual recording/display gap does.
+Unadmitted terminals keep their legacy path. Null canonical errors retain legacy diagnostics.
+If reordered recovery delivers a different original final after a canonical body, an
+uncommitted answer changes in place. Already printed/committed bytes receive one explicit
+`Updated answer` correction; identical bytes produce no additional output. A bounded digest
+survives preview release, and corrections never restart or stop another run. Diagnostics
+use a separate label. Canonical-only completion is never delayed waiting for compatibility.
+Gap fallback previews are scoped to one run and capped at16 rows/32KiB, with4KiB per
+row. Overflow freezes further preview input so a discarded VT opener cannot expose
+later bytes. Live and committed REST completion clear only those previews in place;
+retirement clears them too. Fullscreen and line fallback text/tool mirrors use the
+same terminal-safe text boundary. Late status/tool mirrors cannot mutate a newer run.
+
 Interactive chat binds semantic events to the server's `activityIdentity` from
 `GET /api/orchestrate/snapshot`. `presentation.mode` selects grouped Activity (default)
 or linear legacy rows independently of provider native/print transport. Ctrl+O toggles

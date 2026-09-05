@@ -7,7 +7,8 @@ import { createActivityFromState, releaseActivityPreview, type ActivityTranscrip
 import { createActivityHistoryPanel } from '../../../src/cli/tui/activity-history.js';
 import { appendActivityAnswer, writeActivityAnswer } from '../../../src/cli/tui/activity-answer.js';
 import { activityLinearDelta, closeActivityLinear } from '../../../src/cli/tui/activity-linear.js';
-import { appendStatusItem, isVerboseRenderMode } from '../../../src/cli/tui/transcript.js';
+import { appendStatusItem, isVerboseRenderMode, settleActivityFallbackPreviews } from '../../../src/cli/tui/transcript.js';
+import { settleActivityFallbackOutput } from './activity-fallback.js';
 import { apiJson, refreshActivityIdentity } from './api.js';
 import type { TuiContext } from './types.js';
 
@@ -73,9 +74,13 @@ export function retireActivityView(ctx: TuiContext, next: ActivityIdentity | nul
     ctx.streamSink = null;
     if (ctx.footerTimer) { clearInterval(ctx.footerTimer); ctx.footerTimer = null; }
     for (const item of turns(ctx)) {
-        if (!sameIdentity(item.model.identity, next) && !item.terminalStatus) {
-            item.retired = true;
-            item.revision++;
+        if (!sameIdentity(item.model.identity, next)) {
+            const printed = settleActivityFallbackPreviews(ctx.store.transcript, item.key);
+            if (printed && ctx.displayMode === 'line') process.stdout.write('\n[Provisional output ended; conversation changed.]\n');
+            if (!item.terminalStatus) {
+                item.retired = true;
+                item.revision++;
+            }
         }
     }
     ctx.requestFrame?.();
@@ -156,6 +161,7 @@ export async function restoreActiveActivity(ctx: TuiContext): Promise<void> {
             const item = turns(ctx).find(item => item.key === activityKey(event));
             if (!item || item.retired || item.released) continue;
             if (event.kind === 'turn-end') {
+                settleActivityFallbackOutput(ctx, item.key, event.finalText);
                 appendActivityAnswer(ctx.store.transcript, activityKey(event), event);
             }
             if (event.kind === 'turn-end' && ctx.displayMode === 'line') {
@@ -193,6 +199,6 @@ export function releaseCommittedActivity(ctx: TuiContext, frontier: number): voi
         if (item.type === 'activity' && (item.terminalStatus || item.retired)) {
             releaseActivityPreview(item);
             ctx.activityReplay?.turns.delete(item.key);
-        } else if (item.type === 'assistant' && item.activityKey) item.text = '';
+        } else if (item.type === 'assistant' && item.activityKey) { item.text = ''; item.activityReleased = true; }
     }
 }

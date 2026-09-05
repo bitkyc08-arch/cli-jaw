@@ -9,6 +9,7 @@ import { wrapActivityTerminalText } from '../../../src/cli/tui/activity-terminal
 import type { TuiContext } from './types.js';
 import { activityLinearDelta, closeActivityLinear } from '../../../src/cli/tui/activity-linear.js';
 import { getActivityReplay } from './activity-replay.js';
+import { settleActivityFallbackOutput } from './activity-fallback.js';
 
 const MAX_ACTIVITY_MODELS = 16;
 
@@ -52,7 +53,7 @@ function printSettledActivity(ctx: TuiContext, item: ActivityTranscriptItem): vo
     const width = process.stdout.columns || 80;
     if (item.presentation === 'legacy') process.stdout.write(closeActivityLinear(item));
     const rows = item.presentation === 'legacy' ? [item.terminalStatus === 'done' ? 'Complete'
-        : item.terminalStatus === 'stopped' ? 'Stopped' : 'Failed'] : renderActivityItem(item, width, item.presentation, 'Use fullscreen chat for retained history.');
+        : item.terminalStatus === 'stopped' ? 'Stopped' : item.terminalStatus === 'finished' ? 'Finished' : 'Failed'] : renderActivityItem(item, width, item.presentation, 'Use fullscreen chat for retained history.');
     process.stdout.write('\r\x1b[2K' + rows.join('\n') + '\n');
     writeActivityAnswer(ctx.store.transcript, item.key, width, text => process.stdout.write(text));
 }
@@ -64,7 +65,19 @@ export function handleActivityRuntime(ctx: TuiContext, event: RuntimeEvent): boo
     // displayed. Explicit session switches still reject the old conversation.
     if (!ownsIdentity(ctx, event) && !(existing && ownsAdmittedItem(ctx, existing))) return false;
     const item = existing ?? admitActivity(ctx, event);
-    if (!item || item.retired || item.released || event.seq <= item.model.seq) return false;
+    if (!item || item.retired || event.seq <= item.model.seq) return false;
+    if (event.kind === 'turn-end') settleActivityFallbackOutput(ctx, item.key, event.finalText);
+    if (item.released) {
+        if (event.kind === 'turn-end' && item.terminalStatus === 'finished') {
+            appendActivityAnswer(ctx.store.transcript, item.key, event);
+            item.terminalStatus = event.status;
+            item.model.seq = event.seq;
+            item.degraded = item.recordingGap || item.displayGap;
+            item.revision++;
+            ctx.requestFrame?.();
+        }
+        return false;
+    }
     const wasTerminal = Boolean(item.terminalStatus);
     item.presentation = presentationMode(ctx.settingsSnapshot);
     const previous = ctx.store.transcript.items.find(row => row.type === 'activity' && row.key === ctx.activeActivityKey);
@@ -124,15 +137,23 @@ export function handleActivityRuntime(ctx: TuiContext, event: RuntimeEvent): boo
  * inventing a semantic event or stealing another run's final/lifecycle cleanup. */
 export function settleActivityCompatibility(ctx: TuiContext, wire: Record<string, unknown>): boolean {
     const item = activityForCompatibility(ctx, wire);
-    if (!item || (wire['runtimeFinality'] !== 'present' && wire['runtimeFinality'] !== 'absent')) return false;
-    const status = wire['runtimeStatus'];
-    if (status !== 'done' && status !== 'error' && status !== 'stopped') return false;
-    const outcome: Pick<RuntimeTurnOutcome, 'status' | 'finalText'> = {
-        status, finalText: wire['runtimeFinality'] === 'absent' ? null : typeof wire['text'] === 'string' ? wire['text'] : '',
+    if (!item) return false;
+    // Print producers intentionally retain the legacy completion shape. Only a
+    // previously admitted canonical run can claim this fallback; malformed native
+    // markers must never be reinterpreted as a print completion.
+    const printFinal = wire['runtimeFinality'] === undefined && wire['runtimeStatus'] === undefined
+        && typeof wire['text'] === 'string';
+    const status = printFinal ? undefined : wire['runtimeStatus'];
+    if (!printFinal && ((wire['runtimeFinality'] !== 'present' && wire['runtimeFinality'] !== 'absent')
+        || (status !== 'done' && status !== 'error' && status !== 'stopped'))) return false;
+    const outcome: Pick<RuntimeTurnOutcome, 'finalText'> & { status?: RuntimeTurnOutcome['status'] } = {
+        ...(status === undefined ? {} : { status: status as RuntimeTurnOutcome['status'] }),
+        finalText: wire['runtimeFinality'] === 'absent' ? null : typeof wire['text'] === 'string' ? wire['text'] : '',
     };
-    appendActivityAnswer(ctx.store.transcript, item.key, outcome);
+    settleActivityFallbackOutput(ctx, item.key, outcome.finalText);
+    appendActivityAnswer(ctx.store.transcript, item.key, outcome, printFinal ? 'print' : 'canonical');
     if (!item.terminalStatus) {
-        item.terminalStatus = status;
+        item.terminalStatus = outcome.status ?? 'finished';
         item.degraded = true;
         item.model.requests.clear();
         item.revision++;

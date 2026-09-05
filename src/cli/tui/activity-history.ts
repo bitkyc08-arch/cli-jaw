@@ -13,7 +13,7 @@ export interface ActivityHistoryPanel {
     expanded: boolean;
     message: string;
     loading: boolean;
-    runs: ActivityRunSummary[];
+    runs: Array<Omit<ActivityRunSummary, 'status'> & { status: ActivityRunSummary['status'] | 'finished' }>;
     events: RuntimeEvent[];
     through: number;
     incomplete: boolean;

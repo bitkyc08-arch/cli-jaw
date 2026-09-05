@@ -12,6 +12,9 @@ import { applySettingsSelection } from '../../bin/commands/tui/overlays.ts';
 import { buildAppearanceRows } from '../../src/cli/tui/settings-screen.ts';
 import { computeStablePrefixIndex } from '../../bin/commands/tui/fullscreen-mode.ts';
 import xterm from '@xterm/xterm';
+import { releaseCommittedActivity, restoreActiveActivity, retireActivityView } from '../../bin/commands/tui/activity-replay.js';
+import { renderActivityItem } from '../../src/cli/tui/activity.js';
+import printProducer from '../fixtures/tui-print-producer.json' with { type: 'json' };
 
 function makeCtx(): TuiContext {
     return {
@@ -100,6 +103,499 @@ function compatibility(ctx: TuiContext, text: string, extra: Record<string, unkn
     handleWsMessage(ctx, msg({ type: 'agent_done', traceRunId: runtimeIdentity.runId,
         runtimeFinality: 'present', runtimeStatus: 'done', text, ...extra }));
 }
+
+function printCompatibility(ctx: TuiContext, text: string, extra: Record<string, unknown> = {}): void {
+    handleWsMessage(ctx, msg({ type: 'agent_done', traceRunId: runtimeIdentity.runId, text, ...extra }));
+}
+
+function gapOutput(ctx: TuiContext, text: string, extra: Record<string, unknown> = {}): void {
+    handleWsMessage(ctx, msg({ type: 'agent_output', traceRunId: runtimeIdentity.runId,
+        sessionId: runtimeIdentity.sessionId, scope: runtimeIdentity.scope, text, ...extra }));
+}
+
+test('admitted gap tool mirrors and final tool backfill cannot execute provider terminal controls', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        handleWsMessage(ctx, msg({ type: 'agent_tool', traceRunId: runtimeIdentity.runId,
+            icon: '$', label: '\x1b[2JRead', detail: '\x1b]52;c;SECRET\x07safe result', status: 'running', stepRef: 't' }));
+        assert.equal(ctx.store.transcript.liveTools[0]?.label, 'Read');
+        assert.equal(ctx.store.transcript.liveTools[0]?.detail, 'safe result');
+        printCompatibility(ctx, 'final', { toolLog: [{ icon: '$', label: '\x1b[2JRead',
+            detail: '\x1b]52;c;SECRET\x07safe final result', status: 'done', stepRef: 't' }] });
+        const tool = committedTools(ctx)[0]!;
+        assert.ok(tool.type === 'tool');
+        assert.equal(tool.detail, 'safe final result');
+        assert.doesNotMatch(tool.text, /\x1b|SECRET/);
+    } finally { cleanupCtx(ctx); }
+});
+
+for (const order of ['legacy-first', 'canonical-first'] as const) {
+    for (const finalText of ['FULL_FINAL_BYTES\r\n', '']) {
+        test(`gap fallback ${order} settles ${finalText ? 'full' : 'empty'} final without shifting previews`, () => {
+            const ctx = activityContext();
+            try {
+                runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+                handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+                gapOutput(ctx, 'PROVISIONAL_THOUGHT', { thinking: true });
+                gapOutput(ctx, 'PROVISIONAL_ANSWER');
+                const items = ctx.store.transcript.items;
+                const previews = items.slice();
+                const end = () => runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText });
+                if (order === 'canonical-first') {
+                    end();
+                    assert.equal(computeStablePrefixIndex(items), items.length, 'canonical close settles previews before compatibility');
+                }
+                printCompatibility(ctx, finalText);
+                assert.equal(computeStablePrefixIndex(items), items.length, 'compatibility close settles previews before canonical');
+                if (order === 'legacy-first') end();
+                printCompatibility(ctx, finalText);
+                assert.equal(ctx.store.transcript.items, items);
+                for (const [i, row] of previews.entries()) assert.equal(items[i], row, `stable row ${i}`);
+                assert.equal(items.length, previews.length + 1);
+                assert.deepEqual(assistantTexts(ctx).filter(Boolean), finalText ? [finalText] : []);
+                assert.ok(!items.some(item => (item.type === 'assistant' || item.type === 'thinking') && item.streaming));
+                assert.ok(!items.some(item => 'text' in item && /PROVISIONAL_/.test(item.text)));
+                assert.equal(computeStablePrefixIndex(items), items.length);
+            } finally { cleanupCtx(ctx); }
+        });
+
+        test(`line gap fallback ${order} labels provisional and ${finalText ? 'full' : 'empty'} final once`, () => {
+            const ctx = activityContext();
+            ctx.displayMode = 'line';
+            const original = process.stdout.write;
+            let output = '';
+            process.stdout.write = ((chunk: string | Uint8Array) => { output += String(chunk); return true; }) as typeof process.stdout.write;
+            try {
+                runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+                handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+                gapOutput(ctx, 'PROVISIONAL_ANSWER\n\n');
+                const beforeFinal = output.length;
+                const end = () => runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText });
+                if (order === 'canonical-first') end();
+                printCompatibility(ctx, finalText);
+                if (order === 'legacy-first') end();
+                printCompatibility(ctx, finalText);
+                assert.match(output.slice(0, beforeFinal), /Provisional output/);
+                assert.equal(output.match(/PROVISIONAL_ANSWER/g)?.length, 1);
+                assert.equal(output.slice(beforeFinal).match(finalText ? /FULL_FINAL_BYTES/g : /final answer is empty/gi)?.length, 1);
+                assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+            } finally { process.stdout.write = original; cleanupCtx(ctx); }
+        });
+    }
+
+    test(`gap fallback A then B then ${order} late A preserves B previews and lifecycle`, () => {
+        const ctx = activityContext();
+        try {
+            runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+            handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+            gapOutput(ctx, 'A_THOUGHT', { thinking: true });
+            gapOutput(ctx, 'A_PREVIEW');
+            appendUserItem(ctx.store.transcript, 'B user', 'B user');
+            runtime(ctx, { seq: 1, runId: 'B', kind: 'turn-start', provider: 'codex' });
+            handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, runId: 'B', reason: 'projection_degraded' }));
+            gapOutput(ctx, 'B_THOUGHT', { traceRunId: 'B', thinking: true });
+            gapOutput(ctx, 'B_PREVIEW', { traceRunId: 'B' });
+            const bIndex = ctx.store.transcript.items.findIndex(item => item.type === 'activity' && item.model.identity.runId === 'B');
+            const bRows = ctx.store.transcript.items.slice(bIndex);
+            const before = bRows.map(row => JSON.stringify(row));
+            const owner = ctx.activeActivityKey;
+            const clock = ctx.turnStartedAt;
+            const timer = ctx.footerTimer;
+            const sink = { push() {}, end() { assert.fail('A must not flush B'); } };
+            ctx.streamSink = sink;
+            ctx.inputActive = false;
+            const end = () => runtime(ctx, { seq: 7, kind: 'turn-end', status: 'error', finalText: null });
+            if (order === 'canonical-first') end();
+            printCompatibility(ctx, 'A_DIAGNOSTIC');
+            if (order === 'legacy-first') end();
+            assert.deepEqual(bRows.map(row => JSON.stringify(row)), before);
+            assert.equal(ctx.activeActivityKey, owner);
+            assert.equal(ctx.turnStartedAt, clock);
+            assert.equal(ctx.footerTimer, timer);
+            assert.equal(ctx.streamSink, sink);
+            assert.equal(ctx.streaming, true);
+            assert.equal(ctx.inputActive, false);
+            assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), bIndex);
+            assert.ok(!ctx.store.transcript.items.some(item => 'text' in item && /A_THOUGHT|A_PREVIEW/.test(item.text)));
+            assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['B_PREVIEW', 'A_DIAGNOSTIC']);
+        } finally { cleanupCtx(ctx); }
+    });
+}
+
+test('line gap fallback sanitizes split controls and delivers a canonical-null diagnostic once', () => {
+    const ctx = activityContext();
+    ctx.displayMode = 'line';
+    const original = process.stdout.write;
+    let output = '';
+    process.stdout.write = ((chunk: string | Uint8Array) => { output += String(chunk); return true; }) as typeof process.stdout.write;
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        gapOutput(ctx, 'VISIBLE_PREVIEW\x1b]52;c;');
+        gapOutput(ctx, 'HIDDEN_PAYLOAD\x07VISIBLE_SUFFIX');
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'error', finalText: null });
+        printCompatibility(ctx, 'STARTUP_DIAGNOSTIC');
+        printCompatibility(ctx, 'STARTUP_DIAGNOSTIC');
+        assert.equal(output.match(/VISIBLE_PREVIEW/g)?.length, 1);
+        assert.equal(output.match(/VISIBLE_SUFFIX/g)?.length, 1);
+        assert.doesNotMatch(output, /HIDDEN_PAYLOAD|Updated diagnostic/);
+        assert.equal(output.match(/STARTUP_DIAGNOSTIC/g)?.length, 1);
+        assert.match(output, /Diagnostic/);
+        assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['STARTUP_DIAGNOSTIC']);
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+    } finally { process.stdout.write = original; cleanupCtx(ctx); }
+});
+
+test('gap fallback thinking tool snapshots keep their indices and retire on canonical close', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        gapOutput(ctx, 'PROVISIONAL_ANSWER');
+        const prior = ctx.store.transcript.items.slice();
+        const tool = { type: 'agent_tool', traceRunId: runtimeIdentity.runId, sessionId: runtimeIdentity.sessionId,
+            scope: runtimeIdentity.scope, toolType: 'thinking', stepRef: 'thinking-1', icon: 'T', label: 'Thinking', status: 'running' };
+        handleWsMessage(ctx, msg({ ...tool, detail: 'PROVISIONAL_THOUGHT' }));
+        handleWsMessage(ctx, msg({ ...tool, detail: 'PROVISIONAL_THOUGHT_REPLACED', status: 'done' }));
+        for (const [i, item] of prior.entries()) assert.equal(ctx.store.transcript.items[i], item);
+        const rows = ctx.store.transcript.items.slice();
+        assert.equal(rows.length, prior.length + 1, 'thinking snapshots update one owned row');
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: 'FINAL_ONLY' });
+        for (const [i, item] of rows.entries()) assert.equal(ctx.store.transcript.items[i], item);
+        assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['FINAL_ONLY']);
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('gap fallback caps rows across agents and thinking steps without combining their previews', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        for (let i = 0; i < 64; i++) {
+            gapOutput(ctx, `agent-${i}`, { agentId: `agent-${i}` });
+            handleWsMessage(ctx, msg({ type: 'agent_tool', traceRunId: runtimeIdentity.runId,
+                sessionId: runtimeIdentity.sessionId, scope: runtimeIdentity.scope,
+                icon: 'T', label: 'Thinking', toolType: 'thinking', status: 'running',
+                agentId: `agent-${i}`, stepRef: `step-${i}`, detail: `thought-${i}` }));
+        }
+        const previews = ctx.store.transcript.items.filter(item => item.type === 'assistant' || item.type === 'thinking');
+        assert.equal(previews.length, 16);
+        assert.equal(previews[0]?.text, 'agent-0');
+        assert.equal(previews[1]?.text, 'thought-0');
+        assert.equal(previews[2]?.text, 'agent-1');
+        const activity = ctx.store.transcript.items[0]!;
+        assert.ok(activity.type === 'activity');
+        assert.equal(activity.displayGap, true);
+        printCompatibility(ctx, 'FULL_AFTER_ROW_LIMIT');
+        assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['FULL_AFTER_ROW_LIMIT']);
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('gap fallback caps total run characters independently of the selected full final', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        for (let i = 0; i < 64; i++) gapOutput(ctx, 'x'.repeat(4000), { agentId: `agent-${i}` });
+        const previews = ctx.store.transcript.items.filter(item => item.type === 'assistant');
+        assert.equal(previews.reduce((sum, item) => sum + item.text.length, 0), 32 * 1024);
+        const full = 'f'.repeat(70_000) + '\r\nFULL_FINAL_TAIL';
+        printCompatibility(ctx, full);
+        assert.deepEqual(assistantTexts(ctx).filter(Boolean), [full]);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('line gap fallback freezes after truncation so a discarded control opener cannot leak its suffix', () => {
+    const ctx = activityContext();
+    ctx.displayMode = 'line';
+    const original = process.stdout.write;
+    let output = '';
+    process.stdout.write = ((chunk: string | Uint8Array) => { output += String(chunk); return true; }) as typeof process.stdout.write;
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        gapOutput(ctx, 'x'.repeat(4090) + '\x1b]52;c;' + 'HIDDEN'.repeat(100));
+        gapOutput(ctx, 'LEAK_SUFFIX\x07', { agentId: 'another-agent' });
+        gapOutput(ctx, 'LEAK_SUFFIX\x07');
+        const previews = ctx.store.transcript.items.filter(item => item.type === 'assistant');
+        assert.equal(previews.length, 1);
+        assert.equal(previews[0]?.text.length, 4096);
+        assert.doesNotMatch(output, /HIDDEN|LEAK_SUFFIX/);
+        assert.equal(output.match(/Provisional output limited/g)?.length, 1);
+        printCompatibility(ctx, 'FULL_AFTER_LIMIT');
+        assert.equal(output.match(/FULL_AFTER_LIMIT/g)?.length, 1);
+        assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['FULL_AFTER_LIMIT']);
+    } finally { process.stdout.write = original; cleanupCtx(ctx); }
+});
+
+for (const committed of [true, false]) {
+    test(`gap fallback REST terminal clears previews only after committed restore=${committed}`, async () => {
+        const ctx = activityContext();
+        ctx.apiUrl = 'http://127.0.0.1:3457';
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        gapOutput(ctx, 'REST_PREVIEW');
+        gapOutput(ctx, 'REST_THOUGHT', { thinking: true });
+        const rows = ctx.store.transcript.items.slice();
+        const original = globalThis.fetch;
+        globalThis.fetch = async input => {
+            const url = new URL(String(input));
+            if (url.pathname.endsWith('/snapshot')) return Response.json({ activityIdentity: ctx.activitySettlementIdentity,
+                activeRun: { traceRunId: runtimeIdentity.runId } });
+            const seed = url.searchParams.get('after') === '0';
+            if (!seed && !committed) throw new Error('tail read failed');
+            return Response.json({ ok: true, data: { runId: runtimeIdentity.runId, sessionId: runtimeIdentity.sessionId,
+                scope: runtimeIdentity.scope, status: 'done', through: 7, nextAfter: 7, hasMore: false, incomplete: false, loss: null,
+                events: seed ? [{ ...runtimeIdentity, seq: 1, kind: 'turn-start', provider: 'codex' },
+                    { ...runtimeIdentity, seq: 7, kind: 'turn-end', status: 'done', finalText: 'REST_FINAL' }] : [] } });
+        };
+        try {
+            await restoreActiveActivity(ctx);
+            for (const [i, item] of rows.entries()) assert.equal(ctx.store.transcript.items[i], item);
+            if (committed) {
+                assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['REST_FINAL']);
+                assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+                printCompatibility(ctx, 'REST_FINAL');
+                assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['REST_FINAL']);
+            } else {
+                assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['REST_PREVIEW']);
+                assert.ok(rows.some(item => item.type === 'thinking' && item.streaming && item.text === 'REST_THOUGHT'));
+            }
+        } finally { globalThis.fetch = original; cleanupCtx(ctx); }
+    });
+}
+
+test('retiring a gap fallback clears owned previews in place and late A cannot resurrect them', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        gapOutput(ctx, 'RETIRED_PREVIEW');
+        gapOutput(ctx, 'RETIRED_THOUGHT', { thinking: true });
+        const rows = ctx.store.transcript.items.slice();
+        const next = { sessionId: 'other-session', scope: 'local:other-session' };
+        retireActivityView(ctx, next);
+        ctx.activityIdentity = next;
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: 'LATE_RETIRED_FINAL' });
+        printCompatibility(ctx, 'LATE_RETIRED_FINAL');
+        for (const [i, item] of rows.entries()) assert.equal(ctx.store.transcript.items[i], item);
+        assert.equal(ctx.store.transcript.items.length, rows.length);
+        assert.deepEqual(assistantTexts(ctx).filter(Boolean), []);
+        assert.equal(computeStablePrefixIndex(ctx.store.transcript.items), ctx.store.transcript.items.length);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('old gap fallback status and tools cannot mutate B clock or live tools', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        runtime(ctx, { seq: 1, runId: 'B', kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, runId: 'B', reason: 'projection_degraded' }));
+        const tool = { type: 'agent_tool', traceRunId: 'B', sessionId: runtimeIdentity.sessionId, scope: runtimeIdentity.scope,
+            icon: 'T', label: 'B_TOOL', detail: 'B_DETAIL', stepRef: 'shared-step', status: 'running' };
+        handleWsMessage(ctx, msg(tool));
+        const live = ctx.store.transcript.liveTools[0]!;
+        const before = JSON.stringify(live);
+        const owner = ctx.activeActivityKey;
+        const clock = ctx.turnStartedAt;
+        const timer = ctx.footerTimer;
+        const state = ctx.streamState;
+        for (const wire of [
+            { type: 'agent_status', status: 'running', traceRunId: runtimeIdentity.runId },
+            { ...tool, traceRunId: runtimeIdentity.runId, label: 'A_TOOL', detail: 'A_DETAIL', status: 'done' },
+            { ...tool, traceRunId: runtimeIdentity.runId, label: 'A_TOOL', detail: 'A_DETAIL', status: 'running' },
+        ]) {
+            handleWsMessage(ctx, msg(wire));
+            assert.equal(ctx.activeActivityKey, owner);
+            assert.equal(ctx.turnStartedAt, clock);
+            assert.equal(ctx.footerTimer, timer);
+            assert.equal(ctx.streamState, state);
+            assert.deepEqual(ctx.store.transcript.liveTools, [live]);
+            assert.equal(JSON.stringify(live), before);
+            assert.equal(committedTools(ctx).length, 0);
+        }
+        handleWsMessage(ctx, msg({ ...tool, traceRunId: runtimeIdentity.runId, toolType: 'thinking', detail: 'A_OWN_THOUGHT' }));
+        assert.ok(ctx.store.transcript.items.some(item => item.type === 'thinking' && item.text === 'A_OWN_THOUGHT'));
+        assert.equal(ctx.streamState, state);
+        assert.equal(JSON.stringify(live), before);
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: 'A_FINAL' });
+        printCompatibility(ctx, 'A_FINAL');
+        assert.deepEqual(ctx.store.transcript.liveTools, [live]);
+        assert.equal(ctx.streamState, state);
+        assert.equal(JSON.stringify(live), before);
+    } finally { cleanupCtx(ctx); }
+});
+
+for (const capture of printProducer.captures) {
+    test(`actual backend ${capture.scenario} frames settle one TUI answer`, () => {
+        const ctx = activityContext();
+        ctx.activityIdentity = capture.identity;
+        try {
+            for (const wire of capture.frames) handleWsMessage(ctx, msg(wire));
+            const final = capture.frames.find(frame => frame.type === 'agent_done')!;
+            assert.deepEqual(assistantTexts(ctx).filter(Boolean), final.text ? [final.text] : []);
+            if (capture.scenario === 'empty') assert.deepEqual(assistantTexts(ctx), ['']);
+            assert.equal(committedTools(ctx).length, 0, 'waiting for canonical close is not a missing-record fallback');
+            assert.equal(ctx.streaming, false);
+            const activity = ctx.store.transcript.items.find(item => item.type === 'activity');
+            assert.ok(activity?.type === 'activity');
+            assert.equal(activity.degraded, capture.scenario === 'terminal-gap');
+        } finally { cleanupCtx(ctx); }
+    });
+}
+
+for (const order of ['legacy-first', 'canonical-first'] as const) {
+    for (const text of ['selected full answer\n' + 'x'.repeat(33_000), '']) {
+        test(`print ${order} coalesces ${text ? 'full bytes' : 'authoritative empty'} without native markers`, () => {
+            const ctx = activityContext();
+            try {
+                runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+                runtime(ctx, { seq: 3, kind: 'message', itemId: 'preview', phase: 'unknown', operation: 'append', text: 'not the answer' });
+                const end = () => runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: text });
+                if (order === 'canonical-first') end();
+                printCompatibility(ctx, text);
+                if (order === 'legacy-first') {
+                    const item = ctx.store.transcript.items.find(item => item.type === 'activity');
+                    assert.ok(item?.type === 'activity');
+                    assert.equal(item.terminalStatus, 'finished');
+                    assert.match(renderActivityItem(item, 80).join('\n'), /Finished/);
+                    end();
+                }
+                printCompatibility(ctx, text);
+                assert.deepEqual(assistantTexts(ctx), [text]);
+                const answer = ctx.store.transcript.items.find(item => item.type === 'assistant');
+                assert.ok(answer?.type === 'assistant');
+                assert.equal(answer.activityFinality, 'present');
+                assert.equal(answer.activityStatus, 'done');
+                assert.equal(ctx.streaming, false);
+                assert.equal(ctx.footerTimer, null);
+            } finally { cleanupCtx(ctx); }
+        });
+    }
+}
+
+test('print completion keeps its diagnostic across error/null canonical close and durable journal gap', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        handleWsMessage(ctx, msg({ type: 'agent_runtime_gap', ...runtimeIdentity, reason: 'projection_degraded' }));
+        printCompatibility(ctx, 'CLI failed to start: useful diagnostic');
+        assert.equal(ctx.streaming, false);
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'error', finalText: null });
+        assert.deepEqual(assistantTexts(ctx), ['CLI failed to start: useful diagnostic']);
+        const item = ctx.store.transcript.items.find(item => item.type === 'activity');
+        assert.ok(item?.type === 'activity');
+        assert.equal(item.terminalStatus, 'error');
+        assert.equal(item.recordingGap, true);
+        assert.equal(item.degraded, true);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('unmarked print completion A then start B then late canonical A cannot stop B', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        printCompatibility(ctx, 'A full selected answer');
+        runtime(ctx, { seq: 1, runId: 'B', kind: 'turn-start', provider: 'codex' });
+        const owner = ctx.activeActivityKey;
+        const clock = ctx.turnStartedAt;
+        ctx.inputActive = false;
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'error', finalText: 'different canonical diagnostic' });
+        printCompatibility(ctx, 'A full selected answer');
+        assert.equal(ctx.activeActivityKey, owner);
+        assert.equal(ctx.turnStartedAt, clock);
+        assert.equal(ctx.streaming, true);
+        assert.equal(ctx.inputActive, false);
+        assert.ok(ctx.footerTimer);
+        assert.deepEqual(assistantTexts(ctx), ['A full selected answer']);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('print canonical close after native scrollback release does not repopulate or print an answer', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        printCompatibility(ctx, 'already committed');
+        releaseCommittedActivity(ctx, ctx.store.transcript.items.length);
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: 'already committed' });
+        assert.deepEqual(assistantTexts(ctx), ['']);
+        const item = ctx.store.transcript.items.find(item => item.type === 'activity');
+        assert.ok(item?.type === 'activity');
+        assert.equal(item.released, true);
+        assert.equal(item.terminalStatus, 'done');
+        assert.equal(item.degraded, false);
+        assert.equal(ctx.streaming, false);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('print fallback requires admitted trace and matching explicit session/scope', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        for (const extra of [{ sessionId: 'foreign' }, { scope: 'foreign' }]) printCompatibility(ctx, 'wrong owner', extra);
+        assert.deepEqual(assistantTexts(ctx), []);
+        assert.equal(ctx.streaming, true);
+        printCompatibility(ctx, 'older unadmitted legacy', { traceRunId: 'unadmitted' });
+        assert.deepEqual(assistantTexts(ctx), ['older unadmitted legacy']);
+        assert.equal(ctx.store.transcript.items.filter(item => item.type === 'activity').length, 1);
+    } finally { cleanupCtx(ctx); }
+});
+
+for (const released of [false, true]) {
+    test(`canonical-first null diagnostic is preserved by print completion, released=${released}`, () => {
+        const ctx = activityContext();
+        try {
+            runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+            runtime(ctx, { seq: 7, kind: 'turn-end', status: 'error', finalText: null });
+            if (released) releaseCommittedActivity(ctx, ctx.store.transcript.items.length);
+            printCompatibility(ctx, 'original startup diagnostic');
+            printCompatibility(ctx, 'original startup diagnostic');
+            assert.deepEqual(assistantTexts(ctx).filter(Boolean), ['original startup diagnostic']);
+            const answer = ctx.store.transcript.items.findLast(item => item.type === 'assistant');
+            assert.ok(answer?.type === 'assistant');
+            assert.equal(answer.activityStatus, 'error');
+            assert.equal(answer.activityCorrection, false, 'an invisible null receipt did not deliver a body to correct');
+            assert.equal(answer.activityDiagnostic, true);
+        } finally { cleanupCtx(ctx); }
+    });
+}
+
+test('equal print completion after canonical scrollback release does not repopulate the cleared receipt', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: 'same original' });
+        releaseCommittedActivity(ctx, ctx.store.transcript.items.length);
+        printCompatibility(ctx, 'same original');
+        assert.deepEqual(assistantTexts(ctx), ['']);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('differing original print final after scrollback commit appends one labelled correction without touching B', () => {
+    const ctx = activityContext();
+    try {
+        runtime(ctx, { seq: 1, kind: 'turn-start', provider: 'codex' });
+        runtime(ctx, { seq: 7, kind: 'turn-end', status: 'done', finalText: '[redacted canonical body]' });
+        releaseCommittedActivity(ctx, ctx.store.transcript.items.length);
+        runtime(ctx, { seq: 1, runId: 'B', kind: 'turn-start', provider: 'codex' });
+        const owner = ctx.activeActivityKey;
+        ctx.inputActive = false;
+        printCompatibility(ctx, 'original full body');
+        printCompatibility(ctx, 'original full body');
+        assert.deepEqual(assistantTexts(ctx), ['', 'original full body']);
+        const answer = ctx.store.transcript.items.at(-1)!;
+        assert.ok(answer.type === 'assistant');
+        assert.equal(answer.activityCorrection, true);
+        assert.equal(ctx.activeActivityKey, owner);
+        assert.equal(ctx.streaming, true);
+        assert.equal(ctx.inputActive, false);
+    } finally { cleanupCtx(ctx); }
+});
 
 test('semantic tool/commentary and mirrored compatibility produce one complete full answer', () => {
     const ctx = activityContext();

@@ -24,6 +24,8 @@ import { dismissOverlay, openBgtaskOverlay } from './overlays.js';
 import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
 import { refreshInfo } from './api.js';
 import { handleActivityRuntime, activityForCompatibility, settleActivityCompatibility, markActivityGap } from './activity-handler.js';
+import { handleActivityFallbackOutput } from './activity-fallback.js';
+import { safeActivityTerminalText } from '../../../src/cli/tui/activity-terminal-text.js';
 import { activityKey } from '../../../src/shared/activity-state.js';
 import { invalidateActivityContext } from './activity-replay.js';
 import { refreshActivityIdentity } from './api.js';
@@ -94,6 +96,15 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
             item.type === 'activity' && item.model.identity.runId === wire.traceRunId) : undefined;
         if (knownRun?.type === 'activity' && (knownRun.retired || !activityForCompatibility(ctx, wire))) return;
         if (mirroredActivity && (mirroredActivity.terminalStatus || !mirroredActivity.degraded)) return;
+        // Old fallback mirrors have no ownership of the current run's global
+        // clock or tool lane. Scoped answer/thinking previews remain admissible.
+        if (mirroredActivity && ctx.activeActivityKey && ctx.activeActivityKey !== mirroredActivity.key
+            && (event.kind === 'agent-status' || (event.kind === 'agent-tool' && !isThinkingToolEvent(event)))) return;
+        if (mirroredActivity && event.kind === 'agent-tool' && !isThinkingToolEvent(event)) {
+            event.label = safeActivityTerminalText(event.label);
+            event.detail = safeActivityTerminalText(event.detail);
+            event.icon = safeActivityTerminalText(event.icon);
+        }
         switch (event.kind) {
             case 'runtime':
                 if (handleActivityRuntime(ctx, event.event) && event.event.kind !== 'turn-end'
@@ -109,6 +120,13 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 markActivityGap(ctx, { sessionId: event.raw['sessionId'], scope: event.raw['scope'], runId: event.raw['runId'] });
                 break;
             case 'assistant-output':
+                if (mirroredActivity) {
+                    handleActivityFallbackOutput(ctx, mirroredActivity, event.text, {
+                        thinking: event.thinking, ...(event.agentId ? { agentId: event.agentId } : {}),
+                    });
+                    if (ctx.activeActivityKey === mirroredActivity.key) ensureTurnClock(ctx, 'responding');
+                    break;
+                }
                 if (ov.helpOpen || ov.paletteOpen || ov.bgtaskOpen) dismissOverlay(ctx);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
@@ -173,14 +191,17 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 if (nativeFinal) replaceNativeAssistantFinal(transcript, '');
                 stopSpinner();
                 clearEphemeralStatus(transcript);
-                for (const tool of semanticFinal && !activity?.degraded ? [] : event.toolLog) {
+                const activityFallback = activity?.recordingGap || activity?.displayGap;
+                for (const rawTool of semanticFinal && !activityFallback ? [] : event.toolLog) {
+                    const tool = semanticFinal ? { ...rawTool, icon: safeActivityTerminalText(rawTool.icon),
+                        label: safeActivityTerminalText(rawTool.label), detail: safeActivityTerminalText(rawTool.detail) } : rawTool;
                     if (isThinkingToolEvent(tool)) {
                         commitThinkingItemOnce(transcript, tool, { updateCommitted: true });
                     } else {
                         commitToolItemOnce(transcript, tool, { updateCommitted: true });
                     }
                 }
-                if (!semanticFinal || activity?.degraded) commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
+                if (!semanticFinal || activityFallback) commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
                 resetTurnToolDedup(transcript);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
@@ -306,6 +327,14 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 break;
 
             case 'agent-tool':
+                if (mirroredActivity && isThinkingToolEvent(event)) {
+                    handleActivityFallbackOutput(ctx, mirroredActivity, event.detail || event.label, {
+                        thinking: true, replace: true, ...(event.agentId ? { agentId: event.agentId } : {}),
+                        ...(event.stepRef ? { stepRef: event.stepRef } : {}),
+                    });
+                    if (ctx.activeActivityKey === mirroredActivity.key) ensureTurnClock(ctx, 'responding');
+                    break;
+                }
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
                 } else {
