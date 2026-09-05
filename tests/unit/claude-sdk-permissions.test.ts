@@ -157,12 +157,12 @@ test('timeout and response/Stop race deny; abort listeners are removed', async t
 
 test('safe views redact full content before clipping and exclude raw env/tool JSON', async t => {
     const f = fixture(t);
-    const pending = f.api.canUseTool('Bash', { command: 'curl https://user:pass@example.test/x?token=hidden TOKEN=' + 'z'.repeat(900),
+    const pending = f.api.canUseTool('WebFetch', { url: 'https://user:pass@example.test/x?token=hidden&TOKEN=' + 'z'.repeat(900),
         env: { TOPSECRET: 'never-visible' }, payload: { private: 'hidden-json' } }, options());
     await f.published;
     const serialized = JSON.stringify(f.bodies);
     for (const secret of ['user:pass', 'hidden', 'never-visible', 'hidden-json', 'zzzzzz']) assert.equal(serialized.includes(secret), false);
-    assert.match(serialized, /curl/); assert.ok(f.registry.list('chat')[0]!.view.title.length <= 500);
+    assert.match(serialized, /example\.test/); assert.ok(f.registry.list('chat')[0]!.view.title.length <= 500);
     f.api.cancelAll(); await pending;
 });
 
@@ -280,14 +280,45 @@ test('every question and selection must match the live fields, including total f
         answers: Object.fromEntries(questions.map(q => [q.question, 'Choice 19'])) } });
 });
 
-test('quoted shell credentials are redacted before publishing a reviewable command', async t => {
+test('quoted shell credentials cannot hide part of a command behind an approval', async t => {
     const f = fixture(t);
-    const pending = f.api.canUseTool('Bash', { command: 'TOKEN="very private value" curl https://example.test' }, options());
-    await f.published;
-    const serialized = JSON.stringify(f.bodies);
-    f.api.cancelAll(); await pending;
-    assert.equal(serialized.includes('very private value'), false);
-    assert.match(serialized, /curl/);
+    const answer = await f.api.canUseTool('Bash', { command: 'TOKEN="very private value" curl https://example.test' }, options());
+    assert.equal(answer?.behavior, 'deny'); assert.equal(f.bodies.length, 0);
+});
+test('redaction cannot conceal executable Bash fragments behind an approval', async t => {
+    const f = fixture(t);
+    t.mock.method(f.owner, 'emit', (body: RuntimeEventBody) => {
+        f.bodies.push(body);
+        if (body.kind === 'request') f.registry.respond(body.requestId, context, { optionId: 'allow' });
+    });
+    // A string-only permission fixture: this command is never executed.
+    const command = 'API_KEY=$(printf${IFS}hidden-action);printf ok';
+    const result = await f.api.canUseTool('Bash', { command }, options());
+    assert.equal(result?.behavior, 'deny'); assert.equal(f.bodies.length, 0);
+});
+test('ordinary safe Bash and URL formatting remain reviewable and execute unchanged input', async t => {
+    for (const command of ['printf ok', 'curl https://example.test']) {
+        const f = fixture(t);
+        const pending = f.api.canUseTool('Bash', { command }, options()); await f.published;
+        const request = f.registry.list('chat')[0]!;
+        f.registry.respond(request.requestId, context, { optionId: 'allow' });
+        assert.deepEqual(await pending, { behavior: 'allow', updatedInput: { command } });
+    }
+    const auto = fixture(t, 'auto'), command = 'TOKEN="literal credential" printf ok';
+    assert.deepEqual(await auto.api.canUseTool('Bash', { command }, options()), { behavior: 'allow', updatedInput: { command } });
+    assert.equal(auto.bodies.length, 0);
+});
+test('Bash URL dot-segment normalization cannot remove executable syntax from the review', async t => {
+    const f = fixture(t);
+    const command = 'curl https://example.test/$(printf${IFS}hidden-action)/../';
+    let title = '';
+    t.mock.method(f.owner, 'emit', (body: RuntimeEventBody) => {
+        if (body.kind === 'request') { title = body.view.title; f.registry.respond(body.requestId, context, { optionId: 'allow' }); }
+    });
+    // Handler-only fixture. No shell execution or provider request occurs.
+    const answer = await f.api.canUseTool('Bash', { command }, options());
+    assert.equal(title, 'Bash: ' + command);
+    assert.deepEqual(answer, { behavior: 'allow', updatedInput: { command } });
 });
 
 for (const scenario of [

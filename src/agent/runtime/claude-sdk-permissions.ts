@@ -76,22 +76,26 @@ function snapshotInput(input: unknown): Record<string, unknown> {
     return copy(input, 0) as Record<string, unknown>; // root shape verified above
 }
 
-function safeLabel(value: string): string {
+function safeLabel(value: string, onRedaction?: () => void): string {
     // The common redactor runs on the entire value, before the registry clips it.
     // URL authority/query credentials need an additional URL-aware pass.
     const redacted = redactRuntimeContent(value).replace(
         /(\b[A-Za-z_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|AUTHORIZATION|CREDENTIAL)[A-Za-z_]*\s*=\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s"']+)/gi,
         '$1[REDACTED]',
     );
+    if (redacted !== value) onRedaction?.();
     return redacted.replace(/https?:\/\/[^\s"'<>]+/g, text => {
         try {
             const url = new URL(text);
-            if (url.username || url.password) { url.username = ''; url.password = ''; }
+            if (url.username || url.password) { onRedaction?.(); url.username = ''; url.password = ''; }
             for (const key of [...url.searchParams.keys()]) {
-                if (/token|key|secret|password|credential|authorization|signature/i.test(key)) url.searchParams.set(key, '[REDACTED]');
+                if (/token|key|secret|password|credential|authorization|signature/i.test(key)) {
+                    if (url.searchParams.getAll(key).some(value => value !== '[REDACTED]')) onRedaction?.();
+                    url.searchParams.set(key, '[REDACTED]');
+                }
             }
             return url.href;
-        } catch { return '[URL withheld]'; }
+        } catch { onRedaction?.(); return '[URL withheld]'; }
     });
 }
 function meaningful(text: string): boolean {
@@ -102,8 +106,12 @@ function approvalView(toolName: string, input: Record<string, unknown>, options:
         input['url'], input['pattern'], input['description'], input['title']];
     const target = toolName === 'Bash' ? input['command']
         : candidates.find(value => typeof value === 'string' && value.trim());
-    const description = typeof target === 'string' ? safeLabel(target)
+    let commandRedacted = false;
+    const reviewed = typeof target === 'string' ? safeLabel(target, () => { commandRedacted = true; })
         : toolName === 'ExitPlanMode' ? 'Exit plan mode' : '';
+    if (toolName === 'Bash' && commandRedacted) return null;
+    // URL parsing checks credentials; its normalization must never rewrite shell syntax.
+    const description = toolName === 'Bash' && typeof target === 'string' ? target : reviewed;
     if (!meaningful(description)) return null;
     const title = `${safeLabel(toolName)}: ${description}`;
     // Approval authorizes the full original operation: never hide a suffix behind the view's clip.
