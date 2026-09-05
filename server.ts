@@ -123,7 +123,9 @@ import {
 
 import { seedDefaultEmployees } from './src/core/employees.js';
 import { buildServicePath } from './src/core/instance.js';
-import { markStaleTraceRunsInterrupted, pruneTraceEvents } from './src/trace/store.js';
+import { readDatabaseStorageStats } from './src/core/db-maintenance.js';
+import { startTraceRetention } from './src/trace/retention.js';
+import { markStaleTraceRunsInterrupted } from './src/trace/store.js';
 
 // ─── Resolve paths ───────────────────────────────────
 
@@ -173,6 +175,12 @@ const PORT = process.env["PORT"] || settings["port"] || 3457;
     if (result !== 'ok') {
         console.error(`[db] ⚠️  INTEGRITY CHECK FAILED: ${result}`);
         console.error('[db] Database may be corrupted. Consider restoring from backup.');
+    }
+    const storage = readDatabaseStorageStats(db);
+    if (storage.pageCount > 0 && storage.freeRatio > 0.3) {
+        console.warn(
+            `[db] ${storage.freelistCount}/${storage.pageCount} pages are free (${(storage.freeRatio * 100).toFixed(1)}%). Run \`jaw db maintain\` to reclaim disk space.`,
+        );
     }
 }
 
@@ -230,10 +238,7 @@ markStaleTraceRunsInterrupted();
 
 
 // Trace retention: prune on boot + every 6h to keep jaw.db from growing unbounded.
-const traceRetentionDays = settings["trace"]?.retentionDays ?? 7;
-const traceMaxRows = settings["trace"]?.maxRows ?? 50000;
-pruneTraceEvents(traceRetentionDays, traceMaxRows);
-setInterval(() => pruneTraceEvents(traceRetentionDays, traceMaxRows), 6 * 60 * 60 * 1000).unref();
+const traceRetention = startTraceRetention(settings["trace"]);
 
 // ─── Express ─────────────────────────────────────────
 
@@ -494,6 +499,7 @@ const shutdown = async (sig: string) => {
     closeHeartbeatWatcher();
     stopWidgetWatcher();
     clearInterval(rateLimitSweepInterval);
+    traceRetention.stop();
     try { stopAllBgTasks(); } catch { /* non-fatal */ }
     killAllAgents('shutdown');
     // Tell anyone still waiting that their request died with the process. The

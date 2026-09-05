@@ -41,7 +41,7 @@ const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
 if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
     const _homeVal = process.argv[_homeIdx + 1]!;
     // Guard: if the "value" looks like a known subcommand, user forgot the path
-    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'ask', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'design', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc', 'provider', 'slack', 'messaging'];
+    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'ask', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'design', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc', 'provider', 'slack', 'messaging', 'db'];
     if (_knownCmds.includes(_homeVal)) {
         console.error(`  ❌ --home requires a path argument (got subcommand '${_homeVal}')`);
         console.error(`  Usage: jaw --home <path> ${_homeVal}`);
@@ -178,6 +178,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
     messaging ingress list|show|replay|audit | messaging doctor
                                         Durable ingress journal (local process)
     doctor [--json]                     Installation diagnostics
+    db maintain                         Checkpoint WAL and reclaim SQLite space
     map <dir> [--budget N]              Ranked source structure map
     jwc install|clean|doctor            Optional external JWC runtime helper
     provider install|clean|doctor|list  On-demand provider runtime helper
@@ -237,6 +238,9 @@ switch (command) {
         break;
     case 'doctor':
         await import('./commands/doctor.js');
+        break;
+    case 'db':
+        await import('./commands/db.js');
         break;
     case 'map':
         await import('./commands/map.js');

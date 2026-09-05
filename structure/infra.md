@@ -616,7 +616,7 @@ M4-A2a adds opaque `issueApprovalCallback` / `resolveApprovalCallback` on the in
 
 ## src/core/ — runtime support cluster (30 files, 3803L)
 
-`boss-auth.ts`, `config.ts`, `codex-config.ts`, `instance.ts`, `runtime-path.ts`, `main-session.ts`, `message-summary.ts`, `path-expand.ts`, `runtime-settings.ts`, `runtime-settings-gate.ts`, `settings-merge.ts`, `db.ts`, `bus.ts`, `employees.ts`, `i18n.ts`, `compact.ts`, `logger.ts`, `claude-install.ts`, `launchd-cleanup.ts`, `launchd-plist.ts`, `tcc.ts`.
+`boss-auth.ts`, `config.ts`, `codex-config.ts`, `instance.ts`, `runtime-path.ts`, `main-session.ts`, `message-summary.ts`, `path-expand.ts`, `runtime-settings.ts`, `runtime-settings-gate.ts`, `settings-merge.ts`, `db.ts`, `db-maintenance.ts`, `bus.ts`, `employees.ts`, `i18n.ts`, `compact.ts`, `logger.ts`, `claude-install.ts`, `launchd-cleanup.ts`, `launchd-plist.ts`, `tcc.ts`.
 
 | Module | 역할 |
 | --- | --- |
@@ -630,7 +630,8 @@ M4-A2a adds opaque `issueApprovalCallback` / `resolveApprovalCallback` on the in
 | `runtime-settings.ts` | `applyRuntimeSettingsPatch()` 진입점, workingDir 재생성, messaging restart |
 | `runtime-settings-gate.ts` | settings mutation in-flight gate |
 | `settings-merge.ts` | nested settings deep merge (`telegram`, `discord`, `messaging`, `memory`, `stt`, `tui`, `network`) |
-| `db.ts` | SQLite session/messages/memory/employees/employee_sessions/orc_state/jaw_ceo_transcript |
+| `db.ts` | SQLite schema/prepared statements + one-time batched tool_log migration |
+| `db-maintenance.ts` | schema_migrations marker, page/freelist stats, explicit checkpoint+VACUUM |
 | `bus.ts` | broadcast hub + named listener lifecycle |
 | `employees.ts` | default employee seeding + static/virtual synthetic employee helpers + regenerate |
 | `i18n.ts` | locale normalize + `t()` |
@@ -807,11 +808,12 @@ employee_sessions (employee_id PK, session_id, cli, model, created_at)
 orc_state (id PK, state, ctx, updated_at)
 queued_messages (id PK, payload, created_at)
 jaw_ceo_transcript (id PK, at, role, text, source, created_at)
+schema_migrations (name PK, applied_at)
 ```
 
 Virtual employees are not written to `employees` or `employee_sessions`. `src/core/employees.ts` emits `SyntheticEmployeeRow` values with `virtual:` IDs for one-off dispatch, and `src/orchestrator/distribute.ts` skips session resume/persist for those IDs.
 
-`trace`, `tool_log`, and `working_dir` are added by in-place migration if missing. `working_dir` also gets `idx_messages_wd`; Jaw CEO transcript rows are bounded by the coordinator persistence layer.
+`trace`, `tool_log`, and `working_dir` are added by in-place migration if missing. Oversized legacy `tool_log` rows are re-sanitized in 25-row transactions once, tracked by `schema_migrations`; boot only warns above 30% free pages, while `jaw db maintain` owns checkpoint + VACUUM. `working_dir` also gets `idx_messages_wd`; Jaw CEO transcript rows are bounded by the coordinator persistence layer.
 
 | Prepared Statement | 용도 |
 | --- | --- |
@@ -1291,7 +1293,7 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 > `--home` → `process.env.CLI_JAW_HOME` 설정 후 config.ts 동적 import
 > known-command guard: `--home` 사용 시 알려진 명령어는 `bin/cli-jaw.ts`의 `_knownCmds`와 같다 (`serve` … `slack`, `messaging` 포함). 경로 누락과 서브커맨드를 구분한다
 
-현재 subcommand router는 `bin/cli-jaw.ts` switch와 같다. Messaging operator surface: `jaw messaging ingress list|show|replay|audit`.
+현재 subcommand router는 `bin/cli-jaw.ts` switch와 같다. Messaging operator surface: `jaw messaging ingress list|show|replay|audit`. SQLite maintenance surface: `jaw db maintain` (manual only).
 
 ### bin/commands/serve.ts
 
