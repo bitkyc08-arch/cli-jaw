@@ -6,10 +6,10 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 > 📚 [INDEX](INDEX.md) · [체크리스트 ↗](AGENTS.md) · [커맨드 ↗](commands.md) · **서버 API**
 
-# server.ts — Glue + Route Registration (640L)
+# server.ts — Glue + Route Registration (757L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 256개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 255개다.
+> Route-module inventory and the endpoint contracts below describe the surface; aggregate handler counts are not maintained by hand.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -42,6 +42,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/skills.ts` | 89L | 5 | skills list/read/enable/disable/reset |
 | `src/routes/avatar.ts` | 146L | 4 | avatar summary + agent/user image upload/delete/read |
 | `src/routes/traces.ts` | 80L | 3 | public trace summary/event read routes |
+| `src/routes/runtime-requests.ts` | 33L | 2 | exact-bound ephemeral native decisions; existing instance auth |
 | `src/routes/link-preview.ts` | 319L | 2 | Rich link preview metadata fetch + guarded image proxy |
 | `src/routes/heartbeat.ts` | 289L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
 | `src/routes/jaw-ceo.ts` | 321L | 20 | Jaw CEO coordinator: state/message/query/docs-edit/settings/events/pending/watch/audit/voice/confirmations |
@@ -68,12 +69,25 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 → goal → task → events(SSE) → instance → chat-sessions → messages
 → system → agent-control → command → goal-run → memory → settings
 → messaging → avatar → traces → link-preview → jaw-ceo → runtime-context
-→ security-audit → dashboard board/schedule → browser → i18n
+→ security-audit → dashboard board/schedule → browser → code → runtime-requests → i18n
 ```
 
 라우트 모듈은 `server.ts:298-396` 부근에서 등록된다.
 
 ---
+
+## Native Runtime Decisions
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| `GET` | `/api/runtime/requests?sessionId=<jaw-id>` | Explicit nonempty session ID, at most240 characters. Returns `{ok:true,data:{requests:[...]}}`; never substitutes the active session. |
+| `POST` | `/api/runtime/requests/:id` | Body contains only `runId`, `sessionId`, `scope`, `turnId`, `response`. Exact stored binding and current ownership required. Returns `{ok:true,data:{accepted:true}}`. |
+
+Both routes use the same existing requireAuth and global Host/Origin guards as the worker. Loopback and configured LAN bypass remain unchanged; these routes do not introduce per-session user ACLs. Missing/malformed input or an invalid choice returns400; missing, expired, stale, already answered or mismatched requests return409 `request_not_current`. A bad choice does not consume a current request. No top-level requests alias exists.
+
+Each listed request has the four binding fields, `requestId`, `requestType`, `view`, and `expiresAt`. Views contain canonical sanitized labels and opaque jaw field/option handles. For ACP permissions, send `response:{optionId:<displayed-handle>}` or `{optionId:null}` to cancel, never a provider-native ID. Raw provider mappings and callbacks are private. Limits are128 pending requests globally,120-second expiry and32 per ACP connection; view admission must fit the32KiB event record. Accepted records a decision, not a provider tool result, and concurrent cancellation can still win before dispatch.
+
+Cursor/Grok activation and Activity controls are separate from this API foundation. Unsupported client-side filesystem, terminal and unproven question extensions are refused; existing JWC permissions and messaging final/ACK/queue paths are unchanged.
 
 ## Base Route Surface (`server.ts`)
 

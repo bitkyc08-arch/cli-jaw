@@ -19,7 +19,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 
 ```text
 cli-jaw/
-├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (755L)
+├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (757L)
 ├── lib/                      ← 외부 통합/공용 헬퍼 (5 root files + mcp/ 8 files)
 │   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + softResetSkills + runSkillReset + trusted repair gate + clone cooldown (83L)
 │   ├── mcp/                  ← MCP 모듈 분리 (8 files)
@@ -74,7 +74,10 @@ cli-jaw/
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
 │   │   │   ├── acp/          ← shared v1 wire boundary and bounded native transport
 │   │   │   │   ├── wire.ts  ← strict single-envelope decoder shared with Copilot (43L)
-│   │   │   │   └── connection.ts ← bounded full-duplex framing, dispatch/result and close ownership (207L)
+│   │   │   │   ├── connection.ts ← bounded full-duplex framing, dispatch/result and close ownership (207L)
+│   │   │   │   ├── permissions.ts ← native kind policy and opaque decision handles (137L)
+│   │   │   │   └── callbacks.ts ← bounded permission wait, cancellation latches and private replies (151L)
+│   │   │   ├── requests.ts   ← ephemeral exact-bound decision registry and safe-view admission (158L)
 │   │   │   ├── pi-projection.ts ← Pi raw tool snapshots and accepted text/reasoning projection (97L)
 │   │   │   ├── pi-raw-trace.ts ← bounded delta-only raw retention with explicit control summaries (81L)
 │   │   │   ├── projection.ts ← bounded redaction-before-clip snapshots and per-run failure latch (231L)
@@ -353,6 +356,7 @@ cli-jaw/
 │   │   ├── runtime-context.ts ← runtime context route helpers (46L)
 │   │   ├── security-audit.ts ← security audit route registrar (18L)
 │   │   ├── traces.ts         ← public trace summary/events read routes (80L)
+│   │   ├── runtime-requests.ts ← exact-bound ephemeral native decision GET/POST (33L)
 │   │   └── browser.ts        ← 브라우저 API 라우트 + `cdpPort(req)` 포트 우선순위 + primitive/tab/debug/doctor/cleanup/web-ai routes (489L)
 │   ├── security/             ← 보안 입력 검증 (4 files)
 │   │   ├── path-guards.ts    ← assertSkillId, assertFilename, assertMemoryRelPath, assertSendFilePath, safeResolveUnder + sendFileAllowedRoots (가드와 진단이 공유하는 허용 루트 단일 소스, 거절 시 detail.allowedRoots로 반환) (330L)
