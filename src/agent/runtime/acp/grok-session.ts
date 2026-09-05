@@ -5,7 +5,7 @@ import { detectCliBinary } from '../../../core/cli-detect.js';
 import { mergeEnvWindowsSafe } from '../../spawn-env.js';
 import { ownProcess } from '../../spawn/process-kill.js';
 import { normalizeNativePermissions } from './permissions.js';
-import { AcpSession, validateAcpSessionOptions, type AcpSessionOptions } from './session.js';
+import { AcpSession, acpRecord, validateAcpSessionOptions, type AcpSessionOptions } from './session.js';
 import { grokAcpArgs, grokAuthMethod, grokModelSelection } from './grok-options.js';
 
 export interface GrokSessionOptions extends Omit<AcpSessionOptions, 'clientMetadata'> {
@@ -66,9 +66,12 @@ export async function createGrokSession(options: GrokSessionOptions): Promise<Ac
             ...(options.failed === undefined ? {} : { failed: options.failed }) });
         await session.start({ cwd, authMethodId: init => grokAuthMethod(env, init['authMethods']),
             ...(resumeSessionId ? { resumeSessionId } : {}) });
-        const selected = grokModelSelection(session.getSessionSetup(), model, effort);
-        // A model acknowledgement is required even for a product alias; no speculative config fallback.
-        await session.setModel(selected.modelId, selected.meta);
+        const setup = session.getSessionSetup();
+        const selected = grokModelSelection(setup, model, effort);
+        // Preserve the provider's current effort when only a product alias was requested.
+        if (selected.meta || selected.modelId !== acpRecord(setup['models'])['currentModelId']) {
+            await session.setModel(selected.modelId, selected.meta);
+        }
         if (options.signal?.aborted || !session.idle) throw new Error('grok_acp_acquire_aborted');
         return session;
     } catch (error) {

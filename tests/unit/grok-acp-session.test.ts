@@ -51,6 +51,12 @@ test('model aliases resolve current advertised model; effort uses observed choic
     const noChoices = { models: { currentModelId: 'm', availableModels: [{ modelId: 'm',
         _meta: { supportsReasoningEffort: true, reasoningEffort: 'high' } }] } };
     assert.throws(() => grokModelSelection(noChoices, 'm', 'high'), /effort_unavailable/);
+    const opaque = { models: { currentModelId: 'm', availableModels: [{ modelId: 'm', _meta: {
+        supportsReasoningEffort: true, reasoningEfforts: [{ id: 'high', value: 'wire-high', label: 'Very high', default: false },
+            { id: 'low', value: 'wire-low', label: 'Low', default: true }],
+    } }] } };
+    assert.deepEqual(grokModelSelection(opaque, 'm', 'wire-high'), { modelId: 'm', meta: { reasoningEffort: 'wire-high' } });
+    for (const invalid of ['high', 'Very high', 'low']) assert.throws(() => grokModelSelection(opaque, 'm', invalid), /effort_unavailable/);
 });
 
 type Wire = { id?: string; method?: string; params: Record<string, unknown> };
@@ -112,6 +118,12 @@ test('factory load keeps explicit native identity and detaches acquisition abort
     assert.equal(f.wire.find(x => x.method === 'session/load')!.params['sessionId'], 'stored-native');
     assert.equal(f.wire.some(x => x.method === 'session/new'), false);
     control.abort(); assert.equal(session.alive, true); await session.close();
+});
+
+test('default alias without effort preserves provider setup without model reselection', { timeout: 5000 }, async t => {
+    const f = fixture(t), session = await createGrokSession({ ...f.options, effort: null });
+    assert.deepEqual(f.wire.map(x => x.method), ['initialize', 'authenticate', 'session/new']);
+    await session.close();
 });
 
 test('startup rejection never prompts or retries another auth or print transport', { timeout: 5000 }, async t => {
