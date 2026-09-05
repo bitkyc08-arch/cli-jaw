@@ -165,7 +165,15 @@ export class RuntimeProjection {
         const key = this.key('tool', nativeRef);
         const previous = this.items.get(key);
         const old = previous?.kind === 'tool' ? previous : undefined;
-        if (old && old.status !== 'running') return;
+        if (old && old.status !== 'running') {
+            // A result may precede its start. Fill only unknown metadata; terminal
+            // status, output, detail and established fields remain authoritative.
+            const name = (!old.name || old.name === 'tool') && patch.name ? patch.name : old.name;
+            const input = old.input === undefined && patch.input !== undefined
+                ? this.source(key, 'input', patch.input, false, patch.inputStructured) : old.input;
+            this.save(key, { ...old, name, ...(input === undefined ? {} : { input }) });
+            return;
+        }
         const itemId = this.id(key);
         if (!itemId) return;
         const body: Tool = { kind: 'tool', itemId, name: old?.name && old.name !== 'tool' ? old.name : patch.name || 'tool',
