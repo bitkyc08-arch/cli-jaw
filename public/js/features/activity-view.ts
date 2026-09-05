@@ -24,7 +24,7 @@ export function rememberActivityChoice(choices: ActivityChoices, id: string, ope
 }
 
 export interface ActivityDisplayStatus {
-    status?: RuntimeItemStatus;
+    status?: RuntimeItemStatus | 'finished';
     degraded?: boolean;
 }
 
@@ -136,7 +136,7 @@ export function createActivityView(
         const phase = display.status ?? activityStatus(model);
         root.dataset['status'] = phase;
         root.dataset['degraded'] = String(display.degraded === true);
-        const label = phase === 'running' ? 'Working' : phase === 'done' ? 'Complete'
+        const label = phase === 'running' ? 'Working' : phase === 'finished' ? 'Finished' : phase === 'done' ? 'Complete'
             : phase === 'stopped' ? 'Stopped; partial output retained' : 'Failed; partial output retained';
         text(status, label);
         const errorSummary = phase === 'error' && model.end?.status === 'error' ? model.end.error ?? '' : '';

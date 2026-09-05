@@ -4,7 +4,7 @@ import { API_BASE, api } from './api.js';
 import { parseActivityIdentity } from '../../src/shared/presentation.js';
 import { parseRuntimeEvent } from '../../src/shared/runtime-event-parse.js';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.js';
-import { clearLiveActivity, degradeLiveActivity, findLiveActivity, ingestLiveActivity, rebindLiveActivity, setLiveActivityIdentity, settleLiveActivity } from './features/activity-live.js';
+import { clearLiveActivity, degradeLiveActivity, findLiveActivity, ingestLiveActivity, rebindLiveActivity, reconcileLiveActivityAnswer, setLiveActivityIdentity, settleLiveActivity } from './features/activity-live.js';
 import { discoverActivityHistory, observeActivityHistory, setActivityHistoryIdentity } from './features/activity-history.js';
 import { mountNativeRequests } from './features/native-requests.js';
 import { connectEventChannel, subscribe, onChannelOpen, onChannelDisconnect, onChannelUnavailable } from './event-channel.js';
@@ -116,7 +116,7 @@ interface WsMessage {
     code?: string;
     employeeName?: string;
     exitCode?: number;
-    error?: string;
+    error?: string | boolean;
     message?: string;
     steered?: boolean;
     steerWaitMs?: number;
@@ -148,7 +148,7 @@ const finalizedTraceRuns: string[] = [];
 const liveAppliedToolSeqByRun = new Map<string, number>();
 
 function isFinalizedRun(runId: string | null): boolean {
-    return runId !== null && finalizedTraceRuns.includes(runId);
+    return runId !== null && (finalizedTraceRuns.includes(runId) || !!findLiveActivity(runId)?.answerSource);
 }
 
 function positiveSeq(value: unknown): number | null {
@@ -289,9 +289,38 @@ function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
     if (finalized || (liveTraceRunId && liveTraceRunId !== event.runId)
         || state.currentAgentDiv !== turn.message) return;
     if (!replay) void nativePanel?.refresh();
+    turn.answerSource = 'canonical';
     markRunFinalized(event.runId);
     // Capture the full authoritative answer BEFORE using the reducer's preview.
-    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId);
+    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId, turn.cacheScope);
+    notifyUnreadResponse();
+}
+
+function settleCompatibilityMessage(msg: WsMessage): void {
+    if (msg.isEmployee === true) return;
+    const doneRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
+    const nativeFinality = msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent'
+        ? msg.runtimeFinality : undefined;
+    // An untagged diagnostic cannot prove ownership, even with one foreground
+    // run. Keep it visible independently instead of completing a guessed run.
+    if (!doneRunId && !nativeFinality
+        && (msg.error === true || (liveTraceRunId && findLiveActivity(liveTraceRunId)))) {
+        if (typeof msg.text === 'string' && msg.text) addSystemMsg(escapeHtml(msg.text), 'tool-activity');
+        return;
+    }
+    const known = doneRunId ? findLiveActivity(doneRunId) : undefined;
+    const ownedText = !nativeFinality && known && typeof msg.text === 'string';
+    if (isFinalizedRun(doneRunId)) {
+        if (ownedText && doneRunId) reconcileLiveActivityAnswer(doneRunId, msg.text!);
+        return;
+    }
+    if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
+    settleLiveActivity(doneRunId, msg.runtimeStatus ?? (msg.error === true ? 'error' : undefined));
+    if (ownedText) known.answerSource = 'compatibility';
+    void nativePanel?.refresh();
+    markRunFinalized(doneRunId);
+    finalizeAgent(msg.text || '', msg.type === 'agent_done' ? msg.toolLog : undefined,
+        nativeFinality ?? (ownedText ? 'present' : undefined), doneRunId ?? undefined, known?.cacheScope);
     notifyUnreadResponse();
 }
 
@@ -1182,30 +1211,10 @@ function handleServerEvent(msg: WsMessage): void {
             // Suppress agent_done from steered (killed) process.
             // Server sets steered:true; isRecentSteer is fallback for edge cases.
         } else {
-            const doneRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
-            // Replayed done of an already-finalized turn — drop, the history
-            // item exists. A done carrying a DIFFERENT run id than the live
-            // stream is a stale replay from a previous turn: finalizing here
-            // froze the in-flight block mid-turn (260612 duplicate-block RCA).
-            if (isFinalizedRun(doneRunId)) return;
-            if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
-            settleLiveActivity(doneRunId, msg.runtimeStatus);
-            void nativePanel?.refresh();
-            markRunFinalized(doneRunId);
-            finalizeAgent(msg.text || '', msg.toolLog,
-                msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined, doneRunId ?? undefined);
-            notifyUnreadResponse();
+            settleCompatibilityMessage(msg);
         }
     } else if (msg.type === 'orchestrate_done') {
-        const doneRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
-        if (isFinalizedRun(doneRunId)) return;
-        if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
-        settleLiveActivity(doneRunId, msg.runtimeStatus);
-        void nativePanel?.refresh();
-        markRunFinalized(doneRunId);
-        finalizeAgent(msg.text || '', undefined,
-            msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined, doneRunId ?? undefined);
-        notifyUnreadResponse();
+        settleCompatibilityMessage(msg);
     } else if (msg.type === 'clear') {
         disposeNativePanel();
         const retainedIdentity = state.activityIdentity;
@@ -1283,9 +1292,9 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'alert_escalation') {
         addSystemMsg(escapeHtml(msg.message || ''), 'tool-activity');
     } else if (msg.type === 'schedule_wakeup_failed') {
-        addSystemMsg(`⚠️ Wakeup failed — ${escapeHtml(String(msg.reason || ''))}: ${escapeHtml(msg.error || '')}`, 'tool-activity');
+        addSystemMsg(`⚠️ Wakeup failed — ${escapeHtml(String(msg.reason || ''))}: ${escapeHtml(String(msg.error || ''))}`, 'tool-activity');
     } else if (msg.type === 'goal_continuation_failed') {
-        addSystemMsg(`⚠️ Goal continuation failed: ${escapeHtml(msg.error || '')}`, 'tool-activity');
+        addSystemMsg(`⚠️ Goal continuation failed: ${escapeHtml(String(msg.error || ''))}`, 'tool-activity');
     } else if (msg.type === 'settings_change') {
         handleSettingsChange(msg as { cli?: string; projectDirs?: string[] | null; changedKeys?: string[] });
     } else if (msg.type === 'session_list') {

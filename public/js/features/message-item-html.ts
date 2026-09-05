@@ -33,5 +33,5 @@ export function buildLazyVirtualMessageItem(m: MessageItem, index: number): Virt
     const html = role === 'agent'
         ? `<div class="msg msg-agent" ${sourceAttrs}${traceAttr}><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}${actions}</div></div>`
         : `<div class="msg msg-${role}${goalBoundaryClass}" ${sourceAttrs}><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
-    return { id: generateId(), html, height: 80, rehydratesProcessDetails: Boolean(rawToolLog) };
+    return { id: generateId(), messageId, html, height: 80, rehydratesProcessDetails: Boolean(rawToolLog) };
 }

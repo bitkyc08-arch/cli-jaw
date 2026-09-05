@@ -178,6 +178,7 @@ export async function appendCachedMessage(role: string, content: string): Promis
 }
 
 export async function upsertMessage(msg: CachedMessage): Promise<void> {
+    const scope = msg.scope ?? currentScope;
     try {
         const db = await openDB();
         const tx = db.transaction(STORE, 'readwrite');
@@ -189,7 +190,7 @@ export async function upsertMessage(msg: CachedMessage): Promise<void> {
             tool_log: msg.tool_log ?? null,
             trace_run_id: msg.trace_run_id ?? null,
             timestamp: msg.timestamp || Date.now(),
-            scope: currentScope,
+            scope,
         });
         await new Promise<void>((resolve, reject) => {
             tx.oncomplete = () => resolve();
@@ -198,6 +199,28 @@ export async function upsertMessage(msg: CachedMessage): Promise<void> {
     } catch (e) {
         console.warn('[idb-cache] upsertMessage failed:', e);
     }
+}
+
+/** Correct an existing answer in its captured cache scope; never append a duplicate. */
+export async function replaceCachedAnswer(runId: string, content: string, scope: string): Promise<void> {
+    try {
+        const db = await openDB();
+        const tx = db.transaction(STORE, 'readwrite');
+        const request = tx.objectStore(STORE).index('scope').openCursor(IDBKeyRange.only(scope));
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return;
+            const row = cursor.value as CachedMessage;
+            if (row.scope === scope && row.role === 'assistant' && row.trace_run_id === runId) {
+                cursor.update({ ...row, content });
+            }
+            cursor.continue();
+        };
+        await new Promise<void>((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch (error) { console.warn('[idb-cache] replaceCachedAnswer failed:', error); }
 }
 
 export async function getScopedMessages(scope?: string): Promise<CachedMessage[]> {

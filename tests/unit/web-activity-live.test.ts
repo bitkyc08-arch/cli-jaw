@@ -116,6 +116,21 @@ test('late canonical terminal from compatibility-complete A cannot finalize acti
     assert.equal(host?.querySelector('.msg-content')?.getAttribute('data-raw'), 'answer B');
 });
 
+test('retained Activity answer receipt dedupes after the shorter legacy run window rotates', t => {
+    const runs: string[] = [];
+    for (let i = 0; i < 10; i++) {
+        const run = start(); runs.push(run);
+        dispatch({event:'agent_done',traceRunId:run,text:`answer ${i}`});
+        runtime(run, 3, {kind:'turn-end',status:'done',finalText:`answer ${i}`});
+    }
+    const before = document.getElementById('chatMessages')!.innerHTML;
+    const now = Date.now(); t.mock.method(Date, 'now', () => now + 1000);
+    dispatch({event:'agent_done',traceRunId:runs[0],text:'duplicate old answer'});
+    dispatch({event:'agent_output',traceRunId:runs[0],text:'old preview',textLen:11});
+    assert.equal(document.getElementById('chatMessages')!.innerHTML, before);
+    assert.equal(state.currentAgentDiv, null);
+});
+
 test('wrong session/scope never mounts a semantic turn; duplicate seq never appends twice', () => {
     const run = start();
     runtime('foreign', 1, {kind:'turn-start',provider:'pi'}, {sessionId:'other'});

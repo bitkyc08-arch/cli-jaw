@@ -5,9 +5,12 @@ import { ActivityReplay } from '../../../src/shared/activity-replay.js';
 import { createActivityChoices, createActivityView, type ActivityChoices } from './activity-view.js';
 import { addMessage } from './chat-messages.js';
 import { state } from '../state.js';
+import { replaceAgentAnswer } from '../ui.js';
+import { getVirtualScroll } from '../virtual-scroll.js';
+import { getMessageScope, replaceCachedAnswer } from './idb-cache.js';
 
 const MAX_TURNS = 16;
-type TerminalStatus = Exclude<RuntimeItemStatus, 'running'>;
+type TerminalStatus = Exclude<RuntimeItemStatus, 'running'> | 'finished';
 export interface LiveActivityTurn {
     model: ActivityState;
     choices: ActivityChoices;
@@ -17,6 +20,8 @@ export interface LiveActivityTurn {
     recordingGap: boolean;
     canonicalTerminal: boolean;
     terminalStatus?: TerminalStatus;
+    answerSource?: 'canonical' | 'compatibility';
+    cacheScope: string;
 }
 const turns = new Map<string, LiveActivityTurn>();
 const choicesByTurn = new Map<string, ActivityChoices>();
@@ -98,7 +103,8 @@ function bindModel(model: ActivityState, message: HTMLElement): LiveActivityTurn
         void import('./trace-drawer.js').then(m => m.openTraceDrawer(current.identity.runId, undefined, current.identity.sessionId))
             .catch(error => console.warn('[activity] trace unavailable', error));
     });
-    const turn = { model, choices, message, view, degraded: false, recordingGap: false, canonicalTerminal: !!model.end };
+    const turn: LiveActivityTurn = { model, choices, message, view, degraded: false, recordingGap: false,
+        canonicalTerminal: !!model.end, cacheScope: getMessageScope() };
     turns.set(key, turn);
     replay.turns.set(key, model);
     render(turn);
@@ -134,13 +140,32 @@ export function ingestLiveActivity(event: RuntimeEvent, reuseCurrent = true): Li
 }
 
 /** Compatibility finality is a view state, never a fabricated journal event. */
-export function settleLiveActivity(runId: string | null, status: TerminalStatus = 'done'): void {
+export function settleLiveActivity(runId: string | null, status: TerminalStatus = 'finished'): void {
     if (!runId) return;
     replay.markSettled(runId);
     const turn = findLiveActivity(runId);
     if (!turn) return;
     if (!turn.model.end) turn.terminalStatus = status;
     render(turn);
+}
+
+/** Compatibility text keeps its original provenance after a canonical-first render. */
+export function reconcileLiveActivityAnswer(runId: string, text: string): void {
+    const turn = findLiveActivity(runId);
+    if (!turn || turn.answerSource !== 'canonical') return;
+    const messageId = turn.message.dataset['messageId'];
+    let replaced = false;
+    const update = (message: HTMLElement) => {
+        if (message.dataset['traceRunId'] !== runId
+            || message.dataset['activityKey'] !== activityKey(turn.model.identity)) return;
+        rebindLiveActivity(runId, message);
+        replaceAgentAnswer(message, text);
+        replaced = true;
+    };
+    if (!messageId || !getVirtualScroll().reconcileMessage(messageId, update)) update(turn.message);
+    if (!replaced) return;
+    turn.answerSource = 'compatibility';
+    void replaceCachedAnswer(runId, text, turn.cacheScope);
 }
 
 export function degradeLiveActivity(runId: string): void {

@@ -45,12 +45,8 @@ test('RID-004: live run snapshot exposes traceRunId for client cursor sync', () 
 
 // ─── Client: replayed events must not corrupt the in-flight turn ───
 
-test('RID-005: stale agent_done (different run id) is dropped instead of finalizing the in-flight turn', () => {
-    const doneBlock = wsSrc.slice(wsSrc.indexOf("msg.type === 'agent_done'"), wsSrc.indexOf("msg.type === 'orchestrate_done'"));
-    assert.ok(doneBlock.includes('if (isFinalizedRun(doneRunId)) return'), 'replayed done of a finished turn must be dropped');
-    assert.ok(doneBlock.includes('doneRunId !== liveTraceRunId) return'), 'a done from a different run than the live stream must be dropped');
-    assert.ok(doneBlock.includes('markRunFinalized(doneRunId)'), 'finalizing must record the run for replay suppression');
-});
+// RID-005 is exercised through actual event dispatch and owned A/B DOM hosts in
+// web-print-activity-settlement.test.ts; helper placement is not a behavior contract.
 
 test('RID-006: replayed agent_output chunks dedupe on the cumulative textLen cursor', () => {
     const outBlock = wsSrc.slice(wsSrc.indexOf("msg.type === 'agent_output'"), wsSrc.indexOf("msg.type === 'agent_retry'"));

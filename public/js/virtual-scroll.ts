@@ -28,6 +28,7 @@ export type RestoreReason =
 
 export interface VirtualItem {
     id: string;
+    messageId?: string;
     html: string;
     height: number; // used as estimateSize hint; tanstack measures real heights
     rehydratesProcessDetails?: boolean;
@@ -213,7 +214,8 @@ export class VirtualScroll {
         releaseMermaidNodes(div);
         const html = div.outerHTML;
         const id = generateId();
-        this.items.push({ id, html, height: EST_HEIGHT });
+        const messageId = div.dataset['messageId'];
+        this.items.push({ id, ...(messageId ? { messageId } : {}), html, height: EST_HEIGHT });
         if (this.virtualizer) {
             this.virtualizer.setOptions({
                 ...this.virtualizer.options,
@@ -226,6 +228,25 @@ export class VirtualScroll {
         if (this.items[idx]) {
             this.items[idx].html = html;
         }
+    }
+
+    /** Update one stable message without replacing its row or using a stale index. */
+    reconcileMessage(messageId: string, update: (message: HTMLElement) => void): boolean {
+        const index = this.items.findIndex(item => item.messageId === messageId);
+        if (index < 0 || this.items.some((item, i) => i !== index && item.messageId === messageId)) return false;
+        const item = this.items[index]!;
+        const mounted = this.mounted.get(index);
+        const wrapper = this.container.ownerDocument.createElement('div');
+        if (!mounted) wrapper.innerHTML = item.html;
+        const message = mounted ?? wrapper.firstElementChild as HTMLElement | null;
+        if (!message || message.dataset['messageId'] !== messageId) return false;
+        update(message);
+        item.html = message.outerHTML;
+        if (mounted && this.virtualizer) {
+            syncMeasuredItemHeight(this.items, index, mounted);
+            this.virtualizer.measureElement(mounted);
+        }
+        return true;
     }
 
     scrollToBottom(): void {
