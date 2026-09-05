@@ -2257,11 +2257,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             mainRun!.starting = false;
             console.error(`[jaw:pi:pool] acquire failed: ${err.message}`);
             activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Pi acquisition failed' });
+            try { finalizeTraceRun(traceRunId, 'error', 'Pi acquisition failed'); }
+            catch { console.warn('[runtime] Pi acquisition trace finalization failed'); }
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
             broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
             releaseMainRun(scopeKey, null, ownerGeneration);
             resolve!({ text: '', code: 1 });
+            settleExit(scopeKey);
             void processQueue(scopeKey);
         });
         return { child: null, promise: resultPromise };
@@ -2807,11 +2810,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }).catch((err: Error) => {
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);
             activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Codex acquisition failed' });
+            try { finalizeTraceRun(traceRunId, 'error', 'Codex acquisition failed'); }
+            catch { console.warn('[runtime] Codex acquisition trace finalization failed'); }
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
             broadcast('agent_done', { text: `❌ Codex AppServer acquire failed: ${err.message}`, error: true, origin }, 'public');
             releaseMainRun(scopeKey, null, ownerGeneration);
             resolve!({ text: '', code: 1 });
+            settleExit(scopeKey);
             void processQueue(scopeKey);
         });
 

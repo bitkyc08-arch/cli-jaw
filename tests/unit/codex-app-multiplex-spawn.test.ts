@@ -704,6 +704,8 @@ test('stale retry budget terminates through the existing failure cleanup exactly
         assert.deepEqual(await spawned.promise, { text: '', code: 1 });
         assert.equal(run.starting, false);
         assert.deepEqual(harness.processQueueCalls, [scopeKey]);
+        assert.equal(harness.finalized.filter(entry => entry.status === 'error').length, 1);
+        assert.equal(harness.finalized[0]?.runId, runtimeEvents.find(event => event.kind === 'turn-start')?.runId);
         assert.equal(events.filter((event) => event.type === 'agent_done' && event.data['error'] === true).length, 1);
         assert.equal(events.filter((event) => event.type === 'agent_status' && event.data['running'] === false).length, 1);
     } finally {
