@@ -62,10 +62,10 @@ export {
 
 type SpawnAgentLike = typeof spawnAgent;
 
-function captureExecutionMeta(meta: Record<string, any>) {
+function captureExecutionMeta(meta: Record<string, unknown> & { remoteKey?: string | null }) {
     const binding = resolveExecutionBinding({
         ...meta,
-        persistedScopeId: meta['remoteKey'],
+        ...(meta['remoteKey'] === undefined ? {} : { persistedScopeId: meta['remoteKey'] }),
         captured: currentSessionScope() ?? null,
         activeChatSessionId: getActiveChatSession(),
         multiSessionEnabled: settings['multiSession']?.enabled === true,
@@ -73,7 +73,7 @@ function captureExecutionMeta(meta: Record<string, any>) {
     return { ...meta, ...binding };
 }
 
-function runtimeActivityLifecycle(meta: Record<string, any>) {
+function runtimeActivityLifecycle(meta: Record<string, unknown>) {
     const callback = meta['_onRuntimeActivity'];
     if (meta['_workerResult'] || typeof callback !== 'function') return undefined;
     return { onActivity(source: string, identity?: RuntimeLivenessIdentity) {
