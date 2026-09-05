@@ -429,7 +429,8 @@ function clearMermaidTransientState(root: HTMLElement): void {
     });
 }
 
-export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
+export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent'): void {
+    const nativeFinal = runtimeFinality === 'present' || runtimeFinality === 'absent';
     // Guard: prevent double-render when both agent_done + orchestrate_done fire
     const now = Date.now();
     if (!state.currentAgentDiv && now - lastFinalizeTs < 500) return;
@@ -455,7 +456,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         state.currentProcessBlock = null;
     }
     const hasTools = durableToolLog.length > 0;
-    if (text || hasTools) {
+    if (text || hasTools || nativeFinal) {
         if (!state.currentAgentDiv || !state.currentAgentDiv.isConnected) {
             state.currentAgentDiv = addMessage('agent', '');
         }
@@ -463,9 +464,11 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         const content = (state.currentAgentDiv as HTMLElement)?.querySelector('.msg-content');
         // Live stream is preview-only; agent_done text is always authoritative.
         const streamedText = currentStream ? finalizeStream(currentStream, true) : '';
-        const finalText = text || streamedText;
+        const finalText = nativeFinal ? text ?? '' : text || streamedText;
         currentStream = null;
-        if (content) content.innerHTML = renderMarkdown(finalText);
+        // Empty Markdown renders a "dispatching" placeholder; native empty is a
+        // terminal result, not a loading state.
+        if (content) content.innerHTML = nativeFinal && !finalText ? '' : renderMarkdown(finalText);
         if (hasTools && state.currentAgentDiv && !hadProcessBlock && !hasAgentToolBlock(state.currentAgentDiv)) {
             const contentEl = state.currentAgentDiv.querySelector('.msg-content') as HTMLElement | null;
             if (contentEl) {

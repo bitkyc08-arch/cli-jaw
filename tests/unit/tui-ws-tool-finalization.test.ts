@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
-import { appendUserItem } from '../../src/cli/tui/transcript.ts';
+import { appendUserItem, replaceNativeAssistantFinal } from '../../src/cli/tui/transcript.ts';
 import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
 import { stopSpinner } from '../../src/cli/tui/spinner.ts';
 
@@ -79,6 +79,139 @@ function assistantTexts(ctx: TuiContext): string[] {
         .filter(item => item.type === 'assistant')
         .map(item => item.type === 'assistant' ? item.text : '');
 }
+
+test('native final helper replaces only streaming assistant rows after the latest user', () => {
+    const ctx = makeCtx();
+    const transcript = ctx.store.transcript;
+    const prior = { type: 'assistant' as const, text: 'earlier turn', streaming: true, timestamp: 1 };
+    transcript.items.push(prior);
+    appendUserItem(transcript, 'current', 'current');
+    const work = { type: 'assistant' as const, text: 'settled work note', streaming: false, timestamp: 2 };
+    const tool = { type: 'tool' as const, text: 'read', timestamp: 3 };
+    const thinking = { type: 'thinking' as const, text: 'reasoning', streaming: true, timestamp: 4 };
+    transcript.items.push(work, tool, thinking, { type: 'assistant', text: 'draft', streaming: true, timestamp: 5 });
+    replaceNativeAssistantFinal(transcript, 'exact final');
+    assert.deepEqual(assistantTexts(ctx), ['earlier turn', 'settled work note', 'exact final']);
+    assert.equal(transcript.items[0], prior);
+    assert.equal(transcript.items[2], work);
+    assert.equal(transcript.items[3], tool);
+    assert.equal(transcript.items[4], thinking);
+    assert.equal(thinking.streaming, true);
+});
+
+for (const finality of ['present', 'absent']) {
+    for (const text of ['', null]) {
+        test(`native ${finality} ${text === null ? 'null' : 'empty'} clears provisional content and settles controls`, () => {
+            const ctx = makeCtx();
+            let flushed = 0;
+            try {
+                appendUserItem(ctx.store.transcript, 'q', 'q');
+                handleWsMessage(ctx, msg({ type: 'agent_output', text: 'provisional' }));
+                ctx.inputActive = false;
+                ctx.streamSink = { push() {}, end() { flushed++; } };
+                handleWsMessage(ctx, msg({ type: 'agent_done', text, runtimeFinality: finality,
+                    traceRunId: `native-${finality}-${text}`, toolLog: [{icon:'tool',label:'read',status:'done',stepRef:'read-1'}] }));
+                assert.deepEqual(assistantTexts(ctx), []);
+                assert.equal(committedTools(ctx).length, 1);
+                assert.equal(flushed, 0);
+                assert.equal(ctx.streamSink, null);
+                assert.equal(ctx.streaming, false);
+                assert.equal(ctx.streamState, 'idle');
+                assert.equal(ctx.inputActive, true);
+                assert.equal(ctx.footerTimer, null);
+            } finally { cleanupCtx(ctx); }
+        });
+    }
+}
+
+test('native exact non-prefix final replaces provisional rows and both terminal sources settle once', () => {
+    for (const first of ['agent_done', 'orchestrate_done']) {
+        const ctx = makeCtx();
+        let frames = 0;
+        ctx.requestFrame = () => { frames++; };
+        try {
+            handleWsMessage(ctx, msg({ type: 'agent_output', text: 'draft' }));
+            const terminal = {text:'rewritten answer',runtimeFinality:'present',traceRunId:'native-pair'};
+            handleWsMessage(ctx, msg({ type: first, ...terminal }));
+            const settledFrames = frames;
+            handleWsMessage(ctx, msg({ type: first === 'agent_done' ? 'orchestrate_done' : 'agent_done', ...terminal }));
+            assert.deepEqual(assistantTexts(ctx), ['rewritten answer']);
+            assert.equal(frames, settledFrames);
+            assert.equal(ctx.inputActive, true);
+            assert.equal(ctx.footerTimer, null);
+        } finally { cleanupCtx(ctx); }
+    }
+});
+
+test('invalid finality keeps legacy reconciliation and sink flushing', () => {
+    const ctx = makeCtx();
+    let flushed = 0;
+    try {
+        handleWsMessage(ctx, msg({ type:'agent_output', text:'legacy preview' }));
+        ctx.streamSink = {push() {}, end() { flushed++; }};
+        handleWsMessage(ctx, msg({type:'agent_done',text:'',runtimeFinality:'invalid'}));
+        assert.deepEqual(assistantTexts(ctx), ['legacy preview']);
+        assert.equal(flushed, 1);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('classic native absent discards unflushed preview and labels existing stdout provisional', t => {
+    const ctx = makeCtx();
+    ctx.displayMode = 'line';
+    let output = '';
+    t.mock.method(process.stdout, 'write', (chunk: unknown) => { output += String(chunk); return true; });
+    try {
+        handleWsMessage(ctx, msg({type:'agent_output',text:'unflushed provisional token'}));
+        output = '';
+        handleWsMessage(ctx, msg({type:'agent_done',text:'',runtimeFinality:'absent'}));
+        assert.doesNotMatch(output, /unflushed provisional token/);
+        assert.match(output, /provisional/);
+        assert.match(output, /no final answer/i);
+        assert.equal(ctx.inputActive, true);
+        assert.equal(ctx.footerTimer, null);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('native tool-only absence settles without creating an assistant row', () => {
+    const ctx = makeCtx();
+    try {
+        handleWsMessage(ctx, msg({type:'agent_tool',icon:'tool',label:'read',stepRef:'native-read',status:'running'}));
+        ctx.inputActive = false;
+        handleWsMessage(ctx, msg({type:'agent_done',text:null,runtimeFinality:'absent',error:true}));
+        assert.deepEqual(assistantTexts(ctx), []);
+        assert.equal(ctx.store.transcript.liveTools.length, 0);
+        assert.equal(ctx.streaming, false);
+        assert.equal(ctx.inputActive, true);
+        assert.equal(ctx.footerTimer, null);
+        const tool = committedTools(ctx)[0];
+        assert.equal(tool?.type === 'tool' ? tool.status : undefined, 'error');
+    } finally { cleanupCtx(ctx); }
+});
+
+test('native terminal pair without run identity does not duplicate the current settled segment', () => {
+    const ctx = makeCtx();
+    try {
+        handleWsMessage(ctx, msg({type:'agent_output',text:'draft'}));
+        handleWsMessage(ctx, msg({type:'agent_done',text:'final',runtimeFinality:'present'}));
+        handleWsMessage(ctx, msg({type:'orchestrate_done',text:'final',runtimeFinality:'present'}));
+        assert.deepEqual(assistantTexts(ctx), ['final']);
+        appendUserItem(ctx.store.transcript, 'next', 'next');
+        handleWsMessage(ctx, msg({type:'agent_done',text:'next final',runtimeFinality:'present'}));
+        assert.deepEqual(assistantTexts(ctx), ['final', 'next final']);
+    } finally { cleanupCtx(ctx); }
+});
+
+test('raw interactive orchestrate terminal remains a raw event rather than native transcript finalization', t => {
+    const ctx = makeCtx();
+    ctx.isRaw = true;
+    const lines: unknown[][] = [];
+    t.mock.method(console, 'log', (...args: unknown[]) => { lines.push(args); });
+    const payload = {type:'orchestrate_done',text:'exact raw',runtimeFinality:'present'};
+    handleWsMessage(ctx, msg(payload));
+    assert.equal(ctx.store.transcript.items.length, 0);
+    assert.equal(lines.length, 1);
+    assert.ok(String(lines[0]?.[0]).includes(JSON.stringify(payload)));
+});
 
 test('agent_done drains running live tools and keeps final answer after tool-only output', () => {
     const ctx = makeCtx();

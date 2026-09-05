@@ -71,7 +71,8 @@ interface WsMessage {
     rawRetentionStatus?: string;
     /** Server run-start (ms) riding on agent_tool — authoritative elapsed origin. */
     startedAt?: number;
-    text?: string;
+    text?: string | null;
+    runtimeFinality?: 'present' | 'absent';
     toolLog?: { icon: string; label: string; detail?: string; toolType?: string; stepRef?: string; isEmployee?: boolean; traceRunId?: string; traceSeq?: number; detailAvailable?: boolean; detailBytes?: number; rawRetentionStatus?: string }[];
     from?: string;
     to?: string;
@@ -1063,12 +1064,17 @@ function handleServerEvent(msg: WsMessage): void {
             if (isFinalizedRun(doneRunId)) return;
             if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
             markRunFinalized(doneRunId);
-            finalizeAgent(msg.text || '', msg.toolLog);
+            finalizeAgent(msg.text || '', msg.toolLog,
+                msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined);
             notifyUnreadResponse();
         }
     } else if (msg.type === 'orchestrate_done') {
-        markRunFinalized(null);
-        finalizeAgent(msg.text || '');
+        const doneRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
+        if (isFinalizedRun(doneRunId)) return;
+        if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
+        markRunFinalized(doneRunId);
+        finalizeAgent(msg.text || '', undefined,
+            msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined);
         notifyUnreadResponse();
     } else if (msg.type === 'clear') {
         cancelPostRender();

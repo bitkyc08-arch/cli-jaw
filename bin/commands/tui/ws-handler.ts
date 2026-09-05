@@ -4,12 +4,13 @@
 import type WebSocket from 'ws';
 import {
     startAssistantItem, appendAssistantTurnText,
-    finalizeAssistant, finalizeStreamingAssistants, assistantTextSinceLastUser,
+    finalizeAssistant, finalizeStreamingAssistants, assistantTextSinceLastUser, replaceNativeAssistantFinal,
     appendStatusItem, appendToolItem, clearEphemeralStatus, appendThinkingTurnText, appendThinkingItem,
     upsertLiveToolItem, commitToolItemOnce, commitThinkingItemOnce, commitRemainingLiveToolItems,
     resetTurnToolDedup,
     isThinkingToolEvent,
 } from '../../../src/cli/tui/transcript.js';
+import type { TranscriptItem } from '../../../src/cli/tui/transcript.js';
 import { captureFileSet, diffFileSets, getDiffStat, getUnifiedDiff, getIdeCli, openDiffInIde } from '../../../src/ide/diff.js';
 import { createStreamSink } from '../../../src/cli/tui/stream.js';
 import { renderMarkdown } from '../../../src/cli/tui/markdown.js';
@@ -60,12 +61,21 @@ function stopFooterTimer(ctx: TuiContext): void {
     ctx.footerTimer = null;
 }
 
+// The two compatibility terminal sources can report the same native run. Keep this
+// display receipt bounded and separate from provider/session/lifecycle ownership.
+const nativeTerminalReceipts = new WeakMap<TuiContext, {
+    runs: string[]; items: TranscriptItem[]; length: number; tail: TranscriptItem | undefined;
+}>();
+
 export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
     const raw = data.toString();
     const ov = ctx.store.overlay;
     const transcript = ctx.store.transcript;
     try {
-        const event = normalizeTuiWsEvent(JSON.parse(raw));
+        const wire = JSON.parse(raw);
+        const nativeFinality = wire?.runtimeFinality === 'present' || wire?.runtimeFinality === 'absent';
+        const nativeOrchestrateDone = !ctx.isRaw && nativeFinality && wire?.type === 'orchestrate_done';
+        const event = normalizeTuiWsEvent(nativeOrchestrateDone ? { ...wire, type: 'agent_done' } : wire);
         switch (event.kind) {
             case 'assistant-output':
                 if (ov.helpOpen || ov.paletteOpen || ov.bgtaskOpen) dismissOverlay(ctx);
@@ -107,7 +117,18 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 }
                 break;
 
-            case 'agent-done':
+            case 'agent-done': {
+                const nativeFinal = nativeFinality && !ctx.isRaw;
+                const runId = typeof event.raw['traceRunId'] === 'string' ? event.raw['traceRunId'] : '';
+                const receipt = nativeTerminalReceipts.get(ctx);
+                if (nativeOrchestrateDone) delete ctx.orchPhase;
+                if (nativeFinal && receipt && (runId ? receipt.runs.includes(runId)
+                    : !ctx.streaming && receipt.items === transcript.items && receipt.length === transcript.items.length
+                        && receipt.tail === transcript.items.at(-1))) break;
+                const hadNativePreview = nativeFinal && assistantTextSinceLastUser(transcript).length > 0;
+                // Final tool-log commits can settle a streaming assistant. Remove its
+                // provisional content BEFORE those commits, then append the final below.
+                if (nativeFinal) replaceNativeAssistantFinal(transcript, '');
                 stopSpinner();
                 clearEphemeralStatus(transcript);
                 for (const tool of event.toolLog) {
@@ -121,6 +142,22 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 resetTurnToolDedup(transcript);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
+                } else if (nativeFinal) {
+                    ctx.streamSink = null; // never flush a provisional buffer as final
+                    replaceNativeAssistantFinal(transcript, event.text, event.agentId);
+                    if (!isFullscreen(ctx)) {
+                        if (!event.text && hadNativePreview) {
+                            process.stdout.write(event.raw['runtimeFinality'] === 'absent'
+                                ? '\n[Previous output was provisional; no final answer was returned.]\n'
+                                : '\n[Previous output was provisional; the final answer is empty.]\n');
+                        } else if (event.text) {
+                            process.stdout.write('\nFinal answer:\n');
+                            const width = Math.max(20, (process.stdout.columns || 80) - 4);
+                            process.stdout.write(isInitialized()
+                                ? renderMarkdownJawcode(event.text, width).join('\n') + '\n'
+                                : renderMarkdown(event.text, { width, gutter: '  ' }));
+                        }
+                    }
                 } else if (ctx.streaming) {
                     ctx.streamSink?.end();
                     ctx.streamSink = null;
@@ -195,7 +232,14 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 rebuildFooter(ctx); // safe point: turn finished, before reopening the prompt
                 ctx.inputActive = true;
                 openPromptBlock(ctx);
+                if (nativeFinal) {
+                    const runs = receipt?.runs ?? [];
+                    if (runId) { runs.push(runId); if (runs.length > 8) runs.shift(); }
+                    nativeTerminalReceipts.set(ctx, { runs, items: transcript.items,
+                        length: transcript.items.length, tail: transcript.items.at(-1) });
+                }
                 break;
+            }
 
             case 'agent-status':
                 if (event.status === 'done') break;
