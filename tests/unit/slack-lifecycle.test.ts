@@ -1,5 +1,11 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+const home = mkdtempSync(join(homedir(), '.cljaw-test-'));
+process.env['CLI_JAW_HOME'] = home;
+test.after(() => rmSync(home, { recursive: true, force: true }));
 
 // initSlack/shutdownSlack lifecycle. Isolated in its own file because it mocks
 // the socket client and the send path.
@@ -56,8 +62,9 @@ mock.module('../../src/slack/socket.ts', {
     },
 });
 
-async function loadBot(slack: Record<string, unknown>) {
+async function loadBot(slack: Record<string, unknown>, port = '24575') {
     const { settings } = await import('../../src/core/config.ts');
+    (settings as Record<string, unknown>)['port'] = port;
     (settings as Record<string, unknown>)['slack'] = slack;
     return import('../../src/slack/bot.ts');
 }
@@ -74,10 +81,49 @@ test('initSlack actually starts the socket for a fully configured workspace', as
     await bot.initSlack();
     assert.equal(state.started, 1, 'the socket never started — init self-superseded');
     assert.equal(bot.getSlackSelfUserId(), 'UBOT', 'auth identity was not recorded');
+    const { settings } = await import('../../src/core/config.ts');
+    assert.equal(settings["slack"].attachPort, '24575', 'the first successful socket must elect itself');
+    const persisted = JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8'));
+    assert.equal(persisted.slack.attachPort, '24575', 'the election must survive restart');
 
     await bot.shutdownSlack();
     assert.equal(state.stopped >= 1, true, 'shutdown did not stop the socket');
     assert.equal(bot.getSlackSelfUserId(), null);
+});
+
+test('an explicitly elected different port refuses before opening a socket', async () => {
+    state.started = 0;
+    const bot = await loadBot({
+        enabled: true,
+        botToken: 'xoxb-t',
+        appToken: 'xapp-t',
+        attachPort: '3457',
+    });
+    const outcome = await bot.initSlack();
+    assert.equal(state.started, 0);
+    assert.deepEqual(outcome, { started: false, reason: 'not_attach_instance' });
+});
+
+test('a competing election already on disk makes this instance yield its socket', async () => {
+    state.started = 0;
+    state.stopped = 0;
+    // Simulate the other same-home process having persisted first: write the
+    // file directly, leaving the in-memory copy (attachPort unset) stale, which
+    // is exactly the state the disk re-read exists to catch.
+    // saveSettings() REPLACES the exported settings binding (config.ts ~1289),
+    // so writing through it would put 3457 in memory too and the guard would
+    // refuse before the socket. Write the file directly instead.
+    writeFileSync(join(home, 'settings.json'), JSON.stringify({
+        settingsSchemaVersion: 4, port: '24575',
+        slack: { enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t', attachPort: '3457' },
+    }), 'utf8');
+    const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t', attachPort: '' }, '24575');
+    const outcome = await bot.initSlack();
+    assert.equal(state.started, 1, 'the provisional socket was opened');
+    assert.equal(state.stopped >= 1, true, 'and disposed once the disk showed another owner');
+    assert.deepEqual(outcome, { started: false, reason: 'not_attach_instance' });
+    const persisted = JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8'));
+    assert.equal(persisted.slack.attachPort, '3457', 'the earlier election was not overwritten');
 });
 
 test('initSlack stays outbound-only without an app token', async () => {

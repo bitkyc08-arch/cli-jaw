@@ -138,7 +138,12 @@ export function getTransportCapability(channel: MessengerChannel): TransportCapa
         if (!sc?.enabled || !botToken) {
             return { configured: false, activeInbound, sendCapable: false, reason: 'disabled' };
         }
-        if (!shouldAttachSlack(sc.attachPort, settings["port"])) {
+        // Mirror the bot's own decision (slack/bot.ts runSlackInit): an EXPLICIT
+        // owner that is not us refuses the socket; an unset owner gets one
+        // provisional attach and elects itself, so health must not call a fresh
+        // install degraded. Send capability never depended on the socket anyway.
+        const attachPort = String(sc.attachPort ?? '').trim();
+        if (attachPort && !shouldAttachSlack(attachPort, settings["port"])) {
             // Tokens are present but this instance must not open the socket —
             // surface WHY instead of looking broken.
             return { configured: true, activeInbound: false, sendCapable: false, reason: 'not_attach_instance' };

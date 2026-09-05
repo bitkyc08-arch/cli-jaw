@@ -561,9 +561,10 @@ test('plain channel messages still pass when mentionOnly is off', () => {
     );
 });
 
-test('attach guard: unset attaches (back-compat), match attaches, mismatch refuses', () => {
-    assert.equal(shouldAttachSlack(undefined, '24575'), true, 'unset = single-instance behavior');
-    assert.equal(shouldAttachSlack('', '24575'), true);
+test('attach guard is fail-closed until a non-empty port matches', () => {
+    assert.equal(shouldAttachSlack(undefined, '24575'), false);
+    assert.equal(shouldAttachSlack('', '24575'), false);
+    assert.equal(shouldAttachSlack('3457', undefined), false);
     assert.equal(shouldAttachSlack('3457', '3457'), true);
     assert.equal(shouldAttachSlack('3457', '24575'), false, 'a second instance must not open the socket');
     assert.equal(shouldAttachSlack(3457, '3457'), true, 'number ports coerce');
