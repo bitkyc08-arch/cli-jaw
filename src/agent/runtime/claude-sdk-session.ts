@@ -18,6 +18,7 @@ import { createClaudePermissions } from './claude-sdk-permissions.js';
 import { makeClaudeUserMessage } from './claude-sdk-content.js';
 import { ClaudeSdkChildren, type ClaudeChildOwner } from './claude-sdk-children.js';
 import { claudeForegroundHooks } from './claude-sdk-hooks.js';
+import type { ClaudeRootWaitOptions } from './claude-sdk-roots.js';
 
 export interface ClaudeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
 export type { ClaudeResultMetadata } from './claude-sdk-metadata.js';
@@ -55,7 +56,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         tools: true, toolOutput: true, approvals: true, questions: true, images: true, subagents: true });
     readonly supportsInterrupt = true;
     private readonly input = createClaudeInput<SDKUserMessage>(32);
-    private readonly processes = createClaudeProcessOwner();
+    private readonly processes = createClaudeProcessOwner({ onMultipleRoots: () => this.fail('claude_multiple_root_processes') });
     private query: ClaudeQuery | undefined;
     private reader: Promise<void> = Promise.resolve();
     private readonly exits = new Set<(code: number | null) => void>();
@@ -100,6 +101,9 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     get activeProcessCount(): number { return this.processes.activeCount; }
     get stderrBytes(): number { return this.processes.stderrBytes; }
     get lastError(): string | null { return this.failureCode; }
+    get primaryChild() { return this.processes.primaryChild; }
+    get rootProcessState() { return this.processes.rootProcessState; }
+    waitForPrimaryChild(options?: ClaudeRootWaitOptions) { return this.processes.waitForPrimaryChild(options); }
 
     async send(prompt: RuntimePrompt, onEvent: (event: RuntimeEvent) => void): Promise<RuntimeTurnResult> {
         if (!this.alive) throw new Error('claude_session_closed');
@@ -307,13 +311,17 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
 }
 
 export async function createClaudeSdkSession(options: ClaudeSessionOptions): Promise<ClaudeSdkSession> {
-    validTimeout(options.promptTimeoutMs); validTimeout(options.closeTimeoutMs ?? 5000);
-    buildClaudeSdkOptions(options.prepared);
-    if (options.signal?.aborted) throw new Error('claude_acquire_aborted');
-    const factory = options.queryFactory ?? (await loadClaudeSdk()).query;
-    if (options.signal?.aborted) throw new Error('claude_acquire_aborted');
-    const session = new ClaudeSdkSession({ ...options, prepared: { ...options.prepared, env: { ...options.prepared.env } } });
+    const captured: ClaudeSessionOptions = { ...options, prepared: { ...options.prepared } };
+    const env = captured.prepared.env;
+    if (env && typeof env === 'object' && !Array.isArray(env)) captured.prepared.env = { ...env };
+    validTimeout(captured.promptTimeoutMs); validTimeout(captured.closeTimeoutMs ?? 5000);
+    buildClaudeSdkOptions(captured.prepared);
+    if (captured.signal?.aborted) throw new Error('claude_acquire_aborted');
+    const factory = captured.queryFactory ?? (await loadClaudeSdk()).query;
+    if (captured.signal?.aborted) throw new Error('claude_acquire_aborted');
+    const session = new ClaudeSdkSession(captured);
     await session.start(factory);
-    if (options.signal?.aborted) { await session.close(); throw new Error('claude_acquire_aborted'); }
+    if (captured.signal?.aborted) { await session.close(); throw new Error('claude_acquire_aborted'); }
+    if (!session.alive) { await session.close(); throw new Error(session.lastError ?? 'claude_acquire_failed'); }
     return session;
 }

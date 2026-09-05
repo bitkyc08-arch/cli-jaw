@@ -29,7 +29,7 @@ async function fixture(extra: Record<string, unknown> = {}) {
     let queryCount = 0, contextReads = 0, closed = 0, seq = 0;
     const session = await createClaudeSdkSession({
         prepared: { cwd: process.cwd(), binary: process.execPath, env: {}, model: 'default', systemPrompt: 'instructions', permissions: 'safe', fastMode: false },
-        promptTimeoutMs: 1000, closeTimeoutMs: 100,
+        promptTimeoutMs: 1000, closeTimeoutMs: 5000,
         registry,
         getTurnContext: () => { contextReads++; return context; },
         onMetadata: (owner, data) => metadata.push({ owner, data }),
@@ -114,7 +114,7 @@ test('custom child drains stderr beyond pipe capacity and observes actual exit',
 });
 test('custom child termination waits for exit, not killed flag', async () => {
     const owner = createClaudeProcessOwner();
-    const child = owner.spawn({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),2000)'],
+    const child = owner.spawn({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),8000)'],
         env: process.env, signal: new AbortController().signal });
     child.stdout.resume(); owner.terminate(); await owner.wait();
     assert.equal(owner.activeCount, 0); assert.notEqual(child.exitCode, 23); assert.ok(child.exitCode !== null || child.signalCode !== null);
@@ -122,7 +122,7 @@ test('custom child termination waits for exit, not killed flag', async () => {
 test('query factory error after child spawn retires only its created child', async () => {
     let child;
     await assert.rejects(fixture({ queryFactory: ({ options }) => {
-        child = options.spawnClaudeCodeProcess({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),2000)'],
+        child = options.spawnClaudeCodeProcess({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),8000)'],
             env: process.env, signal: new AbortController().signal });
         throw new Error('factory failure');
     } }), /factory failure/);
@@ -332,4 +332,28 @@ test('explicit Stop after claim retires the query without retroactively mutating
     const claimed = f.session.claimTurnOutcome('turn1'); await f.session.cancel();
     assert.equal(f.session.claimTurnOutcome('turn1'), claimed); assert.equal(claimed?.status, 'done');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+});
+test('session exposes the actual SDK-created root and readiness waits without spawning another', async () => {
+    const output = stream(); let child;
+    const f = await fixture({ queryFactory: ({ options }) => {
+        child = options.spawnClaudeCodeProcess({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),8000)'],
+            env: process.env, signal: new AbortController().signal });
+        return { ...output, close() { output.close(); } };
+    } });
+    try {
+        assert.equal(await f.session.waitForPrimaryChild({ timeoutMs: 1000 }), child);
+        assert.equal(f.session.primaryChild, child); assert.equal(f.session.rootProcessState.kind, 'single');
+        assert.equal(f.session.activeProcessCount, 1); assert.ok(child.pid > 0);
+    } finally { await f.session.close(); }
+    assert.equal(f.session.activeProcessCount, 0);
+});
+test('multiple SDK root creation fails acquisition and disposes every captured real child', async () => {
+    const children = [], output = stream();
+    await assert.rejects(fixture({ queryFactory: ({ options }) => {
+        for (let i = 0; i < 2; i++) children.push(options.spawnClaudeCodeProcess({ command: process.execPath,
+            args: ['-e', 'setTimeout(()=>process.exit(23),8000)'], env: process.env, signal: new AbortController().signal }));
+        return { ...output, close() { output.close(); } };
+    } }), /multiple_root_processes/);
+    assert.equal(children.length, 2);
+    assert.ok(children.every(child => child.exitCode !== null || child.signalCode !== null));
 });
