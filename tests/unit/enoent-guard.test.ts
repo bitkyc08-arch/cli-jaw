@@ -184,27 +184,9 @@ test('EG-006: acpSettled guard exists in both error and exit handlers', () => {
     );
 });
 
-// ─── EG-007: settled flags are set before resolve/broadcast ───
-
-test('EG-007: settled flag is set before resolve() in error handlers', () => {
-    // Standard CLI error handler: stdSettled = true must come before resolve
-    const errorIdx = spawnSrc.indexOf("child.on('error'");
-    const errorBlock = spawnSrc.slice(errorIdx, errorIdx + 1400);
-    const settledIdx = errorBlock.indexOf('stdSettled = true;');
-    const resolveIdx = errorBlock.indexOf('resolve!(');
-    assert.ok(settledIdx > 0, 'stdSettled assignment should exist in error handler');
-    assert.ok(resolveIdx > 0, 'resolve should exist in error handler');
-    assert.ok(settledIdx < resolveIdx, 'stdSettled = true must come before resolve');
-
-    // ACP error handler: acpSettled = true must come before resolve
-    const acpErrorIdx = spawnSrc.indexOf("acp.on('error'");
-    const acpErrorBlock = spawnSrc.slice(acpErrorIdx, acpErrorIdx + 800);
-    const acpSettledIdx = acpErrorBlock.indexOf('acpSettled = true;');
-    const acpResolveIdx = acpErrorBlock.indexOf('resolve!(');
-    assert.ok(acpSettledIdx > 0, 'acpSettled assignment should exist in ACP error handler');
-    assert.ok(acpResolveIdx > 0, 'resolve should exist in ACP error handler');
-    assert.ok(acpSettledIdx < acpResolveIdx, 'acpSettled = true must come before resolve');
-});
+// EG-007a/b are behavioral probes in print-spawn-journal.test.ts and
+// print-bypass-paths.test.ts: reentrant error hooks plus the subsequent close/exit
+// must produce one completion. Fixed source windows could not verify that contract.
 
 // ─── EG-008: quota-copilot.ts uses env-first token lookup ───
 

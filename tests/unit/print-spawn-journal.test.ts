@@ -76,7 +76,7 @@ test('real print child traverses spawn, accepted parser, lifecycle and durable j
     } finally { unsubscribe(); }
 });
 
-test('real asynchronous print spawn failure closes its journal without another attempt', { timeout: 15_000 }, async t => {
+test('EG-007a: real print error reentry and close settle only once and close the journal', { timeout: 15_000 }, async t => {
     t.mock.method(globalThis, 'fetch', async () => { throw new Error('unexpected network'); });
     t.mock.method(console, 'log', () => {}); t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
     launchError = true;
@@ -84,9 +84,16 @@ test('real asynchronous print spawn failure closes its journal without another a
     const seen: Array<{ event: string; data: Record<string, unknown> }> = [];
     const unsubscribe = subscribe(event => seen.push(event));
     try {
-        const result = await spawnAgent('fixture error', { cli: 'codex', model: 'fixture', sysPrompt: 'fixture system', origin: 'web',
-            _skipInsert: true, _skipHistory: true, _skipResume: true, _skipSessionPersist: true, _isSmokeContinuation: true }).promise;
+        let child: childProcess.ChildProcess | null = null;
+        let exits = 0;
+        const run = spawnAgent('fixture error', { cli: 'codex', model: 'fixture', sysPrompt: 'fixture system', origin: 'web',
+            _skipInsert: true, _skipHistory: true, _skipResume: true, _skipSessionPersist: true, _isSmokeContinuation: true,
+            lifecycle: { onExit: () => { exits++; assert.ok(child); child.emit('error', new Error('reentrant fixture')); } },
+        });
+        child = run.child;
+        const result = await run.promise;
         assert.equal(result.code, 127); assert.equal(launches, before + 1);
+        assert.equal(exits, 1, 'settled guard precedes any reentrant lifecycle callback');
         const start = seen.find(e => e.event === 'agent_runtime' && e.data['kind'] === 'turn-start')!;
         assert.ok(start);
         const p = readActivityPage({ runId: String(start.data['runId']), sessionId: 'default', after: 0, limit: 40 })!;

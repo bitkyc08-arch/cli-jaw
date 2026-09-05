@@ -18,9 +18,11 @@ const isolatedOs = { ...os, homedir: () => home };
 test.mock.module('node:os', { namedExports: isolatedOs, defaultExport: isolatedOs });
 assert.equal((await import('os')).default.homedir(), home, 'Copilot config writes must be isolated before importing spawn');
 
+let lastAcp: ErrorAcp | null = null;
 class ErrorAcp extends EventEmitter {
     proc = Object.assign(new EventEmitter(), { pid: undefined, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
-    spawn() { queueMicrotask(() => this.emit('error', new Error('fixture ACP failure'))); }
+    constructor() { super(); lastAcp = this; }
+    spawn() { queueMicrotask(() => { this.emit('error', new Error('fixture ACP failure')); this.emit('exit', { code: 1, signal: null }); }); }
     initialize() { return new Promise(() => {}); }
     kill() {}
 }
@@ -66,13 +68,17 @@ test.beforeEach(t => {
     config.settings.multiSession.enabled = false; config.settings.activeOverrides = {}; config.settings.fallbackOrder = [];
 });
 
-test('Copilot ACP error bypass closes the admitted journal and preserves one existing error completion', { timeout: 10_000 }, async () => {
+test('EG-007b: Copilot ACP error reentry and exit preserve one completion and close the journal', { timeout: 10_000 }, async () => {
     const seen: Array<{ event: string; data: Record<string, unknown> }> = [];
     const unsubscribe = subscribe(e => seen.push(e));
     try {
+        let exits = 0;
         const result = await spawnAgent('ACP fixture', { cli: 'copilot', model: 'fixture', effort: '', sysPrompt: 'fixture system', origin: 'web',
-            _skipInsert: true, _skipHistory: true, _skipResume: true, _skipSessionPersist: true, _isSmokeContinuation: true }).promise;
+            _skipInsert: true, _skipHistory: true, _skipResume: true, _skipSessionPersist: true, _isSmokeContinuation: true,
+            lifecycle: { onExit: () => { exits++; assert.ok(lastAcp); lastAcp.emit('error', new Error('reentrant ACP fixture')); } },
+        }).promise;
         assert.equal(result.code, 1); assert.equal(launches, 0);
+        assert.equal(exits, 1, 'settled guard precedes reentrant error and subsequent exit');
         const start = seen.find(e => e.event === 'agent_runtime' && e.data['kind'] === 'turn-start')!;
         const p = readActivityPage({ runId: String(start.data['runId']), sessionId: 'default', after: 0, limit: 40 })!;
         assert.equal(p.status, 'error'); assert.equal(p.events.at(-1)?.kind, 'turn-end');
