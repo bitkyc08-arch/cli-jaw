@@ -5,6 +5,8 @@ import type { SessionOwnerToken } from './session-persistence.js';
 import { createCursorSession, type CursorSessionOptions } from './runtime/acp/cursor-session.js';
 import { validateAcpSessionOptions, type AcpSession } from './runtime/acp/session.js';
 import { normalizeNativePermissions } from './runtime/acp/permissions.js';
+import { acquireClaudeRuntimeLease, retireClaudePoolEntry, type ClaudeAcquireOptions, type ClaudeLease } from './claude-runtime-pool.js';
+export type { ClaudeAcquireOptions, ClaudeLease } from './claude-runtime-pool.js';
 import {
     normalizePiSettings,
     spawnPersistentPiRpc,
@@ -117,12 +119,22 @@ export interface CursorLease extends RuntimeLease<ManagedRuntime, string> {
     retire(reason?: Error): Promise<void>;
 }
 
-type Engine = 'codex-app' | 'pi' | 'cursor';
+type Engine = 'codex-app' | 'pi' | 'cursor' | 'claude';
 type AnyEntry = PoolEntry<ManagedRuntime, unknown>;
 type EngineStore = {
     entries: Map<string, AnyEntry>;
     scopeIndex: Map<string, Set<string>>;
 };
+
+/** Internal provider port over the existing pool. Never serialized as runtime state. */
+export type RuntimePoolEntry = AnyEntry;
+export type RuntimePoolStore = EngineStore;
+export interface RuntimePoolAccess {
+    store: RuntimePoolStore;
+    wait: typeof waitForEntry;
+    remove: typeof removeEntry;
+    wake(entry: RuntimePoolEntry): void;
+}
 
 const stores = new Map<Engine, EngineStore>();
 let nextWaiterId = 1;
@@ -830,6 +842,16 @@ export async function acquireCursorRuntime(input: CursorAcquireOptions): Promise
     }
 }
 
+function claudePoolAccess(): RuntimePoolAccess {
+    return { store: storeFor('claude'), wait: waitForEntry, remove: removeEntry,
+        wake: entry => drainWaiters(entry, 'wake') };
+}
+
+export function acquireClaudeRuntime(input: ClaudeAcquireOptions): Promise<ClaudeLease> {
+    startPoolReaper();
+    return acquireClaudeRuntimeLease(claudePoolAccess(), input);
+}
+
 export function startPoolReaper(idleMs = DEFAULT_POOL_IDLE_MS): void {
     if (reaper) return;
     reaper = setInterval(() => {
@@ -838,6 +860,7 @@ export function startPoolReaper(idleMs = DEFAULT_POOL_IDLE_MS): void {
             for (const [key, entry] of store.entries) {
                 if (entry.state === 'ready' && !entry.busy && now - entry.lastUsedAt >= idleMs) {
                     if (engine === 'cursor') void retireCursorEntry(store, key, entry, new Error('runtime pool idle timeout'));
+                    else if (engine === 'claude') void retireClaudePoolEntry(claudePoolAccess(), key, entry, new Error('runtime pool idle timeout'));
                     else closeEntry(store, key, entry, new Error('runtime pool idle timeout'));
                 }
             }
