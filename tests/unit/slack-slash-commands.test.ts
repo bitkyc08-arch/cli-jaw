@@ -23,8 +23,10 @@ const state: {
     scopeCalls: Array<{ sessionId: string; remoteKey?: string; gateEnabled?: boolean }>;
 } = { posted: [], parsedSeen: [], executeResult: { text: 'command output' }, scopeCalls: [] };
 
+const scopeModule = await import('../../src/orchestrator/scope.ts');
 mock.module('../../src/orchestrator/scope.ts', {
     namedExports: {
+        ...scopeModule,
         LOCAL_SESSION_SCOPE_ACTIVATION: true,
         LOCAL_SESSION_SCOPE_PREFIX: 'local:',
         isRemoteBindingScope: (scope?: string | null) => typeof scope === 'string' && scope.startsWith('jaw:'),

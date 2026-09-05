@@ -1,3 +1,4 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -48,13 +49,27 @@ test('RSR-004: gated main spawn contributes to busy state and queue gating', () 
         'isAgentBusy must delegate the retry check to the queue controller');
 });
 
-test('RSR-005: stop cancels a pending gated main spawn', () => {
-    // Same refactor: the cancel hook is stored on the scoped run
-    // (`MainRunState.cancelPending`) instead of a module-level binding.
-    assert.match(spawnSrc, /cancelPending\?:\s*\(reason:\s*string\)\s*=>\s*void/);
-    assert.match(spawnSrc, /mainRun!\.cancelPending\s*=\s*cancelThisSpawn/);
-    assert.match(spawnSrc, /run\?\.cancelPending\s*\?\s*\(\s*run\.cancelPending\(reason\),\s*true\s*\)/);
-    assert.match(spawnSrc, /if\s*\(\s*cancelled\s*\)\s*\{[\s\S]*code:\s*-1[\s\S]*\}/);
+test('RSR-005: stop cancels a pending gated main spawn', async t => {
+    const config = await import('../../src/core/config.ts');
+    test.mock.module('../../src/core/config.js', { namedExports: { ...config,
+        detectCli: () => { assert.fail('cancelled gated spawn reached provider detection'); },
+    } });
+    const { beginRuntimeSettingsMutation } = await import('../../src/core/runtime-settings-gate.ts');
+    const { spawnAgent, killActiveAgent, activeMainProcesses, isAgentBusy } = await import('../../src/agent/spawn.ts');
+    t.mock.method(globalThis, 'fetch', async () => { assert.fail('unexpected network'); });
+    const scope = 'settings-gated-cancellation';
+    const finish = beginRuntimeSettingsMutation();
+    try {
+        const run = spawnAgent('must never execute', { scopeKey: scope, chatSessionId: 'gated-chat', cli: 'claude' });
+        assert.equal(run.child, null);
+        assert.equal(activeMainProcesses.get(scope)?.starting, true);
+        assert.equal(isAgentBusy(scope), true);
+        assert.equal(killActiveAgent(scope, 'user'), true);
+        finish();
+        assert.deepEqual(await run.promise, { text: '⏹️ [user]', code: -1 });
+        assert.equal(activeMainProcesses.has(scope), false);
+        assert.equal(isAgentBusy(scope), false);
+    } finally { finish(); activeMainProcesses.delete(scope); }
 });
 
 test('RSR-006: settings gate only delays direct main user spawns', () => {
