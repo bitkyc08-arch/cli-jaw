@@ -108,7 +108,8 @@ export function createDashboardTelegramHubRouter(): Router {
         const caption = typeof b.caption === 'string' ? b.caption.slice(0, 1024) : undefined;
         const reply_markup = type === 'keyboard' && b.reply_markup && typeof b.reply_markup === 'object' ? b.reply_markup : undefined;
         const r = await sendToTopic(chatId, threadId, stripUndefined({ type, text, filePath, caption, reply_markup }));
-        res.status(r.ok ? 200 : 502).json(stripUndefined({ ok: r.ok, error: r.error }));
+        res.status(r.ok ? 200 : 502).json(stripUndefined({ ok: r.ok, error: r.error,
+            ...(typeof r.bodyDelivered === 'boolean' ? { bodyDelivered: r.bodyDelivered } : {}) }));
     });
 
     return router;

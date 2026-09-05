@@ -79,8 +79,8 @@ test('Telegram and Discord collect paths preserve the admitted session context',
     assert.match(telegramCollect, /target: responseTarget/);
 
     const discordCollect = discordBotSrc.slice(
-        discordBotSrc.indexOf('orchestrateAndCollect(prompt'),
-        discordBotSrc.indexOf('const chunks = chunkDiscordMessage', discordBotSrc.indexOf('orchestrateAndCollect(prompt')),
+        discordBotSrc.indexOf('orchestrateAndCollectData(prompt'),
+        discordBotSrc.indexOf('const channel = asSendable', discordBotSrc.indexOf('orchestrateAndCollectData(prompt')),
     );
     for (const field of ['scope', 'chatSessionId', 'remoteKey']) {
         assert.match(discordCollect, new RegExp(`${field}: result\\.sessionContext\\?\\.${field}`));

@@ -200,6 +200,14 @@ function attachTelegramForwarder(bot: Bot) {
     telegramForwarderLifecycle.attach({ bot });
 }
 
+// Private request identity, never accepted from a send payload or saved settings.
+const nativeBodyRequests = new WeakSet<ChannelSendRequest>();
+
+function requiresNativeBodyDelivery(data: Record<string, unknown>): boolean {
+    return (data['runtimeFinality'] === 'present' || data['runtimeFinality'] === 'absent')
+        && (data['runtimeStatus'] === 'done' || data['runtimeStatus'] === 'error' || data['runtimeStatus'] === 'stopped');
+}
+
 function installTelegramTargetReplyForwarder(): void {
     if (targetReplyForwarderInstalled) return;
     targetReplyForwarderInstalled = true;
@@ -208,12 +216,17 @@ function installTelegramTargetReplyForwarder(): void {
         if (!data["text"]) return;
         const target = data["target"] as RemoteTarget | undefined;
         if (!target || target.channel !== 'telegram') return;
-        void sendChannelOutput({
+        const request: ChannelSendRequest = {
             channel: 'telegram',
             type: 'text',
             text: String(data["text"]),
             target,
-        }).then((result) => {
+        };
+        if (requiresNativeBodyDelivery(data)) {
+            if (!request.text?.trim()) return;
+            nativeBodyRequests.add(request);
+        }
+        void sendChannelOutput(request).then((result) => {
             if (!result.ok) log.error('[tg:target-reply]', logErrorText(result.error || 'send failed'));
             // Forward elicitation keyboards through hub if present.
             const specs = data["elicitationSpecs"];
@@ -490,6 +503,11 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
                 signal: AbortSignal.timeout(15_000),
             });
             const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+            if (nativeBodyRequests.has(req) && (j['ok'] !== true || j['bodyDelivered'] !== true)) {
+                // Older hubs cannot confirm delivery. Never replay an ambiguous send.
+                return { ok: false, error: j['ok'] === false ? String(j['error'] || 'hub outbound failed')
+                    : 'telegram_hub_body_delivery_unconfirmed', status: 502 };
+            }
             return j['ok'] ? { ok: true, via: 'hub', type: req.type } : { ok: false, error: String(j['error'] || 'hub outbound failed'), status: 502 };
         } catch (e) {
             return { ok: false, error: (e as Error).message, status: 502 };
@@ -521,6 +539,7 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
         let sendResult;
         try {
             sendResult = await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({
+                ...(nativeBodyRequests.has(req) ? { requireBodyDelivery: true } : {}),
                 message_thread_id: messageThreadId,
                 signal: outbound.signal,
             }));
@@ -881,7 +900,9 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                     settled = true;
                     cleanup();
                     void claimTerminal(async () => {
-                        const body = String(data["text"] ?? '');
+                        const requireBodyDelivery = requiresNativeBodyDelivery(data);
+                        const rawBody = String(data["text"] ?? '');
+                        const body = requireBodyDelivery && !rawBody.trim() ? '' : rawBody;
                         if (!body) {
                             await Promise.allSettled([
                                 notice.close('expired'),
@@ -906,7 +927,8 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                                 sendResult = wasSelfDelivered({ target: responseTarget, text: body, since: queuedAnchor.value() })
                                     ? { ok: true as const }
                                     : await sendTelegramMarkdown(ctx.api, chat.id, body,
-                                        { ...replyOptsOf(ctx), signal: outbound.signal });
+                                        { ...replyOptsOf(ctx), signal: outbound.signal,
+                                            ...(requireBodyDelivery ? { requireBodyDelivery: true } : {}) });
                             } finally {
                                 outbound.done();
                             }
@@ -1140,7 +1162,8 @@ async function _initTelegramInner(): Promise<TransportStartOutcome> {
                     finalResult = selfDelivered
                         ? { ok: true as const }
                         : await sendTelegramMarkdown(ctx.api, chat.id, collectedText,
-                            { ...replyOptsOf(ctx), signal: outbound.signal });
+                            { ...replyOptsOf(ctx), signal: outbound.signal,
+                                ...(requiresNativeBodyDelivery(doneData) ? { requireBodyDelivery: true } : {}) });
                 } finally {
                     outbound.done();
                 }

@@ -48,7 +48,7 @@ mock.module('../../src/orchestrator/gateway.ts', {
 });
 
 mock.module('../../src/orchestrator/collect.ts', {
-    namedExports: { orchestrateAndCollect: async () => 'reply' },
+    namedExports: { orchestrateAndCollectData: async () => ({ text: 'reply', data: {} }) },
 });
 
 mock.module('../../src/slack/send-only-client.ts', {
