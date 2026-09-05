@@ -9,6 +9,11 @@ mock.module('../../public/js/event-channel.js', { namedExports: {
     subscribe(topic: string, _event: unknown, callback: typeof dispatch) { if (topic === '*') dispatch = callback; return () => {}; },
     onChannelOpen() {}, onChannelDisconnect() {}, onChannelUnavailable() {},
 } });
+let unreadNotifications = 0;
+const attention = await import('../../public/js/features/attention-badge.ts');
+mock.module('../../public/js/features/attention-badge.js', { namedExports: {
+    ...attention, notifyUnreadResponse() { unreadNotifications++; attention.notifyUnreadResponse(); },
+} });
 let ui: typeof import('../../public/js/ui.ts');
 let live: typeof import('../../public/js/features/activity-live.ts');
 let state: typeof import('../../public/js/state.ts')['state'];
@@ -43,7 +48,7 @@ test.before(async () => {
     ws.connect();
 });
 test.beforeEach(async () => {
-    activeRun = null; holdSnapshot = null;
+    activeRun = null; holdSnapshot = null; unreadNotifications = 0;
     pendingRequests=[];
     ui.cleanupToolActivity(); live.clearLiveActivity();
     document.getElementById('chatMessages')!.replaceChildren();
@@ -222,3 +227,35 @@ test('live canonical-first terminal refreshes requests when settled notification
         await new Promise<void>(resolve=>setImmediate(resolve));
     }
 });
+
+
+for (const first of ['agent_done', 'orchestrate_done'] as const) {
+    test(`AB-004: ${first} notifies once; paired completion and new_message do not`, { timeout: 5000 }, async t => {
+        const run = start();
+        dispatch({event:first,traceRunId:run,text:'final answer'});
+        assert.equal(unreadNotifications,1);
+        const now = Date.now(); t.mock.method(Date,'now',()=>now+1000);
+        dispatch({event:first==='agent_done'?'orchestrate_done':'agent_done',traceRunId:run,text:'final answer'});
+        runtime(run,3,{kind:'turn-end',status:'done',finalText:'final answer'});
+        assert.equal(unreadNotifications,1);
+        const marker=`new-message-${run}`;
+        const {getVirtualScroll}=await import('../../public/js/virtual-scroll.ts');
+        const vs=getVirtualScroll();
+        const add=vs.addItem.bind(vs), append=vs.appendLiveItem.bind(vs);
+        let didWrite!:()=>void;
+        const written=new Promise<void>(resolve=>{didWrite=resolve;});
+        // jsdom has no visible virtual rows. Observe the actual row-store write,
+        // rather than waiting for geometry-dependent mounting or fixed timer ticks.
+        t.mock.method(vs,'addItem',(id:string,html:string)=>{
+            add(id,html);if(html.includes(marker))didWrite();
+        });
+        t.mock.method(vs,'appendLiveItem',(div:HTMLElement)=>{
+            append(div);if(div.textContent?.includes(marker))didWrite();
+        });
+        try {
+            dispatch({event:'new_message',role:'user',content:marker,external:true});
+            await written;
+            assert.equal(unreadNotifications,1);
+        } finally {vs.clear();}
+    });
+}
