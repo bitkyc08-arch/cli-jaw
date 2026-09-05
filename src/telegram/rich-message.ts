@@ -282,9 +282,12 @@ function insideCodeFence(raw: string, index: number): boolean {
     return fences % 2 === 1;
 }
 
-function requireTelegramBody(chunks: readonly string[], required: boolean | undefined): void {
-    if (required && !chunks.some(chunk => chunk.trim().length > 0)) {
-        throw Object.assign(new Error('telegram_empty_message'), { code: 'empty_message', status: 400 });
+function requireTelegramBody(chunks: readonly string[], opts: RichSendOpts | undefined): void {
+    if (!chunks.some(chunk => chunk.trim().length > 0)) {
+        notifyBodyObserver(opts?.onBodyDeliveryFailed);
+        if (opts?.requireBodyDelivery) {
+            throw Object.assign(new Error('telegram_empty_message'), { code: 'empty_message', status: 400 });
+        }
     }
 }
 
@@ -336,7 +339,7 @@ export async function sendTelegramMarkdown(
     // pushed the first message past the API limit and forced a needless
     // fallback.
     const chunks = chunkWithPrefixBudget(markdown, prefix, RICH_MESSAGE_LIMIT);
-    requireTelegramBody(chunks, opts?.requireBodyDelivery);
+    requireTelegramBody(chunks, opts);
     for (let i = 0; i < chunks.length; i += 1) {
         if (opts?.signal?.aborted) return ABORTED;
         const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
@@ -377,7 +380,7 @@ async function sendHtmlFallback(
     const chunks = safePrefix
         ? chunkTelegramMessage(html, HTML_MESSAGE_LIMIT - safePrefix.length)
         : chunkTelegramMessage(html, HTML_MESSAGE_LIMIT);
-    requireTelegramBody(chunks, opts?.requireBodyDelivery);
+    requireTelegramBody(chunks, opts);
     for (let i = 0; i < chunks.length; i += 1) {
         if (opts?.signal?.aborted) return ABORTED;
         const withPrefix = i === 0 ? `${safePrefix}${chunks[i]}` : chunks[i]!;
@@ -386,7 +389,7 @@ async function sendHtmlFallback(
                 () => api.sendMessage(chatId, withPrefix, htmlOpts, opts?.signal as never), opts?.signal);
             if (needsPlain) {
                 const plain = withPrefix.replace(/<[^>]+>/g, '');
-                requireTelegramBody([plain], opts?.requireBodyDelivery);
+                requireTelegramBody([plain], opts);
                 let plainFailure: unknown;
                 const plainFailedFormat = await attemptSend(async () => {
                     try { return await api.sendMessage(chatId, plain, plainOpts, opts?.signal as never); }

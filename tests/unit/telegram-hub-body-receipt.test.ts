@@ -8,6 +8,7 @@ let chunks: string[] = ['answer'];
 let rejectFormats = false;
 let rejectText: string | undefined;
 const calls: Array<{ text: string; options: unknown }> = [];
+let hubApi: FakeHubBot['api'];
 const formatError = Object.assign(new Error('cannot parse entities'), { error_code: 400 });
 mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected network request'); });
 const store = await import('../../src/manager/telegram-hub/routing-store.ts');
@@ -32,6 +33,7 @@ class FakeHubBot {
             return {};
         },
     };
+    constructor() { hubApi = this.api; }
     catch() { return this; } on() { return this; } callbackQuery() { return this; }
     async start(options: { onStart(info: { username: string }): void }) { options.onStart({ username: 'fake' }); }
     async stop() {}
@@ -55,7 +57,10 @@ function outbound(body: Record<string, unknown>, ip = '127.0.0.1'): Promise<{ st
 
 test.before(async () => { await startHubBot(); }); // inert fake Bot only
 test.after(async () => { await stopHubBot(); });
-test.beforeEach(() => { calls.length = 0; chunks = ['answer']; rejectFormats = false; rejectText = undefined; });
+test.beforeEach(() => {
+    calls.length = 0; chunks = ['answer']; rejectFormats = false; rejectText = undefined;
+    Reflect.deleteProperty(hubApi, 'sendRichMessage');
+});
 
 test('actual hub route returns positive receipt only after helper calls fake vendor successfully', async () => {
     assert.deepEqual(await outbound({ chatId: '123', threadId: '42', type: 'text', text: 'answer' }),
@@ -89,6 +94,20 @@ test('actual hub route invalidates partial multichunk success while preserving l
         { text: 'last', options: { message_thread_id: 42, parse_mode: 'HTML' } },
         { text: 'last', options: { message_thread_id: 42 } },
     ]);
+});
+
+test('a later rich chunk lost to an empty HTML fallback invalidates earlier success', async () => {
+    let richCalls = 0;
+    Reflect.set(hubApi, 'sendRichMessage', async () => {
+        richCalls++;
+        if (richCalls > 1) throw formatError;
+        return {};
+    });
+    chunks = [];
+    const result = await outbound({ chatId: '123', threadId: '42', type: 'text', text: 'a'.repeat(32_100) });
+    assert.equal(richCalls, 2);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(result, { status: 200, body: { ok: true, bodyDelivered: false } });
 });
 
 test('request cannot forge receipt or opt into a guard; authorization checks are unchanged', async () => {
