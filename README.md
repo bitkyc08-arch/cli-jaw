@@ -407,6 +407,8 @@ Codex app-server and Pi RPC also record versioned, redacted runtime events indep
 
 Cursor, Grok and Claude retain `print` compatibility mode. Their optional `perCli.<cli>.transport` setting is validated independently of display preferences; selecting an unimplemented native adapter gives an explicit error, never silently launches print. Existing settings without this field stay print, and native/print session storage is isolated. `/api/cli-status` reports compiled native main/worker support separately from cached binary/authentication readiness.
 
+Cursor main turns support the native ACP path with explicit `transport: "native"` and literal `permissions: "auto"`; restrictive native permissions and workers are rejected before prompt-file or session preparation. Model/effort use native advertised choices (Composer models may require unset effort). Canonical tool/commentary activity is separate from the full final answer; interrupted text remains available for steer salvage. Native I/O refreshes only its own collector through a private, text-free callback. Display defaults and owned history UI remain separate rollout layers.
+
 Native decision APIs are available at `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id`. They use the existing instance authentication policy, exact run/session/scope/turn matching and opaque choice handles. Decisions expire after two minutes; accepting a response records a choice, not tool completion. Provider activation and Activity approval controls remain separate follow-on layers; messaging behavior is unchanged.
 
 ### Instance Manager
