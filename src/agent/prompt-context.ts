@@ -1,4 +1,9 @@
 // Pure prompt assembly helpers for argv/stdin runtimes.
+import type { RuntimeTransport } from '../shared/runtime-contract.js';
+import { FULLTEXT_MAX_CHARS } from './events/fulltext-bound.js';
+
+export const PROMPT_HISTORY_MAX_ROWS = 10;
+export const PROMPT_HISTORY_MAX_CHARS = 8000;
 
 export const HISTORY_BOUNDARY_INSTRUCTION = [
     '[History Boundary]',
@@ -81,6 +86,7 @@ function withOperationalContext(prompt: string, sysPrompt: string): string {
 export function buildPromptForArgs(input: {
     cli: string;
     effectiveProvider?: string | null;
+    runtimeTransport?: RuntimeTransport;
     prompt: string;
     historyBlock: string;
     sysPrompt: string;
@@ -94,9 +100,103 @@ export function buildPromptForArgs(input: {
         ? withHistoryPrompt(input.prompt, input.historyBlock)
         : input.prompt;
 
-    if (isKiroRuntime(input.cli, input.effectiveProvider) && input.sysPrompt) {
+    const needsOperationalContext = isKiroRuntime(input.cli, input.effectiveProvider)
+        || (input.cli === 'cursor' && input.runtimeTransport === 'native');
+    if (needsOperationalContext && input.sysPrompt) {
         return withOperationalContext(basePrompt, input.sysPrompt);
     }
 
     return basePrompt;
+}
+
+/** Run-owned accepted instructions; publish the next copy only after dispatch commits. */
+export interface CursorAcceptedContext {
+    readonly messages: readonly string[];
+    readonly omitted: boolean;
+}
+
+const CURSOR_CONTEXT_HEADER = '[Cursor redirect context - read-only]\n';
+const CURSOR_ORIGINAL_LABEL = '[Previous request - read-only context]\n';
+const CURSOR_ACCEPTED_LABEL = '[Accepted redirect - read-only context]\n';
+const CURSOR_CONTEXT_OMITTED = '[Some previous request context was omitted to fit the history limit.]';
+const CURSOR_ENTRY_SEPARATOR = '\n\n';
+
+/** Clip only at a UTF-16 boundary; leave user-authored text otherwise untouched. */
+function cursorContextSlice(text: string, budget: number, suffix: boolean): string {
+    const length = Math.max(0, budget);
+    if (text.length <= length) return text;
+    let start = suffix ? text.length - length : 0;
+    let end = suffix ? text.length : length;
+    const splitsPair = (at: number): boolean => at > 0 && at < text.length
+        && text.charCodeAt(at - 1) >= 0xD800 && text.charCodeAt(at - 1) <= 0xDBFF
+        && text.charCodeAt(at) >= 0xDC00 && text.charCodeAt(at) <= 0xDFFF;
+    if (splitsPair(start)) start++;
+    if (splitsPair(end)) end--;
+    return text.slice(start, Math.max(start, end));
+}
+
+/** Bound retained raw instructions independently of the later serialized budget. */
+export function appendCursorAcceptedInstruction(context: CursorAcceptedContext, instruction: string): CursorAcceptedContext {
+    const candidates = [...context.messages, instruction];
+    const first = Math.max(0, candidates.length - (PROMPT_HISTORY_MAX_ROWS - 1));
+    const messages: string[] = [];
+    let omitted = context.omitted || first > 0;
+    let remaining = PROMPT_HISTORY_MAX_CHARS;
+    for (let i = candidates.length - 1; i >= first; i--) {
+        const message = candidates[i]!;
+        const retained = cursorContextSlice(message, remaining, true);
+        if (retained.length !== message.length) omitted = true;
+        if (retained || !message) messages.push(retained);
+        remaining -= retained.length;
+    }
+    return { messages: messages.reverse(), omitted };
+}
+
+function allocateCursorContext(original: string, accepted: CursorAcceptedContext, reserveMarker: boolean): {
+    entries: string[]; omitted: boolean;
+} {
+    const entries: string[] = [];
+    const first = Math.max(0, accepted.messages.length - (PROMPT_HISTORY_MAX_ROWS - 1));
+    let omitted = accepted.omitted || first > 0;
+    let remaining = PROMPT_HISTORY_MAX_CHARS - CURSOR_CONTEXT_HEADER.length
+        - (reserveMarker ? CURSOR_ENTRY_SEPARATOR.length + CURSOR_CONTEXT_OMITTED.length : 0);
+    const retain = (text: string, label: string, suffix: boolean): void => {
+        if (!text) return;
+        const overhead = label.length + (entries.length ? CURSOR_ENTRY_SEPARATOR.length : 0);
+        const content = cursorContextSlice(text, remaining - overhead, suffix);
+        if (content.length !== text.length) omitted = true;
+        // A label without any retained content is not a contextual entry.
+        if (!content) return;
+        entries.push(label + content);
+        remaining -= overhead + content.length;
+    };
+    for (let i = accepted.messages.length - 1; i >= first; i--) {
+        retain(accepted.messages[i]!, CURSOR_ACCEPTED_LABEL, true);
+    }
+    retain(original, CURSOR_ORIGINAL_LABEL, false);
+    return { entries: entries.reverse(), omitted };
+}
+
+export function buildCursorReplacementPrompt(input: {
+    instruction: string;
+    originalRequest: string;
+    accepted: CursorAcceptedContext;
+    partialText: string;
+    sysPrompt: string;
+}): string {
+    // A second allocation reserves the marker before choosing any content.
+    let context = allocateCursorContext(input.originalRequest, input.accepted, false);
+    if (context.omitted) {
+        context = allocateCursorContext(input.originalRequest, input.accepted, true);
+        context.entries.push(CURSOR_CONTEXT_OMITTED);
+    }
+    const historyBlock = CURSOR_CONTEXT_HEADER + context.entries.join(CURSOR_ENTRY_SEPARATOR);
+    const prompt = buildPromptForArgs({
+        cli: 'cursor', runtimeTransport: 'native', isResume: false,
+        prompt: input.instruction, historyBlock, sysPrompt: input.sysPrompt,
+    });
+    const result = withSteerContext(prompt, input.partialText);
+    // Same whole-input contract as AcpRuntimeSession.send: never clip current input.
+    if (result.length > FULLTEXT_MAX_CHARS) throw new Error('acp_runtime_prompt_unsupported');
+    return result;
 }

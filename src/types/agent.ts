@@ -48,6 +48,8 @@ export type AgyLastActivitySource = 'stdout' | 'stderr' | 'transcript' | 'none';
 export interface SpawnContext {
   /** Explicit native result; never inferred from compatibility text or Activity. */
   runtimeOutcome?: RuntimeTurnOutcome;
+  /** Private once-only compatibility publication marker, never serialized as an event field. */
+  runtimeTerminalAttempted?: boolean;
   fullText: string;
   /** Set when fullText hit FULLTEXT_MAX_CHARS and later output was dropped. */
   fullTextTruncated?: boolean;
