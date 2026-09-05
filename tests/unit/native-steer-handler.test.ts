@@ -6,7 +6,7 @@ import type { CliCommandContext } from '../../src/cli/command-context.ts';
 
 const calls: Array<{ name: string; args: unknown[] }> = [];
 let busy = true, capable = true;
-let outcome: 'steered' | 'fallback-queue' | 'new-run' | Error = 'steered';
+let outcome: 'steered' | 'fallback-queue' | 'new-run' | 'cancelled' | Error = 'steered';
 const record = (name: string, args: unknown[]) => { calls.push({ name, args }); };
 test.mock.module('../../src/agent/spawn.js', { namedExports: {
     isAgentBusy: (scope: string) => { record('busy', [scope]); return busy; },
@@ -48,6 +48,14 @@ test('actual slash handler queues a no-start exactly once with captured placemen
 test('actual slash handler propagates fatal replacement without queue, kill or resend', async () => {
     const error = new Error('native_replacement_failed'); outcome = error;
     await assert.rejects(invoke, actual => actual === error);
+    assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
+});
+
+test('actual slash handler acknowledges a cancelled redirect without follow-up submission', async () => {
+    outcome = 'cancelled';
+    const result = await invoke();
+    assert.equal(result.ok, true); assert.equal(result.type, 'success');
+    assert.match(result.text!, /cancelled/i);
     assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
 });
 

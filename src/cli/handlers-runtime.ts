@@ -251,6 +251,7 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
         if (outcome === 'steered' || outcome === 'new-run') {
             return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L) };
         }
+        if (outcome === 'cancelled') return { ok: true, type: 'success', text: 'Pending steer cancelled.' };
         const { submitMessage } = await import('../orchestrator/gateway.js');
         submitMessage(prompt, { origin: iface, ...sessionScopeMeta(), midRunPolicy: 'followup' });
         return { ok: true, type: 'success', text: 'Steer unavailable for the current turn — message queued as follow-up.' };

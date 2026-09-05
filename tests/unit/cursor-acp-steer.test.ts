@@ -237,12 +237,12 @@ test('captured Slack target is retained while foreign target/chat/scope cannot r
 
 test('main Stop during cancellation suppresses B and reuses the same idle native process safely', { timeout: 10000 }, async t => {
     const f = await start(t);
-    // Call the main hook so Stop's no-start receipt is not intentionally queued by /steer.
+    // Direct outcome/reuse control; the ingress regressions below verify no resubmission.
     const redirect = agent.steerAgent(f.opts.scopeKey, 'STOPPED_B', 'web', { chatSessionId: f.opts.chatSessionId });
     await f.peer.waitFor(value => value.kind === 'cancel');
     assert.equal(agent.killActiveAgent(f.opts.scopeKey, 'user'), true);
     await f.peer.command('release-cancel');
-    assert.equal(await redirect, 'fallback-queue');
+    assert.equal(await redirect, 'cancelled');
     const stopped = await f.run.promise;
     assert.equal(stopped.runtimeOutcome?.status, 'stopped'); assert.equal(stopped.runtimeOutcome.finalText, null);
     assert.equal(f.prompts().length, 1); assert.equal(f.owner.replaceTurn, undefined);
@@ -256,6 +256,54 @@ test('main Stop during cancellation suppresses B and reuses the same idle native
     assert.equal(new Set(f.prompts().map(value => value.pid)).size, 1);
     assert.equal(new Set(f.prompts().map(value => value.sid)).size, 1);
 });
+
+for (const ingress of ['slash', 'gateway'] as const) {
+    test(`WP12-STOP-RESUBMIT: actual ${ingress} cancels pending B after Stop without queue or resurrection`, { timeout: 10000 }, async t => {
+        const f = await start(t), instruction = `STOPPED_${ingress}_B`;
+        let requestId: string | undefined;
+        const redirect = ingress === 'slash' ? f.slash(instruction) : undefined;
+        if (ingress === 'gateway') {
+            const result = gateway.submitMessage(instruction, { origin: 'web', scope: f.opts.scopeKey,
+                chatSessionId: f.opts.chatSessionId, midRunPolicy: 'steer' });
+            assert.equal(result.action, 'started'); assert.equal(result.disposition, 'steered');
+            requestId = result.requestId; assert.ok(requestId);
+        }
+        try {
+            await f.peer.waitFor(value => value.kind === 'cancel'); f.noFinal();
+            assert.equal(agent.killActiveAgent(f.opts.scopeKey, 'user'), true);
+            await f.peer.command('release-cancel');
+            if (redirect) assert.equal((await redirect).ok, true);
+            assert.equal((await f.run.promise).runtimeOutcome?.status, 'stopped');
+            // Let detached gateway continuations finish; never await a receipt the buggy
+            // branch leaves pending in its queue. No sleep or vendor work is required.
+            await new Promise<void>(resolve => setImmediate(resolve));
+            assert.deepEqual({ resubmissions: submissions.length,
+                queued: agent.messageQueue.filter(item => item.scope === f.opts.scopeKey).length,
+                queueAdmissions: f.events.filter(event => event.event === 'queue_update'
+                    && Array.isArray(event.data['queued'])
+                    && event.data['queued'].some((item: { prompt: string }) => item.prompt === instruction)).length,
+                prompts: f.prompts().length,
+                userRows: rows(f.opts.chatSessionId).filter(row => (row as { role: string; content: string }).role === 'user'
+                    && (row as { content: string }).content === instruction).length,
+            }, { resubmissions: 0, queued: 0, queueAdmissions: 0, prompts: 1, userRows: 0 });
+            assert.equal(agent.activeMainProcesses.has(f.opts.scopeKey), false);
+            if (requestId) {
+                const receipts = f.events.filter(event => event.event === 'request_settled' && event.data['requestId'] === requestId);
+                assert.equal(receipts.length, 1);
+                assert.equal(receipts[0]!.data['outcome'], 'cancelled');
+                assert.equal(receipts[0]!.data['reason'], 'native-steer-stopped');
+                assert.equal(receipts[0]!.data['scope'], f.opts.scopeKey);
+                assert.equal(receipts[0]!.data['sessionId'], f.opts.chatSessionId);
+            }
+        } finally {
+            // A RED implementation may have queued B. Remove only this fixture's
+            // queue entries before the existing bounded session/owned-child teardown.
+            for (const item of [...agent.messageQueue]) {
+                if (item.scope === f.opts.scopeKey) agent.removeQueuedMessage(item.id);
+            }
+        }
+    });
+}
 
 for (const invalidation of ['owner-object', 'scope-generation'] as const) {
     test(`actual main ${invalidation} loss during cancel drain cannot send/commit B or clear successor`, { timeout: 10000 }, async t => {

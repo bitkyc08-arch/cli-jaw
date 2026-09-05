@@ -794,7 +794,7 @@ export function canSteerAgent(scopeKey: string): boolean {
     return typeof run?.steerTurnInBand === 'function' || typeof run?.replaceTurn === 'function';
 }
 
-export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run';
+export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run' | 'cancelled';
 
 export async function steerAgent(
     scopeKey: string,
@@ -854,6 +854,10 @@ export async function steerAgent(
         if (outcome.kind === 'failed') throw outcome.error;
         if ((outcome.kind === 'dispatched') !== attempted) throw new Error('native_replacement_inconsistent_receipt');
         if (outcome.kind === 'dispatched') return 'steered';
+        if (outcome.kind === 'cancelled') {
+            settleOnce(capturedMeta.requestId, 'cancelled', { reason: 'native-steer-stopped', scope: scopeKey, sessionId: chatSessionId });
+            return 'cancelled';
+        }
         broadcast('steer_rejected', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
             sessionId: chatSessionId, reason: outcome.reason, requestId: capturedMeta.requestId }));
         return 'fallback-queue';
