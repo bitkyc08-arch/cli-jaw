@@ -57,7 +57,9 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions, mergeEnvWindowsSafe } from './spawn-env.js';
-import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext } from './prompt-context.js';
+import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext,
+    PROMPT_HISTORY_MAX_ROWS, PROMPT_HISTORY_MAX_CHARS, appendCursorAcceptedInstruction,
+    buildCursorReplacementPrompt, type CursorAcceptedContext } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -69,7 +71,8 @@ import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type { RuntimeEvent, RuntimeLivenessIdentity, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
-import { MainReplacementOwnerMismatchError, type MainReplacementResult } from './runtime/replace-turn.js';
+import { MainReplacementOwnerMismatchError, replaceAcpMainTurn, type MainReplacementResult } from './runtime/replace-turn.js';
+import { AcpReplacement } from './runtime/acp/replacement.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { syncLiveTools } from './events/helpers.js';
 import { RuntimeProjection, type RuntimeEnd } from './runtime/projection.js';
@@ -979,7 +982,8 @@ export function makeCleanEnv(
     return merged;
 }
 
-function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
+function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string,
+    maxSessions = PROMPT_HISTORY_MAX_ROWS, maxTotalChars = PROMPT_HISTORY_MAX_CHARS) {
     const recent = getRecentMessages.all(workingDir || null, chatSessionId, Math.max(1, maxSessions * 2)) as RecentMessageRow[];
     if (!recent.length) return '';
 
@@ -1568,14 +1572,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             prompt,
             settings["workingDir"],
             chatSessionId,
-            10,
-            8000,
+            PROMPT_HISTORY_MAX_ROWS,
+            PROMPT_HISTORY_MAX_CHARS,
         )
         : '';
     let agyBootstrap: AgyBootstrapEnvelope | null = null;
     let promptForArgs = buildPromptForArgs({
         cli,
         effectiveProvider,
+        runtimeTransport,
         prompt,
         historyBlock,
         sysPrompt,
@@ -1741,6 +1746,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         let selectedResult: SpawnPromiseResult | undefined;
         const ownsRun = () => !finalized && activeMainProcesses.get(scopeKey) === capturedRun
             && isCurrentSessionOwner(persistenceOwner, scopeKey);
+        const cursorTarget = opts.target ? { ...opts.target } : undefined;
+        let acceptedContext: CursorAcceptedContext = { messages: [], omitted: false };
+        const prepareReplacement = (instruction: string, partialText: string) => {
+            if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+            return { text: buildCursorReplacementPrompt({
+                instruction: prependRemoteConversationContext(instruction, cursorTarget),
+                originalRequest: promptForSnapshot, accepted: acceptedContext, partialText, sysPrompt,
+            }) };
+        };
+        const replaceHook = (instruction: string, commitInput: () => void): Promise<MainReplacementResult> =>
+            replaceAcpMainTurn(facade, instruction, () => {
+                if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+                const next = appendCursorAcceptedInstruction(acceptedContext, instruction);
+                const result: unknown = commitInput();
+                if (result !== null && (typeof result === 'object' || typeof result === 'function')
+                    && typeof (result as { then?: unknown }).then === 'function') {
+                    void Promise.resolve(result).catch(() => undefined);
+                    throw new Error('cursor_acp_async_input_commit');
+                }
+                acceptedContext = next;
+            });
         const resultFor = (outcome: RuntimeTurnOutcome): SpawnPromiseResult => ({
             text: outcome.finalText?.trim() ?? '', code: outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1,
             runtimeOutcome: outcome, traceRunId,
@@ -1804,7 +1830,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 });
                 facade = new AcpRuntimeSession(lease.session, { provider: cli, deferTurnEnd: true,
                     getTurnContext: () => ({ ...identity, isCurrent: ownsRun }),
-                    capabilities: { transport: 'native', steer: 'restart', resume: lease.session.agentCapabilities['loadSession'] === true,
+                    createReplacement: io => new AcpReplacement(io), prepareReplacement,
+                    capabilities: { transport: 'native', steer: 'cancel-reprompt', resume: lease.session.agentCapabilities['loadSession'] === true,
                         tools: true, toolOutput: true, approvals: true, questions: false, images: false, subagents: false },
                     record: (context, body) => {
                         if (body.kind === 'turn-start') nativeStarted = true;
@@ -1823,6 +1850,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.sessionId = lease.session.nativeSessionId || null;
                 if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
                 capturedRun.cancelTurn = cancelHook;
+                capturedRun.replaceTurn = replaceHook;
                 beginLiveRun(liveScope, cli); setLiveRunTraceId(liveScope, traceRunId);
                 const activityIdentity: RuntimeLivenessIdentity = { runId: traceRunId, sessionId: chatSessionId,
                     scope: scopeKey, origin, ...(opts.requestId ? { requestId: opts.requestId } : {}) };
@@ -1833,6 +1861,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 };
                 const dispose = () => {
                     ctx.stallWatchdog?.stop();
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
                     lease.child.stdout?.off('data', onIo); lease.child.stderr?.off('data', onIo);
                 };
                 try {
@@ -1894,6 +1923,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 try {
                     if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
                     if (capturedRun.cancelTurn === cancelHook) delete capturedRun.cancelTurn;
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
                     if (activeMainProcesses.get(scopeKey) === capturedRun) {
                         const child = ownedLease?.child ?? null;
                         if (releaseMainRun(scopeKey, child, ownerGeneration)) {
