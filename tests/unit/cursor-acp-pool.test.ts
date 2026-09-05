@@ -5,7 +5,7 @@ import { PassThrough, Writable } from 'node:stream';
 import type { spawn } from 'node:child_process';
 import { createCursorSession, type CursorSessionOptions } from '../../src/agent/runtime/acp/cursor-session.ts';
 import type { AcpSession } from '../../src/agent/runtime/acp/session.ts';
-import { acquireCursorRuntime, type CursorAcquireOptions } from '../../src/agent/runtime-pool.ts';
+import { acquireCursorRuntime, poolStats, type CursorAcquireOptions } from '../../src/agent/runtime-pool.ts';
 
 type Wire = Record<string, any>;
 function factoryFixture(t: TestContext) {
@@ -134,6 +134,34 @@ function poolFixture(t: TestContext) {
     return { options, sessions, creations, invalidate: () => { generation++; }, rejectAdmission: () => { admitted = false; } };
 }
 
+test('registered idle reaper expires only released Cursor entries and terminates their owned child', { timeout: 5000 }, async t => {
+    let now = 100, sweep: (() => void) | undefined;
+    t.mock.method(Date, 'now', () => now);
+    const originalInterval = globalThis.setInterval;
+    t.mock.method(globalThis, 'setInterval', (callback: () => void, delay: number) => {
+        assert.equal(delay, 60_000); sweep = callback;
+        return originalInterval(callback, delay);
+    });
+    const f = poolFixture(t), children: ReturnType<typeof factoryFixture>[] = [];
+    const options: CursorAcquireOptions = { ...f.options, createSession: input => {
+        const child = factoryFixture(t); children.push(child);
+        return createCursorSession({ ...input, spawnImpl: child.options.spawnImpl, ownedProcessOptions: child.options.ownedProcessOptions });
+    } };
+    assert.equal(poolStats().size, 0);
+    const released = await acquireCursorRuntime(options); released.release();
+    const busy = await acquireCursorRuntime({ ...options, key: { ...options.key, scopeKey: options.key.scopeKey + '-busy' } });
+    assert.ok(sweep); assert.equal(poolStats().size, 2);
+    now += 15 * 60_000 - 1; sweep();
+    assert.equal(released.session.alive, true); assert.equal(children[0]!.kills, 0);
+    now++; sweep();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(poolStats().size, 1); assert.equal(poolStats().busy, 1);
+    assert.equal(released.session.alive, false); assert.equal(children[0]!.kills, 1);
+    assert.equal(children[0]!.child.exitCode, 143);
+    assert.equal(busy.session.alive, true); assert.equal(children[1]!.kills, 0);
+    busy.release(); await busy.session.close(); await released.session.close();
+    assert.equal(poolStats().size, 0); assert.equal(children[0]!.kills, 1);
+});
 test('cursor pool reuses a drained scoped session and old released cancellation cannot touch its borrower', async t => {
     const f = poolFixture(t); const a = await acquireCursorRuntime(f.options); a.release();
     const b = await acquireCursorRuntime(f.options);
