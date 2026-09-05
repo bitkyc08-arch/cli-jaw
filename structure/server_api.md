@@ -165,7 +165,7 @@ Cursor/Grok activation and Activity controls are separate from this API foundati
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 256개 route handler 기준이다. 이 중 API 엔드포인트는 255개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 258개 route handler 기준이다. 이 중 API 엔드포인트는 257개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 `PUT /api/heartbeat`의 job은 `mentionWatch: { channel: "slack", userId: "U...", channelIds: ["C..."], maxHits?, since? }`를 선택적으로 받는다. `channelIds`는 비어 있지 않아야 하고 저장 시 `slack.channelIds` allowlist의 부분집합이어야 하며, 실행 tick 직전 현재 allowlist와 다시 교집합한다. job id가 같은 기존 값에 대해 필드가 없으면 상속하고, `null`이면 삭제하며, 잘못된 값은 `400 invalid heartbeat mention watch`다. 파일 로드 정규화에서 잘못된 `mentionWatch`는 해당 job을 `enabled: false`로 내린다. 기본 운영값은 비활성이고, 설정된 watch는 별도 daemon이 아니라 기존 `runHeartbeatJob`에서 실행된다.
 
