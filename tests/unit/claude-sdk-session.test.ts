@@ -131,3 +131,49 @@ test('turn-start observer can revoke ownership before input offer', async () => 
     assert.equal(result.status, 'stopped'); assert.equal(f.sent.length, 0);
     await f.session.close();
 });
+test('wrong first-frame correlation fences all unmarked foreign frames before metadata', async () => {
+    const f = await fixture();
+    const turn = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'stream_event', user_message_uuid: 'foreign', event: { type: 'message_start', message: { id: 'foreign-message' } } });
+    f.output.push({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'foreign text' } } });
+    f.output.push({ ...result('foreign'), session_id: 'foreign-session' });
+    assert.deepEqual(await turn, { status: 'error', finalText: null, partialText: '' });
+    assert.equal(f.metadata.length, 0); assert.equal(f.session.nativeSessionId, '');
+    assert.ok(!JSON.stringify(f.events).includes('foreign text'));
+    await f.session.close();
+});
+test('duplicate previous result UUID cannot finish the next admitted send', async t => {
+    const f = await fixture(); t.after(() => f.session.close());
+    const one = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ ...result('first'), uuid: 'result1' }); await one;
+    const two = f.session.send({ text: 'two' }, () => {});
+    f.output.push({ ...result('first'), uuid: 'result1' });
+    f.output.push({ ...result('second'), uuid: 'result2' });
+    assert.equal((await two).finalText, 'second');
+});
+test('streaming delta is available for salvage before any completed assistant snapshot', async t => {
+    const f = await fixture(); t.after(() => f.session.close());
+    const turn = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'stream_event', event: { type: 'message_start', message: { id: 'm1' } } });
+    f.output.push({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } });
+    f.output.push({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'salvage' } } });
+    f.output.close();
+    assert.deepEqual(await turn, { status: 'error', finalText: null, partialText: 'salvage' });
+});
+test('idle result UUID is fenced before next send and cannot replay into its outcome', async t => {
+    const f = await fixture(); t.after(() => f.session.close());
+    f.output.push({ ...result('idle'), uuid: 'idle-result' });
+    await new Promise(resolve => setImmediate(resolve));
+    const turn = f.session.send({ text: 'current' }, () => {});
+    f.output.push({ ...result('idle'), uuid: 'idle-result', session_id: 'stale-session' });
+    f.output.push({ ...result('actual'), uuid: 'actual-result' });
+    assert.equal((await turn).finalText, 'actual'); assert.equal(f.metadata.length, 1);
+});
+test('usage observer revocation cannot return a successful stale final', async () => {
+    let current = true;
+    const f = await fixture({ getTurnContext: () => ({ runId: 'r', sessionId: 'j', scope: 's', turnId: 't', audience: 'internal', isCurrent: () => current }) });
+    const turn = f.session.send({ text: 'one' }, event => { if (event.kind === 'usage') current = false; });
+    f.output.push(result('stale answer'));
+    assert.deepEqual(await turn, { status: 'error', finalText: null, partialText: '' });
+    await f.session.close(); assert.equal(f.session.alive, false);
+});

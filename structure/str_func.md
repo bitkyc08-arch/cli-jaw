@@ -84,7 +84,7 @@ cli-jaw/
 │   │   │   ├── requests.ts   ← ephemeral exact-bound decision registry and safe-view admission (158L)
 │   │   │   ├── pi-projection.ts ← Pi raw tool snapshots and accepted text/reasoning projection (97L)
 │   │   │   ├── pi-raw-trace.ts ← bounded delta-only raw retention with explicit control summaries (81L)
-│   │   │   ├── projection.ts ← bounded redaction-before-clip snapshots and per-run failure latch (231L)
+│   │   │   ├── projection.ts ← bounded redaction-before-clip snapshots and per-run failure latch (242L)
 │   │   │   ├── codex-projection.ts ← owned Codex notification mapping (98L)
 │   │   │   ├── outcome.ts   ← non-journal native result handoff and stop precedence (31L)
 │   │   │   ├── session.ts   ← native session/turn/control port (23L)
