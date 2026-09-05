@@ -1,3 +1,4 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SlackSocketClient, type SlackEnvelope, type SlackSocketLike } from '../../src/slack/socket.ts';
@@ -13,6 +14,15 @@ import {
 } from '../../src/slack/events.ts';
 
 // ─── fake socket harness ────────────────────────────
+
+test.beforeEach(t => {
+    const unexpectedNetwork: string[] = [];
+    t.mock.method(globalThis, 'fetch', async (input: unknown) => {
+        unexpectedNetwork.push(String(input));
+        throw new Error('Slack inbound fixture attempted unexpected network');
+    });
+    t.after(() => assert.deepEqual(unexpectedNetwork, [], 'all Slack traffic must use explicit fixtures'));
+});
 
 type Harness = {
     client: SlackSocketClient;
@@ -631,22 +641,29 @@ test('resolveEventText falls back to blocks and strips the mention', () => {
 
 // ─── activation: inbound reaches the shared agent pipeline ──
 
-test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target', async () => {
+test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target', { timeout: 5_000 }, async () => {
     // C-ACTIVATION-GROUNDING-01: this is the proof that the inbound path
     // actually reaches the agent pipeline rather than merely compiling.
     const { mock } = await import('node:test');
     const calls: Array<{ prompt: string; meta: Record<string, unknown> }> = [];
+    const collected: string[] = [];
 
     mock.module('../../src/orchestrator/gateway.ts', {
         namedExports: {
             submitMessage: (prompt: string, meta: Record<string, unknown>) => {
                 calls.push({ prompt, meta });
-                return { action: 'started', requestId: 'R1' };
+                return { action: 'started', disposition: 'new_run', requestId: `R${calls.length}` };
             },
         },
     });
     mock.module('../../src/orchestrator/collect.ts', {
-        namedExports: { orchestrateAndCollect: async () => 'agent reply' },
+        namedExports: {
+            orchestrateAndCollect: async () => { throw new Error('inbound must use the data collector'); },
+            orchestrateAndCollectData: async (prompt: string) => {
+                collected.push(prompt);
+                return { text: 'agent reply', data: {} };
+            },
+        },
     });
     mock.module('../../src/slack/send-only-client.ts', {
         namedExports: {
@@ -657,8 +674,61 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
         },
     });
 
+    // Keep naming/context deterministic without letting invalid fixture tokens
+    // reach users.info, conversation history, attachment recovery or reactions.
+    const identity = await import('../../src/slack/identity.ts');
+    mock.module('../../src/slack/identity.js', { namedExports: {
+        ...identity,
+        resolveSenderIdentity: async (event: { user?: string }) => ({
+            id: event.user || '', name: event.user || '', kind: 'user', isBot: false, resolved: false,
+        }),
+    } });
+    const conversation = await import('../../src/slack/conversation.ts');
+    mock.module('../../src/slack/conversation.js', { namedExports: {
+        ...conversation,
+        resolveConversationInfo: async (_token: string, channel: string) => ({ id: channel, name: channel, kind: 'unknown', resolved: false }),
+        resolveThreadInfo: async () => undefined,
+        admitHistoryStart: () => false,
+    } });
+    const attachments = await import('../../src/slack/attachment-recovery.ts');
+    mock.module('../../src/slack/attachment-recovery.js', { namedExports: {
+        ...attachments, recoverSlackAttachments: async () => [],
+    } });
+    const api = await import('../../src/slack/api.ts');
+    mock.module('../../src/slack/api.js', { namedExports: {
+        ...api, addSlackReaction: async () => ({ ok: true }), removeSlackReaction: async () => ({ ok: true }),
+    } });
+    const progress = await import('../../src/slack/progress.ts');
+    mock.module('../../src/slack/progress.js', { namedExports: {
+        ...progress, startSlackProgress: async () => null,
+    } });
+    const ingress = await import('../../src/slack/ingress.ts');
+    const completed: Promise<void>[] = [];
+    mock.module('../../src/slack/ingress.js', { namedExports: {
+        ...ingress,
+        admitSlackRun: (params: Parameters<typeof ingress.admitSlackRun>[0]) => {
+            const result = ingress.admitSlackRun(params);
+            if (result.laneTail) completed.push(result.laneTail);
+            return result;
+        },
+        enqueueSlackIngress: (key: string, task: (signal: AbortSignal) => Promise<void>) => {
+            const completion = Promise.withResolvers<void>();
+            void completion.promise.catch(() => undefined); // preserve rejection for deliver() without an unhandled gap
+            const accepted = ingress.enqueueSlackIngress(key, async signal => {
+                try { await task(signal); completion.resolve(); }
+                catch (error) { completion.reject(error); throw error; }
+            });
+            if (accepted) completed.push(completion.promise);
+            return accepted;
+        },
+    } });
+
     const { handleSlackEnvelope } = await import('../../src/slack/bot.ts');
-    await handleSlackEnvelope({
+    async function deliver(envelope: SlackEnvelope) {
+        await handleSlackEnvelope(envelope);
+        while (completed.length) await Promise.all(completed.splice(0));
+    }
+    await deliver({
         envelope_id: 'A1',
         type: 'events_api',
         payload: {
@@ -672,16 +742,9 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
             },
         },
     });
-    // The inbound path resolves sender identity before admission, bounded by a
-    // real-time deadline. This test does not mock users.info, so it always waits
-    // out that deadline; poll past it instead of assuming a fixed 20ms.
-    for (let i = 0; i < 200 && calls.length === 0; i += 1) {
-        await new Promise(resolve => setTimeout(resolve, 5));
-    }
-
     assert.equal(calls.length, 1, `submitMessage called ${calls.length} times`);
-    // Identity resolution fails here (no users.info mock), so the sender degrades
-    // to a raw id and the prompt body is unchanged apart from that context line.
+    assert.equal(collected.length, 1, 'admitted run uses the mocked data collector, never a model');
+    // The explicit unresolved identity fixture retains the raw sender id.
     assert.ok(calls[0]!.prompt.endsWith('run the thing'), calls[0]!.prompt);
     assert.equal(calls[0]!.meta['origin'], 'slack');
     const target = calls[0]!.meta['target'] as { channel?: string; targetId?: string; threadId?: string };
@@ -706,7 +769,7 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
     };
 
     // Reverse order on purpose: the copy that gets REJECTED arrives first.
-    await handleSlackEnvelope({
+    await deliver({
         envelope_id: 'E1', type: 'events_api',
         payload: {
             event: {
@@ -715,16 +778,13 @@ test('handleSlackEnvelope dispatches a DM into submitMessage with a slack target
             },
         },
     });
-    await handleSlackEnvelope({ envelope_id: 'E2', type: 'events_api', payload: { event: mentionEvent } });
-    for (let i = 0; i < 200 && calls.length === runsBefore; i += 1) {
-        await new Promise(resolve => setTimeout(resolve, 5));
-    }
+    await deliver({ envelope_id: 'E2', type: 'events_api', payload: { event: mentionEvent } });
     assert.equal(calls.length - runsBefore, 1, 'the canonical mention must still run exactly once');
 
     // A Slack redelivery of the same ts must be absorbed.
-    await handleSlackEnvelope({ envelope_id: 'E3', type: 'events_api', payload: { event: mentionEvent } });
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await deliver({ envelope_id: 'E3', type: 'events_api', payload: { event: mentionEvent } });
     assert.equal(calls.length - runsBefore, 1, 'a redelivery of the same ts must not run again');
+    assert.equal(collected.length, 2, 'DM and canonical mention each produce exactly one mocked reply');
 });
 
 // The gate is the one place every settings path passes through: the route, the
