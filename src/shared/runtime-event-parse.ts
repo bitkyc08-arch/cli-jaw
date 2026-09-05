@@ -33,6 +33,8 @@ function requestView(x: unknown): RuntimeRequestView | null {
     return { title: x['title'], fields };
 }
 
+export { requestView as parseRuntimeRequestView };
+
 export function parseRuntimeEvent(value: unknown): RuntimeEvent | null {
     if (!record(value) || value['version'] !== 1 || !id(value['runId']) ||
         !id(value['sessionId']) || !id(value['scope']) || !id(value['turnId']) ||
