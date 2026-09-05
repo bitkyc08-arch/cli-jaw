@@ -403,7 +403,7 @@ Check everything at once: `jaw doctor`
 The dashboard is your command center. `jaw dashboard` starts the manager at `http://localhost:24576`; individual agent Web UIs are served by `jaw serve` from `http://localhost:3457` and nearby managed ports.
 Live Web/TUI updates use the SSE-first `GET /api/events` channel, with legacy WebSocket fallback only for older servers where SSE never opens.
 
-Codex app-server also records versioned, redacted runtime events independently of channel delivery. Native terminal handling keeps empty final answers distinct from live previews; Slack/Telegram/Discord retain their existing final-response, acknowledgement and queue-notice flow. The Activity presentation mode is a separate follow-on change, not enabled by this event foundation.
+Codex app-server and Pi RPC also record versioned, redacted runtime events independently of channel delivery. Native terminal handling keeps empty final answers distinct from live previews; Slack/Telegram/Discord retain their existing final-response, acknowledgement and queue-notice flow. The Activity presentation mode is a separate follow-on change, not enabled by this event foundation.
 
 ### Instance Manager
 

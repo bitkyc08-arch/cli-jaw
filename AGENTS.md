@@ -176,7 +176,7 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Architecture Docs Sync
 
-- Native event foundation: `src/shared/runtime-contract.ts` + `src/agent/runtime/*` own canonical Codex projections and optional explicit outcomes. `agent_runtime`/`agent_runtime_gap` publish directly to SSE, bypassing messaging listeners. Native compatibility terminals carry only finality/status and existing trace identity; no public partial/outcome object. Preserve legacy final selection when outcome is absent, and interrupted MESSAGE salvage before exit settlement. See `structure/runtime-integration.md` and `structure/stream-events.md`; Activity layout/default settings are separate follow-on work.
+- Native event foundation: `src/shared/runtime-contract.ts` + `src/agent/runtime/*` own canonical Codex/Pi projections and optional explicit outcomes. `agent_runtime`/`agent_runtime_gap` publish directly to SSE, bypassing messaging listeners. Native compatibility terminals carry only finality/status and existing trace identity; no public partial/outcome object. Preserve legacy final selection when outcome is absent, and interrupted MESSAGE salvage before exit settlement. See `structure/runtime-integration.md` and `structure/stream-events.md`; Activity layout/default settings are separate follow-on work.
 
 - `structure/` is the current architecture-doc hub; do not point new docs at `devlog/structure/`.
 - Keep `README.md`, root `AGENTS.md`, root `CLAUDE.md`, and `structure/AGENTS.md` synchronized when command/API/orchestration surfaces change.
