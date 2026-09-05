@@ -20,7 +20,8 @@ const settings = { ...config.settings, cli: 'cursor', workingDir: config.JAW_HOM
     multiSession: { enabled: true, maxConcurrent: 4, midRunPolicy: 'steer' } };
 test.mock.module('../../src/core/config.js', { namedExports: { ...config, settings,
     detectCli: forbidden('detectCli'), detectAllCli: forbidden('detectAllCli') } });
-const { activeMainProcesses, canSteerAgent, steerAgent } = await import('../../src/agent/spawn.ts');
+const { activeMainProcesses, canSteerAgent, steerAgent, enqueueMessage, messageQueue } = await import('../../src/agent/spawn.ts');
+const { MainReplacementOwnerMismatchError } = await import('../../src/agent/runtime/replace-turn.ts');
 const { db } = await import('../../src/core/db.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { admitRequest, settleAllPending } = await import('../../src/orchestrator/request-registry.ts');
@@ -48,6 +49,61 @@ function capture() {
     const off = subscribe(event => events.push({ type: event.event, data: event.data }));
     return { events, off };
 }
+
+function heldReplacement(opts: ReturnType<typeof options>) {
+    const entered = Promise.withResolvers<void>(), dispatch = Promise.withResolvers<void>();
+    let stopped = false;
+    const run: MainRunState = { process: null, starting: false, steering: false, ownerGeneration: 7,
+        meta: { cli: 'cursor', origin: 'web', chatSessionId: opts.chatSessionId },
+        cancelTurn: () => { stopped = true; },
+        replaceTurn: async (_text, commitInput) => {
+            entered.resolve(); await dispatch.promise;
+            commitInput(); return { kind: 'dispatched' };
+        } };
+    activeMainProcesses.set(opts.scopeKey, run); admitRequest(opts.requestId, opts.scopeKey);
+    return { run, entered, dispatch, get stopped() { return stopped; } };
+}
+
+for (const invalidation of ['map replacement', 'generation change'] as const) {
+    test(`deferred replacement refuses stale input after ${invalidation}`, async () => {
+        const opts = options(), f = heldReplacement(opts), { events, off } = capture();
+        const before = db.prepare('SELECT COUNT(*) AS n FROM messages').get();
+        let resolved = false;
+        const steering = steerAgent(opts.scopeKey, 'held B', 'web', { requestId: opts.requestId }).then(outcome => {
+            resolved = true;
+            if (outcome === 'fallback-queue') enqueueMessage('held B', 'web', { scope: opts.scopeKey, chatSessionId: opts.chatSessionId });
+            return outcome;
+        });
+        try {
+            await f.entered.promise;
+            if (invalidation === 'map replacement') activeMainProcesses.set(opts.scopeKey, { ...f.run });
+            else f.run.ownerGeneration++;
+            const rejected = assert.rejects(steering, error => error instanceof MainReplacementOwnerMismatchError
+                && error.code === 'native_replacement_owner_mismatch' && error.message === error.code);
+            f.dispatch.resolve(); await rejected;
+            assert.equal(resolved, false);
+            assert.deepEqual(db.prepare('SELECT COUNT(*) AS n FROM messages').get(), before);
+            assert.deepEqual(events, []);
+            assert.equal(messageQueue.some(item => item.scope === opts.scopeKey), false);
+        } finally { f.dispatch.resolve(); off(); }
+    });
+}
+
+test('Stop with the same owner still commits an already dispatched replacement once', async () => {
+    const opts = options(), f = heldReplacement(opts), { events, off } = capture();
+    const steering = steerAgent(opts.scopeKey, 'held B', 'web', { requestId: opts.requestId });
+    try {
+        await f.entered.promise;
+        f.run.cancelTurn!('user');
+        assert.equal(f.stopped, true); assert.equal(activeMainProcesses.get(opts.scopeKey), f.run);
+        f.dispatch.resolve(); assert.equal(await steering, 'steered');
+        assert.deepEqual(rows(opts.chatSessionId), [{ role: 'user', content: 'held B' }]);
+        assert.equal(events.filter(e => e.type === 'new_message').length, 1);
+        assert.equal(events.filter(e => e.type === 'steer_started' && e.data['localDispatch'] === true).length, 1);
+        assert.equal(events.filter(e => e.type === 'request_settled' && e.data['outcome'] === 'steered').length, 1);
+        assert.equal(messageQueue.some(item => item.scope === opts.scopeKey), false);
+    } finally { f.dispatch.resolve(); off(); }
+});
 
 test('common replacement hook dispatches for Cursor and other providers before in-band steering', async () => {
     for (const cli of ['cursor', 'claude', 'codex-app']) {
