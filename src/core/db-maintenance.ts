@@ -27,9 +27,23 @@ export function readDatabaseStorageStats(database: Database.Database): DatabaseS
     const freelistCount = Number(database.pragma('freelist_count', { simple: true }));
     return { pageCount, freelistCount, freeRatio: pageCount > 0 ? freelistCount / pageCount : 0 };
 }
+export class DatabaseBusyError extends Error {
+    constructor(message: string) { super(message); this.name = 'DatabaseBusyError'; }
+}
+
+/** Checkpoint the WAL and VACUUM. Throws DatabaseBusyError instead of reporting
+ *  a half-done checkpoint as success: wal_checkpoint(TRUNCATE) returns busy=1
+ *  when a reader still pins the WAL snapshot (typically a running server), and
+ *  the WAL then stays on disk however the VACUUM went. */
 export function maintainDatabase(database: Database.Database): { before: DatabaseStorageStats; after: DatabaseStorageStats } {
     const before = readDatabaseStorageStats(database);
-    database.pragma('wal_checkpoint(TRUNCATE)');
+    const checkpoint = database.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number; log: number; checkpointed: number }>;
+    const result = checkpoint[0];
+    if (!result || result.busy !== 0 || result.log !== result.checkpointed) {
+        throw new DatabaseBusyError(
+            `WAL checkpoint could not complete (busy=${result?.busy ?? '?'}, log=${result?.log ?? '?'}, checkpointed=${result?.checkpointed ?? '?'}) — another connection is reading the database; stop the server (jaw service stop) or retry when idle`,
+        );
+    }
     database.exec('VACUUM');
     return { before, after: readDatabaseStorageStats(database) };
 }

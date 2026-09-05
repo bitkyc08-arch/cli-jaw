@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import { migrateOversizedToolLogs, readDatabaseStorageStats } from '../../src/core/db-maintenance.ts';
+import { DatabaseBusyError, maintainDatabase, migrateOversizedToolLogs, readDatabaseStorageStats } from '../../src/core/db-maintenance.ts';
 const traceCalls: Array<[number, number]> = [];
 test.mock.module('../../src/trace/store.js', {
     namedExports: {
@@ -92,6 +92,38 @@ test('DBR-003: jaw db maintain reports before/after and reclaims free pages', ()
         assert.match(run.stdout, /before: page_count=\d+ freelist_count=\d+/);
         assert.match(run.stdout, /after: page_count=\d+ freelist_count=0/);
     } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('DBR-004: a checkpoint pinned by another reader fails loudly instead of reporting success', () => {
+    // The C-phase verifier found the first cut ignored wal_checkpoint's return
+    // value: with a reader holding a WAL snapshot it printed freelist_count=0
+    // and exit 0 while a 39 MB -wal stayed on disk.
+    const home = mkdtempSync(join(tmpdir(), 'jaw-db-busy-'));
+    const path = join(home, 'jaw.db');
+    const writer = new Database(path);
+    const reader = new Database(path);
+    try {
+        writer.pragma('journal_mode = WAL');
+        writer.exec('CREATE TABLE payloads (id INTEGER PRIMARY KEY, body TEXT)');
+        writer.prepare('INSERT INTO payloads(body) VALUES (?)').run('seed');
+        // Reader opens a snapshot; a later write then lands in the WAL and cannot
+        // be checkpointed past that snapshot.
+        reader.pragma('journal_mode = WAL');
+        const pinned = reader.prepare('SELECT count(*) FROM payloads');
+        const iter = pinned.iterate();
+        iter.next();
+        writer.prepare('INSERT INTO payloads(body) VALUES (?)').run('x'.repeat(100_000));
+        writer.pragma('busy_timeout = 100');
+        assert.throws(() => maintainDatabase(writer), (e: unknown) => e instanceof DatabaseBusyError && /another connection/.test((e as Error).message));
+        iter.return?.();
+        // Once the reader lets go, the same call succeeds.
+        const done = maintainDatabase(writer);
+        assert.equal(done.after.freelistCount, 0);
+    } finally {
+        reader.close();
+        writer.close();
         rmSync(home, { recursive: true, force: true });
     }
 });
