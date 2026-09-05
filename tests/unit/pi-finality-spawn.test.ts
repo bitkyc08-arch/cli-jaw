@@ -102,6 +102,14 @@ test('actual pooled Pi-to-lifecycle final uses only typed final and canonical ja
         assert.doesNotMatch(JSON.stringify(events),/private-session/);
     } finally {unsub();}
 });
+test('throwing exit observer cannot bypass lifecycle cleanup or final MESSAGE',async () => {
+    const opts=options();
+    const result=await spawnAgent('fixture',{...opts,lifecycle:{onExit:() => {throw new Error('fixture observer');}}}).promise;
+    assert.equal(result.text,'FINAL ONLY');assert.equal(result.code,0);
+    assert.equal(result.runtimeOutcome?.status,'done');
+    assert.equal(activeMainProcesses.has(opts.scopeKey),false);
+    assert.deepEqual(db.prepare('SELECT content FROM messages WHERE session_id=? AND role=?').all(opts.chatSessionId,'assistant'),[{content:'FINAL ONLY'}]);
+});
 test('kill-steered Pi rejection stores interrupted MESSAGE before the real exit barrier despite journal failure',async () => {
     process.env.PI_SPAWN_HOLD='1';failJournal=true;
     const opts=options();const watermark=getMaxMessageId(opts.chatSessionId);
