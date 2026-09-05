@@ -2,6 +2,14 @@ export type RuntimeTransport = 'native' | 'print';
 export type RuntimeSteerMode = 'native-input' | 'cancel-reprompt' | 'queued' | 'restart';
 export type RuntimePhase = 'commentary' | 'final' | 'unknown';
 export type RuntimeItemStatus = 'running' | 'done' | 'error' | 'stopped';
+/** Private owned-I/O callback identity. Never a wire event or content carrier. */
+export interface RuntimeLivenessIdentity {
+    runId: string;
+    sessionId: string;
+    scope: string;
+    origin: string;
+    requestId?: string;
+}
 export interface RuntimeTurnOutcome {
     status: 'done' | 'error' | 'stopped';
     /** null means absent; an empty string is an authoritative empty answer. */

@@ -83,7 +83,7 @@ const trimEventsStmt = db.prepare('DELETE FROM trace_events WHERE rowid IN (SELE
 const liveRunIdsStmt = db.prepare('SELECT id FROM trace_runs');
 const seqCache = new Map<string, number>();
 
-function createTraceId(): string { return `tr_${crypto.randomUUID().replace(/-/g, '')}`; }
+export function createTraceId(): string { return `tr_${crypto.randomUUID().replace(/-/g, '')}`; }
 function ensureTraceDir(runId: string): string {
     const dir = join(TRACE_DIR, runId);
     fs.mkdirSync(dir, { recursive: true });
