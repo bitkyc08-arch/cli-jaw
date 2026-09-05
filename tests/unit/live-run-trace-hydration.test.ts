@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { registerOrchestrateRoutes } from '../../src/routes/orchestrate.ts';
+import { registerMessageRoutes } from '../../src/routes/messages.ts';
+import { db } from '../../src/core/db.ts';
 import { startTraceRun, stampTraceTool, updateTraceToolRow, countToolTraceRows } from '../../src/trace/store.ts';
 import { beginLiveRun, setLiveRunTraceId, appendLiveRunTool, clearLiveRun } from '../../src/agent/live-run-state.ts';
 import type { ToolEntry } from '../../src/types/agent.ts';
@@ -168,4 +170,23 @@ test('snapshot recalculates one omission marker for 161 durable tools and preser
     assert.equal(reconstructed[0]?.label, '2 tool events omitted');
     assert.deepEqual(reconstructed.slice(1).map(t => t.traceSeq), newestSequences, 'all 159 newest real tools survive');
     clearLiveRun(SCOPE);
+});
+
+test('actual messages API bounds a legacy tool blob before sending it to clients', async () => {
+    const raw = JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ icon: 'x', label: `raw-${i}`,
+        toolType: 'tool', stepRef: `raw-${i}`, detail: 'x'.repeat(600) })));
+    const id = Number(db.prepare("INSERT INTO messages(role,content,session_id,tool_log) VALUES('assistant','fixture','default',?)").run(raw).lastInsertRowid);
+    const app = express(); registerMessageRoutes(app, noAuth);
+    const server = createServer(app);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address(); assert.ok(address && typeof address === 'object');
+    try {
+        const response = await fetch(`http://127.0.0.1:${address.port}/api/messages?session=default`, { signal: AbortSignal.timeout(3000) });
+        assert.equal(response.status, 200);
+        const body = await response.json() as { data: Array<{ id: number; tool_log: string }> };
+        const row = body.data.find(message => message.id === id)!;
+        assert.ok(row.tool_log.length <= 64_000); assert.notEqual(row.tool_log, raw);
+        const tools = JSON.parse(row.tool_log) as Array<{ label: string }>;
+        assert.ok(tools.length <= 160); assert.equal(tools.at(-1)?.label, 'raw-199');
+    } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
