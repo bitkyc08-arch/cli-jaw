@@ -115,7 +115,8 @@ const { db, getMaxMessageId, getSteerSalvageAfter } = database;
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { poolStats } = await import('../../src/agent/runtime-pool.ts');
 const { runtimeRequests } = await import('../../src/agent/runtime/requests.ts');
-const { hasClaudeRuns, hasClaudeWorker } = await import('../../src/agent/runtime/claude-run-controls.ts');
+const { hasClaudeRuns, hasClaudeWorker, reserveClaudeRun } = await import('../../src/agent/runtime/claude-run-controls.ts');
+const { beginSteerInput } = await import('../../src/agent/steer-input-guard.ts');
 const { bumpScopeSessionGeneration } = await import('../../src/agent/session-persistence.ts');
 const { getLiveRun, beginLiveRun, setLiveRunTraceId, replaceLiveRunTools, clearLiveRun } = await import('../../src/agent/live-run-state.ts');
 const { claimWorker, getWorkerSlot, getWorkerProgressSnapshot, clearWorkersForScope } = await import('../../src/orchestrator/worker-registry.ts');
@@ -158,6 +159,19 @@ test.afterEach(async () => {
     assert.equal(hasClaudeRuns(), false); assert.equal(poolStats().busy, 0);
 });
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+runTest('scoped and global Stop fence pending redirects before synchronous Claude cancellation callbacks', async () => {
+    for (const global of [false, true]) {
+        const opts = options(), guard = beginSteerInput(opts.scopeKey), observed: boolean[] = [];
+        const control = reserveClaudeRun({ runId: opts.requestId, scope: opts.scopeKey,
+            workerId: 'stop-order-' + opts.requestId, cancel: () => { observed.push(guard.isCancelled()); } });
+        try {
+            assert.equal(global ? killAllAgents('user') : killActiveAgent(opts.scopeKey, 'user'), true);
+            assert.deepEqual(observed, [true], 'pending input cannot survive a synchronous provider callback');
+            assert.equal(hasClaudeWorker('stop-order-' + opts.requestId), true, 'Stop still retains physical-cleanup ownership');
+        } finally { control.finish(); guard.release(); }
+    }
+});
 
 runTest('main two turns use the public factory once and deliver full lifecycle results with final-only messages', async () => {
     const opts = options(), events: Array<{ type: string; data: Record<string, any> }> = [];
