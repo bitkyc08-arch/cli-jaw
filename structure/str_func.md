@@ -72,6 +72,9 @@ cli-jaw/
 │   │   └── skill-cache.ts    ← 활성 스킬 슬래시 커맨드 캐시 (registerSkillLoader, getSkillCommandsCache, invalidateSkillCommandsCache) (44L)
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
+│   │   │   ├── acp/          ← shared v1 wire boundary and bounded native transport
+│   │   │   │   ├── wire.ts  ← strict single-envelope decoder shared with Copilot (43L)
+│   │   │   │   └── connection.ts ← bounded full-duplex framing, dispatch/result and close ownership (207L)
 │   │   │   ├── pi-projection.ts ← Pi raw tool snapshots and accepted text/reasoning projection (97L)
 │   │   │   ├── pi-raw-trace.ts ← bounded delta-only raw retention with explicit control summaries (81L)
 │   │   │   ├── projection.ts ← bounded redaction-before-clip snapshots and per-run failure latch (231L)
@@ -207,7 +210,7 @@ cli-jaw/
 │   │   ├── registry.ts       ← 13개 CLI/모델 단일 소스 + canonical defaults + top-level `pi`/`agy`/`cursor`/`ai-e`/`claude-e`/`kiro-code` (334L)
 │   │   ├── registry-live.ts  ← buildLiveCliRegistry — Kiro inventory + ocx 모델/모델별 effort 동적 병합 (effortsByModel/defaultEffortByModel) (136L)
 │   │   ├── readiness.ts      ← CLI별 인증/설치 상태 점검 + Pi npm-exec readiness + AGY runtime auth hint + `claude-e` underlying Claude auth/readiness bridge (CliReadiness[]) (174L)
-│   │   ├── acp-client.ts     ← Copilot ACP JSON-RPC 클라이언트 (394L)
+│   │   ├── acp-client.ts     ← Copilot ACP JSON-RPC 클라이언트 (391L)
 │   │   ├── command-context.ts ← 공유 커맨드 컨텍스트 팩토리 + runSkillReset 위임 + regenerateB 유지 (160L)
 │   │   ├── connector.ts      ← dashboard connector CLI API bridge (board/notes/reminders/audit) (73L)
 │   │   ├── reminders.ts      ← local reminders CLI action helpers (35L)

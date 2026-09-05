@@ -96,6 +96,64 @@ test('AcpClient request resolves from matching response id', async () => {
     assert.deepEqual(out, { ok: true });
 });
 
+test('AcpClient replies to colliding permission request without settling pending client request', async () => {
+    const acp = new AcpClient();
+    const writes: string[] = [];
+    // Only stdin is consumed here; keep the real request, dispatcher and permission handler.
+    acp.proc = {
+        stdin: {
+            writable: true,
+            write: (line: string) => { writes.push(line); return true; },
+        },
+    } as unknown as NonNullable<AcpClient['proc']>;
+
+    const promise = acp.request('session/prompt', { sessionId: 'collision-fixture' }, 1000);
+    const sent = JSON.parse(writes[0]!);
+    const originalPending = acp._pending.get(sent.id);
+    let settled = false;
+    const observed = promise.then(
+        () => { settled = true; },
+        () => { settled = true; },
+    );
+    const permissionParams = { options: [
+        { id: 'deny_this', name: 'Deny' },
+        { id: 'approve_this', name: 'Approve' },
+    ] };
+    const permissionEvents: unknown[] = [];
+    acp.on('session/request_permission', params => permissionEvents.push(params));
+
+    try {
+        assert.ok(originalPending);
+        acp._handleLine(JSON.stringify({
+            jsonrpc: '2.0', id: sent.id,
+            method: 'session/request_permission', params: permissionParams,
+        }));
+        await Promise.resolve();
+
+        assert.equal(writes.length, 2, 'peer permission reply must precede the prompt response');
+        assert.deepEqual(JSON.parse(writes[1]!), {
+            jsonrpc: '2.0', id: sent.id,
+            result: { outcome: { outcome: 'selected', optionId: 'approve_this' } },
+        });
+        assert.deepEqual(permissionEvents, [permissionParams]);
+        assert.equal(settled, false, 'peer request must not settle the client promise');
+        assert.equal(acp._pending.size, 1);
+        assert.equal(acp._pending.get(sent.id), originalPending);
+
+        acp._handleLine(JSON.stringify({
+            jsonrpc: '2.0', id: sent.id, result: { stopReason: 'end_turn' },
+        }));
+        assert.deepEqual(await promise, { stopReason: 'end_turn' });
+        assert.equal(acp._pending.size, 0);
+        assert.equal(writes.length, 2);
+    } finally {
+        if (originalPending?.timer) clearTimeout(originalPending.timer);
+        acp._pending.delete(sent.id);
+        originalPending?.resolve(undefined);
+        await observed;
+    }
+});
+
 test('AcpClient request rejects immediately when stdin is not writable', async () => {
     const acp = new AcpClient();
     await assert.rejects(
@@ -183,4 +241,126 @@ test('_handleLine resets idle timer via _activityPing on valid JSON', async () =
     // Invalid JSON → no ping
     acp._handleLine('not json at all');
     assert.equal(pingCount, 2);
+});
+
+function createCapturedClient() {
+    const acp = new AcpClient();
+    const writes: string[] = [];
+    // Fake only the child stdin boundary; exercise the real serializer and handlers.
+    acp.proc = {
+        stdin: {
+            writable: true,
+            write: (line: string) => { writes.push(line); return true; },
+        },
+    } as unknown as NonNullable<AcpClient['proc']>;
+    return { acp, writes };
+}
+
+test('AcpClient ignores malformed, invalid-version and ambiguous envelopes without pending or activity effects', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { acp, writes } = createCapturedClient();
+    const promise = acp.request('session/prompt', {}, 1000);
+    const id = JSON.parse(writes[0]!).id;
+    const pending = acp._pending.get(id);
+    let settled = false;
+    void promise.then(() => { settled = true; }, () => { settled = true; });
+    let pings = 0;
+    acp._activityPing = () => { pings++; };
+    const emitted = t.mock.method(acp, 'emit');
+    const logged = t.mock.method(console, 'log', () => {});
+    const previousDebug = process.env['DEBUG'];
+    process.env['DEBUG'] = '1';
+    const response = { jsonrpc: '2.0', id, result: 'must-not-resolve' };
+    const callback = { jsonrpc: '2.0', id, method: 'session/request_permission' };
+    const invalidLines = [
+        '', '  ', 'not-json secret-payload', '{', 'null', 'true', '42', '[]',
+        JSON.stringify([response]),
+        JSON.stringify({ id, result: 'missing-version' }),
+        JSON.stringify({ ...response, jsonrpc: '1.0' }),
+        JSON.stringify({ ...response, id: null }),
+        JSON.stringify({ ...response, id: Number.MAX_SAFE_INTEGER + 1 }),
+        JSON.stringify({ ...callback, method: '' }),
+        JSON.stringify({ ...callback, method: 7 }),
+        JSON.stringify({ ...callback, result: null }),
+        JSON.stringify({ ...callback, error: { code: -1, message: 'ambiguous' } }),
+        JSON.stringify({ ...response, error: { code: -1, message: 'ambiguous' } }),
+        JSON.stringify({ jsonrpc: '2.0', id }),
+        JSON.stringify({ jsonrpc: '2.0', id, error: { code: 'bad', message: 'bad' } }),
+        JSON.stringify({ jsonrpc: '2.0', id, error: { code: -1, message: 7 } }),
+    ];
+    try {
+        assert.ok(pending);
+        for (const line of invalidLines) {
+            assert.doesNotThrow(() => acp._handleLine(line));
+            await Promise.resolve();
+            assert.equal(settled, false);
+            assert.equal(acp._pending.get(id), pending);
+            assert.equal(acp._pending.size, 1);
+            assert.equal(writes.length, 1);
+            assert.equal(pings, 0);
+            assert.equal(emitted.mock.callCount(), 0);
+            assert.equal(logged.mock.callCount(), 0);
+        }
+        acp._handleLine(JSON.stringify({ jsonrpc: '2.0', id, result: null }));
+        assert.equal(await promise, null);
+        assert.equal(acp._pending.size, 0);
+        assert.equal(pings, 1);
+    } finally {
+        if (previousDebug === undefined) delete process.env['DEBUG'];
+        else process.env['DEBUG'] = previousDebug;
+        if (pending?.timer) clearTimeout(pending.timer);
+        acp._pending.delete(id);
+        pending?.resolve(undefined);
+    }
+});
+
+test('AcpClient ignores late, duplicate and unmatched responses while a new request remains pending', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { acp, writes } = createCapturedClient();
+    const expired = acp.request('session/prompt', {}, 1000);
+    const expiredId = JSON.parse(writes[0]!).id;
+    const rejected = assert.rejects(expired, /ACP request timeout: session\/prompt/);
+    t.mock.timers.tick(1000);
+    await rejected;
+    assert.equal(acp._pending.size, 0);
+
+    const promise = acp.request('session/prompt', {}, 1000);
+    const id = JSON.parse(writes[1]!).id;
+    const pending = acp._pending.get(id);
+    let settled = false;
+    void promise.then(() => { settled = true; }, () => { settled = true; });
+    const emitted = t.mock.method(acp, 'emit');
+    try {
+        assert.ok(pending);
+        for (const lateId of [expiredId, expiredId, 'unmatched', String(id)]) {
+            acp._handleLine(JSON.stringify({ jsonrpc: '2.0', id: lateId, result: 'late' }));
+            acp._handleLine(JSON.stringify({
+                jsonrpc: '2.0', id: lateId, error: { code: -1, message: 'late' },
+            }));
+        }
+        await Promise.resolve();
+        assert.equal(settled, false);
+        assert.equal(acp._pending.get(id), pending);
+        assert.equal(acp._pending.size, 1);
+        assert.equal(emitted.mock.callCount(), 0);
+        assert.equal(writes.length, 2);
+
+        const update = { update: { sessionUpdate: 'plan' } };
+        acp._handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: update }));
+        assert.deepEqual(emitted.mock.calls[0]?.arguments, ['session/update', update]);
+        assert.equal(settled, false);
+        assert.equal(acp._pending.get(id), pending);
+
+        acp._handleLine(JSON.stringify({ jsonrpc: '2.0', id, result: null }));
+        assert.equal(await promise, null);
+        acp._handleLine(JSON.stringify({ jsonrpc: '2.0', id, result: 'duplicate' }));
+        assert.equal(await promise, null);
+        assert.equal(acp._pending.size, 0);
+        assert.equal(emitted.mock.callCount(), 1);
+        assert.equal(writes.length, 2);
+    } finally {
+        if (pending?.timer) clearTimeout(pending.timer);
+        acp._pending.delete(id);
+        pending?.resolve(undefined);
+    }
 });
