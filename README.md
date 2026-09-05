@@ -405,6 +405,8 @@ Live Web/TUI updates use the SSE-first `GET /api/events` channel, with legacy We
 
 Codex app-server and Pi RPC also record versioned, redacted runtime events independently of channel delivery. Native terminal handling keeps empty final answers distinct from live previews; Slack/Telegram/Discord retain their existing final-response, acknowledgement and queue-notice flow. The Activity presentation mode is a separate follow-on change, not enabled by this event foundation.
 
+Cursor, Grok and Claude retain `print` compatibility mode. Their optional `perCli.<cli>.transport` setting is validated independently of display preferences; selecting an unimplemented native adapter gives an explicit error, never silently launches print. Existing settings without this field stay print, and native/print session storage is isolated. `/api/cli-status` reports compiled native main/worker support separately from cached binary/authentication readiness.
+
 ### Instance Manager
 
 See every running AI instance — start, stop, restart with one click. Preview live Web UIs directly in the dashboard.
