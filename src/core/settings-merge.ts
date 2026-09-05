@@ -4,6 +4,7 @@
 import { mergeAckSettings } from '../messaging/ack-reaction.js';
 import { mergeSlackAutoJoin } from '../slack/auto-join.js';
 import { isRuntimeTransport, isSwitchableNativeCli } from '../agent/runtime/selection.js';
+import { isPresentationMode } from '../shared/presentation.js';
 
 export type SettingsInputSource = 'boot' | 'watch' | 'api';
 export type SettingsPersistenceShape = 'absent' | 'present';
@@ -35,6 +36,20 @@ export function sanitizeSettingsInput(
     const invalidPaths: string[] = [];
     const rejectedPaths: string[] = [];
     let persistenceShape: SettingsPersistenceShape = 'absent';
+
+    if (Object.hasOwn(input, 'presentation')) {
+        if (!isPlainRecord(input['presentation'])) {
+            delete value['presentation'];
+            invalidPaths.push('presentation');
+        } else {
+            const presentation = { ...input['presentation'] };
+            if (Object.hasOwn(presentation, 'mode') && !isPresentationMode(presentation['mode'])) {
+                delete presentation['mode'];
+                invalidPaths.push('presentation.mode');
+            }
+            value['presentation'] = presentation;
+        }
+    }
 
     if (isPlainRecord(input['perCli'])) {
         const perCli = Object.fromEntries(Object.entries(input['perCli']).map(([cli, entry]) => {
@@ -154,7 +169,7 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
         delete remaining["dispatchApproval"].operators;
     }
 
-    for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'slack', 'dispatchApproval', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network', 'wiki']) {
+    for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'slack', 'dispatchApproval', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network', 'wiki', 'presentation']) {
         if (remaining[key] && typeof remaining[key] === 'object') {
             result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];

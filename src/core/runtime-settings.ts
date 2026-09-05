@@ -354,6 +354,7 @@ async function applyRuntimeSettingsPatchSerialised(
             throw new Error('invalid_settings_field');
         }
         const patch = sanitized.value;
+        const presentationOnly = Object.keys(patch).length === 1 && Object.hasOwn(patch, 'presentation');
         validateDispatchApprovalPatch(patch);
         if (!opts.allowWikiLifecycle && wikiRouteManagedPatchPaths(patch).length > 0) {
             throw new Error('wiki_configuration_requires_wiki_route');
@@ -381,7 +382,7 @@ async function applyRuntimeSettingsPatchSerialised(
             });
         }
 
-        opts.resetFallbackState?.();
+        if (!presentationOnly) opts.resetFallbackState?.();
 
         // CLI-changed branch delegates main-session clearing to cliSwitchRefresh
         // (which writes a cleared row inside its DB transaction). On refresh failure
@@ -412,11 +413,11 @@ async function applyRuntimeSettingsPatchSerialised(
                 rollbackHandled = true;
                 throw e;
             }
-        } else {
+        } else if (!presentationOnly) {
             syncMainSessionToSettings(prevCli);
         }
 
-        syncJwcConfigDefault(settings);
+        if (!presentationOnly) syncJwcConfigDefault(settings);
 
         if (settings["workingDir"] !== prevWorkingDir) {
             try {
