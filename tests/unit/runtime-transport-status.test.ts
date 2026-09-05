@@ -87,7 +87,7 @@ test('actual status route adds transport support without rewriting cached readin
     assert.deepEqual(Object.keys(payload), Object.keys(cached));
     for (const cli of ['cursor', 'grok', 'claude']) {
         assert.deepEqual(payload[cli]?.runtimeSelection, {
-            transport: 'native', nativeAdapterImplemented: cli === 'cursor', nativeWorkerImplemented: false,
+            transport: 'native', nativeAdapterImplemented: cli === 'cursor' || cli === 'claude', nativeWorkerImplemented: cli === 'claude',
         }, cli);
     }
     for (const cli of ['codex-app', 'pi']) {

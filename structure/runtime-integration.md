@@ -22,7 +22,7 @@ Telegram hub-member native target replies require the hub's additive bodyDeliver
 
 ## Transport selection and session identity
 
-`perCli.<cli>.transport` accepts `print` or `native` only for Cursor, Grok and Claude. All three still default to print. Cursor main has a native ACP path with literal auto permissions; restrictive Cursor and unsupported Grok/Claude/worker selections are rejected with code78 before prompt-file regeneration, bucket/bootstrap/snapshot, fallback or pool work. Builtin Codex App and Pi retain their existing paths and keys. Main-adapter support and worker support are independent flags.
+`perCli.<cli>.transport` accepts `print` or `native` only for Cursor, Grok and Claude. All three still default to print. Cursor main has a native ACP path with literal auto permissions. Claude main and workers use the optional pinned SDK with safe/auto permissions. Restrictive Cursor, Cursor workers and unsupported Grok selections are rejected with code78 before prompt-file regeneration, bucket/bootstrap/snapshot, fallback or pool work. Builtin Codex App and Pi retain their existing paths and keys. Main-adapter support and worker support are independent flags.
 
 Existing documents with no transport field are pinned to print before fresh defaults are merged. Existing corrupt/unreadable or established missing-file homes also stay print; persistence-blocked behavior is unchanged. A genuinely fresh init records factory choices explicitly. Invalid API fields are rejected; watcher input drops only the invalid transport and preserves current mode/siblings. A real watcher mode change invalidates existing ownership generations after settings commit and before publication.
 
@@ -55,6 +55,16 @@ Cancellation latches outlive a resolved registry answer. cancelRun/dispose preve
 The two request routes use existing instance auth, including loopback and configured LAN bypass; they are not an OS sandbox or per-session tenant ACL. Exact IDs prevent misrouting and replay, not authority escalation between already-authorized instance users. API accepted means decision recorded, not tool completion. Provider activation, Activity controls and channel interactions remain separate layers; Slack final/ACK/queue behavior is untouched.
 
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
+
+### Claude SDK main and workers
+
+`claude-runtime-pool.ts` uses the existing engine store through `RuntimePoolAccess`. An opaque key covers the prepared cwd, binary, model, effort, permissions, environment, system prompt and chat/worker identity. The current native session ID validates resume separately. The SDK's two implicit environment defaults are seeded before the first snapshot so lazy import cannot invalidate an otherwise identical profile. Explicit environment changes still retire it. Creating entries remain fenced until a late factory and physical cleanup finish; ready entries are removed only after successful close and logical lease release. Failed close never authorizes replacement.
+
+`claude-runtime-run.ts` adapts the real SDK root process to `native-runtime-run.ts` and the existing lifecycle. Every send captures its own immutable jaw identity and metadata callbacks. The host claims the outcome before durable delivery, then finalizes once with the lifecycle-selected text. SDK progress remains Activity-only; private I/O renews the captured watchdog. Final absence and interrupted salvage retain the shared semantics. Admission/send/lifecycle failures finalize the captured trace and clear only its matching live state.
+
+`runtime/claude-run-controls.ts` retains cancellation and completion through settlement, including before a child is available and after the main map is released. Existing bounded shutdown waits include these controls. Worker IDs remain reserved across transport changes, and tool progress updates only the captured worker slot. Each worker uses its isolated assignment cwd and retires its SDK session before removing that directory. Failed physical cleanup retains the directory. Main sessions can reuse one query for sequential turns; Claude in-band steer is unsupported, so configured steer uses the existing kill-and-salvage path.
+
+`runtime/claude-sdk-permissions.ts` maps safe approvals and questions into the existing exact-bound request API. Approval responses use `{optionId:'allow'|'deny'|null}`. Questions use `{answers:{q0:{selected:['o0'],text?:string}}}` with IDs from the request view; cancellation uses `{optionId:null}`. Images are bounded in-memory PNG/JPEG/GIF/WebP blocks on the internal spawn prompt; this adds no upload/API schema. Native Agent/Task calls must explicitly use `run_in_background:false`; background work is denied before execution and unexpected background output retires the query. No extra login flow or credential store is introduced.
 
 ### Cursor main native bridge
 

@@ -24,12 +24,12 @@ export function isNativeSessionBucket(bucket: string): boolean {
 
 /** Compiled adapter support, not binary availability or authentication proof. */
 export function isNativeAdapterImplemented(cli: string): boolean {
-    return cli === 'codex-app' || cli === 'pi' || cli === 'cursor';
+    return cli === 'codex-app' || cli === 'pi' || cli === 'cursor' || cli === 'claude';
 }
 
 /** Independent of main support; switchable workers are enabled only with ownership support. */
 export function isNativeWorkerImplemented(cli: string): boolean {
-    return cli === 'codex-app' || cli === 'pi';
+    return cli === 'codex-app' || cli === 'pi' || cli === 'claude';
 }
 
 export function runtimeSelectionStatus(cli: string, value: unknown) {

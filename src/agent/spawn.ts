@@ -70,6 +70,10 @@ import type { RuntimeEvent, RuntimeLivenessIdentity, RuntimeTurnOutcome } from '
 import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
+import { startClaudeNativeRun } from './claude-runtime-run.js';
+import { hasClaudeRuns, hasClaudeWorker, cancelClaudeWorker, cancelClaudeScope, cancelAllClaudeRuns } from './runtime/claude-run-controls.js';
+import type { RuntimePrompt } from './runtime/session.js';
+import type { PreparedClaudeOptions } from './runtime/claude-sdk-options.js';
 import { syncLiveTools } from './events/helpers.js';
 import { RuntimeProjection, type RuntimeEnd } from './runtime/projection.js';
 import { recordRuntimeEvent } from './runtime/events.js';
@@ -398,6 +402,7 @@ function emitKiroStreamEvents(
 }
 
 export function killAgentById(agentId: string): boolean {
+    if (cancelClaudeWorker(agentId, 'user')) return true;
     const proc = activeProcesses.get(agentId);
     if (!proc) return false;
     try {
@@ -642,6 +647,7 @@ export function killActiveAgent(reason?: string): boolean;
 export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
     const scopeKey = scopedReason === undefined ? 'default' : scopeKeyOrReason;
     const reason = scopedReason ?? scopeKeyOrReason;
+    const cancelledClaude = cancelClaudeScope(scopeKey, reason, reason === 'api' || reason === 'user');
     const run = activeMainProcesses.get(scopeKey);
     const hadTimer = queueCtrl.isRetryPending(scopeKey);
     const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
@@ -658,7 +664,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
         settleOnce(run?.meta?.requestId, 'cancelled', { reason });
         clearWorkerSlotsOnStop(scopeKey, reason);
     }
-    if (run?.cancelTurn && ['codex-app', 'pi', 'cursor'].includes(getActiveMainCli(scopeKey) || '')) {
+    if (run?.cancelTurn && ['codex-app', 'pi', 'cursor', 'claude'].includes(getActiveMainCli(scopeKey) || '')) {
         if (run.process?.pid) killReasons.set(run.process.pid, reason);
         console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey)} action=lease.cancel`);
         if (reason === 'steer' || reason === 'interrupt') armExitSettle(scopeKey);
@@ -669,7 +675,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     const activeProcess = run?.process ?? null;
     if (!activeProcess) {
         if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') activeMainProcesses.delete(scopeKey);
-        return hadTimer || cancelledPendingMain || abortedInProcess;
+        return hadTimer || cancelledPendingMain || abortedInProcess || cancelledClaude;
     }
     const policy = getKillPolicy(scopeKey, reason);
     console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey) || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
@@ -705,6 +711,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
 }
 
 export function killAllAgents(reason = 'user') {
+    const cancelledClaude = cancelAllClaudeRuns(reason);
     const hadTimer = queueCtrl.isRetryPending(null);
     const mainScopes = [...activeMainProcesses.keys()];
     let killedMain = false;
@@ -735,7 +742,7 @@ export function killAllAgents(reason = 'user') {
         activeMainProcesses.clear();
         clearAllWorkers();
     }
-    return killed > 0 || killedMain || hadTimer;
+    return killed > 0 || killedMain || hadTimer || cancelledClaude;
 }
 
 export function waitForProcessEnd(scopeKey: string, timeoutMs?: number): Promise<void>;
@@ -743,10 +750,10 @@ export function waitForProcessEnd(timeoutMs?: number): Promise<void>;
 export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default', scopedTimeout = 3000) {
     const scopeKey = typeof scopeKeyOrTimeout === 'string' ? scopeKeyOrTimeout : 'default';
     const timeoutMs = typeof scopeKeyOrTimeout === 'number' ? scopeKeyOrTimeout : scopedTimeout;
-    if (!activeMainProcesses.has(scopeKey)) return Promise.resolve();
+    if (!activeMainProcesses.has(scopeKey) && !hasClaudeRuns(scopeKey)) return Promise.resolve();
     return new Promise<void>(resolve => {
         const check = setInterval(() => {
-            if (!activeMainProcesses.has(scopeKey)) { clearInterval(check); clearTimeout(deadline); resolve(); }
+            if (!activeMainProcesses.has(scopeKey) && !hasClaudeRuns(scopeKey)) { clearInterval(check); clearTimeout(deadline); resolve(); }
         }, 100);
         // The deadline has to be CLEARED on the fast path, not just left to fire.
         // A child normally exits in milliseconds, so the common case resolved the
@@ -770,10 +777,10 @@ export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default'
  *  force-exit budget. Returning on timeout is the same outcome as today, minus
  *  the common case where the child would have finished in milliseconds. */
 export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
-    if (activeMainProcesses.size === 0) return Promise.resolve();
+    if (activeMainProcesses.size === 0 && !hasClaudeRuns()) return Promise.resolve();
     return new Promise<void>(resolve => {
         const check = setInterval(() => {
-            if (activeMainProcesses.size === 0) { clearInterval(check); clearTimeout(deadline); resolve(); }
+            if (activeMainProcesses.size === 0 && !hasClaudeRuns()) { clearInterval(check); clearTimeout(deadline); resolve(); }
         }, 50);
         const deadline = setTimeout(() => { clearInterval(check); resolve(); }, timeoutMs);
     });
@@ -1064,6 +1071,7 @@ export interface SpawnLifecycle {
 }
 
 interface SpawnOpts {
+    images?: RuntimePrompt['images'];
     /** Server-owned canonical lineage, never a native parent/item ID. */
     runtimeParentItemId?: string;
     internal?: boolean;
@@ -1211,8 +1219,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const unavailableNative = runtimeTransport === 'native'
         && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)));
     const restrictiveNative = runtimeTransport === 'native' && cli === 'cursor' && permissions !== 'auto';
-    if (unavailableNative || restrictiveNative) {
-        const message = unavailableNative
+    // Retained Claude controls own the ID through settlement, including when
+    // the next assignment selects print or another provider. Conversely, a
+    // Claude borrower must not replace a child whose exit handler still owns it.
+    const duplicateClaudeWorker = isEmployee && (hasClaudeWorker(opts.agentId || 'main')
+        || (runtimeTransport === 'native' && cli === 'claude' && activeProcesses.has(opts.agentId || 'main')));
+    if (unavailableNative || restrictiveNative || duplicateClaudeWorker) {
+        const message = duplicateClaudeWorker ? 'Worker is still completing its previous assignment.' : unavailableNative
             ? `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`
             : 'Cursor native restrictive permissions are not verified in this build. Select print transport to retain restrictive permission behavior.';
         const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
@@ -1600,6 +1613,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // All CLIs auto-read AGENTS.md/CLAUDE.md/GEMINI.md from cwd.
     // Employees must NOT see the Boss's instruction files.
     let spawnCwd = settings["workingDir"];
+    let claudeEmployeeTmpDir: string | undefined;
 
     if (opts.agentId && (customSysPrompt || sysPrompt)) {
         const empPrompt = customSysPrompt || sysPrompt;
@@ -1608,6 +1622,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             : empPrompt;
         const tmpDir = join(os.tmpdir(), `jaw-emp-${agentLabel}-${Date.now()}`);
         fs.mkdirSync(tmpDir, { recursive: true });
+        if (runtimeTransport === 'native' && cli === 'claude') claudeEmployeeTmpDir = tmpDir;
 
         for (const name of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'CONTEXT.md']) {
             fs.writeFileSync(join(tmpDir, name), empPromptWithWorkspace);
@@ -1675,6 +1690,77 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'claude-e') console.log(`[jaw:${agentLabel}:args] ${JSON.stringify(args)}`);
     }
 
+
+    // ─── Native Claude: its helper owns provider-specific adaptation only. ───
+    if (runtimeTransport === 'native' && cli === 'claude') {
+        const cleanupClaudeWorker = () => {
+            if (claudeEmployeeTmpDir) cleanupEmployeeTmpDir(claudeEmployeeTmpDir, '', agentLabel);
+        };
+        const capturedRun = mainRun;
+        let capturedExit: (typeof exitSettlers extends Map<string, infer T> ? T : never) | undefined;
+        const ownedRun = () => isCurrentSessionOwner(persistenceOwner, scopeKey)
+            && (!mainManaged || activeMainProcesses.get(scopeKey) === capturedRun);
+        let attachedCancel: ((reason: string) => void) | undefined;
+        const watchdog: NonNullable<Parameters<typeof attachWatchdog>[3]> = {};
+        for (const key of ['firstProgressMs', 'idleMs', 'absoluteMs', 'absoluteHardCapMs'] as const) {
+            const value = mergedTimeoutCfg[key];
+            if (typeof value === 'number') watchdog[key] = value;
+        }
+        const prepared: PreparedClaudeOptions = { cwd: spawnCwd || process.cwd(), binary: detected.path || 'claude',
+            env: spawnEnv, model: runtimeModel, systemPrompt: sysPrompt, permissions: permissions as PreparedClaudeOptions['permissions'],
+            fastMode: cfg.fastMode === true, ...(effort ? { effort: effort as PreparedClaudeOptions['effort'] } : {}) };
+        try {
+            return startClaudeNativeRun({ prepared, timeoutMs: resolvedAgyPrintTimeoutMs, watchdog,
+                prompt: { text: withSteerContext(withHistoryPrompt(prompt, historyBlock), opts.steerContext), ...(opts.images ? { images: opts.images } : {}) },
+                audience: traceAudience, liveScope: effectiveLiveScope, parentLiveScope: parentLiveScopeForChild,
+                ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}),
+                storedSessionId: resumeSessionId, fresh: forceNew || opts._skipResume === true || isEmployee,
+                cleanupUnleased: cleanupClaudeWorker,
+                isCurrent: ownedRun, isCurrentOwner: token => isCurrentSessionOwner(token, scopeKey), consumeKillReason,
+                activity: identity => opts.lifecycle?.onActivity?.('native-runtime', identity),
+                exited: code => opts.lifecycle?.onExit?.(code),
+                cancelling: reason => {
+                    if (reason === 'steer' || reason === 'interrupt') { armExitSettle(scopeKey); capturedExit ??= exitSettlers.get(scopeKey); }
+                },
+                exit: { cli, model: runtimeModel, effectiveProvider, agentLabel, mainManaged, origin, resumeKey, prompt, opts,
+                    cfg: { ...cfg, effort }, ownerGeneration, persistenceOwner, forceNew, empSid, isResume, effortDefault: effort,
+                    activeProcesses, scopeKey, runtimeTransport, scopedBucket: currentBucket, chatSessionId, releaseMainRun,
+                    retryState: queueCtrl.retryStateForScope(scopeKey), fallbackState: queueCtrl.fallbackStateForScope(scopeKey), fallbackMaxRetries: FALLBACK_MAX_RETRIES },
+                starting: cancel => {
+                    attachedCancel = cancel;
+                    if (capturedRun) { capturedRun.starting = true; capturedRun.cancelPending = attachedCancel; }
+                },
+                ready: (child, cancel) => {
+                    if (!ownedRun()) throw new Error('claude_owner_lost');
+                    attachedCancel ??= cancel;
+                    if (capturedRun) {
+                        capturedRun.process = child; capturedRun.starting = false;
+                        if (capturedRun.cancelPending === attachedCancel) delete capturedRun.cancelPending;
+                        capturedRun.cancelTurn = attachedCancel;
+                    } else registerActiveProcess(agentLabel, child);
+                },
+                finished: (child, _cancel, queued, cleanupSafe) => {
+                    try {
+                        if (capturedRun && capturedRun.cancelPending === attachedCancel) delete capturedRun.cancelPending;
+                        if (capturedRun && capturedRun.cancelTurn === attachedCancel) delete capturedRun.cancelTurn;
+                        if (capturedRun && activeMainProcesses.get(scopeKey) === capturedRun) releaseMainRun(scopeKey, child, ownerGeneration);
+                        if (!mainManaged && activeProcesses.get(agentLabel) === child) activeProcesses.delete(agentLabel);
+                        if (cleanupSafe) cleanupClaudeWorker();
+                    } finally {
+                        if (capturedExit && exitSettlers.get(scopeKey) === capturedExit) { exitSettlers.delete(scopeKey); capturedExit.resolve(); }
+                        if (mainManaged && (queued || !activeMainProcesses.has(scopeKey))) void processQueue(scopeKey);
+                    }
+                },
+            });
+        } catch {
+            if (capturedRun && activeMainProcesses.get(scopeKey) === capturedRun) releaseMainRun(scopeKey, null, ownerGeneration);
+            cleanupClaudeWorker();
+            const text = 'Claude native runtime could not be admitted.';
+            broadcast('agent_done', { text, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId, ...empTag }, traceAudience);
+            if (mainManaged && !activeMainProcesses.has(scopeKey)) void processQueue(scopeKey);
+            return { child: null, promise: Promise.resolve({ text, code: 1 }) };
+        }
+    }
 
     // ─── Native Cursor main: protocol ownership is separate from application settlement. ───
     if (runtimeTransport === 'native' && cli === 'cursor' && mainManaged) {

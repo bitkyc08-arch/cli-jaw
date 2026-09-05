@@ -26,6 +26,12 @@ export interface ClaudeLease extends RuntimeLease<ManagedRuntime, string> {
     child: ChildProcessWithoutNullStreams;
     retire(reason?: Error): Promise<void>;
 }
+/** Failure delivery can precede a late factory's proven physical cleanup. */
+export class ClaudeAcquireFailure extends Error {
+    constructor(cause: unknown, readonly cleanup: Promise<void>) {
+        super(cause instanceof Error ? cause.message : 'claude runtime acquisition failed', { cause });
+    }
+}
 type TurnBinding = Binding & { context: Readonly<ClaudeTurnContext> };
 type Holder = { current?: Binding; captured?: TurnBinding };
 type Creating = Extract<RuntimePoolEntry, { state: 'creating' }> & { claudeCreation?: Promise<void> };
@@ -208,12 +214,13 @@ async function create(access: RuntimePoolAccess, key: string, creating: Creating
     } catch (failure) {
         // Abort can win the race synchronously inside installation's onExit registration.
         lease ??= installedLease;
+        let cleanup = creating.claudeCreation;
         if (lease) {
-            const cleanup = lease.retire(error('admission invalidated'));
+            cleanup = lease.retire(error('admission invalidated'));
             lease.release();
             await Promise.race([cleanup, interrupted]).catch(() => {});
         }
-        throw failure;
+        throw new ClaudeAcquireFailure(failure, cleanup);
     }
     finally {
         clearTimeout(timer); opts.signal?.removeEventListener('abort', onAbort);
@@ -245,7 +252,7 @@ async function borrow(access: RuntimePoolAccess, key: string, entry: Ready, opts
         const cleanup = lease.retire(error('readiness invalidated'));
         lease.release();
         await Promise.race([cleanup, interrupted]).catch(() => {});
-        throw failure;
+        throw new ClaudeAcquireFailure(failure, cleanup);
     } finally { clearTimeout(timer); opts.signal?.removeEventListener('abort', onAbort); }
 }
 
@@ -264,6 +271,11 @@ function snapshot(input: ClaudeAcquireOptions): ClaudeAcquireOptions {
     if (input.prepared.resumeSessionId && input.storedSessionId
         && input.prepared.resumeSessionId !== input.storedSessionId) throw error('contradictory resume');
     const prepared = { ...input.prepared, cwd: realpathSync(input.prepared.cwd), env: { ...input.prepared.env } };
+    // The pinned SDK mutates these ambient defaults at import/query time. Seed
+    // them before the first snapshot so that lazy loading cannot change its key.
+    // Explicit values remain part of the profile and can still retire a query.
+    if (prepared.env['NoDefaultCurrentDirectoryInExePath'] === undefined) prepared.env['NoDefaultCurrentDirectoryInExePath'] = '1';
+    if (prepared.env['CLAUDE_AGENT_SDK_VERSION'] === undefined) prepared.env['CLAUDE_AGENT_SDK_VERSION'] = '0.3.261';
     if (input.forceNew) delete prepared.resumeSessionId;
     else if (input.storedSessionId) prepared.resumeSessionId = input.storedSessionId;
     return { ...input, prepared, persistenceOwner: Object.freeze({ ...input.persistenceOwner }), binding: { ...input.binding } };
@@ -276,7 +288,7 @@ function configKey(opts: ClaudeAcquireOptions, scope: string): string {
         canonical, opts.promptTimeoutMs, opts.closeTimeoutMs ?? 5000])).digest('hex');
 }
 
-export async function acquireClaudeRuntimeLease(access: RuntimePoolAccess, input: ClaudeAcquireOptions): Promise<ClaudeLease> {
+async function acquire(access: RuntimePoolAccess, input: ClaudeAcquireOptions): Promise<ClaudeLease> {
     const deadline = performance.now() + (input.waitMs ?? 60_000), opts = snapshot(input);
     const owner = opts.persistenceOwner;
     const check = () => {
@@ -326,5 +338,15 @@ export async function acquireClaudeRuntimeLease(access: RuntimePoolAccess, input
             keys.add(key);
             return create(access, key, creating, opts, deadline, check);
         }
+    }
+}
+
+export async function acquireClaudeRuntimeLease(access: RuntimePoolAccess, input: ClaudeAcquireOptions): Promise<ClaudeLease> {
+    try { return await acquire(access, input); }
+    catch (failure) {
+        if (failure instanceof ClaudeAcquireFailure) throw failure;
+        // Preflight and waiter failures have not borrowed or created a child.
+        // Creation/readiness paths above carry their own physical-close receipt.
+        throw new ClaudeAcquireFailure(failure, Promise.resolve());
     }
 }

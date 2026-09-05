@@ -36,7 +36,9 @@ test.mock.module('../../src/core/config.js', { namedExports: {
 
 const selection = await import('../../src/agent/runtime/selection.ts');
 let simulatedMainAdapter = false;
-const workerEligibility = test.mock.fn((cli: string) => selection.isNativeWorkerImplemented(cli));
+// This fixture simulates a build with no switchable worker adapters, even
+// when the real build implements one; support flags have separate route tests.
+const workerEligibility = test.mock.fn((cli: string) => !selection.isSwitchableNativeCli(cli) && selection.isNativeWorkerImplemented(cli));
 test.mock.module('../../src/agent/runtime/selection.js', { namedExports: {
     ...selection,
     isNativeAdapterImplemented: (cli: string) => simulatedMainAdapter

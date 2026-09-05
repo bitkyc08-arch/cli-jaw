@@ -11,6 +11,7 @@ import { bootstrapMemory, getMemoryStatus, getLastReflectedAt, hasSoulFile, load
 import { getFlushStatus } from '../agent/memory-flush-controller.js';
 import { getMigrationLockPath, hashText, safeReadFile, readMeta } from '../memory/shared.js';
 import { activeProcesses, memoryFlushCounter } from '../agent/spawn.js';
+import { hasClaudeWorker } from '../agent/runtime/claude-run-controls.js';
 import { assertMemoryRelPath, assertFilename, safeResolveUnder } from '../security/path-guards.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 
@@ -19,7 +20,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
         const base = getMemoryStatus();
         const lockPath = getMigrationLockPath();
         const migrationLocked = fs.existsSync(lockPath);
-        const flushRunning = activeProcesses.has('memory-flush');
+        const flushRunning = activeProcesses.has('memory-flush') || hasClaudeWorker('memory-flush');
         const lastReflectedAt = getLastReflectedAt();
 
         let profileFresh = true;
