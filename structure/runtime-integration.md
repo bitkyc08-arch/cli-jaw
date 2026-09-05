@@ -56,6 +56,14 @@ The two request routes use existing instance auth, including loopback and config
 
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
 
+### Cursor protocol foundation (main activation follows)
+
+`runtime/acp/session.ts` owns one child/session with initialize/auth/new-or-load, negotiated configuration, prompt response fencing, cancellation and callback/notification drain. Its matched-response observer closes new content and callback admission before later frames in the same chunk. Setup requires an actual load response; replay is not a live turn. Notifications are bounded at256/8MiB and human callbacks remain independent. Drain and cancellation each have bounded deadlines after dispatch; stopped or failed connections are never reused. Stderr is continuously discarded with only a byte count retained.
+
+`runtime/acp/cursor-session.ts` launches the resolved Cursor executable with acp via the existing safe Windows launch resolver. It uses existing cursor_login authentication and no print/Copilot setup path. A startup abort has a captured-child owner; successful setup removes that acquisition-only listener. `config.ts` validates bounded select metadata, sets model first, reads refreshed options and applies only a supported explicit effort. An unsupported effort is an error, not an implicit no-op. In the observed Cursor build, Composer2.5 removes the effort selector; native configuration must leave effort unset for that model.
+
+`acquireCursorRuntime` extends the existing engine-partitioned pool. Keys include scope/canonical cwd/binary/model/effort/permission snapshot; reset generation and caller admission are checked before mutation and after creation. The total acquisition deadline aborts in-progress startup. Every borrow has a lease token: stale cancellation cannot interrupt the next borrower, and release before full idle/drain retires the entry. Code/Pi key and cancellation behavior is unchanged. This protocol factory/pool is not yet the public main adapter; Cursor support flags remain false until the projection/lifecycle composition is enabled. Input-control certification and the independently runnable PR boundary are separate gates.
+
 - boss/main 실행은 메시지당 spawn 대신 상주 런타임 풀을 탄다. 키 = 엔진별 독립 스토어 + `chat:${getActiveChatSession()}` + cwd + 모델/effort/(pi는 profile/endpoint/apiKind/profileFp).
 - employee는 풀링하지 않는다 (매 턴 timestamped cwd + cleanup과 모순 — per-turn spawn 유지).
 - 엔트리 상태기: `creating` → `ready`(busy/dead) + 대기자 큐. 조회/마킹은 동기 임계 구역, `drainWaiters`가 splice→clearTimeout→resolve/reject 순서를 보장.

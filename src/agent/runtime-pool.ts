@@ -104,7 +104,7 @@ export interface CursorAcquireOptions {
     binary: string; env: NodeJS.ProcessEnv; promptTimeoutMs: number;
     persistenceOwner: SessionOwnerToken;
     isCurrentOwner(owner: SessionOwnerToken): boolean;
-    canAcquire?(): boolean;
+    canAcquire(): boolean;
     storedSessionId?: string | null;
     forceNew?: boolean;
     waitMs?: number;
@@ -714,6 +714,7 @@ async function createCursorEntry(store: EngineStore, key: string, creating: Extr
 }
 
 export async function acquireCursorRuntime(input: CursorAcquireOptions): Promise<CursorLease> {
+    if (typeof input.canAcquire !== 'function') throw new Error('cursor runtime caller admission required');
     const waitMs = input.waitMs ?? DEFAULT_POOL_WAIT_MS;
     if (!Number.isSafeInteger(waitMs) || waitMs <= 0 || waitMs > 2_147_483_647) throw new Error('cursor runtime invalid acquire timeout');
     validateAcpSessionOptions({ permissions: input.key.permissions, promptTimeoutMs: input.promptTimeoutMs });
@@ -731,7 +732,7 @@ export async function acquireCursorRuntime(input: CursorAcquireOptions): Promise
     const isCurrentOwner = input.isCurrentOwner, canAcquire = input.canAcquire, signal = input.signal;
     const check = () => {
         let current = false;
-        try { current = isCurrentOwner(owner) === true && (canAcquire?.() ?? true) === true; } catch { /* fail closed */ }
+        try { current = isCurrentOwner(owner) === true && canAcquire() === true; } catch { /* fail closed */ }
         if (!current || signal?.aborted) throw new Error('cursor runtime ownership invalidated');
         if (performance.now() >= deadline) throw new Error('cursor runtime acquire timed out');
     };
@@ -755,12 +756,20 @@ export async function acquireCursorRuntime(input: CursorAcquireOptions): Promise
             keys.add(key);
             return createCursorEntry(store, key, creating, opts, deadline, check);
         }
-        if (entry.state === 'creating') { await waitForEntry(entry, Math.max(1, deadline - performance.now()), opts.signal); continue; }
+        if (entry.state === 'creating') {
+            if (entry.nativeOwner?.global !== owner.global || entry.nativeOwner?.scope !== owner.scope) {
+                closeEntry(store, key, entry, new Error('cursor runtime creation ownership invalidated')); continue;
+            }
+            await waitForEntry(entry, Math.max(1, deadline - performance.now()), opts.signal); continue;
+        }
         if (entry.dead || !entry.runtime.alive || entry.nativeOwner?.global !== owner.global || entry.nativeOwner?.scope !== owner.scope
             || (opts.storedSessionId && opts.storedSessionId !== entry.sessionId)) {
             closeEntry(store, key, entry, new Error('cursor runtime entry stale')); continue;
         }
         if (!entry.busy) {
+            if (!(entry.runtime as CursorManagedRuntime).session.idle) {
+                closeEntry(store, key, entry, new Error('cursor runtime entry is not drained')); continue;
+            }
             entry.busy = true; entry.lastUsedAt = Date.now();
             return makeCursorLease(store, key, entry, true);
         }

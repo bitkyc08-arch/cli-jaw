@@ -12,7 +12,8 @@ function factoryFixture(t: TestContext) {
     const calls: Array<{ command: string; args: string[]; options: Wire }> = [], wire: Wire[] = [];
     const child = Object.assign(new EventEmitter(), { pid: 44001, exitCode: null as number | null,
         signalCode: null as NodeJS.Signals | null, stdout: new PassThrough(), stderr: new PassThrough(), stdin: new Writable() });
-    let heldInitialize = false, model = 'm1', effort = 'low', kills = 0;
+    let heldInitialize = false, model = 'm1', effort = 'low', kills = 0, heldWrites = false;
+    const writeCallbacks: Array<() => void> = [];
     let duringSpawn: (() => void) | undefined;
     const config = () => [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: model,
         options: [{ value: 'm1', name: 'M1' }, { value: 'm2', name: 'M2' }] },
@@ -33,7 +34,7 @@ function factoryFixture(t: TestContext) {
             else effort = message['params'].value;
             reply(message['id'], { configOptions: config() });
         }
-        callback();
+        if (heldWrites) writeCallbacks.push(callback); else callback();
     } });
     const exit = () => { if (child.exitCode !== null) return; child.exitCode = 143; child.emit('exit', 143, null); child.emit('close', 143, null); };
     const options: CursorSessionOptions = { binary: 'cursor-agent', env: { PATH: '/fixture' }, cwd: process.cwd(),
@@ -42,9 +43,10 @@ function factoryFixture(t: TestContext) {
             calls.push({ command, args, options: opts }); duringSpawn?.(); return child;
         }) as unknown as typeof spawn,
         ownedProcessOptions: { terminateTree: () => { kills++; queueMicrotask(exit); } } };
-    t.after(() => { exit(); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy(); });
+    t.after(() => { exit(); for (const done of writeCallbacks.splice(0)) done(); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy(); });
     return { options, calls, wire, child, get kills() { return kills; },
-        holdInitialize: () => { heldInitialize = true; }, duringSpawn: (fn: () => void) => { duringSpawn = fn; } };
+        holdInitialize: () => { heldInitialize = true; }, holdWrites: () => { heldWrites = true; },
+        duringSpawn: (fn: () => void) => { duringSpawn = fn; } };
 }
 
 test('factory uses acp stdin protocol and refreshes model/effort without print argv', { timeout: 5000 }, async t => {
@@ -246,6 +248,44 @@ test('invalid new options cannot discard an existing healthy entry', async t => 
     await assert.rejects(acquireCursorRuntime({ ...f.options, forceNew: true, promptTimeoutMs: 0 }), /acp_invalid_timeout/);
     assert.equal(f.sessions[0]!.alive, true);
     assert.equal(f.creations.length, 1);
+});
+test('missing logical admission cannot force-new a healthy generation-valid entry', async t => {
+    const f = poolFixture(t); const first = await acquireCursorRuntime(f.options); first.release();
+    const missing: Partial<CursorAcquireOptions> = { ...f.options, forceNew: true };
+    delete missing.canAcquire;
+    await assert.rejects(acquireCursorRuntime(missing as CursorAcquireOptions), /admission|ownership/);
+    assert.equal(f.sessions[0]!.alive, true);
+    assert.equal(f.creations.length, 1);
+});
+test('a backpressured real-session refusal between release and borrow cannot be reused', { timeout: 5000 }, async t => {
+    const f = poolFixture(t), children: ReturnType<typeof factoryFixture>[] = [];
+    const opts: CursorAcquireOptions = { ...f.options, createSession: options => {
+        const child = factoryFixture(t); children.push(child);
+        return createCursorSession({ ...options, spawnImpl: child.options.spawnImpl, ownedProcessOptions: child.options.ownedProcessOptions });
+    } };
+    const first = await acquireCursorRuntime(opts); first.release();
+    children[0]!.holdWrites();
+    children[0]!.child.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 'unexpected', method: 'session/request_permission', params: {} }) + '\n');
+    assert.equal(first.session.alive, true); assert.equal(first.session.idle, false);
+    const second = await acquireCursorRuntime(opts);
+    assert.notEqual(second.session, first.session);
+    assert.equal(children[0]!.kills, 1);
+    second.release(); await second.session.close();
+});
+test('a new generation supersedes held creation without inheriting its wait', { timeout: 5000 }, async t => {
+    const f = poolFixture(t), started = deferred();
+    let release!: (session: AcpSession) => void;
+    const old = new PoolSession(); f.sessions.push(old);
+    const pending = acquireCursorRuntime({ ...f.options, waitMs: 100, createSession: async options => {
+        options.signal!.addEventListener('abort', () => old.retire(), { once: true }); started.resolve();
+        return new Promise<AcpSession>(resolve => { release = resolve; });
+    } });
+    const rejected = assert.rejects(pending, /replaced|invalidated|superseded|timed out/);
+    await started.promise; f.invalidate();
+    const next = await acquireCursorRuntime({ ...f.options, persistenceOwner: { global: 1, scope: 0 } });
+    await rejected;
+    release(old as unknown as AcpSession); await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(old.retirements, 1); assert.equal(next.runtime.alive, true); next.release();
 });
 function deferred() {
     let resolve!: () => void;

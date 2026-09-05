@@ -296,3 +296,15 @@ test('early child exit rejects the active turn and cleanup is idempotent', { tim
     assert.equal(f.session.idle, false);
     assert.equal(f.failures.length, 1);
 });
+test('only the exact v1 stop-reason enum is accepted without coercion', { timeout: 5000 }, async t => {
+    const good = sessionFixture(t); await good.start();
+    for (const stopReason of ['end_turn', 'max_tokens', 'max_turn_requests', 'refusal', 'cancelled']) {
+        good.onPrompt(message => good.reply(message['id'], { stopReason }));
+        assert.deepEqual(await good.prompt(), { stopReason });
+    }
+    for (const stopReason of ['max_turns', ['end_turn'], {}, undefined, null]) {
+        const bad = sessionFixture(t); await bad.start();
+        bad.onPrompt(message => bad.reply(message['id'], { stopReason }));
+        await assert.rejects(bad.prompt(), /acp_invalid_stop_reason/);
+    }
+});

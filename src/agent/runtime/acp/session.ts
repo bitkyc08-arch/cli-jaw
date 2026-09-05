@@ -182,7 +182,10 @@ export class AcpSession {
             active.request = request; resolveReady(request);
             await request.dispatched;
             const result = acpRecord(await request.result);
-            if (!['end_turn', 'cancelled', 'max_tokens', 'max_turns', 'refusal'].includes(String(result['stopReason']))) throw new Error('acp_invalid_stop_reason');
+            const stopReason = result['stopReason'];
+            if (typeof stopReason !== 'string' || !['end_turn', 'cancelled', 'max_tokens', 'max_turn_requests', 'refusal'].includes(stopReason)) {
+                throw new Error('acp_invalid_stop_reason');
+            }
             await this.drain(active);
             if (active.cancelling) await active.cancelling;
             this.assertAlive();
