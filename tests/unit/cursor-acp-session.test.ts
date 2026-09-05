@@ -267,8 +267,10 @@ test('permission arriving while pre-terminal notification work drains retires wi
 });
 test('foreign session notification retires the active owner without consuming its content', { timeout: 5000 }, async t => {
     const f = sessionFixture(t); await f.start(); let consumed = 0;
-    f.onPrompt(() => {
-        const update = f.update(); update.params.sessionId = 'foreign-session'; f.send(update);
+    f.onPrompt(message => {
+        const update = f.update(); update.params.sessionId = 'foreign-session';
+        f.child.stdout.write(JSON.stringify(update) + '\n'
+            + JSON.stringify({ jsonrpc: '2.0', id: message['id'], result: { stopReason: 'end_turn' } }) + '\n');
     });
     await assert.rejects(f.prompt(() => { consumed++; }), /acp_frame_hook_failed/);
     assert.equal(consumed, 0); assert.equal(f.kills.length, 1);

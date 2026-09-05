@@ -44,7 +44,7 @@ function factoryFixture(t: TestContext) {
         }) as unknown as typeof spawn,
         ownedProcessOptions: { terminateTree: () => { kills++; queueMicrotask(exit); } } };
     t.after(() => { exit(); for (const done of writeCallbacks.splice(0)) done(); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy(); });
-    return { options, calls, wire, child, get kills() { return kills; },
+    return { options, calls, wire, child, exit, get kills() { return kills; },
         holdInitialize: () => { heldInitialize = true; }, holdWrites: () => { heldWrites = true; },
         duringSpawn: (fn: () => void) => { duringSpawn = fn; } };
 }
@@ -81,6 +81,28 @@ test('factory abort covers both spawn-to-listener race and held initialization',
     controller.abort(); await rejected;
     assert.equal(f.kills, 1);
     assert.equal(f.child.exitCode, 143);
+});
+test('post-spawn abort waits for the owned child to exit before rejecting acquisition', { timeout: 5000 }, async t => {
+    const f = factoryFixture(t), controller = new AbortController(); let terminations = 0, settled = false;
+    f.duringSpawn(() => controller.abort());
+    const pending = createCursorSession({ ...f.options, signal: controller.signal,
+        ownedProcessOptions: { terminateTree: () => { terminations++; } } });
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(terminations, 1); assert.equal(f.wire.length, 0);
+    assert.equal(settled, false); assert.equal(f.child.exitCode, null);
+    f.exit(); await assert.rejects(pending, /cursor_acp_acquire_aborted/);
+    assert.equal(f.child.exitCode, 143);
+});
+test('post-spawn abort reports failed cleanup if the owned child never exits', { timeout: 5000 }, async t => {
+    const f = factoryFixture(t), controller = new AbortController();
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    f.duringSpawn(() => controller.abort());
+    const pending = createCursorSession({ ...f.options, signal: controller.signal,
+        ownedProcessOptions: { terminateTree: () => {} } });
+    const rejected = assert.rejects(pending, /cursor_acp_startup_cleanup_failed/);
+    t.mock.timers.tick(6000); await rejected;
+    assert.equal(f.wire.length, 0); assert.equal(f.child.exitCode, null);
 });
 test('unsupported requested configuration retires startup without a prompt or fallback', { timeout: 5000 }, async t => {
     const f = factoryFixture(t);
