@@ -2624,9 +2624,17 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             const appClient = new CodexAppClient({
                 binary: detected.path || 'codex', workDir: spawnCwd, env: spawnEnv,
             });
-            appClient.spawn();
-            const child = appClient.proc;
-            if (!child) throw new Error('Codex AppServer process was not created');
+            let child: ChildProcess;
+            try {
+                appClient.spawn();
+                if (!appClient.proc) throw new Error('Codex AppServer process was not created');
+                child = appClient.proc;
+            } catch (error) {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Codex process creation failed' });
+                finalizeTraceRun(traceRunId, 'error', 'Codex process creation failed');
+                cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                throw error;
+            }
             void runCodexAppTurn(appClient, null, employeeLaneScope);
             return { child, promise: resultPromise };
         }

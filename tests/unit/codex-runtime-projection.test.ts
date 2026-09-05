@@ -6,6 +6,7 @@ import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-co
 import { subscribe } from '../../src/core/event-bus.ts';
 import { encodeRuntimeBody, decodeRuntimeBody } from '../../src/trace/runtime-body-codec.ts';
 import { stringifyTraceValue } from '../../src/trace/redact.ts';
+import { FULLTEXT_MAX_CHARS } from '../../src/agent/events/fulltext-bound.ts';
 
 function harness(scope = 'scope-a') {
     const events: RuntimeEvent[] = [];
@@ -226,4 +227,41 @@ test('ordinary shell brackets and Markdown remain readable through producer and 
     const message = h.delivered.find(event => event.kind === 'message');
     assert.equal(tool?.kind === 'tool' ? tool.input : null, '[ -f file ]');
     assert.equal(message?.kind === 'message' ? message.text : null, '[docs](https://example.test)');
+});
+
+test('Codex known argument JSON masks split, escaped, duplicate and array secrets before every public sink', () => {
+    const samples = [
+        '{"pass\\u0077ord":"escapedCanary","ok":true}',
+        '{"password":"duplicateCanary","password":"[REDACTED]","ok":true}',
+        '[{"cookie":"arrayCanary","ok":true}]',
+        JSON.stringify({ padding: 'x'.repeat(5000), password: 'lateCanary' }),
+    ];
+    for (const argumentsText of samples) {
+        const h = codecHarness();
+        const producer = new CodexProjection(h.state);
+        producer.observe('item/started', { item: { id: 'known-args', type: 'mcpToolCall',
+            server: 'fixture', tool: 'run', arguments: '{"pass' } }, null, '');
+        producer.observe('item/completed', { item: { id: 'known-args', type: 'mcpToolCall',
+            server: 'fixture', tool: 'run', arguments: argumentsText, status: 'completed' } }, null, '');
+        const first = h.beforeCodec.find(event => event.kind === 'tool');
+        assert.ok(first?.kind === 'tool');
+        assert.equal(first.input, '[structured content withheld]');
+        for (const sink of [h.beforeCodec, h.journal, h.delivered]) {
+            assert.ok(!JSON.stringify(sink).includes('Canary'));
+        }
+        assert.equal(h.state.diagnostics().recordingFailed, false);
+    }
+});
+
+test('private structured accumulator retires overflowing deltas until a bounded replacement arrives', () => {
+    const h = codecHarness();
+    h.state.tool('large-json', { name: 'json', outputStructured: true, delta: 'x'.repeat(FULLTEXT_MAX_CHARS + 1) });
+    h.state.tool('large-json', { outputStructured: true, delta: 'overflowCanary' });
+    const beforeReplacement = tools(h.delivered).at(-1);
+    assert.equal(beforeReplacement?.output, '[structured content withheld]');
+    h.state.tool('large-json', { outputStructured: true, output: '{"password":"replacementCanary","safe":1}' });
+    assert.deepEqual(JSON.parse(tools(h.delivered).at(-1)?.output || '{}'), { password: '[REDACTED]', safe: 1 });
+    assert.ok(!JSON.stringify(h.journal).includes('Canary'));
+    assert.equal(h.state.diagnostics().truncated, true);
+    assert.equal(h.state.diagnostics().recordingFailed, false);
 });

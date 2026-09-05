@@ -37,6 +37,7 @@ type TurnHandlers = {
 const harness = {
     clients: [] as FakeCodexAppClient[],
     directSpawns: 0,
+    throwDirectSpawn: false,
     genericAcquires: [] as Array<Record<string, unknown>>,
     prepares: [] as Array<Record<string, unknown>>,
     laneAcquires: [] as Array<Record<string, unknown>>,
@@ -78,6 +79,7 @@ class FakeCodexAppClient extends EventEmitter {
 
     spawn(): void {
         harness.directSpawns += 1;
+        if (harness.throwDirectSpawn) throw new Error('fixture direct spawn failed');
     }
 
     initialize(): Promise<Record<string, never>> {
@@ -372,6 +374,7 @@ const effort = 'high';
 
 function resetHarness(): void {
     runtimeEvents.length = 0;
+    harness.throwDirectSpawn = false;
     harness.clients.length = 0;
     harness.directSpawns = 0;
     harness.genericAcquires.length = 0;
@@ -798,4 +801,16 @@ test('three Codex routes bind the canonical side channel to jaw identity', async
         assert.ok(runtimeEvents.every(event => event.turnId === event.runId && event.seq % 3 === 0));
         assert.equal(harness.lifecycleCalls.length, 1);
     }
+});
+
+test("employee synchronous spawn failure closes its canonical attempt before propagating", () => {
+    resetHarness();
+    harness.throwDirectSpawn = true;
+    assert.throws(() => spawnAgent("fixture", spawnOptions("failed-employee", { agentId: "failed-employee" })), /fixture direct spawn failed/);
+    const starts = runtimeEvents.filter(event => event.kind === "turn-start");
+    const ends = runtimeEvents.filter(event => event.kind === "turn-end");
+    assert.equal(starts.length, 1);
+    assert.equal(ends.length, 1);
+    assert.equal(ends[0]?.status, "error");
+    assert.equal(ends[0]?.finalText, null);
 });
