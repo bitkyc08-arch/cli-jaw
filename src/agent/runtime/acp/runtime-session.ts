@@ -7,6 +7,7 @@ import { runtimeRequests, type RuntimeRequests } from '../requests.js';
 import type { NativeRuntimeSession, RuntimeInputAcceptance, RuntimePrompt } from '../session.js';
 import type { AcpSession } from './session.js';
 import { AcpProjection } from './projection.js';
+import { AcpReplacementTurn, type AcpReplacementFactory, type AcpPrepareReplacement } from './replacement-turn.js';
 
 export interface AcpRuntimeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
 export interface AcpRuntimeSessionOptions {
@@ -17,6 +18,8 @@ export interface AcpRuntimeSessionOptions {
     registry?: RuntimeRequests;
     record?: typeof recordRuntimeEvent;
     resultUsage?: (result: Record<string, unknown>) => Extract<RuntimeEventBody, { kind: 'usage' }> | null;
+    createReplacement?: AcpReplacementFactory;
+    prepareReplacement?: AcpPrepareReplacement;
 }
 type Turn = {
     context: RuntimeEventContext;
@@ -25,6 +28,7 @@ type Turn = {
     acp: AcpProjection;
     emit(body: RuntimeEventBody): RuntimeEvent | null;
     cancelled: boolean;
+    replacement?: AcpReplacementTurn;
 };
 type Pending = { turn: Turn; outcome: RuntimeTurnOutcome; claimed?: RuntimeTurnOutcome };
 
@@ -47,10 +51,12 @@ export class AcpRuntimeSession implements NativeRuntimeSession {
     private boundOwner: { sessionId: string; scope: string } | null = null;
     private failure: string | null = null;
     private readonly registry: RuntimeRequests;
+    private readonly createReplacement: AcpReplacementFactory | undefined;
 
     constructor(readonly protocol: AcpSession, private readonly options: AcpRuntimeSessionOptions) {
+        this.createReplacement = options.createReplacement;
         this.capabilities = Object.freeze({ ...options.capabilities, transport: 'native',
-            steer: 'restart', questions: false, images: false, subagents: false });
+            steer: this.createReplacement ? 'cancel-reprompt' : 'restart', questions: false, images: false, subagents: false });
         this.registry = options.registry ?? runtimeRequests;
     }
     get alive(): boolean { return !this.closing && this.protocol.alive; }
@@ -99,15 +105,20 @@ export class AcpRuntimeSession implements NativeRuntimeSession {
         let outcome: RuntimeTurnOutcome;
         try {
             if (turn.cancelled || !turn.current()) throw new Error('acp_runtime_cancelled_before_prompt');
-            const result = await this.protocol.prompt([{ type: 'text', text: prompt.text }], {
+            const owner = {
                 binding: turn.context, isCurrent: () => this.active === turn && turn.current(),
                 emit: turn.emit, ...(turn.context.parentItemId === undefined ? {} : { parentItemId: turn.context.parentItemId }),
-            }, frame => { if ('method' in frame) turn.acp.update(frame.params, this.protocol.nativeSessionId); });
-            if (this.options.resultUsage) {
-                try {
-                    const usage = this.options.resultUsage(result);
-                    if (usage && !turn.emit(usage)) turn.projection.report('persistence');
-                } catch { console.warn('[runtime:acp] optional usage unavailable'); }
+            };
+            let result: Record<string, unknown>;
+            if (this.createReplacement) {
+                turn.replacement = new AcpReplacementTurn({ protocol: this.protocol, owner, projection: turn.acp,
+                    create: this.createReplacement, result: value => this.usage(turn, value),
+                    ...(this.options.prepareReplacement ? { prepare: this.options.prepareReplacement } : {}) });
+                result = await turn.replacement.run(prompt);
+            } else {
+                result = await this.protocol.prompt([{ type: 'text', text: prompt.text }], owner,
+                    frame => { if ('method' in frame) turn.acp.update(frame.params, this.protocol.nativeSessionId); });
+                this.usage(turn, result);
             }
             const status = turn.cancelled || !turn.current() || result['stopReason'] === 'cancelled' ? 'stopped'
                 : result['stopReason'] === 'end_turn' ? 'done' : 'error';
@@ -131,6 +142,14 @@ export class AcpRuntimeSession implements NativeRuntimeSession {
             finally { this.finalizing = false; }
         }
         return outcome;
+    }
+
+    private usage(turn: Turn, result: Record<string, unknown>): void {
+        if (!this.options.resultUsage) return;
+        try {
+            const usage = this.options.resultUsage(result);
+            if (usage && !turn.emit(usage)) turn.projection.report('persistence');
+        } catch { console.warn('[runtime:acp] optional usage unavailable'); }
     }
 
     claimTurnOutcome(turnId: string): RuntimeTurnOutcome | null {
@@ -161,8 +180,16 @@ export class AcpRuntimeSession implements NativeRuntimeSession {
         } finally { this.finalizing = false; }
     }
 
-    async steer(_prompt: RuntimePrompt): Promise<RuntimeInputAcceptance> {
+    async steer(prompt: RuntimePrompt, onLocalDispatch?: () => void): Promise<RuntimeInputAcceptance> {
         const turn = this.active ?? this.pending?.turn;
+        if (this.createReplacement) {
+            if (this.active?.replacement && !this.active.cancelled && this.active.current()) {
+                const result = await this.active.replacement.steer(prompt, onLocalDispatch);
+                return { mode: 'cancel-reprompt', accepted: result.accepted, turnId: turn!.context.turnId,
+                    ...(!result.accepted ? { reason: result.reason } : {}) };
+            }
+            return { mode: 'cancel-reprompt', accepted: false, turnId: turn?.context.turnId ?? '', reason: 'not-running' };
+        }
         return { mode: 'restart', accepted: false, turnId: turn?.context.turnId ?? '', reason: 'Use application restart steering' };
     }
 
@@ -172,6 +199,7 @@ export class AcpRuntimeSession implements NativeRuntimeSession {
             this.pending.outcome = snapshot({ ...this.pending.outcome, status: 'stopped', finalText: null });
         }
         if (this.pending?.claimed) { await this.protocol.close(); return; }
+        if (this.active?.replacement) { await this.active.replacement.cancel(); return; }
         await this.protocol.cancel();
     }
 
