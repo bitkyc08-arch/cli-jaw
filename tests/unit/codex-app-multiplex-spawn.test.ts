@@ -333,7 +333,7 @@ test.mock.module('../../src/trace/store.js', {
     namedExports: {
         appendTraceEvent: (entry: Record<string, unknown>) => { harness.traceEvents.push(entry); },
         stampTraceTool() {}, stampTraceToolEntries() {},
-        updateTraceToolRow() {}, getTraceEvent: () => null, linkTraceRunToMessage() {},
+        updateTraceToolRow() {}, getTraceEvent: () => null, getTraceToolEntry: () => null, linkTraceRunToMessage() {},
         startTraceRun: () => 'tr_multiplexfixture0001',
         finalizeTraceRun: (runId: string | null | undefined, status: string) => {
             harness.finalized.push({ runId, status });
