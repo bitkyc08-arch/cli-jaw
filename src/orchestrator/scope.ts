@@ -1,5 +1,6 @@
 import type { RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey } from '../messaging/session-key.js';
+import type { SessionScope } from '../messaging/session-key.js';
 import { settings } from '../core/config.js';
 
 type OrcScopeInput = {
@@ -58,6 +59,26 @@ export function resolveOrcScope(input: OrcScopeInput = {}): string {
     const remoteKey = input.persistedScopeId || (input.target ? buildRemoteBindingKey(input.target) : undefined);
     const sessionId = input.chatSessionId || remoteKey || 'default';
     return scopeForChatSession(sessionId, remoteKey, input.multiSessionEnabled === true);
+}
+
+/** Capture server placement once; the feature gate controls only automatic scope derivation. */
+export function resolveExecutionBinding(input: OrcScopeInput & {
+    scope?: string;
+    captured?: SessionScope | null;
+    activeChatSessionId: string;
+}): Readonly<SessionScope> {
+    // Untyped orchestration metadata must not silently turn a malformed explicit
+    // identity into the shared default. Empty strings retain the existing fallback convention.
+    for (const value of [input.scope, input.chatSessionId, input.captured?.scope,
+        input.captured?.chatSessionId, input.activeChatSessionId]) {
+        if (value !== undefined && typeof value !== 'string') {
+            throw new TypeError('Execution binding identities must be strings');
+        }
+    }
+    return Object.freeze({
+        scope: input.scope || input.captured?.scope || resolveOrcScope(input),
+        chatSessionId: input.chatSessionId || input.captured?.chatSessionId || input.activeChatSessionId || 'default',
+    });
 }
 
 export function findActiveScope(_origin: string, _chatId?: string | number, _meta?: { workingDir?: string }): string | null {

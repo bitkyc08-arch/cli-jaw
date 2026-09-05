@@ -1,13 +1,18 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AcpProjection } from '../../src/agent/runtime/acp/projection.ts';
 import { acpText, acpSnapshot } from '../../src/agent/runtime/acp/content.ts';
-import { RuntimeProjection } from '../../src/agent/runtime/projection.ts';
 import { FULLTEXT_MAX_CHARS } from '../../src/agent/events/fulltext-bound.ts';
 import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
 import { encodeRuntimeBody, decodeRuntimeBody } from '../../src/trace/runtime-body-codec.ts';
 import { stringifyTraceValue } from '../../src/trace/redact.ts';
+
+// This suite injects every recorder; loading the unused SQLite default races other test processes.
+mock.module('../../src/trace/store.js', { namedExports: {
+    appendTraceEvent: () => assert.fail('default trace recorder must not be used by a pure projector test'),
+} });
+const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
+const { AcpProjection } = await import('../../src/agent/runtime/acp/projection.ts');
 
 function harness(scope = 'one', failure?: 'null' | 'throw') {
     const events: RuntimeEvent[] = [], beforeCodec: RuntimeEventBody[] = [], notices: string[] = [];
