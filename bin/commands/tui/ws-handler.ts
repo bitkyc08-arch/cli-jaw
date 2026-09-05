@@ -92,14 +92,6 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                     rebuildFooter(ctx); // safe point: before the first chunk is written
                     startFooterTimer(ctx);
                     if (!isThinkingDelta) startAssistantItem(transcript, event.agentId);
-                    if (!isFullscreen(ctx) && !isThinkingDelta) {
-                        process.stdout.write('\n');
-                        ctx.streamSink = createStreamSink({
-                            write: (s) => process.stdout.write(s),
-                            width: Math.max(20, (process.stdout.columns || 80) - 4),
-                            gutter: '  ',
-                        });
-                    }
                 } else if (ctx.streamState === 'tool') {
                     ctx.streamState = 'responding';
                     rebuildFooter(ctx);
@@ -108,6 +100,16 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                     appendThinkingTurnText(transcript, event.text, event.agentId);
                     if (isFullscreen(ctx)) ctx.requestFrame?.();
                     break;
+                }
+                // Thinking can start the turn clock without starting an answer.
+                // Initialize its line sink independently, once, on the first answer chunk.
+                if (!isFullscreen(ctx) && !ctx.streamSink) {
+                    process.stdout.write('\n');
+                    ctx.streamSink = createStreamSink({
+                        write: (s) => process.stdout.write(s),
+                        width: Math.max(20, (process.stdout.columns || 80) - 4),
+                        gutter: '  ',
+                    });
                 }
                 appendAssistantTurnText(transcript, event.text, event.agentId);
                 if (ctx.streamSink) {

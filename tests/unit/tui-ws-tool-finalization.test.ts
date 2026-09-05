@@ -1,3 +1,4 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
