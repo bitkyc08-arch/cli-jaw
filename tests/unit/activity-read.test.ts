@@ -231,6 +231,17 @@ test('discovery caps retained rows at 256 and exposes incomplete', async () => {
     assert.equal(result.runs[255]!.id, summary(255).id); assert.equal(input.paths.length, 7);
 });
 
+test('discovery continuation begins after the retained cap, not after discarded page rows', async () => {
+    const first=await readActivityRuns(fixture(Array.from({length:7},(_,i)=>discovery(i*40,40))));
+    assert.equal(first.nextAfter,summary(255).id);
+    const input=fixture([discovery(256,24)]);
+    const next=await readActivityRuns({...input,after:first.nextAfter!});
+    assert.equal(new URL(input.paths[0]!,'http://fixture').searchParams.get('after'),summary(255).id);
+    assert.equal(next.runs[0]?.id,summary(256).id);
+    assert.equal(next.runs.length,24);assert.equal(next.incomplete,false);
+    await assert.rejects(readActivityRuns({...input,after:'invalid/cursor'}),/invalid_activity_cursor/);
+});
+
 test('discovery is conservative at the exact bound', async () => {
     const input = fixture([...Array.from({ length: 6 }, (_, i) => discovery(i * 40, 40)), discovery(240, 16)]);
     const result = await readActivityRuns(input);

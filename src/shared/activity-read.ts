@@ -38,6 +38,8 @@ export interface ActivityRunsReadResult {
     runs: ActivityRunSummary[];
     /** True when the local discovery bound is reached. False is not a chronological snapshot guarantee. */
     incomplete: boolean;
+    /** Last retained descriptor, so a partial final page does not skip its remainder. */
+    nextAfter?: string;
 }
 
 /** The injected reader owns HTTP status, authentication and transport cancellation.
@@ -119,10 +121,11 @@ function parseRun(value: unknown, sessionId: string): ActivityRunSummary {
 /** ID-keyset discovery, not chronological history. Concurrent IDs before the cursor
  * require SSE or a later discovery pass. The server owns session authorization.
  */
-export async function readActivityRuns(options: ActivityReadOptions): Promise<ActivityRunsReadResult> {
+export async function readActivityRuns(options: ActivityReadOptions & { after?: string }): Promise<ActivityRunsReadResult> {
     if (!id(options.sessionId)) throw new Error('invalid_activity_identity');
+    if (options.after !== undefined && options.after !== '' && !/^tr_[A-Za-z0-9_-]{16,80}$/.test(options.after)) throw new Error('invalid_activity_cursor');
     const runs: ActivityRunSummary[] = [];
-    let after = '';
+    let after = options.after ?? '';
     while (runs.length < DISCOVERY_RUNS) {
         const query = new URLSearchParams({ session: options.sessionId, after });
         const page = await readPage(options, `/api/traces/activity-runs?${query}`);
@@ -136,8 +139,8 @@ export async function readActivityRuns(options: ActivityReadOptions): Promise<Ac
             after = row.id; // Opaque ID in server ascending order; never a timestamp or offset.
         }
         runs.push(...rows.slice(0, DISCOVERY_RUNS - runs.length));
-        if (runs.length >= DISCOVERY_RUNS) return { runs, incomplete: true };
+        if (runs.length >= DISCOVERY_RUNS) return { runs, incomplete: true, nextAfter:runs[runs.length-1]!.id };
         if (rows.length < PAGE_SIZE) return { runs, incomplete: false };
     }
-    return { runs, incomplete: true };
+    return { runs, incomplete: true, nextAfter:runs[runs.length-1]!.id };
 }
