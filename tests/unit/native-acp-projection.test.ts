@@ -86,6 +86,21 @@ test('closed-only text never revives; empty text is distinct from missing and st
     assert.equal(h.mapper.partialText, 'commentaryreplacement');
 });
 
+test('a duplicate terminal tool snapshot does not discard a newer assistant answer', () => {
+    const h = harness(), terminal = { toolCallId: 'retired', title: 'Read', status: 'completed' };
+    h.update('tool_call', terminal); h.message('answer');
+    const count = h.events.length; h.update('tool_call_update', terminal);
+    assert.equal(h.events.length, count); assert.equal(h.mapper.finalText(end), 'answer');
+});
+
+test('an explicit ID boundary without text closes the old candidate without inventing empty final', () => {
+    for (const ids of [['one', 'two'], ['one', undefined], [undefined, 'two']] as const) {
+        const h = harness(); h.message('old', ids[0]);
+        h.update('agent_message_chunk', { content: [], ...(ids[1] === undefined ? {} : { messageId: ids[1] }) });
+        assert.equal(h.mapper.finalText(end), null); assert.equal(h.mapper.partialText, 'old');
+    }
+});
+
 test('tool snapshots preserve identity, richer detail and native completion semantics', () => {
     const h = harness();
     h.update('tool_call', { toolCallId: 'private-id', title: 'run_terminal_command', rawInput: { command: 'fixture' } });

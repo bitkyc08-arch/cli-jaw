@@ -71,6 +71,7 @@ export class AcpProjection {
         if (content.text !== null && this.partial.length + content.text.length > FULLTEXT_MAX_CHARS) throw new Error('acp_text_limit');
         this.stopped = false;
         this.thoughtRef = null;
+        if (this.active && this.active.nativeId !== id) this.active = null;
         if (content.unsupported) {
             this.active = null;
             this.projection.text('message', 'unsupported-' + (++this.nextSegment), UNSUPPORTED_CONTENT, 'replace');
@@ -97,6 +98,8 @@ export class AcpProjection {
 
     private tool(update: Record<string, unknown>, kind: string): void {
         const id = nativeId(update['toolCallId']), prior = this.tools.get(id);
+        // A retired tool's replay is metadata, not a boundary for a newer answer.
+        if (prior !== undefined && prior !== 'running') return;
         if (prior === undefined && this.tools.size >= TOOL_LIMIT) throw new Error('acp_tool_limit');
         const status = toolStatus(update['status'], prior), name = title(update['title']);
         const content = acpText(update['content']);
@@ -108,7 +111,6 @@ export class AcpProjection {
             content.unsupported ? UNSUPPORTED_CONTENT : undefined, exitDetail(rawOutput)].filter(value => value !== undefined && value !== '');
         this.closeSegment();
         this.stopped = false;
-        if (prior !== undefined && prior !== 'running') return;
         this.tools.set(id, status);
         this.projection.tool(this.toolRef(id), { status,
             ...(name === undefined ? {} : { name }),
