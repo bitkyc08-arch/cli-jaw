@@ -81,6 +81,24 @@ function assistantTexts(ctx: TuiContext): string[] {
         .map(item => item.type === 'assistant' ? item.text : '');
 }
 
+test('interactive raw prints semantic frames once without mutating display state', () => {
+    const ctx = makeCtx();
+    ctx.isRaw = true;
+    const lines: string[] = [];
+    const original = console.log;
+    console.log = (...args) => { lines.push(args.join(' ')); };
+    try {
+        const frame = { type: 'agent_runtime', version: 1, runId: 'raw-run', sessionId: 'raw-session',
+            scope: 'local:raw-session', turnId: 'raw-turn', seq: 1, kind: 'turn-start', provider: 'codex-app' };
+        handleWsMessage(ctx, msg(frame));
+        assert.equal(lines.length, 1);
+        assert.ok(lines[0]?.includes(JSON.stringify(frame)));
+        assert.deepEqual(ctx.store.transcript.items, []);
+        assert.equal(ctx.streaming, false);
+        assert.equal(ctx.footerTimer, null);
+    } finally { console.log = original; cleanupCtx(ctx); }
+});
+
 test('native final helper replaces only streaming assistant rows after the latest user', () => {
     const ctx = makeCtx();
     const transcript = ctx.store.transcript;

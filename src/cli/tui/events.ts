@@ -1,8 +1,13 @@
 import type { ToolEventInput } from './transcript.js';
+import type { RuntimeEvent } from '../../shared/runtime-contract.js';
+import { parseRuntimeEvent } from '../../shared/runtime-event-parse.js';
 
 export type ToolStatus = 'running' | 'done' | 'error';
 
 export type TuiEvent =
+    | { kind: 'runtime'; event: RuntimeEvent }
+    | { kind: 'runtime-invalid'; raw: Record<string, unknown> }
+    | { kind: 'runtime-gap'; runId: string; sessionId: string; scope: string }
     | { kind: 'assistant-output'; text: string; agentId?: string | undefined; thinking: boolean }
     | { kind: 'agent-done'; text: string; agentId?: string | undefined; toolLog: ToolEventInput[]; raw: Record<string, unknown> }
     | { kind: 'agent-status'; status: string; agentId?: string | undefined; agentName?: string | undefined }
@@ -70,6 +75,19 @@ export function normalizeTuiWsEvent(raw: unknown): TuiEvent {
     const msg = asRecord(raw) ?? {};
     const type = stringValue(msg['type']);
     switch (type) {
+        case 'agent_runtime': {
+            const event = parseRuntimeEvent(msg);
+            return event ? { kind: 'runtime', event } : { kind: 'runtime-invalid', raw: msg };
+        }
+        case 'agent_runtime_gap': {
+            const runId = optString(msg['runId']);
+            const sessionId = optString(msg['sessionId']);
+            const scope = optString(msg['scope']);
+            // Gaps are notices, not committed RuntimeEvents: they have no seq/turnId.
+            if (!runId || !sessionId || !scope || runId.length > 240 || sessionId.length > 240
+                || scope.length > 240 || msg['reason'] !== 'projection_degraded') return { kind: 'ignore', raw: msg };
+            return { kind: 'runtime-gap', runId, sessionId, scope };
+        }
         case 'agent_chunk':
         case 'agent_output':
             return {

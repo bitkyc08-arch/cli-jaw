@@ -73,6 +73,12 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
     const transcript = ctx.store.transcript;
     try {
         const wire = JSON.parse(raw);
+        // Interactive raw retains its existing frame printer. Piped raw is owned
+        // by raw-pipe-mode and never enters the presentation normalizer.
+        if (ctx.isRaw && (wire?.type === 'agent_runtime' || wire?.type === 'agent_runtime_gap')) {
+            console.log(`  ${c.dim}${raw}${c.reset}`);
+            return;
+        }
         const nativeFinality = wire?.runtimeFinality === 'present' || wire?.runtimeFinality === 'absent';
         const nativeOrchestrateDone = !ctx.isRaw && nativeFinality && wire?.type === 'orchestrate_done';
         const event = normalizeTuiWsEvent(nativeOrchestrateDone ? { ...wire, type: 'agent_done' } : wire);
