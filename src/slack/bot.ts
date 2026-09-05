@@ -4,7 +4,7 @@
 // handler that gates then dispatches into submitMessage/orchestrateAndCollect,
 // and a forwarder for non-Slack-origin agent output.
 
-import { settings } from '../core/config.js';
+import { isSettingsPersistenceBlocked, readPersistedSlackAttachPort, saveSettings, settings } from '../core/config.js';
 import { withSessionScope } from '../core/session-context.js';
 import { log } from '../core/logger.js';
 import { t, normalizeLocale } from '../core/i18n.js';
@@ -1231,10 +1231,13 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
         log.warn('[slack] app-level token missing — outbound only, no inbound events');
         return transportNotStarted('outbound_only');
     }
-    // One bot, one instance: a second instance sharing these tokens would
-    // silently swallow half the events (Socket Mode round-robin).
-    if (!shouldAttachSlack(sc.attachPort, settings["port"])) {
-        log.info(`[slack] not the attach instance (attach port ${sc.attachPort}, this :${settings["port"]}) — socket not opened`);
+    // An explicit owner is fail-closed. An unset owner gets one provisional
+    // connection attempt; only a successful socket start may elect this port.
+    const attachPort = String(sc.attachPort ?? '').trim();
+    const currentPort = String(settings["port"] ?? '').trim();
+    const selfElectionPending = !attachPort && Boolean(currentPort);
+    if (!selfElectionPending && !shouldAttachSlack(attachPort, currentPort)) {
+        log.info(`[slack] not the attach instance (attach port ${attachPort || 'unset'}, this :${currentPort || 'unset'}) — socket not opened`);
         return transportNotStarted('not_attach_instance');
     }
 
@@ -1293,6 +1296,33 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
         client.stop();
         if (socketClient === client) socketClient = null;
         return transportNotStarted('superseded');
+    }
+    if (selfElectionPending) {
+        // Two processes of the SAME home with attachPort unset can both reach
+        // this line (different ports bind fine; the pidfile is written, not
+        // acquired). Re-read the file right before writing so the second one
+        // sees the first one's election and yields instead of overwriting it.
+        // This narrows the race to read→write, it does not close it; the
+        // operator-set attachPort (jaw slack setup) remains the strong form.
+        const onDisk = readPersistedSlackAttachPort();
+        if (onDisk && onDisk !== currentPort) {
+            log.info(`[slack] another instance (:${onDisk}) elected itself first — disposing socket`);
+            client.stop();
+            if (socketClient === client) socketClient = null;
+            return transportNotStarted('not_attach_instance');
+        }
+        if (isSettingsPersistenceBlocked()) {
+            log.warn('[slack] attach-port self-election could not be persisted; keeping this successful socket for the current boot');
+        } else {
+            try {
+                saveSettings({
+                    ...settings,
+                    slack: { ...sc, attachPort: currentPort },
+                });
+            } catch (error) {
+                log.warn('[slack] attach-port self-election persist failed; keeping this successful socket for the current boot:', logErrorText(error));
+            }
+        }
     }
 
     forwarderHandler = createSlackForwarder({

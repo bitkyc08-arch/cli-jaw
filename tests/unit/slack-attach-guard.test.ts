@@ -18,7 +18,7 @@ writeFileSync(join(home, 'settings.json'), JSON.stringify({
         botToken: 'xoxb-1-test',
         appToken: 'xapp-1-test',
         channelIds: ['C1'],
-        attachPort: '3457',
+        attachPort: '',
     },
 }, null, 2));
 
@@ -26,18 +26,22 @@ const { getTransportCapability } = await import('../../src/messaging/channel-hea
 const { loadSettings } = await import('../../src/core/config.ts');
 loadSettings();
 
-test('non-attach instance reports not_attach_instance with inbound off', () => {
+test('an unset owner reports not_attach_instance until init elects one', () => {
     const cap = getTransportCapability('slack');
     assert.equal(cap.reason, 'not_attach_instance');
-    assert.equal(cap.configured, true, 'tokens ARE present — this is intentional, not broken');
+    assert.equal(cap.configured, true);
     assert.equal(cap.activeInbound, false);
     assert.equal(cap.sendCapable, false);
 });
-
-test('attach instance reports normally', async () => {
+test('a different elected port reports not_attach_instance', async () => {
+    const { settings, saveSettings } = await import('../../src/core/config.ts');
+    settings["slack"].attachPort = '3457';
+    saveSettings(settings);
+    assert.equal(getTransportCapability('slack').reason, 'not_attach_instance');
+});
+test('the elected instance reports normally', async () => {
     const { settings, saveSettings } = await import('../../src/core/config.ts');
     settings["slack"].attachPort = '24575';
     saveSettings(settings);
-    const cap = getTransportCapability('slack');
-    assert.notEqual(cap.reason, 'not_attach_instance');
+    assert.notEqual(getTransportCapability('slack').reason, 'not_attach_instance');
 });

@@ -82,16 +82,15 @@ export function mentionsUser(text: string, userId: string): boolean {
 }
 
 /**
- * One bot, one instance. Socket Mode happily opens several connections per
- * app token and Slack round-robins events across them, so two instances
- * sharing tokens each swallow a random slice of the traffic. `attachPort`
- * names the instance that owns the connection; every other instance must
- * not open the socket. Unset = single-instance behavior (attach).
+ * One bot, one elected instance. Socket Mode round-robins events across every
+ * connection sharing an app token, so only an explicit non-empty port match
+ * may attach. The init owner handles the one-time unset self-election after a
+ * socket opens successfully; pure readers and health remain fail-closed.
  */
 export function shouldAttachSlack(attachPort: unknown, currentPort: unknown): boolean {
     const attach = String(attachPort ?? '').trim();
-    if (!attach) return true;
-    return attach === String(currentPort ?? '').trim();
+    const current = String(currentPort ?? '').trim();
+    return Boolean(attach && current && attach === current);
 }
 
 export function stripMention(text: string, userId: string): string {

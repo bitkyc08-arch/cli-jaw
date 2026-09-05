@@ -295,7 +295,7 @@ export function checkRenderGroundingAdvisory(att: PhaseAttestation): string | nu
  *  The extension must be TERMINAL. Matching `.pdf` anywhere would refuse
  *  `export.pdf.ts` — a source file — because `.` is a word boundary, turning a
  *  pure code change into a demand to screenshot a document it never produced. */
-const BINARY_DOCUMENT_PATTERN = /\.(pdf|docx|pptx|xlsx|hwpx?)(?![\p{L}\p{N}._-])/iu;
+const BINARY_DOCUMENT_PATTERN = /\.(pdf|docx|pptx|xlsx|hwpx?|png|jpe?g)(?![\p{L}\p{N}._-])/iu;
 
 /** Evidence that someone actually LOOKED AT the document.
 *

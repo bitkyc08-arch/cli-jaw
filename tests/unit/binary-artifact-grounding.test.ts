@@ -23,9 +23,16 @@ test('ATT-BIN-001: a produced document with no observation is refused', () => {
     assert.match(reason, /opened|open/i, 'the refusal must say what to do about it');
 });
 
+test('ATT-BIN-001b: raster images require observation too', () => {
+    for (const file of ['chart.png', 'chart.jpg', 'chart.jpeg']) {
+        const reason = checkBinaryArtifactGrounding(att(`exported the dashboard to ${file}`));
+        assert.ok(reason, `${file} must be blocked until someone looks at it`);
+    }
+});
 test('ATT-BIN-002: observing the output lets the phase advance', () => {
     assert.equal(checkBinaryArtifactGrounding(att('rendered report.pdf, opened page 1 with pdftoppm, Korean text renders')), null);
     assert.equal(checkBinaryArtifactGrounding(att('built deck.pptx and took a screenshot of every slide')), null);
+    assert.equal(checkBinaryArtifactGrounding(att('exported chart.png and inspected the thumbnail')), null);
 });
 
 test('ATT-BIN-003: a Korean observation counts, because these attestations are Korean', () => {
@@ -43,6 +50,7 @@ test('ATT-BIN-005: a SOURCE file with a format segment is not a document', () =>
     // a document that was never produced.
     assert.equal(checkBinaryArtifactGrounding(att('fixed the crash in export.pdf.ts writer')), null);
     assert.equal(checkBinaryArtifactGrounding(att('updated report.docx.snap after the schema change')), null);
+    assert.equal(checkBinaryArtifactGrounding(att('updated chart.png.ts export metadata')), null);
     assert.equal(checkBinaryArtifactGrounding(att('refactored pdf-export.ts into two modules')), null);
 });
 

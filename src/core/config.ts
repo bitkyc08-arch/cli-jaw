@@ -1311,6 +1311,17 @@ export function persistAndCommit(
     commitCandidate(candidate);
 }
 
+/** The attachPort another instance may have just persisted. Read from disk, not
+ *  memory, because the in-memory copy predates the other process's write. */
+export function readPersistedSlackAttachPort(): string {
+    try {
+        const raw = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')) as { slack?: { attachPort?: unknown } };
+        return String(raw.slack?.attachPort ?? '').trim();
+    } catch {
+        return '';
+    }
+}
+
 /** Re-save the current settings pair for legacy callers that mutate settings in place. */
 export function saveSettings(s: Record<string, any>) {
     persistAndCommit({ value: s, shape: settingsPersistenceShape });
