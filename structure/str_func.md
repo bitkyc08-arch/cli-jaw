@@ -384,7 +384,7 @@ cli-jaw/
 │   ├── shared/               ← 공유 유틸리티 (6 files + reminders helper) ✨
 │   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
 │   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
-│   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (45L)
+│   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (50L)
 │   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
 │   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
 │   │   ├── structured-fence.ts ← structured renderer fence scanner/parser helper (80L)

@@ -4,7 +4,9 @@ export type RuntimePhase = 'commentary' | 'final' | 'unknown';
 export type RuntimeItemStatus = 'running' | 'done' | 'error' | 'stopped';
 export interface RuntimeTurnOutcome {
     status: 'done' | 'error' | 'stopped';
+    /** null means absent; an empty string is an authoritative empty answer. */
     finalText: string | null;
+    /** Incomplete assistant output for salvage, never an implicit final answer. */
     partialText: string;
 }
 export interface RuntimeCapabilities {
@@ -21,9 +23,12 @@ export interface RuntimeCapabilities {
 export interface RuntimeEventIdentity {
     version: 1;
     runId: string;
+    /** Durable jaw chat identity, not a provider's native session identifier. */
     sessionId: string;
+    /** Routing scope may differ from the chat session (e.g. mention-watch). */
     scope: string;
     turnId: string;
+    /** Allocated by committed trace storage; monotonic, not contiguous. */
     seq: number;
     parentItemId?: string;
 }

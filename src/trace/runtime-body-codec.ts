@@ -95,8 +95,8 @@ function bodyOf(event: RuntimeEvent): RuntimeEventBody {
 export function encodeRuntimeBody(identity: RuntimeEventIdentity, input: RuntimeEventBody): {
     raw: RuntimeBodyRecord; body: RuntimeEventBody;
 } {
-    // Identity LAST: excess input properties cannot override server ownership.
-    const parsed = parseRuntimeEvent({ ...input, ...identity });
+    // Optional ownership must also overwrite body fields when it is absent.
+    const parsed = parseRuntimeEvent({ ...input, ...identity, parentItemId: identity.parentItemId });
     if (!parsed) throw new TypeError('invalid_runtime_event');
     const body = bodyOf(parsed);
     switch (body.kind) {
@@ -140,5 +140,5 @@ export function decodeRuntimeBody(raw: unknown, identity: Omit<RuntimeEventIdent
     if (typeof kind !== 'string' || !Object.hasOwn(allowed, kind) || kind !== eventType) return null;
     if (entries.some(([key]) => !allowed[kind]!.includes(key))) return null;
     return parseRuntimeEvent({ ...Object.fromEntries(entries), ...identity, turnId: obj['turnId'],
-        ...(obj['parentItemId'] === undefined ? {} : { parentItemId: obj['parentItemId'] }) });
+        parentItemId: obj['parentItemId'] });
 }
