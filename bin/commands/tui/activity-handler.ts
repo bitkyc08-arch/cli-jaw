@@ -1,13 +1,14 @@
 import type { RuntimeEvent, RuntimeTurnOutcome } from '../../../src/shared/runtime-contract.js';
 import { activityKey } from '../../../src/shared/activity-state.js';
 import { presentationMode } from '../../../src/shared/presentation.js';
-import { createActivityItem, updateActivityItem, renderActivityItem, releaseActivityPreview,
+import { createActivityItem, renderActivityItem, releaseActivityPreview,
     type ActivityTranscriptItem } from '../../../src/cli/tui/activity.js';
-import { appendActivityAnswer, renderActivityAnswer } from '../../../src/cli/tui/activity-answer.js';
+import { appendActivityAnswer, writeActivityAnswer } from '../../../src/cli/tui/activity-answer.js';
 import { isVerboseRenderMode, appendStatusItem } from '../../../src/cli/tui/transcript.js';
 import { wrapActivityTerminalText } from '../../../src/cli/tui/activity-terminal-text.js';
 import type { TuiContext } from './types.js';
 import { activityLinearDelta, closeActivityLinear } from '../../../src/cli/tui/activity-linear.js';
+import { getActivityReplay } from './activity-replay.js';
 
 const MAX_ACTIVITY_MODELS = 16;
 
@@ -46,16 +47,14 @@ function admitActivity(ctx: TuiContext, event: RuntimeEvent): ActivityTranscript
     return item;
 }
 
-function printSettledActivity(ctx: TuiContext, item: ActivityTranscriptItem, newAnswer: boolean): void {
+function printSettledActivity(ctx: TuiContext, item: ActivityTranscriptItem): void {
     if (ctx.displayMode === 'fullscreen') return;
     const width = process.stdout.columns || 80;
     if (item.presentation === 'legacy') process.stdout.write(closeActivityLinear(item));
     const rows = item.presentation === 'legacy' ? [item.terminalStatus === 'done' ? 'Complete'
-        : item.terminalStatus === 'stopped' ? 'Stopped' : 'Failed'] : renderActivityItem(item, width);
+        : item.terminalStatus === 'stopped' ? 'Stopped' : 'Failed'] : renderActivityItem(item, width, item.presentation, 'Use fullscreen chat for retained history.');
     process.stdout.write('\r\x1b[2K' + rows.join('\n') + '\n');
-    if (!newAnswer) return;
-    const answer = ctx.store.transcript.items.find(row => row.type === 'assistant' && row.activityKey === item.key);
-    if (answer?.type === 'assistant' && answer.text) process.stdout.write(renderActivityAnswer(answer, width).join('\n') + '\n');
+    writeActivityAnswer(ctx.store.transcript, item.key, width, text => process.stdout.write(text));
 }
 
 /** Returns true only for a newly admitted event; duplicates must not restart clocks. */
@@ -65,29 +64,45 @@ export function handleActivityRuntime(ctx: TuiContext, event: RuntimeEvent): boo
     // displayed. Explicit session switches still reject the old conversation.
     if (!ownsIdentity(ctx, event) && !(existing && ownsAdmittedItem(ctx, existing))) return false;
     const item = existing ?? admitActivity(ctx, event);
-    if (!item || item.released || event.seq <= item.model.seq) return false;
+    if (!item || item.retired || item.released || event.seq <= item.model.seq) return false;
     const wasTerminal = Boolean(item.terminalStatus);
     item.presentation = presentationMode(ctx.settingsSnapshot);
     const previous = ctx.store.transcript.items.find(row => row.type === 'activity' && row.key === ctx.activeActivityKey);
-    if (!wasTerminal && (event.kind === 'turn-start' || !ctx.activeActivityKey
-        || (previous?.type === 'activity' && previous.terminalStatus))) ctx.activeActivityKey = item.key;
-    let newAnswer = false;
     // Capture the full final before the shared reducer bounds its preview.
-    if (event.kind === 'turn-end') newAnswer = appendActivityAnswer(ctx.store.transcript, item.key, event);
+    if (event.kind === 'turn-end') appendActivityAnswer(ctx.store.transcript, item.key, event);
     try {
-        if (!updateActivityItem(item, event)) return false;
+        if (!getActivityReplay(ctx).live(event)) return false;
+        if (event.kind === 'turn-end') item.terminalStatus = event.status;
     } catch {
         item.degraded = true;
-        item.recordingGap = true;
+        item.displayGap = true;
+        if (event.kind === 'turn-end') {
+            item.terminalStatus = event.status;
+            printSettledActivity(ctx, item);
+        }
         item.revision++;
         ctx.requestFrame?.();
         return false;
     }
+    // A terminal or an old existing run cannot reclaim the live owner from a
+    // newer start. Even duplicate buffered starts must pass replay admission first.
+    if (!wasTerminal && event.kind !== 'turn-end' && (!ctx.activeActivityKey || (!existing
+        && (event.kind === 'turn-start' || ctx.activityActiveRunId === event.runId
+            || (previous?.type === 'activity' && previous.terminalStatus))))) {
+        if (ctx.activeActivityKey !== item.key) ctx.activityActiveGeneration = (ctx.activityActiveGeneration ?? 0) + 1;
+        ctx.activeActivityKey = item.key;
+    }
+    if (item.model.seq < event.seq && event.kind !== 'turn-end') return !wasTerminal;
     if (ctx.displayMode !== 'fullscreen' && !wasTerminal) {
+        const omitted = item.model.omitted;
+        if (!item.lineLimitReported && (omitted.entries || omitted.textChars || omitted.requests)) {
+            process.stdout.write(closeActivityLinear(item) + '\nActivity preview limited; use fullscreen chat for retained history.\n');
+            item.lineLimitReported = true;
+        }
         if (item.presentation === 'legacy' && event.kind !== 'message' && event.kind !== 'reasoning' && event.kind !== 'tool') {
             process.stdout.write(closeActivityLinear(item));
         }
-        if (event.kind === 'turn-end' && !wasTerminal) printSettledActivity(ctx, item, newAnswer);
+        if (event.kind === 'turn-end' && !wasTerminal) printSettledActivity(ctx, item);
         else if (event.kind === 'request') {
             process.stdout.write('\r\x1b[2K' + wrapActivityTerminalText(`Waiting for ${event.requestType}: ${event.view.title}`,
                 process.stdout.columns || 80).join('\n') + '\n');
@@ -97,6 +112,9 @@ export function handleActivityRuntime(ctx: TuiContext, event: RuntimeEvent): boo
         } else {
             process.stdout.write('\r\x1b[2K' + (renderActivityItem(item, process.stdout.columns || 80)[0] ?? ''));
         }
+    } else if (ctx.displayMode === 'line' && event.kind === 'turn-end') {
+        process.stdout.write(closeActivityLinear(item));
+        writeActivityAnswer(ctx.store.transcript, item.key, process.stdout.columns || 80, text => process.stdout.write('\n' + text));
     }
     ctx.requestFrame?.();
     return !wasTerminal;
@@ -112,14 +130,16 @@ export function settleActivityCompatibility(ctx: TuiContext, wire: Record<string
     const outcome: Pick<RuntimeTurnOutcome, 'status' | 'finalText'> = {
         status, finalText: wire['runtimeFinality'] === 'absent' ? null : typeof wire['text'] === 'string' ? wire['text'] : '',
     };
-    const newAnswer = appendActivityAnswer(ctx.store.transcript, item.key, outcome);
+    appendActivityAnswer(ctx.store.transcript, item.key, outcome);
     if (!item.terminalStatus) {
         item.terminalStatus = status;
         item.degraded = true;
         item.model.requests.clear();
         item.revision++;
-        printSettledActivity(ctx, item, newAnswer);
+        printSettledActivity(ctx, item);
     }
+    if (ctx.displayMode === 'line') writeActivityAnswer(ctx.store.transcript, item.key, process.stdout.columns || 80, text => process.stdout.write(text));
+    ctx.activityReplay?.markSettled(item.model.identity.runId);
     ctx.requestFrame?.();
     return true;
 }

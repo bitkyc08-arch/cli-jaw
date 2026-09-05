@@ -15,24 +15,33 @@ export interface ActivityTranscriptItem {
     terminalStatus: RuntimeTurnOutcome['status'] | null;
     degraded: boolean;
     recordingGap: boolean;
+    displayGap: boolean;
     released: boolean;
     presentation: PresentationMode;
     compatibilityDone: boolean;
     lineReceipts: Map<string, { chars: number; hash: string; label: string }>;
     lineActiveItemId: string | null;
+    retired: boolean;
+    lineLimitReported: boolean;
 }
 
 export function createActivityItem(event: RuntimeEvent, verbose = false): ActivityTranscriptItem {
-    return { type: 'activity', key: activityKey(event), model: createActivityState(event), collapsed: !verbose,
-        timestamp: Date.now(), revision: 0, terminalStatus: null, degraded: false, recordingGap: false, released: false,
-        presentation: 'activity', compatibilityDone: false, lineReceipts: new Map(), lineActiveItemId: null };
+    const item = createActivityFromState(createActivityState(event), verbose);
+    item.timestamp = Date.now();
+    return item;
+}
+
+export function createActivityFromState(model: ActivityState, verbose = false): ActivityTranscriptItem {
+    return { type: 'activity', key: activityKey(model.identity), model, collapsed: !verbose,
+        timestamp: 0, revision: 0, terminalStatus: model.end?.status ?? null, degraded: false, recordingGap: false, displayGap: false, released: false,
+        presentation: 'activity', compatibilityDone: false, lineReceipts: new Map(), lineActiveItemId: null, retired: false, lineLimitReported: false };
 }
 
 export function updateActivityItem(item: ActivityTranscriptItem, event: RuntimeEvent): boolean {
     if (item.released || !applyActivityEvent(item.model, event)) return false;
     if (event.kind === 'turn-end') {
         item.terminalStatus = event.status;
-        item.degraded = item.recordingGap;
+        item.degraded = item.recordingGap || item.displayGap;
     }
     item.revision++;
     return true;
@@ -72,31 +81,32 @@ const PREVIEW_ROWS = 12;
 
 export function renderActivityItem(
     item: ActivityTranscriptItem, width: number, mode: PresentationMode = item.presentation,
+    historyHint = 'F6 opens retained Activity history.',
 ): string[] {
     const gutter = width > 2 ? '  ' : '';
     const cols = Math.max(1, width - gutter.length);
     const rows: string[] = [];
     const append = (text: string) => rows.push(...wrapActivityTerminalText(text, cols));
-    const status = item.terminalStatus === 'done' ? 'Complete' : item.terminalStatus === 'stopped'
+    const status = item.retired && !item.terminalStatus ? 'Conversation changed' : item.terminalStatus === 'done' ? 'Complete' : item.terminalStatus === 'stopped'
         ? 'Stopped' : item.terminalStatus === 'error' ? 'Failed' : 'Working';
     const label = mode === 'activity' ? `${item.collapsed ? '>' : 'v'} Activity: ${status}` : status;
     append(label + (item.model.latestAction ? ` | ${item.model.latestAction}` : ''));
-    if (item.degraded) append(item.recordingGap ? 'Activity record incomplete; final answer remains available.'
-        : 'Waiting for the Activity record; final answer remains available.');
-    if (item.released) append('Preview released; F6 opens retained Activity history.');
+    if (item.degraded) append(item.recordingGap ? 'Activity record incomplete.'
+        : item.displayGap ? `Activity display incomplete. ${historyHint}` : 'Waiting for the Activity record.');
+    if (item.released) append(`Preview released. ${historyHint}`);
     const omitted = item.model.omitted;
-    if (omitted.entries || omitted.textChars || omitted.requests) append('Preview limited; F6 opens retained Activity history.');
-    for (const request of item.model.requests.values()) {
+    if (omitted.entries || omitted.textChars || omitted.requests) append(`Preview limited. ${historyHint}`);
+    for (const request of item.terminalStatus || item.retired ? [] : item.model.requests.values()) {
         append(`Waiting for ${request.requestType}: ${request.title}`);
     }
     if (mode === 'legacy' || !item.collapsed) {
         const entries = [...item.model.entries.values()];
-        if (entries.length > PREVIEW_ENTRIES) append(`${entries.length - PREVIEW_ENTRIES} earlier items in F6 history`);
+        if (entries.length > PREVIEW_ENTRIES) append(`${entries.length - PREVIEW_ENTRIES} earlier items. ${historyHint}`);
         for (const entry of entries.slice(-PREVIEW_ENTRIES)) {
             append(activityEntryLabel(entry));
             const details = wrapActivityTerminalText(activityEntryText(entry), Math.max(1, cols - 2));
             for (const detail of details.slice(0, PREVIEW_ROWS)) append((cols > 2 ? '  ' : '') + detail);
-            if (details.length > PREVIEW_ROWS) append('Detail preview limited; F6 opens history');
+            if (details.length > PREVIEW_ROWS) append(`Detail preview limited. ${historyHint}`);
         }
     }
     // model.end.finalText is a bounded preview, never the answer body. The

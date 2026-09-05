@@ -10,6 +10,17 @@ export function renderActivityAnswer(item: Extract<TranscriptItem, { type: 'assi
         .flatMap(line => wrapActivityTerminalText(prefix + line, width));
 }
 
+/** Storage admission is not stdout delivery: a failed preview fold can occur in
+ * between. Keep the line-mode delivery receipt on the same authoritative row. */
+export function writeActivityAnswer(state: TranscriptState, key: string, width: number, write: (text: string) => unknown): boolean {
+    const item = state.items.find(item => item.type === 'assistant' && item.activityKey === key);
+    if (item?.type !== 'assistant' || item.activityPrinted) return false;
+    const rows = renderActivityAnswer(item, width);
+    if (rows.length) write(rows.join('\n') + '\n');
+    item.activityPrinted = true;
+    return true;
+}
+
 /** Full authoritative answer owner. The Activity reducer retains only a preview. */
 export function appendActivityAnswer(
     state: TranscriptState,

@@ -54,6 +54,8 @@ import { runFullscreenMode } from './tui/fullscreen-mode.js';
 import { resolveTuiDisplayMode } from '../../src/cli/tui/mode.js';
 import { handleWsMessage } from './tui/ws-handler.js';
 import { refreshActivityIdentity } from './tui/api.js';
+import { bindActivityContext, restoreActiveActivity, invalidateActivityContext } from './tui/activity-replay.js';
+import { routeActivityHistoryInput } from './tui/activity-history.js';
 import { connectChannel, type ChatChannel } from './tui/channel.js';
 import { asRecord, fieldString } from '../_http-client.js';
 
@@ -236,6 +238,7 @@ const ctx: TuiContext = {
 };
 ctx.footer = formatFooter(ctx.label, ctx.accent, 'idle');
 ctx.promptPrefix = `  ${ctx.accent}\u276F${c.reset} `;
+bindActivityContext(ctx);
 await refreshActivityIdentity(ctx);
 
 if (values.verbose) {
@@ -310,6 +313,9 @@ if (rawPiped) {
 
     process.stdin.on('data', (_key) => {
         let incoming = _key as unknown as string;
+        if (routeActivityHistoryInput(ctx, incoming, token => handleKeyInput(ctx, token), {
+            columns: process.stdout.columns || 80, height: Math.max(1, getRows() - 5),
+        })) return;
         if (ctx.escPending) {
             if (ctx.escTimer) clearTimeout(ctx.escTimer);
             ctx.escTimer = null;
@@ -343,8 +349,11 @@ if (rawPiped) {
 
     // ─── Channel messages (SSE or legacy WS) ─
     ws.on('message', (data) => handleWsMessage(ctx, data));
+    ws.onReconnect?.(() => { void restoreActiveActivity(ctx); });
+    if (!ctx.isRaw) void restoreActiveActivity(ctx);
 
     ws.on('close', () => {
+        invalidateActivityContext(ctx);
         cleanupScrollRegion(resolveShellLayout(process.stdout.columns || 80, getRows(), ctx.store.panes));
         console.log(`\n  ${c.dim}Disconnected${c.reset}\n`);
         setBracketedPaste(false);

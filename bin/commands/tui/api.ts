@@ -16,7 +16,8 @@ type TuiApiInit = Omit<RequestInit, 'body' | 'headers'> & {
 export async function apiJson<T = JsonRecord>(ctx: Pick<TuiContext, 'apiUrl'>, path: string, init: TuiApiInit = {}, timeoutMs = 10000): Promise<T> {
     const headers: Record<string, string> = { ...authHeaders(), ...(init.headers || {}) };
     const { body: initBody, headers: _headers, ...rest } = init;
-    const req: RequestInit = { ...rest, headers, signal: AbortSignal.timeout(timeoutMs) };
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const req: RequestInit = { ...rest, headers, signal: rest.signal ? AbortSignal.any([rest.signal, timeout]) : timeout };
     if (initBody !== undefined && typeof initBody !== 'string') {
         req.body = JSON.stringify(initBody);
         if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
@@ -34,7 +35,8 @@ export async function apiJson<T = JsonRecord>(ctx: Pick<TuiContext, 'apiUrl'>, p
 
 /** No inferred local/default session: old or unavailable servers stay unbound. */
 export async function refreshActivityIdentity(
-    ctx: Pick<TuiContext, 'apiUrl' | 'activityIdentity' | 'activitySettlementIdentity' | 'activityIdentityGeneration' | 'isRaw'>,
+    ctx: Pick<TuiContext, 'apiUrl' | 'activityIdentity' | 'activitySettlementIdentity' | 'activityIdentityGeneration'
+        | 'activityActiveRunId' | 'onActivityIdentityChanged' | 'isRaw'>,
 ): Promise<void> {
     const generation = (ctx.activityIdentityGeneration ?? 0) + 1;
     ctx.activityIdentityGeneration = generation;
@@ -45,8 +47,13 @@ export async function refreshActivityIdentity(
         const response = await apiJson(ctx, '/api/orchestrate/snapshot', {}, 2000);
         if (ctx.activityIdentityGeneration !== generation) return;
         const snapshot = asRecord(response['data'] ?? response);
+        const previous = ctx.activitySettlementIdentity ?? null;
         ctx.activityIdentity = parseActivityIdentity(snapshot['activityIdentity']);
-        ctx.activitySettlementIdentity = ctx.activityIdentity;
+        if (ctx.activityIdentity) {
+            ctx.activitySettlementIdentity = ctx.activityIdentity;
+            ctx.activityActiveRunId = fieldString(asRecord(snapshot['activeRun'])['traceRunId']) || null;
+            ctx.onActivityIdentityChanged?.(previous, ctx.activityIdentity);
+        }
     } catch {
         // A missing/failed snapshot must not authorize another conversation's events.
     }

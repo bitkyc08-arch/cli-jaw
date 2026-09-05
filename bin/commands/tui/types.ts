@@ -6,6 +6,7 @@ import type { StreamSink } from '../../../src/cli/tui/stream.js';
 import type { IdeType } from '../../../src/ide/diff.js';
 import type { ChatChannel } from './channel.js';
 import type { ActivityIdentity } from '../../../src/shared/presentation.js';
+import type { ActivityReplay } from '../../../src/shared/activity-replay.js';
 
 // ─── ANSI color codes ────────────────────────
 export const c = {
@@ -111,9 +112,15 @@ export interface TuiContext {
     settingsSnapshot: Record<string, unknown>;
     activityIdentity: ActivityIdentity | null;
     activitySettlementIdentity?: ActivityIdentity | null;
+    activityActiveRunId?: string | null;
+    activityReplay?: ActivityReplay;
+    activityRestoreToken?: symbol;
+    onActivityIdentityChanged?: (previous: ActivityIdentity | null, next: ActivityIdentity | null) => void;
+    activityHistoryEscapeTimer?: ReturnType<typeof setTimeout>;
     activityIdentityGeneration: number;
     settingsRefreshGeneration?: number;
     activeActivityKey?: string;
+    activityActiveGeneration?: number;
     values: { port: string; raw: boolean; simple: boolean };
     isRaw: boolean;
 

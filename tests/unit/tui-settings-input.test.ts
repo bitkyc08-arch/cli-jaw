@@ -1,3 +1,4 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleKeyInput } from '../../bin/commands/tui/input-handler.ts';
@@ -5,6 +6,7 @@ import { applySettingsSelection } from '../../bin/commands/tui/overlays.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
 import { getComposerDisplayText } from '../../src/cli/tui/composer.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
+import { buildAppearanceRows } from '../../src/cli/tui/settings-screen.ts';
 
 function makeCtx(): TuiContext {
     return {
@@ -90,9 +92,11 @@ test('applySettingsSelection saves editable rows and reports read-only rows', as
         assert.equal(process.env['JAW_TUI_THEME'], 'light');
         assert.match(ctx.store.overlay.settingsMessage, /Saved Theme/);
 
-        ctx.store.overlay.settingsSelected = 8;
+        ctx.store.overlay.settingsSelected = buildAppearanceRows({ settings: ctx.settingsSnapshot,
+            tuiConfig: ctx.tuiConfig, footerPreview: ctx.footer }).findIndex(row => row.id === 'markdownRenderer');
         await applySettingsSelection(ctx);
         assert.match(ctx.store.overlay.settingsMessage, /read-only/);
+        assert.equal(calls.filter(call => call.init?.method === 'PUT').length, 1);
     } finally {
         globalThis.fetch = originalFetch;
     }

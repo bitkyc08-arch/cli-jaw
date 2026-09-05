@@ -5,7 +5,7 @@ export type TranscriptItem =
     | ActivityTranscriptItem
     | { type: 'user'; displayText: string; submitText: string; timestamp: number; agentId?: string }
     | { type: 'assistant'; text: string; streaming: boolean; timestamp: number; agentId?: string;
-        activityKey?: string; activityFinality?: 'present' | 'absent'; activityStatus?: RuntimeTurnOutcome['status'] }
+        activityKey?: string; activityFinality?: 'present' | 'absent'; activityStatus?: RuntimeTurnOutcome['status']; activityPrinted?: boolean }
     | { type: 'thinking'; text: string; streaming: boolean; timestamp: number; agentId?: string; collapsed?: boolean; stepRef?: string }
     | { type: 'tool'; text: string; timestamp: number; agentId?: string; collapsed?: boolean; detail?: string; stepRef?: string; status?: 'running' | 'done' | 'error' }
     | { type: 'command'; text: string; timestamp: number; commandName?: string; ok?: boolean }

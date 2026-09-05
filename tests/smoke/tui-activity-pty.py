@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Drive the compiled chat CLI through an OS PTY and deterministic SSE fixture."""
 import fcntl
+import base64
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ env = dict(os.environ, CLI_JAW_HOME=str(runtime / 'home'), TMPDIR=str(runtime),
            TSX_DISABLE_CACHE='1', TERM='xterm-256color', CI='1', NO_COLOR='1')
 (runtime / 'home').mkdir()
 capture = bytearray()
+sizes = [{'offset': 0, 'columns': 80, 'rows': 24}]
 fixture = None
 cli = None
 master = None
@@ -62,6 +64,11 @@ try:
         with urllib.request.urlopen(req, timeout=2) as response:
             return json.load(response)
 
+    def current_screen():
+        screen_input = EVIDENCE / 'screen-input.json'
+        screen_input.write_text(json.dumps({'data': base64.b64encode(capture).decode(), 'sizes': sizes}))
+        return json.loads(subprocess.check_output(['node', str(ROOT / 'tests/smoke/tui-pty-screen.mjs'), str(screen_input)], cwd=ROOT))
+
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
     cli = subprocess.Popen(['node', str(ROOT / 'dist/bin/cli-jaw.js'), 'chat', '--port', str(port)],
@@ -69,7 +76,7 @@ try:
                            start_new_session=True)
     os.close(slave)
     slave = None
-    read_until(lambda: b'for shortcuts' in capture, 'interactive composer')
+    read_until(lambda: b'F6 history' in capture, 'interactive composer')
     os.write(master, b'Inspect the fixture\r')
     read_until(lambda: any(row['path'] == '/api/message' for row in request('/fixture/state')['requests']), 'message HTTP route')
     ident = dict(version=1, runId='tui-pty-run', sessionId='tui-pty-chat', scope='local:tui-pty-chat', turnId='tui-pty-turn')
@@ -85,10 +92,41 @@ try:
     read_until(lambda: b'PTY_TOOL_DETAIL' in capture[before:], 'Ctrl+O expanded tool output')
     os.write(master, b'\x1b')
     read_until(lambda: any(row['path'] == '/api/stop' for row in request('/fixture/state')['requests']), 'Escape stop HTTP route')
+    request('/fixture/disconnect', {})
+    event(9, 'tool', itemId='read-1', name='Read', status='done', input='긴 경로/파일.ts', output='OFFLINE_TOOL_DETAIL')
     event(13, 'turn-end', status='stopped', finalText='PTY_FINAL_SENTINEL')
+    read_until(lambda: request('/fixture/state')['connections'] >= 2, 'SSE reconnect')
+    read_until(lambda: b'PTY_FINAL_SENTINEL' in capture, 'replayed authoritative final')
+    # Duplicate terminal delivery after restore must not produce another answer item.
     request('/fixture/event', dict(type='agent_done', traceRunId='tui-pty-run', runtimeFinality='present',
                                    runtimeStatus='stopped', text='PTY_FINAL_SENTINEL'))
     read_until(lambda: b'PTY_FINAL_SENTINEL' in capture, 'authoritative final')
+    os.write(master, b'draft')
+    before = len(capture)
+    os.write(master, b'\x1b[17~')
+    read_until(lambda: b'Activity history' in capture[before:], 'F6 history')
+    read_until(lambda: b'seq 7' in capture[before:], 'retained tool record')
+    resize_start = len(capture)
+    sizes.append({'offset': len(capture), 'columns': 40, 'rows': 16})
+    fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 16, 40, 0, 0))
+    os.kill(cli.pid, signal.SIGWINCH)
+    narrow_border = ('┌' + '─' * 38 + '┐').encode()
+    read_until(lambda: narrow_border in capture[resize_start:], '40-column resize redraw')
+    os.write(master, b'\x1b[B\r\x1b[6~')
+    read_until(lambda: b'OFFLINE_TOOL_DETAIL' in capture[before:], 'history navigation and detail after resize')
+    screen = current_screen()
+    (EVIDENCE / 'history-screen.json').write_text(json.dumps(screen, indent=2))
+    assert any('Activity history' in row for row in screen['rows']), 'history not in actual terminal cells'
+    assert any('OFFLINE_TOOL_DETAIL' in row for row in screen['rows']), 'retained detail not in terminal cells'
+    # Bracketed paste belongs to the inspector, never the command composer.
+    os.write(master, b'\x1b[200~evil\r\x03\x1b[201~\x1b')
+    def history_closed():
+        rows = current_screen()['rows']
+        return not any('Activity history' in row for row in rows) and any('draft' in row for row in rows)
+    read_until(history_closed, 'Escape closes history and preserves composer draft')
+    state = request('/fixture/state')
+    assert len([row for row in state['requests'] if row['path'] == '/api/message']) == 1, 'paste submitted a prompt'
+    assert len([row for row in state['requests'] if row['path'] == '/api/stop']) == 1, 'paste sent a stop'
     os.write(master, b'\x03')
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
@@ -104,7 +142,8 @@ try:
     assert b'\x1b[?2004l' in capture and b'\x1b[?25h' in capture, 'terminal modes not restored'
     (EVIDENCE / 'live-acceptance.json').write_text(json.dumps({
         'passed': True, 'route': 'dist/bin/cli-jaw.js chat -> SSE fixture', 'size': [80, 24],
-        'controls': ['submit', 'Ctrl+O expand', 'Escape stop', 'idle Ctrl+C exit'],
+        'controls': ['submit', 'Ctrl+O expand', 'Escape stop', 'reconnect replay', 'F6 history',
+                     'arrows/Enter/PageDown', 'resize 40x16', 'paste isolation', 'Escape draft preservation', 'idle Ctrl+C exit'],
         'requests': request('/fixture/state')['requests'],
         'scope': 'Real OS PTY/CLI route; deterministic server fixture, not a provider/journal proof'
     }, indent=2) + '\n')

@@ -2,6 +2,7 @@ import { createComposerState, createPasteCaptureState, type ComposerState, type 
 import { createAutocompleteState, type AutocompleteState, type ChoiceSelectorItem } from './overlay.js';
 import { createPaneState, type PaneState } from './panes.js';
 import { createTranscriptState, type TranscriptState } from './transcript.js';
+import { createActivityHistoryPanel, createActivityPasteDrain, type ActivityHistoryPanel, type ActivityPasteDrain } from './activity-history.js';
 
 export interface SelectorState {
     open: boolean;
@@ -28,6 +29,7 @@ export function createSelectorState(): SelectorState {
 }
 
 export interface OverlayState {
+    activityHistory: ActivityHistoryPanel;
     helpOpen: boolean;
     bgtaskOpen: boolean;
     paletteOpen: boolean;
@@ -43,6 +45,7 @@ export interface OverlayState {
 
 export function createOverlayState(): OverlayState {
     return {
+        activityHistory: createActivityHistoryPanel(),
         helpOpen: false,
         bgtaskOpen: false,
         paletteOpen: false,
@@ -58,6 +61,7 @@ export function createOverlayState(): OverlayState {
 }
 
 export interface TuiStore {
+    activityPasteDrain: ActivityPasteDrain;
     composer: ComposerState;
     pasteCapture: PasteCaptureState;
     autocomplete: AutocompleteState;
@@ -68,6 +72,7 @@ export interface TuiStore {
 
 export function createTuiStore(): TuiStore {
     return {
+        activityPasteDrain: createActivityPasteDrain(),
         composer: createComposerState(),
         pasteCapture: createPasteCaptureState(),
         autocomplete: createAutocompleteState(),

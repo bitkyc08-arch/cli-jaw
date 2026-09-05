@@ -25,6 +25,8 @@ import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
 import { refreshInfo } from './api.js';
 import { handleActivityRuntime, activityForCompatibility, settleActivityCompatibility, markActivityGap } from './activity-handler.js';
 import { activityKey } from '../../../src/shared/activity-state.js';
+import { invalidateActivityContext } from './activity-replay.js';
+import { refreshActivityIdentity } from './api.js';
 
 function isFullscreen(ctx: TuiContext): boolean {
     return ctx.displayMode === 'fullscreen';
@@ -87,6 +89,10 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
         const event = normalizeTuiWsEvent(nativeOrchestrateDone ? { ...wire, type: 'agent_done' } : wire);
         const mirroredActivity = event.kind === 'assistant-output' || event.kind === 'agent-tool' || event.kind === 'agent-status'
             ? activityForCompatibility(ctx, wire) : undefined;
+        const projection = event.kind === 'assistant-output' || event.kind === 'agent-tool' || event.kind === 'agent-status' || event.kind === 'agent-done';
+        const knownRun = projection && !ctx.isRaw && typeof wire?.traceRunId === 'string' ? transcript.items.find(item =>
+            item.type === 'activity' && item.model.identity.runId === wire.traceRunId) : undefined;
+        if (knownRun?.type === 'activity' && (knownRun.retired || !activityForCompatibility(ctx, wire))) return;
         if (mirroredActivity && (mirroredActivity.terminalStatus || !mirroredActivity.degraded)) return;
         switch (event.kind) {
             case 'runtime':
@@ -413,6 +419,8 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 break;
 
             case 'session-reset':
+                invalidateActivityContext(ctx);
+                void refreshActivityIdentity(ctx);
                 if (!isFullscreen(ctx)) console.log(`\n  ${c.dim}🔄 세션 초기화됨${c.reset}`);
                 break;
 

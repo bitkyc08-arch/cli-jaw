@@ -93,7 +93,7 @@ Logical frontier survives width reflow (unlike physical row counts).
 ## Known Limitations
 
 - **5 fewer transcript rows**: MIN_HISTORY_LANE=5 reserves space for the history lane
-- **No streaming commits**: commits only fire when all items are stable (after full response); the growing answer stays in the live zone until the turn ends
+- **Whole-item commits**: the running Activity group stays live; earlier stable items can commit after the complete prelude fits the commit range
 - **Terminal compatibility**: designed for Ghostty 1.3+; unsupported terminals silently skip commits
 - **No commit during overlays**: help/palette/settings screens block commits
 
@@ -119,8 +119,28 @@ suffixes; footer repaint saves/restores an open text cursor, while notices close
 line before clearing it. Activity provider text cannot emit VT actions.
 
 At most16 Activity preview models retain text; completed previews release in-place,
-preserving transcript indices and uncommitted full answers. Retained history inspection
-and reconnect restoration are the next TUI slice; native scrollback pixels stay immutable.
+preserving transcript indices and uncommitted full answers. Confirmed native flush also
+releases committed answer text while retaining its duplicate receipt. Refused/deferred
+flushes release nothing; native scrollback pixels stay immutable.
+
+F6 in fullscreen chat opens retained canonical records for one run. Up/Down selects
+records, Left/Right selects runs, Enter expands detail, PgUp/PgDn and Home/End scroll,
+R reloads and N loads another descriptor batch. One selected run is bounded to4096
+records/4MiB; discovery retains256 descriptors per batch. Advancing a batch does not
+download every run's payload or move the selected record. Classic chat keeps native
+scrollback and directs retained-record inspection to fullscreen mode.
+
+The inspector freezes native commits and preserves the composer draft. Its paste drain
+belongs to stdin, survives panel/session reset, and discards the entire remaining paste
+before normal key dispatch. F6 cannot take over an active/completing composer paste.
+Historical requests are read-only; Enter never submits an approval or model prompt.
+
+Reconnect installs the shared replay buffer before identity refresh and both seed/tail
+reads. The256-event/1MiB buffer is independent of the bounded preview. A failed restore
+does not publish seeded answers. Full successful replay can clear a local display gap;
+known durable gaps remain. Line-mode stdout delivery has its own receipt on the existing
+answer row, so buffer failure or a late canonical end cannot hide an already captured
+answer. Retired runs cannot regain ownership or republish answers after reset.
 
 ## Research
 

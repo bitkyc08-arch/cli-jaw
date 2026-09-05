@@ -1,4 +1,5 @@
 export type KeyAction =
+    | 'activity-history'
     | 'escape-alone'
     | 'option-enter'
     | 'arrow-up'
@@ -32,6 +33,7 @@ export type KeyAction =
     | 'other';
 
 export function classifyKeyAction(key: string): KeyAction {
+    if (key === '\x1b[17~') return 'activity-history';
     if (key === '\x1b') return 'escape-alone';
     if (key === '\x1b\r' || key === '\x1b\n') return 'option-enter';
     if (key === '\x1b[A' || key === '\x1bOA') return 'arrow-up';
