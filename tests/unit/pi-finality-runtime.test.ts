@@ -25,6 +25,7 @@ for await (const line of readline.createInterface({input:process.stdin})) {
    for (const row of rows) send(row.id === '$prompt' ? {...row,id:request.id} : row);
  }
  if (request.type === 'test_settle') send({type:'agent_settled'});
+ if (request.type === 'test_events') for(const row of request.events) send(row);
  if (request.type === 'abort') {
    send({type:'response',command:'abort',id:request.id,success:true});
    send({type:'agent_end',messages:[{role:'assistant',content:[],stopReason:'aborted'}],willRetry:false});
@@ -182,8 +183,10 @@ for (const warning of [false,true]) test(`modern persistent prompt waits for set
         await ended; await new Promise<void>(resolve => setImmediate(resolve));
         assert.equal(resolved,false);
         await assert.rejects(session.sendPrompt('overlap'),/already active/);
-        session.child.stdin!.write(JSON.stringify({type:'test_settle'})+'\n');
-        assert.equal((await first).runtimeOutcome?.finalText,'PI_ACTIVITY_DONE');
+        session.child.stdin!.write(JSON.stringify({type:'test_events',events:[{type:'agent_start'},end([assistant('queued continuation')]),settled]})+'\n');
+        const completed=await first;
+        assert.equal(completed.runtimeOutcome?.finalText,'queued continuation');
+        assert.equal(completed.runtimeOutcome?.partialText,'Starting the read-only probe.PI_ACTIVITY_DONEqueued continuation');
         configure([end([assistant('second')]),settled]);
         const second = await session.sendPrompt('second');
         assert.deepEqual(second.runtimeOutcome,{status:'done',finalText:'second',partialText:'second'});
@@ -198,6 +201,17 @@ test('pooled process termination rejects with bounded partial outcome', async ()
         assert.deepEqual(piFailureOutcome(error),{status:'stopped',finalText:null,partialText:'interrupted partial'}); return true;
     });
     await closed;
+});
+test('modern correlated abort waits for terminal and preserves stopped partial', async () => {
+    configure([delta('before abort')]);
+    const session=spawnPersistentPiRpc(DEFAULT_PI_PROFILE,DEFAULT_PI_SETTINGS,{model:'fixture',cwd:root,root});
+    const closed=once(session.child,'close');
+    let aborting:Promise<void>|undefined;
+    try {
+        const result=await session.sendPrompt('hold',{onEvent:event => {if(event.kind==='text') aborting=session.abort();}});
+        assert.ok(aborting);await aborting;
+        assert.deepEqual(result.runtimeOutcome,{status:'stopped',finalText:null,partialText:'before abort'});
+    } finally {session.kill();await closed;}
 });
 test('correlated prompt rejection resolves direct error and rejects persistent with owned outcome', async () => {
     const rows = [delta('accepted'),{type:'response',id:'$prompt',command:'prompt',success:false,error:'fixture rejection'}];
