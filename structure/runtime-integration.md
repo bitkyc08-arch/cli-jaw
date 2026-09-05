@@ -30,6 +30,16 @@ Print keys are byte-for-byte unchanged. Future switchable native sessions use `n
 
 `GET /api/cli-status` adds `runtimeSelection: {transport, nativeAdapterImplemented, nativeWorkerImplemented}` only to those three engines plus builtin Codex App/Pi. These are compiled implementation flags, not authentication/binary/probe readiness. Existing status evidence and non-participating rows remain unchanged. Display preferences and runtime transport choice are separate controls; the Activity default is not enabled by this layer.
 
+## ACP v1 transport boundary
+
+`src/agent/runtime/acp/wire.ts` owns the shared single-envelope decoder. The legacy Copilot `AcpClient` routes a method-bearing peer request before looking up a pending client request, so equal bidirectional IDs cannot consume each other's work. Existing Copilot spawn arguments, permissions, activity timers and callbacks remain unchanged. Malformed stdout is still ignored there, without logging the raw malformed line.
+
+`src/agent/runtime/acp/connection.ts` is the native transport primitive; it does not yet activate Cursor/Grok or own process reaping. It delivers callbacks and notifications while an outgoing prompt is pending. `request()` exposes `dispatched` (local Writable completion) separately from `result` (the RPC response). An id-less `session/cancel` write is not a remote cancellation acknowledgement: for the targeted v1 lifecycle, the original prompt response establishes completion. The newer v2 lifecycle is not mixed into this adapter. See the versioned [ACP v1 transport](https://agentclientprotocol.com/protocol/v1/transports) and [prompt-turn contract](https://agentclientprotocol.com/protocol/v1/prompt-turn).
+
+The native connection accepts string/safe-integer IDs and individual envelopes; null/unsafe-number IDs and batches fail closed. These are explicit interoperability limits, not claims that JSON-RPC forbids null IDs. Incoming UTF-8 is validated after reassembling split bytes. Payloads are capped at4MiB excluding LF/CRLF, with geometrically grown bounded carry storage (one extra byte only for a split CR delimiter). Outgoing active+queued work is capped at8MiB including LF and1024 entries; at most64 outgoing requests may await results. Each write has a30-second deadline from admission, independent of its RPC result deadline. A stalled notification/reply or an early response cannot strand dispatch indefinitely.
+
+Malformed frames, I/O failure, timeout, EOF or child exit close once and reject all pending results and active/queued writes. Late errors are consumed; late replies/callbacks cannot reopen the connection. Diagnostics never include malformed payloads or provider error text/data. The caller must synchronously admit frames into a bounded consumer and retire/reap its own child when notified of failure. Consumer queues, real provider lifetime, permissions and remote cancel-reprompt acceptance are verified in their adapter layers, not inferred from these transport tests.
+
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
 
 - boss/main 실행은 메시지당 spawn 대신 상주 런타임 풀을 탄다. 키 = 엔진별 독립 스토어 + `chat:${getActiveChatSession()}` + cwd + 모델/effort/(pi는 profile/endpoint/apiKind/profileFp).
