@@ -82,6 +82,7 @@ cli-jaw/
 │   │   │   │   ├── cursor-session.ts ← existing-login factory and owned startup abort (80L)
 │   │   │   │   ├── grok-session.ts ← dedicated existing-auth factory and startup reaping (102L)
 │   │   │   │   ├── grok-options.ts ← literal-auto admission and advertised model/effort (59L)
+│   │   │   │   ├── grok-events.ts ← optional aggregate usage from original prompt result (24L)
 │   │   │   │   ├── config.ts ← bounded negotiated model/effort selection (185L)
 │   │   │   │   ├── notification-queue.ts ← per-turn serialized work with byte/count caps (87L)
 │   │   │   │   ├── wire.ts  ← strict single-envelope decoder shared with Copilot (43L)

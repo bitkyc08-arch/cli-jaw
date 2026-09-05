@@ -7,6 +7,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
 import { RuntimeRequests } from '../../src/agent/runtime/requests.ts';
 import { AcpSession } from '../../src/agent/runtime/acp/session.ts';
+import { grokUsage } from '../../src/agent/runtime/acp/grok-events.ts';
 mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => { throw new Error('Unexpected default database'); } } });
 const { AcpRuntimeSession } = await import('../../src/agent/runtime/acp/runtime-session.ts');
 
@@ -181,3 +182,45 @@ test('synchronous start observer cancellation never admits a prompt and standalo
     await plain.run(event => { if (event.kind === 'turn-end') reentry = assert.rejects(plain.run(), /busy/); });
     await reentry; assert.equal(plain.events.filter(e => e.kind === 'turn-end').length, 1);
 });
+
+for (const mode of ['aggregate', 'invalid', 'absent', 'zero'] as const) {
+    test(`Grok ${mode} usage waits for the original result and cannot change the captured final`, async t => {
+        const f = await fixture(t, { provider: 'grok', resultUsage: grokUsage });
+        const data: { frames: unknown[]; result: Record<string, unknown>; expectedFinal: string } =
+            JSON.parse(readFileSync(new URL('../fixtures/grok-acp-read-file.json', import.meta.url), 'utf8'));
+        let original: Wire | undefined, settled = false;
+        f.onPrompt(message => {
+            original = message;
+            for (const frame of data.frames) f.send(frame);
+            f.send({ jsonrpc: '2.0', method: '_x.ai/session/prompt_complete', params: {
+                sessionId: 'fixture-native', promptId: 'untrusted-extension', stopReason: 'end_turn',
+                agentResult: { text: 'NOT_THE_FINAL', usage: { inputTokens: 999 } },
+            } });
+        });
+        const pending = f.run().then(value => { settled = true; return value; });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.ok(original); assert.equal(settled, false);
+        assert.equal(f.events.some(event => event.kind === 'usage' || event.kind === 'turn-end'), false);
+        let result = structuredClone(data.result);
+        if (mode === 'invalid') result['_meta'] = { usage: { inputTokens: 35136, outputTokens: -1, cachedReadTokens: 17408 } };
+        if (mode === 'absent') result = { stopReason: 'end_turn', _meta: { inputTokens: 17610, outputTokens: 62 } };
+        if (mode === 'zero') result['_meta'] = { usage: { inputTokens: 0, outputTokens: 0, cachedReadTokens: 0 } };
+        f.reply(original.id, result);
+        const outcome = await pending;
+        assert.equal(outcome.status, 'done'); assert.equal(outcome.finalText, data.expectedFinal);
+        assert.ok(outcome.partialText.startsWith("I'll read"));
+        assert.ok(f.events.some(event => event.kind === 'tool' && event.status === 'done'));
+        assert.ok(f.events.every(event => event.runId === 'run-1' && event.sessionId === 'chat' && event.scope === 'scope'));
+        const usage = f.events.filter(event => event.kind === 'usage');
+        assert.deepEqual(usage.map(event => ({ inputTokens: event.inputTokens, outputTokens: event.outputTokens, cachedTokens: event.cachedTokens })),
+            mode === 'aggregate' ? [{ inputTokens: 35136, outputTokens: 123, cachedTokens: 17408 }]
+                : mode === 'zero' ? [{ inputTokens: 0, outputTokens: 0, cachedTokens: 0 }] : []);
+        assert.equal(f.events.some(event => event.kind === 'turn-end'), false);
+        assert.deepEqual(f.runtime.claimTurnOutcome('turn-1'), outcome);
+        const end = { kind: 'turn-end' as const, status: 'done' as const, finalText: outcome.finalText };
+        assert.equal(f.runtime.finalizeTurn('turn-1', end), true);
+        assert.equal(f.runtime.finalizeTurn('turn-1', end), false);
+        assert.equal(f.events.filter(event => event.kind === 'turn-end').length, 1);
+        assert.equal(f.runtime.idle, true);
+    });
+}
