@@ -5,6 +5,7 @@ import { parseActivityIdentity } from '../../src/shared/presentation.js';
 import { parseRuntimeEvent } from '../../src/shared/runtime-event-parse.js';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.js';
 import { clearLiveActivity, degradeLiveActivity, findLiveActivity, ingestLiveActivity, rebindLiveActivity, setLiveActivityIdentity, settleLiveActivity } from './features/activity-live.js';
+import { discoverActivityHistory, observeActivityHistory, setActivityHistoryIdentity } from './features/activity-history.js';
 import { connectEventChannel, subscribe, onChannelOpen, onChannelDisconnect, onChannelUnavailable } from './event-channel.js';
 import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore, showChatRestoreIndicator, markSteered, clearSteer, isRecentSteer } from './ui.js';
 import { renderPendingQueue } from './features/pending-queue.js';
@@ -258,7 +259,9 @@ function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
     const finalized = isFinalizedRun(event.runId);
     if (finalized && !known) return;
     if (!known && liveTraceRunId && liveTraceRunId !== event.runId && (event.kind !== 'turn-start' || replay)) return;
-    const turn = ingestLiveActivity(event, !liveTraceRunId || liveTraceRunId === event.runId);
+    const turn = ingestLiveActivity(event, !liveTraceRunId || liveTraceRunId === event.runId)
+        ?? (event.kind === 'turn-end' && known?.model.end?.seq === event.seq
+            && known.model.identity.turnId === event.turnId ? known : null);
     if (!turn) return;
     if (runtimeBufferLost) degradeLiveActivity(event.runId);
     if (event.kind !== 'turn-end') {
@@ -270,7 +273,7 @@ function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
         || state.currentAgentDiv !== turn.message) return;
     markRunFinalized(event.runId);
     // Capture the full authoritative answer BEFORE using the reducer's preview.
-    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present');
+    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId);
     notifyUnreadResponse();
 }
 
@@ -278,6 +281,7 @@ function drainRuntimeBuffer(): void {
     const buffered = pendingRuntime;
     pendingRuntime = []; pendingRuntimeBytes = 0;
     for (const { event, replay } of buffered) handleRuntimeEvent(event, replay);
+    runtimeBufferLost = false;
 }
 
 type ActivitySnapshot = {
@@ -305,6 +309,7 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     if (!snap) { state.activityIdentity = null; throw new Error('activity_snapshot_unavailable'); }
     state.activityIdentity = parseActivityIdentity(snap.activityIdentity);
     setLiveActivityIdentity(state.activityIdentity);
+    setActivityHistoryIdentity(state.activityIdentity, event => handleRuntimeEvent(event,true));
     currentOrcScope = String(snap.orc.scope || '');
     applyOrcState(snap.orc.state);
     applyOrcContext(snap.orc.ctx || null);
@@ -320,10 +325,14 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
         // snapshot are dropped instead of re-appended.
         syncLiveRunCursor(snap.activeRun);
         if (snap.activeRun?.running && snap.activeRun.traceRunId && state.currentAgentDiv) {
+            state.currentAgentDiv.dataset['traceRunId'] = snap.activeRun.traceRunId;
             rebindLiveActivity(snap.activeRun.traceRunId, state.currentAgentDiv);
         }
     }
     if (state.activityIdentity) drainRuntimeBuffer();
+    const chat = document.getElementById('chatMessages');
+    if (chat) observeActivityHistory(chat);
+    if (options.hydrateRun && state.activityIdentity) void discoverActivityHistory();
     hydrateGoalState();
     if (snap.runtime.busy) {
         setStatus('running');
@@ -1158,7 +1167,7 @@ function handleServerEvent(msg: WsMessage): void {
             settleLiveActivity(doneRunId, msg.runtimeStatus);
             markRunFinalized(doneRunId);
             finalizeAgent(msg.text || '', msg.toolLog,
-                msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined);
+                msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined, doneRunId ?? undefined);
             notifyUnreadResponse();
         }
     } else if (msg.type === 'orchestrate_done') {
@@ -1168,10 +1177,13 @@ function handleServerEvent(msg: WsMessage): void {
         settleLiveActivity(doneRunId, msg.runtimeStatus);
         markRunFinalized(doneRunId);
         finalizeAgent(msg.text || '', undefined,
-            msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined);
+            msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined, doneRunId ?? undefined);
         notifyUnreadResponse();
     } else if (msg.type === 'clear') {
-        suspendRuntimeAdmission(); clearLiveActivity();
+        const retainedIdentity = state.activityIdentity;
+        clearLiveActivity(); setLiveActivityIdentity(retainedIdentity);
+        setActivityHistoryIdentity(null,event=>handleRuntimeEvent(event,true));
+        setActivityHistoryIdentity(retainedIdentity,event=>handleRuntimeEvent(event,true));
         pendingRuntime = []; pendingRuntimeBytes = 0; runtimeBufferLost = false;
         cancelPostRender();
         cleanupToolActivity();

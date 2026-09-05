@@ -23,6 +23,7 @@ import { updateStatMsgs } from './ui-status.js';
 import { seedCompletedElicitationsFromMessages } from './elicitation-state.js';
 import { withCurrentSessionQuery } from './session-hub.js';
 import { remountLiveActivity } from './activity-live.js';
+import { observeActivityHistory, recycleActivityHistory } from './activity-history.js';
 
 export function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
     return msgs.map((m, index) => buildLazyVirtualMessageItem(normalizeMessageToolLog(m), index));
@@ -71,6 +72,7 @@ function readWorkingDirFromScope(scope: string): string | null {
 }
 
 export function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualScroll>): void {
+    vs.onRecycle = recycleActivityHistory;
     vs.onLazyRender = (targets: HTMLElement[]) => {
         for (const el of targets) {
             if (!el.classList.contains('lazy-pending')) continue;
@@ -100,6 +102,7 @@ export function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualS
     };
     vs.onPostRender = (viewport: HTMLElement) => {
         remountLiveActivity(viewport);
+        observeActivityHistory(viewport);
         activateWidgets(viewport);
         hydrateElicitationBlocks(viewport);
         hydrateSearchResultsBlocks(viewport);
@@ -136,6 +139,8 @@ export function makeBootstrapDeps(
 function hydrateSmallHistory(messages: MessageItem[]): void {
     messages.forEach(m => {
         const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content, m.cli);
+        if (m.id !== undefined) div.dataset['messageId'] = String(m.id);
+        if (m.trace_run_id) div.dataset['traceRunId'] = m.trace_run_id;
         if (m.role === 'assistant' && m.tool_log) {
             const tools = parseToolLog(m.tool_log);
             if (tools.length > 0) {
@@ -148,6 +153,8 @@ function hydrateSmallHistory(messages: MessageItem[]): void {
             }
         }
     });
+    const chat = document.getElementById('chatMessages');
+    if (chat) observeActivityHistory(chat);
 }
 
 function cachedToMessage(message: CachedMessage): MessageItem {
@@ -158,6 +165,7 @@ function cachedToMessage(message: CachedMessage): MessageItem {
         content: message.content,
         cli: message.cli ?? null,
         tool_log: message.tool_log ?? null,
+        trace_run_id: message.trace_run_id ?? null,
     };
 }
 
@@ -220,6 +228,7 @@ async function loadMessagesOnce(): Promise<void> {
         lastRenderedSignature = signature;
         const shouldForceBottom = scopeChanged || !hadRenderedHistory;
         const savedIndex = !shouldForceBottom && vs.active ? vs.firstVisibleIndex() : null;
+        if (chatEl) recycleActivityHistory(chatEl);
         vs.clear();
         if (chatEl) chatEl.innerHTML = '';
         if (safeMsgs.length >= VS_THRESHOLD) {
@@ -233,7 +242,7 @@ async function loadMessagesOnce(): Promise<void> {
         }
         cacheMessages(safeMsgs.map(m => ({
             ...(m.id !== undefined ? { message_id: m.id } : {}),
-            role: m.role, content: m.content, cli: m.cli ?? null, tool_log: m.tool_log ?? null, timestamp: Date.now(),
+            role: m.role, content: m.content, cli: m.cli ?? null, tool_log: m.tool_log ?? null, trace_run_id: m.trace_run_id ?? null, timestamp: Date.now(),
         }))).catch(() => {});
         updateStatMsgs(safeMsgs.length);
         showEmptyState();

@@ -26,6 +26,7 @@ export interface CachedMessage {
     timestamp: number;
     cli?: string | null;
     tool_log?: string | null;
+    trace_run_id?: string | null;
     scope?: string;
 }
 
@@ -136,6 +137,7 @@ export async function cacheMessages(messages: CachedMessage[]): Promise<void> {
                     content: msg.content,
                     cli: msg.cli ?? null,
                     tool_log: msg.tool_log ?? null,
+                    trace_run_id: msg.trace_run_id ?? null,
                     timestamp: msg.timestamp || Date.now(),
                     scope: targetScope,
                 });
@@ -185,6 +187,7 @@ export async function upsertMessage(msg: CachedMessage): Promise<void> {
             content: msg.content,
             cli: msg.cli ?? null,
             tool_log: msg.tool_log ?? null,
+            trace_run_id: msg.trace_run_id ?? null,
             timestamp: msg.timestamp || Date.now(),
             scope: currentScope,
         });

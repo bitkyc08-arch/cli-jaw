@@ -6,6 +6,8 @@ aliases: [CLI Stream Event Reference, stream events, SSE event channel, NDJSON p
 
 # CLI Stream Event Reference (SSE + Legacy WS + Provider Streams)
 
+Activity consumers validate flat `agent_runtime` payloads with the shared parser and the snapshot's jaw session/scope pair. Runtime `seq` is sparse trace order, not an SSE cursor or row offset. Browser history merges a fixed journal seed, suffix catch-up and buffered live events through one reducer owner. Compatibility terminals remain available when semantic recording fails; a later canonical terminal clears only provisional degradation, while a recorded gap stays visible. Historical closure is separate eviction metadata and never fabricates a RuntimeEvent terminal.
+
 > 각 CLI의 NDJSON/ACP/stream-json 이벤트를 `src/agent/events/`가 파싱하고, AGY plain-text output은 `spawn.ts`가 직접 처리한다. X-01 이후 current server의 public Web delivery는 `src/core/event-bus.ts` + `GET /api/events` SSE channel이 담당한다. WebSocket은 current server broadcast path가 아니라 `/api/events`가 한 번도 열리지 않는 pre-X-01 server용 client/TUI fallback이다.
 > 마지막 코드 대조: 2026-06-27 (`src/core/event-bus.ts`, `src/agent/lifecycle-handler.ts`, `src/goal/heartbeat.ts`, `src/agent/events/claude.ts`, `public/js/features/process-block.ts`, `public/js/ws.ts`)
 

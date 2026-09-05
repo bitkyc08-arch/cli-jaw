@@ -16,6 +16,7 @@ export function buildLazyVirtualMessageItem(m: MessageItem, index: number): Virt
     const role = m.role === 'assistant' ? 'agent' : m.role;
     const messageId = String(m.id ?? generateId());
     const sourceAttrs = messageSourceAttributes({ role, messageId, turnIndex: index });
+    const traceAttr = m.trace_run_id ? ` data-trace-run-id="${escapeHtml(m.trace_run_id)}"` : '';
     const rawContent = stripOrchestration(
         role === 'user' ? formatUserPrompt(m.content) : m.content,
     );
@@ -30,7 +31,7 @@ export function buildLazyVirtualMessageItem(m: MessageItem, index: number): Virt
     // Keep .msg-user for boundary semantics; modifier slims the visual (see chat-messages.ts).
     const goalBoundaryClass = role === 'user' && m.cli === 'goal_continuation' ? ' msg-goal-boundary' : '';
     const html = role === 'agent'
-        ? `<div class="msg msg-agent" ${sourceAttrs}><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}${actions}</div></div>`
+        ? `<div class="msg msg-agent" ${sourceAttrs}${traceAttr}><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}${actions}</div></div>`
         : `<div class="msg msg-${role}${goalBoundaryClass}" ${sourceAttrs}><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
     return { id: generateId(), html, height: 80, rehydratesProcessDetails: Boolean(rawToolLog) };
 }

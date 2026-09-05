@@ -43,11 +43,11 @@ cli-jaw/
 │   │   ├── compact.ts        ← compact 헬퍼 (COMPACT_MARKER_CONTENT, managed summary builder, cutoff logic, harvestGitGrep + harvestChatGrep 1KB/1KB budget split) (784L)
 │   │   ├── instance.ts       ← 인스턴스 ID, node/jaw 경로, 유닛명 sanitize (61L)
 │   │   ├── session-generation.ts ← persistent chat_sessions.generation (not process-local spawn tokens) (94L)
-│   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace + tool_log + working_dir migration + closeDb() WAL checkpoint + checkOrphanedWal + busy_timeout + clearMessagesScoped + queued_messages table + model-aware clearEmployeeSession + getRecentMessagesLite + searchMessages(days+recent scope) + getMessageContext(±N range) (1156L)
+│   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace + tool_log + working_dir migration + closeDb() WAL checkpoint + checkOrphanedWal + busy_timeout + clearMessagesScoped + queued_messages table + model-aware clearEmployeeSession + getRecentMessagesLite + searchMessages(days+recent scope) + getMessageContext(±N range) (1171L)
 │   │   ├── db-maintenance.ts ← legacy tool_log 재살균 1회 마이그레이션(schema_migrations 마커) + page/freelist 통계 + checkpoint+VACUUM (`jaw db maintain`) (49L)
-│   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (233L)
+│   │   ├── chat-sessions.ts  ← 채팅 세션 CRUD + 활성 세션 전환 (234L)
 │   │   ├── rate-limit.ts     ← 클라이언트 클래스별(cli/manager/browser/lan/remote) 슬라이딩 윈도 리미터 + atomic peek/commit + Retry-After 미들웨어 팩토리 (217L)
-│   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (70L)
+│   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (76L)
 │   │   ├── logger.ts         ← 로거 유틸 + structured log.event (100L)
 │   │   ├── i18n.ts           ← 서버사이드 번역 (90L)
 │   │   ├── employees.ts      ← Employee 시드/CRUD 공용 로직 + 정적 직원 등록(Control: codex `gpt-5.6-luna` + `codex-imagegen`) + virtual synthetic row/preset helpers + DEFAULT_EMPLOYEES (437L)
@@ -88,7 +88,7 @@ cli-jaw/
 │   │   │   ├── codex-projection.ts ← owned Codex notification mapping (98L)
 │   │   │   ├── outcome.ts   ← non-journal native result handoff and stop precedence (31L)
 │   │   │   ├── session.ts   ← native session/turn/control port (23L)
-│   │   │   └── events.ts    ← validated trace-first semantic emitter (39L)
+│   │   │   └── events.ts    ← validated trace-first semantic emitter (43L)
 │   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3593L)
 │   │   ├── spawn/            ← spawn 서브모듈 (3 files)
 │   │   │   ├── queue.ts      ← QueueItem persistent DB queue + processQueue race fix + enqueue/dequeue + drainRecoveredQueue (부팅 시 복구 큐 기동, server.ts가 transport 준비 후 호출) + `_fromQueue` 표식 (대기자 없는 턴을 채널이 답할 수 있게) (689L)
@@ -359,7 +359,7 @@ cli-jaw/
 │   │   ├── goal-run.ts       ← goal-run execution routes (83L)
 │   │   ├── runtime-context.ts ← runtime context route helpers (46L)
 │   │   ├── security-audit.ts ← security audit route registrar (18L)
-│   │   ├── traces.ts         ← public trace summary/events read routes (80L)
+│   │   ├── traces.ts         ← public trace summary/events read routes (167L)
 │   │   ├── runtime-requests.ts ← exact-bound ephemeral native decision GET/POST (33L)
 │   │   └── browser.ts        ← 브라우저 API 라우트 + `cdpPort(req)` 포트 우선순위 + primitive/tab/debug/doctor/cleanup/web-ai routes (489L)
 │   ├── security/             ← 보안 입력 검증 (4 files)
@@ -393,9 +393,9 @@ cli-jaw/
 │   │   └── types.ts          ← GoalRunMode, GoalRunBudget, GoalRunSafetyGate, GoalRunState 타입 (36L)
 │   ├── trace/                ← Trace 이벤트 영속화 (5 files)
 │   │   ├── runtime-body-codec.ts ← canonical runtime body tuples + contextual redaction (144L)
-│   │   ├── store.ts          ← startTraceRun + appendTraceEvent + stampTraceTool + finalizeTraceRun + pruneTraceEvents (336L)
+│   │   ├── store.ts          ← startTraceRun + appendTraceEvent + stampTraceTool + finalizeTraceRun + pruneTraceEvents (350L)
 │   │   ├── retention.ts      ← startTraceRetention: boot prune + 6h sweep, {stop(), stopped} 핸들 (server.ts shutdown 이 소유) (22L)
-│   │   ├── types.ts          ← TraceRunInput, TraceEventInput, TracePointer, TraceRunRow 타입 (36L)
+│   │   ├── types.ts          ← TraceRunInput, TraceEventInput, TracePointer, TraceRunRow 타입 (38L)
 │   │   └── redact.ts         ← trace event redaction helpers (48L)
 │   ├── shared/               ← 공유 유틸리티 (6 files + reminders helper) ✨
 │   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
@@ -449,7 +449,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 575 files source/assets, ~101700L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 577 files source/assets, ~102100L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1224L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시

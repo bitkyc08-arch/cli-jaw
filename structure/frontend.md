@@ -19,6 +19,8 @@ TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock st
 
 Native `agent_runtime` events pass the shared parser and the server snapshot's `activityIdentity` before entering the bounded Activity reducer. A turn retains tool/commentary previews in native disclosures; explicit expansion survives updates and completion. The existing `.msg-content` owns the full final answer and its actions. Compatibility events remain available for legacy display and supply terminal fallback if semantic recording fails. A late terminal from another run cannot finalize the active answer. Reconnect buffers semantic ingress, rebinds retained views after snapshot reconstruction, and removes orphan projections when virtual rows outlive their retained model.
 
+History preserves `trace_run_id` through both message renderers and IndexedDB writers. Visible rows read the owner-bound journal through a fixed `through` cursor, keep live updates buffered through a suffix catch-up, then atomically adopt the same reducer state. Host recycling aborts reads; explicit disclosure choices remain bounded and survive DOM replacement. Saved answers are not replaced with preview text. Unlinked retained runs use a 16-host page within bounded discovery; incomplete discovery is labelled. Trace clicks capture the server-resolved session before asynchronous imports, and summary/list/detail reads keep that identity. Closing Trace cancels pending reads and restores focus.
+
 ---
 
 ## 파일 구조

@@ -429,7 +429,7 @@ function clearMermaidTransientState(root: HTMLElement): void {
     });
 }
 
-export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent'): void {
+export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent', traceRunId?: string): void {
     const nativeFinal = runtimeFinality === 'present' || runtimeFinality === 'absent';
     // Guard: prevent double-render when both agent_done + orchestrate_done fire
     const now = Date.now();
@@ -460,6 +460,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
         if (!state.currentAgentDiv || !state.currentAgentDiv.isConnected) {
             state.currentAgentDiv = addMessage('agent', '');
         }
+        if (traceRunId) state.currentAgentDiv.dataset['traceRunId'] = traceRunId;
         state.currentAgentDiv.removeAttribute(ACTIVE_RUN_HYDRATED_ATTR);
         const content = (state.currentAgentDiv as HTMLElement)?.querySelector('.msg-content');
         // Live stream is preview-only; agent_done text is always authoritative.
@@ -530,6 +531,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
             role: 'assistant',
             content: finalText,
             tool_log: durableToolLogJson,
+            trace_run_id: state.currentAgentDiv?.dataset['traceRunId'] ?? null,
             timestamp: Date.now(),
         }).catch(() => {});
     }

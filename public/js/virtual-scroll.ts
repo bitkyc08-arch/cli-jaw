@@ -82,6 +82,7 @@ export class VirtualScroll {
 
     onLazyRender: LazyRenderCallback | null = null;
     onPostRender: ((viewport: HTMLElement) => void) | null = null;
+    onRecycle: ((element: HTMLElement) => void) | null = null;
 
     constructor(containerId: string) {
         this.container = document.getElementById(containerId)!;
@@ -376,6 +377,7 @@ export class VirtualScroll {
         if (!this._active) return;
         this.deactivate();
         this.container.innerHTML = this.items.map(it => it.html).join('');
+        this.onPostRender?.(this.container);
         this.items = [];
     }
 
@@ -385,6 +387,7 @@ export class VirtualScroll {
         this.itemGap = 0;
         this.onLazyRender = null;
         this.onPostRender = null;
+        this.onRecycle = null;
     }
 
     // ── Activation / Deactivation ──
@@ -557,6 +560,7 @@ export class VirtualScroll {
         this.virtualizer = null;
         this._active = false;
         for (const el of this.mounted.values()) {
+            this.onRecycle?.(el);
             releaseMermaidNodes(el);
             releaseProcessBlockDetails(el);
         }
@@ -584,6 +588,7 @@ export class VirtualScroll {
 
         for (const [idx, el] of this.mounted) {
             if (!wantedSet.has(idx)) {
+                this.onRecycle?.(el);
                 releaseMermaidNodes(el);
                 const item = this.items[idx];
                 if (item?.rehydratesProcessDetails) releaseProcessBlockDetails(el);
