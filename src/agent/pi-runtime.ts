@@ -283,20 +283,24 @@ export function resolvePiCommand(env: NodeJS.ProcessEnv = process.env): PiComman
     };
 }
 
-function resolvePiCommandIdentity(command: PiCommand, env: NodeJS.ProcessEnv = process.env): string {
+function probePiCommandVersion(command: PiCommand, env: NodeJS.ProcessEnv) {
     const spec = launchSpec(command.command, [...command.baseArgs, '--version'], process.platform, env);
-    const result = spawnSync(spec.file, spec.args, {
+    return spawnSync(spec.file, spec.args, {
         encoding: 'utf8',
         env,
         timeout: 15_000,
     });
+}
+
+function resolvePiCommandIdentity(command: PiCommand, env: NodeJS.ProcessEnv = process.env): string {
+    const result = probePiCommandVersion(command, env);
     const version = `${result.stdout || ''}\n${result.stderr || ''}`.trim() || `exit:${String(result.status)}`;
     return JSON.stringify({ source: command.source, command: command.command, baseArgs: command.baseArgs, version });
 }
 
 function usesPiSettled(command: PiCommand): boolean {
-    const identity = JSON.parse(resolvePiCommandIdentity(command)) as { version: string };
-    return piSupportsSettled(identity.version);
+    const result = probePiCommandVersion(command, process.env);
+    return result.status === 0 && piSupportsSettled(result.stdout || '');
 }
 
 function loadPiAbortEffective(profileId: string, command: PiCommand): boolean {

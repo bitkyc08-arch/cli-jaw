@@ -15,7 +15,7 @@ const eventsFile = join(root, 'events.json');
 writeFileSync(binary, `#!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import readline from 'node:readline';
-if (process.argv.includes('--version')) { console.log(process.env.PI_FINALITY_VERSION || '0.83.0'); process.exit(0); }
+if (process.argv.includes('--version')) { console.log(process.env.PI_FINALITY_VERSION || '0.83.0'); if(process.env.PI_FINALITY_WARNING) console.error('fixture warning'); process.exit(0); }
 const send = row => console.log(JSON.stringify(row));
 for await (const line of readline.createInterface({input:process.stdin})) {
  const request = JSON.parse(line);
@@ -119,6 +119,13 @@ test('unknown control records and post-settlement events cannot rewrite a final'
         {type:'mystery',text:'/goal done',messages:[assistant('wrong')]}]);
     assert.deepEqual(result.outcome,{status:'done',finalText:'PI_ACTIVITY_DONE',partialText:'PI_ACTIVITY_DONE'});
 });
+test('malformed agent_end cannot mask an explicit error or stopped outcome', () => {
+    for (const [reason,status] of [['error','error'],['aborted','stopped']]) {
+        const result=accumulate([{type:'message_end',message:assistant('partial',reason)},
+            {type:'agent_end',messages:'invalid'},settled]);
+        assert.deepEqual(result.outcome,{status,finalText:null,partialText:'partial'});
+    }
+});
 test('partial cap survives oversized deltas and repeated terminal echoes', () => {
     const text = 'x'.repeat(FULLTEXT_MAX_CHARS+1);
     const result = accumulate([delta(text),end([assistant(text)]),end([assistant(text)]),settled]);
@@ -161,7 +168,8 @@ test('raw observer failure leaves final and salvage intact', async context => {
     assert.equal(result.runtimeOutcome?.finalText,'PI_ACTIVITY_DONE');
     assert.equal(result.runtimeOutcome?.partialText,accepted);
 });
-test('modern persistent prompt remains active until explicit settled, then resets for reuse', async () => {
+for (const warning of [false,true]) test(`modern persistent prompt waits for settled despite version stderr warning=${warning}`, async () => {
+    if(warning) process.env.PI_FINALITY_WARNING='1';
     configure([end([pre,final])]);
     const session = spawnPersistentPiRpc(DEFAULT_PI_PROFILE,DEFAULT_PI_SETTINGS,{model:'fixture',cwd:root,root});
     const closed = once(session.child,'close');
@@ -179,7 +187,7 @@ test('modern persistent prompt remains active until explicit settled, then reset
         configure([end([assistant('second')]),settled]);
         const second = await session.sendPrompt('second');
         assert.deepEqual(second.runtimeOutcome,{status:'done',finalText:'second',partialText:'second'});
-    } finally { session.kill(); await closed; }
+    } finally { session.kill(); await closed; delete process.env.PI_FINALITY_WARNING; }
 });
 test('pooled process termination rejects with bounded partial outcome', async () => {
     configure([delta('interrupted partial')]);

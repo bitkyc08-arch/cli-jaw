@@ -90,12 +90,16 @@ export class PiTurnAccumulator {
     }
 
     private terminal(value: unknown): string {
+        if (!Array.isArray(value)) {
+            this.candidate = { status: this.candidate.status === 'stopped' ? 'stopped' : 'error', finalText: null };
+            return '';
+        }
         let index = 0, added = '';
         // Without message_end boundaries, the aggregate snapshot echoes the
         // low-level run's stream. Consume that prefix by offset, not text identity.
         let streamed = this.completed === 0 ? this.runText : '';
         this.candidate = { status: 'done', finalText: null };
-        for (const entry of Array.isArray(value) ? value : []) {
+        for (const entry of value) {
             const message = assistant(entry);
             if (!message) continue;
             this.candidate = { status: message.status, finalText: message.finalText };
