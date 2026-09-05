@@ -8,6 +8,10 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 
 ## Shared event contract foundation
 
+Pi final selection is owned by `src/agent/runtime/pi-turn.ts`, independently of Activity storage. The latest typed assistant message supplies a final only when its `stopReason` is `stop` and its content has no `toolCall`; text blocks preserve null, empty and whitespace distinctly. Earlier assistant commentary and accepted deltas stay in bounded `partialText`, while repeated message/turn/agent snapshots do not duplicate them. Error, abort, length and unknown stop reasons cannot promote an earlier answer. Pi invokes the existing explicit-outcome lifecycle handoff; adapters that omit an outcome retain legacy selection.
+
+Upstream Pi versions from 0.80.4 finish at `agent_settled`, after automatic retry, compaction and queued continuations. Older or unrecognized version strings retain the legacy `agent_end` boundary, except `willRetry:true`; this compatibility path cannot promise session-level settlement. `willRetry` itself predates `agent_settled` and is not a capability flag. Version probing is bounded and writes no shared capability/profile settings. Activity message phases may remain `unknown`; UI and journal replay never select the final.
+
 `src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
 
 `src/agent/runtime/events.ts` records a validated, redacted body through the existing trace writer before publishing `agent_runtime` on the agent event topic. The trace writer owns sequence allocation; sequence gaps are valid. The tuple codec in `src/trace/runtime-body-codec.ts` preserves numeric usage without weakening raw-trace secret masking. Known structured fragments must be sanitized before clipping by their producer. Recording failure returns null, never a fabricated event or another inference.

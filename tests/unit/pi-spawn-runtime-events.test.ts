@@ -12,7 +12,7 @@ import type { RuntimeEventContext } from '../../src/agent/runtime/events.ts';
 
 type Callbacks = { onEvent?: (event: PiRuntimeEvent) => void; onRawRecord?: (record: unknown) => void; cwd?: string };
 const fixture = {
-    mode: 'ok' as 'ok' | 'acquire-failure' | 'direct-failure' | 'turn-failure' | 'raw-limit',
+    mode: 'ok' as 'ok' | 'acquire-failure' | 'direct-failure' | 'turn-failure' | 'raw-limit' | 'lifecycle-failure' | 'turn-lifecycle-failure',
     calls: [] as Callbacks[], acquisitions: [] as Array<Record<string, unknown>>,
     direct: 0, releases: 0, watchdogStops: 0,
     acquireGate: null as Promise<void> | null,
@@ -46,7 +46,7 @@ function child(): ChildProcess {
 }
 async function protocol(callbacks: Callbacks) {
     fixture.calls.push(callbacks);
-    if (fixture.mode === 'turn-failure') throw new Error('fixture Pi turn failed');
+    if (fixture.mode === 'turn-failure' || fixture.mode === 'turn-lifecycle-failure') throw new Error('fixture Pi turn failed');
     const raw = (record: unknown) => callbacks.onRawRecord?.(record);
     const semantic = (event: PiRuntimeEvent) => callbacks.onEvent?.(event);
     if (fixture.mode === 'raw-limit') raw({ type: 'fixture_oversize', payload: 'x'.repeat(70_000) });
@@ -109,7 +109,9 @@ test.mock.module('../../src/agent/lifecycle-handler.js', { namedExports: {
         params.releaseMainRun(params.scopeKey, params.childProcess, params.ownerGeneration);
         live.clearLiveRun(params.ctx.liveScope || 'default');
         traces.finalizeTraceRun(params.ctx.traceRunId, params.code === 0 ? 'done' : 'error');
+        if (fixture.mode === 'turn-lifecycle-failure') throw new Error('fixture failed lifecycle before caller resolution');
         params.resolve({ text: finalText ?? '', code: params.code ?? 0, tools: params.ctx.toolLog });
+        if (fixture.mode === 'lifecycle-failure') throw new Error('fixture failure after finalization');
     },
 } });
 const { spawnAgent, activeProcesses, activeMainProcesses, armExitSettle, waitForExitSettled, settleExit } = await import('../../src/agent/spawn.ts');
@@ -210,6 +212,30 @@ test('rejected Pi turn uses error lifecycle observer once and releases pooled le
     assertCanonicalContext(false);
     assert.ok(fixture.events.some(e => e.kind === 'turn-end' && e.status === 'error' && e.finalText === null));
     assert.equal(activeMainProcesses.has('pi-test-scope'), false);
+});
+
+test('Pi lifecycle rejection after finalization cannot execute lifecycle or release twice', async () => {
+    fixture.mode = 'lifecycle-failure';
+    const result = await spawnAgent('lifecycle fixture', opts()).promise;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(result.text, 'lifecycle-selected final');
+    assert.equal(fixture.lifecycle.length, 1);
+    assert.equal(fixture.releases, 1);
+    assert.equal(fixture.events.filter(event => event.kind === 'turn-end').length, 1);
+});
+test('Pi execution failure followed by lifecycle rejection resolves caller once and settles barrier', async () => {
+    fixture.mode = 'turn-lifecycle-failure';
+    const scope = 'pi-test-scope';
+    armExitSettle(scope);
+    let barrierDone = false;
+    const barrier = waitForExitSettled(scope).then(() => { barrierDone = true; });
+    const result = await spawnAgent('double failure fixture', opts()).promise;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(result.code, 1); assert.equal(result.text, '');
+    assert.equal(fixture.lifecycle.length, 1); assert.equal(fixture.releases, 1);
+    assert.equal(barrierDone, true);
+    assert.equal(fixture.events.filter(event => event.kind === 'turn-end').length, 1);
+    await barrier;
 });
 
 test('Pi acquire failure closes trace/live state and settles the armed exit barrier without timeout', async context => {
