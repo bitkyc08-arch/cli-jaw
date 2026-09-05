@@ -68,6 +68,8 @@ import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 import { RuntimeProjection } from './runtime/projection.js';
 import { CodexProjection } from './runtime/codex-projection.js';
+import { PiProjection } from './runtime/pi-projection.js';
+import { PiRawTrace } from './runtime/pi-raw-trace.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
@@ -2022,6 +2024,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             traceRunId,
             traceAudience,
         };
+        const activity = new RuntimeProjection({
+            runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
+            turnId: traceRunId, audience: traceAudience,
+            ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}),
+        });
+        const piProjection = new PiProjection(activity);
+        const rawTrace = new PiRawTrace(traceRunId, appendTraceEvent, () => activity.report('persistence'));
+        activity.start('pi');
+        const onPiRawRecord = (raw: unknown): void => {
+            rawTrace.record(raw);
+            piProjection.observeRecord(raw);
+        };
+
         function flushPiThinking() {
             if (!ctx.thinkingBuf) return;
             const merged = ctx.thinkingBuf.trim();
@@ -2044,6 +2059,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ].join('\n');
         const piSysPrompt = sysPrompt ? `${sysPrompt}\n\n${piToolDiscipline}` : piToolDiscipline;
         const onPiEvent = (event: import('./pi-runtime.js').PiRuntimeEvent) => {
+            piProjection.observe(event);
             opts.lifecycle?.onActivity?.('pi-rpc');
             if (event.kind === 'thinking') {
                 ctx.thinkingBuf = (ctx.thinkingBuf || '') + event.text;
@@ -2142,6 +2158,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const wasSteer = killReason === 'steer' || killReason === DUP_REGISTRATION_KILL_REASON;
                 const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, result.code, cli);
                 return handleAgentExit({
+                    onRuntimeEnd: (end) => { activity.close(end); },
                     ctx, code: result.code, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
                     prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
@@ -2165,6 +2182,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += err.message;
                 console.error('[jaw:pi] runtime failed:', err.message);
                 handleAgentExit({
+                    onRuntimeEnd: (end) => { activity.close(end); },
                     ctx, code: 1, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
                     prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
@@ -2182,21 +2200,28 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                     processQueue,
                 }).catch((handleErr: Error) => {
+                    activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Lifecycle failed' });
                     console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
                 }).finally(() => settleExit(scopeKey));
             });
         };
 
         if (opts.agentId) {
-            const { child, done } = spawnPiRpc(profile, pi, {
-                prompt: piPrompt,
-                model: runtimeModel,
-                ...(piSessionId ? { sessionId: piSessionId } : {}),
-                effort,
-                cwd: spawnCwd,
-                sysPrompt: piSysPrompt,
-                onEvent: onPiEvent,
-            });
+            let execution: ReturnType<typeof spawnPiRpc>;
+            try {
+                execution = spawnPiRpc(profile, pi, {
+                    prompt: piPrompt, model: runtimeModel,
+                    ...(piSessionId ? { sessionId: piSessionId } : {}),
+                    effort, cwd: spawnCwd, sysPrompt: piSysPrompt,
+                    onEvent: onPiEvent, onRawRecord: onPiRawRecord,
+                });
+            } catch (error) {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Pi process creation failed' });
+                finalizeTraceRun(traceRunId, 'error', 'Pi process creation failed');
+                cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                throw error;
+            }
+            const { child, done } = execution;
             runPiTurn(child, done, null);
             return { child, promise: resultPromise };
         }
@@ -2225,12 +2250,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             mainRun!.starting = false;
             ctx.sessionId = lease.session.sessionId;
             console.log(`[jaw:pi:pool] reused=${lease.reused} sessionId=${lease.session.sessionId || 'new'}`);
-            const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent })
+            const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent, onRawRecord: onPiRawRecord })
                 .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
             runPiTurn(lease.session.child, done, lease);
         }).catch((err: Error) => {
             mainRun!.starting = false;
             console.error(`[jaw:pi:pool] acquire failed: ${err.message}`);
+            activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Pi acquisition failed' });
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
             broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
