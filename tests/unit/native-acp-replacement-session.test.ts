@@ -8,6 +8,7 @@ import { AcpSession } from '../../src/agent/runtime/acp/session.ts';
 import { AcpReplacement } from '../../src/agent/runtime/acp/replacement.ts';
 mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
 const { AcpRuntimeSession } = await import('../../src/agent/runtime/acp/runtime-session.ts');
+const { replaceAcpMainTurn } = await import('../../src/agent/runtime/replace-turn.ts');
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 type Wire = { id?: string; method?: string; params?: Record<string, any> };
 
@@ -328,4 +329,19 @@ test('owner invalidation during held B write rejects fatally before input commit
     assert.equal(outcome.partialText, 'A_PARTIAL');
     assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 2);
     assert.equal(f.runtime.claimTurnOutcome('logical')?.finalText, null);
+});
+
+test('main adapter preserves and consumes an asynchronous commit failure', { timeout: 5000 }, async t => {
+    const f = await fixture(t), run = f.run(); await tick();
+    let commits = 0;
+    const receipt = await replaceAcpMainTurn(f.runtime, 'B', () => {
+        commits++;
+        return Promise.reject(new Error('private async commit failure'));
+    });
+    assert.equal(receipt.kind, 'failed'); assert.equal(commits, 1);
+    assert.equal(f.protocol.alive, false);
+    const result = await run;
+    assert.equal(result.status, 'error'); assert.equal(result.finalText, null);
+    assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 2);
+    await tick(); // A fresh rejecting callback must not become an unhandled rejection.
 });
