@@ -151,9 +151,9 @@ export async function applySettingsSelection(ctx: TuiContext): Promise<void> {
                 process.env['JAW_TUI_THEME'] = (tuiPatch as Record<string, string>)['theme'];
             }
         }
-        await refreshInfo(ctx);
+        const refreshed = await refreshInfo(ctx);
         rebuildFooter(ctx);
-        ov.settingsMessage = `Saved ${row.label}`;
+        ov.settingsMessage = refreshed ? `Saved ${row.label}` : `Saved ${row.label}; reopen settings to refresh`;
     } catch (error) {
         ov.settingsMessage = `Failed to save ${row.label}: ${error instanceof Error ? error.message : String(error)}`;
     }

@@ -22,6 +22,7 @@ import { c, type TuiContext } from './types.js';
 import { openPromptBlock, rebuildFooter } from './renderer.js';
 import { dismissOverlay, openBgtaskOverlay } from './overlays.js';
 import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
+import { refreshInfo } from './api.js';
 
 function isFullscreen(ctx: TuiContext): boolean {
     return ctx.displayMode === 'fullscreen';
@@ -408,6 +409,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                         }
                         break;
                     case 'settings_change':
+                        void refreshInfo(ctx).then(() => ctx.requestFrame?.());
                         if (!isFullscreen(ctx)) console.log(`\n  ${c.dim}⚙️  설정 변경됨${c.reset}`);
                         break;
                     case 'orc_state':

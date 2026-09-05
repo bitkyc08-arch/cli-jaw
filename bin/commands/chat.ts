@@ -53,6 +53,7 @@ import { handleKeyInput, flushPendingEscape } from './tui/input-handler.js';
 import { runFullscreenMode } from './tui/fullscreen-mode.js';
 import { resolveTuiDisplayMode } from '../../src/cli/tui/mode.js';
 import { handleWsMessage } from './tui/ws-handler.js';
+import { refreshActivityIdentity } from './tui/api.js';
 import { connectChannel, type ChatChannel } from './tui/channel.js';
 import { asRecord, fieldString } from '../_http-client.js';
 
@@ -198,6 +199,8 @@ const ctx: TuiContext = {
     runtimeLocale,
     tuiConfig,
     settingsSnapshot,
+    activityIdentity: null,
+    activityIdentityGeneration: 0,
     values: { port: values.port as string, raw: !!values.raw, simple: !!values.simple },
     isRaw: !!values.raw,
     store: createTuiStore(),
@@ -232,6 +235,7 @@ const ctx: TuiContext = {
 };
 ctx.footer = formatFooter(ctx.label, ctx.accent, 'idle');
 ctx.promptPrefix = `  ${ctx.accent}\u276F${c.reset} `;
+await refreshActivityIdentity(ctx);
 
 if (values.verbose) {
     // --verbose: session-scoped render-mode override (jawcode 91bfb40 parity, not persisted).

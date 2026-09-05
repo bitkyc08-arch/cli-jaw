@@ -81,3 +81,19 @@ test('nextAppearancePatch returns real patches only for editable rows', () => {
     assert.equal(nextAppearancePatch(byId('markdownRenderer'), snapshot), null);
     assert.equal(nextAppearancePatch(byId('toolRows'), snapshot), null);
 });
+
+test('Activity presentation defaults independently of provider and reverses to legacy', () => {
+    for (const settings of [{}, { perCli: { cursor: { transport: 'print' } } },
+        { perCli: { cursor: { transport: 'native' } } }]) {
+        const snapshot = { settings, tuiConfig: {}, footerPreview: '' };
+        const row = buildAppearanceRows(snapshot).find(row => row.id === 'presentation');
+        assert.ok(row);
+        assert.equal(row.value, 'activity');
+        assert.deepEqual(nextAppearancePatch(row, snapshot), { presentation: { mode: 'legacy' } });
+    }
+    const snapshot = { settings: { presentation: { mode: 'legacy' } }, tuiConfig: {}, footerPreview: '' };
+    const row = buildAppearanceRows(snapshot).find(row => row.id === 'presentation');
+    assert.ok(row);
+    assert.equal(row.value, 'legacy');
+    assert.deepEqual(nextAppearancePatch(row, snapshot), { presentation: { mode: 'activity' } });
+});

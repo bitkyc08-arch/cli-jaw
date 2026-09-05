@@ -1,4 +1,5 @@
 import { visualWidth } from './renderers.js';
+import { presentationMode } from '../../shared/presentation.js';
 
 export type SettingsRowKind = 'editable' | 'readonly';
 export type SettingsRowScope = 'cli' | 'web-ai' | 'runtime';
@@ -124,6 +125,14 @@ export function buildAppearanceRows(snapshot: SettingsScreenSnapshot): SettingsR
             kind: 'editable',
         },
         {
+            id: 'presentation',
+            label: 'Presentation',
+            scope: 'runtime',
+            value: presentationMode(settings),
+            description: 'Activity (default) or legacy transcript',
+            kind: 'editable',
+        },
+        {
             id: 'markdownRenderer',
             label: 'Markdown Renderer',
             scope: 'runtime',
@@ -217,6 +226,8 @@ export function nextAppearancePatch(row: SettingsRow, snapshot: SettingsScreenSn
     const settings = asRecord(snapshot.settings);
     const tui = { ...asRecord(settings['tui']), ...snapshot.tuiConfig };
     switch (row.id) {
+        case 'presentation':
+            return { presentation: { mode: presentationMode(settings) === 'activity' ? 'legacy' : 'activity' } };
         case 'theme': {
             const next = normalizeTheme(tui['theme']) === 'dark' ? 'light' : 'dark';
             return { tui: { theme: next } };

@@ -5,6 +5,7 @@ import type { TuiStore } from '../../../src/cli/tui/store.js';
 import type { StreamSink } from '../../../src/cli/tui/stream.js';
 import type { IdeType } from '../../../src/ide/diff.js';
 import type { ChatChannel } from './channel.js';
+import type { ActivityIdentity } from '../../../src/shared/presentation.js';
 
 // ─── ANSI color codes ────────────────────────
 export const c = {
@@ -108,6 +109,9 @@ export interface TuiContext {
     runtimeLocale: string;
     tuiConfig: { pasteCollapseLines: number; pasteCollapseChars: number; [k: string]: unknown };
     settingsSnapshot: Record<string, unknown>;
+    activityIdentity: ActivityIdentity | null;
+    activityIdentityGeneration: number;
+    settingsRefreshGeneration?: number;
     values: { port: string; raw: boolean; simple: boolean };
     isRaw: boolean;
 

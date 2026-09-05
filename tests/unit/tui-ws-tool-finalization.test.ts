@@ -7,6 +7,9 @@ import { createTuiStore } from '../../src/cli/tui/store.ts';
 import { appendUserItem, replaceNativeAssistantFinal } from '../../src/cli/tui/transcript.ts';
 import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
 import { stopSpinner } from '../../src/cli/tui/spinner.ts';
+import { refreshInfo } from '../../bin/commands/tui/api.ts';
+import { applySettingsSelection } from '../../bin/commands/tui/overlays.ts';
+import { buildAppearanceRows } from '../../src/cli/tui/settings-screen.ts';
 
 function makeCtx(): TuiContext {
     return {
@@ -97,6 +100,48 @@ test('interactive raw prints semantic frames once without mutating display state
         assert.equal(ctx.streaming, false);
         assert.equal(ctx.footerTimer, null);
     } finally { console.log = original; cleanupCtx(ctx); }
+});
+
+test('overlapping settings refreshes retain the newest presentation response', async () => {
+    const ctx = makeCtx();
+    ctx.apiUrl = 'http://127.0.0.1:3457';
+    const pending: Array<(value: Response) => void> = [];
+    const started: Array<() => void> = [];
+    const firstStarted = new Promise<void>(resolve => started.push(resolve));
+    const secondStarted = new Promise<void>(resolve => started.push(resolve));
+    const original = globalThis.fetch;
+    globalThis.fetch = async input => {
+        if (String(input).endsWith('/api/settings')) return new Promise<Response>(resolve => {
+            pending.push(resolve); started[pending.length - 1]?.();
+        });
+        return Response.json({});
+    };
+    try {
+        const first = refreshInfo(ctx);
+        await firstStarted;
+        const second = refreshInfo(ctx);
+        await secondStarted;
+        pending[1]!(Response.json({ presentation: { mode: 'legacy' } }));
+        assert.equal(await second, true);
+        pending[0]!(Response.json({ presentation: { mode: 'activity' } }));
+        assert.equal(await first, false);
+        assert.deepEqual(ctx.settingsSnapshot['presentation'], { mode: 'legacy' });
+    } finally { globalThis.fetch = original; cleanupCtx(ctx); }
+});
+
+test('failed presentation PUT keeps the current display preference', async () => {
+    const ctx = makeCtx();
+    ctx.apiUrl = 'http://127.0.0.1:3457';
+    ctx.settingsSnapshot = { presentation: { mode: 'legacy' } };
+    ctx.store.overlay.settingsSelected = buildAppearanceRows({ settings: ctx.settingsSnapshot,
+        tuiConfig: ctx.tuiConfig, footerPreview: '' }).findIndex(row => row.id === 'presentation');
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => Response.json({ error: 'settings unavailable' }, { status: 503 });
+    try {
+        await applySettingsSelection(ctx);
+        assert.deepEqual(ctx.settingsSnapshot['presentation'], { mode: 'legacy' });
+        assert.match(ctx.store.overlay.settingsMessage, /Failed to save Presentation/);
+    } finally { globalThis.fetch = original; cleanupCtx(ctx); }
 });
 
 test('native final helper replaces only streaming assistant rows after the latest user', () => {
