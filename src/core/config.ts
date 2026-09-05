@@ -6,6 +6,7 @@ import path from 'path';
 import { join } from 'path';
 import { DEFAULT_CLI, CLI_KEYS, buildDefaultPerCli } from '../cli/registry.js';
 import { SWITCHABLE_NATIVE_CLIS, resolveRuntimeTransport } from '../agent/runtime/selection.js';
+import { presentationMode } from '../shared/presentation.js';
 import type { MessengerChannel } from '../messaging/types.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
@@ -243,6 +244,7 @@ function createDefaultSettings() {
         permissions: 'auto',
         workingDir: JAW_HOME,
         perCli: buildDefaultPerCli(),
+        presentation: { mode: 'activity' as const },
         pi: {
             defaultProfileId: 'progrok',
             profiles: [{
@@ -558,6 +560,10 @@ export const isMessengerChannel = (value: unknown): value is MessengerChannel =>
     MESSENGER_CHANNELS.includes(value as MessengerChannel);
 
 export function migrateSettings(s: Record<string, any>, sourceVersion = readSettingsSchemaVersion(s)) {
+    s['presentation'] = {
+        ...(isPlainRecord(s['presentation']) ? s['presentation'] : {}),
+        mode: presentationMode(s),
+    };
     // Whatever the document claimed on the way in, what leaves this function is written
     // by the current schema and says so. Individual markers below key off `sourceVersion`,
     // which was read before this line, so stamping here does not disarm them.
