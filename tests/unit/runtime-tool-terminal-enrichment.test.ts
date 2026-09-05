@@ -1,3 +1,4 @@
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RuntimeProjection } from '../../src/agent/runtime/projection.ts';
