@@ -330,4 +330,3 @@ class CursorHarness:
             self.save('events.json', self.events)
             self.save('report.json', self.report)
             (self.evidence / 'terminal.ansi').write_bytes(self.capture)
-
