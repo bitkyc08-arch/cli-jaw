@@ -131,7 +131,6 @@ import {
 import { resolveCursorModelVariant } from './cursor-runtime.js';
 import { normalizePiSettings, spawnPiRpc } from './pi-runtime.js';
 import { piFailureOutcome } from './runtime/pi-turn.js';
-import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { getEmployeeMcpServers } from './mcp-passthrough.js';
 
 // ─── State ───────────────────────────────────────────
