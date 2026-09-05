@@ -65,6 +65,16 @@ test('nonzero interrupted and unknown completion never claim success', () => {
     }
 });
 
+test('schema-defined statusless web search completes without a fabricated failure', () => {
+    const h = harness();
+    h.observe('item/started', { item: { id: 'search', type: 'webSearch', query: 'fixture', action: null } });
+    h.observe('item/completed', { item: { id: 'search', type: 'webSearch', query: 'fixture', action: null, results: null } });
+    assert.equal(tools(h.events).at(-1)?.status, 'done');
+    const unknown = harness('unknown-search');
+    unknown.observe('item/completed', { item: { id: 'search', type: 'webSearch', status: 'unexpected' } });
+    assert.equal(tools(unknown.events).at(-1)?.status, 'error', 'unknown explicit states stay conservative');
+});
+
 test('same provider item across scopes stays isolated and preview caps hold', () => {
     const a = harness('a'), b = harness('b');
     a.state.tool('same', { name: 'bash', output: 'a' });

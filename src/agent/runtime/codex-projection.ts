@@ -25,6 +25,9 @@ function completion(item: Obj): { status: RuntimeItemStatus; detail: string } {
             : 'Native status=' + state + '; exit=' + String(exit ?? '') };
     }
     if (['completed', 'done', 'success'].includes(state) || exit === 0) return { status: 'done', detail: state || 'exit=0' };
+    // WebSearchItem has no status field in the app-server schema. For that
+    // known variant item/completed itself is terminal, not a missing-state error.
+    if (item['type'] === 'webSearch' && raw === undefined) return { status: 'done', detail: 'Search completed' };
     return { status: 'error', detail: 'Unknown native completion status: ' + (state || '(missing)') };
 }
 
