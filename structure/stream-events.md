@@ -75,6 +75,12 @@ SSE behavior:
 
 ## 2. 실제 Broadcast / SSE / WebSocket 이벤트 Surface
 
+### Canonical runtime side channel
+
+Codex app-server's accepted owner-scoped notifications also feed `src/agent/runtime/codex-projection.ts`. Bounded/redacted snapshots are stored as immutable `source=runtime` trace rows before `agent_runtime` is published directly on the SSE agent topic. This side channel deliberately bypasses `addBroadcastListener`, so it does not send Slack/Telegram/Discord progress messages. `agent_runtime_gap` marks the first projection failure and stops further canonical writes in that run; legacy lifecycle delivery remains independent. TUI already uses SSE through its channel adapter; no new WebSocket server path is required.
+
+The version1 envelope carries jaw `sessionId`, routing `scope`, `runId`, logical `turnId`, committed noncontiguous `seq`, and an allowlisted body. Provider IDs are private. Finality comes from lifecycle, not the last tool/text event. Optional native compatibility fields `runtimeFinality: present|absent` and `runtimeStatus: done|error|stopped` retain model-final meaning without broadcasting `runtimeOutcome` or `partialText`. Empty native terminals still perform web/TUI cleanup, but cannot fall back to streamed previews. Canonical Activity rendering/preferences and journal history reads are separate follow-on slices.
+
 `src/core/bus.ts`의 `broadcast(type, data, audience = 'public')`가 단일 fan-out 지점이다. Current server의 public Web delivery는 SSE-only이며, `src/routes/events.ts`의 `formatSse()`가 `{ ...entry.data, topic, event }`를 `data:` JSON payload로 쓴다. 내부 listener(`addBroadcastListener`)는 public/internal 여부와 무관하게 호출된다. Legacy WebSocket payload shape `{ type, ...payload }`는 client/TUI fallback이 pre-X-01 server에 붙을 때만 의미가 있다.
 
 ### `broadcast()` public events

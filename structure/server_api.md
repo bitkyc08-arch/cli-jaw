@@ -374,3 +374,5 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Memory embedding | `GET /api/dashboard/memory/embed-config` `POST /api/dashboard/memory/embed-config` `POST /api/dashboard/memory/reindex` `GET /api/dashboard/memory/embed-state` `GET /api/dashboard/memory/embed-estimate` `GET /api/dashboard/memory/reindex-stream` (SSE) |
 | Wiki (읽기 전용 프록시) | `GET /api/dashboard/wiki/status` `GET /api/dashboard/wiki/entities` (`?port=` 필수). Notes와 같은 preflight+auth pair를 지나고, 포트 범위는 `isDashboardProxyPortAllowed`를 호출해 판정하며, 미등록·오프라인·upstream 실패는 전부 `503 wiki_core_unavailable` 하나로 답한다 (041-C). **`/i` 프록시로 대체하지 말 것** — 그 경로는 loopback으로 접속해 인스턴스의 `requireAuth`가 토큰 검사 전에 통과시키므로 인증 경계가 사라진다 |
 | Jaw CEO (manager) | `/api/jaw-ceo/*` (same sub-router as core server) |
+
+Text responses from the hub outbound relay may include `bodyDelivered`, a server-generated receipt. Native hub-member completions require both `ok === true` and `bodyDelivered === true`; missing/false receipts are unconfirmed and are not automatically resent. Request payloads cannot set the receipt or native guard options. Existing untagged callers retain the prior `ok` contract.
