@@ -307,7 +307,8 @@ function renderChatRegion(ctx: TuiContext, viewport: Viewport, regions: Regions,
 }
 
 function renderHelpLine(cols: number): string {
-    const help = cols < 30 ? 'F6 history · /help' : 'F6 history · Ctrl+O details · /help · /model · /settings';
+    const help = cols < 30 ? 'F6 · ? shortcuts' : cols < 45 ? 'F6 history · ? shortcuts · Ctrl+O'
+        : 'F6 history · ? shortcuts · Ctrl+O details · /help · /model · /settings';
     return clipTextToCols(`${c.gray}${help}${c.reset}`, cols);
 }
 
