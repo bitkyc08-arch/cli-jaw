@@ -72,7 +72,7 @@ test('Stop after input yield closes exactly once and leaves independent session 
     const a = await sessionFixture('a'), b = await sessionFixture('b');
     const first = a.session.send({ text: 'a' }, () => {}), second = b.session.send({ text: 'b' }, () => {});
     await new Promise(resolve => setImmediate(resolve)); assert.equal(a.offered, 1);
-    a.push({ type: 'system', subtype: 'init', session_id: 'native-a' });
+    a.push({ type: 'system', subtype: 'init', session_id: 'native-a', permissionMode: 'default' });
     await new Promise(resolve => setImmediate(resolve));
     await a.session.cancel(); assert.equal((await first).status, 'stopped');
     assert.equal(a.session.nativeSessionId, 'native-a'); assert.equal(b.session.alive, true);

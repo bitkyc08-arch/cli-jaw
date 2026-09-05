@@ -8,15 +8,18 @@ import { createClaudeInput } from './claude-sdk-input.js';
 import { buildClaudeSdkOptions, type PreparedClaudeOptions } from './claude-sdk-options.js';
 import { loadClaudeSdk } from './claude-sdk-loader.js';
 import { createClaudeProcessOwner } from './claude-sdk-process.js';
-import { RuntimeProjection } from './projection.js';
+import { RuntimeProjection, type RuntimeEnd } from './projection.js';
 import { ClaudeSdkEvents } from './claude-sdk-events.js';
 import { createClaudeClose } from './claude-sdk-close.js';
+import { createClaudeMetadata, type ClaudeResultMetadata } from './claude-sdk-metadata.js';
+import { ClaudeSdkOwners, claudeToolIds } from './claude-sdk-owners.js';
+import { createClaudePermissions } from './claude-sdk-permissions.js';
+import { makeClaudeUserMessage } from './claude-sdk-content.js';
+import { ClaudeSdkChildren, type ClaudeChildOwner } from './claude-sdk-children.js';
+import { claudeForegroundHooks } from './claude-sdk-hooks.js';
 
 export interface ClaudeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
-export interface ClaudeResultMetadata {
-    sessionId?: string; cost?: number; turns?: number; durationMs?: number;
-    tokens?: { input?: number; output?: number; cache_read?: number; cache_creation?: number };
-}
+export type { ClaudeResultMetadata } from './claude-sdk-metadata.js';
 export type ClaudeQuery = AsyncIterable<SDKMessage> & { close(): void };
 export interface ClaudeSessionOptions {
     prepared: PreparedClaudeOptions;
@@ -25,6 +28,7 @@ export interface ClaudeSessionOptions {
     closeTimeoutMs?: number;
     registry?: RuntimeRequests;
     signal?: AbortSignal;
+    deferTurnEnd?: boolean;
     onMetadata?(context: Readonly<ClaudeTurnContext>, metadata: ClaudeResultMetadata): void;
     queryFactory?(input: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): ClaudeQuery;
     record?(context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent | null;
@@ -33,8 +37,9 @@ type Turn = {
     context: Readonly<ClaudeTurnContext>; onEvent(event: RuntimeEvent): void;
     resolve(result: RuntimeTurnResult): void; timer: ReturnType<typeof setTimeout>;
     mapper: ClaudeSdkEvents; projection: RuntimeProjection; uuid: ReturnType<typeof randomUUID>; offered: boolean;
+    owner: ClaudeChildOwner;
+    passiveFinalizing: boolean;
 };
-const MAX_PROMPT_BYTES = 1024 * 1024;
 function record(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('claude_invalid_frame');
     return value as Record<string, unknown>;
@@ -46,7 +51,7 @@ function validTimeout(value: number): void {
 /** A query owns one reader; each admitted send owns an immutable jaw turn binding. */
 export class ClaudeSdkSession implements NativeRuntimeSession {
     readonly capabilities: RuntimeCapabilities = Object.freeze({ transport: 'native', steer: 'queued', resume: true,
-        tools: true, toolOutput: true, approvals: false, questions: false, images: false, subagents: false });
+        tools: true, toolOutput: true, approvals: true, questions: true, images: true, subagents: true });
     readonly supportsInterrupt = true;
     private readonly input = createClaudeInput<SDKUserMessage>(32);
     private readonly processes = createClaudeProcessOwner();
@@ -54,16 +59,26 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private reader: Promise<void> = Promise.resolve();
     private readonly exits = new Set<(code: number | null) => void>();
     private turn: Turn | null = null;
+    private pendingFinal: { turn: Turn; outcome: RuntimeTurnResult } | null = null;
+    private finalizing = false;
     private id = '';
     private closing = false;
     private closeOperation: (() => Promise<void>) | undefined;
     private failure = false;
+    private failureCode: string | null = null;
     private exited = false;
     private readonly registry: RuntimeRequests;
     private readonly terminalIds = new Set<string>();
+    private readonly deferredTurnIds = new Set<string>();
+    private readonly readMetadata = createClaudeMetadata();
+    private readonly owners = new ClaudeSdkOwners();
+    private readonly children = new ClaudeSdkChildren({ resolveParent: id => this.owners.parent(id) });
+    private readonly permissions: ReturnType<typeof createClaudePermissions>;
 
     constructor(private readonly options: ClaudeSessionOptions) {
         this.registry = options.registry ?? runtimeRequests;
+        this.permissions = createClaudePermissions({ registry: this.registry, permissions: options.prepared.permissions,
+            resolveOwner: async id => this.alive ? this.children.resolveTool(id) ?? this.owners.resolve(id) : null });
     }
     async start(factory: NonNullable<ClaudeSessionOptions['queryFactory']>): Promise<void> {
         if (this.query || this.closing) throw new Error('claude_session_already_started');
@@ -71,32 +86,40 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         const prepared = buildClaudeSdkOptions(options.prepared);
         try { this.query = factory({ prompt: this.input.stream, options: {
             ...prepared, spawnClaudeCodeProcess: value => this.processes.spawn(value),
-            // Until wp19 exposes live callbacks, safe requests are never auto-approved.
-            canUseTool: async () => ({ behavior: 'deny', message: 'Claude native decision surface unavailable' }),
+            canUseTool: this.permissions.canUseTool,
+            forwardSubagentText: true,
+            hooks: claudeForegroundHooks(),
         } });
             this.reader = this.read(this.query);
         } catch (error) { this.failure = true; await this.close(); throw error; }
     }
     get alive(): boolean { return this.query !== undefined && !this.closing && !this.failure; }
-    get idle(): boolean { return this.alive && this.turn === null; }
+    get idle(): boolean { return this.alive && this.turn === null && this.pendingFinal === null && !this.finalizing; }
     get nativeSessionId(): string { return this.id; }
     get activeProcessCount(): number { return this.processes.activeCount; }
     get stderrBytes(): number { return this.processes.stderrBytes; }
+    get lastError(): string | null { return this.failureCode; }
 
     async send(prompt: RuntimePrompt, onEvent: (event: RuntimeEvent) => void): Promise<RuntimeTurnResult> {
         if (!this.alive) throw new Error('claude_session_closed');
-        if (this.turn) throw new Error('claude_session_busy');
-        if (typeof prompt.text !== 'string' || Buffer.byteLength(prompt.text) > MAX_PROMPT_BYTES) throw new Error('claude_prompt_limit');
-        if (prompt.images?.length) throw new Error('claude_images_unavailable');
+        if (this.turn || this.pendingFinal || this.finalizing) throw new Error('claude_session_busy');
+        const message = makeClaudeUserMessage(prompt);
         const context = Object.freeze({ ...this.options.getTurnContext() });
         if (!this.current(context)) throw new Error('claude_owner_stale');
         for (const value of [context.runId, context.sessionId, context.scope, context.turnId]) {
             if (typeof value !== 'string' || !value || value.length > 1024) throw new Error('claude_invalid_context');
         }
+        if (this.options.deferTurnEnd) {
+            if (this.deferredTurnIds.has(context.turnId)) throw new Error('claude_turn_identity_reused');
+            if (this.deferredTurnIds.size >= 512) throw new Error('claude_turn_identity_capacity');
+            this.deferredTurnIds.add(context.turnId);
+        }
         let resolve!: (value: RuntimeTurnResult) => void;
         const result = new Promise<RuntimeTurnResult>(yes => { resolve = yes; });
         const projection = new RuntimeProjection(context, (_context, body) => this.recordEvent(turn, body));
-        const turn: Turn = { context, onEvent, resolve, projection, mapper: new ClaudeSdkEvents(projection), uuid: randomUUID(), offered: false,
+        const turn: Turn = { context, onEvent, resolve, projection, mapper: new ClaudeSdkEvents(projection), uuid: randomUUID(), offered: false, passiveFinalizing: false,
+            owner: { context, projection, isCurrent: () => this.current(context), isActive: () => this.turn === turn && !this.closing,
+                record: (ownerContext, body) => this.recordEvent(turn, body, ownerContext) },
             timer: setTimeout(() => this.fail('claude_prompt_timeout'), this.options.promptTimeoutMs) };
         this.turn = turn;
         projection.start('claude');
@@ -106,8 +129,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
             this.kill(); return result;
         }
         turn.offered = true;
-        if (!this.input.offer({ type: 'user', uuid: turn.uuid, session_id: this.id,
-            parent_tool_use_id: null, message: { role: 'user', content: prompt.text } })) this.fail('claude_input_closed');
+        if (!this.input.offer({ ...message, uuid: turn.uuid, session_id: this.id })) this.fail('claude_input_closed');
         return result;
     }
     async steer(_prompt: RuntimePrompt): Promise<RuntimeInputAcceptance> {
@@ -119,6 +141,16 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     }
     interrupt(): Promise<void> { return this.close(); }
     cancel(): Promise<void> { return this.close(); }
+    finalizeTurn(turnId: string, end: RuntimeEnd): boolean {
+        const pending = this.pendingFinal;
+        if (!pending || pending.turn.context.turnId !== turnId) return false;
+        this.pendingFinal = null;
+        this.finalizing = true; pending.turn.passiveFinalizing = true;
+        try { pending.turn.mapper.finish({ ...pending.outcome, status: end.status, finalText: end.finalText }, end); }
+        finally { pending.turn.passiveFinalizing = false; this.finalizing = false; }
+        if (this.deferredTurnIds.size >= 512) this.kill();
+        return true;
+    }
     kill(): void { void this.close().catch(() => console.warn('[claude-native] cleanup_failed')); }
     onExit(cb: (code: number | null) => void): () => void {
         if (this.exited) { cb(this.failure ? 1 : 0); return () => {}; }
@@ -127,10 +159,10 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private current(context: Readonly<ClaudeTurnContext>): boolean {
         try { return context.isCurrent() === true; } catch { return false; }
     }
-    private recordEvent(turn: Turn, body: RuntimeEventBody): RuntimeEvent | null {
-        if (!this.current(turn.context)) return null;
+    private recordEvent(turn: Turn, body: RuntimeEventBody, context: RuntimeEventContext = turn.context): RuntimeEvent | null {
+        if (!turn.passiveFinalizing && !this.current(turn.context)) return null;
         try {
-            const event = (this.options.record ?? recordRuntimeEvent)(turn.context, body);
+            const event = (this.options.record ?? recordRuntimeEvent)(context, body);
             if (event) { try { turn.onEvent(event); } catch { console.warn('[claude-native] observer_failed'); } }
             return event;
         } catch { console.warn('[claude-native] projection_failed'); return null; }
@@ -139,11 +171,17 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         const turn = this.turn;
         if (!turn) return;
         this.turn = null; clearTimeout(turn.timer);
-        this.registry.cancelRun(turn.context.runId);
-        turn.mapper.finish(outcome);
+        this.permissions.cancelAll(); this.owners.cancelPending();
+        if (outcome.status !== 'done') this.children.stopOwner(turn.context);
+        this.owners.retire(turn.context);
+        if (this.options.deferTurnEnd) this.pendingFinal = { turn, outcome };
+        else turn.mapper.finish(outcome, outcome.status === 'error' && this.failureCode
+            ? { kind: 'turn-end', status: 'error', finalText: null, error: this.failureCode } : undefined);
         turn.resolve(outcome);
+        if (this.owners.saturated || this.terminalIds.size >= 512) this.kill();
     }
-    private fail(_reason: string): void {
+    private fail(reason: string): void {
+        this.failureCode ??= reason;
         this.failure = true;
         this.settle({ status: 'error', finalText: null, partialText: this.turn?.mapper.partialText ?? '' });
         this.kill();
@@ -153,7 +191,22 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
             for await (const message of query) {
                 if (this.closing) break;
                 const raw = record(message);
-                if (raw['parent_tool_use_id']) continue;
+                const taskPatch = raw['type'] === 'system' && raw['subtype'] === 'task_updated' ? raw['patch'] : undefined;
+                const toolResult = raw['type'] === 'user' ? raw['tool_use_result'] : undefined;
+                if ((raw['type'] === 'system' && raw['subtype'] === 'task_started' && raw['is_backgrounded'] === true)
+                    || (taskPatch && typeof taskPatch === 'object' && Reflect.get(taskPatch, 'is_backgrounded') === true)
+                    || (toolResult && typeof toolResult === 'object' && Reflect.get(toolResult, 'status') === 'async_launched')) {
+                    this.fail('claude_background_tasks_unsupported'); break;
+                }
+                const childOwned = this.children.accept(raw);
+                this.owners.resolvePending(id => this.children.resolveTool(id));
+                if (childOwned) {
+                    for (const id of claudeToolIds(raw)) {
+                        const owner = this.children.resolveTool(id);
+                        if (owner) this.owners.bind(id, owner);
+                    }
+                    continue;
+                }
                 const resultId = raw['type'] === 'result' && typeof raw['uuid'] === 'string' ? raw['uuid'] : null;
                 if (resultId && resultId.length > 1024) throw new Error('claude_result_id_limit');
                 if (resultId && this.terminalIds.has(resultId)) continue;
@@ -161,22 +214,36 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
                 if (turn && (!this.current(turn.context) || !this.correlated(raw, turn))) {
                     this.fail('claude_owner_or_correlation_stale'); break;
                 }
-                if ((raw['type'] === 'system' && raw['subtype'] === 'init') || (turn && raw['type'] === 'result')) {
+                if (raw['type'] === 'system' && raw['subtype'] === 'init' && this.options.prepared.permissions === 'safe'
+                    && raw['permissionMode'] !== 'default') { this.fail('claude_safe_mode_not_confirmed'); break; }
+                if (raw['type'] === 'system' && raw['subtype'] === 'init') {
                     const id = raw['session_id'];
                     if (typeof id === 'string' && id && id.length <= 1024) this.id = id;
                 }
                 if (resultId) {
-                    if (this.terminalIds.size >= 512) this.terminalIds.delete(this.terminalIds.values().next().value!);
+                    if (this.terminalIds.size >= 512) { this.fail('claude_terminal_capacity'); break; }
                     this.terminalIds.add(resultId);
                 }
-                if (!turn) continue;
-                this.metadata(raw, turn);
-                if (this.closing || this.turn !== turn) continue;
-                if (!this.current(turn.context)) { this.fail('claude_owner_stale'); break; }
+                if (!turn) { if (this.terminalIds.size >= 512) this.kill(); continue; }
+                // A resume/startup handshake with no consumed user turn is not
+                // the answer to input that merely happened to be offered meanwhile.
+                if (raw['type'] === 'result' && raw['subtype'] === 'success' && raw['is_error'] === false
+                    && raw['num_turns'] === 0 && raw['user_message_uuid'] === undefined && raw['user_message_uuids'] === undefined) continue;
+                for (const id of claudeToolIds(raw)) this.owners.bind(id, { context: turn.context,
+                    isCurrent: () => turn.owner.isCurrent() && turn.owner.isActive(),
+                    emit: body => { this.recordEvent(turn, body); } }, turn.owner);
                 const result = turn.mapper.accept(raw);
                 if (this.closing || this.turn !== turn) continue;
                 if (!this.current(turn.context)) { this.fail('claude_owner_stale'); break; }
-                if (result) this.settle(result);
+                if (result) {
+                    const nativeId = raw['session_id'];
+                    if (typeof nativeId === 'string' && nativeId && nativeId.length <= 1024) this.id = nativeId;
+                    const metadata = this.readMetadata(raw, result.status === 'done', this.id);
+                    try { this.options.onMetadata?.(turn.context, metadata); } catch { console.warn('[claude-native] metadata_failed'); }
+                    if (this.closing || this.turn !== turn) continue;
+                    if (!this.current(turn.context)) { this.fail('claude_owner_stale'); break; }
+                    this.settle(result);
+                }
             }
             if (!this.closing) this.fail('claude_eof');
         } catch { if (!this.closing) this.fail('claude_reader_failed'); }
@@ -191,27 +258,6 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         }
         return id === undefined || id === turn.uuid;
     }
-    private metadata(raw: Record<string, unknown>, turn: Turn): void {
-        if (raw['type'] === 'result') {
-            const metadata: ClaudeResultMetadata = { ...(this.id ? { sessionId: this.id } : {}) };
-            for (const [wire, field] of [['total_cost_usd', 'cost'], ['num_turns', 'turns'], ['duration_ms', 'durationMs']] as const) {
-                const value = raw[wire]; if (typeof value === 'number' && Number.isFinite(value) && value >= 0) metadata[field] = value;
-            }
-            const usage = raw['usage'];
-            if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
-                const tokens: NonNullable<ClaudeResultMetadata['tokens']> = {};
-                for (const [wire, field] of [['input_tokens', 'input'], ['output_tokens', 'output'],
-                    ['cache_read_input_tokens', 'cache_read'], ['cache_creation_input_tokens', 'cache_creation']] as const) {
-                    const value: unknown = Reflect.get(usage, wire);
-                    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) tokens[field] = value;
-                }
-                if (Object.keys(tokens).length) metadata.tokens = tokens;
-            }
-            if (this.current(turn.context)) {
-                try { this.options.onMetadata?.(turn.context, metadata); } catch { console.warn('[claude-native] metadata_failed'); }
-            }
-        }
-    }
     close(): Promise<void> {
         let outcome: RuntimeTurnResult;
         this.closeOperation ??= createClaudeClose({ timeoutMs: this.options.closeTimeoutMs ?? 5000,
@@ -220,7 +266,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
                 outcome = { status: this.failure ? 'error' : 'stopped', finalText: null, partialText: this.turn?.mapper.partialText ?? '' };
             },
             startTermination: () => { try { this.query?.close(); } finally { this.processes.terminate(); } },
-            settlePending: () => { this.input.close(); this.settle(outcome); },
+            settlePending: () => { this.input.close(); this.settle(outcome); this.permissions.cancelAll(); this.owners.close(); },
             readerDone: () => Promise.all([this.reader, this.processes.wait()]),
             onClosed: () => {
                 this.exited = true;

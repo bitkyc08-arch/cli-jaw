@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClaudeSdkSession } from '../../src/agent/runtime/claude-sdk-session.ts';
 import { createClaudeProcessOwner } from '../../src/agent/runtime/claude-sdk-process.ts';
+import { RuntimeRequests } from '../../src/agent/runtime/requests.ts';
 
 function stream() {
     const values: unknown[] = [];
@@ -22,17 +23,19 @@ async function fixture(extra: Record<string, unknown> = {}) {
     const output = stream();
     let context = { runId: 'run1', sessionId: 'jaw', scope: 'scope', turnId: 'turn1', audience: 'internal', isCurrent: () => true };
     const sent: unknown[] = [], events: unknown[] = [], metadata: unknown[] = [];
+    const registry = new RuntimeRequests(); let callback;
     let queryCount = 0, contextReads = 0, closed = 0, seq = 0;
     const session = await createClaudeSdkSession({
         prepared: { cwd: process.cwd(), binary: process.execPath, env: {}, model: 'default', systemPrompt: 'instructions', permissions: 'safe', fastMode: false },
         promptTimeoutMs: 1000, closeTimeoutMs: 100,
+        registry,
         getTurnContext: () => { contextReads++; return context; },
         onMetadata: (owner, data) => metadata.push({ owner, data }),
         record: (owner, body) => { const event = { version: 1, ...owner, ...body, seq: seq += 3 }; events.push(event); return event; },
-        queryFactory: ({ prompt }) => { queryCount++; void (async () => { for await (const message of prompt) sent.push(message); })(); return { ...output, close() { closed++; output.close(); } }; },
+        queryFactory: ({ prompt, options }) => { queryCount++; callback = options.canUseTool; void (async () => { for await (const message of prompt) sent.push(message); })(); return { ...output, close() { closed++; output.close(); } }; },
         ...extra,
     });
-    return { session, output, sent, events, metadata,
+    return { session, output, sent, events, metadata, registry, get callback() { return callback; },
         get queryCount() { return queryCount; }, get contextReads() { return contextReads; }, get closed() { return closed; },
         context(value: typeof context) { context = value; } };
 }
@@ -41,7 +44,7 @@ const result = (text: unknown = 'answer') => ({ type: 'result', subtype: 'succes
 test('one reader and query serve sequential turns with captured jaw identity', async t => {
     const f = await fixture(); t.after(() => f.session.close());
     const first = f.session.send({ text: 'one' }, () => {});
-    f.output.push({ type: 'system', subtype: 'init', session_id: 'native' });
+    f.output.push({ type: 'system', subtype: 'init', session_id: 'native', permissionMode: 'default' });
     f.context({ runId: 'run2', sessionId: 'jaw2', scope: 'scope2', turnId: 'turn2', audience: 'internal', isCurrent: () => true });
     f.output.push(result('one answer'));
     assert.equal((await first).finalText, 'one answer');
@@ -176,4 +179,90 @@ test('usage observer revocation cannot return a successful stale final', async (
     f.output.push(result('stale answer'));
     assert.deepEqual(await turn, { status: 'error', finalText: null, partialText: '' });
     await f.session.close(); assert.equal(f.session.alive, false);
+});
+test('SDK permission callback is answered through exact existing request registry binding', async t => {
+    const f = await fixture(); t.after(() => f.session.close());
+    const turn = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'printf hello' } }] } });
+    await new Promise(resolve => setImmediate(resolve));
+    const answer = f.callback('Bash', { command: 'printf hello' }, { signal: new AbortController().signal, toolUseID: 'tool1', requestId: 'sdk1', title: 'Run printf hello' });
+    await new Promise(resolve => setImmediate(resolve));
+    const pending = f.registry.list('jaw')[0]!; assert.ok(pending);
+    f.registry.respond(pending.requestId, pending, { optionId: 'allow' });
+    assert.deepEqual(await answer, { behavior: 'allow', updatedInput: { command: 'printf hello' } });
+    f.output.push(result()); await turn; assert.equal(f.registry.list('jaw').length, 0);
+});
+test('Stop settles a pending SDK callback and preserves separate stopped outcome', async () => {
+    const f = await fixture(); const turn = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'printf hello' } }] } });
+    await new Promise(resolve => setImmediate(resolve));
+    const answer = f.callback('Bash', { command: 'printf hello' }, { signal: new AbortController().signal, toolUseID: 'tool1', requestId: 'sdk1', title: 'Run printf hello' });
+    await new Promise(resolve => setImmediate(resolve)); assert.equal(f.registry.list('jaw').length, 1);
+    await f.session.cancel(); assert.equal((await answer).behavior, 'deny'); assert.equal((await turn).status, 'stopped');
+    assert.equal(f.registry.list('jaw').length, 0);
+});
+test('retired SDK callback cannot attach to the next borrower', async t => {
+    const f = await fixture(); t.after(() => f.session.close());
+    const one = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 'old-tool', name: 'Bash', input: {} }] } });
+    f.output.push(result()); await one;
+    const two = f.session.send({ text: 'two' }, () => {});
+    const answer = await f.callback('Bash', { command: 'printf hello' }, { signal: new AbortController().signal, toolUseID: 'old-tool', requestId: 'old-sdk', title: 'Old tool' });
+    assert.equal(answer.behavior, 'deny'); assert.equal(f.registry.list('jaw').length, 0);
+    f.output.push(result('second')); assert.equal((await two).finalText, 'second');
+});
+test('safe init reporting bypass refuses the turn instead of treating it as safe', async () => {
+    const f = await fixture(); const turn = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'system', subtype: 'init', permissionMode: 'bypassPermissions', session_id: 'unsafe' });
+    assert.equal((await turn).status, 'error'); assert.equal(f.session.nativeSessionId, ''); await f.session.close();
+});
+test('zero-turn resume handshake cannot complete newly offered user input', async t => {
+    const f = await fixture(); t.after(() => f.session.close());
+    const turn = f.session.send({ text: 'actual user' }, () => {});
+    f.output.push({ ...result('resume handshake'), num_turns: 0, uuid: 'handshake' });
+    f.output.push({ ...result('actual answer'), num_turns: 1, uuid: 'user-result' });
+    assert.equal((await turn).finalText, 'actual answer'); assert.equal(f.metadata.length, 1);
+});
+test('deferred lifecycle finalizer owns final text and blocks the next send until exact finalize', async t => {
+    const f = await fixture({ deferTurnEnd: true }); t.after(() => f.session.close());
+    const first = f.session.send({ text: 'one' }, () => {}); f.output.push(result('provider candidate'));
+    assert.equal((await first).finalText, 'provider candidate'); assert.equal(f.session.idle, false);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end' || e.phase === 'final').length, 0);
+    await assert.rejects(f.session.send({ text: 'too early' }, () => {}), /busy/);
+    assert.equal(f.session.finalizeTurn('wrong', { kind: 'turn-end', status: 'done', finalText: 'wrong' }), false);
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'policy-selected' }), true);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, 'policy-selected');
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'duplicate' }), false);
+    assert.equal(f.session.idle, true);
+    await assert.rejects(f.session.send({ text: 'reused id' }, () => {}), /identity_reused/);
+    f.context({ runId: 'run2', sessionId: 'jaw', scope: 'scope', turnId: 'turn2', audience: 'internal', isCurrent: () => true });
+    const second = f.session.send({ text: 'two' }, () => {}); f.output.push(result('second')); await second;
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'old duplicate' }), false);
+    assert.equal(f.session.finalizeTurn('turn2', { kind: 'turn-end', status: 'done', finalText: '' }), true);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, '');
+});
+test('deferred physical Stop waits for child cleanup without fabricating a canonical end', async () => {
+    const f = await fixture({ deferTurnEnd: true });
+    const turn = f.session.send({ text: 'one' }, () => {}); await f.session.cancel();
+    assert.equal((await turn).status, 'stopped'); assert.equal(f.events.filter(e => e.kind === 'turn-end').length, 0);
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+    assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).status, 'stopped');
+});
+test('passive stopped finalizer survives main-run deletion and emits only its captured old identity once', async () => {
+    let current = true;
+    const f = await fixture({ deferTurnEnd: true, getTurnContext: () => ({ runId: 'old-run', sessionId: 'old-chat', scope: 'old-scope', turnId: 'old-turn', audience: 'internal', isCurrent: () => current }) });
+    const turn = f.session.send({ text: 'one' }, () => {});
+    current = false; await f.session.cancel(); assert.equal((await turn).status, 'stopped');
+    assert.equal(f.session.finalizeTurn('new-turn', { kind: 'turn-end', status: 'done', finalText: 'wrong' }), false);
+    assert.equal(f.session.finalizeTurn('old-turn', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+    assert.equal(f.session.finalizeTurn('old-turn', { kind: 'turn-end', status: 'stopped', finalText: null }), false);
+    const ends = f.events.filter(e => e.kind === 'turn-end'); assert.equal(ends.length, 1);
+    assert.equal(ends[0].sessionId, 'old-chat'); assert.equal(ends[0].runId, 'old-run');
+});
+test('unexpected SDK background start retires query instead of returning an application final', async () => {
+    const f = await fixture(); const turn = f.session.send({ text: 'one' }, () => {});
+    f.output.push({ type: 'system', subtype: 'task_started', task_id: 'background', tool_use_id: 'agent', is_backgrounded: true });
+    const result = await turn; assert.equal(result.status, 'error'); assert.equal(result.finalText, null);
+    assert.equal(f.session.lastError, 'claude_background_tasks_unsupported'); await f.session.close();
+    assert.equal(f.closed, 1); assert.ok(!f.events.some(event => event.parentItemId && event.status === 'stopped'));
 });
