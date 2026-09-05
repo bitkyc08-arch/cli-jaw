@@ -5,6 +5,8 @@ import { JAW_HOME } from '../core/config.js';
 import { db } from '../core/db.js';
 import type { ToolEntry } from '../types/agent.js';
 import { stringifyTraceValue, tracePreview } from './redact.js';
+import { closeActivity } from './activity-control.js';
+import { pruneActivityTraceRows } from './activity-retention.js';
 import type { TraceAudience, TraceCarrier, TraceEventInput, TracePointer, TraceRetentionStatus, TraceRunInput, TraceRunStatus } from './types.js';
 
 const TRACE_INLINE_MAX_BYTES = 96_000;
@@ -17,6 +19,7 @@ type TraceRunRow = {
     working_dir?: string | null; agent_label?: string | null; audience?: TraceAudience;
     status?: TraceRunStatus; raw_retention_status?: TraceRetentionStatus; event_count?: number;
     byte_count?: number; started_at?: number; finished_at?: number | null; error?: string | null;
+    session_id: string | null; scope_key: string | null;
 };
 type TraceEventRow = {
     run_id: string; seq: number; source: string; event_type: string; preview?: string | null;
@@ -26,8 +29,8 @@ type TraceEventRow = {
 
 const insertRun = db.prepare(`
     INSERT INTO trace_runs
-    (id, parent_run_id, cli, model, working_dir, agent_label, audience, started_at, last_event_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, parent_run_id, cli, model, working_dir, agent_label, audience, started_at, last_event_at, session_id, scope_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const insertEvent = db.prepare(`
     INSERT INTO trace_events
@@ -76,10 +79,6 @@ const interruptStaleStmt = db.prepare(`
     UPDATE trace_runs SET status = 'interrupted', finished_at = ?, error = COALESCE(error, 'process exited before finalization')
     WHERE status = 'running'
 `);
-const pruneEventsStmt = db.prepare('DELETE FROM trace_events WHERE created_at < ?');
-const pruneRunsStmt = db.prepare('DELETE FROM trace_runs WHERE started_at < ?');
-const countAllEventsStmt = db.prepare('SELECT COUNT(*) AS c FROM trace_events');
-const trimEventsStmt = db.prepare('DELETE FROM trace_events WHERE rowid IN (SELECT rowid FROM trace_events ORDER BY created_at ASC LIMIT ?)');
 const liveRunIdsStmt = db.prepare('SELECT id FROM trace_runs');
 const seqCache = new Map<string, number>();
 
@@ -116,7 +115,8 @@ export function startTraceRun(input: TraceRunInput): string {
     const id = createTraceId();
     const now = Date.now();
     insertRun.run(id, input.parentRunId || null, input.cli || 'agent', input.model || null,
-        input.workingDir || null, input.agentLabel || null, input.audience || 'public', now, now);
+        input.workingDir || null, input.agentLabel || null, input.audience || 'public', now, now,
+        input.sessionId ?? null, input.scopeKey ?? null);
     return id;
 }
 
@@ -224,6 +224,7 @@ export function stampTraceToolEntries(ctx: TraceCarrier & { toolLog?: ToolEntry[
 }
 export function finalizeTraceRun(runId: string | null | undefined, status: TraceRunStatus, error?: string | null): void {
     if (!runId || !TRACE_ID_RE.test(runId)) return;
+    if (status !== 'running') closeActivity(runId);
     finalizeRunStmt.run(status, Date.now(), error || null, runId);
     seqCache.delete(runId);
 }
@@ -232,6 +233,9 @@ export function linkTraceRunToMessage(runId: string | null | undefined, messageI
     linkRunStmt.run(messageId, runId);
 }
 export function markStaleTraceRunsInterrupted(): void {
+    for (const row of db.prepare("SELECT id FROM trace_runs WHERE status = 'running'").all() as { id: string }[]) {
+        closeActivity(row.id);
+    }
     interruptStaleStmt.run(Date.now());
     // Interrupted runs never reach finalizeTraceRun, so their seq cursors
     // stayed in seqCache forever. They receive no further events — the cache
@@ -241,10 +245,23 @@ export function markStaleTraceRunsInterrupted(): void {
 
 // Remove on-disk spill dirs whose run no longer exists in trace_runs.
 function pruneOrphanTraceDirs(): void {
-    if (!fs.existsSync(TRACE_DIR)) return;
+    if (!fs.existsSync(TRACE_DIR) || !fs.lstatSync(TRACE_DIR).isDirectory()) return;
     const live = new Set((liveRunIdsStmt.all() as { id: string }[]).map((r) => r.id));
-    for (const name of fs.readdirSync(TRACE_DIR)) {
-        if (TRACE_ID_RE.test(name) && !live.has(name)) fs.rmSync(join(TRACE_DIR, name), { recursive: true, force: true });
+    for (const entry of fs.readdirSync(TRACE_DIR, { withFileTypes: true })) {
+        if (!TRACE_ID_RE.test(entry.name) || !entry.isDirectory()) continue;
+        const dir = join(TRACE_DIR, entry.name);
+        if (!live.has(entry.name)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+            seqCache.delete(entry.name);
+            continue;
+        }
+        const retained = new Set((db.prepare('SELECT raw_path FROM trace_events WHERE run_id = ? AND raw_path IS NOT NULL')
+            .all(entry.name) as { raw_path: string }[]).map(row => resolve(JAW_HOME, row.raw_path)));
+        for (const file of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (file.isFile() && /^\d{6,}\.json$/.test(file.name) && !retained.has(join(dir, file.name))) {
+                fs.rmSync(join(dir, file.name));
+            }
+        }
     }
 }
 
@@ -252,12 +269,9 @@ function pruneOrphanTraceDirs(): void {
 export function pruneTraceEvents(retentionDays = 7, maxRows = 50_000): { deletedEvents: number; deletedRuns: number } {
     try {
         const cutoff = Date.now() - retentionDays * 86_400_000;
-        let deletedEvents = pruneEventsStmt.run(cutoff).changes;
-        const deletedRuns = pruneRunsStmt.run(cutoff).changes;
-        const total = Number((countAllEventsStmt.get() as { c: number }).c);
-        if (total > maxRows) deletedEvents += trimEventsStmt.run(total - maxRows).changes;
+        const result = pruneActivityTraceRows(cutoff, maxRows);
         pruneOrphanTraceDirs();
-        return { deletedEvents, deletedRuns };
+        return result;
     } catch (error) {
         console.error('[trace] prune failed:', error instanceof Error ? error.message : String(error));
         return { deletedEvents: 0, deletedRuns: 0 };

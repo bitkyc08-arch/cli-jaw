@@ -55,6 +55,12 @@ export function inferTopic(type: string): EventTopic {
 }
 
 export function broadcast(type: string, data: Record<string, any>, audience: 'public' | 'internal' = 'public') {
+    // Semantic presentation is never input to collectors, forwarders or ACK owners.
+    // Its producer supplies captured identity, even when multi-session is disabled.
+    if (type === 'agent_runtime' || type === 'agent_runtime_gap') {
+        if (audience === 'public') ssePublish('agent', type, data);
+        return;
+    }
     const captured = currentSessionScope();
     const scopedData = captured && settings["multiSession"]?.enabled === true
         ? { ...data, scope: data["scope"] ?? captured.scope, sessionId: data["sessionId"] ?? captured.chatSessionId }
