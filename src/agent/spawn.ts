@@ -57,7 +57,9 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions, mergeEnvWindowsSafe } from './spawn-env.js';
-import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext } from './prompt-context.js';
+import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext,
+    PROMPT_HISTORY_MAX_ROWS, PROMPT_HISTORY_MAX_CHARS, appendCursorAcceptedInstruction,
+    buildCursorReplacementPrompt, type CursorAcceptedContext } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -70,6 +72,8 @@ import type { RuntimeEvent, RuntimeLivenessIdentity, RuntimeTurnOutcome } from '
 import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
 import { MainReplacementOwnerMismatchError, replaceAcpMainTurn, type MainReplacementResult } from './runtime/replace-turn.js';
+import { AcpReplacement } from './runtime/acp/replacement.js';
+import { beginSteerInput, cancelSteerInputs, cancelAllSteerInputs } from './steer-input-guard.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { syncLiveTools } from './events/helpers.js';
 import { RuntimeProjection, type RuntimeEnd } from './runtime/projection.js';
@@ -646,6 +650,7 @@ export function killActiveAgent(reason?: string): boolean;
 export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
     const scopeKey = scopedReason === undefined ? 'default' : scopeKeyOrReason;
     const reason = scopedReason ?? scopeKeyOrReason;
+    cancelSteerInputs(scopeKey);
     const run = activeMainProcesses.get(scopeKey);
     const hadTimer = queueCtrl.isRetryPending(scopeKey);
     const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
@@ -709,6 +714,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
 }
 
 export function killAllAgents(reason = 'user') {
+    cancelAllSteerInputs();
     const hadTimer = queueCtrl.isRetryPending(null);
     const mainScopes = [...activeMainProcesses.keys()];
     let killedMain = false;
@@ -791,7 +797,7 @@ export function canSteerAgent(scopeKey: string): boolean {
     return typeof run?.steerTurnInBand === 'function' || typeof run?.replaceTurn === 'function';
 }
 
-export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run';
+export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run' | 'cancelled';
 
 export async function steerAgent(
     scopeKey: string,
@@ -833,24 +839,32 @@ export async function steerAgent(
         const capturedOwnerGeneration = run.ownerGeneration;
         const workingDir = settings['workingDir'] || null;
         let attempted = false;
-        const outcome = await run.replaceTurn(newPrompt, () => {
-            if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
-                || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
-                throw new MainReplacementOwnerMismatchError();
-            }
-            if (attempted) throw new Error('native_replacement_duplicate_input');
-            attempted = true; // A partial recording failure must never retry this input.
-            insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
-            broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-            broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
-                sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
-                requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
-                mode: 'cancel-reprompt', localDispatch: true }));
-            settleOnce(capturedMeta.requestId, 'steered');
-        });
+        const inputGuard = beginSteerInput(scopeKey);
+        let outcome: MainReplacementResult, inputCancelled: boolean;
+        try {
+            outcome = await run.replaceTurn(newPrompt, () => {
+                if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
+                    || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
+                    throw new MainReplacementOwnerMismatchError();
+                }
+                if (attempted) throw new Error('native_replacement_duplicate_input');
+                attempted = true; // A partial recording failure must never retry this input.
+                insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
+                broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+                broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+                    sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
+                    requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
+                    mode: 'cancel-reprompt', localDispatch: true }));
+                settleOnce(capturedMeta.requestId, 'steered');
+            });
+        } finally { inputCancelled = inputGuard.isCancelled(); inputGuard.release(); }
         if (outcome.kind === 'failed') throw outcome.error;
         if ((outcome.kind === 'dispatched') !== attempted) throw new Error('native_replacement_inconsistent_receipt');
         if (outcome.kind === 'dispatched') return 'steered';
+        if (outcome.kind === 'cancelled' || inputCancelled) {
+            settleOnce(capturedMeta.requestId, 'cancelled', { reason: 'native-steer-stopped', scope: scopeKey, sessionId: chatSessionId });
+            return 'cancelled';
+        }
         broadcast('steer_rejected', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
             sessionId: chatSessionId, reason: outcome.reason, requestId: capturedMeta.requestId }));
         return 'fallback-queue';
@@ -985,7 +999,8 @@ export function makeCleanEnv(
     return merged;
 }
 
-function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
+function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string,
+    maxSessions = PROMPT_HISTORY_MAX_ROWS, maxTotalChars = PROMPT_HISTORY_MAX_CHARS) {
     const recent = getRecentMessages.all(workingDir || null, chatSessionId, Math.max(1, maxSessions * 2)) as RecentMessageRow[];
     if (!recent.length) return '';
 
@@ -1577,14 +1592,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             prompt,
             settings["workingDir"],
             chatSessionId,
-            10,
-            8000,
+            PROMPT_HISTORY_MAX_ROWS,
+            PROMPT_HISTORY_MAX_CHARS,
         )
         : '';
     let agyBootstrap: AgyBootstrapEnvelope | null = null;
     let promptForArgs = buildPromptForArgs({
         cli,
         effectiveProvider,
+        runtimeTransport,
         prompt,
         historyBlock,
         sysPrompt,
@@ -1752,6 +1768,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         let selectedResult: SpawnPromiseResult | undefined;
         const ownsRun = () => !finalized && activeMainProcesses.get(scopeKey) === capturedRun
             && isCurrentSessionOwner(persistenceOwner, scopeKey);
+        const cursorTarget = opts.target ? { ...opts.target } : undefined;
+        let acceptedContext: CursorAcceptedContext = { messages: [], omitted: false };
+        const prepareReplacement = (instruction: string, partialText: string) => {
+            if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+            return { text: buildCursorReplacementPrompt({
+                instruction: prependRemoteConversationContext(instruction, cursorTarget),
+                originalRequest: promptForSnapshot, accepted: acceptedContext, partialText, sysPrompt,
+            }) };
+        };
+        const cursorReplaceHook = (instruction: string, commitInput: () => void): Promise<MainReplacementResult> =>
+            replaceAcpMainTurn(facade, instruction, () => {
+                if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+                const next = appendCursorAcceptedInstruction(acceptedContext, instruction);
+                const result: unknown = commitInput();
+                if (result !== null && (typeof result === 'object' || typeof result === 'function')
+                    && typeof (result as { then?: unknown }).then === 'function') {
+                    void Promise.resolve(result).catch(() => undefined);
+                    throw new Error('cursor_acp_async_input_commit');
+                }
+                acceptedContext = next;
+            });
         const resultFor = (outcome: RuntimeTurnOutcome): SpawnPromiseResult => ({
             text: outcome.finalText?.trim() ?? '', code: outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1,
             runtimeOutcome: outcome, traceRunId,
@@ -1803,11 +1840,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             nativeRun.cancel(reason);
         };
-        const replaceHook = async (text: string, commitInput: () => void): Promise<MainReplacementResult> => {
+        const grokReplaceHook = async (text: string, commitInput: () => void): Promise<MainReplacementResult> => {
             if (!ownsRun()) return { kind: 'race', reason: 'native-owner-lost' };
             const result = await replaceAcpMainTurn(facade, text, commitInput);
             return result.kind === 'unavailable' && !ownsRun() ? { kind: 'race', reason: 'native-owner-lost' } : result;
         };
+        const replaceHook = grok ? grokReplaceHook : cursorReplaceHook;
         if (grok) capturedRun.replaceTurn = replaceHook;
         capturedRun.starting = true;
         nativeRun = runNativeRuntime<SpawnPromiseResult>({
@@ -1820,9 +1858,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     storedSessionId: resumeSessionId, forceNew, signal,
                 });
                 facade = new AcpRuntimeSession(lease.session, { provider: cli, deferTurnEnd: true,
-                    ...(grok ? grokMainOptions : {}),
+                    ...(grok ? grokMainOptions : { createReplacement: io => new AcpReplacement(io), prepareReplacement }),
                     getTurnContext: () => ({ ...identity, isCurrent: ownsRun }),
-                    capabilities: { transport: 'native', steer: 'restart', resume: lease.session.agentCapabilities['loadSession'] === true,
+                    capabilities: { transport: 'native', steer: 'cancel-reprompt', resume: lease.session.agentCapabilities['loadSession'] === true,
                         tools: true, toolOutput: true, approvals: true, questions: false, images: false, subagents: false },
                     record: (context, body) => {
                         if (body.kind === 'turn-start') nativeStarted = true;
@@ -1841,6 +1879,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.sessionId = lease.session.nativeSessionId || null;
                 if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
                 capturedRun.cancelTurn = cancelHook;
+                capturedRun.replaceTurn = replaceHook;
                 beginLiveRun(liveScope, cli); setLiveRunTraceId(liveScope, traceRunId);
                 const activityIdentity: RuntimeLivenessIdentity = { runId: traceRunId, sessionId: chatSessionId,
                     scope: scopeKey, origin, ...(opts.requestId ? { requestId: opts.requestId } : {}) };
@@ -1851,6 +1890,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 };
                 const dispose = () => {
                     ctx.stallWatchdog?.stop();
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
                     lease.child.stdout?.off('data', onIo); lease.child.stderr?.off('data', onIo);
                 };
                 try {
