@@ -84,8 +84,9 @@ export function mentionsUser(text: string, userId: string): boolean {
 /**
  * One bot, one elected instance. Socket Mode round-robins events across every
  * connection sharing an app token, so only an explicit non-empty port match
- * may attach. The init owner handles the one-time unset self-election after a
- * socket opens successfully; pure readers and health remain fail-closed.
+ * may attach. The init owner (slack/bot.ts) handles the one-time unset
+ * self-election after a socket opens successfully, and channel-health treats
+ * the unset case the same way — only an explicit foreign owner is degraded.
  */
 export function shouldAttachSlack(attachPort: unknown, currentPort: unknown): boolean {
     const attach = String(attachPort ?? '').trim();
