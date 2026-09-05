@@ -15,6 +15,7 @@ const fixture = {
     mode: 'ok' as 'ok' | 'acquire-failure' | 'direct-failure' | 'turn-failure' | 'raw-limit',
     calls: [] as Callbacks[], acquisitions: [] as Array<Record<string, unknown>>,
     direct: 0, releases: 0, watchdogStops: 0,
+    acquireGate: null as Promise<void> | null,
     contexts: [] as RuntimeEventContext[], events: [] as RuntimeEvent[],
     lifecycle: [] as ExitHandlerParams[], legacy: [] as Array<{ type: string; data: Record<string, unknown> }>,
 };
@@ -81,6 +82,7 @@ test.mock.module('../../src/agent/runtime-pool.js', { namedExports: {
     ...pool,
     acquirePiRuntime: async (options: Record<string, unknown>) => {
         fixture.acquisitions.push(options);
+        if (fixture.acquireGate) await fixture.acquireGate;
         if (fixture.mode === 'acquire-failure') throw new Error('fixture acquire failed');
         return {
             reused: false, sessionId: 'provider-session-private',
@@ -121,6 +123,7 @@ test.beforeEach(() => {
     fixture.mode = 'ok'; fixture.calls.length = 0; fixture.acquisitions.length = 0;
     fixture.contexts.length = 0; fixture.events.length = 0; fixture.lifecycle.length = 0; fixture.legacy.length = 0;
     fixture.direct = 0; fixture.releases = 0; fixture.watchdogStops = 0; publicEvents.length = 0;
+    fixture.acquireGate = null;
     activeMainProcesses.clear(); activeProcesses.clear();
     config.settings['workingDir'] = process.env['CLI_JAW_HOME']!;
     mkdirSync(join(config.settings['workingDir'], 'prompts'), { recursive: true });
@@ -245,4 +248,64 @@ test('synchronous employee Pi creation failure closes trace and removes its temp
     assert.equal(activeProcesses.has('pi-fixture-worker'), false);
     assert.equal(traces.getTraceRun(fixture.events[0]!.runId)?.status, 'error');
     assert.equal(publicEvents.length, 0);
+});
+
+test('late Pi acquire rejection cannot clean up a replacement owner with the same generation', async context => {
+    context.mock.timers.enable({ apis: ['setTimeout'] });
+    let rejectAcquire!: (reason: Error) => void;
+    fixture.acquireGate = new Promise<void>((_resolve, reject) => { rejectAcquire = reject; });
+    const scope = 'pi-test-scope';
+    const oldRun = spawnAgent('old deferred acquire', opts());
+    let barrier: Promise<void> = Promise.resolve();
+    try {
+        assert.equal(fixture.acquisitions.length, 1, 'old acquire is waiting on the explicit gate');
+        const capturedOwner = activeMainProcesses.get(scope);
+        assert.ok(capturedOwner);
+        const oldTraceId = fixture.events[0]!.runId;
+        // Equal generation and equal null process deliberately defeat a
+        // generation/PID-only guard; only captured object ownership is enough.
+        const replacement = { ...capturedOwner, meta: { ...capturedOwner.meta, requestId: 'replacement-request' } };
+        assert.notEqual(replacement, capturedOwner);
+        assert.equal(replacement.ownerGeneration, capturedOwner.ownerGeneration);
+        assert.equal(replacement.process, capturedOwner.process);
+        activeMainProcesses.set(scope, replacement);
+        live.beginLiveRun(scope, 'pi');
+        live.setLiveRunTraceId(scope, 'tr_replacement_fixture0001');
+        live.appendLiveRunText(scope, 'replacement live content');
+        const replacementLive = live.getLiveRun(scope);
+        armExitSettle(scope);
+        let barrierSettled = false;
+        barrier = waitForExitSettled(scope).then(() => { barrierSettled = true; });
+        await Promise.resolve();
+        assert.equal(barrierSettled, false);
+        const beforeFailure = fixture.legacy.length;
+        rejectAcquire(new Error('old acquire rejected after replacement'));
+        const result = await oldRun.promise;
+        // Promise callbacks drain without advancing ANY fake timeout. The new
+        // barrier cannot appear preserved/settled merely because of a deadline.
+        await new Promise<void>(resolve => { setImmediate(resolve); });
+        assert.equal(result.code, 1, 'old invocation still resolves its own failure');
+        assert.equal(traces.getTraceRun(oldTraceId)?.status, 'error');
+        assertCanonicalContext(false);
+        assert.deepEqual({
+            ownerPreserved: activeMainProcesses.get(scope) === replacement,
+            startingPreserved: replacement.starting,
+            live: live.getLiveRun(scope),
+            barrierSettled,
+            cleanupEvents: fixture.legacy.slice(beforeFailure).filter(event =>
+                event.type === 'agent_status' || event.type === 'agent_done').map(event => event.type),
+        }, {
+            ownerPreserved: true, startingPreserved: true, live: replacementLive,
+            barrierSettled: false, cleanupEvents: [],
+        });
+    } finally {
+        rejectAcquire(new Error('fixture cleanup'));
+        settleExit(scope);
+        await barrier;
+        await oldRun.promise;
+        activeMainProcesses.delete(scope);
+        live.clearLiveRun(scope);
+        fixture.acquireGate = null;
+        context.mock.timers.reset();
+    }
 });
