@@ -10,6 +10,7 @@ import { loadClaudeSdk } from './claude-sdk-loader.js';
 import { createClaudeProcessOwner } from './claude-sdk-process.js';
 import { RuntimeProjection } from './projection.js';
 import { ClaudeSdkEvents } from './claude-sdk-events.js';
+import { createClaudeClose } from './claude-sdk-close.js';
 
 export interface ClaudeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
 export interface ClaudeResultMetadata {
@@ -55,7 +56,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private turn: Turn | null = null;
     private id = '';
     private closing = false;
-    private closePromise: Promise<void> | undefined;
+    private closeOperation: (() => Promise<void>) | undefined;
     private failure = false;
     private exited = false;
     private readonly registry: RuntimeRequests;
@@ -212,29 +213,22 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         }
     }
     close(): Promise<void> {
-        if (this.closePromise) return this.closePromise;
-        let resolveClose!: () => void, rejectClose!: (error: unknown) => void;
-        this.closePromise = new Promise<void>((resolve, reject) => { resolveClose = resolve; rejectClose = reject; });
-        this.closing = true;
-        const partialText = this.turn?.mapper.partialText ?? '';
-        this.input.close();
-        this.settle({ status: this.failure ? 'error' : 'stopped', finalText: null, partialText });
-        let terminationError: unknown;
-        try { this.query?.close(); } catch (error) { terminationError = error; }
-        this.processes.terminate();
-        void (async () => {
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            try {
-                await Promise.race([Promise.all([this.reader, this.processes.wait()]), new Promise<never>((_, reject) => {
-                    timer = setTimeout(() => reject(new Error('claude_close_timeout')), this.options.closeTimeoutMs ?? 5000);
-                })]);
-                if (terminationError) throw new Error('claude_close_failed');
+        let outcome: RuntimeTurnResult;
+        this.closeOperation ??= createClaudeClose({ timeoutMs: this.options.closeTimeoutMs ?? 5000,
+            fence: () => {
+                this.closing = true;
+                outcome = { status: this.failure ? 'error' : 'stopped', finalText: null, partialText: this.turn?.mapper.partialText ?? '' };
+            },
+            startTermination: () => { try { this.query?.close(); } finally { this.processes.terminate(); } },
+            settlePending: () => { this.input.close(); this.settle(outcome); },
+            readerDone: () => Promise.all([this.reader, this.processes.wait()]),
+            onClosed: () => {
                 this.exited = true;
                 for (const cb of this.exits) { try { cb(this.failure ? 1 : 0); } catch { console.warn('[claude-native] exit_observer_failed'); } }
                 this.exits.clear();
-            } finally { if (timer) clearTimeout(timer); }
-        })().then(resolveClose, rejectClose);
-        return this.closePromise;
+            },
+        });
+        return this.closeOperation();
     }
 }
 
