@@ -14,10 +14,10 @@ function setup() {
     ] } };
 }
 
-test('only literal auto opts into Grok always-approve; every process is dedicated', () => {
+test('only literal auto can construct native Grok launch arguments', () => {
     assert.deepEqual(grokAcpArgs('auto'), ['agent', '--no-leader', '--always-approve', 'stdio']);
     for (const permissions of ['safe', [], ['auto'], ['read', 'Bash'], ['  read  ', '']] as const) {
-        assert.deepEqual(grokAcpArgs(permissions), ['--permission-mode', 'default', 'agent', '--no-leader', 'stdio']);
+        assert.throws(() => grokAcpArgs(permissions), /grok_acp_restrictive_policy_unverified/);
     }
     for (const invalid of [undefined, null, true, 'default', 'AUTO', [1], ['read;write']]) {
         assert.throws(() => grokAcpArgs(invalid), /invalid_native_permissions/);
@@ -85,7 +85,7 @@ function fixture(t: TestContext) {
         done();
     } });
     const options: GrokSessionOptions = { binary: 'grok', cwd: process.cwd(), env: { PATH: '/fixture' },
-        permissions: 'safe', model: 'grok-build', effort: 'low', promptTimeoutMs: 10_000, requestTimeoutMs: 1000,
+        permissions: 'auto', model: 'grok-build', effort: 'low', promptTimeoutMs: 10_000, requestTimeoutMs: 1000,
         ownedProcessOptions: { terminateTree: () => { kills++; queueMicrotask(exit); } },
         spawnImpl: ((command: string, args: string[], options: Record<string, unknown>) => {
             calls.push({ command, args, options }); onSpawn?.(); return child;
@@ -98,7 +98,7 @@ function fixture(t: TestContext) {
 
 test('factory initializes authenticates creates and configures one reusable native session', { timeout: 5000 }, async t => {
     const f = fixture(t), session = await createGrokSession(f.options);
-    assert.deepEqual(f.calls[0]!.args, ['--permission-mode', 'default', 'agent', '--no-leader', 'stdio']);
+    assert.deepEqual(f.calls[0]!.args, ['agent', '--no-leader', '--always-approve', 'stdio']);
     assert.equal(f.calls[0]!.options['shell'], false);
     assert.deepEqual(f.wire.map(x => x.method), ['initialize', 'authenticate', 'session/new', 'session/set_model']);
     assert.deepEqual(f.wire[3]!.params, { sessionId: 'grok-native', modelId: 'grok-4.6', _meta: { reasoningEffort: 'low' } });
@@ -138,6 +138,15 @@ test('startup rejection never prompts or retries another auth or print transport
     const auth = fixture(t); auth.auth(['grok.com']);
     await assert.rejects(createGrokSession(auth.options), /existing_auth_unavailable/);
     assert.deepEqual(auth.wire.map(x => x.method), ['initialize']); assert.equal(auth.kills, 1);
+});
+
+test('unverified restrictive policies fail before spawn, auth, new or load with no policy conversion', async t => {
+    const f = fixture(t);
+    for (const permissions of ['safe', [], ['auto'], ['read'], ['Read', 'Bash']] as const) {
+        await assert.rejects(createGrokSession({ ...f.options, permissions, resumeSessionId: 'existing-native' }),
+            /grok_acp_restrictive_policy_unverified/);
+    }
+    assert.equal(f.calls.length, 0); assert.equal(f.wire.length, 0); assert.equal(f.kills, 0);
 });
 
 test('abort closes both spawn race and authentication in flight', { timeout: 5000 }, async t => {

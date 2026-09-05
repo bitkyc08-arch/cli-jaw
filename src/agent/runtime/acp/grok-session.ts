@@ -40,6 +40,7 @@ export async function createGrokSession(options: GrokSessionOptions): Promise<Ac
     const { model, effort, resumeSessionId } = options;
     validateAcpSessionOptions(options);
     const permissions = normalizeNativePermissions(options.permissions);
+    const args = grokAcpArgs(permissions); // Policy admission must precede spawn, auth and session setup.
     if (typeof options.binary !== 'string' || !options.binary.trim()) throw new Error('grok_acp_invalid_binary');
     for (const value of [model, effort, resumeSessionId]) {
         if (value !== undefined && value !== null && (typeof value !== 'string' || value.length > 1024
@@ -51,7 +52,7 @@ export async function createGrokSession(options: GrokSessionOptions): Promise<Ac
         cwd = realpathSync(options.cwd);
         if (!statSync(cwd).isDirectory()) throw new Error('not_directory');
     } catch { throw new Error('grok_acp_invalid_cwd'); }
-    const env = { ...options.env }, args = grokAcpArgs(permissions);
+    const env = { ...options.env };
     const windows = (options.platform ?? process.platform) === 'win32';
     const launch = windows ? resolveWindowsLaunchSpec(options.binary, args, options.launchDeps ?? {
         which: name => detectCliBinary(name).path || null,

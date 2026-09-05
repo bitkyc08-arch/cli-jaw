@@ -1,12 +1,13 @@
 import { normalizeNativePermissions } from './permissions.js';
 import { acpRecord } from './session.js';
 
-/** Jaw's literal auto policy is always-approve, not Grok's classifier-based auto. */
+/** Restrictive native policy is unverified on Grok 1.0.13; never silently widen it. */
 export function grokAcpArgs(value: unknown): string[] {
     const permissions = normalizeNativePermissions(value);
-    return permissions === 'auto'
-        ? ['agent', '--no-leader', '--always-approve', 'stdio']
-        : ['--permission-mode', 'default', 'agent', '--no-leader', 'stdio'];
+    if (permissions !== 'auto') {
+        throw new Error('grok_acp_restrictive_policy_unverified: select print transport for restrictive permissions');
+    }
+    return ['agent', '--no-leader', '--always-approve', 'stdio'];
 }
 
 /** Select an existing login mechanism; never silently change auth identity. */
