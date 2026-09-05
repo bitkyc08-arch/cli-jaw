@@ -4,7 +4,7 @@
 import type { ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, detectCli } from '../core/config.js';
-import { clearEmployeeSession, insertMessage, insertMessageWithTraceRun, updateSession, clearSessionBucket, markAnchorConsumed, updateSessionBucketLastRun } from '../core/db.js';
+import { clearEmployeeSession, insertMessage, insertMessageWithTrace, insertMessageWithTraceRun, updateSession, clearSessionBucket, markAnchorConsumed, updateSessionBucketLastRun } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
 import { persistMainSession, type SessionOwnerToken } from './session-persistence.js';
 import { resolveSessionBucket } from './args.js';
@@ -20,6 +20,9 @@ import { clearLiveRun, getLiveRun } from './live-run-state.js';
 import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../shared/tool-log-sanitize.js';
 import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
+import type { TraceRunStatus } from '../trace/types.js';
+import type { RuntimeEventBody, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import { lifecycleRuntimeOutcome, runtimeOutcomeExitCode } from './runtime/outcome.js';
 import type { ToolEntry } from '../types/agent.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { resolveSpawnOutputText } from './events/helpers.js';
@@ -140,6 +143,7 @@ function performedSideEffects(ctx: ExitContext): boolean {
 }
 
 type LifecycleSpawnOptions = {
+    requestId?: string;
     internal?: boolean;
     _isFallback?: boolean;
     _retryAttempt?: number;
@@ -164,6 +168,8 @@ type LifecycleSpawnOptions = {
 type LifecycleResolveResult = {
     text: string;
     code: number;
+    runtimeOutcome?: RuntimeTurnOutcome;
+    traceRunId?: string;
     sessionId?: string | null;
     cost?: ExitContext['cost'];
     tools?: ToolEntry[];
@@ -215,6 +221,11 @@ function lifecycleRuntimeCli(cli: string, provider?: string): string {
     return provider === 'claude' ? 'claude-e' : (provider || cli);
 }
 
+/** Compatibility delivery alone collapses whitespace; canonical data stays exact. */
+function runtimeCompatibilityText(finalText: string | null): string {
+    return finalText === null || finalText.trim().length === 0 ? '' : finalText;
+}
+
 /** Tag agent_done with the trace run that produced it so the web UI can drop
  *  SSE replays of already-finished turns instead of mid-turn-finalizing the
  *  in-flight one (devlog 260612 manager_stream_hidden_state_audit 06-08). */
@@ -223,6 +234,8 @@ function runTag(ctx: { traceRunId?: string | null }): Record<string, unknown> {
 }
 
 export interface ExitContext {
+    runtimeOutcome?: RuntimeTurnOutcome;
+    requestId?: string;
     fullText: string;
     /** Set when fullText hit the safety bound and later output was dropped. */
     fullTextTruncated?: boolean;
@@ -248,6 +261,7 @@ export interface ExitContext {
 }
 
 export interface ExitHandlerParams {
+    onRuntimeEnd?: (end: Extract<RuntimeEventBody, { kind: 'turn-end' }>) => void;
     ctx: ExitContext;
     code: number | null;
     cli: string;
@@ -303,7 +317,7 @@ export interface ExitHandlerParams {
  */
 export async function handleAgentExit(params: ExitHandlerParams): Promise<void> {
     const {
-        ctx, code, cli, model, agentLabel, mainManaged, origin,
+        ctx, code: processCode, cli, model, agentLabel, mainManaged, origin,
         prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
         isResume, wasKilled, wasSteer, smokeResult,
         effortDefault, costLine, resolve,
@@ -311,6 +325,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         retryState, fallbackState, fallbackMaxRetries, processQueue,
     } = params;
 
+    const nativeOutcome = lifecycleRuntimeOutcome(ctx, wasKilled || wasSteer || Boolean(ctx.stallReason));
+    const code = runtimeOutcomeExitCode(nativeOutcome, processCode);
+    const nativeRequestId = ctx.requestId ?? opts.requestId;
+    const nativeTraceRunId = ctx.traceRunId;
     const effectiveProvider = params.effectiveProvider;
     const runtimeCli = lifecycleRuntimeCli(cli, effectiveProvider);
     const effortVal = cfg.effort || effortDefault;
@@ -324,11 +342,37 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     const isEmployee = !mainManaged;
     const empTag = isEmployee ? { isEmployee: true } : {};
     const liveScope = ctx.liveScope || 'default';
-    const traceStatus = code === 0 ? 'done' : wasKilled ? 'interrupted' : 'error';
+    const traceStatus = nativeOutcome === undefined
+        ? code === 0 ? 'done' : wasKilled ? 'interrupted' : 'error'
+        : nativeOutcome.status === 'stopped' ? 'interrupted' : nativeOutcome.status;
+    let runtimeFinalText: string | null = null;
+    let runtimeEnded = false;
+    const finalizeRun = (status: Exclude<TraceRunStatus, 'running'>, error?: string | null): void => {
+        if (!runtimeEnded) {
+            runtimeEnded = true;
+            const stopped = wasKilled || wasSteer || Boolean(ctx.stallReason) || status === 'interrupted';
+            try {
+                params.onRuntimeEnd?.({
+                    kind: 'turn-end',
+                    status: nativeOutcome === undefined
+                        ? stopped ? 'stopped' : status === 'error' ? 'error' : 'done'
+                        : nativeOutcome.status,
+                    finalText: runtimeFinalText,
+                    ...(error ? { error } : {}),
+                });
+            } catch { console.warn('[runtime:projection] lifecycle observer failed'); }
+        }
+        if (nativeOutcome === undefined) finalizeTraceRun(ctx.traceRunId, status, error);
+        else {
+            try { finalizeTraceRun(nativeTraceRunId, status, error); }
+            catch { console.warn('[runtime] outcome trace finalization failed'); }
+        }
+    };
 
     // ─── Smoke response auto-continuation ───
     if (
-        smokeResult.isSmoke
+        nativeOutcome === undefined
+        && smokeResult.isSmoke
         && smokeResult.confidence !== 'low'
         && !opts._isSmokeContinuation
         && !opts.internal
@@ -362,7 +406,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         if (releaseMainRun(scopeKey, childProcess, ownerGeneration)) {
             broadcast('agent_status', { running: false, agentId: agentLabel, scope: scopeKey, ...empTag });
         }
-        finalizeTraceRun(ctx.traceRunId, 'done');
+        finalizeRun('done');
 
         const contPrompt = buildContinuationPrompt(prompt, ctx.fullText);
         const { promise: contPromise } = _spawnAgent(contPrompt, {
@@ -398,6 +442,18 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
     } else {
         activeProcesses.delete(agentLabel);
+    }
+
+    if (nativeOutcome !== undefined && wasSteer && mainManaged && !opts.internal
+        && nativeOutcome.partialText.length > 0) {
+        // The existing MAX(id) salvage query reads MESSAGE rows, not Activity.
+        // Commit before asynchronous cleanup and the caller's settleExit barrier.
+        const partialTools = sanitizeToolLogForDurableStorage(ctx.toolLog);
+        insertMessageWithTrace.run(
+            'assistant', '⏹️ [interrupted]\n\n' + nativeOutcome.partialText, cli, model,
+            ctx.traceLog.join('\n') || null, serializeSanitizedToolLog(partialTools),
+            settings['workingDir'] || null, chatSessionId,
+        );
     }
 
     // Post-flush reindex moved into memory-flush-controller's completion path
@@ -520,7 +576,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // actually ran tools must never be reclassified as stale and silently discarded.
     const kiroDiagnosticText = `${ctx.stderrBuf}\n${ctx.fullText}`;
     if (
-        isKiroPlainTextCli(cli, effectiveProvider)
+        nativeOutcome === undefined
+        && isKiroPlainTextCli(cli, effectiveProvider)
         && isResume
         && mainManaged
         && !opts.internal
@@ -555,7 +612,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             reason: 'kiro stale resume — fresh with history',
             ...empTag,
         }, isEmployee ? 'internal' : 'public');
-        finalizeTraceRun(ctx.traceRunId, 'error', 'kiro stale resume');
+        finalizeRun('error', 'kiro stale resume');
         const { promise: retryP } = _spawnAgent(prompt, {
             ...opts,
             _skipResume: true,
@@ -576,8 +633,69 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     }
 
     // ─── Output handling ───
-    const outputText = resolveSpawnOutputText(ctx);
-    if (outputText || (code === 0 && ctx.toolLog.length > 0)) {
+    const outputText = nativeOutcome === undefined ? resolveSpawnOutputText(ctx) : '';
+    if (nativeOutcome !== undefined) {
+        let finalContent = nativeOutcome.finalText;
+        if (mainManaged && !opts.internal) {
+            const seen = new Set<string>();
+            const combined: unknown[] = [];
+            for (const tool of [...ctx.toolLog, ...getLiveRun(liveScope).toolLog]) {
+                if (tool.stepRef && seen.has(tool.stepRef)) continue;
+                if (tool.stepRef) seen.add(tool.stepRef);
+                combined.push(tool);
+            }
+            const safeTools = sanitizeToolLogForDurableStorage(combined);
+            if (finalContent !== null) {
+                finalContent = applyOutputPolicy(finalContent, { scope: 'main' }).text;
+                evaluateRecordPending(ctx.toolLog, finalContent);
+                const structuredFence = scanStructuredFence(finalContent);
+                if (structuredFence.status === 'incomplete') {
+                    console.warn('[lifecycle] assistant output contains incomplete structured fence before durable insert', {
+                        cli, model, traceRunId: nativeTraceRunId || null, chars: finalContent.length,
+                        langs: structuredFence.langs, incompleteCount: structuredFence.incompleteCount,
+                    });
+                }
+                // trace_run_id is nullable TEXT, not a FK: missing journal rows
+                // cannot suppress final delivery or this history pointer.
+                const info = insertMessageWithTraceRun.run(
+                    'assistant', finalContent, cli, model, ctx.traceLog.join('\n') || null,
+                    serializeSanitizedToolLog(safeTools), settings['workingDir'] || null,
+                    nativeTraceRunId || null, chatSessionId,
+                );
+                const messageId = Number(info.lastInsertRowid);
+                if (nativeTraceRunId && Number.isSafeInteger(messageId) && messageId > 0) {
+                    try { linkTraceRunToMessage(nativeTraceRunId, messageId); }
+                    catch { console.warn('[runtime] outcome trace link failed'); }
+                }
+            }
+            const failed = nativeOutcome.status !== 'done';
+            const errorKind = failed ? classifyExitError(runtimeCli, code ?? 1, ctx.stderrBuf).errorKind : undefined;
+            // Even absent/empty finals must terminate existing UI/collectors.
+            // Only compatibility text collapses whitespace; never the outcome.
+            broadcast('agent_done', {
+                ...(nativeTraceRunId ? { traceRunId: nativeTraceRunId } : {}),
+                text: runtimeCompatibilityText(finalContent),
+                runtimeFinality: finalContent === null ? 'absent' : 'present',
+                runtimeStatus: nativeOutcome.status,
+                ...(nativeRequestId !== undefined ? { requestId: nativeRequestId } : {}),
+                sessionId: chatSessionId, scope: scopeKey, toolLog: safeTools, origin, ...empTag,
+                ...(wasSteer ? { steered: true } : {}),
+                ...(failed ? { error: true, errorKind, cli: runtimeCli } : {}),
+            });
+            if (finalContent !== null) {
+                if (opts._heartbeatAnchorId) {
+                    try { markAnchorConsumed.run(Date.now(), opts._heartbeatAnchorId); }
+                    catch { console.warn('[runtime] heartbeat anchor update failed'); }
+                }
+                incrementMemoryFlush();
+                const threshold = settings['memory']?.flushEvery ?? 10;
+                if (settings['memory']?.enabled !== false && countTurnForFlush(threshold)) {
+                    void triggerMemoryFlush();
+                }
+            }
+        }
+        runtimeFinalText = finalContent;
+    } else if (outputText || (code === 0 && ctx.toolLog.length > 0)) {
         const cleaned = (outputText || ctx.fullText.trim())
             .replace(/<\/?tool_call>/g, '')
             .replace(/<\/?tool_result>[\s\S]*?(?:<\/tool_result>|$)/g, '')
@@ -697,6 +815,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 void triggerMemoryFlush();
             }
         }
+        runtimeFinalText = finalContent;
     } else if (code !== 0 && wasKilled && !wasSteer && ctx.stallReason) {
         // Watchdog kills carry a useful reason, but `wasKilled` intentionally
         // bypasses the generic retry/fallback path below. Surface that reason
@@ -727,7 +846,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, errorKind, cli: runtimeCli, origin, ...empTag },
             isEmployee ? 'internal' : 'public',
         );
-        finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+        finalizeRun('error', errMsg);
         resolve({ text: '', code: code ?? 1, diagnostic: errMsg });
         if (mainManaged && !opts.internal) processQueue(scopeKey);
         return;
@@ -795,7 +914,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 reason: `${errMsg} (retry without stale resume)`,
                 ...empTag,
             }, isEmployee ? 'internal' : 'public');
-            finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+            finalizeRun('error', errMsg);
             const { promise: retryP } = _spawnAgent(prompt, {
                 ...opts,
                 _skipResume: true,
@@ -826,7 +945,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, chatSessionId);
             }
             broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, errorKind, cli: runtimeCli, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
-            finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+            finalizeRun('error', errMsg);
             resolve({ text: '', code: 1 });
             if (mainManaged && !opts.internal) processQueue(scopeKey);
             return;
@@ -850,7 +969,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             const delaySec = Math.round(delayMs / 1000);
             console.log(`[jaw:retry] ${cli} 429 detected — waiting ${delaySec}s before retry (attempt ${mainAttempt + 1}/${MAIN_MAX_RETRIES})`);
             broadcast('agent_retry', { cli, delay: delaySec, reason: errMsg, attempt: mainAttempt + 1, maxRetries: MAIN_MAX_RETRIES, ...empTag }, isEmployee ? 'internal' : 'public');
-            finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+            finalizeRun('error', errMsg);
             retryState.setIsEmployee(isEmployee);
             retryState.setResolve(resolve);
             retryState.setOrigin(origin);
@@ -905,7 +1024,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     console.log(`[jaw:fallback] ${cli} → ${fallbackCli}, ${fallbackMaxRetries} retries queued`);
                 }
                 broadcast('agent_fallback', { from: cli, to: fallbackCli, reason: errMsg, ...empTag }, isEmployee ? 'internal' : 'public');
-                finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+                finalizeRun('error', errMsg);
                 try {
                     const { peekPendingBootstrapPrompt } = await import('../core/main-session.js');
                     if (!peekPendingBootstrapPrompt(scopeKey)) {
@@ -973,7 +1092,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 attempt: 1,
                 maxRetries: 1,
             }, 'internal');
-            finalizeTraceRun(ctx.traceRunId, 'error', cls.message);
+            finalizeRun('error', cls.message);
             const { promise: retryP } = _spawnAgent(prompt, {
                 ...opts,
                 _skipInsert: true,
@@ -1000,7 +1119,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             const empDelaySec = Math.round(empDelayMs / 1000);
             console.log(`[jaw:retry] employee ${cli} transient exit — retry in ${empDelaySec}s (attempt ${empAttempt + 1}/${EMP_MAX_RETRIES}, ${cls.message})`);
             broadcast('agent_retry', { cli, delay: empDelaySec, reason: cls.message, isEmployee: true, attempt: empAttempt + 1 }, 'internal');
-            finalizeTraceRun(ctx.traceRunId, 'error', cls.message);
+            finalizeRun('error', cls.message);
             retryState.setIsEmployee(true);
             retryState.setResolve(resolve);
             retryState.setOrigin(origin);
@@ -1022,9 +1141,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     }
 
     // ─── Kiro resume degraded (empty body) → fresh spawn with history fallback ───
-    const kiroOutputText = resolveSpawnOutputText(ctx);
+    const kiroOutputText = nativeOutcome === undefined ? resolveSpawnOutputText(ctx) : '';
     if (
-        isKiroPlainTextCli(cli, effectiveProvider)
+        nativeOutcome === undefined
+        && isKiroPlainTextCli(cli, effectiveProvider)
         && isResume
         && mainManaged
         && !opts.internal
@@ -1046,7 +1166,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             reason: 'kiro resume empty — fresh with history',
             ...empTag,
         }, isEmployee ? 'internal' : 'public');
-        finalizeTraceRun(ctx.traceRunId, 'error', 'kiro resume empty');
+        finalizeRun('error', 'kiro resume empty');
         const { promise: retryP } = _spawnAgent(prompt, {
             ...opts,
             _skipResume: true,
@@ -1069,8 +1189,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
 
     // ─── Final resolve ───
     const resolvedCode = code;
-    finalizeTraceRun(
-        ctx.traceRunId,
+    finalizeRun(
         traceStatus,
         traceStatus === 'error' ? classifyExitError(runtimeCli, resolvedCode ?? 1, ctx.stderrBuf).message : null,
     );
@@ -1088,8 +1207,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     const diagnostic = resolvedCode !== 0 && resolvedCode !== null
         ? classifyExitError(runtimeCli, resolvedCode, ctx.stderrBuf).message
         : ctx.stderrBuf.trim().slice(0, 500);
+    const resolvedOutcome: RuntimeTurnOutcome | undefined = nativeOutcome === undefined
+        ? undefined : { ...nativeOutcome, finalText: runtimeFinalText };
+    const answerText = resolvedOutcome === undefined ? ctx.fullText : runtimeCompatibilityText(resolvedOutcome.finalText);
     resolve({
-        text: ctx.fullText, code: resolvedCode ?? 0,
+        text: answerText, code: resolvedCode ?? 0,
+        ...(resolvedOutcome === undefined ? {} : { runtimeOutcome: resolvedOutcome }),
+        ...(resolvedOutcome !== undefined && nativeTraceRunId ? { traceRunId: nativeTraceRunId } : {}),
         sessionId: ctx.sessionId, cost: ctx.cost,
         tools: ctx.toolLog, smoke: smokeResult,
         diagnostic,
@@ -1103,17 +1227,21 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // ─── AI-initiated /goal done or /goal cancel ───
     // The AI can't execute slash commands directly. Detect the pattern in output
     // and execute it so the continuation loop stops.
+    const controlText = resolvedOutcome === undefined ? ctx.fullText
+        : resolvedOutcome.status === 'done' ? resolvedOutcome.finalText ?? '' : '';
+    const allowNativeContinuation = resolvedOutcome === undefined
+        || (resolvedOutcome.status === 'done' && resolvedOutcome.finalText !== null);
     let goalDoneRejected = false;
-    if (mainManaged && !opts.internal && ctx.fullText) {
+    if (mainManaged && !opts.internal && controlText) {
         const activeGoal = getActiveGoal();
         if (activeGoal && activeGoal.status === 'active') {
             // A truncated capture means a trailing marker may have been dropped,
             // so the ABSENCE of one is no longer authoritative. Say so rather
             // than silently treating the clipped text as complete.
-            if (ctx.fullTextTruncated && !GOAL_DONE_RE.test(ctx.fullText)) {
+            if (resolvedOutcome === undefined && ctx.fullTextTruncated && !GOAL_DONE_RE.test(controlText)) {
                 console.warn('[jaw:goal] assistant text was truncated at the safety bound — a trailing /goal marker may have been lost');
             }
-            if (GOAL_DONE_RE.test(ctx.fullText)) {
+            if (GOAL_DONE_RE.test(controlText)) {
                 if (goalHasCompletionEvidence(activeGoal)) {
                     completeGoal();
                     clearGoalTimers();
@@ -1124,7 +1252,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     console.warn('[jaw:goal] AI /goal done REJECTED — no verification evidence on latest checkpoint');
                     broadcast('goal_done_rejected', { goalId: activeGoal.id, reason: 'no_evidence' });
                 }
-            } else if (GOAL_CANCEL_RE.test(ctx.fullText)) {
+            } else if (GOAL_CANCEL_RE.test(controlText)) {
                 // Cancelling used to happen here on sight of the marker, with no
                 // gate at all — which made ABANDONING a goal strictly easier than
                 // completing one, since /goal done next door demands verification
@@ -1137,7 +1265,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 clearGoalTimers();
                 console.warn('[jaw:goal] AI output contained /goal cancel — timers cleared, goal left active for a human decision');
                 broadcast('goal_cancel_requested', { goalId: activeGoal.id, source: 'ai_output' });
-            } else if (GOAL_PAUSE_RE.test(ctx.fullText)) {
+            } else if (GOAL_PAUSE_RE.test(controlText)) {
                 clearGoalTimers();
                 console.log('[jaw:goal] AI output contained /goal pause — timers cleared');
                 broadcast('goal_pause_detected', { goalId: activeGoal.id, source: 'ai_output' });
@@ -1149,7 +1277,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // When the AI called ScheduleWakeup, the CLI ignores it (only works in /loop).
     // cli-jaw intercepts the params and schedules a delayed --resume of the same session.
     if (
-        ctx.scheduleWakeup
+        allowNativeContinuation
+        && ctx.scheduleWakeup
         && ctx.scheduleWakeup.prompt.trim()
         && mainManaged
         && !opts.internal
@@ -1198,7 +1327,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
     } else if (
     // ─── Goal auto-continuation (max 20 consecutive attempts) ───
-        mainManaged
+        allowNativeContinuation
+        && mainManaged
         && !opts.internal
         && !wasKilled
         && !wasSteer

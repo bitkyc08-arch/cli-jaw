@@ -48,6 +48,7 @@ import {
 import { resolveOrcScope } from './scope.js';
 import { sessionLanes } from './session-lanes.js';
 import { settleOnce } from './request-registry.js';
+import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -485,6 +486,17 @@ export async function orchestrate(
         ? withSessionScope({ scope, chatSessionId }, spawn)
         : spawn();
     const result = await promise as Record<string, any>;
+    const nativeOutcome: RuntimeTurnOutcome | undefined = result['runtimeOutcome'];
+    const nativeTags = nativeOutcome ? {
+        runtimeFinality: nativeOutcome.finalText === null ? 'absent' as const : 'present' as const,
+        runtimeStatus: nativeOutcome.status,
+    } : {};
+    // Native absence/empty/whitespace is not a provisional-text fallback. Clear
+    // compatibility text BEFORE any transform can decorate it into an answer;
+    // the private outcome (and durable MESSAGE bytes) remain untouched.
+    if (nativeOutcome && (nativeOutcome.finalText === null || !nativeOutcome.finalText.trim())) {
+        result['text'] = '';
+    }
 
     // Re-read state from DB — it may have changed during agent execution
     // (phase transitions via CLI commands, user reset, etc.)
@@ -657,20 +669,31 @@ export async function orchestrate(
     }
 
     // Normal response → broadcast
+    const compatibilityText = nativeOutcome && !String(result['text'] ?? '').trim()
+        ? '' : result['text'] || '';
+    // The lifecycle's agent_done and this later terminal belong to one run.
+    // Preserve its existing ID so consumers can dedupe beyond timing windows;
+    // never invent an ID or attach native identity to synthetic/legacy replies.
+    const nativeRunTag = nativeOutcome && typeof result['traceRunId'] === 'string' && result['traceRunId'].trim()
+        ? { traceRunId: result['traceRunId'] } : {};
     broadcast('orchestrate_done', {
-        text: result["text"] || '',
+        text: compatibilityText,
+        ...nativeTags,
+        ...nativeRunTag,
         origin,
         chatId,
         target,
         requestId,
         replyViaTarget,
         ...(fromQueue ? { fromQueue: true } : {}),
-        ...(settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
+        ...(nativeOutcome ? { scope, sessionId: chatSessionId }
+            : settings["multiSession"]?.enabled === true ? { scope, sessionId: meta["chatSessionId"] || getActiveChatSession() } : {}),
         ...(typeof result['agyPlannerOnly'] === 'boolean' ? { agyPlannerOnly: result['agyPlannerOnly'] } : {}),
         ...(typeof result['agyCheckpointSeen'] === 'boolean' ? { agyCheckpointSeen: result['agyCheckpointSeen'] } : {}),
         ...(elicitationSpecs.length > 0 ? { elicitationSpecs } : {}),
     });
-    settleOnce(requestId, 'completed', { scope, text: result["text"] || '' });
+    settleOnce(requestId, 'completed', { scope, text: compatibilityText, ...nativeTags,
+        ...(nativeOutcome ? { sessionId: chatSessionId } : {}) });
 }
 
 // ─── Continue ───────────────────────────────────────

@@ -26,6 +26,7 @@
  * that assertion; a duplicated one is a no-op by construction.
  */
 import { broadcast } from '../core/bus.js';
+import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 
 export type SettleOutcome =
     /** Ran to completion; `text` carries the answer. */
@@ -50,6 +51,8 @@ export interface SettleDetail {
     reason?: string;
     scope?: string;
     sessionId?: string;
+    runtimeFinality?: 'present' | 'absent';
+    runtimeStatus?: RuntimeTurnOutcome['status'];
 }
 
 interface PendingRequest {
@@ -96,6 +99,8 @@ export function settleOnce(
         ...(detail.mergedInto !== undefined ? { mergedInto: detail.mergedInto } : {}),
         ...(detail.reason !== undefined ? { reason: detail.reason } : {}),
         ...(detail.sessionId !== undefined ? { sessionId: detail.sessionId } : {}),
+        ...(detail.runtimeFinality !== undefined ? { runtimeFinality: detail.runtimeFinality } : {}),
+        ...(detail.runtimeStatus !== undefined ? { runtimeStatus: detail.runtimeStatus } : {}),
     });
     return true;
 }

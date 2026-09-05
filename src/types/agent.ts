@@ -3,6 +3,7 @@
 
 import type { WatchdogHandle } from '../agent/watchdog.js';
 import type { TracePointer } from '../trace/types.js';
+import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 
 export interface ToolEntry {
   icon: string;
@@ -45,6 +46,8 @@ export type AgyLastActivitySource = 'stdout' | 'stderr' | 'transcript' | 'none';
 
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
+  /** Explicit native result; never inferred from compatibility text or Activity. */
+  runtimeOutcome?: RuntimeTurnOutcome;
   fullText: string;
   /** Set when fullText hit FULLTEXT_MAX_CHARS and later output was dropped. */
   fullTextTruncated?: boolean;
@@ -193,6 +196,8 @@ export interface SpawnContext {
 export interface SpawnResult {
   text: string;
   code: number;
+  runtimeOutcome?: RuntimeTurnOutcome;
+  traceRunId?: string;
   sessionId?: string | null;
   tools?: ToolEntry[];
   cost?: number | null;

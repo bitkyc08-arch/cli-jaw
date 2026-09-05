@@ -293,6 +293,7 @@ type SpawnPromiseResult = {
     text: string;
     code: number;
     runtimeOutcome?: RuntimeTurnOutcome;
+    traceRunId?: string;
     agyCheckpointSeen?: boolean;
     agyPlannerOnly?: boolean;
 };
