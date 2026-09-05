@@ -73,7 +73,7 @@ cli-jaw/
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
 │   │   │   ├── acp/          ← shared v1 wire boundary and bounded native transport
-│   │   │   │   ├── runtime-session.ts ← captured native turn, raw outcome and passive claim/finalize (193L)
+│   │   │   │   ├── runtime-session.ts ← captured native turn, raw outcome and passive claim/finalize (221L)
 │   │   │   │   ├── projection.ts ← structural message boundaries over shared projection (142L)
 │   │   │   │   ├── content.ts ← bounded ACP content extraction without retaining binary payloads (56L)
 │   │   │   │   ├── session.ts ← protocol session, prompt/cancel fences and drain (355L)
@@ -93,7 +93,7 @@ cli-jaw/
 │   │   │   ├── session.ts   ← native session/turn/control port (27L)
 │   │   │   └── events.ts    ← validated trace-first semantic emitter (39L)
 │   │   ├── native-runtime-run.ts ← one lease/claim/lifecycle with bounded exceptional cleanup (207L)
-│   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3802L)
+│   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3856L)
 │   │   ├── spawn/            ← spawn 서브모듈 (3 files)
 │   │   │   ├── queue.ts      ← QueueItem persistent DB queue + processQueue race fix + enqueue/dequeue + drainRecoveredQueue (부팅 시 복구 큐 기동, server.ts가 transport 준비 후 호출) + `_fromQueue` 표식 (대기자 없는 턴을 채널이 답할 수 있게) (689L)
 │   │   │   ├── resume.ts     ← session resume logic + stale resume detection (117L)
