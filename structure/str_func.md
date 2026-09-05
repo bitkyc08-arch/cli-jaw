@@ -346,7 +346,7 @@ cli-jaw/
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (362L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
-│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1213L)
+│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 + Phase60 boss-token actor distinction + --attest body gate + single-use pendingAttestation null-clear (1224L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (754L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (513L)
@@ -401,7 +401,7 @@ cli-jaw/
 │   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
 │   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
 │   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (50L)
-│   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
+│   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (92L)
 │   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
 │   │   ├── structured-fence.ts ← structured renderer fence scanner/parser helper (80L)
 │   │   ├── tool-log-sanitize.ts ← tool log sanitization helpers (247L)

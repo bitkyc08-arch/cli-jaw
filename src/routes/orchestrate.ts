@@ -7,6 +7,7 @@ import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
+import { resolveRequestSessionStrict } from './session-request.js';
 import { getState, getCtx, setState, resetState, canTransition, resetEveryState, parseWorkerVerdict, aggregateBatchVerdicts } from '../orchestrator/state-machine.js';
 import type { WorkerVerdict } from '../orchestrator/state-machine.js';
 import { normalizeTaskTags } from '../prompt/builder.js';
@@ -273,8 +274,17 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         res.json({ ok: true, progress });
     });
 
-    app.get('/api/orchestrate/snapshot', requireAuth, (_req, res) => {
-        const scope = resolveOrcScope({ origin: 'web', workingDir: settings["workingDir"] || null });
+    app.get('/api/orchestrate/snapshot', requireAuth, (req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
+        const requested = req.query['session'];
+        if (requested !== undefined && (typeof requested !== 'string' || !requested.trim() || requested.length > 240)) {
+            fail(res, 400, 'invalid_session');
+            return;
+        }
+        const resolved = resolveRequestSessionStrict(requested);
+        if (!resolved.ok) { fail(res, 404, 'unknown_session'); return; }
+        const scope = resolved.scope;
+        const activityIdentity = { sessionId: resolved.chatSessionId, scope };
         const runtime = getRuntimeSnapshot(scope);
         const ctx = getCtx(scope);
         const scopedWorkers = getActiveWorkers(scope);
@@ -306,6 +316,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             researchReport: ctx.researchReport,
         } : null;
         res.json({
+            activityIdentity,
             orc: {
                 scope,
                 state: getState(scope),
