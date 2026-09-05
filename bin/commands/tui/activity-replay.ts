@@ -68,6 +68,7 @@ export function retireActivityView(ctx: TuiContext, next: ActivityIdentity | nul
     ctx.activityActiveGeneration = (ctx.activityActiveGeneration ?? 0) + 1;
     ctx.streaming = false;
     ctx.streamState = 'idle';
+    ctx.turnStartedAt = 0;
     ctx.inputActive = true;
     ctx.streamSink = null;
     if (ctx.footerTimer) { clearInterval(ctx.footerTimer); ctx.footerTimer = null; }
@@ -103,7 +104,10 @@ function syncRestoredDisplay(ctx: TuiContext, runId: string, closed: boolean, ac
     if (ctx.activityActiveRunId !== runId && active?.model.identity.runId !== runId) return;
     const current = turns(ctx).filter(item => item.model.identity.runId === runId && !item.retired && !item.released).at(-1);
     if (!current) return;
-    if (ctx.activeActivityKey !== current.key) ctx.activityActiveGeneration = (ctx.activityActiveGeneration ?? 0) + 1;
+    if (ctx.activeActivityKey !== current.key) {
+        ctx.activityActiveGeneration = (ctx.activityActiveGeneration ?? 0) + 1;
+        ctx.turnStartedAt = 0; // No fabricated elapsed time for a cold journal restore.
+    }
     ctx.activeActivityKey = current.key;
     const ended = closed || Boolean(current.terminalStatus);
     ctx.streaming = !ended;

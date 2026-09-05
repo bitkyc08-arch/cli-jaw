@@ -253,6 +253,7 @@ const first: RuntimeEvent = { ...identity, seq: 3, kind: 'message', itemId: 'm',
 test('cold running restore connects the display owner and Escape can stop it', async () => {
     const sent: string[] = [];
     const ctx = context(sent);
+    ctx.turnStartedAt = 12345; // A previous display's clock is not this run's start.
     const original = globalThis.fetch;
     globalThis.fetch = async input => {
         const url = new URL(String(input));
@@ -265,6 +266,10 @@ test('cold running restore connects the display owner and Escape can stop it', a
         assert.equal(ctx.streaming, true);
         assert.equal(ctx.streamState, 'responding');
         assert.ok(ctx.activeActivityKey);
+        assert.equal(ctx.turnStartedAt, 0);
+        ctx.turnStartedAt = 54321;
+        await restoreActiveActivity(ctx);
+        assert.equal(ctx.turnStartedAt, 54321, 'same-run reconnect retains an observed clock');
         flushPendingEscape(ctx);
         assert.deepEqual(sent.map(value => JSON.parse(value)), [{ type: 'stop' }]);
     } finally { globalThis.fetch = original; cleanup(ctx); }

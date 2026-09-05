@@ -3,7 +3,7 @@
  */
 import { getComposerDisplayText, getDisplayCursorOffset } from '../../../src/cli/tui/composer.js';
 import { closeAutocomplete } from '../../../src/cli/tui/overlay.js';
-import { visualWidth, cursorScreenPos } from '../../../src/cli/tui/renderers.js';
+import { visualWidth, cursorScreenPos, layoutComposerText } from '../../../src/cli/tui/renderers.js';
 import { resolveShellLayout, setupScrollRegion } from '../../../src/cli/tui/shell.js';
 import { c, hrLine, getRows, type TuiContext } from './types.js';
 import { renderStatusBar } from '../../../src/cli/tui/jawcode-bridge.js';
@@ -18,14 +18,7 @@ export function computeComposerVisualRows(
     promptPrefix: string,
     contPrefix = contPrefixFor(),
 ): number {
-    const lines = displayText.split('\n');
-    let totalRows = 0;
-    for (let i = 0; i < lines.length; i++) {
-        const prefix = i === 0 ? promptPrefix : contPrefix;
-        const rendered = prefix + (lines[i] ?? '');
-        totalRows += Math.max(1, Math.ceil(visualWidth(rendered) / cols));
-    }
-    return Math.max(1, totalRows);
+    return cursorScreenPos(displayText, 0, visualWidth(promptPrefix), visualWidth(contPrefix), cols).totalRows;
 }
 
 function clearTerminalRows(rows: number, cursorRow: number): void {
@@ -140,7 +133,7 @@ export function reopenPromptLine(ctx: TuiContext): void {
     showPrompt(ctx);
 }
 
-export function redrawPromptLine(ctx: TuiContext): void {
+export function redrawPromptLine(ctx: Pick<TuiContext, 'displayMode' | 'requestFrame' | 'store' | 'promptPrefix' | 'prevLineCount' | 'promptCursorRow'>): void {
     if (ctx.displayMode === 'fullscreen') {
         ctx.requestFrame?.();
         return;
@@ -149,27 +142,20 @@ export function redrawPromptLine(ctx: TuiContext): void {
     const oldRows = Math.max(1, ctx.prevLineCount);
     const displayText = getComposerDisplayText(ctx.store.composer);
     const contPrefix = contPrefixFor();
-    const totalRows = computeComposerVisualRows(displayText, cols, ctx.promptPrefix, contPrefix);
+    const layout = layoutComposerText(displayText, getDisplayCursorOffset(ctx.store.composer), cols, ctx.promptPrefix, contPrefix);
+    const totalRows = layout.totalRows;
     const clearRows = Math.max(oldRows, totalRows);
 
     clearTerminalRows(clearRows, ctx.promptCursorRow);
 
-    const lines = displayText.split('\n');
+    const lines = layout.rows;
     for (let i = 0; i < lines.length; i++) {
-        const prefix = i === 0 ? ctx.promptPrefix : contPrefix;
-        const rendered = prefix + lines[i]!;
-        process.stdout.write(rendered);
+        process.stdout.write(lines[i]!);
         if (i < lines.length - 1) process.stdout.write('\n');
     }
     ctx.prevLineCount = totalRows;
 
-    const pos = cursorScreenPos(
-        displayText,
-        getDisplayCursorOffset(ctx.store.composer),
-        visualWidth(ctx.promptPrefix),
-        visualWidth(contPrefix),
-        cols,
-    );
+    const pos = layout.cursor;
     const up = (totalRows - 1) - pos.row;
     if (up > 0) process.stdout.write(`\x1b[${up}A`);
     process.stdout.write('\r');

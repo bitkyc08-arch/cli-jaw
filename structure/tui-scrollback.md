@@ -142,6 +142,20 @@ known durable gaps remain. Line-mode stdout delivery has its own receipt on the 
 answer row, so buffer failure or a late canonical end cannot hide an already captured
 answer. Retired runs cannot regain ownership or republish answers after reset.
 
+## Cell geometry
+
+`cell-width.ts` owns the modern terminal cell policy shared by Activity, generic row
+clipping/wrapping, the input box and cursor placement. Measurement uses NFC for Hangul
+without changing output text; emoji/ZWJ/flags remain whole clusters and combining marks
+do not advance cells. A cluster wider than its entire display area uses a visible `?`
+fallback while submitted input remains unchanged.
+
+Styled rows segment visible text once and reinsert CSI at original offsets, including
+CSI inside a cluster. Carried SGR is bounded. The classic composer emits the same row
+plan used for cursor/row counting, so terminal scalar autowrap cannot erase preceding
+output. The supported policy is tested separately from emulator/font variations; raw
+NDJSON never enters display sanitization or geometry.
+
 ## Research
 
 Full design history at `devlog/_plan/260618_cli_jaw_jwc_unified_roadmap/04_260615_native_scrollback_commit/` (21 documents including 4x GPT Pro audits).

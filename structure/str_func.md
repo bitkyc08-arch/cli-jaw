@@ -222,14 +222,15 @@ cli-jaw/
 │   │   ├── connector.ts      ← dashboard connector CLI API bridge (board/notes/reminders/audit) (73L)
 │   │   ├── reminders.ts      ← local reminders CLI action helpers (35L)
 │   │   ├── types.ts          ← CLI helper shared result/shape 타입 + workflow command/artifact/recovery metadata contract + command help detail key (212L)
-│   │   └── tui/              ← TUI 모듈 (31 files)
+│   │   └── tui/              ← TUI 모듈 (32 files)
 │   │       ├── store.ts      ← TuiStore (transcript + overlay 상태 통합), OverlayState + SelectorState + settings screen state (83L)
 │   │       ├── events.ts     ← TUI WS event normalizer (`agent_done.toolLog` bounded backfill 포함) (160L)
 │   │       ├── activity.ts   ← Native Activity disclosure, terminal status and bounded preview descriptor (115L)
 │   │       ├── activity-history.ts ← F6 retained-record inspector, selection and independent paste drain (253L)
+│   │       ├── cell-width.ts ← Shared grapheme cell policy and oversized display fallback (39L)
 │   │       ├── activity-answer.ts ← Full authoritative answer and empty/absent receipts (37L)
 │   │       ├── activity-linear.ts ← Classic legacy suffix receipts and cursor-line boundaries (29L)
-│   │       ├── activity-terminal-text.ts ← VT stripping and grapheme-aware terminal width (134L)
+│   │       ├── activity-terminal-text.ts ← VT stripping and grapheme-aware terminal width (103L)
 │   │       ├── transcript.ts ← TranscriptItem union (user/assistant/status) + TranscriptState + tool full-sweep/live-tool drain helpers (486L)
 │   │       ├── composer.ts   ← Issue #66 pasted-text composer state + bracketed paste parser + slash gate + PasteCollapseConfig (374L)
 │   │       ├── overlay.ts    ← help overlay + command palette + choice selector 렌더링 (705L)
@@ -238,7 +239,7 @@ cli-jaw/
 │   │       ├── keymap.ts     ← 키 입력 분류 + batched TTY chunk tokenization (ctrl-c/ctrl-d/ctrl-k/ctrl-o/enter/backspace/printable/escape) (119L)
 │   │       ├── panes.ts      ← PaneState (openPanel, side, preferredWidth), PanelKind 6종 (53L)
 │   │       ├── shell.ts      ← ShellLayout 계산 + scroll region setup/cleanup + ensureSpaceBelow (83L)
-│   │       ├── renderers.ts  ← visualWidth (CJK/emoji cell width) + clipTextToCols/wrapTextToCols ANSI-safe terminal width helpers + cursorScreenPos (176L)
+│   │       ├── renderers.ts  ← visualWidth (CJK/emoji cell width) + clipTextToCols/wrapTextToCols ANSI-safe terminal width helpers + cursorScreenPos (148L)
 │   │       ├── mode.ts       ← TUI mode state (simple/fullscreen) (34L) ✨
 │   │       ├── file-mention.ts ← file mention autocomplete helper (76L) ✨
 │   │       ├── editor.ts     ← external editor launch helper (37L) ✨

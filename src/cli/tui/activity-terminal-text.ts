@@ -1,15 +1,11 @@
-import { visualWidth } from './renderers.js';
 import { toGraphemes } from './text-buffer.js';
+import { graphemeCellWidth, fitCellGrapheme } from './cell-width.js';
 
 const ESC = 0x1b;
 const CSI = 0x9b;
 const OSC = 0x9d;
 const ST = 0x9c;
 const stringControls = new Set([0x90, 0x98, OSC, 0x9e, 0x9f]);
-const zeroCell = /[\p{Mark}\p{Default_Ignorable_Code_Point}]/u;
-const emojiPresentation = /\p{Emoji_Presentation}/u;
-const emoji = /\p{Emoji}/u;
-const pictograph = /\p{Extended_Pictographic}/u;
 
 /** Unterminated strings consume the remaining input, including embedded escapes. */
 function afterControlString(value: string, start: number, osc: boolean): number {
@@ -69,37 +65,12 @@ export function safeActivityTerminalText(value: string): string {
     return out.join('').replace(/\r\n?/g, '\n').replace(/\p{Bidi_Control}/gu, '');
 }
 
-/** Activity cell policy: narrow ambiguous characters, whole emoji, NFC Hangul. */
-function graphemeCells(grapheme: string): number {
-    const normalized = grapheme.normalize('NFC');
-    const visible = Array.from(normalized).filter(char => {
-        const cp = char.codePointAt(0)!;
-        // Hangul medial/final jamo combine with their leading cell, including archaic forms.
-        return !zeroCell.test(char) && !(cp >= 0x1160 && cp <= 0x11ff)
-            && !(cp >= 0xd7b0 && cp <= 0xd7ff);
-    });
-    if (visible.length === 0) return 0;
-    const textPresentation = normalized.includes('\ufe0e');
-    if ((!textPresentation && emojiPresentation.test(normalized))
-        || (normalized.includes('\ufe0f') && emoji.test(normalized))
-        || /[0-9#*]\ufe0f?\u20e3/u.test(normalized)
-        || (normalized.includes('\u200d') && pictograph.test(normalized))) return 2;
-    // A cluster occupies its widest base, not a sum of combining or joined bases.
-    let width = 0;
-    for (const char of visible) {
-        const cp = char.codePointAt(0)!;
-        const cells = cp >= 0x20000 && cp <= 0x3fffd ? 2 : visualWidth(char);
-        width = Math.max(width, cells);
-    }
-    return width;
-}
-
 /** Width of the widest sanitized logical line (newlines do not consume cells). */
 export function activityTerminalWidth(value: string): number {
     let widest = 0;
     for (const line of safeActivityTerminalText(value).split('\n')) {
         let width = 0;
-        for (const grapheme of toGraphemes(line)) width += graphemeCells(grapheme);
+        for (const grapheme of toGraphemes(line)) width += graphemeCellWidth(grapheme);
         widest = Math.max(widest, width);
     }
     return widest;
@@ -117,9 +88,7 @@ export function wrapActivityTerminalText(value: string, columns: number): string
         let row = '';
         let width = 0;
         for (const grapheme of toGraphemes(line)) {
-            const cells = graphemeCells(grapheme);
-            const text = cells > cols ? '?' : grapheme;
-            const size = cells > cols ? 1 : cells;
+            const { text, width: size } = fitCellGrapheme(grapheme, cols);
             if (width > 0 && width + size > cols) {
                 rows.push(row);
                 row = '';
