@@ -11,9 +11,12 @@ const publications: Array<{ topic: string; event: string; data: Record<string, u
 let appendMode: 'ok' | 'null' | 'throw' = 'ok';
 
 // Register before loading the real emitter: neither DB nor real event bus loads.
-mock.module('../../src/trace/store.js', {
+mock.module('../../src/trace/activity-journal.js', {
     namedExports: {
-        appendTraceEvent: (entry: TraceEventInput): TracePointer | null => {
+        markActivityFailure: () => {},
+        appendActivityBody: (input: { runId: string; eventType: string; raw: unknown }): TracePointer | null => {
+            const entry: TraceEventInput = { runId: input.runId, source: 'runtime', eventType: input.eventType,
+                raw: input.raw, preview: input.eventType };
             attempts.push(structuredClone(entry));
             if (appendMode === 'null') return null;
             if (appendMode === 'throw') throw new Error('fixture append failure');
