@@ -232,6 +232,11 @@ test('deferred lifecycle finalizer owns final text and blocks the next send unti
     assert.equal(f.events.filter(e => e.kind === 'turn-end' || e.phase === 'final').length, 0);
     await assert.rejects(f.session.send({ text: 'too early' }, () => {}), /busy/);
     assert.equal(f.session.finalizeTurn('wrong', { kind: 'turn-end', status: 'done', finalText: 'wrong' }), false);
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'unclaimed' }), false);
+    assert.equal(f.session.claimTurnOutcome('wrong'), null);
+    const claimed = f.session.claimTurnOutcome('turn1');
+    assert.equal(claimed?.finalText, 'provider candidate'); assert.ok(Object.isFrozen(claimed));
+    assert.equal(f.session.claimTurnOutcome('turn1'), claimed);
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'policy-selected' }), true);
     assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, 'policy-selected');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'duplicate' }), false);
@@ -239,6 +244,8 @@ test('deferred lifecycle finalizer owns final text and blocks the next send unti
     await assert.rejects(f.session.send({ text: 'reused id' }, () => {}), /identity_reused/);
     f.context({ runId: 'run2', sessionId: 'jaw', scope: 'scope', turnId: 'turn2', audience: 'internal', isCurrent: () => true });
     const second = f.session.send({ text: 'two' }, () => {}); f.output.push(result('second')); await second;
+    assert.equal(f.session.claimTurnOutcome('turn1'), null);
+    assert.equal(f.session.claimTurnOutcome('turn2')?.finalText, 'second');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'old duplicate' }), false);
     assert.equal(f.session.finalizeTurn('turn2', { kind: 'turn-end', status: 'done', finalText: '' }), true);
     assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, '');
@@ -247,6 +254,7 @@ test('deferred physical Stop waits for child cleanup without fabricating a canon
     const f = await fixture({ deferTurnEnd: true });
     const turn = f.session.send({ text: 'one' }, () => {}); await f.session.cancel();
     assert.equal((await turn).status, 'stopped'); assert.equal(f.events.filter(e => e.kind === 'turn-end').length, 0);
+    assert.equal(f.session.claimTurnOutcome('turn1')?.status, 'stopped');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
     assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).status, 'stopped');
 });
@@ -255,6 +263,7 @@ test('passive stopped finalizer survives main-run deletion and emits only its ca
     const f = await fixture({ deferTurnEnd: true, getTurnContext: () => ({ runId: 'old-run', sessionId: 'old-chat', scope: 'old-scope', turnId: 'old-turn', audience: 'internal', isCurrent: () => current }) });
     const turn = f.session.send({ text: 'one' }, () => {});
     current = false; await f.session.cancel(); assert.equal((await turn).status, 'stopped');
+    assert.equal(f.session.claimTurnOutcome('old-turn')?.status, 'stopped');
     assert.equal(f.session.finalizeTurn('new-turn', { kind: 'turn-end', status: 'done', finalText: 'wrong' }), false);
     assert.equal(f.session.finalizeTurn('old-turn', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
     assert.equal(f.session.finalizeTurn('old-turn', { kind: 'turn-end', status: 'stopped', finalText: null }), false);
@@ -274,6 +283,7 @@ test('late background violation invalidates deferred candidate before successful
     f.output.push({ type: 'system', subtype: 'task_started', task_id: 'late', is_backgrounded: true });
     await new Promise(resolve => setImmediate(resolve)); await f.session.close();
     assert.equal(f.session.getTurnOutcome('turn1')?.status, 'error');
+    assert.equal(f.session.claimTurnOutcome('turn1')?.status, 'error');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), false);
     assert.equal(f.events.filter(e => e.kind === 'turn-end').length, 0);
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'error', finalText: null }), true);
@@ -290,6 +300,7 @@ test('Stop after physical candidate updates the pending logical outcome without 
     const turn = f.session.send({ text: 'one' }, () => {}); f.output.push(result('candidate')); await turn;
     await f.session.cancel();
     assert.equal(f.session.getTurnOutcome('turn1')?.status, 'stopped');
+    assert.equal(f.session.claimTurnOutcome('turn1')?.status, 'stopped');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), false);
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
 });
@@ -299,6 +310,26 @@ test('idle result capacity retires neutrally without turning a deferred done can
     for (let i = 0; i < 511; i++) f.output.push({ ...result('idle'), uuid: `idle-${i}` });
     await new Promise(resolve => setImmediate(resolve)); await f.session.close();
     assert.equal(f.session.getTurnOutcome('turn1')?.status, 'done');
+    assert.equal(f.session.claimTurnOutcome('turn1')?.status, 'done');
     assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), true);
     assert.equal(f.events.filter(e => e.kind === 'turn-end').at(-1).finalText, 'candidate');
+});
+test('claimed done is immutable across later protocol failure while the query retires', async () => {
+    const f = await fixture({ deferTurnEnd: true });
+    const turn = f.session.send({ text: 'one' }, () => {}); f.output.push(result('candidate')); await turn;
+    const claimed = f.session.claimTurnOutcome('turn1'); assert.equal(claimed?.status, 'done');
+    f.output.push({ type: 'system', subtype: 'task_started', task_id: 'late', is_backgrounded: true });
+    await new Promise(resolve => setImmediate(resolve)); await f.session.close();
+    assert.equal(f.session.alive, false); assert.equal(f.session.claimTurnOutcome('turn1'), claimed);
+    assert.equal(f.session.getTurnOutcome('turn1')?.status, 'done');
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'candidate' }), true);
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'done', finalText: 'twice' }), false);
+    const ends = f.events.filter(e => e.kind === 'turn-end'); assert.equal(ends.length, 1); assert.equal(ends[0].status, 'done');
+});
+test('explicit Stop after claim retires the query without retroactively mutating the claim', async () => {
+    const f = await fixture({ deferTurnEnd: true });
+    const turn = f.session.send({ text: 'one' }, () => {}); f.output.push(result('candidate')); await turn;
+    const claimed = f.session.claimTurnOutcome('turn1'); await f.session.cancel();
+    assert.equal(f.session.claimTurnOutcome('turn1'), claimed); assert.equal(claimed?.status, 'done');
+    assert.equal(f.session.finalizeTurn('turn1', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
 });

@@ -60,7 +60,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private reader: Promise<void> = Promise.resolve();
     private readonly exits = new Set<(code: number | null) => void>();
     private turn: Turn | null = null;
-    private pendingFinal: { turn: Turn; outcome: RuntimeTurnResult; failed?: boolean } | null = null;
+    private pendingFinal: { turn: Turn; outcome: RuntimeTurnResult; failed?: boolean; claimed?: Readonly<RuntimeTurnResult> } | null = null;
     private finalizing = false;
     private id = '';
     private closing = false;
@@ -143,25 +143,32 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     }
     interrupt(): Promise<void> { return this.cancel(); }
     cancel(): Promise<void> {
-        if (this.pendingFinal && !this.pendingFinal.failed && !this.failure) {
+        if (this.pendingFinal && !this.pendingFinal.claimed && !this.pendingFinal.failed && !this.failure) {
             this.pendingFinal.outcome = { ...this.pendingFinal.outcome, status: 'stopped', finalText: null };
         }
         return this.close();
     }
     finalizeTurn(turnId: string, end: RuntimeEnd): boolean {
         const pending = this.pendingFinal;
-        if (!pending || pending.turn.context.turnId !== turnId) return false;
-        if (pending.outcome.status !== 'done' && end.status === 'done') return false;
+        if (!pending || pending.turn.context.turnId !== turnId || !pending.claimed) return false;
+        if (pending.claimed.status !== 'done' && end.status === 'done') return false;
         this.pendingFinal = null;
         this.finalizing = true; pending.turn.passiveFinalizing = true;
-        try { pending.turn.mapper.finish({ ...pending.outcome, status: end.status, finalText: end.finalText }, end); }
+        try { pending.turn.mapper.finish({ ...pending.claimed, status: end.status, finalText: end.finalText }, end); }
         finally { pending.turn.passiveFinalizing = false; this.finalizing = false; }
         if (this.deferredTurnIds.size >= 512) this.kill();
         return true;
     }
     getTurnOutcome(turnId: string): RuntimeTurnResult | null {
         const pending = this.pendingFinal;
-        return pending?.turn.context.turnId === turnId ? { ...pending.outcome } : null;
+        return pending?.turn.context.turnId === turnId ? { ...(pending.claimed ?? pending.outcome) } : null;
+    }
+    /** Atomic logical terminal selection; no await and no active-input authorization. */
+    claimTurnOutcome(turnId: string): RuntimeTurnResult | null {
+        const pending = this.pendingFinal;
+        if (!pending || pending.turn.context.turnId !== turnId) return null;
+        pending.claimed ??= Object.freeze({ ...pending.outcome });
+        return pending.claimed;
     }
     kill(): void { void this.cancel().catch(() => console.warn('[claude-native] cleanup_failed')); }
     onExit(cb: (code: number | null) => void): () => void {
@@ -197,7 +204,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private fail(reason: string): void {
         this.failureCode ??= reason;
         this.failure = true;
-        if (this.pendingFinal) {
+        if (this.pendingFinal && !this.pendingFinal.claimed) {
             this.pendingFinal.failed = true;
             this.pendingFinal.outcome = { ...this.pendingFinal.outcome, status: 'error', finalText: null };
         }
