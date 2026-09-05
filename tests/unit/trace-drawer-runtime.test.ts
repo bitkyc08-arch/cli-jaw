@@ -154,15 +154,20 @@ test('closing the drawer cancels its read and ignores a late result', async () =
     assert.equal(document.querySelector('.trace-event-row'),null);
 });
 
-test('the existing process Trace control resolves a server-owned default session before opening', async () => {
+test('the existing process Trace control resolves a server-owned default session before opening', { timeout: 5000 }, async () => {
     setupWebUiDom(); installScrollIntoView();
     const calls: string[] = [];
+    let pageRequested!: () => void;
+    const opened = new Promise<void>(resolve => { pageRequested = resolve; });
     globalThis.fetch = (async (input: RequestInfo | URL) => {
         const url = String(input); calls.push(url);
         if (url === '/api/auth/token') return jsonResponse({token:''});
         if (url === '/api/orchestrate/snapshot') return apiData({activityIdentity:{sessionId:'server-active',scope:'remote:scope'}});
         if (url === '/api/traces/tr_clicked?session=server-active') return apiData({id:'tr_clicked',cli:'pi',model:'test',agentLabel:'agent',eventCount:0,byteCount:0,startedAt:1,rawRetentionStatus:'available',status:'done'});
-        if (url.includes('/events?offset=0&limit=80&session=server-active')) return apiData({total:0,events:[]});
+        if (url === '/api/traces/tr_clicked/events?offset=0&limit=80&session=server-active') {
+            pageRequested();
+            return apiData({total:0,events:[]});
+        }
         throw new Error(`unexpected fetch ${url}`);
     }) as typeof fetch;
     const {bindProcessBlockInteractions} = await import('../../public/js/features/process-block.ts');
@@ -170,10 +175,16 @@ test('the existing process Trace control resolves a server-owned default session
     root.innerHTML = '<button class="process-step-trace" data-trace-run-id="tr_clicked" data-trace-seq="0">Trace</button>';
     document.body.append(root); bindProcessBlockInteractions(root);
     root.querySelector<HTMLButtonElement>('button')!.click();
-    // Lazy import then JSON body consumption complete before this event-loop boundary.
-    await nextTick(); await nextTick();
-    assert.ok(calls.includes('/api/traces/tr_clicked?session=server-active'));
-    assert.ok(calls.includes('/api/traces/tr_clicked/events?offset=0&limit=80&session=server-active'));
+    // Cold lazy imports can outlive timer ticks on a loaded CI worker. Wait for
+    // the actual owned page request; the test timeout still detects a missing open.
+    try {
+        await opened;
+        assert.ok(calls.includes('/api/traces/tr_clicked?session=server-active'));
+        assert.ok(calls.includes('/api/traces/tr_clicked/events?offset=0&limit=80&session=server-active'));
+    } finally {
+        // Request issuance precedes body parsing; invalidate any remaining work.
+        document.querySelector<HTMLButtonElement>('.trace-drawer-close')?.click();
+    }
 });
 
 test('a late snapshot from earlier Trace click cannot reopen it over a newer click', async () => {
