@@ -65,7 +65,7 @@ type SpawnAgentLike = typeof spawnAgent;
 function captureExecutionMeta(meta: Record<string, unknown> & { remoteKey?: string | null }) {
     const binding = resolveExecutionBinding({
         ...meta,
-        ...(meta['remoteKey'] === undefined ? {} : { persistedScopeId: meta['remoteKey'] }),
+        persistedScopeId: meta.remoteKey ?? null,
         captured: currentSessionScope() ?? null,
         activeChatSessionId: getActiveChatSession(),
         multiSessionEnabled: settings['multiSession']?.enabled === true,

@@ -6,12 +6,50 @@ import { settings } from '../../src/core/config.ts';
 import { createChatSession, getActiveChatSession, setActiveChatSession } from '../../src/core/chat-sessions.ts';
 import { currentSessionScope, withSessionScope } from '../../src/core/session-context.ts';
 import { orchestrateAndCollectData } from '../../src/orchestrator/collect.ts';
+import { orchestrate } from '../../src/orchestrator/pipeline.ts';
 import type { spawnAgent } from '../../src/agent/spawn.ts';
 
 const originalMulti = settings['multiSession'];
 const active = createChatSession('binding-active').id;
 const laterActive = createChatSession('binding-later').id;
 test.afterEach(() => { settings['multiSession'] = originalMulti; setActiveChatSession('default'); });
+
+const pipelinePlacements = [
+    { name: 'forged persisted hint', meta: { chatSessionId: 'pipeline-chat', persistedScopeId: 'jaw:slack:channel:forged' },
+        expected: { scope: 'local:pipeline-chat', chatSessionId: 'pipeline-chat' } },
+    { name: 'stale persisted hint', meta: { chatSessionId: 'pipeline-chat', persistedScopeId: 'local:previous-chat' },
+        expected: { scope: 'local:pipeline-chat', chatSessionId: 'pipeline-chat' } },
+    { name: 'remote key', meta: { chatSessionId: 'pipeline-chat', remoteKey: 'jaw:slack:channel:owned', persistedScopeId: 'stale' },
+        expected: { scope: 'jaw:slack:channel:owned', chatSessionId: 'pipeline-chat' } },
+    { name: 'explicit scope', meta: { scope: 'explicit-pipeline', chatSessionId: 'pipeline-chat', persistedScopeId: 'stale' },
+        expected: { scope: 'explicit-pipeline', chatSessionId: 'pipeline-chat' } },
+    { name: 'captured scope', meta: { persistedScopeId: 'stale' },
+        captured: { scope: 'captured-pipeline', chatSessionId: 'captured-chat' },
+        expected: { scope: 'captured-pipeline', chatSessionId: 'captured-chat' } },
+];
+for (const placement of pipelinePlacements) {
+    test(`direct pipeline uses owned placement for ${placement.name}`, { timeout: 5000 }, async t => {
+        settings['multiSession'] = { ...originalMulti, enabled: true };
+        const network = t.mock.method(globalThis, 'fetch', async () => assert.fail('unexpected pipeline network request'));
+        t.mock.method(console, 'log', () => {});
+        let calls = 0;
+        const meta = { origin: 'heartbeat', requestId: `pipeline-${placement.name}`, _skipReplayDrain: true,
+            ...placement.meta,
+            _spawnAgent: (_prompt: string, opts: NonNullable<Parameters<typeof spawnAgent>[1]>) => {
+                calls++;
+                assert.deepEqual({ scope: opts.scopeKey, chatSessionId: opts.chatSessionId }, placement.expected);
+                assert.deepEqual(currentSessionScope(), placement.expected);
+                return { child: null, promise: Promise.resolve({ text: 'answer', code: 0, traceRunId: 'pipeline-binding',
+                    runtimeOutcome: { status: 'done', finalText: 'answer', partialText: '' } }) };
+            },
+        };
+        const invoke = () => orchestrate('text-only fixture', meta);
+        if ('captured' in placement && placement.captured) await withSessionScope(placement.captured, invoke);
+        else { assert.equal(currentSessionScope(), undefined); await invoke(); }
+        assert.equal(calls, 1);
+        assert.equal(network.mock.callCount(), 0);
+    });
+}
 
 test('binding precedence is explicit, captured, then existing gated scope and active chat', () => {
     const base = { activeChatSessionId: 'active-chat', multiSessionEnabled: true,
