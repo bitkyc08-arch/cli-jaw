@@ -118,3 +118,14 @@ test('kill-steered Pi rejection stores interrupted MESSAGE before the real exit 
     assert.equal(result.text,'');assert.notEqual(result.code,0);
     assert.equal(activeMainProcesses.has(opts.scopeKey),false);
 });
+
+test('user stop preserves partial outcome without inventing a final response',async () => {
+    process.env.PI_SPAWN_HOLD='1';
+    const opts=options();
+    onText=() => {onText=undefined;assert.equal(killActiveAgent(opts.scopeKey,'user'),true);};
+    const result=await spawnAgent('hold',opts).promise;
+    assert.deepEqual(result.runtimeOutcome,{status:'stopped',finalText:null,partialText:'PROVISIONAL /goal done'});
+    assert.equal(result.text,'');assert.notEqual(result.code,0);
+    assert.equal(activeMainProcesses.has(opts.scopeKey),false);
+    assert.deepEqual(db.prepare('SELECT content FROM messages WHERE session_id=? AND role=?').all(opts.chatSessionId,'assistant'),[]);
+});
