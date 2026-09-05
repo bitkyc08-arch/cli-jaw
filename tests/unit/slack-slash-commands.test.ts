@@ -18,25 +18,18 @@ const state: {
     executeResult: { text?: string; steerPrompt?: string } | null;
     onExecute?: (parsed: unknown, ctx: { interface?: string }) => void;
     onOrchestrate?: (prompt: string, meta: Record<string, unknown>) => void;
-    multiSessionEnabled?: boolean;
     scopeOverride?: string;
     scopeCalls: Array<{ sessionId: string; remoteKey?: string; gateEnabled?: boolean }>;
 } = { posted: [], parsedSeen: [], executeResult: { text: 'command output' }, scopeCalls: [] };
 
-const scopeModule = await import('../../src/orchestrator/scope.ts');
+const actualScope = await import('../../src/orchestrator/scope.ts');
 mock.module('../../src/orchestrator/scope.ts', {
     namedExports: {
-        ...scopeModule,
-        LOCAL_SESSION_SCOPE_ACTIVATION: true,
-        LOCAL_SESSION_SCOPE_PREFIX: 'local:',
-        isRemoteBindingScope: (scope?: string | null) => typeof scope === 'string' && scope.startsWith('jaw:'),
-        channelGateOn: () => true,
-        resolveOrcScope: () => 'default',
+        ...actualScope,
         scopeForChatSession: (sessionId: string, remoteKey?: string, gateEnabled?: boolean) => {
             state.scopeCalls.push({ sessionId, ...(remoteKey ? { remoteKey } : {}), ...(gateEnabled === undefined ? {} : { gateEnabled }) });
             if (state.scopeOverride) return state.scopeOverride;
-            if (!gateEnabled || sessionId === 'default') return 'default';
-            return remoteKey || `local:${sessionId}`;
+            return actualScope.scopeForChatSession(sessionId, remoteKey, gateEnabled);
         },
     },
 });
@@ -77,11 +70,17 @@ mock.module('../../src/orchestrator/collect.ts', {
     },
 });
 
+test.beforeEach(t => {
+    const network = t.mock.method(globalThis, 'fetch', async () => assert.fail('unexpected real network request'));
+    t.after(() => assert.equal(network.mock.callCount(), 0, 'Slack routing must use only the fake transports'));
+});
+
 async function loadHandler(options: {
     executeResult?: { text?: string; steerPrompt?: string } | null;
     channelIds?: string[];
     onExecute?: (parsed: unknown, ctx: { interface?: string }) => void;
     onOrchestrate?: (prompt: string, meta: Record<string, unknown>) => void;
+    multiSessionEnabled?: boolean;
     scopeOverride?: string;
 } = {}) {
     state.posted = [];
@@ -113,8 +112,7 @@ test('a slash command reaches executeCommand with a slack context', async () => 
 
     assert.deepEqual(parsedSeen, ['/status'], 'command and args must be joined for the shared parser');
     assert.equal(seenInterface, 'slack', 'the command context must identify slack');
-    assert.equal(posted.length, 1);
-    assert.equal(posted[0]!.text, 'command output');
+    assert.deepEqual(posted, [{ channel: 'C1', text: 'command output' }]);
 });
 
 test('slash command arguments are joined onto the command name', async () => {
@@ -137,7 +135,7 @@ test('a steerPrompt result orchestrates with the slack target preserved', async 
     const target = captured['target'] as { channel?: string; targetId?: string };
     assert.equal(target.channel, 'slack');
     assert.equal(target.targetId, 'C7', 'the steer path must keep the originating conversation');
-    assert.deepEqual(posted.map(p => p.text), ['redirecting', 'steered reply']);
+    assert.deepEqual(posted, [{ channel: 'C7', text: 'redirecting' }, { channel: 'C7', text: 'steered reply' }]);
 });
 
 test('multi-session slash and steer keep C1 scope isolated from C2 and the global pointer', async () => {
@@ -195,23 +193,25 @@ test('a slash command from a non-allowlisted channel never executes', async () =
     // Without this gate a slash command would bypass the allowlist that the
     // ordinary message path enforces.
     let executed = false;
-    const { handleSlackSlashCommand, posted } = await loadHandler({
+    const { handleSlackSlashCommand, posted, parsedSeen } = await loadHandler({
         channelIds: ['C123'],
         onExecute: () => { executed = true; },
     });
     await handleSlackSlashCommand({ command: '/status', text: '', channel_id: 'C999' });
     assert.equal(executed, false, 'allowlist bypassed via slash command');
+    assert.deepEqual(parsedSeen, [], 'a blocked command must never reach the parser');
     assert.equal(posted.length, 0, 'a blocked command must stay silent');
 });
 
 test('a slash command from a DM proceeds despite a non-matching allowlist', async () => {
     let executed = false;
-    const { handleSlackSlashCommand } = await loadHandler({
+    const { handleSlackSlashCommand, posted } = await loadHandler({
         channelIds: ['C123'],
         onExecute: () => { executed = true; },
     });
     await handleSlackSlashCommand({ command: '/status', text: '', channel_id: 'D555' });
     assert.equal(executed, true, 'DMs are self-authorizing and must not be blocked');
+    assert.deepEqual(posted, [{ channel: 'D555', text: 'command output' }]);
 });
 
 test('an empty result still posts something rather than going silent', async () => {
@@ -221,7 +221,8 @@ test('an empty result still posts something rather than going silent', async () 
 });
 
 test('a payload missing its command id is ignored', async () => {
-    const { handleSlackSlashCommand, posted } = await loadHandler();
+    const { handleSlackSlashCommand, posted, parsedSeen } = await loadHandler();
     await handleSlackSlashCommand({ text: 'orphan', channel_id: 'C1' });
     assert.equal(posted.length, 0);
+    assert.deepEqual(parsedSeen, []);
 });

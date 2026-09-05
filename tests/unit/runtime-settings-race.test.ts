@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import childProcess from 'node:child_process';
 
 const ROOT = process.cwd();
 const GATE = path.join(ROOT, 'src/core/runtime-settings-gate.ts');
@@ -49,27 +50,54 @@ test('RSR-004: gated main spawn contributes to busy state and queue gating', () 
         'isAgentBusy must delegate the retry check to the queue controller');
 });
 
-test('RSR-005: stop cancels a pending gated main spawn', async t => {
+test('RSR-005: stop cancels a pending gated main spawn', { timeout: 5000 }, async t => {
+    const forbiddenCalls: string[] = [];
+    const forbidden = (name: string) => (..._args: unknown[]): never => {
+        forbiddenCalls.push(name); assert.fail(`cancelled gated spawn reached ${name}`);
+    };
+    const processSeams = Object.fromEntries(
+        ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'].map(name => [name, forbidden(name)]),
+    );
+    t.mock.module('node:child_process', {
+        namedExports: { ...childProcess, ...processSeams }, defaultExport: { ...childProcess, ...processSeams },
+    });
     const config = await import('../../src/core/config.ts');
-    test.mock.module('../../src/core/config.js', { namedExports: { ...config,
-        detectCli: () => { assert.fail('cancelled gated spawn reached provider detection'); },
+    t.mock.module('../../src/core/config.js', { namedExports: { ...config,
+        settings: { ...config.settings, cli: 'codex-app', workingDir: config.JAW_HOME, projectDirs: [config.JAW_HOME],
+            fallbackOrder: [], multiSession: { enabled: true, maxConcurrent: 4, midRunPolicy: 'steer' } },
+        detectCli: forbidden('detectCli'), detectAllCli: forbidden('detectAllCli'),
+        getProjectDirs: () => [config.JAW_HOME],
     } });
-    const { beginRuntimeSettingsMutation } = await import('../../src/core/runtime-settings-gate.ts');
     const { spawnAgent, killActiveAgent, activeMainProcesses, isAgentBusy } = await import('../../src/agent/spawn.ts');
-    t.mock.method(globalThis, 'fetch', async () => { assert.fail('unexpected network'); });
-    const scope = 'settings-gated-cancellation';
-    const finish = beginRuntimeSettingsMutation();
+    const { db } = await import('../../src/core/db.ts');
+    const { clearGoalTimers } = await import('../../src/agent/lifecycle-handler.ts');
+    const { beginRuntimeSettingsMutation, isRuntimeSettingsMutationInFlight } = await import('../../src/core/runtime-settings-gate.ts');
+    const snapshot = () => ({ messages: db.prepare('SELECT * FROM messages ORDER BY id').all(),
+        buckets: db.prepare('SELECT * FROM session_buckets ORDER BY bucket').all() });
+    const before = snapshot();
+    t.mock.method(fs, 'writeFileSync', forbidden('writeFileSync'));
+    t.mock.method(fs, 'mkdirSync', forbidden('mkdirSync'));
+    t.mock.method(globalThis, 'fetch', forbidden('fetch'));
+    t.mock.method(console, 'log', () => {});
+    const scopeKey = 'settings-gated-cancel', finishMutation = beginRuntimeSettingsMutation();
     try {
-        const run = spawnAgent('must never execute', { scopeKey: scope, chatSessionId: 'gated-chat', cli: 'claude' });
-        assert.equal(run.child, null);
-        assert.equal(activeMainProcesses.get(scope)?.starting, true);
-        assert.equal(isAgentBusy(scope), true);
-        assert.equal(killActiveAgent(scope, 'user'), true);
-        finish();
+        const run = spawnAgent('pending user turn', { cli: 'codex-app', scopeKey, chatSessionId: 'settings-gated-chat',
+            sysPrompt: '', _skipHistory: true });
+        assert.equal(run.child, null); assert.equal(isAgentBusy(scopeKey), true);
+        assert.equal(activeMainProcesses.get(scopeKey)?.starting, true);
+        let settled = false;
+        void run.promise.then(() => { settled = true; }, () => { settled = true; });
+        await Promise.resolve();
+        assert.equal(settled, false, 'the actual spawn remains behind the open settings gate');
+        assert.equal(killActiveAgent(scopeKey, 'user'), true);
+        assert.equal(activeMainProcesses.has(scopeKey), false);
+        finishMutation();
         assert.deepEqual(await run.promise, { text: '⏹️ [user]', code: -1 });
-        assert.equal(activeMainProcesses.has(scope), false);
-        assert.equal(isAgentBusy(scope), false);
-    } finally { finish(); activeMainProcesses.delete(scope); }
+        assert.equal(isRuntimeSettingsMutationInFlight(), false);
+        assert.equal(isAgentBusy(scopeKey), false);
+        assert.deepEqual(snapshot(), before, 'cancellation must not persist a resumed user turn');
+        assert.deepEqual(forbiddenCalls, [], 'no detection, provider process, prompt preparation or network');
+    } finally { finishMutation(); activeMainProcesses.delete(scopeKey); clearGoalTimers(); }
 });
 
 test('RSR-006: settings gate only delays direct main user spawns', () => {

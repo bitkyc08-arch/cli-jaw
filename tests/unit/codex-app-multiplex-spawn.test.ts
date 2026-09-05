@@ -269,6 +269,10 @@ test.mock.module('../../src/agent/codex-host-pool.js', {
     },
 });
 
+function forbiddenProviderAcquire(provider: string): never {
+    assert.fail(`${provider} runtime acquisition is outside this Codex App fixture`);
+}
+
 test.mock.module('../../src/agent/runtime-pool.js', {
     namedExports: {
         acquireCodexAppRuntime: async (options: Record<string, unknown>) => {
@@ -292,8 +296,9 @@ test.mock.module('../../src/agent/runtime-pool.js', {
                 cancel: async () => {},
             };
         },
-        acquirePiRuntime: async () => { throw new Error('Pi is outside this fixture'); },
-        acquireCursorRuntime: async () => { throw new Error('Cursor is outside this fixture'); },
+        acquirePiRuntime: async () => forbiddenProviderAcquire('Pi'),
+        acquireCursorRuntime: async () => forbiddenProviderAcquire('Cursor'),
+        acquireGrokRuntime: async () => forbiddenProviderAcquire('Grok'),
     },
 });
 
@@ -340,8 +345,8 @@ test.mock.module('../../src/trace/store.js', {
         appendTraceEvent: (entry: Record<string, unknown>) => { harness.traceEvents.push(entry); },
         stampTraceTool() {}, stampTraceToolEntries() {},
         updateTraceToolRow() {}, getTraceEvent: () => null, linkTraceRunToMessage() {},
-        startTraceRun: () => 'tr_multiplexfixture0001',
         createTraceId: () => 'tr_multiplexfixture0001',
+        startTraceRun: () => 'tr_multiplexfixture0001',
         finalizeTraceRun: (runId: string | null | undefined, status: string) => {
             harness.finalized.push({ runId, status });
         },

@@ -57,7 +57,9 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions, mergeEnvWindowsSafe } from './spawn-env.js';
-import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext } from './prompt-context.js';
+import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext,
+    PROMPT_HISTORY_MAX_ROWS, PROMPT_HISTORY_MAX_CHARS, appendCursorAcceptedInstruction,
+    buildCursorReplacementPrompt, type CursorAcceptedContext } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -69,6 +71,9 @@ import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type { RuntimeEvent, RuntimeLivenessIdentity, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
+import { MainReplacementOwnerMismatchError, replaceAcpMainTurn, type MainReplacementResult } from './runtime/replace-turn.js';
+import { AcpReplacement } from './runtime/acp/replacement.js';
+import { beginSteerInput, cancelSteerInputs, cancelAllSteerInputs } from './steer-input-guard.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { startClaudeNativeRun } from './claude-runtime-run.js';
 import { hasClaudeRuns, hasClaudeWorker, cancelClaudeWorker, cancelClaudeScope, cancelAllClaudeRuns } from './runtime/claude-run-controls.js';
@@ -82,7 +87,8 @@ import { PiProjection } from './runtime/pi-projection.js';
 import { PiRawTrace } from './runtime/pi-raw-trace.js';
 import { isNativeAdapterImplemented, isNativeWorkerImplemented, isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket } from './runtime/selection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
-import type { RemoteTarget } from '../messaging/types.js';
+import { isRemoteTarget, type RemoteTarget } from '../messaging/types.js';
+import { buildRemoteBindingKey } from '../messaging/session-key.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntimesByScope, runtimeForScope } from './jwc-runtime.js';
 import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
@@ -210,6 +216,8 @@ export type MainRunState = {
      * queues with a reason broadcast).
      */
     steerTurnInBand?: (text: string) => Promise<'steered' | 'unavailable' | 'rejected'>;
+    /** Native local-dispatch hook; failure must never become queued input. */
+    replaceTurn?: (text: string, commitInput: () => void) => Promise<MainReplacementResult>;
 };
 
 export const activeMainProcesses = new Map<string, MainRunState>();
@@ -647,6 +655,7 @@ export function killActiveAgent(reason?: string): boolean;
 export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
     const scopeKey = scopedReason === undefined ? 'default' : scopeKeyOrReason;
     const reason = scopedReason ?? scopeKeyOrReason;
+    cancelSteerInputs(scopeKey);
     const cancelledClaude = cancelClaudeScope(scopeKey, reason, reason === 'api' || reason === 'user');
     const run = activeMainProcesses.get(scopeKey);
     const hadTimer = queueCtrl.isRetryPending(scopeKey);
@@ -711,6 +720,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
 }
 
 export function killAllAgents(reason = 'user') {
+    cancelAllSteerInputs();
     const cancelledClaude = cancelAllClaudeRuns(reason);
     const hadTimer = queueCtrl.isRetryPending(null);
     const mainScopes = [...activeMainProcesses.keys()];
@@ -789,11 +799,12 @@ export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
     if (run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true) return true;
-    // codex-app: the hook exists exactly while a steerable turn is in flight.
-    return typeof run?.steerTurnInBand === 'function';
+    // Route CLI steering through either the in-band hook or the native replacement hook.
+    // Each owning hook decides whether the current turn can still accept the input.
+    return typeof run?.steerTurnInBand === 'function' || typeof run?.replaceTurn === 'function';
 }
 
-export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run';
+export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run' | 'cancelled';
 
 export async function steerAgent(
     scopeKey: string,
@@ -814,6 +825,56 @@ export async function steerAgent(
         // from waiting for an answer that structurally cannot arrive.
         settleOnce(meta?.requestId, 'steered');
         return 'steered';
+    }
+    if (typeof run?.replaceTurn === 'function') {
+        const capturedSessionOwner = getSessionOwnershipGeneration(scopeKey);
+        const owner = run.meta;
+        const ownerTarget = isRemoteTarget(owner.target) ? owner.target : undefined;
+        const ownerRemoteKey = owner.remoteKey ?? (ownerTarget ? buildRemoteBindingKey(ownerTarget) : undefined);
+        const suppliedTarget = meta?.target;
+        if ((meta?.chatSessionId !== undefined && meta.chatSessionId !== owner.chatSessionId)
+            || (meta?.remoteKey !== undefined && meta.remoteKey !== ownerRemoteKey)
+            || (suppliedTarget !== undefined && (!isRemoteTarget(suppliedTarget)
+                || buildRemoteBindingKey(suppliedTarget) !== ownerRemoteKey
+                || (ownerTarget !== undefined && (buildRemoteBindingKey(suppliedTarget) !== buildRemoteBindingKey(ownerTarget)
+                    || suppliedTarget.targetKind !== ownerTarget.targetKind
+                    || suppliedTarget.guildId !== ownerTarget.guildId
+                    || suppliedTarget.parentTargetId !== ownerTarget.parentTargetId))))) {
+            throw new MainReplacementOwnerMismatchError();
+        }
+        const capturedMeta = { ...meta, ...(suppliedTarget === undefined ? {} : { target: { ...suppliedTarget } }) };
+        const capturedOwnerGeneration = run.ownerGeneration;
+        const workingDir = settings['workingDir'] || null;
+        let attempted = false;
+        const inputGuard = beginSteerInput(scopeKey);
+        let outcome: MainReplacementResult, inputCancelled: boolean;
+        try {
+            outcome = await run.replaceTurn(newPrompt, () => {
+                if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
+                    || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
+                    throw new MainReplacementOwnerMismatchError();
+                }
+                if (attempted) throw new Error('native_replacement_duplicate_input');
+                attempted = true; // A partial recording failure must never retry this input.
+                insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
+                broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+                broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+                    sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
+                    requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
+                    mode: 'cancel-reprompt', localDispatch: true }));
+                settleOnce(capturedMeta.requestId, 'steered');
+            });
+        } finally { inputCancelled = inputGuard.isCancelled(); inputGuard.release(); }
+        if (outcome.kind === 'failed') throw outcome.error;
+        if ((outcome.kind === 'dispatched') !== attempted) throw new Error('native_replacement_inconsistent_receipt');
+        if (outcome.kind === 'dispatched') return 'steered';
+        if (outcome.kind === 'cancelled' || inputCancelled) {
+            settleOnce(capturedMeta.requestId, 'cancelled', { reason: 'native-steer-stopped', scope: scopeKey, sessionId: chatSessionId });
+            return 'cancelled';
+        }
+        broadcast('steer_rejected', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+            sessionId: chatSessionId, reason: outcome.reason, requestId: capturedMeta.requestId }));
+        return 'fallback-queue';
     }
     if (typeof run?.steerTurnInBand === 'function') {
         // codex-app same-turn steer. The user row is written only AFTER the
@@ -945,7 +1006,8 @@ export function makeCleanEnv(
     return merged;
 }
 
-function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
+function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string,
+    maxSessions = PROMPT_HISTORY_MAX_ROWS, maxTotalChars = PROMPT_HISTORY_MAX_CHARS) {
     const recent = getRecentMessages.all(workingDir || null, chatSessionId, Math.max(1, maxSessions * 2)) as RecentMessageRow[];
     if (!recent.length) return '';
 
@@ -1540,14 +1602,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             prompt,
             settings["workingDir"],
             chatSessionId,
-            10,
-            8000,
+            PROMPT_HISTORY_MAX_ROWS,
+            PROMPT_HISTORY_MAX_CHARS,
         )
         : '';
     let agyBootstrap: AgyBootstrapEnvelope | null = null;
     let promptForArgs = buildPromptForArgs({
         cli,
         effectiveProvider,
+        runtimeTransport,
         prompt,
         historyBlock,
         sysPrompt,
@@ -1786,6 +1849,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         let selectedResult: SpawnPromiseResult | undefined;
         const ownsRun = () => !finalized && activeMainProcesses.get(scopeKey) === capturedRun
             && isCurrentSessionOwner(persistenceOwner, scopeKey);
+        const cursorTarget = opts.target ? { ...opts.target } : undefined;
+        let acceptedContext: CursorAcceptedContext = { messages: [], omitted: false };
+        const prepareReplacement = (instruction: string, partialText: string) => {
+            if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+            return { text: buildCursorReplacementPrompt({
+                instruction: prependRemoteConversationContext(instruction, cursorTarget),
+                originalRequest: promptForSnapshot, accepted: acceptedContext, partialText, sysPrompt,
+            }) };
+        };
+        const replaceHook = (instruction: string, commitInput: () => void): Promise<MainReplacementResult> =>
+            replaceAcpMainTurn(facade, instruction, () => {
+                if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+                const next = appendCursorAcceptedInstruction(acceptedContext, instruction);
+                const result: unknown = commitInput();
+                if (result !== null && (typeof result === 'object' || typeof result === 'function')
+                    && typeof (result as { then?: unknown }).then === 'function') {
+                    void Promise.resolve(result).catch(() => undefined);
+                    throw new Error('cursor_acp_async_input_commit');
+                }
+                acceptedContext = next;
+            });
         const resultFor = (outcome: RuntimeTurnOutcome): SpawnPromiseResult => ({
             text: outcome.finalText?.trim() ?? '', code: outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1,
             runtimeOutcome: outcome, traceRunId,
@@ -1849,7 +1933,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 });
                 facade = new AcpRuntimeSession(lease.session, { provider: cli, deferTurnEnd: true,
                     getTurnContext: () => ({ ...identity, isCurrent: ownsRun }),
-                    capabilities: { transport: 'native', steer: 'restart', resume: lease.session.agentCapabilities['loadSession'] === true,
+                    createReplacement: io => new AcpReplacement(io), prepareReplacement,
+                    capabilities: { transport: 'native', steer: 'cancel-reprompt', resume: lease.session.agentCapabilities['loadSession'] === true,
                         tools: true, toolOutput: true, approvals: true, questions: false, images: false, subagents: false },
                     record: (context, body) => {
                         if (body.kind === 'turn-start') nativeStarted = true;
@@ -1868,6 +1953,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.sessionId = lease.session.nativeSessionId || null;
                 if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
                 capturedRun.cancelTurn = cancelHook;
+                capturedRun.replaceTurn = replaceHook;
                 beginLiveRun(liveScope, cli); setLiveRunTraceId(liveScope, traceRunId);
                 const activityIdentity: RuntimeLivenessIdentity = { runId: traceRunId, sessionId: chatSessionId,
                     scope: scopeKey, origin, ...(opts.requestId ? { requestId: opts.requestId } : {}) };
@@ -1878,6 +1964,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 };
                 const dispose = () => {
                     ctx.stallWatchdog?.stop();
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
                     lease.child.stdout?.off('data', onIo); lease.child.stderr?.off('data', onIo);
                 };
                 try {
@@ -1939,6 +2026,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 try {
                     if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
                     if (capturedRun.cancelTurn === cancelHook) delete capturedRun.cancelTurn;
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
                     if (activeMainProcesses.get(scopeKey) === capturedRun) {
                         const child = ownedLease?.child ?? null;
                         if (releaseMainRun(scopeKey, child, ownerGeneration)) {
