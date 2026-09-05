@@ -50,3 +50,13 @@ test('known terminal metadata and ordinary start-complete sequence remain immuta
     f.projection.tool('id', { name: 'other', input: 'rm', status: 'running', output: 'overwrite' });
     assert.equal(f.events.length, count); assert.equal(f.tool().input, 'pwd'); assert.equal(f.tool().output, '/tmp');
 });
+test('saturated aggregate budget rejects enrichment instead of erasing terminal output', () => {
+    const f = fixture();
+    f.projection.tool('target', { status: 'done', output: 'R'.repeat(1000), detail: 'D'.repeat(1000) });
+    const original = f.tool();
+    for (let i = 0; i < 7; i++) f.projection.tool(`fill-${i}`, { status: 'done', output: 'F'.repeat(3000) });
+    assert.ok(f.projection.diagnostics().previewChars > 21_000);
+    f.projection.tool('target', { name: 'Read', input: 'I'.repeat(3000), status: 'running' });
+    const target = f.events.filter(e => e.kind === 'tool' && e.itemId === original.itemId).at(-1)!;
+    assert.equal(target.output, original.output); assert.equal(target.detail, original.detail); assert.equal(target.status, 'done');
+});
