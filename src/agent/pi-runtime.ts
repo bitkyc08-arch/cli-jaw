@@ -11,6 +11,8 @@ import { probeOpenCodexEndpointModels } from '../cli/opencodex-models.js';
 import { launchSpec } from '../core/exec-name.js';
 import { mergeEnvWindowsSafe } from './spawn-env.js';
 import { createTextStreamReader } from './stream-text.js';
+import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import { PiTurnAccumulator, PiRuntimeError, piSupportsSettled } from './runtime/pi-turn.js';
 
 export type PiProfileMode = 'basic' | 'openai' | 'anthropic' | 'vertex';
 export type PiApiKind = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-vertex';
@@ -60,10 +62,16 @@ export interface PiRpcSession {
         effort?: string;
         onEvent?: (event: PiRuntimeEvent) => void;
         onRawRecord?: (record: unknown) => void;
-    }): Promise<{ text: string; stderr: string }>;
+    }): Promise<PiPromptResult>;
     abort(): Promise<void>;
     close(): void;
     kill(): void;
+}
+
+export interface PiPromptResult {
+    text: string;
+    stderr: string;
+    runtimeOutcome?: RuntimeTurnOutcome;
 }
 
 function notifyPiRawRecord(observer: ((record: unknown) => void) | undefined, record: unknown): void {
@@ -286,6 +294,11 @@ function resolvePiCommandIdentity(command: PiCommand, env: NodeJS.ProcessEnv = p
     return JSON.stringify({ source: command.source, command: command.command, baseArgs: command.baseArgs, version });
 }
 
+function usesPiSettled(command: PiCommand): boolean {
+    const identity = JSON.parse(resolvePiCommandIdentity(command)) as { version: string };
+    return piSupportsSettled(identity.version);
+}
+
 function loadPiAbortEffective(profileId: string, command: PiCommand): boolean {
     try {
         const raw = JSON.parse(fs.readFileSync(join(JAW_HOME, 'pi', 'rpc-capabilities.json'), 'utf8')) as unknown;
@@ -493,11 +506,12 @@ function extractPiSessionId(obj: Record<string, unknown>): string {
 }
 
 type PersistentPrompt = {
-    text: string;
+    turn: PiTurnAccumulator;
+    requestId: number;
     stderrStart: number;
     onEvent: ((event: PiRuntimeEvent) => void) | undefined;
     onRawRecord: ((record: unknown) => void) | undefined;
-    resolve: (result: { text: string; stderr: string }) => void;
+    resolve: (result: PiPromptResult) => void;
     reject: (error: Error) => void;
 };
 
@@ -527,6 +541,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
 }): PiRpcSession {
     const dir = ensurePiRuntimeConfig(pi, profile.id, options.effort || '', options.root);
     const cmd = resolvePiCommand();
+    const settledProtocol = usesPiSettled(cmd);
     const args = [
         ...cmd.baseArgs,
         '--mode', 'rpc',
@@ -608,15 +623,23 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         }
         if (event.tool) activePrompt?.onEvent?.({ kind: 'tool', ...event.tool });
         if (event.thinking) activePrompt?.onEvent?.({ kind: 'thinking', text: event.thinking });
-        if (event.text && activePrompt && !(event.done && activePrompt.text)) {
-            activePrompt.text += event.text;
-            activePrompt.onEvent?.({ kind: 'text', text: event.text });
+        if (activePrompt && record['type'] === 'response' && record['command'] === 'prompt'
+            && record['id'] === activePrompt.requestId && record['success'] === false) {
+            const message = typeof record['error'] === 'string' ? record['error']
+                : trimString((record['error'] as Record<string, unknown> | undefined)?.['message']);
+            rejectOutstanding(new Error(message || 'pi rpc prompt rejected'));
+            return;
         }
-        if (event.done || (abortWait && nonRunning)) {
+        const accepted = activePrompt?.turn.observe(record);
+        if (accepted?.text) activePrompt?.onEvent?.({ kind: 'text', text: accepted.text });
+        const abortNonRunning = Boolean(isAbortResponse) && nonRunning && !abortWait?.terminal;
+        const terminal = accepted?.done || (!activePrompt && record['type'] === (settledProtocol ? 'agent_settled' : 'agent_end'));
+        if (terminal || abortNonRunning) {
             if (activePrompt) {
                 const prompt = activePrompt;
                 activePrompt = null;
-                prompt.resolve({ text: prompt.text, stderr: stderr.slice(prompt.stderrStart) });
+                const runtimeOutcome = prompt.turn.snapshot(abortNonRunning ? 'stopped' : undefined);
+                prompt.resolve({ text: runtimeOutcome.partialText, stderr: stderr.slice(prompt.stderrStart), runtimeOutcome });
             }
             if (abortWait) abortWait.terminal = true;
         }
@@ -626,7 +649,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         if (activePrompt) {
             const prompt = activePrompt;
             activePrompt = null;
-            prompt.reject(error);
+            prompt.reject(new PiRuntimeError(error, prompt.turn.snapshot(child.killed ? 'stopped' : 'error')));
         }
         if (abortWait) {
             const wait = abortWait;
@@ -651,13 +674,13 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
                 // A head-only cap without this reset would freeze stderr.length
                 // and make every later slice() return ''.
                 stderr = '';
-                activePrompt = { text: '', stderrStart: stderr.length, onEvent: opts.onEvent, onRawRecord: opts.onRawRecord, resolve, reject };
+                activePrompt = { turn: new PiTurnAccumulator(settledProtocol), requestId: 0, stderrStart: stderr.length,
+                    onEvent: opts.onEvent, onRawRecord: opts.onRawRecord, resolve, reject };
                 try {
                     if (opts.effort) write('set_thinking_level', { level: opts.effort });
-                    write('prompt', { message });
+                    activePrompt.requestId = write('prompt', { message });
                 } catch (error) {
-                    activePrompt = null;
-                    reject(error as Error);
+                    rejectOutstanding(error as Error);
                 }
             });
         },
@@ -728,9 +751,10 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     onEvent?: (event: PiRuntimeEvent) => void;
     onRawRecord?: (record: unknown) => void;
     root?: string;
-}): { child: ChildProcess; done: Promise<{ text: string; code: number; sessionId?: string | null; stderr: string }> } {
+}): { child: ChildProcess; done: Promise<PiPromptResult & { code: number; sessionId?: string | null }> } {
     const dir = ensurePiRuntimeConfig(pi, profile.id, options.effort || '', options.root);
     const cmd = resolvePiCommand();
+    const turn = new PiTurnAccumulator(usesPiSettled(cmd));
     const args = [
         ...cmd.baseArgs,
         '--mode', 'rpc',
@@ -751,23 +775,25 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     const decoder = new StringDecoder('utf8');
     let buffer = '';
     let stderr = '';
-    let text = '';
     const stderrReader = createTextStreamReader();
     let sessionId: string | null = null;
     let doneSettled = false;
     let seq = 1;
-    const done = new Promise<{ text: string; code: number; sessionId?: string | null; stderr: string }>((resolve, reject) => {
-        const finish = (code = 0) => {
+    let promptId = 0;
+    const done = new Promise<PiPromptResult & { code: number; sessionId?: string | null }>((resolve, reject) => {
+        const finish = (code = 0, status?: RuntimeTurnOutcome['status']) => {
             if (doneSettled) return;
             doneSettled = true;
             try { child.stdin.end(); } catch { /* already closed */ }
             setTimeout(() => {
                 if (!child.killed && child.exitCode == null) child.kill('SIGTERM');
             }, 750);
-            resolve({ text, code, sessionId, stderr });
+            const runtimeOutcome = turn.snapshot(status);
+            resolve({ text: runtimeOutcome.partialText, code, sessionId, stderr, runtimeOutcome });
         };
         let parseFailures = 0;
         const dispatchLine = (line: string) => {
+            if (doneSettled) return;
             let parsed: unknown;
             try { parsed = JSON.parse(line); }
             catch {
@@ -776,6 +802,12 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
                 return;
             }
             notifyPiRawRecord(options.onRawRecord, parsed);
+            const record = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+            if (record['type'] === 'response' && record['command'] === 'prompt'
+                && record['id'] === promptId && record['success'] === false) {
+                finish(1, 'error');
+                return;
+            }
             const event = parsePiRpcRecord(parsed);
             if (event.sessionId) {
                 sessionId = event.sessionId;
@@ -783,13 +815,15 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
             }
             if (event.tool) options.onEvent?.({ kind: 'tool', ...event.tool });
             if (event.thinking) options.onEvent?.({ kind: 'thinking', text: event.thinking });
-            if (event.text && !(event.done && text)) {
-                text += event.text;
-                options.onEvent?.({ kind: 'text', text: event.text });
-            }
-            if (event.done) finish(0);
+            const accepted = turn.observe(parsed);
+            if (accepted.text) options.onEvent?.({ kind: 'text', text: accepted.text });
+            if (accepted.done) finish(0);
         };
-        child.on('error', reject);
+        child.on('error', error => {
+            if (doneSettled) return;
+            doneSettled = true;
+            reject(new PiRuntimeError(error, turn.snapshot('error')));
+        });
         child.stdout.on('data', (chunk) => {
             buffer += decoder.write(chunk);
             const lines = buffer.split('\n');
@@ -802,19 +836,21 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
             for (const line of lines) if (line.trim()) dispatchLine(line.trim());
         });
         child.stderr.on('data', (chunk) => { if (stderr.length < 4000) stderr += stderrReader.write(chunk); });
-        child.on('close', (code) => {
+        child.on('close', (code, signal) => {
             if (buffer.trim()) dispatchLine(buffer.trim());
-            finish(code ?? 0);
+            finish(code ?? 1, signal || child.killed ? 'stopped' : 'error');
         });
     });
     const write = (type: string, fields: Record<string, unknown> = {}) => {
-        child.stdin.write(JSON.stringify({ id: seq++, type, ...fields }) + '\n');
+        const id = seq++;
+        child.stdin.write(JSON.stringify({ id, type, ...fields }) + '\n');
+        return id;
     };
     write('get_state');
     if (options.effort) write('set_thinking_level', { level: options.effort });
     const fullPrompt = options.sysPrompt ? `${options.sysPrompt}\n\n${options.prompt}` : options.prompt;
     const hasHistory = fullPrompt.includes('[Recent Context]');
     console.log(`[jaw:pi] prompt len=${fullPrompt.length}, hasHistory=${hasHistory}, effort=${options.effort || 'none'}, sessionId=${options.sessionId || 'new'}`);
-    write('prompt', { message: fullPrompt });
+    promptId = write('prompt', { message: fullPrompt });
     return { child, done };
 }
