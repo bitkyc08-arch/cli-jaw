@@ -1050,6 +1050,10 @@ Channel narrowing helpers and slash-command registration.
 
 ## src/slack/ — Slack transport
 
+### inbound context (`bot.ts`, `history.ts`, `conversation.ts`, `context.ts`, `thread-tracker.ts`, `ingress.ts`)
+
+top-level 채널은 현재 event ts 직전의 `conversations.history`를 세션 소유 세대당 한 번 프롬프트 preamble에 주입한다. thread는 `conversations.replies` cursor를 최대 10페이지 따라가며 parent + 최신 50 replies만 보존한다. 합성 top-level reply 주소는 채널 session identity를 공유하되 `midRunPolicy: followup`으로 진행 중인 다른 사용자의 turn을 steer/kill하지 않는다.
+
 ### mention-watch.ts (345L)
 
 `scanSlackMentions()`는 봇이 가입한 명시적 채널에서 특정 사용자가 태그된 새 메시지를 찾는다. 봇 토큰으로 쓸 수 없는 user-token 전용 `search.messages` 대신 `conversations.history`를 newest에서 과거 방향으로 읽는다. 커서는 처리가 끝난 메시지까지만 전진하고, 끝내지 못한 backward walk는 `resume_before`에서 이어간다. 채널 시작점을 tick마다 회전해 hot channel의 독점을 막고, 429가 오면 wrapper 재시도 없이 그 tick을 멈춘다. 한 tick의 채널 상한은 60이며 초과분은 `overflowChannels`로 반환한다.

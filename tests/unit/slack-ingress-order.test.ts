@@ -2,7 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { settings } from '../../src/core/config.ts';
 
-type SubmitMeta = { scope: string; chatSessionId: string; remoteKey?: string };
+type SubmitMeta = { scope: string; chatSessionId: string; remoteKey?: string; midRunPolicy?: string };
 let disposition: 'new_run' | 'steered' = 'new_run';
 let requestSequence = 0;
 const submitCalls: Array<{ prompt: string; meta: SubmitMeta & { displayText?: string } }> = [];
@@ -82,6 +82,20 @@ test('different Slack scopes may enter concurrently', async () => {
     assert.deepEqual(entered.sort(), ['one', 'two']);
     release.resolve();
     await Promise.all([first.laneTail, second.laneTail]);
+});
+
+test('a synthetic top-level reply address forces followup without changing real threads', async () => {
+    const synthetic = { ...target('C1'), threadId: '100.1', threadIsSynthetic: true };
+    const first = admitSlackRun({
+        target: synthetic, prompt: 'top-level B', displayText: 'top-level B', chatId: 'C1',
+        runReply: async () => {},
+    });
+    const second = admitSlackRun({
+        target: { ...target('C1'), threadId: '200.2' }, prompt: 'thread', displayText: 'thread', chatId: 'C1',
+        runReply: async () => {},
+    });
+    await Promise.all([first.laneTail, second.laneTail]);
+    assert.equal(submitCalls[0]?.meta.midRunPolicy, 'followup'); assert.equal(submitCalls[1]?.meta.midRunPolicy, undefined);
 });
 
 test('a detached queued turn cannot start while the first reply send is stalled', async () => {

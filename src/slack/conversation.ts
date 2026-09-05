@@ -81,7 +81,8 @@ const PARENT_TEXT_MAX = 300;
 const PREFETCH_TEXT_MAX = 500;
 /** Bounded so a long thread cannot dominate the prompt block. */
 const MAX_PARTICIPANTS = 12;
-const THREAD_FETCH_LIMIT = 50;
+export const THREAD_FETCH_LIMIT = 50;
+const THREAD_FETCH_MAX_PAGES = 10;
 const SUPPRESS_MS = 60 * 1000;
 const CAPABILITY_MS = 30 * 60 * 1000;
 /**
@@ -135,6 +136,16 @@ function admitStartFor(method: string): boolean {
     if (now - previous < MIN_START_INTERVAL_MS) return false;
     lastStartAt.set(method, now);
     return true;
+}
+
+/**
+ * The top-level channel prefetch (bot.ts) calls conversations.history directly —
+ * it wants a raw window, not a cached snapshot — so it borrows this clock rather
+ * than bypassing it. A busy channel with an unbound session would otherwise
+ * fire one Tier-3 call per message with no pacing at all (#518 r2).
+ */
+export function admitHistoryStart(): boolean {
+    return admitStartFor('conversations.history');
 }
 
 /**
@@ -257,18 +268,40 @@ export async function resolveThreadInfo(
         admitStart: () => admitStartFor('conversations.replies'),
         degraded: () => degradedThread(threadTs),
         load: async () => {
-            const result = await fetchSlackReplies(token, channel, threadTs, {
-                limit: THREAD_FETCH_LIMIT,
-                noRetryOnRateLimit: true,
-                ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
-                ...(opts.signal ? { signal: opts.signal } : {}),
-            });
-            if (!result.ok) return { ok: false as const, error: result.error };
+            let cursor: string | undefined;
+            let parent: SlackHistoryMessage | undefined;
+            let fetchedReplyCount = 0;
+            const newestReplies: SlackHistoryMessage[] = [];
+            for (let page = 0; page < THREAD_FETCH_MAX_PAGES; page += 1) {
+                const result = await fetchSlackReplies(token, channel, threadTs, {
+                    limit: THREAD_FETCH_LIMIT,
+                    ...(cursor ? { cursor } : {}),
+                    noRetryOnRateLimit: true,
+                    ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+                    ...(opts.signal ? { signal: opts.signal } : {}),
+                });
+                if (!result.ok) return { ok: false as const, error: result.error };
+                for (const message of result.messages) {
+                    if (message.ts === threadTs) {
+                        parent ??= message;
+                        continue;
+                    }
+                    fetchedReplyCount += 1;
+                    newestReplies.push(message);
+                }
+                if (newestReplies.length > THREAD_FETCH_LIMIT) {
+                    newestReplies.splice(0, newestReplies.length - THREAD_FETCH_LIMIT);
+                }
+                const nextCursor = result.nextCursor;
+                if (!nextCursor || nextCursor === cursor || opts.signal?.aborted) break;
+                cursor = nextCursor;
+            }
+            const messages = parent ? [parent, ...newestReplies] : newestReplies;
 
             const ids: string[] = [];
             const isBotById = new Map<string, boolean>();
             const userIdById = new Map<string, string>();
-            for (const message of result.messages) {
+            for (const message of messages) {
                 // Bot marker first: `user` alone does not prove a human.
                 const botId = message.botId;
                 const id = botId || message.user;
@@ -283,13 +316,10 @@ export async function resolveThreadInfo(
             // Cache-only name resolution: this is an inbound hot path, and an
             // unresolved participant shown by id is better than a round trip.
             const names = getCachedSlackIdentities(opts.teamId, ids);
-            const parent = result.messages.find(message => message.ts === threadTs);
             // Slack's own count on the parent is authoritative. The fetched
             // window is capped at 50, so length-1 would report a 500-reply
             // thread as 49.
-            const replyCount = typeof parent?.replyCount === 'number'
-                ? parent.replyCount
-                : Math.max(result.messages.length - 1, 0);
+            const replyCount = typeof parent?.replyCount === 'number' ? parent.replyCount : fetchedReplyCount;
             const info: SlackThreadInfo = {
                 threadTs,
                 replyCount,
@@ -304,7 +334,7 @@ export async function resolveThreadInfo(
                 }),
                 // Retain only what the prefetch renders, with bounded text: a
                 // cached thread must not pin megabytes of message bodies.
-                messages: result.messages.map(message => ({
+                messages: messages.map(message => ({
                     ...message,
                     text: cap(message.text, PREFETCH_TEXT_MAX),
                     ...(message.files ? { files: [] } : {}),

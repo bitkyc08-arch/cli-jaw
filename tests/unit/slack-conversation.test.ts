@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    admitHistoryStart,
     resolveConversationInfo,
     resolveThreadInfo,
     cachedNameMap,
@@ -286,6 +287,34 @@ test('a failed thread lookup degrades to an empty participant list', async () =>
     assert.equal(thread.threadTs, '100.1');
 });
 
+test('pagination retains the parent plus the newest 50 replies', async () => {
+    const first = Array.from({ length: 49 }, (_, i) =>
+        ({ ts: `100.${String(i + 2).padStart(3, '0')}`, user: 'U1', text: `reply-${i + 1}` }));
+    const second = Array.from({ length: 11 }, (_, i) =>
+        ({ ts: `101.${String(i).padStart(3, '0')}`, user: 'U2', text: `reply-${i + 50}` }));
+    const { impl, calls } = makeFetch([
+        { ok: true, messages: [{ ts: '100.1', user: 'U0', text: 'parent', reply_count: 60 }, ...first], response_metadata: { next_cursor: 'page-2' } },
+        { ok: true, messages: second, response_metadata: { next_cursor: '' } },
+    ]);
+    const thread = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: impl });
+    assert.equal(calls.length, 2); assert.equal(calls[1]?.body['cursor'], 'page-2');
+    assert.equal(thread.messages?.length, 51); assert.equal(thread.messages?.[0]?.text, 'parent');
+    assert.ok(!thread.messages?.some(message => message.text === 'reply-10'));
+    assert.ok(thread.messages?.some(message => message.text === 'reply-60'));
+    assert.equal(thread.replyCount, 60);
+});
+
+test('thread pagination stops after ten pages even if Slack repeats a cursor chain', async () => {
+    const responses = Array.from({ length: 11 }, (_, i) => ({
+        ok: true, messages: i === 0 ? [{ ts: '100.1', user: 'U0', text: 'parent' }] : [],
+        response_metadata: { next_cursor: `page-${i + 2}` },
+    }));
+    const { impl, calls } = makeFetch(responses);
+    const thread = await resolveThreadInfo(TOKEN, 'C1', '100.1', { teamId: TEAM, fetchImpl: impl });
+    assert.equal(thread.resolved, true);
+    assert.equal(calls.length, 10);
+});
+
 test('raw messages are retained for the first-entry prefetch', async () => {
     const { impl } = makeFetch([replies([
         { ts: '100.1', user: 'U1', text: 'parent' },
@@ -343,6 +372,16 @@ test('the start-rate gate declines rather than queueing', async () => {
     const info = await resolveConversationInfo(TOKEN, 'C2', { teamId: TEAM, fetchImpl: second.impl });
     assert.equal(second.calls.length, 0, 'a declined start must not call Slack');
     assert.equal(info.resolved, false, 'and must degrade immediately, not wait');
+});
+
+test('the top-level history prefetch borrows the same per-method clock', () => {
+    // conversations.history is its own Tier-3 method: it must not be starved
+    // by conversations.info, and it must not fire unpaced in a busy channel.
+    resetSlackConversationCache();
+    assert.equal(admitHistoryStart(), true, 'first start in a fresh window is admitted');
+    assert.equal(admitHistoryStart(), false, 'a second start inside 1.2s is declined, not queued');
+    resetSlackConversationCache();
+    assert.equal(admitHistoryStart(), true, 'the runtime reset clears the clock');
 });
 
 test('an empty channel or token degrades without calling', async () => {

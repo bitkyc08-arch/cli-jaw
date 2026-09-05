@@ -137,7 +137,7 @@ export function threadParticipationKind(
 }
 
 // ─── Prefetch claims ────────────────────────────────
-// "Have I already injected this thread's earlier messages?" is a DIFFERENT
+// "Have I already injected this thread or channel's earlier messages?" is a DIFFERENT
 // question from "may I reply in this thread?", and answering both from the
 // participation set is what made the first-entry check unusable: app_mention
 // marks participation before the ingress task even runs (bot.ts), so the check
@@ -156,7 +156,8 @@ let prefetchToken = 0;
 let prefetchUse = 0;
 
 function prefetchKey(channel: string, threadTs: string, owner: SessionOwnerToken): string {
-    return `${threadKey(channel, threadTs)}:${owner.global}:${owner.scope}`;
+    const subject = threadTs ? `thread:${threadTs}` : 'channel';
+    return `${channel}:${subject}:${owner.global}:${owner.scope}`;
 }
 
 /**
@@ -175,7 +176,7 @@ function prefetchKey(channel: string, threadTs: string, owner: SessionOwnerToken
 export function claimThreadPrefetch(
     channel: string, threadTs: string, owner: SessionOwnerToken,
 ): number {
-    if (!channel || !threadTs) return 0;
+    if (!channel) return 0;
     const key = prefetchKey(channel, threadTs, owner);
     const existing = prefetchClaimed.get(key);
     if (existing) {
@@ -210,7 +211,7 @@ export function claimThreadPrefetch(
 export function commitThreadPrefetch(
     channel: string, threadTs: string, owner: SessionOwnerToken, token: number,
 ): boolean {
-    if (!channel || !threadTs || !token) return false;
+    if (!channel || !token) return false;
     const claim = prefetchClaimed.get(prefetchKey(channel, threadTs, owner));
     if (!claim || claim.token !== token) return false;
     claim.committed = true;
@@ -230,7 +231,7 @@ export function commitThreadPrefetch(
 export function releaseThreadPrefetch(
     channel: string, threadTs: string, owner: SessionOwnerToken, token: number,
 ): void {
-    if (!channel || !threadTs || !token) return;
+    if (!channel || !token) return;
     const key = prefetchKey(channel, threadTs, owner);
     if (prefetchClaimed.get(key)?.token !== token) return;
     prefetchClaimed.delete(key);

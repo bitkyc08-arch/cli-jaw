@@ -23,7 +23,7 @@ export type SlackHistoryMessage = {
 };
 
 export type SlackHistoryResult =
-    | { ok: true; messages: SlackHistoryMessage[]; hasMore: boolean }
+    | { ok: true; messages: SlackHistoryMessage[]; hasMore: boolean; nextCursor?: string }
     /** `error` is operator prose, for logs and UI. `code` is Slack's raw error
      *  string, for callers that must BRANCH on the reason — a rate limit means
      *  "stop asking", while `not_in_channel` means "skip this one and continue".
@@ -39,7 +39,7 @@ type RawMessage = {
     text?: string; reply_count?: number; subtype?: string;
     files?: SlackFileEvent[];
 };
-type RawHistoryData = { messages?: RawMessage[]; has_more?: boolean };
+type RawHistoryData = { messages?: RawMessage[]; has_more?: boolean; response_metadata?: { next_cursor?: string } };
 
 function clampLimit(limit: number | undefined): number {
     const n = Number(limit) || SLACK_HISTORY_DEFAULT_LIMIT;
@@ -66,6 +66,7 @@ function normalize(raw: RawMessage[]): SlackHistoryMessage[] {
 
 export type SlackHistoryOpts = {
     limit?: number;
+    cursor?: string;
     fetchImpl?: SlackFetch;
     /** Cancels the request, the retry wait, and any further attempt. */
     signal?: AbortSignal;
@@ -146,10 +147,12 @@ async function callWithRetry(
             ...(result.error ? { code: result.error } : {}),
         };
     }
+    const nextCursor = result.data?.response_metadata?.next_cursor?.trim();
     return {
         ok: true,
         messages: normalize(result.data?.messages ?? []),
         hasMore: result.data?.has_more === true,
+        ...(nextCursor ? { nextCursor } : {}),
     };
 }
 
@@ -171,6 +174,7 @@ export function fetchSlackHistory(
     return callWithRetry(token, 'conversations.history', {
         channel,
         limit: clampLimit(opts.limit),
+        ...(opts.cursor ? { cursor: opts.cursor } : {}),
         ...(opts.oldest ? { oldest: opts.oldest } : {}),
         ...(opts.latest ? { latest: opts.latest } : {}),
         // Slack ignores `inclusive` when neither bound is present; send it only
@@ -190,6 +194,7 @@ export function fetchSlackReplies(
         channel,
         ts: threadTs,
         limit: clampLimit(opts.limit),
+        ...(opts.cursor ? { cursor: opts.cursor } : {}),
     }, opts);
 }
 

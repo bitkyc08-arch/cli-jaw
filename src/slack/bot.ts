@@ -70,10 +70,11 @@ import { logErrorText, redactOutboundText } from '../messaging/redact.js';
 import { downloadAndSaveSlackFiles, type FailedSlackFile } from './inbound-file.js';
 import { admitSlackRun, claimSlackEvent, commitSlackEvent, currentIngressGeneration, enqueueSlackIngress, isIngressGenerationCurrent, resetSlackIngress, resolveSlackScopeForTarget, slackEventKey, slackIngressLaneKey, type SlackRunContext } from './ingress.js';
 import { buildSenderDisplay, buildSenderPrompt, resolveSenderIdentity } from './identity.js';
-import { resolveConversationInfo, resolveThreadInfo } from './conversation.js';
+import {
+    admitHistoryStart, cachedNameMap, resolveConversationInfo, resolveThreadInfo, THREAD_FETCH_LIMIT,
+} from './conversation.js';
+import { fetchSlackHistory, formatHistoryForAgent } from './history.js';
 import { buildSlackContextBlock, applySlackContext, buildThreadPreamble, ROSTER_PREVIEW } from './context.js';
-import { formatHistoryForAgent } from './history.js';
-import { cachedNameMap } from './conversation.js';
 import { fetchSlackChannelMembers } from './roster.js';
 import type { SlackIdentity } from './identity.js';
 import { recoverSlackAttachments } from './attachment-recovery.js';
@@ -853,37 +854,48 @@ async function buildInboundContextBlock(
     const threadTs = event.thread_ts || '';
 
     const work = (async (): Promise<string> => {
+        // First entry into a conversation already in progress: give the agent
+        // what was said before it was pulled in. Once only per owner generation
+        // (thread-tracker claim) — later messages ride the agent session, and
+        // re-injecting would waste tokens and Tier 3 budget.
+        const shouldPrefetch = Boolean(opts.prefetchToken) || opts.preResolvedScope === null;
+        // A top-level channel message has no thread to read; the channel's own
+        // recent history (ending before this event) is its context (#518 r2).
+        const isTopLevelChannel = !threadTs
+            && (event.channel_type === 'channel' || event.channel_type === 'group');
         // Independent lookups: serial would double the round trips inside a
         // deadline that exists to stay small.
-        const [conversation, thread] = await Promise.all([
+        const [conversation, thread, channelHistory] = await Promise.all([
             resolveConversationInfo(token, channel, { teamId, signal }),
             threadTs
                 ? resolveThreadInfo(token, channel, threadTs, { teamId, signal })
                 : Promise.resolve(undefined),
+            // Paced like the other Tier-3 lookups: declined rather than queued,
+            // and a declined window just means this message goes without.
+            shouldPrefetch && isTopLevelChannel && event.ts && admitHistoryStart()
+                ? fetchSlackHistory(token, channel, {
+                    latest: event.ts, limit: THREAD_FETCH_LIMIT,
+                    noRetryOnRateLimit: true, signal,
+                })
+                : Promise.resolve(undefined),
         ]);
         const roster = await resolveRosterContext(token, channel, teamId, conversation.kind, signal);
         const block = buildSlackContextBlock({
-            identity,
-            conversation,
-            ...(thread ? { thread } : {}),
-            ...(roster ? { roster } : {}),
-            selfUserId,
+            identity, conversation, ...(thread ? { thread } : {}),
+            ...(roster ? { roster } : {}), selfUserId,
         });
-        // First entry into a thread already in progress: give the agent what was
-        // said before it was pulled in. Once only — later messages ride the
-        // agent session, and re-injecting would waste tokens and Tier 3 budget.
-        const shouldPrefetch = Boolean(opts.prefetchToken) || opts.preResolvedScope === null;
-        if (!shouldPrefetch || !thread?.resolved || !thread.messages?.length) return block;
+        const messages = thread?.resolved && thread.messages?.length
+            ? thread.messages
+            : channelHistory?.ok ? channelHistory.messages : [];
+        if (!shouldPrefetch || !messages.length) return block;
         // The current message is already the prompt body; repeating it here
         // would show the agent its own input twice.
-        const prior = thread.messages.filter(message => message.ts !== event.ts);
+        const prior = messages.filter(message => message.ts !== event.ts);
         if (!prior.length) return block;
-        const authorIds = prior
-            .map(message => message.user || message.botId || '')
-            .filter(Boolean);
+        const authorIds = prior.map(message => message.user || message.botId || '').filter(Boolean);
         const preamble = buildThreadPreamble(
             formatHistoryForAgent(prior, selfUserId, cachedNameMap(teamId, authorIds)),
-            thread.replyCount,
+            thread?.replyCount ?? prior.length,
         );
         if (!preamble) return block;
         // History is actually going into the prompt: the claim is spent.
@@ -1099,8 +1111,10 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTrans
     // which is not awaited). On the accepted message-event path no `await` runs
     // between this function's entry and this line, so the test-and-set is atomic
     // against a second envelope in the same tick.
-    const prefetchToken = event.thread_ts && prefetchOwner
-        ? claimThreadPrefetch(event.channel || '', event.thread_ts, prefetchOwner)
+    const prefetchSubject = event.thread_ts
+        ?? ((event.channel_type === 'channel' || event.channel_type === 'group') ? '' : undefined);
+    const prefetchToken = prefetchSubject !== undefined && prefetchOwner
+        ? claimThreadPrefetch(event.channel || '', prefetchSubject, prefetchOwner)
         : 0;
     let prefetchHandedOff = false;
     try {
