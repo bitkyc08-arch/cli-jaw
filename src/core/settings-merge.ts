@@ -3,6 +3,7 @@
 
 import { mergeAckSettings } from '../messaging/ack-reaction.js';
 import { mergeSlackAutoJoin } from '../slack/auto-join.js';
+import { isRuntimeTransport, isSwitchableNativeCli } from '../agent/runtime/selection.js';
 
 export type SettingsInputSource = 'boot' | 'watch' | 'api';
 export type SettingsPersistenceShape = 'absent' | 'present';
@@ -34,6 +35,20 @@ export function sanitizeSettingsInput(
     const invalidPaths: string[] = [];
     const rejectedPaths: string[] = [];
     let persistenceShape: SettingsPersistenceShape = 'absent';
+
+    if (isPlainRecord(input['perCli'])) {
+        const perCli = Object.fromEntries(Object.entries(input['perCli']).map(([cli, entry]) => {
+            if (!isPlainRecord(entry)) return [cli, entry];
+            const provider = { ...entry };
+            if (isSwitchableNativeCli(cli) && Object.hasOwn(provider, 'transport')
+                && !isRuntimeTransport(provider['transport'])) {
+                delete provider['transport'];
+                invalidPaths.push(`perCli.${cli}.transport`);
+            }
+            return [cli, provider];
+        }));
+        value['perCli'] = perCli;
+    }
 
     const runtimeInput = isPlainRecord(input["runtime"]) ? input["runtime"] : null;
     const codexAppInput = runtimeInput && isPlainRecord(runtimeInput["codexApp"])

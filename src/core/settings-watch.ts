@@ -17,6 +17,8 @@ import {
 import { mergeSettingsPatch, sanitizeSettingsInput } from './settings-merge.js';
 import { broadcast } from './bus.js';
 import { classifyAllowlistChange, recordAllowlistNarrowing } from '../slack/allowlist-audit.js';
+import { SWITCHABLE_NATIVE_CLIS, resolveRuntimeTransport } from '../agent/runtime/selection.js';
+import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 
 export const SETTINGS_WATCH_DEBOUNCE_MS = 300;
 const SERVER_OWNED_SETTINGS_KEYS = [
@@ -126,7 +128,12 @@ export function reloadSettingsFromDisk(options: ReloadOptions = {}): boolean {
     );
     const merged = mergeSettingsPatch(settings, externalPatch);
     merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
-    replaceSettings(migrateSettings(merged), sanitized.persistenceShape);
+    const candidate = migrateSettings(merged);
+    const transportChanged = SWITCHABLE_NATIVE_CLIS.some(cli =>
+        resolveRuntimeTransport(settings['perCli']?.[cli]?.transport)
+        !== resolveRuntimeTransport(candidate['perCli']?.[cli]?.transport));
+    replaceSettings(candidate, sanitized.persistenceShape);
+    if (transportChanged) bumpSessionOwnershipGeneration();
     recordAllowlistNarrowing(allowlistChange, 'settings.json');
     broadcast('settings_change', {
         changedKeys: Object.keys(externalPatch),

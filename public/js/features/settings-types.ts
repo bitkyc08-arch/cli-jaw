@@ -1,6 +1,8 @@
 // ── Settings Type Definitions ──
 
-export interface PerCliConfig { provider?: string; model?: string; effort?: string; fastMode?: boolean; contextWindow?: boolean; contextWindowSize?: number; contextCompactLimit?: number; }
+import type { RuntimeTransport } from '../../../src/shared/runtime-contract.js';
+
+export interface PerCliConfig { provider?: string; model?: string; effort?: string; transport?: RuntimeTransport; fastMode?: boolean; contextWindow?: boolean; contextWindowSize?: number; contextCompactLimit?: number; }
 export interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; mentionOnly?: boolean; }
 export interface DiscordConfig { enabled?: boolean; token?: string; guildId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; }
 // Slack needs TWO distinctly-scoped tokens: the bot token drives the Web API,

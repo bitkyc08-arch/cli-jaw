@@ -3,6 +3,8 @@
 import { getDefaultClaudeChoices, getDefaultClaudeModel } from './claude-models.js';
 import { CURSOR_EFFORT_CHOICES, CURSOR_REGISTRY_MODELS } from '../agent/cursor-runtime.js';
 import type { CliEngine } from '../types/cli-engine.js';
+import type { RuntimeTransport } from '../shared/runtime-contract.js';
+import { isSwitchableNativeCli } from '../agent/runtime/selection.js';
 
 export const CODEX_MODEL_CHOICES = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 /**
@@ -312,12 +314,13 @@ export const DEFAULT_CLI: CliEngine = (envDefaultCli && CLI_KEYS.includes(envDef
     : CLI_KEYS.includes('codex-app') ? 'codex-app' : (CLI_KEYS[0] ?? 'codex-app');
 
 export function buildDefaultPerCli() {
-    const out: Record<string, { model: string; effort: string }> = {};
+    const out: Record<string, { model: string; effort: string; transport?: RuntimeTransport }> = {};
     for (const key of CLI_KEYS) {
         const entry = CLI_REGISTRY[key as keyof typeof CLI_REGISTRY];
         out[key] = {
             model: entry.defaultModel,
             effort: entry.defaultEffort || '',
+            ...(isSwitchableNativeCli(key) ? { transport: 'print' as const } : {}),
             ...('defaultProvider' in entry ? { provider: entry.defaultProvider } : {}),
         };
     }

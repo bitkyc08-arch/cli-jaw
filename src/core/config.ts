@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { join } from 'path';
 import { DEFAULT_CLI, CLI_KEYS, buildDefaultPerCli } from '../cli/registry.js';
+import { SWITCHABLE_NATIVE_CLIS, resolveRuntimeTransport } from '../agent/runtime/selection.js';
 import type { MessengerChannel } from '../messaging/types.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
@@ -503,6 +504,9 @@ export function isEstablishedHome(): boolean {
 export function settingsForHomeWithoutSettingsFile(): ReturnType<typeof createDefaultSettings> {
     const next = createDefaultSettings();
     if (!isEstablishedHome()) return next;
+    for (const cli of SWITCHABLE_NATIVE_CLIS) {
+        next.perCli[cli] = { ...next.perCli[cli]!, transport: 'print' };
+    }
     next.multiSession = { ...next.multiSession, ...LEGACY_MULTI_SESSION_BASELINE };
     next.multiSessionDefaultMigration = {
         id: MULTI_SESSION_DEFAULT_MIGRATION_ID,
@@ -1080,6 +1084,14 @@ export function loadSettings() {
             : defaults.multiSession;
         // Deep merge perCli so new CLI defaults (e.g. copilot) are preserved
         const mergedPerCli: Record<string, any> = buildDefaultPerCli();
+        // This is an existing document: preserve absence before fresh defaults
+        // obscure it. Explicit stored choices were validated by the sanitizer.
+        for (const cli of SWITCHABLE_NATIVE_CLIS) {
+            mergedPerCli[cli] = {
+                ...mergedPerCli[cli],
+                transport: resolveRuntimeTransport(raw.perCli?.[cli]?.transport),
+            };
+        }
         if (raw.perCli) {
             for (const [cli, cfg] of Object.entries(raw.perCli) as [string, Record<string, any>][]) {
                 mergedPerCli[cli] = { ...(mergedPerCli[cli] || {}), ...cfg };
@@ -1212,6 +1224,9 @@ export function loadSettings() {
 
         const next = createDefaultSettings();
         next.cli = 'claude';
+        for (const cli of SWITCHABLE_NATIVE_CLIS) {
+            next.perCli[cli] = { ...next.perCli[cli]!, transport: 'print' };
+        }
         // This branch stands in for a state we could not read — corrupt JSON, an
         // unsupported version, a permission error. The new-install defaults are the wrong
         // thing to borrow here: they would turn sessions on for someone whose real
