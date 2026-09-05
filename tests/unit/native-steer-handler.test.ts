@@ -3,16 +3,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSessionScope } from '../../src/core/session-context.ts';
 import type { CliCommandContext } from '../../src/cli/command-context.ts';
+import { cancelSteerInputs } from '../../src/agent/steer-input-guard.ts';
 
 const calls: Array<{ name: string; args: unknown[] }> = [];
 let busy = true, capable = true;
 let outcome: 'steered' | 'fallback-queue' | 'new-run' | 'cancelled' | Error = 'steered';
+let stopBeforeReturn = false;
 const record = (name: string, args: unknown[]) => { calls.push({ name, args }); };
 test.mock.module('../../src/agent/spawn.js', { namedExports: {
     isAgentBusy: (scope: string) => { record('busy', [scope]); return busy; },
     canSteerAgent: (scope: string) => { record('capable', [scope]); return capable; },
     steerAgent: async (...args: unknown[]) => {
-        record('steer', args); if (outcome instanceof Error) throw outcome; return outcome;
+        record('steer', args); if (outcome instanceof Error) throw outcome;
+        if (stopBeforeReturn) cancelSteerInputs(String(args[0]));
+        return outcome;
     },
     killActiveAgent: (...args: unknown[]) => { record('kill', args); return true; },
     waitForProcessEnd: async (...args: unknown[]) => { record('wait-process', args); },
@@ -27,7 +31,7 @@ const binding = { scope: 'slash-native-scope', chatSessionId: 'slash-native-chat
 const ctx: CliCommandContext = { interface: 'web', locale: 'en' };
 const invoke = (args = ['use', 'new', 'instruction'], context = ctx) =>
     withSessionScope(binding, () => steerHandler(args, context));
-test.beforeEach(() => { calls.length = 0; busy = true; capable = true; outcome = 'steered'; });
+test.beforeEach(() => { calls.length = 0; busy = true; capable = true; outcome = 'steered'; stopBeforeReturn = false; });
 
 for (const value of ['steered', 'new-run'] as const) test(`actual slash handler never requeues a ${value} result`, async () => {
     outcome = value;
@@ -57,6 +61,22 @@ test('actual slash handler acknowledges a cancelled redirect without follow-up s
     assert.equal(result.ok, true); assert.equal(result.type, 'success');
     assert.match(result.text!, /cancelled/i);
     assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
+});
+
+test('slash consumer fences a stale fallback even when the producer returns busy after Stop', async () => {
+    outcome = 'fallback-queue'; stopBeforeReturn = true;
+    const result = await invoke();
+    assert.equal(result.ok, true); assert.match(result.text!, /cancelled/i);
+    assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
+});
+
+test('Stop cannot retract a producer-reported successful dispatch at the slash consumer', async () => {
+    stopBeforeReturn = true;
+    for (const value of ['steered', 'new-run'] as const) {
+        calls.length = 0; outcome = value;
+        assert.equal((await invoke()).type, 'steer');
+        assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
+    }
 });
 
 test('empty or idle slash steer does not dispatch or queue', async () => {
