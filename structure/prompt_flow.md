@@ -188,13 +188,21 @@ gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
 |--------|-------------------|-----------|
 | jwc | in-band (pi `session.prompt` streamingBehavior 'steer') | 완전 (같은 턴) |
 | codex-app | in-band (app-server `turn/steer` — `MainRunState.steerTurnInBand` 훅이 active-turn 동안만 설치됨) | 완전 (같은 턴) |
-| 그 외 (codex legacy exec, claude, cursor, grok, opencode, pi, agy, copilot, kiro) | **kill-steer**: 진행 턴을 kill하고 새 run — 단, 중단된 부분 출력이 `withSteerContext`로 재주입됨 | 부분 출력 보존 |
+| cursor native | `cancel-reprompt`: 원래 prompt 취소 응답·callback·업데이트 drain 뒤 같은 native session에 재요청. jaw 논리 run과 최종 정산은 하나 | 원래 요청·수락된 추가 지시·제한된 부분 출력과 현재 운영 지침을 복원 |
+| 그 외 (codex legacy exec, claude, cursor print, grok, opencode, pi, agy, copilot, kiro) | **kill-steer**: 진행 턴을 중단하고 새 run. `withSteerContext`가 제한된 부분 출력을 재주입 | 제한된 부분 출력 보존 |
 
-큐로 물러나는 것은 in-band 시도가 race(턴 종료)나 turn kind(review/compact)로
-실패한 경우뿐이다. 큐 대기를 원하면 `followup`/`collect` 정책을 쓴다.
-명시적 `/steer`·`/queue steer`도 같은 kill-path를 쓰며, 중단된 턴의 부분 출력이
-exit-settle 배리어 + `withSteerContext`로 follow-up 프롬프트에 주입된다
-(structure/commands.md `/steer` 참고).
+기존 in-band 경로의 큐 처리는 유지한다. Native Cursor는 replacement가 진행 중이면
+다음 입력을 큐로 보낼 수 있지만, 취소·전송·입력 기록 실패를 큐 재시도로 바꾸지 않는다.
+Stop으로 무효화된 미전송 지시는 별도 `cancelled` 결과로 끝내고 다시 제출하지 않는다.
+로컬 write 완료는 모델의 수락 ACK가 아니다. 입력 기록 직전에도 main 객체·세대·
+정규 소유권을 확인하며, 빠른 최종 응답도 그 기록보다 먼저 정산되지 않는다.
+기다리려면 `followup`/`collect`를 선택한다.
+
+명시적 `/steer`는 같은 런타임 훅을 사용한다. `/queue steer <n>`은 별도 우선 실행
+명령으로, 기존 interrupt + 새 run을 유지한다. Kill 경로에서는 pre-kill MAX(id)와
+정확한 exit-settle 배리어 뒤 부분 출력을 복원한다. 복원 범위는 제한되며 전체 맥락을
+보장하지 않는다. B 시작 이후 무상관 ACP 프레임은 provider의 전송 순서 준수를
+전제로 한다. 로컬 epoch만으로 늦은 A 프레임을 식별할 수는 없다.
 
 ### PABCD evidence gate (`--attest`)
 

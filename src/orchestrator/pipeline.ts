@@ -12,7 +12,7 @@ import {
     getLatestUnconsumedAnchor,
 } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
-import { withSessionScope } from '../core/session-context.js';
+import { currentSessionScope, withSessionScope } from '../core/session-context.js';
 
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
@@ -45,10 +45,10 @@ import {
     extractElicitationSpecs,
     renderPlainElicitationSpec,
 } from '../shared/elicitation-spec.js';
-import { resolveOrcScope } from './scope.js';
+import { resolveExecutionBinding } from './scope.js';
 import { sessionLanes } from './session-lanes.js';
 import { settleOnce } from './request-registry.js';
-import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import type { RuntimeLivenessIdentity, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -61,6 +61,31 @@ export {
 };
 
 type SpawnAgentLike = typeof spawnAgent;
+
+function captureExecutionMeta(meta: Record<string, unknown> & { remoteKey?: string | null }) {
+    const binding = resolveExecutionBinding({
+        ...meta,
+        persistedScopeId: meta.remoteKey ?? null,
+        captured: currentSessionScope() ?? null,
+        activeChatSessionId: getActiveChatSession(),
+        multiSessionEnabled: settings['multiSession']?.enabled === true,
+    });
+    return { ...meta, ...binding };
+}
+
+function runtimeActivityLifecycle(meta: Record<string, unknown>) {
+    const callback = meta['_onRuntimeActivity'];
+    if (meta['_workerResult'] || typeof callback !== 'function') return undefined;
+    return { onActivity(source: string, identity?: RuntimeLivenessIdentity) {
+        if (source !== 'native-runtime' || !identity
+            || ![identity.runId, identity.sessionId, identity.scope, identity.origin]
+                .every(value => typeof value === 'string' && value.trim().length > 0)
+            || (identity.requestId !== undefined
+                && (typeof identity.requestId !== 'string' || !identity.requestId.trim()))) return;
+        // This private observer must not turn model I/O into a provider failure.
+        try { callback(identity); } catch { /* liveness observer is best-effort */ }
+    } };
+}
 
 const REMOTE_ELICITATION_BLOCKED_ORIGINS = new Set(['telegram', 'discord', 'cli', 'slack']);
 const STRUCTURED_REMOTE_FENCE_RE = /```(elicitation|choice-buttons|search-results)[^\n]*\n([\s\S]*?)```/g;
@@ -260,6 +285,7 @@ export async function orchestrate(
     prompt: string,
     meta: Record<string, any> = {},
 ) {
+    meta = captureExecutionMeta(meta);
     const origin = meta["origin"] || 'web';
     const chatId = meta["chatId"];
     const target = meta["target"];
@@ -272,10 +298,8 @@ export async function orchestrate(
     // forwarder must fire for THESE turns only, or an ordinary reply, which the
     // dispatch path already posts, would go out twice.
     const fromQueue = meta["_fromQueue"] === true;
-    const scope = meta["scope"] || resolveOrcScope({
-        origin, target, chatId, persistedScopeId: meta["remoteKey"],
-        multiSessionEnabled: settings["multiSession"]?.enabled === true,
-    });
+    const scope: string = meta['scope'];
+    const chatSessionId: string = meta['chatSessionId'];
 
     // --- drain pending worker results before normal processing ---
     if (!meta["_skipReplayDrain"]) {
@@ -457,21 +481,17 @@ export async function orchestrate(
     // (from a hub ThreadRoute) via the existing SpawnOpts.model/sysPrompt — no session
     // persistence, so it affects only this request's agent run.
     const overrides = meta["overrides"] as { model?: string; systemPrompt?: string } | undefined;
-    const multiSessionEnabled = settings["multiSession"]?.enabled === true;
-    const chatSessionId = typeof meta["chatSessionId"] === 'string'
-        ? meta["chatSessionId"]
-        : getActiveChatSession();
+    const lifecycle = runtimeActivityLifecycle(meta);
     const spawn = () => runSpawnAgent(prompt, {
         origin,
         target,
         chatId,
         requestId,
         replyViaTarget,
-        ...(multiSessionEnabled ? {
-            scopeKey: scope,
-            chatSessionId,
-            ...(typeof meta["remoteKey"] === 'string' ? { remoteKey: meta["remoteKey"] } : {}),
-        } : {}),
+        scopeKey: scope,
+        chatSessionId,
+        ...(typeof meta["remoteKey"] === 'string' ? { remoteKey: meta["remoteKey"] } : {}),
+        ...(lifecycle ? { lifecycle } : {}),
         _skipInsert: !!meta["_skipInsert"],
         _heartbeatAnchorId: meta["_heartbeatAnchorId"],
         // Kill-path steer salvage: the interrupted turn's partial output,
@@ -482,9 +502,7 @@ export async function orchestrate(
         ...(overrides?.model ? { model: overrides.model } : {}),
         ...(overrides?.systemPrompt ? { sysPrompt: overrides.systemPrompt } : {}),
     });
-    const { promise } = multiSessionEnabled
-        ? withSessionScope({ scope, chatSessionId }, spawn)
-        : spawn();
+    const { promise } = withSessionScope({ scope, chatSessionId }, spawn);
     const result = await promise as Record<string, any>;
     const nativeOutcome: RuntimeTurnOutcome | undefined = result['runtimeOutcome'];
     const nativeTags = nativeOutcome ? {
@@ -701,15 +719,13 @@ export async function orchestrate(
 export async function orchestrateContinue(
     meta: Record<string, any> = {},
 ) {
+    meta = captureExecutionMeta(meta);
     const origin = meta["origin"] || 'web';
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
-    const scope = meta["scope"] || resolveOrcScope({
-        origin, target, chatId, persistedScopeId: meta["remoteKey"],
-        multiSessionEnabled: settings["multiSession"]?.enabled === true,
-    });
+    const scope: string = meta['scope'];
     const state = getState(scope);
 
     // Active PABCD → resume from current state
@@ -739,15 +755,13 @@ export async function orchestrateContinue(
 export async function orchestrateReset(
     meta: Record<string, any> = {},
 ) {
+    meta = captureExecutionMeta(meta);
     const origin = meta["origin"] || 'web';
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
     const replyViaTarget = meta["replyViaTarget"] === true;
-    const scope = meta["scope"] || resolveOrcScope({
-        origin, target, chatId, persistedScopeId: meta["remoteKey"],
-        multiSessionEnabled: settings["multiSession"]?.enabled === true,
-    });
+    const scope: string = meta['scope'];
     // --- cancel PABCD workers only — preserve main agent + message queue ---
     for (const w of getActiveWorkers(scope)) {
         killAgentById(w.agentId);

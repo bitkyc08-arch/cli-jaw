@@ -21,6 +21,7 @@ import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey, normalizedThreadId, type SessionScope } from '../messaging/session-key.js';
 import { sessionLanes } from './session-lanes.js';
 import { admitRequest, settleOnce } from './request-registry.js';
+import { beginSteerInput } from '../agent/steer-input-guard.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
@@ -107,17 +108,17 @@ function applyMidRunPolicy(
         // steer joins the queue — with its queue_update broadcast — instead of
         // dying silently. Queue is the fallback only for in-band failures,
         // never for missing capability.
+        const steerMeta = stripUndefined({ chatSessionId: ctx.chatSessionId, target: ctx.meta.target,
+            chatId: ctx.meta.chatId, requestId: ctx.requestId, remoteKey: ctx.remoteKey, replyViaTarget: ctx.meta.replyViaTarget });
+        const inputGuard = beginSteerInput(ctx.scopeKey);
         runDetached(
-            steerAgent(ctx.scopeKey, ctx.text, ctx.meta.origin, stripUndefined({
-                chatSessionId: ctx.chatSessionId,
-                target: ctx.meta.target,
-                chatId: ctx.meta.chatId,
-                requestId: ctx.requestId,
-                remoteKey: ctx.remoteKey,
-                replyViaTarget: ctx.meta.replyViaTarget,
-            })).then(outcome => {
-                if (outcome === 'fallback-queue') queue();
-            }),
+            steerAgent(ctx.scopeKey, ctx.text, ctx.meta.origin, steerMeta).then(outcome => {
+                // Stop settles an undispatched redirect as cancelled; never recreate it after the purge.
+                if (outcome !== 'fallback-queue') return;
+                if (inputGuard.isCancelled()) {
+                    settleOnce(ctx.requestId, 'cancelled', { reason: 'native-steer-stopped', scope: ctx.scopeKey, sessionId: ctx.chatSessionId });
+                } else queue();
+            }).finally(() => inputGuard.release()),
             'steer',
             { ...ctx.meta, requestId: ctx.requestId, eventScope: { scope: ctx.scopeKey, sessionId: ctx.chatSessionId } },
         );

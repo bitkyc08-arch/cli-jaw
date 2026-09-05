@@ -23,7 +23,7 @@ import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
 import { mergeLatestTools } from './merge-tool-log.js';
 import type { TraceRunStatus } from '../trace/types.js';
 import type { RuntimeEventBody, RuntimeTransport, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
-import { lifecycleRuntimeOutcome, runtimeOutcomeExitCode } from './runtime/outcome.js';
+import { handoffRuntimeOutcome, lifecycleRuntimeOutcome, runtimeOutcomeExitCode } from './runtime/outcome.js';
 import type { ToolEntry } from '../types/agent.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { resolveSpawnOutputText } from './events/helpers.js';
@@ -236,6 +236,7 @@ function runTag(ctx: { traceRunId?: string | null }): Record<string, unknown> {
 
 export interface ExitContext {
     runtimeOutcome?: RuntimeTurnOutcome;
+    runtimeTerminalAttempted?: boolean;
     requestId?: string;
     fullText: string;
     /** Set when fullText hit the safety bound and later output was dropped. */
@@ -344,6 +345,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     const isEmployee = !mainManaged;
     const empTag = isEmployee ? { isEmployee: true } : {};
     const liveScope = ctx.liveScope || 'default';
+    const ownsLiveRun = () => nativeOutcome === undefined
+        || (typeof ctx.traceRunId === 'string' && getLiveRun(liveScope).traceRunId === ctx.traceRunId);
     const traceStatus = nativeOutcome === undefined
         ? code === 0 ? 'done' : wasKilled ? 'interrupted' : 'error'
         : nativeOutcome.status === 'stopped' ? 'interrupted' : nativeOutcome.status;
@@ -467,7 +470,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // entry — and a generation that had already expired could still trigger it.
 
     // ─── CLI-native compact → auto session refresh (awaited to avoid race with processQueue) ───
-    if (ctx.cliNativeCompactDetected && mainManaged && !opts.internal) {
+    if (nativeOutcome === undefined && ctx.cliNativeCompactDetected && mainManaged && !opts.internal) {
         console.log('[jaw:compact] CLI-native compaction detected — auto-refreshing session');
         try {
             const { autoCompactRefresh } = await import('../core/compact.js');
@@ -514,7 +517,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // ─── Phase 54-A: Proactive compact by turn count ───
     // CLIs without a reliable native compact/resume path get a conservative
     // turn-count refresh. AGY owns its compaction and keeps its conversation.
-    if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
+    if (nativeOutcome === undefined && mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
         const useTurnCountRefresh = shouldUseTurnCountRefresh(runtimeCli);
         if (useTurnCountRefresh && turns >= 35) {
@@ -545,7 +548,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // ─── High-turn native-compaction coordination ───
     // AGY keeps a native compacted conversation. Other CLIs still use the
     // conservative fresh-session guard when their compaction is not observable.
-    if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
+    if (nativeOutcome === undefined && mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
         if (shouldClearHighTurnSessionBucket(runtimeCli, turns)) {
             console.log(`[jaw:compact] ${cli} exited after ${turns} turns — clearing session bucket for fresh start`);
@@ -568,7 +571,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // cleared here and nowhere else. Same key space as the write (#519).
     if (code === 0) clearRuntimeCooldown(runtimeCli);
 
-    if (code === 0 && runtimeCli === 'grok') {
+    if (nativeOutcome === undefined && code === 0 && runtimeCli === 'grok') {
         const recovered = backfillGrokTraceTools(ctx);
         if (recovered > 0) {
             console.log(`[jaw:grok] recovered ${recovered} tool event(s) from Grok trace export`);
@@ -644,7 +647,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         let finalContent = nativeOutcome.finalText;
         if (mainManaged && !opts.internal) {
             const safeTools = sanitizeToolLogForDurableStorage(
-                mergeLatestTools(ctx.toolLog, getLiveRun(liveScope).toolLog, nativeTraceRunId || ''),
+                mergeLatestTools(ctx.toolLog, ownsLiveRun() ? getLiveRun(liveScope).toolLog : [], nativeTraceRunId || ''),
             );
             if (finalContent !== null) {
                 finalContent = applyOutputPolicy(finalContent, { scope: 'main' }).text;
@@ -673,6 +676,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             const errorKind = failed ? classifyExitError(runtimeCli, code ?? 1, ctx.stderrBuf).errorKind : undefined;
             // Even absent/empty finals must terminate existing UI/collectors.
             // Only compatibility text collapses whitespace; never the outcome.
+            handoffRuntimeOutcome(ctx, { ...nativeOutcome, finalText: finalContent });
+            ctx.runtimeTerminalAttempted = true;
             broadcast('agent_done', {
                 ...(nativeTraceRunId ? { traceRunId: nativeTraceRunId } : {}),
                 text: runtimeCompatibilityText(finalContent),
@@ -1185,8 +1190,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         traceStatus,
         traceStatus === 'error' ? classifyExitError(runtimeCli, resolvedCode ?? 1, ctx.stderrBuf).message : null,
     );
-    if (mainManaged && !wasSteer) clearLiveRun(liveScope);
-    if (!opts.internal && !wasSteer) {
+    const liveOwnedAtFinish = ownsLiveRun();
+    if (mainManaged && !wasSteer && liveOwnedAtFinish) clearLiveRun(liveScope);
+    if (!opts.internal && !wasSteer && liveOwnedAtFinish) {
         broadcast('agent_status', {
             status: (resolvedCode === 0 || resolvedCode === null) ? 'done' : 'error',
             agentId: agentLabel,
