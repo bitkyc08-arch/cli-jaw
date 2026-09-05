@@ -5,11 +5,12 @@ const MAX_TURNS = 16;
 const MAX_PENDING = 256;
 const MAX_PENDING_BYTES = 1024 * 1024;
 
-function makeRoom(turns: Map<string, ActivityState>): void {
+function makeRoom(turns: Map<string, ActivityState>, settled: Set<string>): void {
     if (turns.size < MAX_TURNS) return;
     for (const [key, state] of turns) {
-        if (!state.end) continue;
+        if (!state.end && !settled.has(key)) continue;
         turns.delete(key);
+        settled.delete(key);
         return;
     }
     throw new Error('activity_turn_capacity');
@@ -18,17 +19,29 @@ function makeRoom(turns: Map<string, ActivityState>): void {
 /** Coordinates validated, ordered journal seeds with live events. No I/O ownership. */
 export class ActivityReplay {
     readonly turns = new Map<string, ActivityState>();
+    private settled = new Set<string>();
     private pending: RuntimeEvent[] = [];
     private pendingBytes = 0;
     private controller: AbortController | null = null;
     private generation = 0;
     private scopeGeneration = 0;
+    private drainingScope: number | null = null;
 
     constructor(private readonly changed: (state: ActivityState) => void) {}
 
+    /** Caller-validated historical/compatibility finality permits eviction only.
+     * It neither fabricates a journal end nor fences late canonical events.
+     */
+    markSettled(runId: string): void {
+        for (const key of this.settled) if (!this.turns.has(key)) this.settled.delete(key);
+        for (const [key, state] of this.turns) {
+            if (state.identity.runId === runId) this.settled.add(key);
+        }
+    }
+
     live(event: RuntimeEvent): boolean {
-        if (!this.controller) return this.apply(event);
-        this.controller.signal.throwIfAborted();
+        if (!this.controller && this.drainingScope !== this.scopeGeneration) return this.apply(event);
+        this.controller?.signal.throwIfAborted();
         const key = activityKey(event);
         const state = this.turns.get(key);
         if (state && (state.end || event.seq <= state.seq)) return false;
@@ -41,7 +54,7 @@ export class ActivityReplay {
         const bytes = new TextEncoder().encode(JSON.stringify(event)).length;
         if (this.pending.length >= MAX_PENDING || this.pendingBytes + bytes > MAX_PENDING_BYTES) {
             const error = new Error('activity_live_buffer_overflow');
-            this.controller.abort(error);
+            this.controller?.abort(error);
             throw error;
         }
         this.pending.push(event);
@@ -58,21 +71,23 @@ export class ActivityReplay {
             state = createActivityState(event);
             if (!applyActivityEvent(state, event)) return false;
             // Reduce before eviction so an invalid event cannot remove a retained turn.
-            makeRoom(this.turns);
+            makeRoom(this.turns, this.settled);
+            this.settled.delete(key);
             this.turns.set(key, state);
         }
         this.changed(state);
         return true;
     }
 
-    private fold(events: readonly RuntimeEvent[]): Map<string, ActivityState> {
+    private fold(events: readonly RuntimeEvent[], settled: Set<string>): Map<string, ActivityState> {
         const rebuilt = new Map<string, ActivityState>();
+        const rebuiltSettled = new Set(settled);
         for (const event of events) {
             const key = activityKey(event);
             let state = rebuilt.get(key);
             if (!state) {
                 state = createActivityState(event);
-                makeRoom(rebuilt);
+                makeRoom(rebuilt, rebuiltSettled);
                 rebuilt.set(key, state);
             }
             applyActivityEvent(state, event);
@@ -87,13 +102,13 @@ export class ActivityReplay {
         for (const [key, state] of rebuilt) {
             // A replaced closed state may already have been evicted for a new key.
             if (this.turns.has(key)) continue;
-            makeRoom(staged);
+            makeRoom(staged, settled);
             staged.set(key, state);
         }
         return staged;
     }
 
-    private publish(staged: Map<string, ActivityState>, generation: number): void {
+    private publish(staged: Map<string, ActivityState>, settled: Set<string>, generation: number): void {
         const changed: ActivityState[] = [];
         for (const [key, next] of staged) {
             const current = this.turns.get(key);
@@ -105,13 +120,15 @@ export class ActivityReplay {
         }
         this.turns.clear();
         for (const [key, state] of staged) this.turns.set(key, state);
+        for (const key of settled) if (!staged.has(key)) settled.delete(key);
+        this.settled = settled;
         for (const state of changed) {
             if (generation !== this.generation) break;
             this.changed(state);
         }
     }
 
-    private foldPending(staged: Map<string, ActivityState>): void {
+    private foldPending(staged: Map<string, ActivityState>, settled: Set<string>): void {
         for (const event of this.pending) {
             const key = activityKey(event);
             let state = staged.get(key);
@@ -120,7 +137,7 @@ export class ActivityReplay {
             if (state && state === this.turns.get(key)) state = structuredClone(state);
             if (!state) {
                 state = createActivityState(event);
-                makeRoom(staged);
+                makeRoom(staged, settled);
             }
             applyActivityEvent(state, event);
             staged.set(key, state);
@@ -129,13 +146,19 @@ export class ActivityReplay {
 
     private drain(): unknown[] {
         const scopeGeneration = this.scopeGeneration;
-        const pending = this.pending;
-        this.pending = [];
-        this.pendingBytes = 0;
         const errors: unknown[] = [];
-        for (const event of pending) {
-            if (scopeGeneration !== this.scopeGeneration) break;
-            try { this.live(event); } catch (error) { errors.push(error); }
+        if (this.drainingScope === scopeGeneration) return errors;
+        this.drainingScope = scopeGeneration;
+        try {
+            // Keep the unconsumed tail visible to reentrant live admission. A new
+            // restore takes ownership of that same queue; reset invalidates this drain.
+            while (this.pending.length && scopeGeneration === this.scopeGeneration && !this.controller) {
+                const event = this.pending.shift()!;
+                this.pendingBytes -= new TextEncoder().encode(JSON.stringify(event)).length;
+                try { this.apply(event); } catch (error) { errors.push(error); }
+            }
+        } finally {
+            if (this.drainingScope === scopeGeneration) this.drainingScope = null;
         }
         return errors;
     }
@@ -145,25 +168,33 @@ export class ActivityReplay {
         const controller = new AbortController();
         const generation = ++this.generation;
         this.controller = controller;
-        // Pending events belong to the current scope, so supersession transfers them.
-        previous?.abort();
         let onAbort!: () => void;
-        const aborted = new Promise<never>((_resolve, reject) => {
-            onAbort = () => reject(controller.signal.reason);
+        // Resolve cancellation so a reentrant reset before read admission cannot
+        // leave an unobserved rejection when this generation exits early.
+        const aborted = new Promise<null>(resolve => {
+            onAbort = () => resolve(null);
             controller.signal.addEventListener('abort', onAbort, { once: true });
         });
         const errors: unknown[] = [];
         try {
+            // Abort listeners are external code: they may reset or supersede us.
+            // Pending events transfer only while this scope/generation still owns them.
+            previous?.abort();
+            if (generation !== this.generation) return;
+            controller.signal.throwIfAborted();
             // Racing abort also settles readers which ignore their AbortSignal.
             const reading = new Promise<readonly RuntimeEvent[]>(resolve => resolve(read(controller.signal)));
             const events = await Promise.race([aborted, reading]);
             if (generation !== this.generation) return;
-            controller.signal.throwIfAborted();
-            const staged = this.fold(events);
-            this.foldPending(staged);
+            if (events === null || controller.signal.aborted) throw controller.signal.reason;
+            // Eviction metadata participates in the transaction; failed folds cannot
+            // consume a live model's settlement marker. Both collections stay <=16.
+            const settled = new Set(this.settled);
+            const staged = this.fold(events, settled);
+            this.foldPending(staged, settled);
             this.pending = [];
             this.pendingBytes = 0;
-            this.publish(staged, generation);
+            this.publish(staged, settled, generation);
         } catch (error) {
             if (generation !== this.generation) return;
             errors.push(error);
@@ -187,6 +218,7 @@ export class ActivityReplay {
         this.pending = [];
         this.pendingBytes = 0;
         this.turns.clear();
+        this.settled.clear();
         controller?.abort();
     }
 }

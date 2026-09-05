@@ -26,6 +26,7 @@ export interface ActivityRunReadResult {
     scope: string;
     incomplete: boolean;
     loss: string | null;
+    status: ActivityRunSummary['status'];
 }
 export interface ActivityRunSummary {
     id: string;
@@ -57,15 +58,17 @@ async function readPage(options: ActivityReadOptions, path: string): Promise<unk
 /** Display-only canonical events, with a fixed high-water cursor across all pages.
  * Invalid pages and local resource limits reject rather than returning partial success.
  */
-export async function readActivityRun(options: ActivityReadOptions & { runId: string }): Promise<ActivityRunReadResult> {
+export async function readActivityRun(options: ActivityReadOptions & { runId: string; after?: number }): Promise<ActivityRunReadResult> {
     if (!id(options.runId) || !id(options.sessionId)) throw new Error('invalid_activity_identity');
+    if (options.after !== undefined && !cursor(options.after)) throw new Error('invalid_activity_cursor');
     const events: RuntimeEvent[] = [];
-    let after = 0;
+    let after = options.after ?? 0;
     let through: number | undefined;
     let scope: string | undefined;
     let incomplete = false;
     let loss: string | null = null;
     let bytes = 0;
+    let status: ActivityRunSummary['status'] = 'running';
     for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex++) {
         const query = new URLSearchParams({ session: options.sessionId, after: String(after), limit: String(PAGE_SIZE) });
         if (through !== undefined) query.set('through', String(through));
@@ -77,6 +80,9 @@ export async function readActivityRun(options: ActivityReadOptions & { runId: st
             || !Array.isArray(page['events']) || page['events'].length > PAGE_SIZE) throw new Error('invalid_activity_page');
         if (through !== undefined && page['through'] !== through) throw new Error('activity_cursor_changed');
         if (scope !== undefined && page['scope'] !== scope) throw new Error('activity_scope_changed');
+        const pageStatus=page['status'];
+        if (pageStatus !== 'running' && pageStatus !== 'done' && pageStatus !== 'error' && pageStatus !== 'interrupted') throw new Error('invalid_activity_status');
+        status=pageStatus;
         through = page['through'];
         scope = page['scope'];
         const nextAfter = page['nextAfter'];
@@ -93,7 +99,7 @@ export async function readActivityRun(options: ActivityReadOptions & { runId: st
         }
         incomplete ||= page['incomplete'] || page['loss'] !== null;
         loss ??= page['loss']; // Keep the first loss even if subsequent pages look healthy.
-        if (!page['hasMore']) return { events, through, scope, incomplete, loss };
+        if (!page['hasMore']) return { events, through, scope, incomplete, loss, status };
         // Corrupt rows can advance without returning events. Terminal empty pages may stall.
         if (nextAfter <= after) throw new Error('activity_cursor_stalled');
         after = nextAfter;
