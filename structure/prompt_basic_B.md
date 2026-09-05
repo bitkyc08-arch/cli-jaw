@@ -24,7 +24,7 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 | `~/.cli-jaw/prompts/B.md` | 디스크 캐시 |
 | `{workDir}/AGENTS.md` | 현재 워크스페이스용 지침 파일 |
 
-`AGENTS.md`는 Codex, Copilot, OpenCode가 직접 읽는 런타임 지침이라서, B.md와 같은 본문을 공유한다.
+`AGENTS.md`는 Codex, Copilot, OpenCode가 직접 읽는 런타임 지침이라서, B.md와 같은 본문을 공유한다. `forDisk: true`이므로 persisted A-1의 `desktop-control` anchor를 항상 유지하고, 조건부 제외는 turn별 `forDisk: false` 조립에만 적용한다.
 
 ---
 

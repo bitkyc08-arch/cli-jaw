@@ -3,10 +3,24 @@
 // replace inlined bodies, retained sections stay, and the template cannot
 // silently regrow past its budget.
 
+import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { SKILLS_DIR } from '../../src/core/config.ts';
+import { A2_PATH, getSystemPrompt, shouldIncludeDesktopControlSection } from '../../src/prompt/builder.ts';
+
+const A2_MARKER = 'PSC-A2-BOUNDARY-7f21';
+
+function runtimeA1(currentPrompt: string): string {
+    mkdirSync(dirname(A2_PATH), { recursive: true });
+    writeFileSync(A2_PATH, A2_MARKER, 'utf8');
+    const prompt = getSystemPrompt({ currentPrompt, activeCli: 'codex-app', forDisk: false });
+    const boundary = prompt.indexOf(`\n\n${A2_MARKER}`);
+    assert.ok(boundary > 0, 'A2 marker must delimit the runtime A-1');
+    return prompt.slice(0, boundary);
+}
 
 const root = join(import.meta.dirname, '..', '..');
 const a1Src = readFileSync(join(root, 'src/prompt/templates/a1-system.md'), 'utf8');
@@ -24,13 +38,16 @@ test('PSC-001: externalized sections carry strong MUST-READ skill stubs', () => 
     assert.ok(a1Src.includes('MUST read `{{JAW_HOME}}/skills/jaw-diagram/SKILL.md` before writing any output'), 'diagram read stays mandatory');
 });
 
-test('PSC-002: retained backbone sections are untouched by the slim', () => {
-    assert.ok(a1Src.includes('## Desktop / Browser Control (MANDATORY)'), 'desktop control stays (deferred by decision)');
-    assert.ok(a1Src.includes('### Compact Handoff Interpretation'), 'compact interpretation stays (always-on by decision)');
-    // round-2 (260610 phase 2, interview Q1=(a)): Goal Mode Rules moved to the
-    // continuation prompt (single owner); A-1 keeps the command list + pointer.
+test('PSC-002: desktop control stays persisted but runtime routing is conditional', () => {
+    assert.ok(a1Src.includes('## Desktop / Browser Control (MANDATORY)'), 'persisted A-1 keeps desktop control');
+    assert.equal(shouldIncludeDesktopControlSection('브라우저에서 이 페이지를 확인해', 'codex-app'), true);
+    assert.equal(shouldIncludeDesktopControlSection('릴리스 노트를 요약해', 'codex-app'), false);
+    // An Office document is a file to produce, not an app to drive (verifier residual).
+    assert.equal(shouldIncludeDesktopControlSection('Excel 파일 만들어', 'codex-app'), false);
+    assert.equal(shouldIncludeDesktopControlSection('use Chrome to open it', 'codex-app'), true);
+    assert.ok(a1Src.includes('### Compact Handoff Interpretation'), 'compact interpretation stays always-on');
     assert.ok(a1Src.includes('## Goal System'), 'goal CLI command list stays in A-1');
-    assert.ok(!a1Src.includes('### Goal Mode Rules'), 'goal mode rules moved to continuation (round-1 always-on decision superseded)');
+    assert.ok(!a1Src.includes('### Goal Mode Rules'), 'goal mode rules stay in continuation only');
     assert.ok(a1Src.includes('Korean "검색" intent guard'), 'korean search guard heading stays');
 });
 
@@ -97,5 +114,33 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // second routes 윤문/답변 구성 to jaw-dev-write / jaw-dev-speech, and a routing
     // line the agent never sees routes nothing. The depth lives in those skills;
     // only the trigger is here.
-    assert.ok(a1Src.length <= 38750, `a1-system.md is ${a1Src.length} chars — over the 38,750 budget`);
+    const alwaysOnA1 = runtimeA1('Summarize the release notes.');
+    assert.ok(alwaysOnA1.length <= 38750,
+        `runtime A-1 is ${alwaysOnA1.length} chars — over the 38,750 budget`);
+});
+
+test('PSC-007: getSystemPrompt includes desktop control for Korean browser intent', () => {
+    const prompt = runtimeA1('브라우저에서 URL을 열고 화면 스크린샷을 확인해');
+    assert.match(prompt, /## Desktop \/ Browser Control \(MANDATORY\)/);
+});
+
+test('PSC-008: getSystemPrompt excludes desktop control otherwise and saves at least 8,000 chars', () => {
+    const included = runtimeA1('브라우저에서 이 페이지를 확인해');
+    const excluded = runtimeA1('변경된 릴리스 노트를 세 문장으로 요약해');
+    assert.doesNotMatch(excluded, /## Desktop \/ Browser Control \(MANDATORY\)/);
+    assert.ok(included.length - excluded.length >= 8000,
+        `desktop-control removal saved only ${included.length - excluded.length} chars`);
+});
+
+test('PSC-009: a routed active skill with desktop/browser metadata includes the section', () => {
+    const skillDir = join(SKILLS_DIR, 'window-driver');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: window-driver',
+        'description: "Controls desktop windows through native UI"',
+        '---',
+    ].join('\n'), 'utf8');
+    assert.match(runtimeA1('Use $window-driver to finish this task.'),
+        /## Desktop \/ Browser Control \(MANDATORY\)/);
 });

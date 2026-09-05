@@ -51,7 +51,7 @@ graph TD
 - 템플릿 폴백: `src/prompt/templates/a1-system.md`
 - 역할: 시스템 규칙, browser control, memory/heartbeat, jaw employee vs CLI sub-agent 구분, 채널 전송 규칙
 
-핵심은 "파일 우선, 템플릿 폴백"이다. `A-1.md`가 있으면 그대로 쓰고, 없을 때만 템플릿을 렌더한다.
+핵심은 "파일 우선, 템플릿 폴백"이다. 디스크 원본은 그대로 보존한다. `forDisk: false` 런타임 조립만 현재 prompt/active skill routing이 desktop/browser 의도를 가질 때 `desktop-control` anchor를 포함하고, 그 외에는 단일 정상 anchor block을 제외한다.
 
 ### A-2.md
 
