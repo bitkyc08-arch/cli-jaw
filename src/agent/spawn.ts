@@ -832,9 +832,13 @@ export async function steerAgent(
             throw new MainReplacementOwnerMismatchError();
         }
         const capturedMeta = { ...meta, ...(suppliedTarget === undefined ? {} : { target: { ...suppliedTarget } }) };
+        const capturedOwnerGeneration = run.ownerGeneration;
         const workingDir = settings['workingDir'] || null;
         let attempted = false;
         const outcome = await run.replaceTurn(newPrompt, () => {
+            if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration) {
+                throw new MainReplacementOwnerMismatchError();
+            }
             if (attempted) throw new Error('native_replacement_duplicate_input');
             attempted = true; // A partial recording failure must never retry this input.
             insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
