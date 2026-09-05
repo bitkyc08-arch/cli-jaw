@@ -16,7 +16,7 @@ async function fixture(t: TestContext, patch: Partial<ConstructorParameters<type
     const child = Object.assign(new EventEmitter(), { pid: 62001, exitCode: null as number | null,
         signalCode: null as NodeJS.Signals | null, stdin: new Writable(), stdout: new PassThrough(), stderr: new PassThrough() });
     let promptId: string | undefined, prompts = 0, current = true, record = true, failCancel = false;
-    let responseBeforeWrite = false, writesHeld = false, heldWrite: (() => void) | undefined;
+    let responseBeforeWrite = false, resultsHeld = false, writesHeld = false, heldWrite: (() => void) | undefined;
     let holdCancel = false, cancelReply: (() => void) | undefined, lateText = '';
     const send = (value: unknown) => child.stdout.write(JSON.stringify(value) + '\n');
     const reply = (id: unknown, result: unknown) => send({ jsonrpc: '2.0', id, result });
@@ -30,8 +30,8 @@ async function fixture(t: TestContext, patch: Partial<ConstructorParameters<type
         if (frame.method === 'session/prompt') {
             promptId = frame.id; prompts++;
             if (prompts === 1) update('A_PARTIAL');
-            else if (responseBeforeWrite) finish();
-            else setImmediate(finish);
+            else if (!resultsHeld && responseBeforeWrite) finish();
+            else if (!resultsHeld) setImmediate(finish);
             if (writesHeld) { heldWrite = done; return; }
         }
         if (frame.method === 'session/cancel') {
@@ -63,6 +63,7 @@ async function fixture(t: TestContext, patch: Partial<ConstructorParameters<type
     const run = () => { const result = runtime.send({ text: 'A' }, () => {}); void result.catch(() => {}); return result; };
     return { runtime, protocol, wire, events, order, child, run, send, reply, update, finish,
         earlyResult: () => { responseBeforeWrite = true; }, invalidate: () => { current = false; },
+        holdResults: () => { resultsHeld = true; },
         noRecord: () => { record = false; }, failCancel: () => { failCancel = true; },
         holdWrites: () => { writesHeld = true; }, releaseWrite: () => { heldWrite?.(); heldWrite = undefined; writesHeld = false; },
         holdCancel: () => { holdCancel = true; }, releaseCancel: () => { cancelReply?.(); }, lateText: (value: string) => { lateText = value; },
@@ -214,4 +215,117 @@ test('async input commit is consumed and fails closed instead of releasing a suc
     await assert.rejects(f.runtime.steer({ text: 'B' }, () => Promise.reject(new Error('private commit failure'))), /observer/);
     const result = await run; assert.equal(result.status, 'error'); assert.equal(result.finalText, null);
     assert.equal(f.protocol.alive, false);
+});
+
+test('close before the first queued dispatch settles the logical turn without provider input', { timeout: 5000 }, async t => {
+    const f = await fixture(t);
+    const run = f.run();
+    assert.equal(f.wire.some(row => row.method === 'session/prompt'), false);
+    await f.runtime.close();
+    const outcome = await run;
+    assert.deepEqual(outcome, { status: 'stopped', finalText: null, partialText: '' });
+    assert.equal(f.wire.some(row => row.method === 'session/prompt' || row.method === 'session/cancel'), false);
+    assert.equal(f.protocol.alive, false); assert.equal(f.child.exitCode, 143);
+    assert.deepEqual(f.runtime.claimTurnOutcome('logical'), outcome);
+    assert.equal(f.runtime.finalizeTurn('logical', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+    assert.equal(f.runtime.finalizeTurn('logical', { kind: 'turn-end', status: 'stopped', finalText: null }), false);
+    assert.equal(f.events.filter(event => event.kind === 'turn-end').length, 1);
+});
+
+test('close in the drained preparation gap settles both promises without dispatching or committing B', { timeout: 5000 }, async t => {
+    let f: Awaited<ReturnType<typeof fixture>>, closing: Promise<void> | undefined;
+    let preparations = 0, commits = 0;
+    f = await fixture(t, { prepareReplacement: (_instruction, partial) => {
+        preparations++;
+        assert.equal(f.protocol.idle, true); assert.equal(partial, 'A_PARTIAL_DRAINED');
+        closing = f.runtime.close();
+        return { text: 'B' };
+    } });
+    f.lateText('_DRAINED');
+    const run = f.run(); await tick();
+    await assert.rejects(f.runtime.steer({ text: 'B' }, () => { commits++; }));
+    assert.ok(closing); await closing;
+    const outcome = await run;
+    assert.deepEqual(outcome, { status: 'stopped', finalText: null, partialText: 'A_PARTIAL_DRAINED' });
+    assert.equal(preparations, 1); assert.equal(commits, 0);
+    assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 1);
+    assert.equal(f.wire.filter(row => row.method === 'session/cancel').length, 1);
+    assert.equal(f.child.exitCode, 143);
+    assert.deepEqual(f.runtime.claimTurnOutcome('logical'), outcome);
+    assert.equal(f.runtime.finalizeTurn('logical', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+    assert.equal(f.events.filter(event => event.kind === 'turn-end').length, 1);
+});
+
+test('unsolicited original RPC failure settles an unsteered turn with salvage and no retry', { timeout: 5000 }, async t => {
+    const f = await fixture(t), run = f.run(); await tick();
+    const request = f.wire.find(row => row.method === 'session/prompt'); assert.ok(request?.id);
+    f.send({ jsonrpc: '2.0', id: request.id, error: { code: -32603, message: 'PRIVATE_UNSOLICITED_RPC' } });
+    const outcome = await run;
+    assert.deepEqual(outcome, { status: 'error', finalText: null, partialText: 'A_PARTIAL' });
+    assert.equal(f.protocol.alive, false); assert.equal(f.child.exitCode, 143);
+    assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 1);
+    assert.equal(f.wire.some(row => row.method === 'session/cancel'), false);
+    assert.deepEqual(f.runtime.claimTurnOutcome('logical'), outcome);
+    assert.equal(f.runtime.finalizeTurn('logical', { kind: 'turn-end', status: 'error', finalText: null }), true);
+    assert.equal(f.runtime.finalizeTurn('logical', { kind: 'turn-end', status: 'error', finalText: null }), false);
+    assert.equal(f.events.filter(event => event.kind === 'turn-end').length, 1);
+    assert.equal(JSON.stringify([f.runtime.lastError, f.events]).includes('PRIVATE_UNSOLICITED_RPC'), false);
+});
+
+test('Stop after local B dispatch preserves its one input commit before the stopped logical result', { timeout: 5000 }, async t => {
+    const f = await fixture(t); f.holdResults();
+    const originalPrompt = f.protocol.prompt.bind(f.protocol);
+    let stopping: Promise<void> | undefined, commits = 0, settled = false;
+    t.mock.method(f.protocol, 'prompt', (...args: Parameters<AcpSession['prompt']>) => {
+        const [parts, owner, consume, options] = args;
+        return originalPrompt(parts, owner, consume, { ...options, onDispatched: () => {
+            options?.onDispatched?.();
+            if (f.wire.filter(row => row.method === 'session/prompt').length === 2) {
+                f.order.push('B-dispatched');
+                stopping = f.runtime.cancel();
+                void stopping.catch(() => {});
+                f.order.push('Stop-latched');
+                assert.equal(commits, 0); assert.equal(settled, false);
+            }
+        } });
+    });
+    const run = f.run().then(outcome => { settled = true; f.order.push('logical-result'); return outcome; });
+    await tick();
+    const acceptance = await f.runtime.steer({ text: 'B' }, () => {
+        assert.ok(stopping); assert.equal(settled, false);
+        commits++; f.order.push('input-committed');
+    });
+    assert.equal(acceptance.accepted, true); assert.equal(commits, 1);
+    assert.ok(stopping); await stopping;
+    assert.deepEqual(await run, { status: 'stopped', finalText: null, partialText: 'A_PARTIAL' });
+    assert.deepEqual(f.order.filter(step => step !== 'cancel'), ['B-dispatched', 'Stop-latched', 'input-committed', 'logical-result']);
+    assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 2);
+    assert.equal(f.wire.filter(row => row.method === 'session/cancel').length, 2);
+    assert.equal(f.protocol.alive, true); assert.equal(f.protocol.idle, true);
+    assert.equal(f.runtime.claimTurnOutcome('logical')?.status, 'stopped');
+    assert.equal(f.runtime.finalizeTurn('logical', { kind: 'turn-end', status: 'stopped', finalText: null }), true);
+    assert.equal(f.events.filter(event => event.kind === 'turn-end').length, 1);
+});
+
+test('owner invalidation during held B write rejects fatally before input commit', { timeout: 5000 }, async t => {
+    const f = await fixture(t), run = f.run(); await tick();
+    f.holdResults(); f.holdWrites();
+    let commits = 0, accepted = false;
+    const steering = f.runtime.steer({ text: 'B' }, () => { commits++; });
+    void steering.then(() => { accepted = true; }, () => {});
+    await tick();
+    assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 2);
+    assert.equal(f.wire.filter(row => row.method === 'session/cancel').length, 1);
+    assert.equal(commits, 0); assert.equal(accepted, false);
+
+    f.invalidate();
+    f.releaseWrite();
+    const [receipt] = await Promise.allSettled([steering]);
+    assert.deepEqual({ rejected: receipt!.status === 'rejected', commits }, { rejected: true, commits: 0 });
+    assert.equal(f.protocol.alive, false, 'an already-dispatched stale-owner input is fatal, not queueable');
+    const outcome = await run;
+    assert.notEqual(outcome.status, 'done'); assert.equal(outcome.finalText, null);
+    assert.equal(outcome.partialText, 'A_PARTIAL');
+    assert.equal(f.wire.filter(row => row.method === 'session/prompt').length, 2);
+    assert.equal(f.runtime.claimTurnOutcome('logical')?.finalText, null);
 });
