@@ -409,6 +409,8 @@ Cursor, Grok and Claude retain `print` compatibility mode. Their optional `perCl
 
 Cursor main turns support the native ACP path with explicit `transport: "native"` and literal `permissions: "auto"`; restrictive native permissions and workers are rejected before prompt-file or session preparation. Model/effort use native advertised choices (Composer models may require unset effort). Canonical tool/commentary activity is separate from the full final answer; interrupted text remains available for steer salvage. Native I/O refreshes only its own collector through a private, text-free callback. Display defaults and owned history UI remain separate rollout layers.
 
+Grok main also supports native ACP with literal auto permissions, existing CLI authentication and advertised model/effort values. Mid-run steering cancels and drains the original prompt before sending the replacement in the same native session. One logical turn produces one final answer. A replacement already in progress sends later input to the existing queue; transport or ownership failures fail the request without an automatic retry. Restrictive Grok policies and native workers remain unavailable.
+
 Native decision APIs are available at `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id`. They use the existing instance authentication policy, exact run/session/scope/turn matching and opaque choice handles. Decisions expire after two minutes; accepting a response records a choice, not tool completion. Provider activation and Activity approval controls remain separate follow-on layers; messaging behavior is unchanged.
 
 ### Instance Manager

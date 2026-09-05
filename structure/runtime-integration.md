@@ -22,7 +22,7 @@ Telegram hub-member native target replies require the hub's additive bodyDeliver
 
 ## Transport selection and session identity
 
-`perCli.<cli>.transport` accepts `print` or `native` only for Cursor, Grok and Claude. All three still default to print. Cursor main has a native ACP path with literal auto permissions; restrictive Cursor and unsupported Grok/Claude/worker selections are rejected with code78 before prompt-file regeneration, bucket/bootstrap/snapshot, fallback or pool work. Builtin Codex App and Pi retain their existing paths and keys. Main-adapter support and worker support are independent flags.
+`perCli.<cli>.transport` accepts `print` or `native` only for Cursor, Grok and Claude. All three still default to print. Cursor and Grok main have native ACP paths with literal auto permissions; restrictive Cursor/Grok and unsupported Claude/worker selections are rejected with code78 before prompt-file regeneration, bucket/bootstrap/snapshot, fallback or pool work. Builtin Codex App and Pi retain their existing paths and keys. Main-adapter support and worker support are independent flags.
 
 Existing documents with no transport field are pinned to print before fresh defaults are merged. Existing corrupt/unreadable or established missing-file homes also stay print; persistence-blocked behavior is unchanged. A genuinely fresh init records factory choices explicitly. Invalid API fields are rejected; watcher input drops only the invalid transport and preserves current mode/siblings. A real watcher mode change invalidates existing ownership generations after settings commit and before publication.
 
@@ -55,6 +55,14 @@ Cancellation latches outlive a resolved registry answer. cancelRun/dispose preve
 The two request routes use existing instance auth, including loopback and configured LAN bypass; they are not an OS sandbox or per-session tenant ACL. Exact IDs prevent misrouting and replay, not authority escalation between already-authorized instance users. API accepted means decision recorded, not tool completion. Provider activation, Activity controls and channel interactions remain separate layers; Slack final/ACK/queue behavior is untouched.
 
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
+
+### Grok native main and replacement
+
+Grok1.0.13 uses a dedicated `agent --no-leader --always-approve stdio` child only for literal auto. Safe/custom policies fail before spawn or prompt preparation because restrictive native enforcement is unverified. Existing advertised cached_token or xai.api_key authentication is selected without login. Legacy advertised model metadata resolves the grok-build alias and exact reasoningEfforts.value; unavailable choices fail explicitly. Usage comes only from the observed result _meta.usage, preserving absent versus zero values.
+
+`acquireGrokRuntime` reuses ACP pool ownership and retirement fences in a separate engine partition; its key additionally hashes the captured authentication environment. Native session persistence uses native-v1 buckets and never print trace backfill. Workers stay disabled.
+
+The optional common AcpReplacementTurn keeps one logical send across original cancellation, original response, notification/callback drain and idle, then replacement dispatch. Single-flight application steering returns busy/no-start for a second concurrent replacement. Fatal cancellation/dispatch/preparation/commit failures retire and never queue. The input callback runs once after local dispatch, before a fast logical final, only while the captured owner remains current; exact main identity and canonical reset generation are checked again before DB/events. Stop with valid ownership preserves an already-dispatched input fact. Returned thenables are consumed and rejected. The optional prepareReplacement callback runs after drain. Grok1.0.13 retained the tested context without copying prior input into B; this observation is not a universal provider guarantee. Anonymous packets after B begins still rely on provider ordering.
 
 ### Cursor main native bridge
 
