@@ -26,7 +26,7 @@ export async function replaceAcpMainTurn(
         const receipt = await facade.steer({ text }, () => {
             if (attempted) throw new Error('native_replacement_duplicate_dispatch');
             attempted = true;
-            onLocalDispatch();
+            return onLocalDispatch();
         });
         if (receipt.accepted !== attempted) throw new Error('native_replacement_inconsistent_receipt');
         if (receipt.accepted) return { kind: 'dispatched' };
