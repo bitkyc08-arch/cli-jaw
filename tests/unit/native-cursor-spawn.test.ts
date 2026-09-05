@@ -34,14 +34,17 @@ for await(const line of readline.createInterface({input:process.stdin})) {
 `);
 fs.chmodSync(binary, 0o755);
 const config = await import('../../src/core/config.ts');
+config.settings.multiSession = { enabled: true, maxConcurrent: 4, midRunPolicy: 'steer' };
 test.mock.module('../../src/core/config.js', { namedExports: { ...config,
     detectCli: () => ({ available: true, path: binary }) } });
 const factory = await import('../../src/agent/runtime/acp/cursor-session.ts');
 const sessions: AcpSession[] = [];
 const inputs: Parameters<typeof factory.createCursorSession>[0][] = [];
+let beforeFactory: (() => Promise<void>) | undefined;
 test.mock.module('../../src/agent/runtime/acp/cursor-session.js', { namedExports: { ...factory,
     createCursorSession: async (input: Parameters<typeof factory.createCursorSession>[0]) => {
-        inputs.push(input); const session = await factory.createCursorSession(input); sessions.push(session); return session;
+        inputs.push(input); await beforeFactory?.();
+        const session = await factory.createCursorSession(input); sessions.push(session); return session;
     } } });
 const trace = await import('../../src/trace/store.ts');
 let failJournal = false;
@@ -49,7 +52,7 @@ test.mock.module('../../src/trace/store.js', { namedExports: { ...trace,
     appendTraceEvent: (...args: Parameters<typeof trace.appendTraceEvent>) => {
         if (failJournal) throw new Error('fixture journal failure'); return trace.appendTraceEvent(...args);
     } } });
-const { spawnAgent, killActiveAgent, waitForExitSettled, activeMainProcesses } = await import('../../src/agent/spawn.ts');
+const { spawnAgent, killActiveAgent, waitForExitSettled, activeMainProcesses, enqueueMessage, messageQueue, removeQueuedMessage } = await import('../../src/agent/spawn.ts');
 const { db, getMaxMessageId, getSteerSalvageAfter } = await import('../../src/core/db.ts');
 const database = await import('../../src/core/db.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
@@ -60,7 +63,7 @@ const { poolStats } = await import('../../src/agent/runtime-pool.ts');
 const { beginRuntimeSettingsMutation } = await import('../../src/core/runtime-settings-gate.ts');
 let serial = 0;
 test.beforeEach(t => {
-    failJournal = false; inputs.length = 0;
+    failJournal = false; inputs.length = 0; beforeFactory = undefined;
     config.settings.cli = 'cursor'; config.settings.workingDir = root; config.settings.projectDirs = [root];
     config.settings.permissions = 'auto'; config.settings.fallbackOrder = []; config.settings.activeOverrides = {};
     config.settings.perCli = { ...config.settings.perCli, cursor: { model: 'm1', effort: 'low', transport: 'native' } };
@@ -170,6 +173,50 @@ test('failed user insert releases a lease acquired before ready attachment compl
         assert.equal(activeMainProcesses.has(opts.scopeKey), false);
         assert.equal(poolStats().busy, 0);
     } finally { activeMainProcesses.delete(opts.scopeKey); }
+});
+for (const stage of ['acquire', 'ready', 'settle'] as const) test(`native ${stage} failure wakes an already queued follow-up exactly once`, async t => {
+    const opts = { ...options(), _isSmokeContinuation: false };
+    const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<void>();
+    beforeFactory = async () => {
+        if (inputs.length !== 1) return;
+        entered.resolve(); await gate.promise;
+        if (stage === 'acquire') throw new Error('fixture acquire failed');
+    };
+    if (stage !== 'acquire') {
+        const statement = stage === 'ready' ? database.insertMessage : database.insertMessageWithTraceRun;
+        const original = statement.run; let first = true;
+        t.mock.method(statement, 'run', function (...args: any[]) {
+            if (first) { first = false; throw new Error('fixture insert failed'); }
+            return Reflect.apply(original, statement, args);
+        });
+    }
+    const requestId = 'queued-' + opts.requestId;
+    const terminals: Record<string, any>[] = [];
+    const completed = Promise.withResolvers<void>();
+    const off = subscribe(event => {
+        if (event.event === 'orchestrate_done' && event.data['requestId'] === requestId) {
+            terminals.push(event.data); completed.resolve();
+        }
+    });
+    let queueId: string | undefined, deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const first = spawnAgent('first native run', opts);
+        await entered.promise;
+        queueId = enqueueMessage('queued native follow-up', 'web', { scope: opts.scopeKey, chatSessionId: opts.chatSessionId, requestId });
+        assert.ok(messageQueue.some(item => item.id === queueId));
+        gate.resolve();
+        assert.notEqual((await first.promise).code, 0);
+        await Promise.race([completed.promise, new Promise<never>((_, reject) => {
+            deadline = setTimeout(() => reject(new Error('queued follow-up was not woken after native failure')), 2_000);
+        })]);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(terminals.length, 1); assert.equal(terminals[0]!['text'], 'NATIVE_MAIN_FINAL');
+        assert.equal(messageQueue.some(item => item.id === queueId), false);
+        assert.equal(inputs.length, 2); assert.equal(activeMainProcesses.has(opts.scopeKey), false);
+    } finally {
+        gate.resolve(); if (deadline) clearTimeout(deadline); off();
+        if (queueId && messageQueue.some(item => item.id === queueId)) removeQueuedMessage(queueId);
+    }
 });
 test('throwing failure-terminal listener cannot skip canonical finalization or trigger another terminal', async t => {
     const opts = options(); const events: Array<{ type: string; data: Record<string, any> }> = [];
