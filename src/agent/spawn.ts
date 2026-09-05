@@ -1735,7 +1735,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag }, traceAudience);
 
         if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
-        const traceRunId = startTraceRun({ cli, model, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
+        const traceRunId = startTraceRun({ cli, model, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience, sessionId: chatSessionId, scopeKey });
         if (mainManaged && !opts.internal) setLiveRunTraceId(liveScope, traceRunId);
         const ctx: CopilotSpawnContext = {
             fullText: '', traceLog: [], toolLog: [], seenToolKeys: new Set<string>(),
@@ -2020,7 +2020,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const piSessionId = isResume && bucketSessionId ? bucketSessionId : '';
         console.log(`[jaw:pi] isResume=${isResume}, bucketSessionId=${bucketSessionId || 'none'}, piSessionId=${piSessionId || 'new'}`);
         const piPrompt = withSteerContext(piSessionId ? prompt : withHistoryPrompt(prompt, historyBlock), opts.steerContext);
-        const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
+        const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience, sessionId: chatSessionId, scopeKey });
         const ctx: SpawnContext = {
             fullText: '',
             traceLog: [],
@@ -2314,7 +2314,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag }, traceAudience);
 
-        const traceRunId = startTraceRun({ cli, model, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
+        const traceRunId = startTraceRun({ cli, model, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience, sessionId: chatSessionId, scopeKey });
         if (mainManaged && !opts.internal) setLiveRunTraceId(liveScope, traceRunId);
         const ctx: CopilotSpawnContext = {
             fullText: '', traceLog: [], toolLog: [], seenToolKeys: new Set<string>(),
@@ -3015,7 +3015,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...runtimeStatusMeta, ...empTag }, traceAudience);
 
-    const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
+    const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience, sessionId: chatSessionId, scopeKey });
     if (mainManaged && !opts.internal) setLiveRunTraceId(liveScope, traceRunId);
     // Native `agy --conversation ... -p` may emit only the current answer.
     // Length-based replay trimming can therefore swallow the whole new answer.

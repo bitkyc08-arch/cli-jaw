@@ -97,6 +97,8 @@ test.mock.module('../../src/agent/watchdog.js', { namedExports: {
     ...watchdog, attachWatchdog: () => ({ markProgress() {}, extendDeadline() {}, stop() { fixture.watchdogStops++; } }),
 } });
 const traces = await import('../../src/trace/store.ts');
+const { db } = await import('../../src/core/db.ts');
+const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
 const live = await import('../../src/agent/live-run-state.ts');
 const lifecycle = await import('../../src/agent/lifecycle-handler.ts');
 test.mock.module('../../src/agent/lifecycle-handler.js', { namedExports: {
@@ -120,6 +122,7 @@ const publicEvents: string[] = [];
 let unsubscribe = () => {};
 
 test.beforeEach(() => {
+    db.prepare("INSERT OR IGNORE INTO chat_sessions(id,seq,label) VALUES('jaw-chat-id',9001,'Pi owned fixture')").run();
     fixture.mode = 'ok'; fixture.calls.length = 0; fixture.acquisitions.length = 0;
     fixture.contexts.length = 0; fixture.events.length = 0; fixture.lifecycle.length = 0; fixture.legacy.length = 0;
     fixture.direct = 0; fixture.releases = 0; fixture.watchdogStops = 0; publicEvents.length = 0;
@@ -144,6 +147,13 @@ function opts(employee = false) {
 }
 function assertCanonicalContext(employee: boolean) {
     assert.ok(fixture.events.length > 0, 'real spawn must feed the shared runtime emitter');
+    const runId = fixture.events[0]!.runId;
+    const owner = traces.getTraceRun(runId);
+    assert.equal(owner?.session_id, 'jaw-chat-id');
+    assert.equal(owner?.scope_key, 'pi-test-scope');
+    const replay = readActivityPage({ runId, sessionId: 'jaw-chat-id', after: 0, limit: 40 });
+    if (employee) assert.equal(replay, null, 'internal trace stays private despite captured owner');
+    else assert.deepEqual(replay?.events, fixture.events, 'actual spawn, emitter, stored codec and replay agree');
     for (const context of fixture.contexts) {
         assert.equal(context.sessionId, 'jaw-chat-id'); assert.equal(context.scope, 'pi-test-scope');
         assert.equal(context.parentItemId, 'jaw-parent-item');
