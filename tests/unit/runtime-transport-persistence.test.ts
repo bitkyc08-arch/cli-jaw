@@ -46,6 +46,14 @@ test('a native-prefixed key without native selection cannot overwrite singleton 
     assert.equal(sid(candidate.scopedBucket), undefined);
 });
 
+test('native prefix alone cannot authorize a different provider or scope bucket', () => {
+    const owner = { ...input('local:a'), runtimeTransport: 'native' as const, sessionId: 'N' };
+    for (const scopedBucket of ['native-v1:', key('grok', 'local:a', true), key('cursor', 'local:a:b', true), key('cursor', 'default', true)]) {
+        assert.equal(persistMainSession({ ...owner, scopedBucket }), false);
+        assert.equal(sid(scopedBucket), undefined);
+    }
+});
+
 test('native scope ownership remains exact and stale owners cannot repersist', () => {
     const a = { ...input('local:a'), runtimeTransport: 'native' as const, scopedBucket: key('cursor', 'local:a', true), sessionId: 'A' };
     const b = { ...input('local:a:b'), runtimeTransport: 'native' as const, scopedBucket: key('cursor', 'local:a:b', true), sessionId: 'B' };

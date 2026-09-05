@@ -9,6 +9,7 @@ import { clearMainSessionState, resetSessionPreservingHistory } from './main-ses
 import { applyRuntimeSettingsPatch } from './runtime-settings.js';
 import { settings } from './config.js';
 import { currentSessionScope } from './session-context.js';
+import { isSwitchableNativeCli, runtimeSessionBucket } from '../agent/runtime/selection.js';
 
 /** Full reset: compact first, then delete message history. */
 export async function clearSessionState(): Promise<void> {
@@ -48,7 +49,22 @@ export async function clearSessionState(): Promise<void> {
         // ai-e keys its bucket by provider; without it the name is re-derived from the
         // model and a reset can clear a bucket the conversation never used.
         const base = resolveSessionBucket(cli, model, aiEProviderForBucket(cli, model, settings));
-        if (isInstanceWide) {
+        if (isSwitchableNativeCli(cli)) {
+            // These runtimes have no lane/model suffix: scope is opaque, so
+            // local:a must not delete local:a:b in either transport namespace.
+            for (const transport of ['print', 'native'] as const) {
+                const runtimeBase = runtimeSessionBucket(base, transport);
+                if (isInstanceWide) clearSessionBucketsByPrefix.run(runtimeBase, `${runtimeBase}:`);
+                else {
+                    clearSessionBucket.run(`${runtimeBase}:${scope}`);
+                    if (scope === 'default') clearSessionBucket.run(runtimeBase);
+                }
+            }
+            // Preserve the existing global-reset exception: all Codex App
+            // lanes retire even when another CLI is selected. Scoped resets
+            // must never inherit this instance-wide sweep.
+            if (isInstanceWide) clearSessionBucketsByPrefix.run(base, 'codex-app:');
+        } else if (isInstanceWide) {
             clearSessionBucketsByPrefix.run(base, 'codex-app:');
         } else {
             // Since 073 §2.1 every scope owns its bucket. The prefix form is needed
@@ -104,9 +120,17 @@ export async function clearResumableSessionForScope(): Promise<void> {
         const base = resolveSessionBucket(cli, model, aiEProviderForBucket(cli, model, settings));
         // Same prefix pair `clearSessionState` uses: codex-app folds lane mode and
         // effort into its key, so an exact name built with those blank matches nothing.
-        const scoped = `${base}:${scope}`;
-        clearSessionBucketsByPrefix.run(scoped, `${scoped}:`);
-        if (scope === 'default') clearSessionBucket.run(base);
+        if (isSwitchableNativeCli(cli)) {
+            for (const transport of ['print', 'native'] as const) {
+                const runtimeBase = runtimeSessionBucket(base, transport);
+                clearSessionBucket.run(`${runtimeBase}:${scope}`);
+                if (scope === 'default') clearSessionBucket.run(runtimeBase);
+            }
+        } else {
+            const scoped = `${base}:${scope}`;
+            clearSessionBucketsByPrefix.run(scoped, `${scoped}:`);
+            if (scope === 'default') clearSessionBucket.run(base);
+        }
         try {
             const { invalidateCodexAppLanesForScope } = await import('../agent/codex-host-pool.js');
             invalidateCodexAppLanesForScope(scope);

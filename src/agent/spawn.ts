@@ -70,6 +70,7 @@ import { RuntimeProjection } from './runtime/projection.js';
 import { CodexProjection } from './runtime/codex-projection.js';
 import { PiProjection } from './runtime/pi-projection.js';
 import { PiRawTrace } from './runtime/pi-raw-trace.js';
+import { isNativeAdapterImplemented, isNativeWorkerImplemented, isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket } from './runtime/selection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
@@ -1234,6 +1235,26 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     let cli = resolveMainCli(opts.cli, settings, session);
     if (mainRun) mainRun.meta.cli = cli;
 
+    // Namespace selection is captured once for this run. Builtin native
+    // Codex/Pi keep their existing bucket keys; only switchable adapters use
+    // the new namespace. Reject unavailable native choices before fallback,
+    // saved-session reads, bootstrap consumption, or worker isolation.
+    const runtimeTransport = isSwitchableNativeCli(cli)
+        ? resolveRuntimeTransport(settings['perCli']?.[cli]?.transport) : 'print';
+    if (runtimeTransport === 'native'
+        && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)))) {
+        const message = `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`;
+        const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
+            && releaseMainRun(scopeKey, null, ownerGeneration);
+        broadcast('agent_done', {
+            text: message, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId,
+            ...(opts.requestId ? { requestId: opts.requestId } : {}), ...empTag,
+        }, isEmployee ? 'internal' : 'public');
+        resolve!({ text: message, code: 78 });
+        if (released) void processQueue(scopeKey);
+        return { child: null, promise: resultPromise };
+    }
+
     // Phase 52: Bootstrap consumption is moved BELOW the bucket-aware `isResume`
     // computation so we can use the authoritative per-bucket resume decision
     // instead of the legacy `isResumeGuess` heuristic. See comment near line 762.
@@ -1366,9 +1387,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // snapshot, no stale clear — because sharing one was worse. Having its own is better
     // than either. The default scope keeps the bare bucket name, so a session that existed
     // before this change continues the conversation it was already in.
-    const currentBucket = resolveScopedSessionBucket(
+    const currentBucket = runtimeSessionBucket(resolveScopedSessionBucket(
         cli, runtimeModel, effectiveProvider, scopeKey, effort, 'fallback', codexMultiplexMain,
-    );
+    ), runtimeTransport);
     const envDefaultsCli = cli === 'ai-e' ? effectiveProvider : cli;
     const cliEnv = applyCliEnvDefaults(envDefaultsCli, opts.env);
     const spawnEnv = makeCleanEnv(cliEnv);
@@ -1926,6 +1947,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     // successful turn in another session writes its vendor id into the row
                     // the default session resumes from. The exit handler below passes the
                     // same value; this path runs first and must not disagree with it.
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedAcpSessionId.slice(0, 12)}... (pre-shutdown)`);
@@ -1970,6 +1992,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                runtimeTransport,
                 scopedBucket: currentBucket,
                 chatSessionId,
                 childProcess: child,
@@ -2167,6 +2190,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
@@ -2191,6 +2215,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
@@ -2590,6 +2615,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     // With multiplex off there is no lease bucket key, and without this the
                     // save lands on the bare `codex-app` row that belongs to the default
                     // session. codex-app is the default runtime, so that is the common case.
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedThreadId.slice(0, 12)}... (pre-shutdown)`);
@@ -2639,6 +2665,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                runtimeTransport,
                 scopedBucket: currentBucket,
                 chatSessionId,
                 ...(lease?.bucketKey ? { codexAppBucket: lease.bucketKey } : {}),
@@ -3541,6 +3568,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             resolve: resolve!,
             activeProcesses,
             scopeKey,
+            runtimeTransport,
             scopedBucket: currentBucket,
             chatSessionId,
             childProcess: child,

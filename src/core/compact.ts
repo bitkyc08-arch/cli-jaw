@@ -97,6 +97,7 @@ import { searchMemoryWithPolicy } from '../memory/injection.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
 import { parseToolLogBounded } from '../shared/tool-log-sanitize.js';
 import type { SanitizedToolLogEntry } from '../shared/tool-log-sanitize.js';
+import { isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket, isNativeSessionBucket } from '../agent/runtime/selection.js';
 
 export const BOOTSTRAP_BUDGET = {
     goal: 800,
@@ -527,6 +528,8 @@ export async function cliSwitchRefresh(opts: {
     toModel: string;
     toProvider?: string | undefined;
 }): Promise<{ refreshed: boolean; bootstrapWritten: boolean; targetBucketCleared: boolean }> {
+    const targetTransport = isSwitchableNativeCli(opts.toCli)
+        ? resolveRuntimeTransport(settings['perCli']?.[opts.toCli]?.transport) : 'print';
     // Deliberately the instance-active session, unlike the per-session paths. A CLI switch
     // changes the instance's runtime for everyone, rewrites the singleton session row and
     // invalidates every lane, so there is no one session it belongs to. The bootstrap it
@@ -548,7 +551,7 @@ export async function cliSwitchRefresh(opts: {
         setPendingBootstrapPromptStrict,
     } = await import('./main-session.js');
 
-    const targetBucket = resolveSessionBucket(opts.toCli, opts.toModel, opts.toProvider);
+    const targetBucket = runtimeSessionBucket(resolveSessionBucket(opts.toCli, opts.toModel, opts.toProvider), targetTransport);
     const clearedRow = buildClearedSessionRow();
 
     const tx = db.transaction(() => {
@@ -615,6 +618,8 @@ export async function autoCompactRefresh(opts: {
      */
     chatSessionId?: string | undefined;
 }) {
+    const transport = isSwitchableNativeCli(opts.cli)
+        ? resolveRuntimeTransport(settings['perCli']?.[opts.cli]?.transport) : 'print';
     const chatSessionId = opts.chatSessionId || getActiveChatSession();
     const slots = harvestBootstrapSlots({
         workingDir: opts.workDir, instructions: opts.instructions, chatSessionId,
@@ -659,11 +664,13 @@ export async function autoCompactRefresh(opts: {
     const bucket = opts.sessionBucket
         // ai-e keys its bucket by provider; a null here re-derives one from the model name
         // and can clear a bucket the conversation never used.
-        ?? resolveScopedSessionBucket(
+        ?? runtimeSessionBucket(resolveScopedSessionBucket(
             opts.cli, opts.model, aiEProviderForBucket(opts.cli, opts.model, settings),
             scopeKey, '', 'fallback', codexAppMultiplex,
-        );
-    const ownsSingletonRow = scopeKey === 'default';
+        ), transport);
+    // An automatic compact of N cannot erase the dormant print singleton.
+    // Captured sessionBucket wins even if settings changed while the run lived.
+    const ownsSingletonRow = scopeKey === 'default' && !isNativeSessionBucket(bucket);
 
     insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, opts.cli, opts.model, trace, null, opts.workDir, chatSessionId);
     setPendingBootstrapPrompt(bootstrap, opts.scopeKey);

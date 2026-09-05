@@ -28,6 +28,7 @@ import { fetchKiroUsage } from './quota-kiro-reverse.js';
 import { fetchOpenCodeUsage } from './quota-opencode-go-api.js';
 import { buildLiveCliRegistry } from '../cli/registry-live.js';
 import { getCachedCliStatus, getCachedCliStatusForced } from '../cli/cli-status.js';
+import { isSwitchableNativeCli, runtimeSelectionStatus } from '../agent/runtime/selection.js';
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
@@ -620,7 +621,12 @@ export function registerSettingsRoutes(
     // explicit refresh (#277).
     app.get('/api/cli-status', (req, res) => {
         const force = req.query['force'] === '1' || req.query['force'] === 'true';
-        res.json(force ? getCachedCliStatusForced() : getCachedCliStatus());
+        const cached = force ? getCachedCliStatusForced() : getCachedCliStatus();
+        res.json(Object.fromEntries(Object.entries(cached).map(([cli, row]) => [cli,
+            isSwitchableNativeCli(cli) || cli === 'codex-app' || cli === 'pi'
+                ? { ...row, runtimeSelection: runtimeSelectionStatus(cli, settings['perCli']?.[cli]?.transport) }
+                : row,
+        ])));
     });
 
     app.post('/api/pi/profiles/register', requireAuth, asyncHandler(async (req, res) => {

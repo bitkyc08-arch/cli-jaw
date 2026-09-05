@@ -21,7 +21,7 @@ import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../
 import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
 import type { TraceRunStatus } from '../trace/types.js';
-import type { RuntimeEventBody, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import type { RuntimeEventBody, RuntimeTransport, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
 import { lifecycleRuntimeOutcome, runtimeOutcomeExitCode } from './runtime/outcome.js';
 import type { ToolEntry } from '../types/agent.js';
 import type { RemoteTarget } from '../messaging/types.js';
@@ -295,6 +295,7 @@ export interface ExitHandlerParams {
     // rather than recomputed, because recomputing it here loses the scope and lands on
     // the bucket belonging to whichever session is globally active.
     scopedBucket?: string | undefined;
+    runtimeTransport?: RuntimeTransport | undefined;
     childProcess: ChildProcess | null;
     releaseMainRun: (scopeKey: string, child: ChildProcess | null, ownerGeneration: number) => boolean;
     retryState: {
@@ -321,7 +322,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
         isResume, wasKilled, wasSteer, smokeResult,
         effortDefault, costLine, resolve,
-        activeProcesses, scopeKey, chatSessionId, codexAppBucket, childProcess, releaseMainRun,
+        activeProcesses, scopeKey, chatSessionId, childProcess, releaseMainRun,
         retryState, fallbackState, fallbackMaxRetries, processQueue,
     } = params;
 
@@ -397,7 +398,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 skipSessionPersist: opts._skipSessionPersist === true,
                 outputLen: params.outputLen,
                 ...(params.codexAppBucket ? { codexAppBucket: params.codexAppBucket } : {}),
-        scopedBucket: runBucket,
+                runtimeTransport: params.runtimeTransport,
+                scopedBucket: runBucket,
             });
             console.log(`[jaw:smoke] persisted session ${smokeSessionId.slice(0, 12)}... for continuation`);
         }
@@ -473,7 +475,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 model,
                 scopeKey,
                 chatSessionId,
-                ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                sessionBucket: runBucket,
             });
         } catch (e) {
             console.warn('[jaw:compact] auto-refresh failed:', (e as Error).message);
@@ -489,6 +491,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         skipSessionPersist: opts._skipSessionPersist === true,
         outputLen: params.outputLen,
         ...(params.codexAppBucket ? { codexAppBucket: params.codexAppBucket } : {}),
+        runtimeTransport: params.runtimeTransport,
         scopedBucket: runBucket,
     })) {
         console.log(`[jaw:session] saved ${cli} session=${persistedSessionId.slice(0, 12)}...${wasKilled ? ' (post-kill)' : ''}`);
@@ -522,7 +525,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     model,
                     scopeKey,
                     chatSessionId,
-                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                    sessionBucket: runBucket,
                 });
             } catch (e) {
                 console.warn('[jaw:compact] turn-count auto-refresh failed:', (e as Error).message);
@@ -602,7 +605,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 await autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
                     chatSessionId,
-                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                    sessionBucket: runBucket,
                 });
             }
         } catch {}
@@ -938,7 +941,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         await autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
                     chatSessionId,
-                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                    sessionBucket: runBucket,
                 });
                     } catch {}
                 }
@@ -1032,7 +1035,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         await autoCompactRefresh({
                     workDir: settings["workingDir"] || null, instructions: '', cli, model, scopeKey,
                     chatSessionId,
-                    ...(codexAppBucket === undefined ? {} : { sessionBucket: codexAppBucket }),
+                    sessionBucket: runBucket,
                 });
                     }
                 } catch {}
