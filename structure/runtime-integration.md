@@ -54,6 +54,12 @@ Cancellation latches outlive a resolved registry answer. cancelRun/dispose preve
 
 The two request routes use existing instance auth, including loopback and configured LAN bypass; they are not an OS sandbox or per-session tenant ACL. Exact IDs prevent misrouting and replay, not authority escalation between already-authorized instance users. API accepted means decision recorded, not tool completion. Provider activation, Activity controls and channel interactions remain separate layers; Slack final/ACK/queue behavior is untouched.
 
+## Grok factory boundary
+
+`runtime/acp/grok-session.ts` is the internal dedicated-process factory. It reuses the existing ACP session, Windows launch resolver and owned-process cleanup. Only literal auto is admitted (`--no-leader --always-approve`); restrictive policies fail before spawn and keep print as the compatibility choice. Existing advertised cached-token/API-key authentication is selected without login or identity fallback. Legacy model IDs and object-valued effort choices are validated; a default alias with no explicit effort preserves the provider's current configuration.
+
+`AcpSession` exposes copied setup metadata and serialized idle-only model selection. Model metadata is bounded plain JSON, acknowledgements update state before subsequent frames, and failed/aborted setup waits for owned-child reaping. The targeted provider setup requires an object response with advertised models; null-only load responses shown in the [general v1 examples](https://agentclientprotocol.com/protocol/v1/session-setup) are an explicit interoperability limit, not invalid ACP. This internal factory alone does not enable Grok main/worker selection, change print defaults or implement provider-specific usage/steer.
+
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
 
 ### Cursor main native bridge
