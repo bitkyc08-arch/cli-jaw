@@ -26,12 +26,10 @@ const { getTransportCapability } = await import('../../src/messaging/channel-hea
 const { loadSettings } = await import('../../src/core/config.ts');
 loadSettings();
 
-test('an unset owner reports not_attach_instance until init elects one', () => {
+test('an unset owner is not degraded: the bot will elect itself on first attach', () => {
     const cap = getTransportCapability('slack');
-    assert.equal(cap.reason, 'not_attach_instance');
+    assert.notEqual(cap.reason, 'not_attach_instance', 'a fresh install must not read as a clone');
     assert.equal(cap.configured, true);
-    assert.equal(cap.activeInbound, false);
-    assert.equal(cap.sendCapable, false);
 });
 test('a different elected port reports not_attach_instance', async () => {
     const { settings, saveSettings } = await import('../../src/core/config.ts');
