@@ -244,13 +244,11 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
 
     const iface = ctx.interface || 'cli';
 
-    // Prefer in-band same-turn steer when the runtime supports it (jwc always;
-    // codex-app while a steerable turn is in flight). No kill, no context loss.
-    // A steer that the runtime cannot accept falls back to the QUEUE — never to
-    // killing a turn we failed to steer.
+    // Prefer an owning runtime hook: in-band for JWC/Codex, or native cancel-reprompt.
+    // A typed no-start queues once; a fatal/indeterminate dispatch propagates without resend.
     if (canSteerAgent(scopeKey)) {
         const outcome = await steerAgent(scopeKey, prompt, iface, sessionScopeMeta());
-        if (outcome === 'steered') {
+        if (outcome === 'steered' || outcome === 'new-run') {
             return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L) };
         }
         const { submitMessage } = await import('../orchestrator/gateway.js');
