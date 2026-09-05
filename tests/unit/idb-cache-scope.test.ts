@@ -39,10 +39,8 @@ test('ICS-003: appendCachedMessage is not an unscoped writer', () => {
         'append writer must stamp the scope or scoped reads will never see its rows');
 });
 
-test('ICS-004: upsertMessage stays scoped', () => {
-    const block = exportedBlock('upsertMessage');
-    assert.ok(block.includes('scope: currentScope'), 'upsert writer must keep stamping the scope');
-});
+// ICS-004 is exercised by actual scoped writers and a scope-switch race in
+// activity-cache-link.test.ts and web-activity-cache-settlement.test.ts.
 
 test('ICS-005: clearCache remains the only deliberate full reset', () => {
     const block = exportedBlock('clearCache');

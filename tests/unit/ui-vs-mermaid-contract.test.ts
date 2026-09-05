@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Phase 127 (#127) mermaid render latency — source-string contract for ui.ts.
+// Remaining Phase 127 (#127) Mermaid source contracts.
 
 const uiSrc = readFileSync(
     join(import.meta.dirname, '../../public/js/ui.ts'),
@@ -18,15 +18,9 @@ const mainSrc = readFileSync(
     'utf8',
 );
 
-test('F5: finalizeAgent triggers immediate mermaid render after innerHTML', () => {
-    const idx = uiSrc.indexOf('export function finalizeAgent');
-    assert.ok(idx >= 0, 'finalizeAgent must exist');
-    const block = uiSrc.slice(idx, idx + 3500);
-    assert.ok(block.includes('renderMermaidBlocks('),
-        'finalizeAgent must call renderMermaidBlocks to bypass the 100ms debounce');
-    assert.ok(block.includes('immediate: true'),
-        'finalizeAgent mermaid call must use immediate mode');
-});
+// F5 and exact-import spelling checks are replaced by web-final-answer-render.test.ts:
+// real finalizeAgent/replaceAgentAnswer render Markdown before scoped widget activation
+// and renderMermaidBlocks(content, { immediate: true }). Import grouping is not behavior.
 
 // F9 promotion is driven through the real finalizer/VS snapshot boundary in
 // web-replay-behavior.test.ts. A fixed byte window cannot prove call ordering.
@@ -61,23 +55,6 @@ test('F7b: VS onPostRender triggers immediate mermaid render for mounted scope',
         'onPostRender mermaid call must use immediate mode');
     assert.ok(/renderMermaidBlocks\(\s*viewport/.test(block),
         'onPostRender must scope the mermaid render to the viewport argument');
-});
-
-test('imports: renderMermaidBlocks is imported in ui.ts without touching existing render import', () => {
-    assert.ok(uiSrc.includes("import { renderMermaidBlocks } from './render.js';"),
-        'renderMermaidBlocks must be imported on its own line from ./render.js');
-    assert.ok(historySrc.includes("import { renderMermaidBlocks } from '../render.js';"),
-        'message-history must import renderMermaidBlocks for virtual-scroll callbacks');
-    // Existing import must remain intact
-    assert.ok(
-        uiSrc.includes("import { renderMarkdown, escapeHtml, stripOrchestration, linkifyFilePaths } from './render.js';"),
-        'original render.js import line must be preserved untouched',
-    );
-    // activateWidgets must still come from iframe-renderer
-    assert.ok(
-        uiSrc.includes("import { activateWidgets } from './diagram/iframe-renderer.js';"),
-        'activateWidgets must stay imported from ./diagram/iframe-renderer.js',
-    );
 });
 
 test('F2: main.ts imports prewarmMermaid and calls it in bootstrap', () => {
