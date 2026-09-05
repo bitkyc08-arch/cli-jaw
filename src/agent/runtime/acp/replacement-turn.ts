@@ -85,6 +85,8 @@ export class AcpReplacementTurn {
         let attempted = false;
         try {
             const result = await this.control.replace(captured);
+            // Dispatch stays a wire fact; a retired app owner cannot commit its input.
+            if (result.accepted && !this.options.owner.isCurrent()) throw new Error('acp_replacement_not_current');
             if (result.accepted && onLocalDispatch) {
                 attempted = true;
                 try { rejectAsync(onLocalDispatch()); }
