@@ -8,17 +8,20 @@ const record = (value: unknown): RecordValue => value !== null && typeof value =
 function assistant(value: unknown): Omit<RuntimeTurnOutcome, 'partialText'> & { text: string | null } | null {
     const message = record(value);
     if (message['role'] !== 'assistant') return null;
-    let text: string | null = null, tool = false, oversized = false;
-    for (const part of Array.isArray(message['content']) ? message['content'] : []) {
+    const content = message['content'];
+    let text: string | null = null, tool = false, oversized = false, invalid = !Array.isArray(content);
+    for (const part of Array.isArray(content) ? content : []) {
         const block = record(part);
-        if (block['type'] === 'toolCall') tool = true;
-        if (block['type'] !== 'text' || typeof block['text'] !== 'string') continue;
+        if (block['type'] === 'toolCall') { tool = true; continue; }
+        if (block['type'] === 'thinking') continue;
+        if (block['type'] !== 'text' || typeof block['text'] !== 'string') { invalid = true; continue; }
+        if (block['text'] === '') { text ??= ''; continue; }
         const bounded = appendBoundedFullText(text ?? '', block['text']);
         text = bounded.text; oversized ||= bounded.truncated;
     }
     const reason = message['stopReason'];
     const status = reason === 'aborted' ? 'stopped'
-        : !oversized && (reason === 'stop' || reason === 'toolUse') ? 'done' : 'error';
+        : !invalid && !oversized && (reason === 'stop' || reason === 'toolUse') ? 'done' : 'error';
     return { text, status, finalText: status === 'done' && reason === 'stop' && !tool ? text : null };
 }
 
@@ -98,7 +101,9 @@ export class PiTurnAccumulator {
         // Without message_end boundaries, the aggregate snapshot echoes the
         // low-level run's stream. Consume that prefix by offset, not text identity.
         let streamed = this.completed === 0 ? this.runText : '';
-        this.candidate = { status: 'done', finalText: null };
+        // An empty/tool-only terminal cannot erase an observed failure. Only
+        // an actual assistant snapshot can supply a newer completion status.
+        this.candidate = { status: this.candidate.status, finalText: null };
         for (const entry of value) {
             const message = assistant(entry);
             if (!message) continue;

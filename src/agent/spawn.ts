@@ -2175,7 +2175,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += result.stderr || '';
                 if (result.sessionId) ctx.sessionId = result.sessionId;
                 if (!ctx.fullText && result.text) ctx.fullText = result.text;
-                opts.lifecycle?.onExit?.(result.code);
+                try { opts.lifecycle?.onExit?.(result.code); }
+                catch { console.warn('[jaw:pi] exit observer failed'); }
                 const killReason = consumeKillReason(child.pid);
                 const wasKilled = !!killReason;
                 // 'dup-registration' behaves like a steer for cleanup purposes: a

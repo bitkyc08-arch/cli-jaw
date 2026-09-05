@@ -127,6 +127,20 @@ test('malformed agent_end cannot mask an explicit error or stopped outcome', () 
         assert.deepEqual(result.outcome,{status,finalText:null,partialText:'partial'});
     }
 });
+test('terminal arrays without an assistant cannot erase prior error or abort', () => {
+    for (const [reason,status] of [['error','error'],['aborted','stopped']]) {
+        for (const messages of [[],[null],[{role:'toolResult',content:[]}]]) {
+            const result=accumulate([{type:'message_end',message:assistant('partial',reason)},end(messages),settled]);
+            assert.deepEqual(result.outcome,{status,finalText:null,partialText:'partial'});
+        }
+    }
+});
+test('malformed assistant content cannot claim a successful typed final', () => {
+    for (const content of [null,'raw text',[{type:'text',text:1}],[{type:'future-control',text:'FINAL'}]]) {
+        const result=accumulate([end([{role:'assistant',stopReason:'stop',content}]),settled]);
+        assert.equal(result.outcome.status,'error');assert.equal(result.outcome.finalText,null);
+    }
+});
 test('partial cap survives oversized deltas and repeated terminal echoes', () => {
     const text = 'x'.repeat(FULLTEXT_MAX_CHARS+1);
     const result = accumulate([delta(text),end([assistant(text)]),end([assistant(text)]),settled]);
