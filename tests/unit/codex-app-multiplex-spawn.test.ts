@@ -3,6 +3,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
+import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
+import type { RuntimeEventContext } from '../../src/agent/runtime/events.ts';
+import type { RuntimeEnd } from '../../src/agent/runtime/projection.ts';
+
+const runtimeEvents: RuntimeEvent[] = [];
+test.mock.module('../../src/agent/runtime/events.js', {
+    namedExports: {
+        recordRuntimeEvent: (context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent => {
+            const event: RuntimeEvent = { ...context, version: 1, seq: 3 * (runtimeEvents.length + 1), ...body };
+            runtimeEvents.push(event);
+            return event;
+        },
+    },
+});
 
 type Deferred<T> = {
     promise: Promise<T>;
@@ -326,6 +340,8 @@ test.mock.module('../../src/agent/lifecycle-handler.js', {
         setSpawnAgent() {}, setMainMetaHandler() {},
         handleAgentExit: async (params: Record<string, unknown>) => {
             harness.lifecycleCalls.push(params);
+            const onRuntimeEnd = params['onRuntimeEnd'] as ((end: RuntimeEnd) => void) | undefined;
+            onRuntimeEnd?.({ kind: 'turn-end', status: 'done', finalText: 'lifecycle fixture' });
             const activeProcesses = params['activeProcesses'] as Map<string, unknown>;
             activeProcesses.delete(String(params['agentLabel']));
             const releaseMainRun = params['releaseMainRun'] as (scopeKey: string, child: unknown, owner: number) => boolean;
@@ -355,6 +371,7 @@ const model = 'gpt-multiplex';
 const effort = 'high';
 
 function resetHarness(): void {
+    runtimeEvents.length = 0;
     harness.clients.length = 0;
     harness.directSpawns = 0;
     harness.genericAcquires.length = 0;
@@ -759,4 +776,26 @@ test('ON to OFF to ON returns to the composite thread instead of the legacy OFF 
     assert.equal(harness.laneAcquires.at(-1)?.['storedThreadId'], onThread);
     assert.equal(harness.startPrompts.at(-1)?.threadId, onThread);
     assert.notEqual(harness.startPrompts.at(-1)?.threadId, offThread);
+});
+
+test('three Codex routes bind the canonical side channel to jaw identity', async () => {
+    for (const route of ['on', 'off', 'employee']) {
+        resetHarness();
+        setMultiplex(route !== 'off');
+        const scope = 'projection-' + route;
+        const result = spawnAgent('projection fixture', spawnOptions(scope, {
+            runtimeParentItemId: 'trusted-parent',
+            ...(route === 'employee' ? { agentId: 'projection-employee' } : {}),
+        }));
+        await result.promise;
+        const starts = runtimeEvents.filter(event => event.kind === 'turn-start');
+        const ends = runtimeEvents.filter(event => event.kind === 'turn-end');
+        assert.equal(starts.length, 1);
+        assert.equal(ends.length, 1);
+        assert.equal(ends[0]?.finalText, 'lifecycle fixture');
+        assert.ok(runtimeEvents.every(event => event.scope === scope
+            && event.sessionId === 'chat-' + scope && event.parentItemId === 'trusted-parent'));
+        assert.ok(runtimeEvents.every(event => event.turnId === event.runId && event.seq % 3 === 0));
+        assert.equal(harness.lifecycleCalls.length, 1);
+    }
 });

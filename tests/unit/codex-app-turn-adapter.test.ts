@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CodexAppClient } from '../../src/agent/codex-app-client.ts';
 import {
     listenCodexAppTurnAdapter,
+    applyCodexAppTextEvent,
     type CodexAppEventResult,
 } from '../../src/agent/codex-app-events.ts';
 import { interruptCodexRuntime } from '../../src/agent/runtime-pool.ts';
@@ -370,4 +371,59 @@ test('a stale turn is rejected even when the thread matches the lease', async ()
     }, { threadId: 'thread-a', turnId: 'turn-b' });
     assert.deepEqual(events, ['item/agentMessage/delta'], 'the current turn still reaches the consumer');
     listener.dispose();
+});
+
+test('projection tap is owned, follows the consumer, and stops on dispose', async () => {
+    const client = new CodexAppClient({ unknownNotificationPolicy: 'diagnostic-only' });
+    injectRequest(client, async method => {
+        if (method === 'thread/start') return { thread: { id: 'projection-thread' } };
+        if (method === 'turn/start') return { turn: { id: 'projection-turn' } };
+        return {};
+    });
+    await client.startThread('projection-scope', {
+        model: 'gpt-5.5', effort: 'medium', cwd: '/tmp', fastMode: false,
+    });
+    await client.startTurn('projection-scope', 'hello');
+    const ctx: Parameters<typeof applyCodexAppTextEvent>[0] = createCtx();
+    const order: string[] = [];
+    const raw: string[] = [];
+    const listener = listenCodexAppTurnAdapter(client, { threadId: 'projection-thread' },
+        'projection-scope', ctx, {
+            onProgress() {},
+            onRawNotification: method => { raw.push(method); },
+            onEvent: (method, parsed) => {
+                order.push('legacy:' + method);
+                if (parsed) {
+                    const decision = applyCodexAppTextEvent(ctx, parsed);
+                    ctx.fullText += decision.durable;
+                }
+            },
+            onProjectionNotification: (method, _params, parsed) => {
+                order.push('projection:' + method);
+                if (method === 'item/started') assert.equal(ctx.codexAppActiveChannel, 'commentary');
+                if (method === 'item/commandExecution/outputDelta') assert.equal(parsed, null);
+            },
+            onStderr() {},
+        });
+    const send = (method: string, params: Record<string, unknown>) =>
+        client['handleLine'](JSON.stringify({ method, params }));
+    const owner = { threadId: 'projection-thread', turnId: 'projection-turn' };
+    try {
+        send('item/started', { ...owner, item: { type: 'agentMessage', id: 'm', phase: 'commentary' } });
+        send('item/commandExecution/outputDelta', { ...owner, itemId: 'tool', delta: 'output' });
+        assert.deepEqual(order, [
+            'legacy:item/started', 'projection:item/started',
+            'legacy:item/commandExecution/outputDelta', 'projection:item/commandExecution/outputDelta',
+        ]);
+        const before = order.length;
+        send('error', { error: { message: 'host-only' } });
+        send('item/agentMessage/delta', { ...owner, threadId: 'foreign', itemId: 'm', delta: 'bad' });
+        send('item/agentMessage/delta', { ...owner, turnId: 'stale', itemId: 'm', delta: 'bad' });
+        assert.equal(order.length, before);
+        assert.ok(raw.includes('error'));
+        listener.dispose();
+        send('item/commandExecution/outputDelta', { ...owner, itemId: 'tool', delta: 'late' });
+        assert.equal(order.length, before);
+        assert.equal(ctx.fullText, '');
+    } finally { listener.dispose(); }
 });

@@ -32,6 +32,7 @@ export interface CodexAppTurnLeaseIdentity {
 
 export interface CodexAppTurnAdapterHandlers {
     onProgress(): void;
+    onProjectionNotification?(method: string, params: EvRec, result: CodexAppEventResult | null): void;
     onRawNotification(method: string, params: EvRec): void;
     onDiagnosticNotification?(entry: CodexAppUnroutedNotification): void;
     onEvent(method: string, result: CodexAppEventResult | null): void;
@@ -67,13 +68,15 @@ export function listenCodexAppTurnAdapter(
             || owner.threadId !== expectedThreadId
             || owner.turnId !== expectedTurnId
         ) return;
-        handlers.onEvent(method, extractFromCodexAppLaneEvent(
+        const result = extractFromCodexAppLaneEvent(
             method,
             params,
             ctx,
             expectedThreadId,
             expectedTurnId,
-        ));
+        );
+        handlers.onEvent(method, result);
+        handlers.onProjectionNotification?.(method, params, result);
     };
     const turnHandlers = {
         onNotification,

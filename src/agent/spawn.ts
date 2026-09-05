@@ -65,6 +65,9 @@ import {
     resolveOpencodeBinary,
 } from './opencode-diagnostics.js';
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
+import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import { RuntimeProjection } from './runtime/projection.js';
+import { CodexProjection } from './runtime/codex-projection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
@@ -289,6 +292,7 @@ interface SessionBucketRow {
 type SpawnPromiseResult = {
     text: string;
     code: number;
+    runtimeOutcome?: RuntimeTurnOutcome;
     agyCheckpointSeen?: boolean;
     agyPlannerOnly?: boolean;
 };
@@ -1049,6 +1053,8 @@ export interface SpawnLifecycle {
 }
 
 interface SpawnOpts {
+    /** Server-owned canonical lineage, never a native parent/item ID. */
+    runtimeParentItemId?: string;
     internal?: boolean;
     _isFallback?: boolean;
     _retryAttempt?: number;  // 429 exponential backoff attempt counter (0-based)
@@ -2264,6 +2270,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             traceAudience,
         };
 
+        const activity = new RuntimeProjection({
+            runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
+            turnId: traceRunId, audience: traceAudience,
+            ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}),
+        });
+        const codexProjection = new CodexProjection(activity);
+        activity.start('codex-app');
+
         function flushCodexAppThinking() {
             if (!ctx.thinkingBuf) return;
             const merged = ctx.thinkingBuf.trim();
@@ -2463,6 +2477,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     });
                 },
                 onEvent: consumeCodexAppEvent,
+                onProjectionNotification: (method, params, parsed) => {
+                    codexProjection.observe(method, params, parsed, ctx.codexAppActiveChannel || '');
+                },
                 onStderr: handleStderr,
                 onExit: (code, signal) => {
                     processExit.value = { code, signal };
@@ -2578,6 +2595,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             flushCodexAppThinking();
             const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, exitCode, cli);
             await handleAgentExit({
+                onRuntimeEnd: (end) => { activity.close(end); },
                 ctx, code: exitCode, cli, model, agentLabel, mainManaged, origin,
                 resumeKey,
                 prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
@@ -2596,6 +2614,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                 processQueue,
             }).catch((err: Error) => {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Lifecycle failed' });
                 console.error('[jaw:lifecycle] handleAgentExit failed (codex-app):', err.message);
             }).finally(() => settleExit(scopeKey));
         };
@@ -2738,6 +2757,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             // Compare the captured object instead and only drop our own slot.
             const abandonTurn = (lease: { release(): void } | null): void => {
                 lease?.release();
+                activity.close({ kind: 'turn-end', status: 'stopped', finalText: null });
                 finalizeTraceRun(traceRunId, 'interrupted');
                 clearLiveRun(liveScope);
                 broadcast('agent_status', { running: false, agentId: agentLabel });
@@ -2751,6 +2771,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             await runCodexAppTurn(lease.client, lease, lease.laneScope);
         }).catch((err: Error) => {
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);
+            activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Codex acquisition failed' });
             clearLiveRun(liveScope);
             broadcast('agent_status', { running: false, agentId: agentLabel });
             broadcast('agent_done', { text: `❌ Codex AppServer acquire failed: ${err.message}`, error: true, origin }, 'public');
