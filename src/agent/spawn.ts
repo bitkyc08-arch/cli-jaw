@@ -1747,7 +1747,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const capturedRun = mainRun!;
         const nativeCwd = spawnCwd || process.cwd();
         let traceRunId: string;
-        try { traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: nativeCwd, agentLabel, audience: traceAudience }); }
+        try { traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: nativeCwd, agentLabel, audience: traceAudience, sessionId: chatSessionId, scopeKey }); }
         catch { traceRunId = createTraceId(); console.warn('[runtime:cursor] trace creation unavailable'); }
         const identity = Object.freeze({ runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
             turnId: traceRunId, audience: traceAudience,
