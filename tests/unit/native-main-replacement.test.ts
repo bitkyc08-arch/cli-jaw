@@ -20,7 +20,7 @@ const settings = { ...config.settings, cli: 'cursor', workingDir: config.JAW_HOM
     multiSession: { enabled: true, maxConcurrent: 4, midRunPolicy: 'steer' } };
 test.mock.module('../../src/core/config.js', { namedExports: { ...config, settings,
     detectCli: forbidden('detectCli'), detectAllCli: forbidden('detectAllCli') } });
-const { activeMainProcesses, canSteerAgent, steerAgent, enqueueMessage, messageQueue } = await import('../../src/agent/spawn.ts');
+const { activeMainProcesses, canSteerAgent, steerAgent, enqueueMessage, messageQueue, killActiveAgent } = await import('../../src/agent/spawn.ts');
 const { MainReplacementOwnerMismatchError } = await import('../../src/agent/runtime/replace-turn.ts');
 const { db } = await import('../../src/core/db.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
@@ -66,6 +66,23 @@ function heldReplacement(opts: ReturnType<typeof options>) {
     activeMainProcesses.set(opts.scopeKey, run); admitRequest(opts.requestId, opts.scopeKey);
     return { run, entered, dispatch, get stopped() { return stopped; } };
 }
+
+for (const finish of ['stop', 'natural'] as const) test(`held native no-start observes ${finish} without guessing from main-map absence`, async () => {
+    const opts = options(), f = heldReplacement(opts), { events, off } = capture();
+    f.run.replaceTurn = async () => { f.entered.resolve(); await f.dispatch.promise; return { kind: 'race', reason: 'busy' }; };
+    const pending = steerAgent(opts.scopeKey, 'uncommitted input', 'web', { requestId: opts.requestId });
+    try {
+        await f.entered.promise;
+        if (finish === 'stop') killActiveAgent(opts.scopeKey, 'user');
+        else activeMainProcesses.delete(opts.scopeKey);
+        f.dispatch.resolve();
+        assert.equal(await pending, finish === 'stop' ? 'cancelled' : 'fallback-queue');
+        assert.deepEqual(rows(opts.chatSessionId), []);
+        const receipts = events.filter(event => event.type === 'request_settled' && event.data['requestId'] === opts.requestId);
+        assert.equal(receipts.length, finish === 'stop' ? 1 : 0);
+        if (finish === 'stop') assert.equal(receipts[0]!.data['outcome'], 'cancelled');
+    } finally { f.dispatch.resolve(); off(); }
+});
 
 for (const invalidation of ['map replacement', 'generation change', 'canonical scope reset', 'canonical global reset'] as const) {
     test(`deferred replacement refuses stale input after ${invalidation}`, async () => {

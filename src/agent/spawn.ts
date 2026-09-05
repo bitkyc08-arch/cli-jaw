@@ -73,6 +73,7 @@ import { handoffRuntimeOutcome } from './runtime/outcome.js';
 import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
 import { MainReplacementOwnerMismatchError, replaceAcpMainTurn, type MainReplacementResult } from './runtime/replace-turn.js';
 import { AcpReplacement } from './runtime/acp/replacement.js';
+import { beginSteerInput, cancelSteerInputs, cancelAllSteerInputs } from './steer-input-guard.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { syncLiveTools } from './events/helpers.js';
 import { RuntimeProjection, type RuntimeEnd } from './runtime/projection.js';
@@ -649,6 +650,7 @@ export function killActiveAgent(reason?: string): boolean;
 export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
     const scopeKey = scopedReason === undefined ? 'default' : scopeKeyOrReason;
     const reason = scopedReason ?? scopeKeyOrReason;
+    cancelSteerInputs(scopeKey);
     const run = activeMainProcesses.get(scopeKey);
     const hadTimer = queueCtrl.isRetryPending(scopeKey);
     const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
@@ -712,6 +714,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
 }
 
 export function killAllAgents(reason = 'user') {
+    cancelAllSteerInputs();
     const hadTimer = queueCtrl.isRetryPending(null);
     const mainScopes = [...activeMainProcesses.keys()];
     let killedMain = false;
@@ -836,25 +839,29 @@ export async function steerAgent(
         const capturedOwnerGeneration = run.ownerGeneration;
         const workingDir = settings['workingDir'] || null;
         let attempted = false;
-        const outcome = await run.replaceTurn(newPrompt, () => {
-            if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
-                || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
-                throw new MainReplacementOwnerMismatchError();
-            }
-            if (attempted) throw new Error('native_replacement_duplicate_input');
-            attempted = true; // A partial recording failure must never retry this input.
-            insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
-            broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-            broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
-                sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
-                requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
-                mode: 'cancel-reprompt', localDispatch: true }));
-            settleOnce(capturedMeta.requestId, 'steered');
-        });
+        const inputGuard = beginSteerInput(scopeKey);
+        let outcome: MainReplacementResult, inputCancelled: boolean;
+        try {
+            outcome = await run.replaceTurn(newPrompt, () => {
+                if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
+                    || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
+                    throw new MainReplacementOwnerMismatchError();
+                }
+                if (attempted) throw new Error('native_replacement_duplicate_input');
+                attempted = true; // A partial recording failure must never retry this input.
+                insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
+                broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+                broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+                    sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
+                    requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
+                    mode: 'cancel-reprompt', localDispatch: true }));
+                settleOnce(capturedMeta.requestId, 'steered');
+            });
+        } finally { inputCancelled = inputGuard.isCancelled(); inputGuard.release(); }
         if (outcome.kind === 'failed') throw outcome.error;
         if ((outcome.kind === 'dispatched') !== attempted) throw new Error('native_replacement_inconsistent_receipt');
         if (outcome.kind === 'dispatched') return 'steered';
-        if (outcome.kind === 'cancelled') {
+        if (outcome.kind === 'cancelled' || inputCancelled) {
             settleOnce(capturedMeta.requestId, 'cancelled', { reason: 'native-steer-stopped', scope: scopeKey, sessionId: chatSessionId });
             return 'cancelled';
         }

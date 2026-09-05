@@ -305,6 +305,45 @@ for (const ingress of ['slash', 'gateway'] as const) {
     });
 }
 
+test('WP12-STOP-BUSY-C: actual gateway cannot enqueue busy C after immediate Stop', { timeout: 10000 }, async t => {
+    const f = await start(t), instruction = 'STOPPED_BUSY_C';
+    const b = agent.steerAgent(f.opts.scopeKey, 'PENDING_B', 'web', { chatSessionId: f.opts.chatSessionId });
+    void b.catch(() => {});
+    try {
+        await f.peer.waitFor(value => value.kind === 'cancel'); f.noFinal();
+        const c = gateway.submitMessage(instruction, { origin: 'web', scope: f.opts.scopeKey,
+            chatSessionId: f.opts.chatSessionId, midRunPolicy: 'steer' });
+        // Intentionally no await: C has observed busy but its consumer has not yet
+        // processed the asynchronous fallback when the user cancels the scope.
+        const stopped = agent.killActiveAgent(f.opts.scopeKey, 'user');
+        assert.equal(stopped, true); assert.equal(c.action, 'started'); assert.ok(c.requestId);
+        await f.peer.command('release-cancel');
+        assert.equal(await b, 'cancelled');
+        assert.equal((await f.run.promise).runtimeOutcome?.status, 'stopped');
+        await new Promise<void>(resolve => setImmediate(resolve));
+        const receipts = f.events.filter(event => event.event === 'request_settled' && event.data['requestId'] === c.requestId);
+        assert.deepEqual({
+            queueAdmissions: f.events.filter(event => event.event === 'queue_update'
+                && Array.isArray(event.data['queued'])
+                && event.data['queued'].some((item: { prompt: string }) => item.prompt === instruction)).length,
+            queued: agent.messageQueue.filter(item => item.scope === f.opts.scopeKey).length,
+            prompts: peers.flatMap(peer => peer.records.filter(value => value.kind === 'prompt')).length,
+            userRows: rows(f.opts.chatSessionId).filter(row => (row as { role: string }).role === 'user'
+                && (row as { content: string }).content.includes(instruction)).length,
+            settlements: receipts.length, outcome: receipts[0]?.data['outcome'],
+        }, { queueAdmissions: 0, queued: 0, prompts: 1, userRows: 0, settlements: 1, outcome: 'cancelled' });
+        assert.equal(agent.activeMainProcesses.has(f.opts.scopeKey), false);
+        assert.equal(receipts[0]!.data['scope'], f.opts.scopeKey);
+        assert.equal(receipts[0]!.data['sessionId'], f.opts.chatSessionId);
+    } finally {
+        // Remove a buggy late admission before bounded owned-session teardown;
+        // never await a receipt whose resurrected run is deliberately held open.
+        for (const item of [...agent.messageQueue]) {
+            if (item.scope === f.opts.scopeKey) agent.removeQueuedMessage(item.id);
+        }
+    }
+});
+
 for (const invalidation of ['owner-object', 'scope-generation'] as const) {
     test(`actual main ${invalidation} loss during cancel drain cannot send/commit B or clear successor`, { timeout: 10000 }, async t => {
         const f = await start(t), hook = f.owner.replaceTurn!;

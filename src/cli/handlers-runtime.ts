@@ -8,6 +8,7 @@ import { t } from '../core/i18n.js';
 import { detectCli, settings } from '../core/config.js';
 import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
+import { beginSteerInput } from '../agent/steer-input-guard.js';
 
 async function safeCall<T>(
     fn: (() => Promise<T> | T) | undefined | null,
@@ -247,14 +248,18 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     // Prefer an owning runtime hook: in-band for JWC/Codex, or native cancel-reprompt.
     // A typed no-start queues once; a fatal/indeterminate dispatch propagates without resend.
     if (canSteerAgent(scopeKey)) {
-        const outcome = await steerAgent(scopeKey, prompt, iface, sessionScopeMeta());
-        if (outcome === 'steered' || outcome === 'new-run') {
-            return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L) };
-        }
-        if (outcome === 'cancelled') return { ok: true, type: 'success', text: 'Pending steer cancelled.' };
-        const { submitMessage } = await import('../orchestrator/gateway.js');
-        submitMessage(prompt, { origin: iface, ...sessionScopeMeta(), midRunPolicy: 'followup' });
-        return { ok: true, type: 'success', text: 'Steer unavailable for the current turn — message queued as follow-up.' };
+        const inputGuard = beginSteerInput(scopeKey);
+        try {
+            const outcome = await steerAgent(scopeKey, prompt, iface, sessionScopeMeta());
+            if (outcome === 'steered' || outcome === 'new-run') {
+                return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L) };
+            }
+            if (outcome === 'cancelled') return { ok: true, type: 'success', text: 'Pending steer cancelled.' };
+            const { submitMessage } = await import('../orchestrator/gateway.js');
+            if (inputGuard.isCancelled()) return { ok: true, type: 'success', text: 'Pending steer cancelled.' };
+            submitMessage(prompt, { origin: iface, ...sessionScopeMeta(), midRunPolicy: 'followup' });
+            return { ok: true, type: 'success', text: 'Steer unavailable for the current turn — message queued as follow-up.' };
+        } finally { inputGuard.release(); }
     }
 
     // Kill running agent (or cancel retry timer) and wait for clean exit
