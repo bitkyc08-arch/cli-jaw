@@ -226,7 +226,10 @@ export class AcpSession {
         finally { this.controlBusy = false; }
     }
 
-    async prompt(parts: ReadonlyArray<unknown>, source: AcpTurnOwner, consume: AcpNotificationConsumer): Promise<Record<string, unknown>> {
+    async prompt(parts: ReadonlyArray<unknown>, source: AcpTurnOwner, consume: AcpNotificationConsumer,
+        options?: { onDispatched?: () => void }): Promise<Record<string, unknown>> {
+        const onDispatched = options?.onDispatched;
+        if (onDispatched !== undefined && typeof onDispatched !== 'function') throw new Error('acp_invalid_dispatch_observer');
         const { runId, sessionId, scope, turnId } = source.binding;
         const predicate = source.isCurrent, emit = source.emit, parentItemId = source.parentItemId;
         const current = () => { try { return predicate() === true; } catch { return false; } };
@@ -247,6 +250,16 @@ export class AcpSession {
             });
             active.request = request; resolveReady(request);
             await request.dispatched;
+            // Completed local dispatch remains a fact even if cancellation or a terminal frame raced.
+            try {
+                const observation: unknown = onDispatched?.();
+                if (observation !== null && (typeof observation === 'object' || typeof observation === 'function')
+                    && typeof (observation as { then?: unknown }).then === 'function') {
+                    void Promise.resolve(observation).catch(() => undefined);
+                    throw new Error('acp_async_dispatch_observer');
+                }
+            }
+            catch { throw new Error('acp_dispatch_observer_failed'); }
             const result = acpRecord(await request.result);
             const stopReason = result['stopReason'];
             if (typeof stopReason !== 'string' || !['end_turn', 'cancelled', 'max_tokens', 'max_turn_requests', 'refusal'].includes(stopReason)) {

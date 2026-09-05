@@ -73,7 +73,7 @@ cli-jaw/
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
 │   │   │   ├── acp/          ← shared v1 wire boundary and bounded native transport
-│   │   │   │   ├── session.ts ← protocol session, prompt/cancel fences and drain (342L)
+│   │   │   │   ├── session.ts ← protocol session, prompt/cancel fences and drain (355L)
 │   │   │   │   ├── cursor-session.ts ← existing-login factory and owned startup abort (80L)
 │   │   │   │   ├── config.ts ← bounded negotiated model/effort selection (185L)
 │   │   │   │   ├── notification-queue.ts ← per-turn serialized work with byte/count caps (87L)
