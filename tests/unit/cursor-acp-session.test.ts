@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { AcpNotificationQueue } from '../../src/agent/runtime/acp/notification-queue.ts';
 import { AcpSession, type AcpSessionOptions, type AcpTurnOwner } from '../../src/agent/runtime/acp/session.ts';
 import { RuntimeRequests } from '../../src/agent/runtime/requests.ts';
 import type { RpcFrame } from '../../src/agent/runtime/acp/wire.ts';
@@ -13,87 +12,6 @@ function deferred() {
     const promise = new Promise<void>(yes => { resolve = yes; });
     return { promise, resolve };
 }
-const frame = (text = 'value'): RpcFrame => ({ jsonrpc: '2.0', method: 'session/update', params: { text } });
-
-test('notification work is serial and terminal sealing still drains previously admitted work', async () => {
-    const started = deferred(), held = deferred(), order: string[] = [];
-    const queue = new AcpNotificationQueue(() => assert.fail('unexpected queue failure'));
-    queue.enqueue(frame(), async () => { order.push('first'); started.resolve(); await held.promise; order.push('first-done'); });
-    queue.enqueue(frame(), () => { order.push('second'); });
-    await started.promise;
-    assert.deepEqual(order, ['first']);
-    queue.seal();
-    assert.throws(() => queue.enqueue(frame(), () => {}), /acp_notification_after_terminal/);
-    held.resolve();
-    await queue.drain();
-    assert.deepEqual(order, ['first', 'first-done', 'second']);
-    assert.equal(queue.idle, true);
-});
-test('256 queued notifications fit and the next fails closed before retaining more', async () => {
-    const failures: string[] = [], consumed: number[] = [];
-    const queue = new AcpNotificationQueue(error => failures.push(error.message));
-    for (let i = 0; i < 256; i++) queue.enqueue(frame(), () => { consumed.push(i); });
-    assert.equal(failures.length, 0);
-    queue.enqueue(frame(), () => { consumed.push(256); });
-    await assert.rejects(queue.drain(), /acp_notification_limit/);
-    assert.deepEqual(failures, ['acp_notification_limit']);
-    assert.deepEqual(consumed, []);
-    assert.equal(queue.idle, true);
-});
-test('notification byte admission includes active and queued envelopes', async () => {
-    const held = deferred(), started = deferred();
-    const failures: string[] = [];
-    const queue = new AcpNotificationQueue(error => failures.push(error.message));
-    const base = frame('');
-    const part = frame('x'.repeat(4 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(base))));
-    queue.enqueue(part, async (_frame, signal) => {
-        started.resolve(); signal.addEventListener('abort', held.resolve, { once: true }); await held.promise;
-    });
-    await started.promise;
-    queue.enqueue(part, () => {});
-    assert.equal(failures.length, 0);
-    queue.enqueue(frame(), () => {});
-    await assert.rejects(queue.drain(), /acp_notification_limit/);
-    assert.deepEqual(failures, ['acp_notification_limit']);
-});
-test('close aborts a stalled consumer and queued work cannot apply later', async () => {
-    const started = deferred(), held = deferred();
-    let applied = 0, signal: AbortSignal | undefined;
-    const queue = new AcpNotificationQueue(() => assert.fail('intentional close is not another failure'));
-    queue.enqueue(frame(), async (_frame, current) => {
-        signal = current; started.resolve(); await held.promise;
-        if (!current.aborted) applied++;
-    });
-    queue.enqueue(frame(), () => { applied++; });
-    await started.promise;
-    const drain = queue.drain();
-    queue.close();
-    assert.equal(signal?.aborted, true);
-    await assert.rejects(drain, /acp_notification_closed/);
-    held.resolve();
-    await Promise.resolve();
-    assert.equal(applied, 0);
-    assert.equal(queue.idle, true);
-});
-test('consumer failure is fixed-code, settles drain and reports once', async () => {
-    const failures: string[] = [];
-    const queue = new AcpNotificationQueue(error => failures.push(error.message));
-    queue.enqueue(frame(), () => { throw new Error('private consumer text'); });
-    await assert.rejects(queue.drain(), /acp_notification_consumer_failed/);
-    queue.close();
-    assert.deepEqual(failures, ['acp_notification_consumer_failed']);
-});
-test('invalid or reentrantly closed serialization cannot be retained', async () => {
-    const failures: string[] = [];
-    const queue = new AcpNotificationQueue(error => failures.push(error.message));
-    const invalid = { ...frame(), toJSON: () => undefined };
-    queue.enqueue(invalid, () => assert.fail('invalid notification consumed'));
-    await assert.rejects(queue.drain(), /acp_invalid_notification/);
-    const other = new AcpNotificationQueue(() => {});
-    const closing = { ...frame(), toJSON() { other.close(); return frame(); } };
-    assert.throws(() => other.enqueue(closing, () => assert.fail('closed notification consumed')), /acp_notification_after_terminal/);
-    assert.equal(other.idle, true);
-});
 
 type Wire = Record<string, any>;
 function sessionFixture(t: TestContext, options: Partial<AcpSessionOptions> = {}) {
@@ -116,6 +34,7 @@ function sessionFixture(t: TestContext, options: Partial<AcpSessionOptions> = {}
     let onInitialize: (message: Wire) => void = message => reply(message['id'], {
         protocolVersion: 1, authMethods: [{ id: 'cursor_login' }], agentCapabilities: { loadSession: true },
     });
+    let onNew: (message: Wire) => void = message => reply(message['id'], { sessionId: 'native-session', configOptions: configs() });
     let onLoad: (message: Wire) => void = message => setImmediate(() => {
         send(update('user_message_chunk')); send(update());
         send({ jsonrpc: '2.0', id: message['id'], result: { configOptions: configs() } });
@@ -126,7 +45,7 @@ function sessionFixture(t: TestContext, options: Partial<AcpSessionOptions> = {}
         switch (message['method']) {
             case 'initialize': onInitialize(message); break;
             case 'authenticate': reply(message['id'], {}); break;
-            case 'session/new': reply(message['id'], { sessionId: 'native-session', configOptions: configs() }); break;
+            case 'session/new': onNew(message); break;
             case 'session/load': onLoad(message); break;
             case 'session/set_config_option': reply(message['id'], { configOptions: configs(message['params'].value) }); break;
             case 'session/prompt': onPrompt(message); break;
@@ -157,7 +76,7 @@ function sessionFixture(t: TestContext, options: Partial<AcpSessionOptions> = {}
         prompt: (consume: Parameters<AcpSession['prompt']>[2] = () => {}) => session.prompt([{ type: 'text', text: 'probe' }], owner, consume),
         onPrompt: (handler: typeof onPrompt) => { onPrompt = handler; }, onCancel: (handler: typeof onCancel) => { onCancel = handler; },
         onReply: (handler: typeof onReply) => { onReply = handler; }, onInitialize: (handler: typeof onInitialize) => { onInitialize = handler; },
-        onLoad: (handler: typeof onLoad) => { onLoad = handler; },
+        onLoad: (handler: typeof onLoad) => { onLoad = handler; }, onNew: (handler: typeof onNew) => { onNew = handler; },
     };
 }
 
@@ -190,7 +109,7 @@ test('load waits for an actual reply and never sends replay into a live consumer
     assert.equal(updates, 1);
     assert.equal(f.writes.some(x => x['method'] === 'session/new'), false);
 });
-test('unsupported protocol/auth/load and malformed setup retire without a prompt', { timeout: 5000 }, async t => {
+test('unsupported protocol/auth/load retire without a prompt', { timeout: 5000 }, async t => {
     for (const mode of ['version', 'auth', 'load'] as const) {
         const f = sessionFixture(t);
         f.onInitialize(message => f.reply(message['id'], { protocolVersion: mode === 'version' ? 2 : 1,
@@ -307,4 +226,105 @@ test('only the exact v1 stop-reason enum is accepted without coercion', { timeou
         bad.onPrompt(message => bad.reply(message['id'], { stopReason }));
         await assert.rejects(bad.prompt(), /acp_invalid_stop_reason/);
     }
+});
+
+test('terminal cancels a pending human decision and drains its cancellation reply before reuse', { timeout: 5000 }, async t => {
+    const registry = new RuntimeRequests(), f = sessionFixture(t, { permissions: 'safe', registry });
+    await f.start(); let promptId: unknown;
+    f.onPrompt(message => {
+        promptId = message['id'];
+        f.send({ jsonrpc: '2.0', id: 'human', method: 'session/request_permission', params: {
+            sessionId: 'native-session', toolCall: { toolCallId: 'tool', title: null },
+            options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+        } });
+    });
+    const prompt = f.prompt();
+    assert.equal(registry.list('chat').length, 1);
+    assert.equal(f.writes.some(x => x['id'] === 'human'), false);
+    f.send({ jsonrpc: '2.0', id: promptId, result: { stopReason: 'end_turn' } });
+    assert.equal(registry.list('chat').length, 0);
+    assert.equal(f.session.idle, false);
+    await prompt;
+    assert.deepEqual(f.writes.find(x => x['id'] === 'human')!['result'], { outcome: { outcome: 'cancelled' } });
+    assert.equal(f.session.idle, true); assert.equal(f.kills.length, 0);
+    f.onPrompt(message => f.reply(message['id'], { stopReason: 'end_turn' }));
+    await f.prompt();
+});
+test('permission arriving while pre-terminal notification work drains retires without a grant', { timeout: 5000 }, async t => {
+    const f = sessionFixture(t); await f.start();
+    const draining = deferred(); let abortSeen = false;
+    const prompt = f.prompt(async (_frame, signal) => {
+        draining.resolve();
+        await new Promise<void>(resolve => signal.addEventListener('abort', () => { abortSeen = true; resolve(); }, { once: true }));
+    });
+    const rejected = assert.rejects(prompt, /acp_request_after_terminal/);
+    await draining.promise; await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(f.session.idle, false); assert.equal(f.session.alive, true);
+    f.send({ jsonrpc: '2.0', id: 'during-drain', method: 'session/request_permission', params: {} });
+    await rejected;
+    assert.equal(abortSeen, true); assert.equal(f.kills.length, 1);
+    assert.equal(f.writes.some(x => x['id'] === 'during-drain'), false);
+});
+test('foreign session notification retires the active owner without consuming its content', { timeout: 5000 }, async t => {
+    const f = sessionFixture(t); await f.start(); let consumed = 0;
+    f.onPrompt(message => {
+        const update = f.update(); update.params.sessionId = 'foreign-session';
+        f.child.stdout.write(JSON.stringify(update) + '\n'
+            + JSON.stringify({ jsonrpc: '2.0', id: message['id'], result: { stopReason: 'end_turn' } }) + '\n');
+    });
+    await assert.rejects(f.prompt(() => { consumed++; }), /acp_frame_hook_failed/);
+    assert.equal(consumed, 0); assert.equal(f.kills.length, 1);
+});
+test('configuration metadata refreshes snapshots without becoming live turn content', { timeout: 5000 }, async t => {
+    const f = sessionFixture(t); await f.start(); let consumed = 0;
+    f.onPrompt(message => {
+        f.send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'native-session',
+            update: { sessionUpdate: 'config_option_update', configOptions: f.configs('m2') } } });
+        f.reply(message['id'], { stopReason: 'end_turn' });
+    });
+    await f.prompt(() => { consumed++; });
+    assert.equal((f.session.getConfigOptions() as Wire[])[0]!['currentValue'], 'm2');
+    assert.equal(consumed, 0); assert.equal(f.session.idle, true);
+});
+test('explicit replay content is suppressed during an otherwise active live turn', { timeout: 5000 }, async t => {
+    const f = sessionFixture(t); await f.start(); const consumed: RpcFrame[] = [];
+    f.onPrompt(message => {
+        const replay: Wire = f.update(); replay.params._meta = { isReplay: true };
+        replay.params.update.content.text = 'old'; f.send(replay);
+        f.send(f.update()); f.reply(message['id'], { stopReason: 'end_turn' });
+    });
+    await f.prompt(frame => { consumed.push(frame); });
+    assert.equal(consumed.length, 1);
+    assert.equal((consumed[0]!.params as Wire)['update'].content.text, 'message');
+    assert.equal(f.session.idle, true);
+});
+for (const load of [false, true]) test(`malformed ${load ? 'load' : 'new'} config response retires once before any prompt`, { timeout: 5000 }, async t => {
+    const f = sessionFixture(t);
+    const setup = (message: Wire) => f.reply(message['id'], { sessionId: 'native-session', configOptions: [{ type: 'select', id: 'model' }] });
+    f.onNew(setup); f.onLoad(setup);
+    await assert.rejects(f.session.start({ cwd: process.cwd(), authMethodId: 'cursor_login',
+        ...(load ? { resumeSessionId: 'native-session' } : {}) }), /acp_response_observer_failed/);
+    await f.session.close();
+    assert.equal(f.session.alive, false); assert.equal(f.kills.length, 1); assert.equal(f.child.exitCode, 143);
+    assert.equal(f.writes.some(x => x['method'] === 'session/prompt'), false);
+    await assert.rejects(f.prompt(), /acp_prompt_unavailable/);
+});
+test('executable callback during load replay is refused before readiness and never opens a decision', { timeout: 5000 }, async t => {
+    const registry = new RuntimeRequests(), f = sessionFixture(t, { registry });
+    let loadId: unknown;
+    f.onLoad(message => {
+        loadId = message['id'];
+        f.send({ jsonrpc: '2.0', id: 'replay-action', method: 'session/request_permission', params: {
+            sessionId: 'native-session', toolCall: { toolCallId: 'old-tool', title: null },
+            options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+        } });
+    });
+    const start = f.session.start({ cwd: process.cwd(), authMethodId: 'cursor_login', resumeSessionId: 'native-session' });
+    void start.catch(() => undefined);
+    await f.waitFor(() => f.writes.some(x => x['id'] === 'replay-action'));
+    const refusal = f.writes.find(x => x['id'] === 'replay-action')!;
+    assert.equal(typeof refusal['error'].code, 'number'); assert.equal(Object.hasOwn(refusal, 'result'), false);
+    assert.equal(registry.list('chat').length, 0); assert.equal(f.session.idle, false);
+    f.reply(loadId, { configOptions: f.configs() }); await start;
+    assert.equal(f.session.idle, true); assert.equal(f.kills.length, 0);
 });
