@@ -8,6 +8,21 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 
 ## Shared event contract foundation
 
+`presentation.mode` selects `activity` (fresh and upgraded absent setting) or `legacy`.
+Explicit legacy survives save/reload. It does not select a provider transport. A
+presentation-only settings PATCH preserves execution configuration, session selection,
+fallback state and external delivery; mixed patches retain their existing behavior.
+
+`GET /api/orchestrate/snapshot?session=<jaw chat id>` returns a bare snapshot with
+`activityIdentity: {sessionId, scope}` alongside the existing fields. The same captured
+scope selects its orchestrator, live run, workers and queue. Malformed selectors are400;
+unknown selectors are404 when multi-session is enabled. With that feature disabled the
+existing resolver returns the actual active chat and default execution scope. Omitting
+the selector also uses the active chat. Clients use `parseActivityIdentity` before
+semantic admission and never derive a native session ID or scope from UI state.
+`parseRuntimeRequestView` exposes the existing request-view validator without widening
+the RuntimeEvent schema. Snapshot responses are no-store; auth remains instance-level.
+
 `src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
 
 `src/agent/runtime/events.ts` records a validated, redacted body through the existing trace writer before publishing `agent_runtime` on the agent event topic. The trace writer owns sequence allocation; sequence gaps are valid. The tuple codec in `src/trace/runtime-body-codec.ts` preserves numeric usage without weakening raw-trace secret masking. Known structured fragments must be sanitized before clipping by their producer. Recording failure returns null, never a fabricated event or another inference.

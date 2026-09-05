@@ -4,6 +4,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Documentation Map
 
+- Activity uses `presentation.mode` (`activity` by default, reversible `legacy`) independently of provider transport. `GET /api/orchestrate/snapshot?session=...` returns server-owned `activityIdentity`; validate it before semantic admission. Display-only writes preserve runtime selection and delivery. See `structure/runtime-integration.md`.
+
 - Start at `structure/INDEX.md` for the current architecture map.
 - Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes. Concurrent inbound gateway changes belong in `structure/INDEX.md`, `structure/infra.md`, `structure/telegram.md`, and the messaging runtime docs.
 - Do not use the old `devlog/structure/` path for architecture docs; the active folder is `structure/`.

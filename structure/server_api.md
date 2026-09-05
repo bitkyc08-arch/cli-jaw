@@ -8,6 +8,14 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 # server.ts — Glue + Route Registration (757L)
 
+Activity identity: `GET /api/orchestrate/snapshot?session=<chatId>` adds
+`activityIdentity: {sessionId,scope}` to the existing bare snapshot. Its runtime and
+orchestrator data use the same captured scope. Optional selectors must be nonblank
+scalar strings of at most240 characters; malformed400, enabled unknown-session404.
+Disabled multi-session preserves the existing active-chat/default-scope policy.
+Responses are no-store. `presentation.mode` is `activity` by default or explicit
+`legacy`, independent of transport; PUT `/api/settings` validates and merges it.
+
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
 > Route-module inventory and the endpoint contracts below describe the surface; aggregate handler counts are not maintained by hand.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.

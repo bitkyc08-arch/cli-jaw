@@ -17,6 +17,11 @@
 
 ## Install
 
+Conversation display uses `presentation.mode`: `activity` by default, or `legacy` for
+the previous transcript view. This preference is independent of provider transport.
+Activity clients obtain their chat identity from the server snapshot before subscribing
+to semantic updates; see [runtime integration](structure/runtime-integration.md).
+
 <details>
 <summary><b>Safe install</b> — for existing users who want minimal changes</summary>
 

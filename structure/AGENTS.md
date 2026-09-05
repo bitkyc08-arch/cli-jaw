@@ -2,6 +2,8 @@
 
 # structure/ — Sync Guide
 
+- Activity identity and display settings: `shared/presentation.ts`, config/settings-merge, runtime-settings and orchestrate snapshot share the contract in `runtime-integration.md` and `server_api.md`. Mode is independent of transport; snapshot identity is server-owned, including when multi-session is disabled.
+
 - Keep this folder aligned with the live `cli-jaw` tree. The current hub covers 19 Markdown docs plus 5 support files.
 - Update `INDEX.md` whenever a doc is added, removed, renamed, or re-scoped. Keep the doc map, tier list, and quick links in sync.
 - Update `str_func.md` and `verify-counts.sh` together when source counts, `server.ts`, `src/routes/*`, `src/cli/handlers*.ts`, `src/cli/api-auth.ts`, `src/manager/*` (multi-instance dashboard), `bin/commands/*`, `bin/star-prompt.ts`, `tests/`, `public/`, or generated-dist exclusions change. The verifier now checks every file-tree `(NNNL)` entry in `str_func.md`, not only curated hotspots.
