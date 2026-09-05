@@ -10,7 +10,11 @@ import {
 } from './pipeline.js';
 import { t } from '../core/i18n.js';
 import { isRenderableError } from '../messaging/error-block.js';
-import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import type { RuntimeLivenessIdentity, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import { settings } from '../core/config.js';
+import { getActiveChatSession } from '../core/chat-sessions.js';
+import { currentSessionScope } from '../core/session-context.js';
+import { resolveExecutionBinding } from './scope.js';
 
 export interface CollectedOrchestrateResult {
     text: string;
@@ -29,16 +33,34 @@ export function orchestrateAndCollectData(
     meta: Record<string, any> = {},
     locale: string = 'ko',
 ): Promise<CollectedOrchestrateResult> {
+    meta = { ...meta };
     return new Promise((resolve) => {
+        const binding = resolveExecutionBinding({
+            ...meta,
+            chatSessionId: meta['chatSessionId'] === undefined ? meta['sessionId'] : meta['chatSessionId'],
+            persistedScopeId: meta['remoteKey'],
+            captured: currentSessionScope() ?? null,
+            activeChatSessionId: getActiveChatSession(),
+            multiSessionEnabled: settings['multiSession']?.enabled === true,
+        });
+        const runMeta = { ...meta, ...binding, origin: meta['origin'] || 'web',
+            _onRuntimeActivity: onRuntimeActivity };
+        const requestId = meta['requestId'] || undefined;
         let collected = '';
         let ownTerminalDiagnostic = '';
         let nativeSeen = false;
+        let settled = false;
+        let runtimeActive = true;
+        let nativeRunId: string | undefined;
         let timeout: ReturnType<typeof setTimeout>;
         const IDLE_TIMEOUT = 1200000;
 
         function resetTimeout() {
+            if (settled) return;
             clearTimeout(timeout);
             timeout = setTimeout(() => {
+                settled = true;
+                runtimeActive = false;
                 removeBroadcastListener(handler);
                 // This is a collector/application timeout, not a runtime
                 // completion. Keep data empty: an observed agent_done does not
@@ -49,20 +71,32 @@ export function orchestrateAndCollectData(
             }, IDLE_TIMEOUT);
         }
 
+        function onRuntimeActivity(identity: RuntimeLivenessIdentity) {
+            if (settled || !runtimeActive || identity.scope !== binding.scope
+                || identity.sessionId !== binding.chatSessionId || identity.origin !== runMeta.origin
+                || identity.requestId !== requestId || !identity.runId.trim()
+                || (nativeRunId !== undefined && identity.runId !== nativeRunId)) return;
+            nativeRunId = identity.runId;
+            nativeSeen = true;
+            resetTimeout();
+        }
+
         const matchesNativeIdentity = (data: Record<string, unknown>): boolean => {
-            const sessionId = meta['chatSessionId'] ?? meta['sessionId'];
-            return (!meta['requestId'] || data['requestId'] === meta['requestId'])
-                && (!meta['scope'] || data['scope'] === meta['scope'])
-                && (!sessionId || data['sessionId'] === sessionId)
-                && (!meta['origin'] || data['origin'] === meta['origin']);
+            return (!requestId || data['requestId'] === requestId)
+                && data['scope'] === binding.scope
+                && data['sessionId'] === binding.chatSessionId
+                && data['origin'] === runMeta.origin
+                && (nativeRunId === undefined || data['traceRunId'] === nativeRunId);
         };
         const handler = (type: string, data: Record<string, any>) => {
+            if (settled) return;
             const native = (data['runtimeFinality'] === 'present' || data['runtimeFinality'] === 'absent')
                 && (data['runtimeStatus'] === 'done' || data['runtimeStatus'] === 'error' || data['runtimeStatus'] === 'stopped');
             // A mismatched native terminal must not remove this request's
             // listener, extend its timeout, or contaminate its diagnostic.
             if (native && !matchesNativeIdentity(data)) return;
             if (native && (type === 'agent_done' || type === 'orchestrate_done')) nativeSeen = true;
+            if (native && type === 'agent_done') runtimeActive = false;
             // Live assistant chunks arrive as agent_output (Web UI + spawn.ts); legacy alias agent_chunk.
             if (type === 'agent_chunk' || type === 'agent_output' || type === 'agent_tool' ||
                 type === 'agent_status' || type === 'agent_retry' ||
@@ -85,6 +119,8 @@ export function orchestrateAndCollectData(
                 if (meta?.["origin"] && data?.["origin"] && data["origin"] !== meta["origin"]) return;
                 if (!meta?.["requestId"] && meta?.["chatId"] && data?.["chatId"] && data["chatId"] !== meta["chatId"]) return;
                 clearTimeout(timeout);
+                settled = true;
+                runtimeActive = false;
                 removeBroadcastListener(handler);
                 const terminalText = typeof data['text'] === 'string' && data['text'].trim() ? data['text'] : '';
                 resolve({ text: native
@@ -93,17 +129,20 @@ export function orchestrateAndCollectData(
             }
         };
         addBroadcastListener(handler);
+        resetTimeout();
         const run = isResetIntent(prompt)
-            ? orchestrateReset(meta)
+            ? orchestrateReset(runMeta)
             : isContinueIntent(prompt)
-                ? orchestrateContinue(meta)
-                : orchestrate(prompt, meta);
+                ? orchestrateContinue(runMeta)
+                : orchestrate(prompt, runMeta);
         Promise.resolve(run).catch(err => {
+            if (settled) return;
+            settled = true;
+            runtimeActive = false;
             clearTimeout(timeout);
             removeBroadcastListener(handler);
             resolve({ text: `❌ ${err.message}`, data: {} });
         });
-        resetTimeout();
     });
 }
 

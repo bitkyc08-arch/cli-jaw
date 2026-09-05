@@ -39,7 +39,8 @@ let simulatedMainAdapter = false;
 const workerEligibility = test.mock.fn((cli: string) => selection.isNativeWorkerImplemented(cli));
 test.mock.module('../../src/agent/runtime/selection.js', { namedExports: {
     ...selection,
-    isNativeAdapterImplemented: (cli: string) => simulatedMainAdapter || selection.isNativeAdapterImplemented(cli),
+    isNativeAdapterImplemented: (cli: string) => simulatedMainAdapter
+        || (!selection.isSwitchableNativeCli(cli) && selection.isNativeAdapterImplemented(cli)),
     isNativeWorkerImplemented: workerEligibility,
 } });
 const database = await import('../../src/core/db.ts');
@@ -55,7 +56,7 @@ test.mock.module('../../src/core/main-session.js', { namedExports: {
 // Do not import builder to spread its exports: builder imports spawn eagerly,
 // which would bind argv/queue seams before this fixture has installed them.
 test.mock.module('../../src/prompt/builder.js', { namedExports: {
-    regenerateB: () => {}, getSystemPrompt: () => 'fixture system prompt',
+    regenerateB: forbidden('regenerateB'), getSystemPrompt: () => 'fixture system prompt',
     A1_PATH: `${home}/prompts/A-1.md`, A2_PATH: `${home}/prompts/A-2.md`,
     HEARTBEAT_PATH: `${home}/prompts/HEARTBEAT.md`,
     ...Object.fromEntries([
