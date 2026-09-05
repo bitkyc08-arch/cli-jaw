@@ -78,6 +78,12 @@ export class RuntimeProjection {
         return createHash('sha256').update(JSON.stringify([kind, nativeRef])).digest('hex');
     }
 
+    /** Published display linkage only; never allocation or approval authority. */
+    itemId(kind: Preview['kind'], nativeRef: string): string | null {
+        if (this.recordingFailed) return null;
+        return this.items.get(this.key(kind, nativeRef))?.itemId ?? null;
+    }
+
     private id(key: string): string | null {
         const found = this.items.get(key);
         if (found) return found.itemId;
