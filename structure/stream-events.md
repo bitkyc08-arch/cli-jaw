@@ -14,6 +14,12 @@ even if the in-memory SSE ring still accepts a cursor. Loss never substitutes a 
 triggers another send; replay requests are historical. Contracts and limits are in
 `runtime-integration.md` and `server_api.md`.
 
+Print events share that journal through the existing RuntimeProjection sink. Accepted
+provider text precedes legacy resets; lifecycle-selected final remains authoritative.
+Legacy `agent_output`/`agent_tool` explicitly stamp captured chat/scope/run identity.
+Semantic events never become collect/forwarder/ACK/queue input. On projection failure,
+one gap signals a degraded projection and the existing compatibility final remains valid.
+
 > 각 CLI의 NDJSON/ACP/stream-json 이벤트를 `src/agent/events/`가 파싱하고, AGY plain-text output은 `spawn.ts`가 직접 처리한다. X-01 이후 current server의 public Web delivery는 `src/core/event-bus.ts` + `GET /api/events` SSE channel이 담당한다. WebSocket은 current server broadcast path가 아니라 `/api/events`가 한 번도 열리지 않는 pre-X-01 server용 client/TUI fallback이다.
 > 마지막 코드 대조: 2026-06-27 (`src/core/event-bus.ts`, `src/agent/lifecycle-handler.ts`, `src/goal/heartbeat.ts`, `src/agent/events/claude.ts`, `public/js/features/process-block.ts`, `public/js/ws.ts`)
 

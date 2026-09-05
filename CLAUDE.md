@@ -4,6 +4,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Documentation Map
 
+- Print Activity is an observation path: `runtime/print-projection.ts` and `print-activity.ts` reuse canonical projection bounds and gap handling. Legacy accepted-event hooks run before message resets; selected application-final comes only from lifecycle. `merge-tool-log.ts` keys by run plus stable ref/seq and preserves terminal status, identityless tools and one omission marker. Trace-only failures cannot roll back a MESSAGE or introduce another send.
+
 - Activity journal reuses immutable runtime trace rows and nullable admission owners. Replay and raw owned trace reads require exact chat ownership; forks do not inherit access. Whole-prefix retention preserves explicit loss while active owners remain protected. Journal failure cannot gate final delivery or interrupted MESSAGE salvage.
 
 - Activity uses `presentation.mode` (`activity` by default, reversible `legacy`) independently of provider transport. `GET /api/orchestrate/snapshot?session=...` returns server-owned `activityIdentity`; validate it before semantic admission. Display-only writes preserve runtime selection and delivery. See `structure/runtime-integration.md`.

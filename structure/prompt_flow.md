@@ -8,6 +8,12 @@ aliases: [Prompt Injection Flow, CLI-JAW prompt flow, prompt pipeline]
 
 # 프롬프트 삽입 흐름 — Prompt Injection Flow
 
+Activity is an observation sink, not a prompt or delivery source. Print parsers retain
+accepted intermediate text before legacy resets, while final text still comes from the
+existing lifecycle decision. Journal/link failures do not roll back an already-written
+MESSAGE, re-enter the handler, or introduce a new inference/send. Semantic SSE bypasses
+collectors and messaging listeners; request replay remains non-actionable.
+
 > cli-jaw의 프롬프트 조립 + 주입 전체 흐름. 현재 기준 소스는 `src/prompt/builder.ts` 1040L, `src/memory/injection.ts`, `src/agent/spawn.ts` 2011L, `src/prompt/templates/*` (a1-system 388L, a2-default 25L, orchestration 120L, employee 73L, control-system 56L, worker-context 11L, skills 24L, heartbeat-jobs 4L, heartbeat-default 4L, vision-click 3L).
 
 ---

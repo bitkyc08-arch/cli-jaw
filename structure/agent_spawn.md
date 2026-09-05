@@ -8,6 +8,13 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 
 # Agent Spawn — agent/ · orchestrator/ · cli/acp-client · goal/
 
+Activity captures the durable chat/scope at trace admission. Native Pi/Codex retain their
+own projections; Copilot and ordinary print create one print observer. Accepted parser
+text precedes legacy resets and the existing lifecycle callback supplies application-final.
+Error and AGY stale-retry paths that bypass lifecycle close observer/trace independently,
+without another message or retry. `agent_output` and `agent_tool` stamp captured identity
+after incidental payload fields, including when multi-session is disabled.
+
 > CLI spawn + ACP 분기 + Pi RPC + 스트림 + 큐 + 메모리 flush + PABCD 오케스트레이션 + goal-mode autonomy
 > 현재 기준: `src/agent/` 46개 TS 파일, `src/orchestrator/` 15개 파일 (+`attestation.ts`), `src/goal/` 5개 파일 (+`pause-gate.ts`), `src/cli/acp-client.ts`
 

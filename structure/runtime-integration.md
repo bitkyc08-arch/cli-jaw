@@ -44,6 +44,37 @@ Closed metadata may be evicted entirely under row pressure. Raw spill cleanup re
 symlink roots and child links. Missing journals never justify retrying inference or sending
 another answer. Replay request views are historical and non-actionable.
 
+Legacy print observation uses `print-projection.ts` (scalar identities only) and the
+server factory `print-activity.ts`. The factory reuses RuntimeProjection redaction,
+preview bounds and one failure-gap latch. Capacity/truncation is explicit loss rather
+than a silently complete journal. Dedicated parsers observe accepted text/reasoning
+before resets; plain Claude incremental blocks append, complete streamed snapshots
+replace. Copilot ACP replay remains muted; generic hooks observe accepted display text
+only. Existing final selection is unchanged and its callback supplies application-final.
+Compatibility completion can precede the canonical terminal; clients must deduplicate
+both orders and preserve compatibility when the canonical terminal is absent.
+
+The captured ctx ActivityIdentity never reads provider sessionId. Existing legacy tool
+and output packets carry its sessionId/scope plus traceRunId after payload overrides,
+including when multi-session is disabled. Internal audience remains private. Normal
+print and Copilot create one observer; native Pi/Codex retain their existing projection.
+Spawn errors and AGY's existing stale retry close the failed attempt independently of
+the ordinary lifecycle. Observer and trace finalization failures are caught separately.
+
+`mergeLatestTools` preserves primary order, latest status/detail and explicit empty
+detail; ref and numeric trace-seq keys are distinct domains within a run. Unknown worker
+owners and identityless entries are never guessed. A terminal tool cannot regress to a
+late running update. One authoritative omission marker stays at the head. Snapshot
+hydration reads bounded durable rows even at equal counts and keeps missing RAM fallback;
+history hydration synthesizes existing trace pointers. `getTraceToolEntry` safely reuses
+the trace decoder when a tool leaves RAM, preserving its stable ref even on read failure.
+
+Print alone opts into explicit terminal-to-terminal tool refreshes. The latest explicit
+legacy terminal status/detail wins; a running or missing status never reopens a terminal.
+Native defaults retain terminal error/output/detail ownership, missing-metadata enrichment,
+budget preservation and published-item lookup. No new event schema or display setting
+controls this internal distinction.
+
 `src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
 
 `src/agent/runtime/events.ts` records a validated, redacted body through the existing trace writer before publishing `agent_runtime` on the agent event topic. The trace writer owns sequence allocation; sequence gaps are valid. The tuple codec in `src/trace/runtime-body-codec.ts` preserves numeric usage without weakening raw-trace secret masking. Known structured fragments must be sanitized before clipping by their producer. Recording failure returns null, never a fabricated event or another inference.
