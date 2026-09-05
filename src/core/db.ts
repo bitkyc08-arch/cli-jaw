@@ -6,6 +6,7 @@ import fs from 'fs';
 import { dirname } from 'path';
 import { DB_PATH } from './config.js';
 import { stripStallTruncationNotice } from '../agent/stall-notice.js';
+import { migrateOversizedToolLogs } from './db-maintenance.js';
 
 function ensureDbDirExists(dbPath: string) {
     const dbDir = dirname(dbPath);
@@ -352,6 +353,10 @@ if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'trace')
 // Migration: add tool_log column for structured ProcessBlock data
 if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'tool_log')) {
     db.exec('ALTER TABLE messages ADD COLUMN tool_log TEXT DEFAULT NULL');
+}
+const migratedToolLogs = migrateOversizedToolLogs(db);
+if (migratedToolLogs > 0) {
+    console.log(`[db:migrate] sanitized ${migratedToolLogs} oversized tool_log row(s)`);
 }
 // Migration: add working_dir column for project-scoped message isolation
 if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'working_dir')) {
