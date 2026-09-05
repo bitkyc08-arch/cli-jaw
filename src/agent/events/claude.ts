@@ -2,7 +2,7 @@
 
 import { appendBoundedFullText } from './fulltext-bound.js';
 import { fieldString } from '../../types/cli-events.js';
-import { updateTraceToolRow, getTraceEvent } from '../../trace/store.js';
+import { updateTraceToolRow, getTraceToolEntry } from '../../trace/store.js';
 import type { CliEventRecord } from './types.js';
 import type { SpawnContext, ToolEntry } from './types.js';
 import {
@@ -147,6 +147,7 @@ function appendClaudeISnapshotText(ctx: SpawnContext, event: CliEventRecord): st
         const previous = ctx.claudeILastAssistantText || '';
         ctx.claudeILastAssistantText = text;
         if (text === previous || previous.startsWith(text)) return '';
+        ctx.printActivity?.message(text, 'replace', 'unknown');
         if (text.startsWith(previous)) {
             const delta = text.slice(previous.length);
             {
@@ -176,6 +177,7 @@ function appendClaudeISnapshotText(ctx: SpawnContext, event: CliEventRecord): st
     if (messageId) ctx.claudeILastAssistantId = messageId;
     else delete ctx.claudeILastAssistantId;
     ctx.claudeILastAssistantText = text;
+    ctx.printActivity?.message(text, 'replace', 'unknown');
     return appendAssistantTextSegment(ctx, text);
 }
 
@@ -192,6 +194,7 @@ function appendClaudeISnapshotText(ctx: SpawnContext, event: CliEventRecord): st
  *  (spawn.ts gates that to kiro-plain/agy/pi), and this mirrors the same defensive
  *  check the reconcile path already carries. */
 export function resetClaudeDurableMessage(ctx: SpawnContext): void {
+    ctx.printActivity?.nextMessage();
     ctx.fullText = '';
     if (ctx.liveOutputText !== undefined) ctx.liveOutputText = '';
     ctx.outputTextStarted = false;
@@ -264,6 +267,7 @@ export function handleClaudeEvent(
             const hasCanonicalText = evt.message.content.some(
                 (block) => block.type === 'text' && block.text,
             );
+            if (hasCanonicalText) ctx.printActivity?.message(extractAssistantText(evt), 'replace', 'unknown');
             if (ctx.claudeStreamedTextStart !== undefined && hasCanonicalText) {
                 const useLive = ctx.liveOutputText !== undefined;
                 const target = useLive ? ctx.liveOutputText! : ctx.fullText;
@@ -297,6 +301,7 @@ export function handleClaudeEvent(
             if (fallbackId) ctx.claudeILastAssistantId = fallbackId;
             for (const block of evt.message.content) {
                 if (block.type === 'text') {
+                    if (block.text) ctx.printActivity?.message(block.text, 'append', 'unknown');
                     const segment = appendAssistantTextSegment(ctx, block.text);
                     ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
                 }
@@ -339,11 +344,7 @@ export function handleClaudeEvent(
                     // status (WP4, devlog 260703 doc 12 item 3).
                     const pointer = ctx.toolTraceIndex?.get(`claude:tooluse:${block.tool_use_id}`);
                     if (pointer) {
-                        let base: Partial<ToolEntry> = {};
-                        const row = getTraceEvent(pointer.traceRunId, pointer.traceSeq);
-                        if (row?.raw) {
-                            try { base = JSON.parse(row.raw) as Partial<ToolEntry>; } catch { /* keep minimal base */ }
-                        }
+                        const base = getTraceToolEntry(pointer.traceRunId, pointer.traceSeq);
                         const resultText = extractText(block.content);
                         const merged: ToolEntry = {
                             toolType: 'tool',
@@ -360,6 +361,7 @@ export function handleClaudeEvent(
                                 : resultText;
                         }
                         updateTraceToolRow(merged);
+                        ctx.printActivity?.tool(merged);
                     }
                 }
             }

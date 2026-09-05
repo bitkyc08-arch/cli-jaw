@@ -25,6 +25,9 @@ export function handleCodexEvent(
         if (evt.item?.type === 'agent_message') {
             const text = String(evt.item.text || '');
             const channel = evt.item?.['channel'] || (evt.item?.['annotations'] as Record<string, unknown> | undefined)?.['channel'];
+            ctx.printActivity?.nextMessage();
+            ctx.printActivity?.message(text, 'replace',
+                channel === 'final' ? 'final' : channel === 'commentary' ? 'commentary' : 'unknown');
             // Commentary-channel messages are transient progress updates — do NOT
             // persist them in fullText so they stay out of agent_done and therefore
             // out of Slack/Telegram/Discord delivery.

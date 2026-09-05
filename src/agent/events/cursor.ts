@@ -1,6 +1,7 @@
 // Cursor CLI stream-json adapter.
 
 import { stripUndefined } from '../../core/strip-undefined.js';
+import { getTraceToolEntry, updateTraceToolRow } from '../../trace/store.js';
 import { asCliEventRecord, fieldNumber, fieldString } from '../../types/cli-events.js';
 import type { CliEventRecord, SpawnContext, ToolEntry } from './types.js';
 import {
@@ -68,6 +69,7 @@ function appendCursorAssistantText(ctx: SpawnContext, event: CliEventRecord): st
     // observed failures are all the first shape. Cumulative snapshot growth (the
     // prefix case) is unaffected.
     if (cursorStartsNewAssistantMessage(ctx, event, text, isDelta)) {
+        ctx.printActivity?.nextMessage();
         ctx.fullText = '';
         ctx.outputTextStarted = false;
         // Drop the dedupe baseline too. It describes the message being replaced, and
@@ -88,6 +90,7 @@ function appendCursorAssistantText(ctx: SpawnContext, event: CliEventRecord): st
         : (text.startsWith(previous) ? text.slice(previous.length) : text);
     if (!segmentText) return '';
 
+    ctx.printActivity?.message(segmentText, 'append', 'unknown');
     ctx.cursorAssistantText = isDelta ? `${previous}${text}` : text;
     return appendAssistantTextSegment(ctx, segmentText);
 }
@@ -185,14 +188,50 @@ function emitCursorTool(
     tool: ToolEntry,
 ): void {
     const key = [tool.icon, tool.label, tool.stepRef || '', tool.status || ''].join(':');
-    if (ctx.seenToolKeys?.has(key)) return;
-    ctx.seenToolKeys?.add(key);
-    const existingIdx = tool.stepRef && (tool.status === 'done' || tool.status === 'error')
-        ? ctx.toolLog.findIndex((entry) => entry.stepRef === tool.stepRef && entry.status === 'running')
+    const existingIdx = tool.stepRef
+        ? ctx.toolLog.findIndex((entry) => entry.stepRef === tool.stepRef)
         : -1;
+    let prior = ctx.toolLog[existingIdx];
+    const pointer = tool.stepRef ? ctx.toolTraceIndex?.get(tool.stepRef) : undefined;
+    if (!prior && pointer) {
+        prior = getTraceToolEntry(pointer.traceRunId, pointer.traceSeq) ?? undefined;
+    }
+    // Late start snapshots must not reopen a completed tool, even with changed detail.
+    if (['done', 'error', 'stopped'].includes(prior?.status || '')
+        && !['done', 'error', 'stopped'].includes(tool.status || '')) return;
+    if (ctx.seenToolKeys?.has(key) && (!prior || prior.detail === tool.detail)) return;
+    ctx.seenToolKeys?.add(key);
+    // Admission precedes all text/message-boundary effects as well as tool writes.
+    // LAST-WINS across tool boundaries: assistant text that arrived BEFORE
+    // a tool ran is planning narration ("경계를 먼저 확인한 뒤 ..."), not part
+    // of the final answer. Cursor stream-json has no channel tags, so the
+    // tool boundary is the only reliable seam — discard the durable
+    // accumulation when a NEW tool starts and keep only post-last-tool text.
+    // Only on 'running' (tool start): a late completion update arriving
+    // after the answer began must not wipe answer text. The delta/snapshot
+    // dedupe state (cursorAssistantText) is deliberately NOT reset, so a
+    // cumulative end-of-turn snapshot still dedupes to nothing instead of
+    // re-ingesting the discarded narration. Live UI keeps the narration via
+    // pendingOutputChunk/agent_output; only fullText (=agent_done → external
+    // channels) is affected.
+    if (tool.status === 'running' && (ctx.fullText || ctx.outputTextStarted)) {
+        ctx.printActivity?.nextMessage();
+        ctx.fullText = '';
+        ctx.outputTextStarted = false;
+    }
+    const traceRunId = pointer?.traceRunId ?? prior?.traceRunId;
+    const traceSeq = pointer?.traceSeq ?? prior?.traceSeq;
+    if (traceRunId && traceSeq) {
+        tool.traceRunId = traceRunId;
+        tool.traceSeq = traceSeq;
+        tool.detailAvailable = ctx.traceAudience !== 'internal';
+        if (ctx.traceAudience === 'internal') tool.rawRetentionStatus = 'internal';
+        else if (prior?.rawRetentionStatus !== undefined) tool.rawRetentionStatus = prior.rawRetentionStatus;
+    }
     if (existingIdx >= 0) ctx.toolLog[existingIdx] = tool;
     else ctx.toolLog.push(tool);
     syncLiveTools(ctx);
+    updateTraceToolRow(tool);
     emitAgentTool(ctx, agentLabel, tool, empTag);
 }
 
@@ -221,22 +260,6 @@ export function handleCursorEvent(
     }
 
     if (event.type === 'tool_call') {
-        // LAST-WINS across tool boundaries: assistant text that arrived BEFORE
-        // a tool ran is planning narration ("경계를 먼저 확인한 뒤 ..."), not part
-        // of the final answer. Cursor stream-json has no channel tags, so the
-        // tool boundary is the only reliable seam — discard the durable
-        // accumulation when a NEW tool starts and keep only post-last-tool text.
-        // Only on 'running' (tool start): a late completion update arriving
-        // after the answer began must not wipe answer text. The delta/snapshot
-        // dedupe state (cursorAssistantText) is deliberately NOT reset, so a
-        // cumulative end-of-turn snapshot still dedupes to nothing instead of
-        // re-ingesting the discarded narration. Live UI keeps the narration via
-        // pendingOutputChunk/agent_output; only fullText (=agent_done → external
-        // channels) is affected.
-        if (cursorToolStatus(event) === 'running' && (ctx.fullText || ctx.outputTextStarted)) {
-            ctx.fullText = '';
-            ctx.outputTextStarted = false;
-        }
         emitCursorTool(ctx, agentLabel, empTag, cursorToolLabel(event));
     }
 
@@ -258,7 +281,9 @@ export function handleCursorEvent(
                 status: 'error',
             });
         } else if (!ctx.fullText && typeof event["result"] === 'string') {
-            const segment = appendAssistantTextSegment(ctx, normalizeAssistantDisplayText(event["result"]));
+            const text = normalizeAssistantDisplayText(event["result"]);
+            ctx.printActivity?.message(text, 'append', 'unknown');
+            const segment = appendAssistantTextSegment(ctx, text);
             ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
         }
     }

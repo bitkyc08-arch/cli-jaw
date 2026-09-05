@@ -60,7 +60,7 @@ const maxSeqStmt = db.prepare('SELECT MAX(seq) AS seq FROM trace_events WHERE ru
 const listRunsForMessageStmt = db.prepare(
     'SELECT id, audience, started_at FROM trace_runs WHERE message_id = ? ORDER BY started_at ASC, id ASC');
 const listToolEventsForRunStmt = db.prepare(`
-    SELECT seq, event_type, raw_json, raw_path
+    SELECT seq, event_type, raw_json, raw_path, bytes, retention_status
     FROM trace_events WHERE run_id = ? AND source = 'tool' ORDER BY seq ASC LIMIT ?
 `);
 // WP4 (devlog 260703 doc 12): live-run hydration reads the NEWEST tool rows and the
@@ -327,10 +327,18 @@ export function listToolEntriesForMessage(
     for (const run of runs) {
         if (wantAudience === 'public' && run.audience === 'internal') continue;
         const events = listToolEventsForRunStmt.all(run.id, perRunLimit) as
-            { seq: number; event_type: string; raw_json: string | null; raw_path: string | null }[];
+            { seq: number; event_type: string; raw_json: string | null; raw_path: string | null;
+                bytes: number; retention_status: TraceRetentionStatus }[];
         for (const ev of events) {
             const tool = traceToolEventToEntry(ev);
-            if (tool) out.push(tool);
+            if (tool) out.push({
+                ...tool,
+                traceRunId: run.id,
+                traceSeq: ev.seq,
+                detailAvailable: run.audience !== 'internal',
+                detailBytes: ev.bytes,
+                rawRetentionStatus: run.audience === 'internal' ? 'internal' : ev.retention_status,
+            });
         }
     }
     return out;
@@ -347,4 +355,16 @@ export function getTraceEvent(runId: string, seq: number): (TraceEventRow & { ra
         raw = fs.readFileSync(path, 'utf8');
     }
     return { ...row, raw };
+}
+
+/** Best-effort parser recovery after a tool leaves RAM; tracing cannot stop its provider. */
+export function getTraceToolEntry(runId: string, seq: number): ToolEntry | null {
+    if (!TRACE_ID_RE.test(runId) || !Number.isSafeInteger(seq) || seq < 1) return null;
+    try {
+        const row = getEventStmt.get(runId, seq) as TraceEventRow | undefined;
+        if (!row || row.source !== 'tool') return null;
+        const tool = traceToolEventToEntry({ raw_json: row.raw_json ?? null, raw_path: row.raw_path ?? null });
+        return tool && typeof tool.label === 'string' && typeof tool.icon === 'string' && typeof tool.toolType === 'string'
+            ? tool : null;
+    } catch { console.warn('[trace] tool_recovery_unavailable'); return null; }
 }

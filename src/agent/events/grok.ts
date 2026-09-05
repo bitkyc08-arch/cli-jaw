@@ -1,6 +1,7 @@
 // Grok CLI event adapter
 
 import { appendBoundedFullText } from './fulltext-bound.js';
+import { getTraceToolEntry, updateTraceToolRow } from '../../trace/store.js';
 import {
     asCliEventRecord,
     fieldString,
@@ -21,13 +22,24 @@ const GROK_THINKING_UPDATE_MIN_MS = 750;
 const GROK_THINKING_UPDATE_MIN_CHARS = 240;
 const GROK_THOUGHT_BUFFER_MAX = 102_400;
 
+function findGrokTool(ctx: SpawnContext, ref: string): ToolEntry | undefined {
+    const existing = [...ctx.toolLog].reverse().find(t => t.stepRef === ref);
+    if (existing) return existing;
+    const pointer = ctx.toolTraceIndex?.get(ref);
+    if (!pointer) return undefined;
+    const base = getTraceToolEntry(pointer.traceRunId, pointer.traceSeq);
+    return { icon: '🔧', label: 'tool', toolType: 'tool', ...base, stepRef: ref,
+        traceRunId: pointer.traceRunId, traceSeq: pointer.traceSeq,
+        detailAvailable: ctx.traceAudience !== 'internal',
+        ...(ctx.traceAudience === 'internal' ? { rawRetentionStatus: 'internal' as const } : {}),
+    };
+}
+
 function findGrokThinkingTool(ctx: SpawnContext): ToolEntry | undefined {
     const currentRef = ctx.grokCurrentThoughtRef;
     if (currentRef) {
-        const current = [...ctx.toolLog].reverse().find(
-            (t: ToolEntry) => t.stepRef === currentRef && (!t.status || t.status === 'running')
-        );
-        if (current) return current;
+        const current = findGrokTool(ctx, currentRef);
+        if (current && (!current.status || current.status === 'running')) return current;
     }
     return [...ctx.toolLog].reverse().find(
         (t: ToolEntry) => t.stepRef?.startsWith(GROK_THINKING_STEP_REF) && (!t.status || t.status === 'running')
@@ -69,6 +81,7 @@ function ensureGrokThinkingProgress(
     if (existing) {
         existing.label = label;
         if (trimmed) existing.detail = trimmed;
+        updateTraceToolRow(existing);
         if (!shouldEmitGrokThinkingUpdate(ctx, trimmed)) return;
         syncLiveTools(ctx);
         emitAgentTool(ctx, agentLabel, existing, empTag);
@@ -107,6 +120,7 @@ function finalizeGrokThinkingProgress(
         existing.detail = trimmed;
     }
     syncLiveTools(ctx);
+    updateTraceToolRow(existing);
     emitAgentTool(ctx, agentLabel, existing, empTag);
     delete ctx.grokCurrentThoughtRef;
     delete ctx.grokLastThoughtEmitAt;
@@ -126,6 +140,7 @@ function finalizeAllGrokThinkingProgress(
     for (const thought of runningThoughts) {
         thought.status = 'done';
         syncLiveTools(ctx);
+        updateTraceToolRow(thought);
         emitAgentTool(ctx, agentLabel, thought, empTag);
     }
     delete ctx.grokCurrentThoughtRef;
@@ -238,14 +253,18 @@ function handleGrokToolEvent(
     );
 
     if (startsTool && !endsTool) {
-        const existing = [...ctx.toolLog].reverse().find((t: ToolEntry) => t.stepRef === ref);
+        const existing = findGrokTool(ctx, ref);
         if (existing) {
+            // Includes rows recovered after RAM eviction; reject before mutation.
+            if (['done', 'error', 'stopped'].includes(existing.status || '')) return true;
             existing.icon = '🔧';
             existing.label = buildPreview(name, 80) || existing.label || 'tool';
             existing.toolType = 'tool';
             existing.status = 'running';
             if (detail) existing.detail = detail;
+            if (!ctx.toolLog.includes(existing)) ctx.toolLog.push(existing);
             syncLiveTools(ctx);
+            updateTraceToolRow(existing);
             emitAgentTool(ctx, agentLabel, existing, empTag);
             return true;
         }
@@ -264,7 +283,7 @@ function handleGrokToolEvent(
         return true;
     }
 
-    const existing = [...ctx.toolLog].reverse().find((t: ToolEntry) => t.stepRef === ref);
+    const existing = findGrokTool(ctx, ref);
     const doneTool = existing || {
         icon: isError ? '❌' : '✅',
         label: buildPreview(name, 80) || 'tool',
@@ -275,8 +294,9 @@ function handleGrokToolEvent(
     doneTool.label = buildPreview(name, 80) || doneTool.label || 'tool';
     doneTool.status = isError ? 'error' : 'done';
     if (detail) doneTool.detail = detail;
-    if (!existing) ctx.toolLog.push(doneTool);
+    if (!ctx.toolLog.includes(doneTool)) ctx.toolLog.push(doneTool);
     syncLiveTools(ctx);
+    updateTraceToolRow(doneTool);
     emitAgentTool(ctx, agentLabel, doneTool, empTag);
     pushTrace(ctx, `[${agentLabel}] grok tool ${isError ? 'error' : 'done'}: ${name}`);
     return true;
@@ -318,6 +338,7 @@ export function handleGrokEvent(
     }
     if (evt.type === 'thought') {
         const text = String(evt.data || evt.text || '');
+        if (text) ctx.printActivity?.reasoning(text, 'append');
         const buf = (ctx.grokThoughtBuf || '') + text;
         ctx.grokThoughtBuf = buf.length > GROK_THOUGHT_BUFFER_MAX ? buf.slice(-GROK_THOUGHT_BUFFER_MAX) : buf;
         ensureGrokThinkingProgress(ctx, agentLabel, empTag, ctx.grokThoughtBuf);
@@ -326,6 +347,7 @@ export function handleGrokEvent(
     if (evt.type === 'text') {
         const text = String(evt.data || evt.text || '');
         if (text) {
+            ctx.printActivity?.message(text, 'append', 'unknown');
             finalizeGrokThinkingProgress(ctx, agentLabel, empTag, ctx.grokThoughtBuf);
             ctx.grokThoughtBuf = '';
             {
