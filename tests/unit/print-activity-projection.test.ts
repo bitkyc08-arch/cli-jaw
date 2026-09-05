@@ -2,8 +2,9 @@ import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPrintActivityProjection } from '../../src/agent/runtime/print-projection.js';
-import { createPrintActivity } from '../../src/agent/runtime/print-activity.js';
-import { startTraceRun, finalizeTraceRun } from '../../src/trace/store.js';
+import { createPrintActivity, finishPrintActivity } from '../../src/agent/runtime/print-activity.js';
+import { startTraceRun, finalizeTraceRun, getTraceRun } from '../../src/trace/store.js';
+import { db } from '../../src/core/db.js';
 import { readActivityPage } from '../../src/trace/activity-journal.js';
 import { subscribe, type BusEvent } from '../../src/core/event-bus.js';
 import { settings } from '../../src/core/config.js';
@@ -81,6 +82,24 @@ test('preview capacity fails visibly through one gap, with no fabricated termina
         assert.equal(p.events.some(e => e.kind === 'turn-end'), false);
         assert.equal(seen.filter(e => e.event === 'agent_runtime_gap').length, 1);
     } finally { unsubscribe(); }
+});
+
+test('bypass observer failure and trace failure are independently contained', t => {
+    t.mock.method(console, 'warn', () => {});
+    const runId = startTraceRun({ cli: 'print', sessionId: 'default', scopeKey: 'default' });
+    const observer = createPrintActivity({ runId, sessionId: 'default', scope: 'default', turnId: runId, audience: 'public' }, 'print');
+    let calls = 0;
+    assert.doesNotThrow(() => finishPrintActivity({ traceRunId: runId, printActivity: { ...observer,
+        finish: () => { calls++; throw new Error('fixture observer'); },
+    } }, { kind: 'turn-end', status: 'error', finalText: null }));
+    assert.equal(calls, 1); assert.equal(getTraceRun(runId)?.status, 'error', 'trace still finalized after observer throw');
+    db.exec("CREATE TRIGGER bypass_trace_failure BEFORE UPDATE OF status ON trace_runs BEGIN SELECT RAISE(ABORT,'fixture'); END");
+    try {
+        assert.doesNotThrow(() => finishPrintActivity({ traceRunId: runId, printActivity: { ...observer,
+            finish: () => { calls++; },
+        } }, { kind: 'turn-end', status: 'error', finalText: null }));
+        assert.equal(calls, 2, 'observer still called exactly once before trace failure');
+    } finally { db.exec('DROP TRIGGER bypass_trace_failure'); }
 });
 
 function context(): SpawnContext {

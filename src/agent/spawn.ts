@@ -70,6 +70,7 @@ import { RuntimeProjection } from './runtime/projection.js';
 import { CodexProjection } from './runtime/codex-projection.js';
 import { PiProjection } from './runtime/pi-projection.js';
 import { PiRawTrace } from './runtime/pi-raw-trace.js';
+import { createPrintActivity, finishPrintActivity } from './runtime/print-activity.js';
 import { isNativeAdapterImplemented, isNativeWorkerImplemented, isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket } from './runtime/selection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
 import type { RemoteTarget } from '../messaging/types.js';
@@ -329,9 +330,10 @@ function broadcastAgentOutput(
         agentId: agentLabel,
         cli,
         text,
-        ...(ctx.traceRunId ? { traceRunId: ctx.traceRunId } : {}),
         ...(textLen !== null ? { textLen } : {}),
         ...empTag,
+        ...(ctx.traceRunId ? { traceRunId: ctx.traceRunId } : {}),
+        ...(ctx.activityIdentity ?? {}),
     }, audience);
 }
 
@@ -363,6 +365,7 @@ function emitKiroStreamEvents(
         if (event.kind === 'assistant_delta') {
             const segment = normalizeAssistantDisplayText(event.text);
             if (!segment) continue;
+            ctx.printActivity?.message(segment, 'append', 'unknown');
             if (ctx.liveOutputText !== undefined) {
                 ctx.liveOutputText += segment;
             }
@@ -1725,6 +1728,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 activeProcesses.delete(agentLabel);
             }
             broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
+            finishPrintActivity(ctx, { kind: 'turn-end', status: 'error', finalText: null, error: msg });
             resolve!({ text: '', code: 1 });
             if (mainManaged) void processQueue(scopeKey);
         });
@@ -1749,7 +1753,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             parentLiveScope: parentLiveScopeForChild,
             traceRunId,
             traceAudience,
+            activityIdentity: { sessionId: chatSessionId, scope: scopeKey },
         };
+        ctx.printActivity = createPrintActivity({ runId: traceRunId, sessionId: chatSessionId,
+            scope: scopeKey, turnId: traceRunId, audience: traceAudience }, cli);
 
         // Flush accumulated 💭 thinking buffer as a single merged event
         function flushThinking() {
@@ -1785,6 +1792,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const parsedTool = parsed.tool;
                 // Buffer 💭 thought chunks → flush when different event arrives
                 if (parsedTool.icon === '💭') {
+                    ctx.printActivity?.reasoning(parsedTool.detail || parsedTool.label, 'append');
                     ctx.thinkingBuf += parsedTool.detail || parsedTool.label;
                     return;
                 }
@@ -1814,10 +1822,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 // carry no boundary signal and simply accumulate.
                 if (parsed.messageId && ctx.acpAssistantMessageId !== undefined
                     && ctx.acpAssistantMessageId !== parsed.messageId) {
+                    ctx.printActivity?.nextMessage();
                     ctx.fullText = '';
                     ctx.outputTextStarted = false;
                 }
                 if (parsed.messageId) ctx.acpAssistantMessageId = parsed.messageId;
+                ctx.printActivity?.message(parsed.text, 'append', 'unknown');
                 const segment = appendAssistantTextSegment(ctx, parsed.text);
                 if (segment) {
                     broadcastAgentOutput(ctx, agentLabel, cli, segment, empTag, traceAudience);
@@ -1985,6 +1995,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             //   - trace: if (traceText) traceText = `⏹️ [interrupted]…`
             handleAgentExit({
                 ctx, code: acpCode, cli, model, agentLabel, mainManaged, origin,
+                onRuntimeEnd: end => ctx.printActivity?.finish(end),
                 resumeKey,
                 prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
                 isResume, wasKilled, wasSteer, smokeResult,
@@ -2046,6 +2057,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             parentLiveScope: parentLiveScopeForChild,
             traceRunId,
             traceAudience,
+            activityIdentity: { sessionId: chatSessionId, scope: scopeKey },
         };
         const activity = new RuntimeProjection({
             runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
@@ -2328,6 +2340,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             parentLiveScope: parentLiveScopeForChild,
             traceRunId,
             traceAudience,
+            activityIdentity: { sessionId: chatSessionId, scope: scopeKey },
         };
 
         const activity = new RuntimeProjection({
@@ -2989,6 +3002,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             activeProcesses.delete(agentLabel);
         }
         broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
+        finishPrintActivity(ctx, { kind: 'turn-end', status: 'error', finalText: null, error: msg });
         resolve!({ text: '', code: 127 });
         if (mainManaged) void processQueue(scopeKey);
     });
@@ -3043,6 +3057,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         parentLiveScope: parentLiveScopeForChild,
         traceRunId,
         traceAudience,
+        activityIdentity: { sessionId: chatSessionId, scope: scopeKey },
         ...(opencodeSpawnAudit ? { opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> } : {}),
         ...(agyResumeOffset > 0 ? { agyResumeOffset, agyBytesReceived: 0 } : {}),
         ...(cli === 'agy' ? {
@@ -3059,6 +3074,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(kiroPlainText || cli === 'agy' || cli === 'pi' ? { liveOutputText: '' } : {}),
         ...(kiroPlainText ? { kiroLastVisibleAt: Date.now(), kiroHeartbeatSent: false } : {}),
     };
+    ctx.printActivity = createPrintActivity({ runId: traceRunId, sessionId: chatSessionId,
+        scope: scopeKey, turnId: traceRunId, audience: traceAudience }, cli);
     let agyClosing = false;
     let agyGuardedStaleDetected = false;
     const scheduleAgyQuietCompletion = () => {
@@ -3204,6 +3221,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         const outputChunk = extractOutputChunk(dispatchCli, event, ctx);
         if (outputChunk) {
+            // Dedicated providers observe before their destructive legacy resets.
+            // Copilot's ordinary print fallback exposes only accepted assistant text here.
+            if (dispatchCli === 'copilot') ctx.printActivity?.message(outputChunk, 'append', 'unknown');
             broadcastAgentOutput(ctx, agentLabel, cli, outputChunk, empTag, (opts.internal || isEmployee) ? 'internal' : 'public');
         }
     };
@@ -3250,6 +3270,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const newText = normalizeAssistantDisplayText(newStart > 0 ? text.slice(newStart) : text);
                 ctx.agyResumeOffset = 0;
                 if (!newText) return;
+                ctx.printActivity?.message(newText, 'append', 'unknown');
                 if (ctx.liveOutputText !== undefined) ctx.liveOutputText += newText;
                 ctx.outputTextStarted = true;
                 appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: newText });
@@ -3280,6 +3301,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 return;
             }
             appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: displayText });
+            ctx.printActivity?.message(displayFullText, 'replace', 'unknown');
             broadcastAgentOutput(ctx, agentLabel, cli, displayText, empTag, traceAudience);
             scheduleAgyQuietCompletion();
             return;
@@ -3402,6 +3424,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             if (agyResumeDecision.ok && !opts._agyStaleFreshRetry) {
                 if (mainManaged) releaseMainRun(scopeKey, child, ownerGeneration);
                 else activeProcesses.delete(agentLabel);
+                finishPrintActivity(ctx, { kind: 'turn-end', status: 'stopped', finalText: null, error: 'AGY stale resume; retrying fresh' });
                 const { promise: freshPromise } = spawnAgent(prompt, {
                     ...opts, _agyStaleFreshRetry: true, _skipResume: true, _skipInsert: true,
                 });
@@ -3561,6 +3584,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         //   - trace: if (traceText) traceText = `⏹️ [interrupted]…`
         handleAgentExit({
             ctx, code: effectiveExitCode, cli, model: runtimeModel, effectiveProvider, agentLabel, mainManaged, origin,
+            onRuntimeEnd: end => ctx.printActivity?.finish(end),
             resumeKey,
             prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
             isResume, wasKilled, wasSteer, smokeResult,
