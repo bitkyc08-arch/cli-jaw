@@ -120,6 +120,8 @@ interface WsMessage {
     message?: string;
     steered?: boolean;
     steerWaitMs?: number;
+    mode?: string;
+    localDispatch?: boolean;
     textLen?: number;
     sseReplay?: boolean;
     deleted?: { id?: string; seq?: number };
@@ -1254,6 +1256,9 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'memory_status') {
         import('./features/memory.js').then(m => m.refreshMemorySidebar());
     } else if (msg.type === 'steer_started') {
+        // This is an input receipt inside the existing logical run, not its
+        // terminal. It grants no ownership, including when replayed or foreign.
+        if (msg.mode === 'cancel-reprompt') return;
         markSteered();
         markRunFinalized(null); // killed run — drop its replayed stream too
         finalizeAgent('');
