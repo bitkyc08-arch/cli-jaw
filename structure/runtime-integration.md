@@ -40,6 +40,20 @@ The native connection accepts string/safe-integer IDs and individual envelopes; 
 
 Malformed frames, I/O failure, timeout, EOF or child exit close once and reject all pending results and active/queued writes. Late errors are consumed; late replies/callbacks cannot reopen the connection. Diagnostics never include malformed payloads or provider error text/data. The caller must synchronously admit frames into a bounded consumer and retire/reap its own child when notified of failure. Consumer queues, real provider lifetime, permissions and remote cancel-reprompt acceptance are verified in their adapter layers, not inferred from these transport tests.
 
+## Native pending decisions
+
+`src/agent/runtime/requests.ts` holds ephemeral, exact-bound decisions: runId, jaw sessionId, scope and turnId must all match, and the captured ownership predicate must remain current. It retains at most128 entries for120seconds, prunes expired/stale entries and settles once. Responses are validated synchronously before a second ownership/entry check. Invalid choices remain correctable; asynchronous validators cannot orphan the request. Cancellation data is an independent bounded, deeply frozen JSON snapshot, never a mutable caller alias or a timer closure retaining raw input.
+
+Cancellation snapshots accept plain JSON trees only, not shared references, cycles, accessors or executable values. Copying charges JSON UTF-8 bytes before allocation grows beyond32KiB, with32-level/32768-node traversal bounds. No unrestricted clone or graph-expanding whole-object serialization precedes that check.
+
+Admission uses the canonical request-view sanitizer and the same encode/redact/decode plus32KiB byte gate as public runtime events, including optional parent identity. The immutable stored view is cloned for GET; raw provider option identifiers and validators never enter the DTO. The response promise alone carries the mapped native decision. Restart cannot recreate executable request handles from history.
+
+`acp/permissions.ts` validates core v1 permission params, including nullable titles, and chooses unattended options by protocol kind, not localized labels. Only literal auto selects allow_once (then allow_always); safe/custom arrays, including[] and['auto'], wait for a decision. `acp/callbacks.ts` owns at most32 callbacks per connection, while human waits remain independent of notification parsing. It maps fresh jaw handles to native option IDs only in live closures and refuses unsupported filesystem/terminal/question extensions without executing host operations.
+
+Cancellation latches outlive a resolved registry answer. cancelRun/dispose prevent a later selected reply; cancelling an already-admitted but unflushed selected reply retires the connection because transport bytes cannot be retracted. Previously delivered bytes cannot be undone. The current-run fence rejects late grants without growing historical state or disposing the reusable dispatcher on every turn. The session adapter must dispose it on connection retirement and provide emitters/currentness bound to captured turns. Failed publication cancels the invisible request, and every mapping is disposed after its callback.
+
+The two request routes use existing instance auth, including loopback and configured LAN bypass; they are not an OS sandbox or per-session tenant ACL. Exact IDs prevent misrouting and replay, not authority escalation between already-authorized instance users. API accepted means decision recorded, not tool completion. Provider activation, Activity controls and channel interactions remain separate layers; Slack final/ACK/queue behavior is untouched.
+
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
 
 - boss/main 실행은 메시지당 spawn 대신 상주 런타임 풀을 탄다. 키 = 엔진별 독립 스토어 + `chat:${getActiveChatSession()}` + cwd + 모델/effort/(pi는 profile/endpoint/apiKind/profileFp).

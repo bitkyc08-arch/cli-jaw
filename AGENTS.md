@@ -191,6 +191,10 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
   Canonical: dev-pabcd §10, dev-testing §9.5; injected via orchestration template and goal continuation.
 - `structure/` reading map: start at `structure/INDEX.md`; depth — `telegram.md` (Hub), `prompt_flow.md` (attest/hooks/bounded search), `stream-events.md` (pause gate/SSE), `infra.md` (test scripts), `commands.md` + `server_api.md` (slash/API surfaces). Concurrent inbound gateway docs: `structure/INDEX.md` §gateway, `structure/infra.md` §`src/messaging/`, `structure/telegram.md` §common messaging layer; legacy `settings.channel` is a deprecated read-only alias for one major version.
 
+### Native decisions
+
+`src/agent/runtime/requests.ts` and `acp/callbacks.ts` own bounded pending decisions, opaque native-option mapping and cancellation latches. `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id` use the existing instance auth policy (including loopback/LAN bypass), never a current-session fallback. Match run/session/scope/turn and current ownership before answering. Canonical sanitization and the32KiB event preflight precede insertion; global128/120s and per-connection32 bounds apply. An admitted selected write cannot be retracted: cancellation during dispatch retires the connection. Provider activation, approval UI and messaging changes are not implied. Sync `structure/runtime-integration.md` and `structure/server_api.md`.
+
 ### Concurrent inbound gateway (M1)
 
 - Settings schema v4 replaces top-level `channel` with `messaging.enabledChannels` (array) and `messaging.homeChannel`. New installs start with an empty enabled set; existing v3 `channel` is migrated to a one-element enabled set and matching home channel, then deleted from persisted settings.
