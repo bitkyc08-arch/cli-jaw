@@ -311,6 +311,46 @@ const DASHBOARD_CONNECTOR_ANCHOR_OPEN = '<!-- anchor:dashboard-connector-intent 
 const DASHBOARD_CONNECTOR_ANCHOR_CLOSE = '<!-- /anchor:dashboard-connector-intent -->';
 const SESSION_POLL_ANCHOR_OPEN = '<!-- anchor:session-poll -->';
 const SESSION_POLL_ANCHOR_CLOSE = '<!-- /anchor:session-poll -->';
+const DESKTOP_CONTROL_INTENT_RE = /(?:\$?computer-use|\bdesktop\b|\bbrowser\b|\bcdp\b|\burl\b|\bui[\s-]*qa\b|브라우저|화면|스크린샷)/iu;
+// Proper-noun app names: word-bounded and case-sensitive so that "release notes",
+// "keyword", or "search" do not read as Notes / Word / Arc and pull in the 8K block.
+const DESKTOP_APP_NAME_RE = /\b(?:Finder|System Settings|Chrome|Safari|Microsoft Edge|Firefox|Arc|Spotify|Excel|Word|PowerPoint|Slack|Discord|Telegram|Calendar|Reminders|Notes)\b/u;
+const DESKTOP_SKILL_METADATA_RE = /(?:desktop|browser|computer-use|\bcdp\b|브라우저|화면|스크린샷)/iu;
+
+export function shouldIncludeDesktopControlSection(currentPrompt: string, activeCli?: string | null): boolean {
+    const prompt = String(currentPrompt || '').trim();
+    const routingText = `${prompt}\n${activeCli || ''}`;
+    if (DESKTOP_CONTROL_INTENT_RE.test(routingText) || DESKTOP_APP_NAME_RE.test(routingText)) return true;
+
+    const normalizedPrompt = prompt.toLowerCase();
+    try {
+        return loadActiveSkills().some(skill => {
+            if (!skill) return false;
+            const metadata = [
+                skill.id,
+                skill.name,
+                skill.description,
+                ...skill.keywords,
+                ...skill.triggers,
+            ].join(' ');
+            if (!DESKTOP_SKILL_METADATA_RE.test(metadata)) return false;
+            return [skill.id, skill.name].some(name => {
+                const routedName = String(name || '').trim().toLowerCase();
+                return routedName.length > 0
+                    && (normalizedPrompt.includes(routedName) || normalizedPrompt.includes(`$${routedName}`));
+            });
+        });
+    } catch {
+        return false;
+    }
+}
+
+function omitDesktopControlSection(a1: string): string {
+    const topology = findAnchorTopology(a1, DESKTOP_CONTROL_ANCHOR_OPEN, DESKTOP_CONTROL_ANCHOR_CLOSE);
+    const block = extractAnchorBlock(a1, DESKTOP_CONTROL_ANCHOR_OPEN, DESKTOP_CONTROL_ANCHOR_CLOSE);
+    if (topology.kind !== 'single' || !block) return a1;
+    return `${a1.slice(0, topology.start).trimEnd()}\n\n${a1.slice(topology.end).trimStart()}`;
+}
 
 function extractAnchorBlock(rendered: string, open: string, close: string): string | null {
     const start = rendered.indexOf(open);
@@ -731,13 +771,18 @@ function getCurrentSessionIdentityLine(): string {
 export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string; freshSession?: boolean } = {}) {
     const forDisk = opts.forDisk === true;
     const diskWorkingDir = forDisk ? resolveDiskWorkingDir() : '';
-    // A-1: file takes priority (user-editable), rendered template fallback
-    const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
+    const currentPrompt = String(opts.currentPrompt || '').trim();
+    // A-1: file takes priority (user-editable), rendered template fallback.
+    // Runtime prompts drop desktop-control unless the current turn routes there;
+    // persisted A-1.md and forDisk B.md/AGENTS.md remain complete.
+    const persistedA1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
+    const a1 = forDisk || shouldIncludeDesktopControlSection(currentPrompt, opts.activeCli)
+        ? persistedA1
+        : omitDesktopControlSection(persistedA1);
     const rawA2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
     const a2 = forDisk ? renderA2ForDisk(rawA2, diskWorkingDir) : rawA2;
     let prompt = `${a1}\n\n${a2}`;
     // Project root is now injected per-message in spawn.ts (user prompt wrapper)
-    const currentPrompt = String(opts.currentPrompt || '').trim();
 
     // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
     // No dynamic injection needed — Bot-First policy with curl examples included

@@ -20,10 +20,11 @@ aliases: [A1 system prompt, CLI-JAW A1, system prompt template]
 
 | 단계 | 동작 | 코드 |
 |---|---|---|
-| 1 | `A-1.md` 존재 시 파일 내용을 그대로 사용 | `getSystemPrompt()` |
-| 2 | `A-1.md`가 없으면 `a1-system.md`를 렌더링해서 사용 | `getA1Content()` |
-| 3 | 첫 설치 시 `initPromptFiles()`가 `A-1.md`와 `.hash`를 생성 | `initPromptFiles()` |
-| 4 | 해시가 달라졌을 때 사용자 편집본이면 보존, stock 파일이면 새 템플릿으로 이관 | `resolveLegacyA1Migration()` |
+| 1 | `A-1.md` 존재 시 이를 persisted 원본으로 사용 | `getSystemPrompt()` |
+| 2 | `A-1.md`가 없으면 `a1-system.md`를 렌더링한 원본 사용 | `getA1Content()` |
+| 3 | 런타임은 desktop/browser 의도일 때만 원본의 `desktop-control` anchor를 포함; `forDisk`는 항상 원본 유지 | `shouldIncludeDesktopControlSection()` / `getSystemPrompt()` |
+| 4 | 첫 설치 시 `initPromptFiles()`가 `A-1.md`와 `.hash`를 생성 | `initPromptFiles()` |
+| 5 | 해시가 달라졌을 때 사용자 편집본이면 보존, stock 파일이면 새 템플릿으로 이관 | `resolveLegacyA1Migration()` |
 
 > 핵심은 "파일 우선, 템플릿 폴백"이다. 예전처럼 코드 상수 하나로 고정된 구조가 아니다.
 
