@@ -69,6 +69,15 @@ function ensureDrawer(): HTMLElement {
     });
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && overlay?.classList.contains('open')) closeTraceDrawer();
+        if (event.key !== 'Tab' || !overlay?.classList.contains('open')) return;
+        const controls = [...overlay.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex="0"]')]
+            .filter(node => !node.closest('[hidden]') && node.getClientRects().length > 0);
+        const first=controls[0], last=controls[controls.length-1];
+        if (!first || !last) return;
+        const active=document.activeElement;
+        if (!overlay.contains(active) || (event.shiftKey && active===first) || (!event.shiftKey && active===last)) {
+            event.preventDefault();(event.shiftKey?last:first).focus({preventScroll:true});
+        }
     });
     return overlay;
 }
@@ -78,6 +87,7 @@ function setRaw(text: string): void {
     if (raw) raw.textContent = text;
 }
 export function closeTraceDrawer(): void {
+    if (!document.getElementById('traceDrawerOverlay')?.classList.contains('open')) return;
     ++openRequestId;
     traceController?.abort(); traceController = null;
     loading = false;
@@ -161,7 +171,9 @@ export async function openTraceDrawer(runId: string, seq?: number, sessionId: st
     const startOffset = 0;
     traceController?.abort(); traceController = new AbortController();
     traceSession = sessionId;
-    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!overlay.contains(document.activeElement)) {
+        returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     currentRunId = runId;
     loadedCount = startOffset;
     totalCount = 0;

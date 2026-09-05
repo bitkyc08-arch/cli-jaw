@@ -67,13 +67,14 @@ export function createActivityView(
     const position = element('span', 'activity-page-position');
     nav.append(previous, position, next);
     disclosure.append(summary, empty, list, nav);
+    const error = element('p', 'activity-error');
     const degraded = element('p', 'activity-degraded');
     const omitted = element('p', 'activity-omitted');
     const choiceNotice = element('p', 'activity-choice-notice');
     choiceNotice.setAttribute('role', 'status');
     const requests = element('p', 'activity-requests');
-    for (const notice of [degraded, omitted, choiceNotice, requests]) notice.hidden = true;
-    root.append(status, disclosure, degraded, omitted, choiceNotice, requests);
+    for (const notice of [error, degraded, omitted, choiceNotice, requests]) notice.hidden = true;
+    root.append(status, error, disclosure, degraded, omitted, choiceNotice, requests);
     const historyButton = inspectHistory ? button('Inspect retained activity', 'activity-trace') : null;
     if (historyButton) {
         historyButton.setAttribute('aria-label', 'Inspect retained activity in Trace');
@@ -114,15 +115,18 @@ export function createActivityView(
     disclosure.open = choices.open;
     disclosure.ontoggle = () => { if (!disposed) choices.open = disclosure.open; };
     if (historyButton) historyButton.onclick = () => { if (current && !disposed) inspectHistory?.(current); };
-    function changePage(offset: number): void {
+    function changePage(offset: number, clicked: HTMLButtonElement, opposite: HTMLButtonElement): void {
         if (!current || disposed) return;
         saveChoices();
         const last = Math.max(0, Math.ceil(current.entries.size / PAGE_SIZE) - 1);
         choices.page = Math.max(0, Math.min(last, displayedPage + offset));
         render(current, display);
+        const target = nav.hidden || !disclosure.open ? summary
+            : !clicked.disabled ? clicked : !opposite.disabled ? opposite : summary;
+        target.focus({ preventScroll: true });
     }
-    previous.onclick = () => changePage(-1);
-    next.onclick = () => changePage(1);
+    previous.onclick = () => changePage(-1, previous, next);
+    next.onclick = () => changePage(1, next, previous);
 
     function render(model: ActivityState, displayStatus: ActivityDisplayStatus = {}): void {
         if (disposed) return;
@@ -135,6 +139,9 @@ export function createActivityView(
         const label = phase === 'running' ? 'Working' : phase === 'done' ? 'Complete'
             : phase === 'stopped' ? 'Stopped; partial output retained' : 'Failed; partial output retained';
         text(status, label);
+        const errorSummary = phase === 'error' && model.end?.status === 'error' ? model.end.error ?? '' : '';
+        text(error, errorSummary);
+        error.hidden = !errorSummary;
         const count = `${model.entries.size} retained preview${model.entries.size === 1 ? '' : 's'}`;
         text(summary, model.latestAction ? `Activity: ${model.latestAction} (${count})` : `Activity (${count})`);
         text(degraded, display.degraded ? 'Activity is incomplete. Some runtime updates were not received.' : '');
@@ -154,8 +161,11 @@ export function createActivityView(
         displayedPage = choices.page === null ? last : Math.max(0, Math.min(last, Math.floor(choices.page)));
         const visible = entries.slice(displayedPage * PAGE_SIZE, (displayedPage + 1) * PAGE_SIZE);
         const wanted = new Set(visible.map(entry => entry.itemId));
+        const focused = doc.activeElement;
+        let focusedRowRemoved = false;
         for (const [id, node] of nodes) {
             if (!wanted.has(id)) {
+                if (node.contains(focused)) focusedRowRemoved = true;
                 node.ontoggle = null;
                 node.remove();
                 nodes.delete(id);
@@ -185,6 +195,7 @@ export function createActivityView(
         text(position, entries.length ? `${displayedPage + 1} / ${last + 1}` : '0 / 0');
         nav.hidden = entries.length <= PAGE_SIZE;
         updateChoiceNotice();
+        if (focusedRowRemoved) summary.focus({ preventScroll: true });
     }
 
     function dispose(): void {

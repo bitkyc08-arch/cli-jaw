@@ -70,8 +70,10 @@ test('panel is a direct composer sibling outside Activity, hides empty, and anno
     const { host, root, input, disclosure, panel } = await mounted([]);
     assert.equal(root.parentElement, host); assert.equal(root.nextElementSibling, input);
     assert.equal(disclosure.contains(root), false); assert.equal(root.hidden, true);
-    assert.equal(root.querySelector('[role=status]')!.getAttribute('aria-live'), 'polite');
-    assert.equal(root.querySelector('[role=status]')!.getAttribute('aria-atomic'), 'true');
+    const announcer=host.querySelector('.native-request-announcer')!;
+    assert.equal(root.contains(announcer),false);
+    assert.equal(announcer.getAttribute('aria-live'), 'polite');
+    assert.equal(announcer.getAttribute('aria-atomic'), 'true');
     assert.equal(calls[0]!.url.searchParams.get('sessionId'), identity.sessionId);
     assert.equal(new Headers(calls[0]!.init.headers).get('Authorization'), 'Bearer fixture-token');
     panel.dispose(); input.remove();

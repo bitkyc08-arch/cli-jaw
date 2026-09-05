@@ -41,12 +41,14 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
     const root = doc.createElement('section'); root.className = 'native-requests'; root.hidden = true;
     root.setAttribute('aria-label', 'Live runtime requests');
     const status = doc.createElement('p'); status.className = 'native-request-status';
-    status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); status.setAttribute('aria-atomic', 'true');
+    const announcer = doc.createElement('p'); announcer.className = 'native-request-announcer';
+    announcer.setAttribute('role', 'status'); announcer.setAttribute('aria-live', 'polite'); announcer.setAttribute('aria-atomic', 'true');
     const title = doc.createElement('h2'); title.className = 'native-request-title';
     const controls = doc.createElement('div'); controls.className = 'native-request-controls';
     const retry = button('Refresh requests', () => { void refresh(); });
     root.append(title, status, controls, retry);
     const input = [...host.children].find(child => child.classList.contains('chat-input-area'));
+    host.insertBefore(announcer, input ?? null);
     host.insertBefore(root, input ?? null);
 
     let selected: Pending | null = null;
@@ -55,13 +57,44 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
     let expiryTimer: ReturnType<typeof setTimeout> | undefined;
     let generation = 0, revision = 0;
     let disposed = false, fresh = false, sending = false, suspended = false;
+    let focusEpoch = 0, postFocus: number | null = null, pendingFocus: number | null = null;
+    let windowBlurred = false;
+    let lastOutcome: string | null = null;
+    const view = doc.defaultView;
+    const windowBlur = () => { windowBlurred = true; ++focusEpoch; pendingFocus = null; };
+    const windowFocus = () => { windowBlurred = false; };
+    const trackFocus = (event: FocusEvent) => {
+        if (!root.contains(event.target as Node)) { ++focusEpoch; pendingFocus = null; }
+    };
+    doc.addEventListener('focusin', trackFocus);
+    view?.addEventListener('blur', windowBlur);
+    view?.addEventListener('focus', windowFocus);
+
+    function captureFocus(): number | null {
+        if (windowBlurred) return null;
+        if (root.contains(doc.activeElement)) return focusEpoch;
+        // Disabling a submitting field can blur it to body without a focusin event.
+        return sending && doc.activeElement === doc.body ? postFocus : null;
+    }
+    function restoreFocus(final = true): void {
+        if (pendingFocus === null) return;
+        if (windowBlurred || pendingFocus !== focusEpoch) { pendingFocus = null; return; }
+        const target = root.isConnected && !root.hidden
+            ? controls.querySelector<HTMLElement>('input:not(:disabled), textarea:not(:disabled), button:not(:disabled)[aria-disabled="false"]') ?? retry
+            : host.querySelector<HTMLElement>('#chatInput') ?? doc.getElementById('chatInput');
+        if (target?.isConnected && !target.hasAttribute('disabled')) target.focus({ preventScroll: true });
+        if (final && !sending) pendingFocus = null;
+    }
 
     function button(label: string, act: () => void): HTMLButtonElement {
         const node = doc.createElement('button'); node.type = 'button'; node.textContent = label;
         node.addEventListener('click', act); return node;
     }
-    function announce(message: string): void {
+    function announce(message: string, outcome = false): void {
+        if (outcome) lastOutcome = message;
         if (status.textContent !== message) status.textContent = message;
+        const spoken = message === 'No pending runtime requests.' ? lastOutcome ?? message : message;
+        if (announcer.textContent !== spoken) announcer.textContent = spoken;
     }
     function lock(): void {
         // Do not blur the focused control during a routine GET. Response handlers
@@ -76,10 +109,13 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
         });
         root.setAttribute('aria-busy', String(sending));
     }
-    function clear(): void {
+    function clear(focus = captureFocus()): void {
+        pendingFocus = focus;
         clearTimeout(expiryTimer); expiryTimer = undefined;
         selected = null; fresh = false; revision++;
         title.textContent = ''; controls.replaceChildren();
+        // Keep focus on the mounted refresh control while the next GET is pending.
+        restoreFocus(false);
     }
     function armExpiry(): void {
         clearTimeout(expiryTimer);
@@ -87,7 +123,7 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
         expiryTimer = setTimeout(() => {
             if (disposed) return;
             if (selected && selected.expiresAt > Date.now()) { armExpiry(); return; }
-            clear(); announce('Request expired. Checking pending requests.');
+            clear(); announce('Request expired. Checking pending requests.', true);
             void refresh();
         }, Math.min(2_147_483_647, Math.max(0, selected.expiresAt - Date.now())));
     }
@@ -161,13 +197,16 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
     async function respond(response: ResponseValue): Promise<void> {
         const item = selected;
         if (disposed || suspended || sending || !fresh || !item) return;
-        if (item.expiresAt <= Date.now()) { clear(); await refresh(); return; }
+        if (item.expiresAt <= Date.now()) { clear(); announce('Request expired.', true); await refresh(); return; }
+        postFocus = captureFocus();
+        const responseFocus = postFocus;
         sending = true; fresh = false;
         const ownRevision = revision;
         ++generation; getController?.abort();
         const controller = new AbortController(); postController = controller;
+        lastOutcome = null;
         lock(); announce('Sending response.');
-        let outcome = 'Response accepted.';
+        let outcome = 'optionId' in response && response.optionId === null ? 'Request cancelled.' : 'Response accepted.';
         let accepted = false;
         try {
             const raw = await requestBoundedJson('/api/runtime/requests/' + encodeURIComponent(item.requestId), {
@@ -188,10 +227,10 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
         // The write may already have reached the server. Keep the suspended draft
         // inert until an explicit reconnect/retry GET verifies what is pending.
         if (suspended) { lock(); return; }
-        if (revision !== ownRevision) { lock(); return; }
-        if (accepted) clear();
+        if (revision !== ownRevision) { lock(); restoreFocus(); return; }
+        if (accepted) clear(responseFocus);
         else fresh = false;
-        announce(outcome);
+        announce(outcome, true);
         const refreshGeneration = generation + 1;
         await refresh();
         if (!disposed && !suspended && generation === refreshGeneration && !accepted && selected && key(selected) === key(item)) announce(outcome);
@@ -227,17 +266,19 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
                 if (selected && key(selected) === key(item)) retained = item;
             }
             const next = retained ?? first;
+            if (selected && !retained) announce(selected.expiresAt <= Date.now()
+                ? 'Request expired.' : 'Request is no longer pending.', true);
             if (!retained) clear();
             selected = next; fresh = true; suspended = false;
             root.hidden = !selected && !unavailable;
             if (selected) {
-                announce(canAnswer(selected) ? 'Runtime is waiting for your response.'
+                announce(canAnswer(selected) ? (lastOutcome ? lastOutcome + ' ' : '') + 'Runtime is waiting for your response.'
                     : 'This request cannot be answered here. Refresh requests or use Stop.');
                 if (!retained) render(selected);
                 armExpiry();
             } else if (unavailable) announce('This request cannot be displayed safely. Refresh requests or use Stop.');
             else announce('No pending runtime requests.');
-            lock();
+            lock(); restoreFocus();
         } catch {
             if (disposed || gen !== generation || controller.signal.aborted) return;
             if (!suspended) clear();
@@ -258,6 +299,9 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
     }, dispose() {
         if (disposed) return;
         disposed = true; ++generation; getController?.abort(); postController?.abort();
-        clear(); root.remove();
+        clear(); root.remove(); announcer.remove(); restoreFocus();
+        doc.removeEventListener('focusin', trackFocus);
+        view?.removeEventListener('blur', windowBlur);
+        view?.removeEventListener('focus', windowFocus);
     } };
 }

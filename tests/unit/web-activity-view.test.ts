@@ -6,6 +6,7 @@ import { createActivityChoices, rememberActivityChoice, createActivityView } fro
 import { createActivityState, applyActivityEvent } from '../../src/shared/activity-state.ts';
 import type { ActivityState } from '../../src/shared/activity-state.ts';
 import type { RuntimeEventBody, RuntimeItemStatus } from '../../src/shared/runtime-contract.ts';
+import { classifyExitError } from '../../src/agent/error-classifier.ts';
 
 const identity = { version: 1 as const, sessionId: 'chat-a', scope: 'local:chat-a', runId: 'run-a', turnId: 'turn-a', seq: 1 };
 function send(model: ActivityState, body: RuntimeEventBody): void {
@@ -224,14 +225,17 @@ test('choice saturation preserves all 128 prior choices, refuses new opens and r
 });
 
 test('status distinguishes terminal outcomes without rewriting unfinished tools; degraded survives pagination', () => {
+    const classified=classifyExitError('codex-app',1,'connection lost\n    at RAW_STACK_SENTINEL (private.ts:1)');
+    assert.match(classified.detail,/RAW_STACK_SENTINEL/);
     for (const [status, label] of [['done', 'Complete'], ['stopped', 'Stopped'], ['error', 'Failed']] as const) {
         const { model, view } = mount();
         tool(model, 'unfinished');
-        send(model, { kind: 'turn-end', status, finalText: null, error: '<raw stack>' });
+        send(model, { kind: 'turn-end', status, finalText: null, error: classified.message });
         view.render(model);
         assert.match(view.element.querySelector('.activity-status')!.textContent!, new RegExp(`^${label}`));
         assert.match(rows(view.element)[0].querySelector('summary')!.textContent!, /running/);
-        assert.doesNotMatch(view.element.textContent!, /raw stack/);
+        assert.doesNotMatch(view.element.textContent!, /RAW_STACK_SENTINEL/);
+        if(status==='error')assert.equal(view.element.querySelector('.activity-error')?.textContent,classified.message);
     }
     const { model, view } = mount();
     for (let i = 0; i < 41; i++) tool(model, `tool-${i}`);

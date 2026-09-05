@@ -270,3 +270,26 @@ test('stale trace open responses cannot overwrite the newer clicked trace', asyn
     assert.equal(document.querySelector<HTMLElement>('.trace-event-row')?.dataset['runId'], 'tr_b');
     assert.equal(calls.includes('/api/traces/tr_a/events?offset=0&limit=80'), false);
 });
+
+test('modal Tab boundaries and repeated close preserve the external trigger',async()=>{
+    setupWebUiDom();installScrollIntoView();
+    Object.defineProperty(HTMLElement.prototype,'getClientRects',{configurable:true,value(){return this.hidden?[]:[{width:10,height:10}];}});
+    globalThis.fetch=(async(input:RequestInfo|URL)=>{
+        const url=String(input);if(url==='/api/auth/token')return jsonResponse({token:''});
+        if(url.includes('/events?'))return apiData({total:2,events:[{seq:5,source:'runtime',preview:'row'}]});
+        if(url.includes('/events/'))return apiData({raw:'safe'});
+        return apiData({id:'tr_modal',cli:'pi',model:'test',agentLabel:'agent',eventCount:2,byteCount:1,startedAt:1,rawRetentionStatus:'available',status:'done'});
+    }) as typeof fetch;
+    const trigger=document.createElement('button');trigger.textContent='Inspect';document.body.append(trigger);trigger.focus();
+    const drawer=await import('../../public/js/features/trace-drawer.ts');await drawer.openTraceDrawer('tr_modal');
+    const close=document.querySelector<HTMLButtonElement>('.trace-drawer-close')!;
+    const last=document.querySelector<HTMLButtonElement>('.trace-load-more')!;
+    close.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));
+    assert.equal(document.activeElement,last);
+    last.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+    assert.equal(document.activeElement,close);
+    await drawer.openTraceDrawer('tr_other');
+    drawer.closeTraceDrawer();assert.equal(document.activeElement,trigger);
+    const other=document.createElement('button');document.body.append(other);other.focus();
+    drawer.closeTraceDrawer();assert.equal(document.activeElement,other);
+});

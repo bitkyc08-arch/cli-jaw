@@ -618,6 +618,21 @@ export class VirtualScroll {
             el.style.transform = `translateY(${vItem.start}px)`;
         }
 
+        // Geometry determines visual order; keep assistive reading/Tab order aligned
+        // when earlier rows are mounted after rows that were already visible.
+        const focused = this.innerEl.ownerDocument.activeElement;
+        const retainedFocus = focused instanceof HTMLElement && this.innerEl.contains(focused) ? focused : null;
+        let cursor = this.innerEl.firstElementChild;
+        for (const item of virtualItems) {
+            const element = this.mounted.get(item.index);
+            if (!element) continue;
+            if (element !== cursor) this.innerEl.insertBefore(element, cursor);
+            cursor = element.nextElementSibling;
+        }
+        if (retainedFocus?.isConnected && this.innerEl.ownerDocument.activeElement !== retainedFocus) {
+            retainedFocus.focus({preventScroll:true});
+        }
+
         // Lazy render before measuring; markdown/code/math change heights.
         if (this.onLazyRender) {
             const lazyTargets = this.innerEl.querySelectorAll<HTMLElement>('.lazy-pending');
