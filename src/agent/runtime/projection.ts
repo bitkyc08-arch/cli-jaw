@@ -169,12 +169,13 @@ export class RuntimeProjection {
         this.emit(next);
     }
 
-    tool(nativeRef: string, patch: ToolPatch): void {
+    tool(nativeRef: string, patch: ToolPatch, options: { allowTerminalUpdates?: boolean } = {}): void {
         if (this.ended || this.recordingFailed) return;
         const key = this.key('tool', nativeRef);
         const previous = this.items.get(key);
         const old = previous?.kind === 'tool' ? previous : undefined;
-        if (old && old.status !== 'running') {
+        const replaceTerminal = options.allowTerminalUpdates === true && patch.status !== undefined && patch.status !== 'running';
+        if (old && old.status !== 'running' && !replaceTerminal) {
             // A result may precede its start. Fill only unknown metadata; terminal
             // status, output, detail and established fields remain authoritative.
             const name = (!old.name || old.name === 'tool') && patch.name ? patch.name : old.name;

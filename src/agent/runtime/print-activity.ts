@@ -18,7 +18,7 @@ export function createPrintActivity(context: RuntimeEventContext, provider: stri
             case 'message': projection.text('message', body.itemId, body.text, body.operation, body.phase); break;
             case 'reasoning': projection.text('reasoning', body.itemId, body.text, body.operation); break;
             case 'tool': projection.tool(body.itemId, { name: body.name, status: body.status,
-                ...(body.detail === undefined ? {} : { detail: body.detail }) }); break;
+                ...(body.detail === undefined ? {} : { detail: body.detail }) }, { allowTerminalUpdates: true }); break;
             case 'turn-end': projection.close(body); break;
         }
     });

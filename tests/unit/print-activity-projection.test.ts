@@ -102,6 +102,36 @@ test('bypass observer failure and trace failure are independently contained', t 
     } finally { db.exec('DROP TRIGGER bypass_trace_failure'); }
 });
 
+test('factory preserves a newer terminal tool detail on the same canonical item', () => {
+    const runId = startTraceRun({ cli: 'print', sessionId: 'default', scopeKey: 'default' });
+    const observer = createPrintActivity({ runId, sessionId: 'default', scope: 'default', turnId: runId, audience: 'public' }, 'print');
+    const tool = { icon: 'x', label: 'command', toolType: 'tool', stepRef: 'stable' };
+    observer.tool({ ...tool, status: 'running', detail: 'start' });
+    observer.tool({ ...tool, status: 'done', detail: 'first result' });
+    observer.tool({ ...tool, status: 'done', detail: 'updated result' });
+    observer.tool({ ...tool, status: 'running', detail: 'stale start' });
+    const tools = readActivityPage({ runId, sessionId: 'default', after: 0, limit: 40 })!.events.filter(e => e.kind === 'tool');
+    assert.equal(tools.length, 3);
+    assert.equal(new Set(tools.map(e => e.itemId)).size, 1);
+    assert.equal(tools.at(-1)?.status, 'done'); assert.equal(tools.at(-1)?.detail, 'updated result');
+});
+
+test('print opt-in follows explicit terminal status updates without inferring recovery from a running update', () => {
+    const runId = startTraceRun({ cli: 'print', sessionId: 'default', scopeKey: 'default' });
+    const observer = createPrintActivity({ runId, sessionId: 'default', scope: 'default', turnId: runId, audience: 'public' }, 'print');
+    const tool = { icon: 'x', label: 'command', toolType: 'tool', stepRef: 'severity' };
+    observer.tool({ ...tool, status: 'error', detail: 'failed' });
+    observer.tool({ ...tool, status: 'running', detail: 'stale' });
+    let tools = readActivityPage({ runId, sessionId: 'default', after: 0, limit: 40 })!.events.filter(e => e.kind === 'tool');
+    assert.equal(tools.length, 1); assert.equal(tools[0]?.status, 'error'); assert.equal(tools[0]?.detail, 'failed');
+    // Legacy print providers explicitly revise completed snapshots. Native callers
+    // retain their existing frozen error/result policy unless they opt in.
+    observer.tool({ ...tool, status: 'done', detail: '' });
+    tools = readActivityPage({ runId, sessionId: 'default', after: 0, limit: 40 })!.events.filter(e => e.kind === 'tool');
+    assert.equal(tools.length, 2); assert.equal(tools[1]?.status, 'done'); assert.equal(tools[1]?.detail, '');
+    assert.equal(tools[0]?.itemId, tools[1]?.itemId);
+});
+
 function context(): SpawnContext {
     return { fullText: '', traceLog: [], toolLog: [], seenToolKeys: new Set(), hasClaudeStreamEvents: false,
         sessionId: 'native-private', cost: null, turns: null, duration: null, tokens: null, stderrBuf: '',
