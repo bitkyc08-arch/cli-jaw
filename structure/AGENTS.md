@@ -2,6 +2,8 @@
 
 # structure/ — Sync Guide
 
+- Journal changes synchronize nullable trace ownership/backfill, strict replay/raw reads, whole-prefix retention and caller session capture. Keep immutable runtime rows distinct from mutable tool/control rows; finalization uses the DB-only control leaf. Source ownership and limits are documented in `runtime-integration.md`.
+
 - Activity identity and display settings: `shared/presentation.ts`, config/settings-merge, runtime-settings and orchestrate snapshot share the contract in `runtime-integration.md` and `server_api.md`. Mode is independent of transport; snapshot identity is server-owned, including when multi-session is disabled.
 
 - Keep this folder aligned with the live `cli-jaw` tree. The current hub covers 19 Markdown docs plus 5 support files.

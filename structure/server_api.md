@@ -16,6 +16,22 @@ Disabled multi-session preserves the existing active-chat/default-scope policy.
 Responses are no-store. `presentation.mode` is `activity` by default or explicit
 `legacy`, independent of transport; PUT `/api/settings` validates and merges it.
 
+Activity discovery returns `{ok:true,data:{runs,pageSize:40}}` from
+`GET /api/traces/activity-runs?session=<chatId>&after=<runId>`. Each run is
+`{id,messageId,status,startedAt}`; IDs are opaque ascending cursors, not time order.
+Reconnect discovery starts again from the beginning. Replay is
+`GET /api/traces/:runId/activity?session=<chatId>&after=<seq>&through=<fixedHigh>&limit=40`
+with `{ok:true,data:{runId,sessionId,scope,status,events,nextAfter,through,hasMore,incomplete,loss}}`.
+The initial page chooses through; later pages hold it fixed. Limits are40 rows/256KiB;
+corrupt rows advance the cursor and mark incomplete. Unknown query keys, non-scalar
+selectors or invalid cursors return400; future cursors409; unavailable storage503.
+Wrong/internal/deleted/fork ownership returns404. Discovery for an unknown chat is empty.
+
+All trace responses are no-store. Raw summary/list/detail also require `session` when
+either owner column exists, including historical session-only backfills. Truly ownerless
+legacy raw traces retain instance-level access. Clients capture the owner at drawer open
+and reuse it for every request. Scope and copied message pointers do not grant access.
+
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
 > Route-module inventory and the endpoint contracts below describe the surface; aggregate handler counts are not maintained by hand.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
@@ -49,7 +65,7 @@ Responses are no-store. `presentation.mode` is `activity` by default or explicit
 | `src/routes/employees.ts` | 123L | 5 | employee CRUD + reset |
 | `src/routes/skills.ts` | 89L | 5 | skills list/read/enable/disable/reset |
 | `src/routes/avatar.ts` | 146L | 4 | avatar summary + agent/user image upload/delete/read |
-| `src/routes/traces.ts` | 80L | 3 | public trace summary/event read routes |
+| `src/routes/traces.ts` | 167L | 5 | owner-bound raw traces and bounded Activity discovery/replay |
 | `src/routes/runtime-requests.ts` | 33L | 2 | exact-bound ephemeral native decisions; existing instance auth |
 | `src/routes/link-preview.ts` | 319L | 2 | Rich link preview metadata fetch + guarded image proxy |
 | `src/routes/heartbeat.ts` | 289L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
@@ -166,7 +182,7 @@ Cursor/Grok activation and Activity controls are separate from this API foundati
 | Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channels/validate` `POST /api/channel/send` `POST /api/discord/send` `POST /api/slack/send` `GET /api/slack/history` `GET /api/slack/members` `GET /api/slack/users` |
 | Wiki | `GET /api/wiki/status` `GET /api/wiki/entities` `POST /api/wiki/enable` `POST /api/wiki/configure` |
 | Avatar | `GET /api/avatar` `POST /api/avatar/:target/upload` `DELETE /api/avatar/:target/image` `GET /api/avatar/:target/image` |
-| Traces | `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
+| Traces | `GET /api/traces/activity-runs?session=...&after=...` `GET /api/traces/:runId/activity?session=...&after=...&through=...&limit=40` `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
 | Debug | `GET /api/debug/mem` |
 | Link Preview | `GET /api/link-preview?url=` `GET /api/link-preview/image?url=` |
 | Dashboard Board | `GET /api/dashboard/board/tasks` `POST /api/dashboard/board/tasks` `PATCH /api/dashboard/board/tasks/:id` `DELETE /api/dashboard/board/tasks/:id` `POST /api/dashboard/board/tasks/from-message` |

@@ -21,6 +21,8 @@ Conversation display uses `presentation.mode`: `activity` by default, or `legacy
 the previous transcript view. This preference is independent of provider transport.
 Activity clients obtain their chat identity from the server snapshot before subscribing
 to semantic updates; see [runtime integration](structure/runtime-integration.md).
+Activity history is retained in the bounded trace journal and replayed with a fixed
+cursor. Owned raw trace requests also carry their captured chat session.
 
 <details>
 <summary><b>Safe install</b> — for existing users who want minimal changes</summary>

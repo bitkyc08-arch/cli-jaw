@@ -8,6 +8,13 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 # 인프라 모듈 — core/ · messaging/ · telegram/ · discord/ · memory/ · browser/ · routes/ · security/ · http/ · lib/mcp-sync
 
+Activity storage extends trace_runs with nullable session/scope owners. Its original
+message-link backfill runs after messages.session_id migration. `activity-control.ts`
+is a DB-only leaf shared by journal, finalization and retention; `activity-retention.ts`
+expires whole runtime prefixes and protects active owners. One corrupt control cannot
+roll back unrelated retention. Symlink trace roots are never traversed for spill cleanup.
+See `runtime-integration.md` for budgets and loss semantics.
+
 > 의존 0 모듈 + 데이터 레이어 + 멀티 채널 메시징 + 외부 도구 통합
 > 현재 tree 기준으로 `src/core/`는 support cluster, `src/messaging/`는 Telegram/Discord 공통 런타임, `src/telegram/`·`src/discord/`는 각 채널 transport 구현으로 분리됨
 

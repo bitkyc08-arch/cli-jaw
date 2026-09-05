@@ -23,6 +23,27 @@ semantic admission and never derive a native session ID or scope from UI state.
 `parseRuntimeRequestView` exposes the existing request-view validator without widening
 the RuntimeEvent schema. Snapshot responses are no-store; auth remains instance-level.
 
+Activity history uses the existing trace allocator and immutable `source=runtime` rows.
+Nullable `trace_runs.session_id/scope_key` capture the jaw chat and execution scope at
+admission, including internal workers. Historical backfill uses only the original
+`trace_runs.message_id` link and leaves unknown scopes null; copied fork pointers do
+not grant access. Deleting a chat removes its owned traces. Clearing messages alone
+does not securely erase retained trace history.
+
+`trace/activity-journal.ts` commits a bounded body and one mutable control row atomically
+before SSE publication. Limits are32KiB/body,4096 rows/4MiB/run,20000 rows/32MiB global,
+plus configured trace row admission. Loss closes projection admission without interrupting
+existing final delivery or MESSAGE salvage. Internal audience stays private. The DB-only
+control/retention modules avoid a store-to-journal import cycle; finalization closes
+metadata best effort. Corrupt control reads are bounded and cannot stop unrelated pruning.
+
+Replay captures a fixed through cursor and scans at most40 events/256KiB per page.
+Sequence gaps are valid; corrupt rows advance nextAfter and mark incomplete. Whole-prefix
+retention preserves a loss watermark; active owners survive even after projection expiry.
+Closed metadata may be evicted entirely under row pressure. Raw spill cleanup refuses
+symlink roots and child links. Missing journals never justify retrying inference or sending
+another answer. Replay request views are historical and non-actionable.
+
 `src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
 
 `src/agent/runtime/events.ts` records a validated, redacted body through the existing trace writer before publishing `agent_runtime` on the agent event topic. The trace writer owns sequence allocation; sequence gaps are valid. The tuple codec in `src/trace/runtime-body-codec.ts` preserves numeric usage without weakening raw-trace secret masking. Known structured fragments must be sanitized before clipping by their producer. Recording failure returns null, never a fabricated event or another inference.

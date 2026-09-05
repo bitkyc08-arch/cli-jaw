@@ -6,6 +6,12 @@ aliases: [CLI-JAW Architecture Reference, cli-jaw 구조 허브, structure index
 
 # CLI-JAW Architecture Reference
 
+Activity backend: `shared/presentation.ts` owns display/identity decoding;
+`trace/activity-journal.ts` owns bounded durable replay on existing trace storage.
+`activity-control.ts` and `activity-retention.ts` keep finalization and pruning independent
+of runtime projections. Snapshot/trace contracts are in `server_api.md`; ownership,
+loss and delivery separation are in `runtime-integration.md` and `stream-events.md`.
+
 > cli-jaw 프로젝트의 내부 구조를 기술한 아키텍처 문서 허브. 시스템 전체 흐름부터 개별 모듈까지, 이 파일에서 시작하세요.
 >
 > Planning state lives separately under `devlog/_plan/README.md`. The latest GitHub-issue triage snapshot (2026-05-16) is in that file's "Triage Snapshot" section.
