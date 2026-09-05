@@ -91,7 +91,7 @@ function fixture(t: TestContext) {
             calls.push({ command, args, options }); onSpawn?.(); return child;
         }) as unknown as typeof spawn };
     t.after(() => { exit(); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy(); });
-    return { options, calls, wire, child, get kills() { return kills; },
+    return { options, calls, wire, child, exit, get kills() { return kills; },
         hold: (method: string) => { hold = method; }, onSpawn: (fn: () => void) => { onSpawn = fn; },
         auth: (ids: string[]) => { auth = ids; } };
 }
@@ -157,4 +157,26 @@ test('Windows factory uses native executable resolution and refuses unsupported 
     const bad = fixture(t);
     await assert.rejects(createGrokSession({ ...bad.options, binary: 'C:\\grok.ps1', platform: 'win32' }), /launch_unsupported/);
     assert.equal(bad.calls.length, 0);
+});
+
+test('spawn-race abort waits for owned child exit before rejecting acquisition', { timeout: 5000 }, async t => {
+    const f = fixture(t), control = new AbortController(); f.onSpawn(() => control.abort());
+    let settled = false;
+    const operation = createGrokSession({ ...f.options, signal: control.signal,
+        ownedProcessOptions: { terminateTree: () => {} } });
+    const rejected = assert.rejects(operation.finally(() => { settled = true; }), /acquire_aborted/);
+    await Promise.resolve(); assert.equal(settled, false);
+    f.exit(); await rejected; assert.equal(settled, true);
+});
+
+test('startup reap timeout is surfaced and releases its listeners', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture(t), control = new AbortController(); f.onSpawn(() => control.abort());
+    const operation = createGrokSession({ ...f.options, signal: control.signal,
+        ownedProcessOptions: { terminateTree: () => {}, policy: () => ({ initialSignal: 'SIGKILL', graceMs: null }) } });
+    const rejected = assert.rejects(operation, /grok_acp_startup_cleanup_failed/);
+    t.mock.timers.tick(6_000); await rejected;
+    // Only OwnedProcess's exit listener remains until fixture teardown reaps the child.
+    assert.equal(f.child.listenerCount('close'), 0);
+    assert.equal(f.child.listenerCount('exit'), 1);
 });

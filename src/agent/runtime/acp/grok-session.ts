@@ -21,6 +21,19 @@ export interface GrokSessionOptions extends Omit<AcpSessionOptions, 'clientMetad
     launchDeps?: ResolveDeps;
 }
 
+const STARTUP_REAP_TIMEOUT_MS = 6_000;
+
+/** Startup can be aborted before an AcpSession exists to own close(). */
+async function reapStartupChild(child: ChildProcessWithoutNullStreams): Promise<void> {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    await new Promise<void>((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); child.off('exit', exited); child.off('close', exited); };
+        const exited = () => { cleanup(); resolve(); };
+        const timer = setTimeout(() => { cleanup(); reject(new Error('grok_acp_startup_cleanup_failed')); }, STARTUP_REAP_TIMEOUT_MS);
+        child.once('exit', exited); child.once('close', exited);
+    });
+}
+
 /** One dedicated Grok process, with existing auth/config and no print fallback. */
 export async function createGrokSession(options: GrokSessionOptions): Promise<AcpSession> {
     // Capture the requested identity before any async provider setup begins.
@@ -80,7 +93,8 @@ export async function createGrokSession(options: GrokSessionOptions): Promise<Ac
             catch { throw new Error('grok_acp_startup_cleanup_failed'); }
         } else {
             owned.terminate('startup-failed');
-            child.stdin?.destroy(); child.stdout?.destroy(); child.stderr?.destroy();
+            try { await reapStartupChild(child); }
+            finally { child.stdin?.destroy(); child.stdout?.destroy(); child.stderr?.destroy(); }
         }
         throw error;
     } finally { options.signal?.removeEventListener('abort', abort); }
