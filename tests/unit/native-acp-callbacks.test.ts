@@ -345,3 +345,29 @@ test('caller binding mutation cannot retag the captured request or settlement', 
     assert.ok(published.every(event => event.turnId === 'turn'));
     assert.equal(f.writes[0]!.result.outcome.outcome, 'selected');
 });
+
+test('drain waits for actual writes after registry settlement and for no-owner refusals', { timeout: 5000 }, async t => {
+    const f = fixture(t); f.request('peer'); f.hold(); respond(f);
+    await f.waitFor(() => f.writes.length === 1);
+    assert.deepEqual(f.registry.list('chat'), []);
+    let drained = false;
+    const drain = f.callbacks.drain('run').then(() => { drained = true; });
+    await Promise.resolve();
+    assert.equal(drained, false);
+    f.release(); await drain;
+    assert.equal(drained, true);
+    f.setOwner(null); f.request('no-owner');
+    await f.waitFor(() => f.writes.length === 2);
+    drained = false;
+    const refusal = f.callbacks.drain().then(() => { drained = true; });
+    await Promise.resolve();
+    assert.equal(drained, false);
+    f.release(); await refusal;
+    assert.equal(drained, true);
+});
+test('drain rejects retired or failed callback work rather than authorizing reuse', { timeout: 5000 }, async t => {
+    const f = fixture(t); f.request('peer'); f.failWrites(); respond(f);
+    await assert.rejects(f.callbacks.drain('run'), /acp_callback/);
+    assert.equal(f.connection.alive, false);
+    await assert.rejects(f.callbacks.drain(), /acp_callbacks_closed/);
+});

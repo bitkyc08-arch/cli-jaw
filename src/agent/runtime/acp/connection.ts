@@ -7,7 +7,10 @@ const WRITE_LIMIT = 8 * 1024 * 1024; // active + queued bytes, including LF
 const WRITE_COUNT_LIMIT = 1024;
 const WRITE_TIMEOUT_MS = 30_000;
 const PENDING_LIMIT = 64;
-type Pending = { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
+type Pending = {
+    resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>;
+    onResponse?: (frame: RpcFrame) => void; settling?: boolean;
+};
 type Write = {
     bytes: Buffer; resolve(): void; reject(error: Error): void;
     timer: ReturnType<typeof setTimeout>; settled: boolean;
@@ -92,7 +95,11 @@ export class AcpConnection {
             return;
         }
         const entry = this.pending.get(frame.id);
-        if (!entry) return; // unknown, late or duplicate responses cannot become events
+        if (!entry || entry.settling) return; // unknown, late or duplicate replies cannot become events
+        entry.settling = true;
+        try { entry.onResponse?.(frame); }
+        catch { this.close(new Error('acp_response_observer_failed')); return; }
+        if (this.closed) return; // observer retirement must also reject this still-registered request
         this.pending.delete(frame.id);
         clearTimeout(entry.timer);
         if ('error' in frame) entry.reject(new Error(`acp_rpc_error:${frame.error.code}`));
@@ -164,7 +171,7 @@ export class AcpConnection {
         if (error) entry.reject(error); else entry.resolve();
     }
 
-    request(method: string, params: unknown, timeoutMs = 30_000) {
+    request(method: string, params: unknown, timeoutMs = 30_000, onResponse?: (frame: RpcFrame) => void) {
         if (this.closed || this.pending.size >= PENDING_LIMIT) throw new Error('acp_unavailable');
         if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
             throw new Error('acp_invalid_timeout');
@@ -175,7 +182,7 @@ export class AcpConnection {
         const result = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; });
         void result.catch(() => undefined);
         const timer = setTimeout(() => this.close(new Error('acp_timeout')), timeoutMs);
-        this.pending.set(id, { resolve, reject, timer });
+        this.pending.set(id, { resolve, reject, timer, ...(onResponse === undefined ? {} : { onResponse }) });
         const dispatched = this.write({ jsonrpc: '2.0', id, method, params });
         void dispatched.catch(error => this.close(error));
         return { id, dispatched, result };
