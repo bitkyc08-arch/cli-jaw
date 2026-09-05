@@ -116,6 +116,7 @@ function applyMidRunPolicy(
                 remoteKey: ctx.remoteKey,
                 replyViaTarget: ctx.meta.replyViaTarget,
             })).then(outcome => {
+                // Stop settles an undispatched redirect as cancelled; never recreate it after the purge.
                 if (outcome === 'fallback-queue') queue();
             }),
             'steer',

@@ -3,6 +3,7 @@ import type { AcpRuntimeSession } from './acp/runtime-session.js';
 /** Main-private receipt: dispatched means a local write, not remote acceptance. */
 export type MainReplacementResult =
     | { kind: 'dispatched' }
+    | { kind: 'cancelled' }
     | { kind: 'unavailable' | 'race'; reason: string }
     | { kind: 'failed'; error: Error };
 
@@ -31,6 +32,7 @@ export async function replaceAcpMainTurn(
         if (receipt.accepted !== attempted) throw new Error('native_replacement_inconsistent_receipt');
         if (receipt.accepted) return { kind: 'dispatched' };
         const reason = receipt.reason || 'not-started';
+        if (reason === 'stopped') return { kind: 'cancelled' };
         return { kind: ['busy', 'superseded', 'not-current'].includes(reason) ? 'race' : 'unavailable', reason };
     } catch (cause) {
         const error = cause instanceof Error ? cause : new Error('native_replacement_failed', { cause });
