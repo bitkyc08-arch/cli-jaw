@@ -221,6 +221,9 @@ export class VirtualScroll {
                 ...this.virtualizer.options,
                 count: this.items.length,
             });
+            // setOptions alone need not notify when the viewport has not moved.
+            // Mount the promoted row while its live Activity owner can rebind.
+            this.renderItems();
         }
     }
 

@@ -1,4 +1,4 @@
-import { renderMarkdown, escapeHtml, sanitizeHtml, stripOrchestration, linkifyFilePathsWithNotesRoot } from '../render.js';
+import { renderMarkdown, escapeHtml, sanitizeHtml, stripOrchestration } from '../render.js';
 import { renderMermaidBlocks } from '../render.js';
 import { generateId } from '../uuid.js';
 import { state } from '../state.js';
@@ -17,6 +17,7 @@ import { renderMessageActionsHtml } from './message-actions.js';
 import { API_BASE } from '../api.js';
 import { normalizeAgentToolBlocks } from './process-block-dom.js';
 import { scrollToBottom } from './chat-scroll.js';
+import { registerVirtualScrollCallbacks } from './message-history.js';
 
 function getAgentIcon(_cli?: string | null): string {
     return getAgentAvatarMarkup();
@@ -144,21 +145,11 @@ export function addMessage(role: string, text: string, cli?: string | null): HTM
         if (!vs.active && !isStreamingPlaceholder && container) {
             const msgCount = container.querySelectorAll('.msg').length;
             if (msgCount >= VS_THRESHOLD) {
+                registerVirtualScrollCallbacks(vs);
                 container.querySelectorAll('.msg').forEach(el => {
                     if (el.classList.contains('msg-agent')) normalizeAgentToolBlocks(el as HTMLElement);
                     vs.addItem(generateId(), el.outerHTML);
                 });
-                vs.onPostRender = (viewport: HTMLElement) => {
-                    activateWidgets(viewport);
-                    hydrateElicitationBlocks(viewport);
-                    hydrateSearchResultsBlocks(viewport);
-                    hydrateComposeBlocks(viewport);
-                    hydrateDataframeBlocks(viewport);
-                    hydrateChartJsonBlocks(viewport);
-                    hydrateLinkPreviewCards(viewport);
-                    void linkifyFilePathsWithNotesRoot(viewport);
-                    void renderMermaidBlocks(viewport, { immediate: true });
-                };
             }
         }
     }
