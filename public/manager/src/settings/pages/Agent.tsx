@@ -556,6 +556,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
             />
             <PermissionQuickSection
                 value={draft.permissions}
+                configuredValue={settingsData.permissions}
                 onChange={(next) => {
                     setRuntimeDraft({ ...draft, permissions: next });
                     setEntry('permissions', {
