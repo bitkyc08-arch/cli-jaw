@@ -135,6 +135,7 @@ import {
 } from './kiro-runtime.js';
 import { resolveCursorModelVariant } from './cursor-runtime.js';
 import { normalizePiSettings, spawnPiRpc } from './pi-runtime.js';
+import { piFailureOutcome } from './runtime/pi-turn.js';
 import { getEmployeeMcpServers } from './mcp-passthrough.js';
 
 // ─── State ───────────────────────────────────────────
@@ -2446,6 +2447,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     // ─── Pi RPC branch ─────────────────────────────
     if (cli === 'pi') {
+        let piExit = exitSettlers.get(scopeKey);
+        const settlePiExit = () => {
+            if (!piExit || exitSettlers.get(scopeKey) !== piExit) return;
+            exitSettlers.delete(scopeKey);
+            piExit.resolve();
+        };
         const pi = normalizePiSettings(settings["pi"]);
         const profileId = cfg.provider || pi.defaultProfileId;
         const profile = pi.profiles.find((entry) => entry.id === profileId) || pi.profiles[0];
@@ -2519,7 +2526,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const piSysPrompt = sysPrompt ? `${sysPrompt}\n\n${piToolDiscipline}` : piToolDiscipline;
         const onPiEvent = (event: import('./pi-runtime.js').PiRuntimeEvent) => {
             piProjection.observe(event);
-            opts.lifecycle?.onActivity?.('pi-rpc');
+            try { opts.lifecycle?.onActivity?.('pi-rpc'); }
+            catch { console.warn('[jaw:pi] activity observer failed'); }
             if (event.kind === 'thinking') {
                 ctx.thinkingBuf = (ctx.thinkingBuf || '') + event.text;
                 return;
@@ -2557,10 +2565,22 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             if (event.kind === 'session') ctx.sessionId = event.sessionId;
         };
-        type PiTurnResult = { text: string; stderr: string; code: number; sessionId?: string | null };
+        type PiTurnResult = { text: string; stderr: string; code: number; sessionId?: string | null; runtimeOutcome?: RuntimeTurnOutcome };
         const runPiTurn = (child: ChildProcess, done: Promise<PiTurnResult>, lease: PiLease | null): void => {
             let leaseCancel: Promise<void> | null = null;
+            let cleanupDone = false, queueRequested = false;
+            let selectedResult: SpawnPromiseResult | undefined;
+            const recordResult = (result: SpawnPromiseResult) => {
+                if (selectedResult !== undefined) return;
+                selectedResult = result;
+                if (cleanupDone) resolve!(result);
+            };
+            const requestQueue = () => {
+                if (cleanupDone) void processQueue(scopeKey);
+                else queueRequested = true;
+            };
             const requestCancel = (): Promise<void> => {
+                if (cleanupDone) return Promise.resolve();
                 if (!lease) {
                     if (child.pid) {
                         const pid = child.pid;
@@ -2574,42 +2594,60 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 leaseCancel ??= lease.cancel();
                 return leaseCancel;
             };
-            const cancelHook = (_reason: string) => { void requestCancel(); };
-            if (lease && mainRun) mainRun.cancelTurn = cancelHook;
-            const piWatchdog = attachWatchdog(child, agentLabel, (reason) => {
-                console.log(`[jaw:watchdog] cancelling ${agentLabel} (pi) — ${reason}`);
-                ctx.stallReason = reason;
+            const cancelHook = (reason: string) => {
+                if (cleanupDone) return;
+                if (reason === 'steer' || reason === 'interrupt') piExit = exitSettlers.get(scopeKey);
                 void requestCancel();
-            });
-            ctx.stallWatchdog = piWatchdog;
-
-            if (mainManaged) mainRun!.process = child;
-            else registerActiveProcess(agentLabel, child);
-            if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, provider: profile.id, ...empTag });
-            if (mainManaged && !opts.internal) {
-                beginLiveRun(liveScope, cli);
-                setLiveRunTraceId(liveScope, traceRunId);
+            };
+            if (lease && mainRun) mainRun.cancelTurn = cancelHook;
+            let piWatchdog: ReturnType<typeof attachWatchdog> | undefined;
+            let watchdogStopped = false;
+            const stopWatchdog = () => { if (!watchdogStopped) { watchdogStopped = true; piWatchdog?.stop(); } };
+            let setupError: unknown;
+            try {
+                piWatchdog = attachWatchdog(child, agentLabel, (reason) => {
+                    console.log(`[jaw:watchdog] cancelling ${agentLabel} (pi) — ${reason}`);
+                    ctx.stallReason = reason;
+                    void requestCancel();
+                });
+                ctx.stallWatchdog = piWatchdog;
+                if (mainManaged) mainRun!.process = child;
+                else registerActiveProcess(agentLabel, child);
+                if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, provider: profile.id, ...empTag });
+                if (mainManaged && !opts.internal) {
+                    beginLiveRun(liveScope, cli);
+                    setLiveRunTraceId(liveScope, traceRunId);
+                }
+                if (mainManaged && !opts.internal && !opts._skipInsert) {
+                    insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, chatSessionId);
+                }
+                if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, provider: profile.id, ...empTag }, traceAudience);
+            } catch (error) {
+                setupError = error;
+                try { void requestCancel().catch(() => { console.warn('[jaw:pi] setup cancellation failed'); }); }
+                catch { console.warn('[jaw:pi] setup cancellation failed'); }
             }
-            if (mainManaged && !opts.internal && !opts._skipInsert) {
-                insertMessage.run('user', prompt, cli, runtimeModel, settings["workingDir"] || null, chatSessionId);
-            }
-            if (!opts.internal) broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, provider: profile.id, ...empTag }, traceAudience);
 
             const releaseLease = async (): Promise<void> => {
-                if (leaseCancel) await leaseCancel;
-                if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
-                if (lease) lease.release();
-                else cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                try { if (leaseCancel) await leaseCancel; }
+                finally {
+                    if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
+                    consumeKillReason(child.pid);
+                    if (lease) lease.release();
+                    else cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                }
             };
             done.then(async (result) => {
-                piWatchdog.stop();
-                await releaseLease();
+                if (setupError !== undefined) throw setupError;
+                if (result.runtimeOutcome !== undefined) handoffRuntimeOutcome(ctx, result.runtimeOutcome);
+                const killReason = consumeKillReason(child.pid);
+                stopWatchdog();
                 flushPiThinking();
                 if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += result.stderr || '';
                 if (result.sessionId) ctx.sessionId = result.sessionId;
                 if (!ctx.fullText && result.text) ctx.fullText = result.text;
-                opts.lifecycle?.onExit?.(result.code);
-                const killReason = consumeKillReason(child.pid);
+                try { opts.lifecycle?.onExit?.(result.code); }
+                catch { console.warn('[jaw:pi] exit observer failed'); }
                 const wasKilled = !!killReason;
                 // 'dup-registration' behaves like a steer for cleanup purposes: a
                 // replacement child already owns this label, so the stale exit handler
@@ -2623,47 +2661,73 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
                     isResume: false, wasKilled, wasSteer, smokeResult,
                     effortDefault: 'medium', costLine: '',
-                    resolve: resolve!,
+                    resolve: recordResult,
                     activeProcesses,
                     scopeKey,
                     runtimeTransport,
                     scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
-                    releaseMainRun,
+                    releaseMainRun: (scope, process, generation) => activeMainProcesses.get(scope) === mainRun
+                        && releaseMainRun(scope, process, generation),
                     retryState: queueCtrl.retryStateForScope(scopeKey),
                     fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
-                    processQueue,
-                }).finally(() => settleExit(scopeKey));
-            }).catch(async (err: Error) => {
-                piWatchdog.stop();
-                await releaseLease().catch(() => {});
+                    processQueue: requestQueue,
+                });
+            }, async (err: Error) => {
+                if (setupError !== undefined) throw setupError;
+                const failedOutcome = piFailureOutcome(err);
+                if (failedOutcome !== undefined) handoffRuntimeOutcome(ctx, failedOutcome);
+                const killReason = consumeKillReason(child.pid);
+                const wasKilled = !!killReason;
+                const wasSteer = killReason === 'steer' || killReason === DUP_REGISTRATION_KILL_REASON;
+                stopWatchdog();
                 if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += err.message;
                 console.error('[jaw:pi] runtime failed:', err.message);
-                handleAgentExit({
+                return handleAgentExit({
                     onRuntimeEnd: (end) => { activity.close(end); },
                     ctx, code: 1, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
                     prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
-                    isResume: false, wasKilled: false, wasSteer: false, smokeResult: detectSmokeResponse('', [], 1, cli),
+                    isResume: false, wasKilled, wasSteer, smokeResult: detectSmokeResponse('', [], 1, cli),
                     effortDefault: 'medium', costLine: '',
-                    resolve: resolve!,
+                    resolve: recordResult,
                     activeProcesses,
                     scopeKey,
                     runtimeTransport,
                     scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
-                    releaseMainRun,
+                    releaseMainRun: (scope, process, generation) => activeMainProcesses.get(scope) === mainRun
+                        && releaseMainRun(scope, process, generation),
                     retryState: queueCtrl.retryStateForScope(scopeKey),
                     fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
-                    processQueue,
-                }).catch((handleErr: Error) => {
-                    activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Lifecycle failed' });
-                    console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
-                }).finally(() => settleExit(scopeKey));
+                    processQueue: requestQueue,
+                });
+            }).catch((handleErr: Error) => {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Lifecycle failed' });
+                console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
+                try { finalizeTraceRun(traceRunId, 'error', 'Lifecycle failed', { onlyIfRunning: true }); }
+                catch { console.warn('[runtime] Pi lifecycle trace finalization failed'); }
+                if (mainManaged && activeMainProcesses.get(scopeKey) === mainRun) {
+                    if (releaseMainRun(scopeKey, mainRun!.process, ownerGeneration) && !opts.internal) requestQueue();
+                    if (getLiveRun(liveScope).traceRunId === traceRunId) clearLiveRun(liveScope);
+                } else if (!mainManaged && activeProcesses.get(agentLabel) === child) activeProcesses.delete(agentLabel);
+                recordResult({ text: ctx.runtimeOutcome?.finalText ?? '', code: 1,
+                    ...(ctx.runtimeOutcome === undefined ? {} : { runtimeOutcome: { ...ctx.runtimeOutcome } }) });
+            }).finally(async () => {
+                try { stopWatchdog(); await releaseLease(); }
+                catch {
+                    console.warn('[jaw:pi] runtime cleanup failed');
+                    recordResult({ text: '', code: 1 });
+                } finally {
+                    cleanupDone = true;
+                    settlePiExit();
+                    if (queueRequested) void processQueue(scopeKey);
+                    if (selectedResult !== undefined) resolve!(selectedResult);
+                }
             });
         };
 
@@ -2709,10 +2773,26 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             forceNew,
         }).then((lease) => {
             mainRun!.starting = false;
+            if (activeMainProcesses.get(scopeKey) !== mainRun || !isCurrentSessionOwner(persistenceOwner, scopeKey)) {
+                lease.release();
+                activity.close({ kind: 'turn-end', status: 'stopped', finalText: null });
+                try { finalizeTraceRun(traceRunId, 'interrupted'); }
+                catch { console.warn('[runtime] Pi cancelled acquisition trace finalization failed'); }
+                if (activeMainProcesses.get(scopeKey) === mainRun) {
+                    if (getLiveRun(liveScope).traceRunId === traceRunId) clearLiveRun(liveScope);
+                    releaseMainRun(scopeKey, null, ownerGeneration);
+                    settlePiExit();
+                }
+                resolve!({ text: '', code: 130, runtimeOutcome: { status: 'stopped', finalText: null, partialText: '' } });
+                return;
+            }
             ctx.sessionId = lease.session.sessionId;
             console.log(`[jaw:pi:pool] reused=${lease.reused} sessionId=${lease.session.sessionId || 'new'}`);
-            const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent, onRawRecord: onPiRawRecord })
-                .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
+            let done: Promise<PiTurnResult>;
+            try {
+                done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent, onRawRecord: onPiRawRecord })
+                    .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
+            } catch (error) { done = Promise.reject(error); }
             runPiTurn(lease.session.child, done, lease);
         }).catch((err: Error) => {
             mainRun!.starting = false;
@@ -2723,13 +2803,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             const ownsRun = activeMainProcesses.get(scopeKey) === mainRun;
             if (ownsRun) {
                 clearLiveRun(liveScope);
-                broadcast('agent_status', { running: false, agentId: agentLabel });
-                broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
+                try {
+                    broadcast('agent_status', { running: false, agentId: agentLabel });
+                    broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
+                } catch { console.warn('[jaw:pi] acquisition diagnostic delivery failed'); }
                 releaseMainRun(scopeKey, null, ownerGeneration);
             }
             resolve!({ text: '', code: 1 });
             if (ownsRun) {
-                settleExit(scopeKey);
+                settlePiExit();
                 void processQueue(scopeKey);
             }
         });
