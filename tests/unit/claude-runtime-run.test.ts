@@ -238,6 +238,18 @@ test('stopped unfinished worker tool is terminal in trace and snapshots before l
     assert.deepEqual(result.tools?.map(tool => tool.status), ['stopped', 'completed']);
 });
 
+test('successful parent result cannot mark a tool done when no native tool terminal arrived', async () => {
+    const f = fixture();
+    f.setSend(async (_prompt, observer) => {
+        observer({ ...f.context(), version: 1, seq: 1, kind: 'tool', itemId: 'unfinished', name: 'Read', status: 'running' });
+        return outcome;
+    });
+    const result = await f.start().promise;
+    assert.equal(result.code, 0); assert.equal(result.runtimeOutcome?.finalText, 'answer');
+    assert.equal(result.tools?.[0]?.status, 'stopped');
+    assert.equal(traceTools.at(-1)?.status, 'stopped');
+});
+
 test('worker send failure permits directory cleanup only after successful awaited retirement', async () => {
     const f = fixture(true), entered = Promise.withResolvers<void>(), closed = Promise.withResolvers<void>();
     const cleanupFlags: boolean[] = [];

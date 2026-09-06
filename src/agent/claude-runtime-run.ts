@@ -141,7 +141,9 @@ export function startClaudeNativeRun(input: ClaudeNativeRunOptions): { child: nu
     const finishTools = (status: RuntimeTurnOutcome['status']) => {
         for (const tool of tools.values()) {
             if (tool.status !== 'running') continue;
-            tool.status = status;
+            // A parent result is not a native terminal for an unfinished tool.
+            // Match RuntimeProjection.close; only an observed tool result is done.
+            tool.status = status === 'error' ? 'error' : 'stopped';
             try { updateTraceToolRow(tool); } catch { console.warn('[runtime:claude] tool completion trace unavailable'); }
         }
         ctx.toolLog = [...tools.values()];

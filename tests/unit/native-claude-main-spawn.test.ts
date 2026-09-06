@@ -9,13 +9,6 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { ClaudeSessionOptions } from '../../src/agent/runtime/claude-sdk-session.js';
 
 const root = fs.mkdtempSync(join(tmpdir(), 'native-claude-spawn-'));
-const printBinary = join(root, 'claude-print-fixture.mjs');
-fs.writeFileSync(printBinary, `#!/usr/bin/env node
-console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'PRINT_FIXTURE_READY'}]}}));
-process.on('SIGTERM',()=>process.exit(0));
-setTimeout(()=>process.exit(99),10000);
-`);
-fs.chmodSync(printBinary, 0o755);
 let detectedBinary = process.execPath;
 const childCode = String.raw`
 const readline = require('node:readline');
@@ -47,7 +40,7 @@ readline.createInterface({input:process.stdin}).on('line',line=> {
  const tool='Read', id='private-tool-'+turns, input={file_path:'fixture.txt'};
  send({type:'assistant',parent_tool_use_id:null,message:{id:'tool-'+turns,content:[{type:'tool_use',id,name:tool,input}]}});
  if(text.includes('HOLD_TOOL_PROGRESS')) { waiting={message,text,id}; send({fixturePause:true}); return; }
- send({type:'user',parent_tool_use_id:null,message:{content:[{type:'tool_result',tool_use_id:id,content:'fixture tool output'}]}});
+ if(!text.includes('OMIT_TOOL_RESULT')) send({type:'user',parent_tool_use_id:null,message:{content:[{type:'tool_result',tool_use_id:id,content:'fixture tool output'}]}});
  finish(message,text);
 });
 setTimeout(()=>process.exit(99),10000);
@@ -215,6 +208,13 @@ runTest('journal failure preserves direct final and scoped child I/O liveness', 
     assert.ok(identities.length > 0);
     assert.ok(identities.every(value => value.scope === opts.scopeKey && value.sessionId === opts.chatSessionId && value.requestId === opts.requestId));
     assert.deepEqual(assistantRows(opts.chatSessionId), [{ content: 'CLAUDE_FINAL' }]);
+});
+
+runTest('missing native tool terminal cannot become a completed legacy tool on a successful parent', async () => {
+    const result = await spawnAgent('OMIT_TOOL_RESULT', options()).promise;
+    assert.equal(result.code, 0); assert.equal(result.text, 'CLAUDE_FINAL');
+    assert.ok(result.tools?.some(tool => tool.label === 'Read' && tool.status === 'stopped'));
+    assert.equal(result.tools?.some(tool => tool.status === 'done'), false);
 });
 
 for (const kind of ['EMPTY_FINAL', 'ABSENT_FINAL']) runTest(`${kind} never promotes commentary or partial final into MESSAGE`, async () => {

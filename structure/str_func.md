@@ -115,7 +115,7 @@ cli-jaw/
 │   │   ├── native-runtime-run.ts ← one lease/claim/lifecycle with bounded exceptional cleanup (207L)
 │   │   ├── runtime-pool-contract.ts ← type-only shared store/lease/provider access contract (48L)
 │   │   ├── claude-runtime-pool.ts ← Claude acquisition and physical/logical retirement over shared stores (352L)
-│   │   ├── claude-runtime-run.ts ← native Claude main adaptation to shared host/lifecycle and fallback terminal ordering (282L)
+│   │   ├── claude-runtime-run.ts ← native Claude main adaptation to shared host/lifecycle and fallback terminal ordering (284L)
 │   │   ├── prompt-context.ts ← history/operational/partial boundaries and bounded accepted Cursor redirects (202L)
 │   │   ├── steer-input-guard.ts ← transient scoped Stop fence through fallback enqueue (33L)
 │   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (3967L)
