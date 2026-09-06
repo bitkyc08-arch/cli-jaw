@@ -112,6 +112,7 @@ const { beginSteerInput } = await import('../../src/agent/steer-input-guard.ts')
 const { bumpScopeSessionGeneration } = await import('../../src/agent/session-persistence.ts');
 const { getLiveRun, beginLiveRun, setLiveRunTraceId, replaceLiveRunTools, clearLiveRun } = await import('../../src/agent/live-run-state.ts');
 const { claimWorker, getWorkerSlot, getWorkerProgressSnapshot, clearWorkersForScope } = await import('../../src/orchestrator/worker-registry.ts');
+const { createChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
 let serial = 0;
 const gates: Array<() => void> = [];
 function deferred() {
@@ -119,8 +120,10 @@ function deferred() {
 }
 function options() {
     const id = ++serial;
+    const chatSessionId = createChatSession('Native journal fixture ' + id).id;
+    setActiveChatSession('default');
     return { cli: 'claude', model: 'default', effort: 'low', origin: 'web', scopeKey: 'claude-scope-' + id,
-        chatSessionId: 'claude-chat-' + id, requestId: 'claude-request-' + id,
+        chatSessionId, requestId: 'claude-request-' + id,
         sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true };
 }
 const runTest = (name: string, fn: (t: TestContext) => Promise<void>) => test(name, { concurrency: false, timeout: 6000 }, fn);
@@ -192,6 +195,14 @@ runTest('main two turns use the public factory once and deliver full lifecycle r
         assert.ok(native.some(event => event.kind === 'tool'));
         assert.ok(native.some(event => event.kind === 'message' && event.text === 'PRE-TOOL COMMENTARY'));
         assert.ok(native.every(event => event.scope === opts.scopeKey && event.sessionId === opts.chatSessionId));
+        const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
+        for (const result of [first, second]) {
+            const page = readActivityPage({ runId: result.traceRunId!, sessionId: opts.chatSessionId, after: 0, limit: 40 })!;
+            assert.deepEqual(page.events, native.filter(e => e.runId === result.traceRunId));
+            assert.equal(page.incomplete, false);
+            assert.equal(trace.getTraceRun(result.traceRunId!)?.session_id, opts.chatSessionId);
+            assert.equal(trace.getTraceRun(result.traceRunId!)?.scope_key, opts.scopeKey);
+        }
         assert.doesNotMatch(JSON.stringify(native), /private-claude-session|private-tool-/);
         assert.deepEqual(assistantRows(opts.chatSessionId), [{ content: 'CLAUDE_FINAL' }, { content: 'CLAUDE_FINAL' }]);
         assert.equal(activeMainProcesses.has(opts.scopeKey), false);

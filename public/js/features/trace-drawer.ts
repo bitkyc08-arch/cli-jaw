@@ -20,15 +20,18 @@ let totalCount = 0;
 let loading = false;
 let openRequestId = 0;
 let selectedSeq: number | null = null;
+let traceSession: string | null = null;
+let traceController: AbortController | null = null;
+let returnFocus: HTMLElement | null = null;
 
 function eventTypeOf(event: TraceEventListItem): string { return event.eventType || event.event_type || 'event'; }
 function isCurrentRequest(requestId: number, runId = currentRunId): boolean {
     return requestId === openRequestId && runId === currentRunId;
 }
 
-function requestedOffset(seq?: number): number {
-    if (!seq || !Number.isInteger(seq) || seq < 1) return 0;
-    return Math.floor((seq - 1) / PAGE_SIZE) * PAGE_SIZE;
+function tracePath(path: string): string {
+    if (!traceSession) return path;
+    return path + (path.includes('?') ? '&' : '?') + new URLSearchParams({session:traceSession});
 }
 
 function ensureDrawer(): HTMLElement {
@@ -66,6 +69,15 @@ function ensureDrawer(): HTMLElement {
     });
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && overlay?.classList.contains('open')) closeTraceDrawer();
+        if (event.key !== 'Tab' || !overlay?.classList.contains('open')) return;
+        const controls = [...overlay.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex="0"]')]
+            .filter(node => !node.closest('[hidden]') && node.getClientRects().length > 0);
+        const first=controls[0], last=controls[controls.length-1];
+        if (!first || !last) return;
+        const active=document.activeElement;
+        if (!overlay.contains(active) || (event.shiftKey && active===first) || (!event.shiftKey && active===last)) {
+            event.preventDefault();(event.shiftKey?last:first).focus({preventScroll:true});
+        }
     });
     return overlay;
 }
@@ -74,7 +86,15 @@ function setRaw(text: string): void {
     const raw = document.getElementById('traceEventRaw');
     if (raw) raw.textContent = text;
 }
-function closeTraceDrawer(): void { document.getElementById('traceDrawerOverlay')?.classList.remove('open'); }
+export function closeTraceDrawer(): void {
+    if (!document.getElementById('traceDrawerOverlay')?.classList.contains('open')) return;
+    ++openRequestId;
+    traceController?.abort(); traceController = null;
+    loading = false;
+    document.getElementById('traceDrawerOverlay')?.classList.remove('open');
+    if (returnFocus?.isConnected) returnFocus.focus({preventScroll:true});
+    returnFocus = null;
+}
 
 function renderSummary(summary: TraceSummary): void {
     const title = document.getElementById('traceDrawerTitle');
@@ -121,9 +141,9 @@ function renderEventRows(events: TraceEventListItem[], runId: string): void {
 async function loadNextPage(requestId = openRequestId, runId = currentRunId, offset = loadedCount): Promise<void> {
     if (!runId || loading || (loadedCount >= totalCount && totalCount > 0 && offset >= loadedCount)) return;
     loading = true;
-    const page = await api<TraceEventsPage>(`/api/traces/${encodeURIComponent(runId)}/events?offset=${offset}&limit=${PAGE_SIZE}`);
-    loading = false;
+    const page = await api<TraceEventsPage>(tracePath(`/api/traces/${encodeURIComponent(runId)}/events?offset=${offset}&limit=${PAGE_SIZE}`), {signal:traceController?.signal ?? null});
     if (!isCurrentRequest(requestId, runId)) return;
+    loading = false;
     if (!page) {
         if (!selectedSeq) setRaw('Trace events could not be loaded.');
         return;
@@ -139,15 +159,21 @@ async function loadEventDetail(runId: string, seq: number, requestId = openReque
     if (!runId || !Number.isInteger(seq) || seq < 1) return;
     if (!isCurrentRequest(requestId, runId)) return;
     setRaw('Loading event...');
-    const detail = await api<TraceEventDetail>(`/api/traces/${encodeURIComponent(runId)}/events/${seq}`);
+    const detail = await api<TraceEventDetail>(tracePath(`/api/traces/${encodeURIComponent(runId)}/events/${seq}`), {signal:traceController?.signal ?? null});
     if (!isCurrentRequest(requestId, runId) || selectedSeq !== seq) return;
     setRaw(detail?.raw || (detail ? '(empty trace event)' : 'Trace event could not be loaded.'));
 }
 
-export async function openTraceDrawer(runId: string, seq?: number): Promise<void> {
+export async function openTraceDrawer(runId: string, seq?: number, sessionId: string | null = null): Promise<void> {
     const overlay = ensureDrawer();
     const requestId = ++openRequestId;
-    const startOffset = requestedOffset(seq);
+    // Sequence is a sparse trace identity, not an ordinal in the retained row list.
+    const startOffset = 0;
+    traceController?.abort(); traceController = new AbortController();
+    traceSession = sessionId;
+    if (!overlay.contains(document.activeElement)) {
+        returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     currentRunId = runId;
     loadedCount = startOffset;
     totalCount = 0;
@@ -157,7 +183,8 @@ export async function openTraceDrawer(runId: string, seq?: number): Promise<void
     if (list) list.innerHTML = '';
     setRaw('Loading trace...');
     overlay.classList.add('open');
-    const summary = await api<TraceSummary>(`/api/traces/${encodeURIComponent(runId)}`);
+    overlay.querySelector<HTMLElement>('.trace-drawer-close')?.focus({preventScroll:true});
+    const summary = await api<TraceSummary>(tracePath(`/api/traces/${encodeURIComponent(runId)}`), {signal:traceController.signal});
     if (!isCurrentRequest(requestId, runId)) return;
     if (!summary) { setRaw('Trace is unavailable or internal-only.'); return; }
     renderSummary(summary);

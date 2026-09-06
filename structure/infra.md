@@ -15,6 +15,8 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ## 실제 실행/배포 표면 — `package.json` · Docker · CLI
 
+Activity persistence uses the existing SQLite trace tables: nullable `trace_runs.session_id/scope_key`, a session index, a runtime-row partial index and one unique control row per run. `activity-journal.ts` owns transactional append/read, `activity-control.ts` is the DB-only control leaf, and `activity-retention.ts` prunes raw rows before whole canonical prefixes. `store.ts` uses control/retention without importing the journal, avoiding a new store/journal cycle. Startup migration backfills only original message owners; chat deletion removes owned trace headers transactionally. Completed events are immutable; late conditional finalization cannot rewrite completed control. Spill cleanup never follows symlinked roots/directories. See `runtime-integration.md` for budgets/loss and `server_api.md` for owner-bound reads.
+
 ### Package metadata
 
 | 항목 | 현재 값 |

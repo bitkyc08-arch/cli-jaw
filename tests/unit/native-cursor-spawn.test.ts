@@ -61,6 +61,7 @@ const { beginLiveRun, setLiveRunTraceId, getLiveRun, appendLiveRunTool } = await
 const { clearGoalTimers } = await import('../../src/agent/lifecycle-handler.ts');
 const { poolStats } = await import('../../src/agent/runtime-pool.ts');
 const { beginRuntimeSettingsMutation } = await import('../../src/core/runtime-settings-gate.ts');
+const { createChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
 let serial = 0;
 test.beforeEach(t => {
     failJournal = false; inputs.length = 0; beforeFactory = undefined;
@@ -81,8 +82,10 @@ test.afterEach(async () => {
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 function options() {
     const id = ++serial;
+    const chatSessionId = createChatSession('Native journal fixture ' + id).id;
+    setActiveChatSession('default');
     return { cli: 'cursor', model: 'm1', effort: 'low', origin: 'web', scopeKey: 'native-scope-' + id,
-        chatSessionId: 'native-chat-' + id, requestId: 'native-request-' + id,
+        chatSessionId, requestId: 'native-request-' + id,
         sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true };
 }
 test('main actual factory/protocol/pool/lifecycle produces final-only MESSAGE and correlated native events', async () => {
@@ -98,6 +101,11 @@ test('main actual factory/protocol/pool/lifecycle produces final-only MESSAGE an
         assert.equal(native.filter(event => event.kind === 'turn-end').length, 1);
         assert.ok(native.some(event => event.kind === 'tool'));
         assert.ok(native.every(event => event.scope === opts.scopeKey && event.sessionId === opts.chatSessionId));
+        const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
+        const page = readActivityPage({ runId: result.traceRunId!, sessionId: opts.chatSessionId, after: 0, limit: 40 })!;
+        assert.deepEqual(page.events, native); assert.equal(page.incomplete, false);
+        assert.equal(trace.getTraceRun(result.traceRunId!)?.session_id, opts.chatSessionId);
+        assert.equal(trace.getTraceRun(result.traceRunId!)?.scope_key, opts.scopeKey);
         assert.doesNotMatch(JSON.stringify(native), /private-native-session|private-tool/);
         assert.deepEqual(db.prepare('SELECT content FROM messages WHERE session_id=? AND role=?').all(opts.chatSessionId, 'assistant'), [{ content: 'NATIVE_MAIN_FINAL' }]);
         assert.equal(activeMainProcesses.has(opts.scopeKey), false); assert.equal(poolStats().busy, 0);

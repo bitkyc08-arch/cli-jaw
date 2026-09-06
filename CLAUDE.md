@@ -14,6 +14,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Current Runtime Notes
 
+- Activity journal ownership is captured at trace admission, not inferred from provider IDs or copied messages. Immutable bounded runtime rows and private control metadata live in `src/trace/activity-{journal,control,retention}.ts`. Discovery/replay and owned raw routes require the original explicit session; internal append remains available but internal replay is denied. Retention removes whole canonical prefixes; late `onlyIfRunning` cleanup cannot rewrite completed control. Existing instance auth, finals and Slack ACK/queue behavior remain unchanged. See `structure/runtime-integration.md` and `server_api.md`.
+
 - Native decision APIs are `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id`. Existing instance auth, exact run/session/scope/turn and current-owner checks apply; this is not a tenant ACL or a new loopback credential policy. The registry sanitizes and preflights the32KiB event before insertion, keeps native option IDs in private mappings, and caps128 requests/120s; ACP callbacks cap32 and retain cancellation latches through reply completion. An unflushed selected reply forces connection retirement on cancellation. Provider activation and Activity controls remain separate; no messaging contract changes.
 
 - New installations prefer Codex App when capability and auth are ready; existing saved runtimes change only through the one-time accept/keep Settings action. CLI status is served from a nullable stale-while-revalidate cache whose probes run in a bounded child. OpenCodex diagnostics compare the read-only Codex root URL with the live runtime fingerprint and never modify Codex config.

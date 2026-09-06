@@ -172,7 +172,9 @@ Cursor/Grok activation and Activity controls are separate from this API foundati
 | Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channels/validate` `POST /api/channel/send` `POST /api/discord/send` `POST /api/slack/send` `GET /api/slack/history` `GET /api/slack/members` `GET /api/slack/users` |
 | Wiki | `GET /api/wiki/status` `GET /api/wiki/entities` `POST /api/wiki/enable` `POST /api/wiki/configure` |
 | Avatar | `GET /api/avatar` `POST /api/avatar/:target/upload` `DELETE /api/avatar/:target/image` `GET /api/avatar/:target/image` |
-| Traces | `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
+| Traces | `GET /api/traces/activity-runs?session=<id>` `GET /api/traces/:runId/activity?session=<id>` `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
+
+All trace routes set `Cache-Control: no-store` before auth/parsing. Activity discovery accepts explicit `session` and optional lexical run-ID `after` (40 runs/page). Replay accepts explicit `session`, decimal `after`/optional fixed `through`, and `limit`1–40; pages are also capped at256KiB. Responses retain `{ok,data}` and include sparse cursor/high-water, status, events and explicit loss/incomplete metadata. Malformed queries return400, wrong/internal/deleted owners404, future or reversed cursors409, storage failures503. Existing instance auth still applies. Owned raw summary/list/detail routes also require the original `session`; only truly ownerless legacy rows retain old access. Session-only historical backfills can use raw diagnostics but cannot invent a canonical scope. Replay is read-only and cannot submit historical decisions.
 | Debug | `GET /api/debug/mem` |
 | Link Preview | `GET /api/link-preview?url=` `GET /api/link-preview/image?url=` |
 | Dashboard Board | `GET /api/dashboard/board/tasks` `POST /api/dashboard/board/tasks` `PATCH /api/dashboard/board/tasks/:id` `DELETE /api/dashboard/board/tasks/:id` `POST /api/dashboard/board/tasks/from-message` |

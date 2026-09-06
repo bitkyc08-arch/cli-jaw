@@ -19,6 +19,8 @@ aliases: [CLI-JAW Architecture Reference, cli-jaw 구조 허브, structure index
 
 ## 시스템 개요
 
+Durable Activity storage and original-session ownership now live in `src/trace/activity-{journal,control,retention}.ts`. Read [runtime integration](runtime-integration.md) for append/loss/retention and [server API](server_api.md) for bounded discovery/replay plus owned raw reads. Display defaults and full history UI remain separate work.
+
 ```mermaid
 graph LR
     CLI["bin/commands/*"] -->|HTTP| SRV["server.ts (glue)"]

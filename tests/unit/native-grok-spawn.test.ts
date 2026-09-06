@@ -80,6 +80,7 @@ const { bumpScopeSessionGeneration } = await import('../../src/agent/session-per
 const { AcpRuntimeSession } = await import('../../src/agent/runtime/acp/runtime-session.ts');
 const { isNativeAdapterImplemented, isNativeWorkerImplemented } = await import('../../src/agent/runtime/selection.ts');
 const { admitRequest, pendingRequestIds, settleAllPending } = await import('../../src/orchestrator/request-registry.ts');
+const { createChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
 let serial = 0;
 test.beforeEach(t => {
     failJournal = false; inputs.length = 0; detections = 0; beforeFactory = undefined;
@@ -103,7 +104,9 @@ test.afterEach(async () => {
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 function options() {
     const id = ++serial;
-    return { cli: 'grok', origin: 'web', scopeKey: 'grok-scope-' + id, chatSessionId: 'grok-chat-' + id,
+    const chatSessionId = createChatSession('Native journal fixture ' + id).id;
+    setActiveChatSession('default');
+    return { cli: 'grok', origin: 'web', scopeKey: 'grok-scope-' + id, chatSessionId,
         requestId: 'grok-request-' + id, env: { GROK_TEST_WIRE: wirePath, XAI_API_KEY: '' },
         sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true };
 }
@@ -147,6 +150,14 @@ test('actual Grok main emits final-only output, canonical usage and reuses nativ
         assert.equal(native.filter(e => e['kind'] === 'turn-end').length, 2);
         assert.ok(native.some(e => e['kind'] === 'usage' && e['inputTokens'] === 40 && e['outputTokens'] === 7 && e['cachedTokens'] === 30));
         assert.ok(native.every(e => e['scope'] === opts.scopeKey && e['sessionId'] === opts.chatSessionId));
+        const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
+        for (const runId of new Set(native.map(e => String(e.runId)))) {
+            const page = readActivityPage({ runId, sessionId: opts.chatSessionId, after: 0, limit: 40 })!;
+            assert.deepEqual(page.events, native.filter(e => e.runId === runId));
+            assert.equal(page.incomplete, false);
+            assert.equal(trace.getTraceRun(runId)?.session_id, opts.chatSessionId);
+            assert.equal(trace.getTraceRun(runId)?.scope_key, opts.scopeKey);
+        }
         assert.doesNotMatch(JSON.stringify(native), /private-grok-native|private-tool|private-message/);
         assert.equal(events.some(e => e.type === 'agent_output'), false);
         assert.deepEqual(rows(opts.chatSessionId).filter(r => r.role === 'assistant').map(r => r.content), ['GROK_MAIN_FINAL', 'GROK_MAIN_FINAL']);

@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../../src/core/db.ts';
 import { startTraceRun, finalizeTraceRun, getTraceRun, createTraceId, appendTraceEvent } from '../../src/trace/store.ts';
+import { recordRuntimeEvent } from '../../src/agent/runtime/events.ts';
+import { readActivityControl } from '../../src/trace/activity-control.ts';
 
 test('conditional finalization closes an owned running header', () => {
     const id = startTraceRun({ cli: 'claude', model: 'fixture', audience: 'internal' });
@@ -35,4 +37,24 @@ test('existing unconditional finalization remains available to its original call
     const id = startTraceRun({ cli: 'claude', model: 'fixture', audience: 'internal' });
     finalizeTraceRun(id, 'done'); finalizeTraceRun(id, 'error', 'explicit existing policy');
     assert.equal(getTraceRun(id)?.status, 'error'); assert.equal(getTraceRun(id)?.error, 'explicit existing policy');
+});
+
+test('only the winning close can change journal control and completed events', () => {
+    const id = startTraceRun({ cli: 'claude', sessionId: 'default', scopeKey: 'default' });
+    const owner = { runId: id, sessionId: 'default', scope: 'default', turnId: id, audience: 'public' as const };
+    assert.ok(recordRuntimeEvent(owner, { kind: 'turn-start', provider: 'claude' }));
+    assert.ok(recordRuntimeEvent(owner, { kind: 'turn-end', status: 'done', finalText: 'ORIGINAL' }));
+    finalizeTraceRun(id, 'done', null, { onlyIfRunning: true });
+    const before = db.prepare('SELECT * FROM trace_events WHERE run_id=? ORDER BY seq').all(id);
+    assert.equal(readActivityControl(id)?.state.loss, null);
+    assert.equal(readActivityControl(id)?.state.closed, true);
+    finalizeTraceRun(id, 'error', 'late', { onlyIfRunning: true });
+    assert.deepEqual(db.prepare('SELECT * FROM trace_events WHERE run_id=? ORDER BY seq').all(id), before);
+    assert.equal(getTraceRun(id)?.status, 'done');
+
+    const stopped = startTraceRun({ cli: 'claude', sessionId: 'default', scopeKey: 'default' });
+    assert.ok(recordRuntimeEvent({ ...owner, runId: stopped, turnId: stopped }, { kind: 'turn-start', provider: 'claude' }));
+    finalizeTraceRun(stopped, 'interrupted', null, { onlyIfRunning: true });
+    assert.equal(readActivityControl(stopped)?.state.closed, true);
+    assert.equal(readActivityControl(stopped)?.state.loss, 'storage_error');
 });

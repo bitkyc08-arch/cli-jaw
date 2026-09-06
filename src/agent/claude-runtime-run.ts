@@ -54,7 +54,7 @@ export function startClaudeNativeRun(input: ClaudeNativeRunOptions): { child: nu
     const workerSlot = worker ? getWorkerSlot(base.agentLabel) : undefined;
     let traceRunId: string;
     try { traceRunId = startTraceRun({ cli: 'claude', model: base.model, workingDir: input.prepared.cwd,
-        agentLabel: base.agentLabel, audience: input.audience }); }
+        agentLabel: base.agentLabel, audience: input.audience, sessionId: base.chatSessionId, scopeKey: base.scopeKey }); }
     catch { traceRunId = createTraceId(); console.warn('[runtime:claude] trace creation unavailable'); }
     const identity = Object.freeze({ runId: traceRunId, sessionId: base.chatSessionId, scope: base.scopeKey,
         turnId: traceRunId, audience: input.audience, ...(input.parentItemId ? { parentItemId: input.parentItemId } : {}) });

@@ -12,6 +12,8 @@
 
 ## Current sync hotspots (2026-06)
 
+- Durable Activity journal: synchronize trace owner columns/original-message backfill, six native/print admission headers, internal append/public replay separation, explicit-session raw drawer reads, immutable event/first-loss control and whole-prefix retention in runtime/API/stream/infra docs. Current finality and messaging contracts remain independent; no Activity display/default rollout is implied by journal availability.
+
 When refreshing docs from recent non-strict commits, check these first:
 
 - `src/orchestrator/parser.ts` / `pipeline.ts`: `/continue` is slash-only; do not document natural-language continue as resume.

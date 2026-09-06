@@ -126,8 +126,10 @@ function deferred() {
 }
 function options() {
     const id = ++serial;
+    const chatSessionId = createChatSession('Native journal fixture ' + id).id;
+    setActiveChatSession('default');
     return { cli: 'claude', model: 'default', effort: 'low', origin: 'web', scopeKey: 'claude-scope-' + id,
-        chatSessionId: 'claude-chat-' + id, requestId: 'claude-request-' + id,
+        chatSessionId, requestId: 'claude-request-' + id,
         sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true };
 }
 const runTest = (name: string, fn: (t: TestContext) => Promise<void>) => test(name, { concurrency: false, timeout: 6000 }, fn);
@@ -332,6 +334,17 @@ for (const kind of ['ASK_APPROVAL', 'ASK_QUESTION']) runTest(`${kind}: real dist
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     assert.equal(accepted.status, 200); assert.equal((await accepted.json()).data.accepted, true);
     const result = await work; assert.equal(result.text, 'CLAUDE_FINAL'); assert.equal(queries.length, 1);
+    const { db } = await import('../../src/core/db.ts');
+    const { getTraceRun } = await import('../../src/trace/store.ts');
+    const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
+    const trace = getTraceRun(pending.runId)!;
+    assert.equal(trace.session_id, chat.id); assert.equal(trace.scope_key, pending.scope);
+    assert.equal(trace.audience, 'internal'); assert.equal(trace.status, 'done');
+    const rows = db.prepare("SELECT event_type FROM trace_events WHERE run_id=? AND source='runtime' ORDER BY seq")
+        .all(pending.runId) as { event_type: string }[];
+    assert.equal(rows[0]?.event_type, 'turn-start'); assert.equal(rows.at(-1)?.event_type, 'turn-end');
+    assert.ok(rows.some(row => row.event_type === 'request'));
+    assert.equal(readActivityPage({ runId: pending.runId, sessionId: chat.id, after: 0, limit: 40 }), null);
     assert.equal(queries[0]!.decisions.length, 1);
     assert.equal(queries[0]!.decisions[0].behavior, 'allow');
     if (kind === 'ASK_QUESTION') assert.deepEqual(queries[0]!.decisions[0].updatedInput.answers, { 'Choose color?': 'Green' });
