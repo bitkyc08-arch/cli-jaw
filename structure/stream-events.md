@@ -199,6 +199,10 @@ Worker run events, delayed replay notices, and batch dispatch summaries are safe
 
 ## 3. Claude Code CLI
 
+### Internal native SDK projection
+
+Native SDK objects are normalized once by `runtime/claude-sdk-events.ts`; they do not pass through the print parser. Text deltas and completed block snapshots replace the same canonical message item. A successful result alone supplies final text; missing/null stays absent and explicit empty remains empty. Parent partial text is retained independently for error/Stop, never inferred from tool output, reasoning or child narration. Provider plaintext reasoning has separate items; signatures and encrypted payloads are not decoded or published. Tool-input JSON is parsed only after bounded completion and sanitized before preview clipping. Existing RuntimeProjection owns item IDs, committed trace sequence and one terminal; incomplete previews do not authorize another inference or successful final. Native application/worker/Activity activation is a follow-on layer, and external messaging retains its existing final/ACK/queue owners.
+
 호출 플래그:
 
 ```text

@@ -56,7 +56,7 @@ async function fixture(t: TestContext, patch: Partial<ClaudeSessionOptions> = {}
 const result = (uuid: string, extra: Record<string, unknown> = {}) => ({ type: 'result', subtype: 'success',
     is_error: false, result: 'FINAL', session_id: 'native', uuid, num_turns: 1, ...extra });
 const partial = (text = 'PARENT') => ({ type: 'assistant', parent_tool_use_id: null,
-    message: { content: [{ type: 'text', text }] } });
+    message: { id: 'parent-message', content: [{ type: 'text', text }] } });
 const checkpoint = () => new Promise<void>(resolve => setImmediate(resolve));
 
 test('an unstarted core is not alive and cannot accept a prompt', async () => {

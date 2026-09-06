@@ -14,6 +14,8 @@ import { createClaudeClose } from './claude-sdk-close.js';
 import { createClaudeMetadata, type ClaudeResultMetadata } from './claude-sdk-metadata.js';
 import { claudeForegroundHooks } from './claude-sdk-hooks.js';
 import type { ClaudeRootWaitOptions } from './claude-sdk-roots.js';
+import { RuntimeProjection } from './projection.js';
+import { ClaudeSdkEvents } from './claude-sdk-events.js';
 
 export interface ClaudeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
 export type { ClaudeResultMetadata } from './claude-sdk-metadata.js';
@@ -32,10 +34,9 @@ export interface ClaudeSessionOptions {
 type Turn = {
     context: Readonly<ClaudeTurnContext>; onEvent(event: RuntimeEvent): void;
     resolve(result: RuntimeTurnResult): void; timer: ReturnType<typeof setTimeout>;
-    partial: string; uuid: ReturnType<typeof randomUUID>; offered: boolean;
+    mapper: ClaudeSdkEvents; uuid: ReturnType<typeof randomUUID>; offered: boolean;
 };
 const MAX_PROMPT_BYTES = 1024 * 1024;
-const MAX_PARTIAL_CHARS = 1024 * 1024;
 const RESULT_TYPES = new Set(['success', 'error_during_execution', 'error_max_turns',
     'error_max_budget_usd', 'error_max_structured_output_retries']);
 function record(value: unknown): Record<string, unknown> {
@@ -49,7 +50,7 @@ function validTimeout(value: number): void {
 /** A query owns one reader; each admitted send owns an immutable jaw turn binding. */
 export class ClaudeSdkSession implements NativeRuntimeSession {
     readonly capabilities: RuntimeCapabilities = Object.freeze({ transport: 'native', steer: 'queued', resume: true,
-        tools: false, toolOutput: false, approvals: false, questions: false, images: false, subagents: false });
+        tools: true, toolOutput: true, approvals: false, questions: false, images: false, subagents: false });
     readonly supportsInterrupt = true;
     // One active turn can own at most one unconsumed, <=1MiB text message.
     private readonly input = createClaudeInput<SDKUserMessage>(1);
@@ -58,6 +59,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private reader: Promise<void> = Promise.resolve();
     private readonly exits = new Set<(code: number | null) => void>();
     private turn: Turn | null = null;
+    private finishing = false;
     private id = '';
     private closing = false;
     private closeOperation: (() => Promise<void>) | undefined;
@@ -85,7 +87,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         } catch (error) { this.failure = true; await this.close(); throw error; }
     }
     get alive(): boolean { return this.query !== undefined && !this.closing && !this.failure; }
-    get idle(): boolean { return this.alive && this.turn === null; }
+    get idle(): boolean { return this.alive && this.turn === null && !this.finishing; }
     get nativeSessionId(): string { return this.id; }
     get activeProcessCount(): number { return this.processes.activeCount; }
     get stderrBytes(): number { return this.processes.stderrBytes; }
@@ -97,7 +99,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     async send(prompt: RuntimePrompt, onEvent: (event: RuntimeEvent) => void): Promise<RuntimeTurnResult> {
         if (!this.alive) throw new Error('claude_session_closed');
         if (this.terminalIds.size >= 512) throw new Error('claude_terminal_capacity');
-        if (this.turn) throw new Error('claude_session_busy');
+        if (this.turn || this.finishing) throw new Error('claude_session_busy');
         if (typeof prompt.text !== 'string' || Buffer.byteLength(prompt.text) > MAX_PROMPT_BYTES) throw new Error('claude_prompt_limit');
         if (prompt.images?.length) throw new Error('claude_images_unavailable');
         const context = Object.freeze({ ...this.options.getTurnContext() });
@@ -107,10 +109,11 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         }
         let resolve!: (value: RuntimeTurnResult) => void;
         const result = new Promise<RuntimeTurnResult>(yes => { resolve = yes; });
-        const turn: Turn = { context, onEvent, resolve, partial: '', uuid: randomUUID(), offered: false,
+        const projection = new RuntimeProjection(context, (_context, body) => this.recordEvent(turn, body));
+        const turn: Turn = { context, onEvent, resolve, mapper: new ClaudeSdkEvents(projection), uuid: randomUUID(), offered: false,
             timer: setTimeout(() => this.fail('claude_prompt_timeout'), this.options.promptTimeoutMs) };
         this.turn = turn;
-        this.emit(turn, { kind: 'turn-start', provider: 'claude' });
+        projection.start('claude');
         if (this.turn !== turn || this.closing) return result;
         if (!this.current(turn.context)) {
             this.settle({ status: 'stopped', finalText: null, partialText: '' });
@@ -138,30 +141,36 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private current(context: Readonly<ClaudeTurnContext>): boolean {
         try { return context.isCurrent() === true; } catch { return false; }
     }
-    private emit(turn: Turn, body: RuntimeEventBody): void {
-        if (!this.current(turn.context)) return;
+    private recordEvent(turn: Turn, body: RuntimeEventBody): RuntimeEvent | null {
+        if (!this.current(turn.context)) return null;
         try {
             const event = (this.options.record ?? recordRuntimeEvent)(turn.context, body);
-            if (event) turn.onEvent(event);
-        } catch { console.warn('[claude-native] projection_failed'); }
+            if (event) { try { turn.onEvent(event); } catch { console.warn('[claude-native] observer_failed'); } }
+            return event;
+        } catch { console.warn('[claude-native] projection_failed'); return null; }
     }
     private settle(outcome: RuntimeTurnResult): void {
         const turn = this.turn;
         if (!turn) return;
+        this.finishing = true;
         this.turn = null; clearTimeout(turn.timer);
-        try { this.registry.cancelRun(turn.context.runId); }
-        catch {
-            this.failure = true; this.failureCode ??= 'claude_request_cleanup_failed';
-            outcome = { status: 'error', finalText: null, partialText: outcome.partialText };
+        try {
+            try { this.registry.cancelRun(turn.context.runId); }
+            catch {
+                this.failure = true; this.failureCode ??= 'claude_request_cleanup_failed';
+                outcome = { status: 'error', finalText: null, partialText: outcome.partialText };
+            }
+            turn.mapper.finish(outcome);
+        } finally {
+            this.finishing = false;
+            turn.resolve(outcome);
+            if (this.failure || this.terminalIds.size >= 512) this.kill();
         }
-        this.emit(turn, { kind: 'turn-end', status: outcome.status, finalText: outcome.finalText });
-        turn.resolve(outcome);
-        if (this.failure || this.terminalIds.size >= 512) this.kill();
     }
     private fail(reason: string): void {
         this.failureCode ??= reason;
         this.failure = true;
-        this.settle({ status: 'error', finalText: null, partialText: this.turn?.partial ?? '' });
+        this.settle({ status: 'error', finalText: null, partialText: this.turn?.mapper.partialText ?? '' });
         this.kill();
     }
     private async read(query: ClaudeQuery): Promise<void> {
@@ -212,16 +221,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         finally { this.input.close(); }
     }
     private accept(raw: Record<string, unknown>, turn: Turn): void {
-        if (raw['type'] === 'assistant') {
-            const message = record(raw['message']);
-            if (!Array.isArray(message['content']) || message['content'].length > 512) throw new Error('claude_invalid_content');
-            let text = '';
-            for (const value of message['content'].slice(0, 512)) {
-                const block = record(value);
-                if (block['type'] === 'text' && typeof block['text'] === 'string') text += block['text'].slice(0, MAX_PARTIAL_CHARS - text.length);
-            }
-            turn.partial = text;
-        } else if (raw['type'] === 'result') {
+        if (raw['type'] === 'result') {
             if (typeof raw['subtype'] !== 'string' || !RESULT_TYPES.has(raw['subtype']) || typeof raw['is_error'] !== 'boolean') {
                 throw new Error('claude_invalid_result');
             }
@@ -232,14 +232,18 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
             }
             const finalText = status === 'done' && typeof value === 'string' ? value : null;
             if (finalText !== null && finalText.length > FULLTEXT_MAX_CHARS) throw new Error('claude_final_limit');
-            const nativeId = raw['session_id'];
-            if (typeof nativeId === 'string' && nativeId && nativeId.length <= 1024) this.id = nativeId;
-            const metadata = this.readMetadata(raw, status === 'done', this.id);
-            try { this.options.onMetadata?.(turn.context, metadata); } catch { console.warn('[claude-native] metadata_failed'); }
-            if (this.closing || this.turn !== turn) return;
-            if (!this.current(turn.context)) { this.fail('claude_owner_stale'); return; }
-            this.settle({ status, finalText, partialText: turn.partial });
         }
+        const outcome = turn.mapper.accept(raw);
+        if (this.closing || this.turn !== turn) return;
+        if (!this.current(turn.context)) { this.fail('claude_owner_stale'); return; }
+        if (!outcome) return;
+        const nativeId = raw['session_id'];
+        if (typeof nativeId === 'string' && nativeId && nativeId.length <= 1024) this.id = nativeId;
+        const metadata = this.readMetadata(raw, outcome.status === 'done', this.id);
+        try { this.options.onMetadata?.(turn.context, metadata); } catch { console.warn('[claude-native] metadata_failed'); }
+        if (this.closing || this.turn !== turn) return;
+        if (!this.current(turn.context)) { this.fail('claude_owner_stale'); return; }
+        this.settle(outcome);
     }
     private correlated(raw: Record<string, unknown>, turn: Turn): boolean {
         if (!turn.offered) return false;
@@ -255,7 +259,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         this.closeOperation ??= createClaudeClose({ timeoutMs: this.options.closeTimeoutMs ?? 5000,
             fence: () => {
                 this.closing = true;
-                outcome = { status: this.failure ? 'error' : 'stopped', finalText: null, partialText: this.turn?.partial ?? '' };
+                outcome = { status: this.failure ? 'error' : 'stopped', finalText: null, partialText: this.turn?.mapper.partialText ?? '' };
             },
             startTermination: () => { try { this.query?.close(); } finally { this.processes.terminate(); } },
             settlePending: () => { this.input.close(); this.settle(outcome); },
