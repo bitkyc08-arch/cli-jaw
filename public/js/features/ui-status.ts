@@ -10,6 +10,11 @@ export function setStatus(s: string): void {
     const btn = document.getElementById('btnSend');
     const label = document.getElementById('typingIndicator')?.querySelector('.label') as HTMLElement | null;
     state.agentBusy = s === 'running' || s === 'steering';
+    if (btn) {
+        btn.setAttribute('aria-label', state.agentBusy ? t('btn.stop') : 'Send message');
+        if (state.agentBusy) btn.setAttribute('data-i18n-aria', 'btn.stop');
+        else btn.removeAttribute('data-i18n-aria');
+    }
     document.getElementById('typingIndicator')?.classList.toggle('active', state.agentBusy);
     if (s === 'running') {
         if (badge) { badge.className = 'status-badge status-running'; badge.textContent = 'running'; }
