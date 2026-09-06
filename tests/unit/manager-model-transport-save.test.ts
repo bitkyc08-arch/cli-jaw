@@ -62,7 +62,7 @@ function fixture(t: TestContext, name: string) {
             // The real route commits both profile and selection before replying.
             snapshot = { ...snapshot, pi: { defaultProfileId: value.id, profiles: [profile] },
                 perCli: { ...snapshot.perCli as Record<string, unknown>, pi: { provider: value.id, model: value.model } } };
-            return { models: [value.model], settings: { pi: snapshot.pi } } as T;
+            return { ok: true, data: { models: [value.model], settings: { pi: snapshot.pi } } } as T;
         }, async delete() { throw Error('Unexpected DELETE'); },
     };
     t.after(async () => { await act(async () => { for (const gate of gates) gate.resolve(); }); });

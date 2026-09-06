@@ -326,6 +326,25 @@ settings.ts (barrel)
 | `manager/src/dashboard-reminders/` | reminders matrix/sidebar/workspace UI, drag/drop, detail popover |
 | `manager/src/dashboard-settings/` | Developer tools settings (diff defaults, embedding) |
 
+### Manager Settings — Runtime transport and embedded Classic
+
+Model defaults uses `ModelProvider.tsx` → `PerCliRow.tsx` →
+`runtime-transport-field.tsx` for explicit Cursor/Grok/Claude native opt-in or
+print compatibility. Absence stays print; the field reads only its own pending
+dirty entry or server original, not a model-draft shadow. ModelProvider owns
+save/reset singleflight, guarded inputs, captured-entry acknowledgement and
+instance/read generations. See [runtime preference and save ownership](runtime-integration.md#manager-runtime-preference-and-save-ownership)
+for the existing settings PUT chain, native constraints and admitted Pi completion.
+
+Runtime native/print is separate from Activity-default/Legacy presentation and
+from `preview.ts`'s `origin-port`/`legacy-path`/`none` HTTP routing. Manager embeds
+the existing Classic Activity/history/native-request surface; it does not own a
+second transcript or request panel. Workbench tab changes hide the same iframe;
+port changes remount it, with saved-history/snapshot restoration owned by Classic.
+Unsent input is not promised across A→B→A. Presentation is not part of iframe
+src/key; theme still affects src. These source contracts do not certify embedded
+browser, dev Electron or packaged-sidecar QA.
+
 ### Manager Settings — Pi Runtime
 
 | 파일 | 역할 |
@@ -336,7 +355,7 @@ settings.ts (barrel)
 | `manager/src/settings/pages/components/pi-profile.ts` | Pi profile/model option pure helper |
 
 - Pi model field는 발견된 모델이 있으면 `SelectField`를 사용하고, 목록이 비어 있을 때만 free-text `TextField`로 fallback한다.
-- 등록 성공 시 `settings.pi.profiles`, `settings.pi.discoveredModels`, `perCli.pi.provider`, `perCli.pi.model` draft가 함께 갱신되어 Pi model dropdown에 새 모델이 바로 나타난다.
+- 이미 수락된 등록이 완료되면 현재 instance의 `onPiRegistered`가 `perCli.pi.provider/model` intent를 반영한다. 페이지 저장 중에도 이 완료 처리는 허용하지만, 일반 입력은 차단하고 retired instance의 완료는 무시한다. Optional `settings.pi` metadata는 응답에 있을 때만 반영하며, 기존 dialog의 `ok/data` envelope 처리에 따른 metadata refresh 한계는 별개다. 새 provider/model 선택 반영을 전체 profile/discovery metadata 갱신 보장으로 해석하지 않는다.
 | `manager/src/jaw-ceo/` | Jaw CEO console panels, orchestration-control actions, voice, virtual timeline |
 | `manager/src/goal-status/` `manager/src/background-tasks/` `manager/src/workers/` | Manager runtime-observability monitors for goal/PABCD, background tasks, web-ai bgtask bridges, worker progress, durable worker runs, shared status-category display contracts, safe event timelines, and explicit bounded raw-output drill-down |
 | `manager/src/notes/` | markdown notes, search sidebar, WYSIWYG editing, wikilinks, graph view |

@@ -61,6 +61,53 @@ Print keys are byte-for-byte unchanged. Switchable native sessions use `native-v
 
 `GET /api/cli-status` adds `runtimeSelection: {transport, nativeAdapterImplemented, nativeWorkerImplemented}` only to those three engines plus builtin Codex App/Pi. These are compiled implementation flags, not authentication/binary/probe readiness. Existing status evidence and non-participating rows remain unchanged. Display preferences and runtime transport choice are separate controls; the Activity default is not enabled by this layer.
 
+### Manager runtime preference and save ownership
+
+Manager Settings → Model defaults (`public/manager/src/settings/pages/ModelProvider.tsx`)
+exposes Runtime transport only for Cursor, Grok and Claude. Native session is an
+explicit opt-in; missing transport displays Print compatibility without creating a
+patch. Explicit native remains native, print is reversible, and an unknown value
+gets a generic error/label rather than silently selecting the first option. The
+unknown sentinel is UI-only and cannot be submitted. Cursor/Grok native require
+Auto and do not support native workers; Claude native supports Auto/Safe. The
+selector does not change permissions, model/effort or active CLI to satisfy those
+constraints, and its configured value is not a readiness check.
+
+Three independent choices remain separate: `perCli.<cli>.transport` selects the
+next run's native/print path; `presentation.mode` defaults to Activity with explicit
+Legacy reversal; Manager `preview.ts` selects the HTTP embed route
+(`origin-port`, `legacy-path`, or unavailable `none`). A runtime preference edit
+does not select a display mode or preview route, migrate defaults, or replace the
+running adapter. Builtin Codex App/Pi have no print selector here.
+
+`components/runtime-transport-field.tsx` subscribes to its own DirtyStore entry,
+falling back to the server original, never the row's model-draft transport. It
+validates CLI/value before setting exactly `perCli.<cli>.transport`; it sends no
+HTTP. The page expands valid owned `perCli.*`/`fallbackOrder` entries and uses the
+ordinary SettingsClient's existing `PUT /i/<port>/api/settings`. Save/reset share
+one operation owner; duplicate saves join it, ordinary inputs and already-open
+menu callbacks are guarded, and failed saves retain pending intent. Success
+acknowledges only captured entry identities, not newer or unrelated entries.
+
+Committed client/port/store identity fences requests and completions, including
+A→B→A; metadata reads also have a request generation. A private snapshot read
+adapter tags results with their captured instance so ready A data cannot become B
+data; this tag never changes the wire payload or write client. Snapshot refresh
+overlays still-pending owned perCli values onto the model draft. These are UI
+currentness guards, not an authorization layer or cancellation of admitted writes.
+
+Disabling a row retains its open Pi dialog under an inert wrapper rather than
+unmounting it solely for disabled state; normal snapshot loading or instance
+remount can still destroy the row. An already-admitted registration completion
+uses the separate `onPiRegistered`
+sink: current-instance provider/model intent may reconcile while inputs are
+blocked, but a retired instance cannot write the current draft. This does not add
+another HTTP mutation. Optional returned Pi profile-metadata refresh remains a
+separate inherited dialog response-envelope limitation; selection reconciliation
+does not claim to fix it. The existing Classic native-request bridge remains the
+embedded panel owner. This settings integration does not certify embedded browser,
+dev Electron or packaged-sidecar QA.
+
 ## Internal Claude SDK session core
 
 `runtime/claude-sdk-session.ts` owns one persistent query from the optional, exact-pinned `@anthropic-ai/claude-agent-sdk@0.3.261`. One reader consumes sequential parent-text turns; explicit resume is passed to a new query. The factory captures prepared options, environment and cancellation before lazy loading. The input stream has one unconsumed text slot (at most1MiB) and one active turn; this does not bound the SDK's internal buffers or provide in-band steer.
