@@ -1,11 +1,14 @@
-import test, { type TestContext } from 'node:test';
+import test, { mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { createClaudeSdkSession, ClaudeSdkSession, type ClaudeSessionOptions } from '../../src/agent/runtime/claude-sdk-session.ts';
+import type { ClaudeSessionOptions } from '../../src/agent/runtime/claude-sdk-session.ts';
 import { createClaudeClose } from '../../src/agent/runtime/claude-sdk-close.ts';
 import { RuntimeRequests } from '../../src/agent/runtime/requests.ts';
 import { FULLTEXT_MAX_CHARS } from '../../src/agent/events/fulltext-bound.ts';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
+// Every recorder in this file is injected; no shared SQLite migration is needed.
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+const { createClaudeSdkSession, ClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 class Output implements AsyncIterableIterator<SDKMessage> {
     private values: SDKMessage[] = [];

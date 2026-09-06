@@ -1,7 +1,9 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { RuntimeProjection } from '../../src/agent/runtime/projection.ts';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
+// The projection receives its recorder; importing it must not create a database.
+mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 
 function fixture() {
     const events: RuntimeEvent[] = [];
