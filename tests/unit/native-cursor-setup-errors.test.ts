@@ -101,7 +101,7 @@ test.afterEach(async () => {
     assert.equal(poolStats().busy, 0);
 });
 
-test('immediate Stop before acquisition admits one stopped turn and closes its header before exit settlement', async () => {
+test('immediate Stop before acquisition admits one stopped turn and closes its header before exit settlement', { timeout: 10_000 }, async () => {
     const owner = createChatSession('immediate Stop owner'); const scope = `local:${owner.id}`;
     const packets: Array<{ event: string; data: Record<string, unknown> }> = [];
     const off = subscribe(value => packets.push(value));
@@ -109,8 +109,13 @@ test('immediate Stop before acquisition admits one stopped turn and closes its h
         const operation = spawnAgent('do not acquire', { cli: 'cursor', model: 'default', effort: '', origin: 'web',
             scopeKey: scope, chatSessionId: owner.id, sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true });
         assert.equal(killActiveAgent(scope, 'steer'), true);
-        const settled = waitForExitSettled(scope);
+        let headerAtBarrier: string | undefined;
+        const settled = waitForExitSettled(scope, 30_000).then(() => {
+            const terminal = packets.find(p => p.event === 'agent_done' && p.data.sessionId === owner.id);
+            headerAtBarrier = getTraceRun(String(terminal?.data.traceRunId))?.status;
+        });
         const result = await operation.promise; await settled;
+        assert.equal(headerAtBarrier, 'interrupted', 'header is already closed when the real exit waiter resolves');
         assert.equal(result.code, 130); assert.equal(result.runtimeOutcome?.finalText, null);
         assert.equal(fs.readFileSync(wirePath, 'utf8'), '');
         const owned = packets.filter(p => p.data.sessionId === owner.id);
