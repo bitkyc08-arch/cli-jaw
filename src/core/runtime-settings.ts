@@ -23,6 +23,35 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from './logger.js';
 import { MAX_DISPATCH_APPROVAL_TTL_SECONDS } from './dispatch-approval.js';
+import { isRuntimeTransport, isSwitchableNativeCli } from '../agent/runtime/selection.js';
+
+/** Explicit display/next-run preferences must not revoke already admitted runs.
+ * Unknown, empty or execution-changing mixtures retain the existing invalidation.
+ */
+export function settingsPatchPreservesActiveRun(input: Record<string, unknown>): boolean {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+    const keys = Object.keys(input);
+    if (!keys.length || keys.some(key => key !== 'presentation' && key !== 'perCli')) return false;
+    const sanitized = sanitizeSettingsInput(input, 'api');
+    if (sanitized.invalidPaths.length || sanitized.serverOwnedPaths.length || sanitized.rejectedPaths.length) return false;
+    const patch = sanitized.value;
+    if (Object.keys(patch).length !== keys.length || Object.keys(patch).some(key => !keys.includes(key))) return false;
+    if (keys.includes('presentation')) {
+        const display = patch['presentation'];
+        if (!display || typeof display !== 'object' || Array.isArray(display)
+            || Object.keys(display).length !== 1 || !Object.hasOwn(display, 'mode')) return false;
+    }
+    if (keys.includes('perCli')) {
+        const perCli = patch['perCli'];
+        if (!perCli || typeof perCli !== 'object' || Array.isArray(perCli) || !Object.keys(perCli).length) return false;
+        for (const [cli, value] of Object.entries(perCli)) {
+            if (!isSwitchableNativeCli(cli) || !value || typeof value !== 'object' || Array.isArray(value)
+                || Object.keys(value).length !== 1 || !Object.hasOwn(value, 'transport')
+                || !isRuntimeTransport((value as Record<string, unknown>)['transport'])) return false;
+        }
+    }
+    return true;
+}
 
 export type RuntimeDefaultMigrationAction = 'accept' | 'keep';
 
@@ -355,6 +384,9 @@ async function applyRuntimeSettingsPatchSerialised(
         }
         const patch = sanitized.value;
         const presentationOnly = Object.keys(patch).length === 1 && Object.hasOwn(patch, 'presentation');
+        // Preserve the older empty/sibling presentation subtree behavior separately
+        // from the strict admission-ownership exception for explicit preferences.
+        const preserveRuntimeState = presentationOnly || settingsPatchPreservesActiveRun(rawPatch);
         validateDispatchApprovalPatch(patch);
         if (!opts.allowWikiLifecycle && wikiRouteManagedPatchPaths(patch).length > 0) {
             throw new Error('wiki_configuration_requires_wiki_route');
@@ -382,7 +414,7 @@ async function applyRuntimeSettingsPatchSerialised(
             });
         }
 
-        if (!presentationOnly) opts.resetFallbackState?.();
+        if (!preserveRuntimeState) opts.resetFallbackState?.();
 
         // CLI-changed branch delegates main-session clearing to cliSwitchRefresh
         // (which writes a cleared row inside its DB transaction). On refresh failure
@@ -413,11 +445,11 @@ async function applyRuntimeSettingsPatchSerialised(
                 rollbackHandled = true;
                 throw e;
             }
-        } else if (!presentationOnly) {
+        } else if (!preserveRuntimeState) {
             syncMainSessionToSettings(prevCli);
         }
 
-        if (!presentationOnly) syncJwcConfigDefault(settings);
+        if (!preserveRuntimeState) syncJwcConfigDefault(settings);
 
         if (settings["workingDir"] !== prevWorkingDir) {
             try {

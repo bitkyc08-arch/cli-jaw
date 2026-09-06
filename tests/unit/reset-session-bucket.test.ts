@@ -50,7 +50,9 @@ test.mock.module('../../src/agent/spawn.ts', {
     namedExports: { resetFallbackState: () => {} },
 });
 test.mock.module('../../src/core/runtime-settings.ts', {
-    namedExports: { applyRuntimeSettingsPatch: async () => ({}) },
+    namedExports: { applyRuntimeSettingsPatch: async () => ({}),
+        settingsPatchPreservesActiveRun: () => assert.fail('A session reset must not use settings preference classification'),
+    },
 });
 test.mock.module('../../src/core/config.ts', {
     namedExports: { settings: { cli: 'agy', model: 'gemini-3.5-pro', workingDir: '/tmp' } },

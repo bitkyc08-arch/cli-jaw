@@ -80,6 +80,16 @@ Legacy reversal; Manager `preview.ts` selects the HTTP embed route
 does not select a display mode or preview route, migrate defaults, or replace the
 running adapter. Builtin Codex App/Pi have no print selector here.
 
+The actual web/API settings wrapper preserves admitted-run ownership only for
+explicit known `presentation.mode` and/or eligible transport-only patches. It
+also leaves fallback state, singleton session and JWC config untouched for these
+preferences; persistence, serialization, rollback and settings publication still
+run. Old completion saves to its captured native/print bucket; the next run reads
+the new choice. Mixed model/permissions/CLI/workspace or unknown/empty leaves keep
+the existing invalidation. Legacy presentation-only subtree side-effect skips are
+retained separately. External-file transport edits still invalidate ownership;
+the API's own saved-file echo is ignored by the existing watcher fingerprint.
+
 `components/runtime-transport-field.tsx` subscribes to its own DirtyStore entry,
 falling back to the server original, never the row's model-draft transport. It
 validates CLI/value before setting exactly `perCli.<cli>.transport`; it sends no

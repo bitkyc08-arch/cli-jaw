@@ -1,12 +1,12 @@
 // ─── Session/settings lifecycle ops (web surface) ────
 // Extracted from server.ts in Phase 2 (devlog 260609, 20 §3.1).
-// Grouped here because all three bump the session ownership generation
-// before mutating session or runtime-settings state.
+// Execution changes invalidate ownership; explicit display/next-run preferences
+// preserve the already admitted run and its captured persistence namespace.
 
 import { bumpGenerationForSessionLocalReset, bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { resetFallbackState } from '../agent/spawn.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from './main-session.js';
-import { applyRuntimeSettingsPatch } from './runtime-settings.js';
+import { applyRuntimeSettingsPatch, settingsPatchPreservesActiveRun } from './runtime-settings.js';
 import { settings } from './config.js';
 import { currentSessionScope } from './session-context.js';
 import { isSwitchableNativeCli, runtimeSessionBucket } from '../agent/runtime/selection.js';
@@ -143,7 +143,7 @@ export async function clearResumableSessionForScope(): Promise<void> {
 }
 
 export async function applySettingsPatch(rawPatch: Record<string, unknown> = {}) {
-    bumpSessionOwnershipGeneration();
+    if (!settingsPatchPreservesActiveRun(rawPatch)) bumpSessionOwnershipGeneration();
     return applyRuntimeSettingsPatch(rawPatch, {
         resetFallbackState: () => resetFallbackState(null),
     });

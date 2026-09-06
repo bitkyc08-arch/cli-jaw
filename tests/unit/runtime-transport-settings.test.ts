@@ -156,7 +156,7 @@ test('actual settings PUT partial updates preserve mode/model/effort/auth siblin
     } finally { await app.close(); }
 });
 
-test('actual PUT -> applySettingsPatch toggles P/N/P and preserves both buckets/singleton while invalidating owners', async () => {
+test('actual PUT -> applySettingsPatch toggles next-run P/N/P while preserving current owners and both buckets/singleton', async () => {
     const cli = 'cursor';
     const scope = 'default';
     const current = config.settings;
@@ -197,8 +197,8 @@ test('actual PUT -> applySettingsPatch toggles P/N/P and preserves both buckets/
             assert.equal(payload.data.perCli.cursor.transport, transport);
             assert.equal(config.settings.cli, cli, 'same CLI avoids CLI-switch bootstrap');
             assert.equal(config.settings.workingDir, workingDir);
-            assert.equal(isCurrentSessionOwner(owner, scope), false);
-            assert.equal(getSessionOwnershipGeneration(scope).global, owner.global + 1);
+            assert.equal(isCurrentSessionOwner(owner, scope), true);
+            assert.equal(getSessionOwnershipGeneration(scope).global, owner.global);
             assert.deepEqual(getSessionBucket.get(printBucket), printBefore);
             assert.deepEqual(getSessionBucket.get(nativeBucket), nativeBefore);
             assert.equal((getSession() as { session_id: string }).session_id, 'P');
@@ -206,7 +206,7 @@ test('actual PUT -> applySettingsPatch toggles P/N/P and preserves both buckets/
             selected.push(selectedSid());
         }
         assert.deepEqual(selected, ['P', 'N', 'P']);
-        assert.deepEqual(atPublication, [{ mode: 'native', stale: true }, { mode: 'print', stale: true }]);
+        assert.deepEqual(atPublication, [{ mode: 'native', stale: false }, { mode: 'print', stale: false }]);
         const beforeInvalid = readFileSync(config.SETTINGS_PATH, 'utf8');
         owner = getSessionOwnershipGeneration(scope);
         const invalid = await app.put({ perCli: { cursor: { transport: 'invalid' } } });
