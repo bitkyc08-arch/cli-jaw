@@ -10,7 +10,7 @@ import { log } from '../core/logger.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
 import { submitMessage } from '../orchestrator/gateway.js';
-import { orchestrateAndCollect } from '../orchestrator/collect.js';
+import { orchestrateAndCollectData } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { isContinueIntent } from '../orchestrator/parser.js';
 import {
@@ -324,6 +324,11 @@ function buildSlackTarget(event: SlackMessageEvent): RemoteTarget {
  */
 let targetReplyForwarderInstalled = false;
 
+function requiresNativeBodyDelivery(data: Record<string, unknown>): boolean {
+    return (data['runtimeFinality'] === 'present' || data['runtimeFinality'] === 'absent')
+        && (data['runtimeStatus'] === 'done' || data['runtimeStatus'] === 'error' || data['runtimeStatus'] === 'stopped');
+}
+
 function installSlackTargetReplyForwarder(): void {
     if (targetReplyForwarderInstalled) return;
     targetReplyForwarderInstalled = true;
@@ -345,10 +350,13 @@ function installSlackTargetReplyForwarder(): void {
         const token = getSlackSendClient().token;
         if (!token) return;
         const text = String(data["text"]);
+        const requireBodyDelivery = requiresNativeBodyDelivery(data);
+        if (requireBodyDelivery && !text.trim()) return;
         void (async () => {
             const outbound = slackOutboundRegistry.start();
             try {
-                const result = await sendSlackText(token, target, text, { signal: outbound.signal });
+                const result = await sendSlackText(token, target, text, { signal: outbound.signal,
+                    ...(requireBodyDelivery ? { requireBodyDelivery: true } : {}) });
                 if (!result.ok) {
                     log.error('[slack:target-reply]', logErrorText(result.error || 'send failed'));
                     return;
@@ -452,9 +460,9 @@ async function slackOrchestrate(
                 // so only a send made during THIS turn can suppress this turn's
                 // post — an identical answer from an earlier turn must not.
                 const turnStartedAt = nextDeliverySeq();
-                const text = String(await withSessionScope(
+                const collected = await withSessionScope(
                     { scope: ctx.scope, chatSessionId: ctx.chatSessionId },
-                    () => orchestrateAndCollect(prompt, {
+                    () => orchestrateAndCollectData(prompt, {
                         origin: 'slack', target, chatId, requestId: ctx.requestId,
                         ...(ctx.remoteKey ? { remoteKey: ctx.remoteKey } : {}),
                         chatSessionId: ctx.chatSessionId, scope: ctx.scope, _skipInsert: true,
@@ -463,7 +471,8 @@ async function slackOrchestrate(
                         removeBroadcastListener(progressHandler);
                         await progress.finish().catch(() => { });
                     }),
-                ));
+                );
+                const text = collected.text;
                 // Scoped for shutdown cancellation (#417): the body send and the
                 // image relay below share one abortable scope, released when the
                 // turn settles either way.
@@ -480,7 +489,8 @@ async function slackOrchestrate(
                     const alreadyDelivered = wasSelfDelivered({ target, text, since: turnStartedAt });
                     sendResult = alreadyDelivered
                         ? { ok: true }
-                        : await sendSlackText(token, target, text, { signal: outbound.signal });
+                        : await sendSlackText(token, target, text, { signal: outbound.signal,
+                            ...(requiresNativeBodyDelivery(collected.data) ? { requireBodyDelivery: true } : {}) });
                     // Recorded here, settled once in the finally below. The image
                     // relay can still throw after the text is out, and the user did
                     // get their answer in that case — so the outcome is success and
@@ -615,7 +625,9 @@ async function slackOrchestrate(
             disposeListener();
             await claimTerminal(async () => {
                 try {
-                    const text = String(data["text"] ?? '');
+                    const requireBodyDelivery = requiresNativeBodyDelivery(data);
+                    const rawText = String(data["text"] ?? '');
+                    const text = requireBodyDelivery && !rawText.trim() ? '' : rawText;
                     const outbound = slackOutboundRegistry.start();
                     let queuedSendResult: { ok: boolean };
                     try {
@@ -628,7 +640,8 @@ async function slackOrchestrate(
                         queuedSendResult = text
                             ? (alreadyDelivered
                                 ? { ok: true }
-                                : await sendSlackText(token, target, text, { signal: outbound.signal }))
+                                : await sendSlackText(token, target, text, { signal: outbound.signal,
+                                    ...(requireBodyDelivery ? { requireBodyDelivery: true } : {}) }))
                             : { ok: false as const };
                     } finally {
                         // Released after the body; the relay below opens its own

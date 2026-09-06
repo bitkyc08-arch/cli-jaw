@@ -65,6 +65,7 @@ export async function sendDiscordTextRest(
     extra?: {
         components?: unknown;
         signal?: AbortSignal;
+        requireBodyDelivery?: boolean;
         /**
          * Test seam: production passes nothing and gets the cached per-token
          * scheduler. Without an injection point the cancellation tests can only
@@ -78,6 +79,10 @@ export async function sendDiscordTextRest(
 ): Promise<DiscordRestSendResult> {
     const scheduler = extra?.scheduler ?? schedulerFor(token);
     const chunks = chunkDiscordMessage(text);
+    if (extra?.requireBodyDelivery && !chunks.some(chunk => chunk.trim().length > 0)) {
+        return { ok: false, status: 400, error: 'discord_empty_message',
+            failure: { kind: 'format', retryAfterMs: 0, code: 'empty_message', message: 'discord_empty_message' } };
+    }
     for (const [index, chunk] of chunks.entries()) {
         // A shutdown abort between chunks is a cancellation, not a vendor
         // failure (#417).

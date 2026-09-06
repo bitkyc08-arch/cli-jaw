@@ -481,10 +481,12 @@ export async function sendToTopic(
     chatId: string,
     threadId: string,
     payload: { type: string; text?: string; filePath?: string; caption?: string; reply_markup?: unknown },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; bodyDelivered?: boolean }> {
     stopTopicTyping(chatId, threadId);
     if (!hubBot) return { ok: false, error: 'hub bot not running' };
     const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
+    let bodyDelivered = false;
+    let bodyInvalidated = false;
     // These paths call the Bot API directly rather than going through
     // sendChannelOutput, so a thrown vendor error would escape to the
     // /outbound HTTP handler with the token still in it. Convert to a result
@@ -493,8 +495,11 @@ export async function sendToTopic(
         if (payload.type === 'text') {
             // Rich-first default (Bot API 10.1); helper falls back HTML → plaintext per chunk.
             const { sendTelegramMarkdown } = await import('../../telegram/rich-message.js');
-            await sendTelegramMarkdown(hubBot.api, chatId, payload.text || '', stripUndefined({ message_thread_id }));
-            return { ok: true };
+            await sendTelegramMarkdown(hubBot.api, chatId, payload.text || '', stripUndefined({
+                message_thread_id, onBodyDelivered: () => { bodyDelivered = true; },
+                onBodyDeliveryFailed: () => { bodyInvalidated = true; },
+            }));
+            return { ok: true, bodyDelivered: bodyDelivered && !bodyInvalidated };
         }
         if (payload.type === 'keyboard' && payload.text && payload.reply_markup) {
             const sent = await sendWithRetryPolicy(
@@ -511,7 +516,8 @@ export async function sendToTopic(
         return stripUndefined({ ok: r.ok, error: r.error ? userErrorText(r.error) : undefined });
     } catch (e: unknown) {
         console.error('[tg:hub:outbound]', logErrorText(e));
-        return { ok: false, error: userErrorText(e) };
+        return { ok: false, error: userErrorText(e),
+            ...(payload.type === 'text' ? { bodyDelivered: bodyDelivered && !bodyInvalidated } : {}) };
     }
 }
 

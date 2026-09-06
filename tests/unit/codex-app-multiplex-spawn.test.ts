@@ -3,16 +3,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
+import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
+import type { RuntimeEventContext } from '../../src/agent/runtime/events.ts';
+import type { RuntimeEnd } from '../../src/agent/runtime/projection.ts';
+
+const runtimeEvents: RuntimeEvent[] = [];
+test.mock.module('../../src/agent/runtime/events.js', {
+    namedExports: {
+        recordRuntimeEvent: (context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent => {
+            const event: RuntimeEvent = { ...context, version: 1, seq: 3 * (runtimeEvents.length + 1), ...body };
+            runtimeEvents.push(event);
+            return event;
+        },
+    },
+});
 
 type Deferred<T> = {
     promise: Promise<T>;
     resolve(value: T): void;
+    reject(error: Error): void;
 };
 
 function deferred<T>(): Deferred<T> {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>((done) => { resolve = done; });
-    return { promise, resolve };
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
 }
 
 type TurnHandlers = {
@@ -23,6 +39,7 @@ type TurnHandlers = {
 const harness = {
     clients: [] as FakeCodexAppClient[],
     directSpawns: 0,
+    throwDirectSpawn: false,
     genericAcquires: [] as Array<Record<string, unknown>>,
     prepares: [] as Array<Record<string, unknown>>,
     laneAcquires: [] as Array<Record<string, unknown>>,
@@ -33,6 +50,7 @@ const harness = {
     alwaysPrepareStale: false,
     recoverableResumeFailure: false,
     acquireGate: null as Deferred<FakeLaneLease> | null,
+    acquireSignal: null as (() => void) | null,
     prepareGate: null as Deferred<{ laneMode: 'fallback' }> | null,
     hostClient: null as FakeCodexAppClient | null,
     laneThreads: new Map<string, string>(),
@@ -64,6 +82,7 @@ class FakeCodexAppClient extends EventEmitter {
 
     spawn(): void {
         harness.directSpawns += 1;
+        if (harness.throwDirectSpawn) throw new Error('fixture direct spawn failed');
     }
 
     initialize(): Promise<Record<string, never>> {
@@ -234,6 +253,7 @@ test.mock.module('../../src/agent/codex-host-pool.js', {
         },
         acquireCodexAppLane: async (_prepared: unknown, options: Record<string, unknown>) => {
             harness.laneAcquires.push(options);
+            harness.acquireSignal?.();
             if (harness.acquireStale > 0) {
                 harness.acquireStale -= 1;
                 throw new CodexHostGenerationStaleError('acquire stale');
@@ -326,6 +346,8 @@ test.mock.module('../../src/agent/lifecycle-handler.js', {
         setSpawnAgent() {}, setMainMetaHandler() {},
         handleAgentExit: async (params: Record<string, unknown>) => {
             harness.lifecycleCalls.push(params);
+            const onRuntimeEnd = params['onRuntimeEnd'] as ((end: RuntimeEnd) => void) | undefined;
+            onRuntimeEnd?.({ kind: 'turn-end', status: 'done', finalText: 'lifecycle fixture' });
             const activeProcesses = params['activeProcesses'] as Map<string, unknown>;
             activeProcesses.delete(String(params['agentLabel']));
             const releaseMainRun = params['releaseMainRun'] as (scopeKey: string, child: unknown, owner: number) => boolean;
@@ -347,6 +369,9 @@ const {
     activeMainProcesses,
     activeProcesses,
     killActiveAgent,
+    armExitSettle,
+    waitForExitSettled,
+    settleExit,
     spawnAgent,
 } = await import('../../src/agent/spawn.ts');
 
@@ -355,6 +380,9 @@ const model = 'gpt-multiplex';
 const effort = 'high';
 
 function resetHarness(): void {
+    runtimeEvents.length = 0;
+    harness.acquireSignal = null;
+    harness.throwDirectSpawn = false;
     harness.clients.length = 0;
     harness.directSpawns = 0;
     harness.genericAcquires.length = 0;
@@ -684,6 +712,8 @@ test('stale retry budget terminates through the existing failure cleanup exactly
         assert.deepEqual(await spawned.promise, { text: '', code: 1 });
         assert.equal(run.starting, false);
         assert.deepEqual(harness.processQueueCalls, [scopeKey]);
+        assert.equal(harness.finalized.filter(entry => entry.status === 'error').length, 1);
+        assert.equal(harness.finalized[0]?.runId, runtimeEvents.find(event => event.kind === 'turn-start')?.runId);
         assert.equal(events.filter((event) => event.type === 'agent_done' && event.data['error'] === true).length, 1);
         assert.equal(events.filter((event) => event.type === 'agent_status' && event.data['running'] === false).length, 1);
     } finally {
@@ -759,4 +789,88 @@ test('ON to OFF to ON returns to the composite thread instead of the legacy OFF 
     assert.equal(harness.laneAcquires.at(-1)?.['storedThreadId'], onThread);
     assert.equal(harness.startPrompts.at(-1)?.threadId, onThread);
     assert.notEqual(harness.startPrompts.at(-1)?.threadId, offThread);
+});
+
+test('three Codex routes bind the canonical side channel to jaw identity', async () => {
+    for (const route of ['on', 'off', 'employee']) {
+        resetHarness();
+        setMultiplex(route !== 'off');
+        const scope = 'projection-' + route;
+        const result = spawnAgent('projection fixture', spawnOptions(scope, {
+            runtimeParentItemId: 'trusted-parent',
+            ...(route === 'employee' ? { agentId: 'projection-employee' } : {}),
+        }));
+        await result.promise;
+        const starts = runtimeEvents.filter(event => event.kind === 'turn-start');
+        const ends = runtimeEvents.filter(event => event.kind === 'turn-end');
+        assert.equal(starts.length, 1);
+        assert.equal(ends.length, 1);
+        assert.equal(ends[0]?.finalText, 'lifecycle fixture');
+        assert.ok(runtimeEvents.every(event => event.scope === scope
+            && event.sessionId === 'chat-' + scope && event.parentItemId === 'trusted-parent'));
+        assert.ok(runtimeEvents.every(event => event.turnId === event.runId && event.seq % 3 === 0));
+        assert.equal(harness.lifecycleCalls.length, 1);
+    }
+});
+
+test("employee synchronous spawn failure closes its canonical attempt before propagating", () => {
+    resetHarness();
+    harness.throwDirectSpawn = true;
+    assert.throws(() => spawnAgent("fixture", spawnOptions("failed-employee", { agentId: "failed-employee" })), /fixture direct spawn failed/);
+    const starts = runtimeEvents.filter(event => event.kind === "turn-start");
+    const ends = runtimeEvents.filter(event => event.kind === "turn-end");
+    assert.equal(starts.length, 1);
+    assert.equal(ends.length, 1);
+    assert.equal(ends[0]?.status, "error");
+    assert.equal(ends[0]?.finalText, null);
+});
+
+test('late ordinary Codex acquisition error cannot settle a replacement owner', async context => {
+    resetHarness();
+    setMultiplex(true);
+    context.mock.timers.enable({ apis: ['setTimeout'] });
+    const entered = deferred<void>();
+    const gate = deferred<FakeLaneLease>();
+    harness.acquireGate = gate;
+    harness.acquireSignal = () => { entered.resolve(undefined); };
+    const scope = 'codex-replacement-error';
+    const first = spawnAgent('old request', spawnOptions(scope));
+    let resolutions = 0;
+    void first.promise.then(() => { resolutions++; });
+    let barrier: Promise<void> | undefined;
+    let barrierSettled = false;
+    const cleanupEvents: string[] = [];
+    const listener = (type: string) => {
+        if (type === 'agent_status' || type === 'agent_done') cleanupEvents.push(type);
+    };
+    try {
+        await entered.promise;
+        const old = activeMainProcesses.get(scope)!;
+        const replacement = { ...old, starting: true };
+        delete replacement.cancelPending;
+        delete replacement.cancelTurn;
+        activeMainProcesses.set(scope, replacement);
+        armExitSettle(scope);
+        barrier = waitForExitSettled(scope).then(() => { barrierSettled = true; });
+        addBroadcastListener(listener);
+        gate.reject(new Error('ordinary old acquisition error'));
+        assert.deepEqual(await first.promise, { text: '', code: 1 });
+        await new Promise<void>(resolve => { setImmediate(resolve); });
+        assert.equal(resolutions, 1);
+        assert.equal(harness.finalized.at(-1)?.status, 'error');
+        assert.equal(runtimeEvents.filter(event => event.kind === 'turn-end').length, 1);
+        assert.deepEqual({ owner: activeMainProcesses.get(scope) === replacement,
+            starting: replacement.starting, barrierSettled, cleanupEvents,
+            liveClears: harness.clearLiveRunCalls, queueDrains: harness.processQueueCalls }, {
+            owner: true, starting: true, barrierSettled: false, cleanupEvents: [], liveClears: [], queueDrains: [],
+        });
+    } finally {
+        gate.reject(new Error('fixture cleanup'));
+        removeBroadcastListener(listener);
+        settleExit(scope);
+        await barrier;
+        await first.promise;
+        activeMainProcesses.delete(scope);
+        context.mock.timers.reset();
+    }
 });

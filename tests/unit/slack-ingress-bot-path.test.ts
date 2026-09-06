@@ -10,6 +10,10 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { settings } from '../../src/core/config.ts';
 
+// Identity/conversation cache misses are ancillary to this delivery test. Keep
+// those probes fake too, rather than sending invalid-token requests to Slack.
+mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ ok: false, error: 'invalid_auth' })));
+
 type Deferred = { promise: Promise<void>; resolve: () => void };
 function deferred(): Deferred {
     let resolve!: () => void;
@@ -34,10 +38,10 @@ mock.module('../../src/slack/progress.ts', {
 
 mock.module('../../src/orchestrator/collect.ts', {
     namedExports: {
-        orchestrateAndCollect: async () => {
+        orchestrateAndCollectData: async () => {
             events.push('collect');
             if (collectGate) await collectGate.promise;
-            return 'reply';
+            return { text: 'reply', data: {} };
         },
     },
 });
@@ -45,7 +49,7 @@ mock.module('../../src/orchestrator/collect.ts', {
 mock.module('../../src/slack/send-only-client.ts', {
     namedExports: {
         getSlackSendClient: () => ({ token: 'xoxb-test' }),
-        sendSlackText: async () => { events.push('send'); },
+        sendSlackText: async () => { events.push('send'); return { ok: true }; },
     },
 });
 

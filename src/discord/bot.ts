@@ -5,7 +5,7 @@ import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { submitMessage } from '../orchestrator/gateway.js';
-import { orchestrateAndCollect } from '../orchestrator/collect.js';
+import { orchestrateAndCollectData } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
 import { saveUpload, buildMediaPromptMany } from '../agent/spawn.js';
@@ -149,6 +149,13 @@ function markChannelActive(channelId: string) {
  */
 const pendingQueueRequestIds = new Set<string>();
 let targetReplyForwarderInstalled = false;
+// Identity-local option: survives the existing router without adding an HTTP field.
+const nativeBodyRequests = new WeakSet<ChannelSendRequest>();
+
+function requiresNativeBodyDelivery(data: Record<string, unknown>): boolean {
+    return (data['runtimeFinality'] === 'present' || data['runtimeFinality'] === 'absent')
+        && (data['runtimeStatus'] === 'done' || data['runtimeStatus'] === 'error' || data['runtimeStatus'] === 'stopped');
+}
 
 function installDiscordTargetReplyForwarder(): void {
     if (targetReplyForwarderInstalled) return;
@@ -162,7 +169,13 @@ function installDiscordTargetReplyForwarder(): void {
         const target = data["target"] as RemoteTarget | undefined;
         if (!target || target.channel !== 'discord' || !target.targetId) return;
         if (data["requestId"] && pendingQueueRequestIds.has(String(data["requestId"]))) return;
-        void sendChannelOutput({ channel: 'discord', type: 'text', text: String(data["text"]), target })
+        const text = String(data['text']);
+        const request: ChannelSendRequest = { channel: 'discord', type: 'text', text, target };
+        if (requiresNativeBodyDelivery(data)) {
+            if (!text.trim()) return;
+            nativeBodyRequests.add(request);
+        }
+        void sendChannelOutput(request)
             .then(async result => {
                 if (!result.ok) {
                     log.error('[discord:target-reply]', logErrorText(result.error || 'send failed'));
@@ -448,7 +461,9 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         };
         const deliverQueued = async (data: Record<string, any>) => {
             {
-                const body = String(data["text"] ?? '');
+                const requireBodyDelivery = requiresNativeBodyDelivery(data);
+                const rawBody = String(data["text"] ?? '');
+                const body = requireBodyDelivery && !rawBody.trim() ? '' : rawBody;
                 if (!body) {
                     // Empty completion: nothing to send, but the notice must not
                     // linger until the timeout rewrite.
@@ -482,7 +497,8 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                         // agent already posted itself must not be posted again.
                         const sendResult = wasSelfDelivered({ target, text: body, since: queuedAnchor.value() })
                             ? { ok: true as const, error: undefined as string | undefined }
-                            : await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal });
+                            : await sendDiscordTextRest(restToken, msg.channelId, body, { signal: outbound.signal,
+                                ...(requireBodyDelivery ? { requireBodyDelivery: true } : {}) });
                         if (!sendResult.ok) {
                             delivered = false;
                             log.error('[discord:queue-send]', logErrorText(sendResult.error || 'send failed'));
@@ -579,12 +595,13 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     const turnStartedAt = nextDeliverySeq();
     void ack?.to('running');
     try {
-        const text = String(await orchestrateAndCollect(prompt, stripUndefined({
+        const collected = await orchestrateAndCollectData(prompt, stripUndefined({
             origin: 'discord', target, chatId, requestId: result.requestId, _skipInsert: true,
             scope: result.sessionContext?.scope,
             chatSessionId: result.sessionContext?.chatSessionId,
             remoteKey: result.sessionContext?.remoteKey,
-        })));
+        }));
+        const text = collected.text;
         const channel = asSendable(msg.channel);
         if (!channel) throw new Error('Discord channel is not text-based');
         // The agent may already have posted this exact answer itself through
@@ -602,7 +619,8 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 const restToken = msg.client.token;
                 if (!restToken) throw new Error('Discord client token unavailable');
                 if (!selfDelivered) {
-                    const sendResult = await sendDiscordTextRest(restToken, msg.channelId, text, { signal: outbound.signal });
+                    const sendResult = await sendDiscordTextRest(restToken, msg.channelId, text, { signal: outbound.signal,
+                        ...(requiresNativeBodyDelivery(collected.data) ? { requireBodyDelivery: true } : {}) });
                     if (!sendResult.ok) throw new Error(sendResult.error || 'discord send failed');
                 }
             } finally {
@@ -981,7 +999,8 @@ export async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok:
                 if (!restToken) return { ok: false, error: 'Discord client token unavailable' };
                 const outbound = discordOutboundRegistry.start();
                 try {
-                    const sendResult = await sendDiscordTextRest(restToken, String(channelId), text, { signal: outbound.signal });
+                    const sendResult = await sendDiscordTextRest(restToken, String(channelId), text, { signal: outbound.signal,
+                        ...(nativeBodyRequests.has(req) ? { requireBodyDelivery: true } : {}) });
                     if (!sendResult.ok) return { ok: false, error: sendResult.error || 'send failed' };
                 } finally {
                     outbound.done();
@@ -1013,7 +1032,8 @@ export async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok:
     if (req.type === 'text') {
         const text = req.text?.trim();
         if (!text) return { ok: false, error: 'text required' };
-        const result = await sendDiscordTextRest(sendClient.token, String(channelId), text);
+        const result = await sendDiscordTextRest(sendClient.token, String(channelId), text,
+            nativeBodyRequests.has(req) ? { requireBodyDelivery: true } : undefined);
         if (!result.ok) return result;
         return { ok: true, channel_id: channelId, type: 'text' };
     }

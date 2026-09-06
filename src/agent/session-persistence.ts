@@ -1,7 +1,9 @@
 import { settings } from '../core/config.js';
 import { db, updateSession, upsertSessionBucket } from '../core/db.js';
-import { resolveSessionBucket } from './args.js';
+import { resolveSessionBucket, resolveScopedSessionBucket } from './args.js';
 import { currentSessionScope } from '../core/session-context.js';
+import type { RuntimeTransport } from '../shared/runtime-contract.js';
+import { isNativeSessionBucket, isSwitchableNativeCli, runtimeSessionBucket } from './runtime/selection.js';
 
 export type SessionOwnerToken = { global: number; scope: number };
 
@@ -26,6 +28,7 @@ export type SessionPersistenceInput = {
     codexAppBucket?: string | undefined;
     // The bucket the run actually used, already keyed by scope (073 §2.1).
     scopedBucket?: string | undefined;
+    runtimeTransport?: RuntimeTransport | undefined;
 };
 
 let globalGeneration = 0;
@@ -100,6 +103,15 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
         return false;
     }
     if (!shouldPersistMainSession(input)) return false;
+    const isolatedNative = isSwitchableNativeCli(input.cli) && input.runtimeTransport === 'native';
+    const nativeKey = typeof input.scopedBucket === 'string' && isNativeSessionBucket(input.scopedBucket);
+    const expectedNative = isolatedNative ? runtimeSessionBucket(resolveScopedSessionBucket(
+        input.cli, input.model, input.provider, input.scopeKey || 'default', input.effort, 'fallback', false,
+    ), 'native') : null;
+    if (isolatedNative !== nativeKey || (isolatedNative && input.scopedBucket !== expectedNative)) {
+        console.warn('[jaw:session] rejected mismatched runtime transport bucket before persistence');
+        return false;
+    }
     // Mirror into per-bucket table so codex-spark keeps a session independent from
     // plain codex (gpt-5.4 etc.) — avoids 'thread/resume failed: no rollout found'
     // on cross-model toggles. Both writes go together: a singleton row pointing at
@@ -128,7 +140,7 @@ export function persistMainSession(input: SessionPersistenceInput): boolean {
     // The bucket is per scope now, but the singleton `session` row is still one row for
     // the instance. Only the default scope owns it; a second session writing there would
     // point the next default resume at a thread that belongs to someone else (073 §2.1).
-    const ownsSingletonRow = (input.scopeKey || 'default') === 'default';
+    const ownsSingletonRow = (input.scopeKey || 'default') === 'default' && !isolatedNative;
     db.transaction(() => {
         if (ownsSingletonRow) {
             updateSession.run(

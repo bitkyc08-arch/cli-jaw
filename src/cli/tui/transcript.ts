@@ -185,6 +185,22 @@ export function finalizeAssistant(state: TranscriptState, fallbackText?: string)
     return true;
 }
 
+/** Native terminal text is authoritative, including an explicitly empty final.
+ * Only the current provisional assistant rows are replaceable; settled work notes,
+ * tools, thinking and previous user turns retain their existing history/identity. */
+export function replaceNativeAssistantFinal(state: TranscriptState, text: string, agentId?: string): void {
+    let boundary = -1;
+    for (let i = state.items.length - 1; i >= 0; i--) {
+        if (state.items[i]?.type === 'user') { boundary = i; break; }
+    }
+    state.items = state.items.filter((item, index) =>
+        index <= boundary || item.type !== 'assistant' || !item.streaming);
+    if (text.length > 0) state.items.push({
+        type: 'assistant', text, streaming: false, timestamp: Date.now(),
+        ...(agentId ? { agentId } : {}),
+    });
+}
+
 export function finalizeStreamingAssistants(state: TranscriptState): boolean {
     let changed = false;
     for (const item of state.items) {

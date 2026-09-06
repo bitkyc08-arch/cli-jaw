@@ -14,19 +14,12 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const wsSrc = readFileSync(join(__dirname, '../../public/js/ws.ts'), 'utf8');
-const lifecycleSrc = readFileSync(join(__dirname, '../../src/agent/lifecycle-handler.ts'), 'utf8');
 const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
 const claudeEventsSrc = readFileSync(join(__dirname, '../../src/agent/events/claude.ts'), 'utf8');
 
 // ─── Server: run identity + cumulative cursor ride on the agent stream ───
 
-test('RID-001: every lifecycle agent_done broadcast carries the owning trace run id', () => {
-    const doneSites = lifecycleSrc.match(/broadcast\('agent_done', \{/g) || [];
-    const taggedSites = lifecycleSrc.match(/broadcast\('agent_done', \{ \.\.\.runTag\(ctx\),/g) || [];
-    assert.ok(doneSites.length > 0, 'lifecycle-handler should broadcast agent_done');
-    assert.equal(taggedSites.length, doneSites.length,
-        `all ${doneSites.length} agent_done broadcasts must spread runTag(ctx) — found ${taggedSites.length}`);
-});
+// RID-001 is exercised through real lifecycle terminals in web-replay-behavior.test.ts.
 
 test('RID-002: agent_output flows through the single broadcastAgentOutput choke point with traceRunId + textLen', () => {
     assert.ok(spawnSrc.includes('function broadcastAgentOutput('), 'spawn.ts should own the agent_output choke point');
@@ -140,12 +133,7 @@ test('RID-015: live-run text is tail-capped while textLen reports the uncapped c
     }
 });
 
-test('RID-010: steer and orchestrate_done retire the live run from replay', () => {
-    const steerBlock = wsSrc.slice(wsSrc.indexOf("msg.type === 'steer_started'"), wsSrc.indexOf("msg.type === 'new_message'"));
-    assert.ok(steerBlock.includes('markRunFinalized(null)'), 'steer must retire the killed run');
-    const orchBlock = wsSrc.slice(wsSrc.indexOf("msg.type === 'orchestrate_done'"), wsSrc.indexOf("msg.type === 'clear'"));
-    assert.ok(orchBlock.includes('markRunFinalized(null)'), 'orchestrate_done must retire the live run');
-});
+// RID-010 tagged/legacy completion and steer replay behavior live in web-replay-behavior.test.ts.
 
 // ─── Behavior: live-run-state cursor semantics ───
 

@@ -268,6 +268,8 @@ Target response:
 Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic (rich-first: sendTelegramMarkdown)
 ```
 
+Native target replies additionally require the hub's server-generated `bodyDelivered` receipt. Private helper observers report actual successful body sends and invalidate the receipt if a later chunk is rejected or formatted away. No request-side flag can forge it. A native member treats older hubs without this receipt as delivery-unconfirmed and does not automatically retry; untagged legacy `ok` behavior stays unchanged.
+
 ### Hub elicitation callbacks
 
 - Hub mode also owns an inline keyboard handler: `src/manager/telegram-hub/hub-bot.ts` registers `bot.callbackQuery(/^elic:/)`, resolves `(chatId, threadId)` to the mapped instance, and forwards `{ chatId, callbackData, target }` to `http://127.0.0.1:{port}/api/elicitation/callback`.

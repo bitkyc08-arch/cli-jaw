@@ -13,6 +13,8 @@ aliases: [CLI-JAW Frontend, public architecture, frontend.md]
 > 메인 UI는 `index.html`에서 Google Fonts `Chakra Petch` + `Outfit`을 불러오고, 로컬 `public/assets/fonts/GeistVF.woff2`와 `JetBrainsMono-Variable.woff2`는 자산으로 보관 중이다.
 > PWA는 `manifest.json` + `sw.js` + `icons/`로 구성된다. 오프라인 메시지 캐시, virtual scroll, markdown/KaTeX/Mermaid 렌더링, sandboxed diagram widget, avatar emoji/image 커스터마이즈, voice recording, SSE-first event-channel, PABCD roadmap, subagent-aware ProcessBlock 렌더링, slash command 복구 액션, 반응형 사이드바, theme toggle, chat search, workflow cockpit이 현재 런타임의 핵심이다.
 
+TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock startup from answer-sink startup. Thinking may start the clock without an answer sink; the first later assistant chunk creates that sink once, keeping the same clock/footer and thinking transcript. Completed markdown blocks stream before the terminal, and finalization flushes the remaining answer once. Fullscreen/raw behavior is unchanged.
+
 ---
 
 ## 파일 구조

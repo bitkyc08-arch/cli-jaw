@@ -65,6 +65,12 @@ import {
     resolveOpencodeBinary,
 } from './opencode-diagnostics.js';
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
+import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import { RuntimeProjection } from './runtime/projection.js';
+import { CodexProjection } from './runtime/codex-projection.js';
+import { PiProjection } from './runtime/pi-projection.js';
+import { PiRawTrace } from './runtime/pi-raw-trace.js';
+import { isNativeAdapterImplemented, isNativeWorkerImplemented, isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket } from './runtime/selection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
@@ -289,6 +295,8 @@ interface SessionBucketRow {
 type SpawnPromiseResult = {
     text: string;
     code: number;
+    runtimeOutcome?: RuntimeTurnOutcome;
+    traceRunId?: string;
     agyCheckpointSeen?: boolean;
     agyPlannerOnly?: boolean;
 };
@@ -1049,6 +1057,8 @@ export interface SpawnLifecycle {
 }
 
 interface SpawnOpts {
+    /** Server-owned canonical lineage, never a native parent/item ID. */
+    runtimeParentItemId?: string;
     internal?: boolean;
     _isFallback?: boolean;
     _retryAttempt?: number;  // 429 exponential backoff attempt counter (0-based)
@@ -1225,6 +1235,26 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     let cli = resolveMainCli(opts.cli, settings, session);
     if (mainRun) mainRun.meta.cli = cli;
 
+    // Namespace selection is captured once for this run. Builtin native
+    // Codex/Pi keep their existing bucket keys; only switchable adapters use
+    // the new namespace. Reject unavailable native choices before fallback,
+    // saved-session reads, bootstrap consumption, or worker isolation.
+    const runtimeTransport = isSwitchableNativeCli(cli)
+        ? resolveRuntimeTransport(settings['perCli']?.[cli]?.transport) : 'print';
+    if (runtimeTransport === 'native'
+        && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)))) {
+        const message = `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`;
+        const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
+            && releaseMainRun(scopeKey, null, ownerGeneration);
+        broadcast('agent_done', {
+            text: message, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId,
+            ...(opts.requestId ? { requestId: opts.requestId } : {}), ...empTag,
+        }, isEmployee ? 'internal' : 'public');
+        resolve!({ text: message, code: 78 });
+        if (released) void processQueue(scopeKey);
+        return { child: null, promise: resultPromise };
+    }
+
     // Phase 52: Bootstrap consumption is moved BELOW the bucket-aware `isResume`
     // computation so we can use the authoritative per-bucket resume decision
     // instead of the legacy `isResumeGuess` heuristic. See comment near line 762.
@@ -1357,9 +1387,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // snapshot, no stale clear — because sharing one was worse. Having its own is better
     // than either. The default scope keeps the bare bucket name, so a session that existed
     // before this change continues the conversation it was already in.
-    const currentBucket = resolveScopedSessionBucket(
+    const currentBucket = runtimeSessionBucket(resolveScopedSessionBucket(
         cli, runtimeModel, effectiveProvider, scopeKey, effort, 'fallback', codexMultiplexMain,
-    );
+    ), runtimeTransport);
     const envDefaultsCli = cli === 'ai-e' ? effectiveProvider : cli;
     const cliEnv = applyCliEnvDefaults(envDefaultsCli, opts.env);
     const spawnEnv = makeCleanEnv(cliEnv);
@@ -1917,6 +1947,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     // successful turn in another session writes its vendor id into the row
                     // the default session resumes from. The exit handler below passes the
                     // same value; this path runs first and must not disagree with it.
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedAcpSessionId.slice(0, 12)}... (pre-shutdown)`);
@@ -1961,6 +1992,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                runtimeTransport,
                 scopedBucket: currentBucket,
                 chatSessionId,
                 childProcess: child,
@@ -2015,6 +2047,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             traceRunId,
             traceAudience,
         };
+        const activity = new RuntimeProjection({
+            runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
+            turnId: traceRunId, audience: traceAudience,
+            ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}),
+        });
+        const piProjection = new PiProjection(activity);
+        const rawTrace = new PiRawTrace(traceRunId, appendTraceEvent, () => activity.report('persistence'));
+        activity.start('pi');
+        const onPiRawRecord = (raw: unknown): void => {
+            rawTrace.record(raw);
+            piProjection.observeRecord(raw);
+        };
+
         function flushPiThinking() {
             if (!ctx.thinkingBuf) return;
             const merged = ctx.thinkingBuf.trim();
@@ -2037,6 +2082,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ].join('\n');
         const piSysPrompt = sysPrompt ? `${sysPrompt}\n\n${piToolDiscipline}` : piToolDiscipline;
         const onPiEvent = (event: import('./pi-runtime.js').PiRuntimeEvent) => {
+            piProjection.observe(event);
             opts.lifecycle?.onActivity?.('pi-rpc');
             if (event.kind === 'thinking') {
                 ctx.thinkingBuf = (ctx.thinkingBuf || '') + event.text;
@@ -2135,6 +2181,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const wasSteer = killReason === 'steer' || killReason === DUP_REGISTRATION_KILL_REASON;
                 const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, result.code, cli);
                 return handleAgentExit({
+                    onRuntimeEnd: (end) => { activity.close(end); },
                     ctx, code: result.code, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
                     prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
@@ -2143,6 +2190,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
@@ -2158,6 +2206,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += err.message;
                 console.error('[jaw:pi] runtime failed:', err.message);
                 handleAgentExit({
+                    onRuntimeEnd: (end) => { activity.close(end); },
                     ctx, code: 1, cli, model: runtimeModel, effectiveProvider: profile.id, agentLabel, mainManaged, origin,
                     resumeKey,
                     prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
@@ -2166,6 +2215,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     resolve: resolve!,
                     activeProcesses,
                     scopeKey,
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                     chatSessionId,
                     childProcess: child,
@@ -2175,21 +2225,28 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                     processQueue,
                 }).catch((handleErr: Error) => {
+                    activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Lifecycle failed' });
                     console.error('[jaw:lifecycle] handleAgentExit failed (Pi):', handleErr.message);
                 }).finally(() => settleExit(scopeKey));
             });
         };
 
         if (opts.agentId) {
-            const { child, done } = spawnPiRpc(profile, pi, {
-                prompt: piPrompt,
-                model: runtimeModel,
-                ...(piSessionId ? { sessionId: piSessionId } : {}),
-                effort,
-                cwd: spawnCwd,
-                sysPrompt: piSysPrompt,
-                onEvent: onPiEvent,
-            });
+            let execution: ReturnType<typeof spawnPiRpc>;
+            try {
+                execution = spawnPiRpc(profile, pi, {
+                    prompt: piPrompt, model: runtimeModel,
+                    ...(piSessionId ? { sessionId: piSessionId } : {}),
+                    effort, cwd: spawnCwd, sysPrompt: piSysPrompt,
+                    onEvent: onPiEvent, onRawRecord: onPiRawRecord,
+                });
+            } catch (error) {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Pi process creation failed' });
+                finalizeTraceRun(traceRunId, 'error', 'Pi process creation failed');
+                cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                throw error;
+            }
+            const { child, done } = execution;
             runPiTurn(child, done, null);
             return { child, promise: resultPromise };
         }
@@ -2218,18 +2275,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             mainRun!.starting = false;
             ctx.sessionId = lease.session.sessionId;
             console.log(`[jaw:pi:pool] reused=${lease.reused} sessionId=${lease.session.sessionId || 'new'}`);
-            const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent })
+            const done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent, onRawRecord: onPiRawRecord })
                 .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
             runPiTurn(lease.session.child, done, lease);
         }).catch((err: Error) => {
             mainRun!.starting = false;
             console.error(`[jaw:pi:pool] acquire failed: ${err.message}`);
-            clearLiveRun(liveScope);
-            broadcast('agent_status', { running: false, agentId: agentLabel });
-            broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
-            releaseMainRun(scopeKey, null, ownerGeneration);
+            activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Pi acquisition failed' });
+            try { finalizeTraceRun(traceRunId, 'error', 'Pi acquisition failed'); }
+            catch { console.warn('[runtime] Pi acquisition trace finalization failed'); }
+            const ownsRun = activeMainProcesses.get(scopeKey) === mainRun;
+            if (ownsRun) {
+                clearLiveRun(liveScope);
+                broadcast('agent_status', { running: false, agentId: agentLabel });
+                broadcast('agent_done', { text: `❌ Pi RPC acquire failed: ${err.message}`, error: true, origin }, 'public');
+                releaseMainRun(scopeKey, null, ownerGeneration);
+            }
             resolve!({ text: '', code: 1 });
-            void processQueue(scopeKey);
+            if (ownsRun) {
+                settleExit(scopeKey);
+                void processQueue(scopeKey);
+            }
         });
         return { child: null, promise: resultPromise };
     }
@@ -2263,6 +2329,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             traceRunId,
             traceAudience,
         };
+
+        const activity = new RuntimeProjection({
+            runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
+            turnId: traceRunId, audience: traceAudience,
+            ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}),
+        });
+        const codexProjection = new CodexProjection(activity);
+        activity.start('codex-app');
 
         function flushCodexAppThinking() {
             if (!ctx.thinkingBuf) return;
@@ -2463,6 +2537,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     });
                 },
                 onEvent: consumeCodexAppEvent,
+                onProjectionNotification: (method, params, parsed) => {
+                    codexProjection.observe(method, params, parsed, ctx.codexAppActiveChannel || '');
+                },
                 onStderr: handleStderr,
                 onExit: (code, signal) => {
                     processExit.value = { code, signal };
@@ -2538,6 +2615,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     // With multiplex off there is no lease bucket key, and without this the
                     // save lands on the bare `codex-app` row that belongs to the default
                     // session. codex-app is the default runtime, so that is the common case.
+                    runtimeTransport,
                     scopedBucket: currentBucket,
                 }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedThreadId.slice(0, 12)}... (pre-shutdown)`);
@@ -2578,6 +2656,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             flushCodexAppThinking();
             const smokeResult = detectSmokeResponse(ctx.fullText, ctx.toolLog, exitCode, cli);
             await handleAgentExit({
+                onRuntimeEnd: (end) => { activity.close(end); },
                 ctx, code: exitCode, cli, model, agentLabel, mainManaged, origin,
                 resumeKey,
                 prompt, opts, cfg, ownerGeneration, persistenceOwner, forceNew, empSid,
@@ -2586,6 +2665,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 resolve: resolve!,
                 activeProcesses,
                 scopeKey,
+                runtimeTransport,
                 scopedBucket: currentBucket,
                 chatSessionId,
                 ...(lease?.bucketKey ? { codexAppBucket: lease.bucketKey } : {}),
@@ -2596,6 +2676,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 fallbackMaxRetries: FALLBACK_MAX_RETRIES,
                 processQueue,
             }).catch((err: Error) => {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Lifecycle failed' });
                 console.error('[jaw:lifecycle] handleAgentExit failed (codex-app):', err.message);
             }).finally(() => settleExit(scopeKey));
         };
@@ -2605,9 +2686,17 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             const appClient = new CodexAppClient({
                 binary: detected.path || 'codex', workDir: spawnCwd, env: spawnEnv,
             });
-            appClient.spawn();
-            const child = appClient.proc;
-            if (!child) throw new Error('Codex AppServer process was not created');
+            let child: ChildProcess;
+            try {
+                appClient.spawn();
+                if (!appClient.proc) throw new Error('Codex AppServer process was not created');
+                child = appClient.proc;
+            } catch (error) {
+                activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Codex process creation failed' });
+                finalizeTraceRun(traceRunId, 'error', 'Codex process creation failed');
+                cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                throw error;
+            }
             void runCodexAppTurn(appClient, null, employeeLaneScope);
             return { child, promise: resultPromise };
         }
@@ -2738,6 +2827,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             // Compare the captured object instead and only drop our own slot.
             const abandonTurn = (lease: { release(): void } | null): void => {
                 lease?.release();
+                activity.close({ kind: 'turn-end', status: 'stopped', finalText: null });
                 finalizeTraceRun(traceRunId, 'interrupted');
                 clearLiveRun(liveScope);
                 broadcast('agent_status', { running: false, agentId: agentLabel });
@@ -2751,12 +2841,21 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             await runCodexAppTurn(lease.client, lease, lease.laneScope);
         }).catch((err: Error) => {
             console.error(`[codex-app:pool] acquire failed: ${err.message}`);
-            clearLiveRun(liveScope);
-            broadcast('agent_status', { running: false, agentId: agentLabel });
-            broadcast('agent_done', { text: `❌ Codex AppServer acquire failed: ${err.message}`, error: true, origin }, 'public');
-            releaseMainRun(scopeKey, null, ownerGeneration);
+            activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Codex acquisition failed' });
+            try { finalizeTraceRun(traceRunId, 'error', 'Codex acquisition failed'); }
+            catch { console.warn('[runtime] Codex acquisition trace finalization failed'); }
+            const ownsRun = activeMainProcesses.get(scopeKey) === mainRun;
+            if (ownsRun) {
+                clearLiveRun(liveScope);
+                broadcast('agent_status', { running: false, agentId: agentLabel });
+                broadcast('agent_done', { text: `❌ Codex AppServer acquire failed: ${err.message}`, error: true, origin }, 'public');
+                releaseMainRun(scopeKey, null, ownerGeneration);
+            }
             resolve!({ text: '', code: 1 });
-            void processQueue(scopeKey);
+            if (ownsRun) {
+                settleExit(scopeKey);
+                void processQueue(scopeKey);
+            }
         });
 
         return { child: null, promise: resultPromise };
@@ -3469,6 +3568,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             resolve: resolve!,
             activeProcesses,
             scopeKey,
+            runtimeTransport,
             scopedBucket: currentBucket,
             chatSessionId,
             childProcess: child,

@@ -178,9 +178,9 @@ mock.module('../../src/slack/forwarder.ts', {
 });
 mock.module('../../src/orchestrator/collect.ts', {
     namedExports: {
-        orchestrateAndCollect: async (prompt: string) => {
+        orchestrateAndCollectData: async (prompt: string) => {
             collected.push(prompt);
-            return 'reply';
+            return { text: 'reply', data: {} };
         },
     },
 });

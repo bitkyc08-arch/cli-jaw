@@ -12,10 +12,13 @@ import {
     JAW_HOME,
     SETTINGS_PATH,
     freshInstallSchemaFields,
+    settingsForHomeWithoutSettingsFile,
     configuredSlackEnvironmentVariables,
     SLACK_CONNECTION_SETTING_KEYS,
 } from '../../src/core/config.js';
 import { CLI_KEYS } from '../../src/cli/registry.js';
+import { SWITCHABLE_NATIVE_CLIS, resolveRuntimeTransport } from '../../src/agent/runtime/selection.js';
+import type { RuntimeTransport } from '../../src/shared/runtime-contract.js';
 import type { MessengerChannel } from '../../src/messaging/types.js';
 
 const CLI_CHOICES = CLI_KEYS.join(', ');
@@ -83,6 +86,7 @@ fs.mkdirSync(JAW_HOME, { recursive: true });
 
 interface InitSettings {
     workingDir?: string;
+    perCli?: Record<string, { model?: string; effort?: string; transport?: RuntimeTransport; [key: string]: unknown }>;
    cli?: string;
    telegram?: { enabled?: boolean; token?: string; allowedChatIds?: unknown[] };
    discord?: {
@@ -363,6 +367,14 @@ const merged: InitSettings = values.force ? {} : { ...settings };
 // rewrites the document but does not make the installation new, so it is excluded too.
 if (!settingsExist) {
     Object.assign(merged, freshInstallSchemaFields());
+    const initial = settingsForHomeWithoutSettingsFile();
+    merged.perCli = { ...merged.perCli };
+    for (const cli of SWITCHABLE_NATIVE_CLIS) {
+        merged.perCli[cli] = {
+            ...merged.perCli[cli],
+            transport: resolveRuntimeTransport(initial.perCli[cli]?.transport),
+        };
+    }
 }
 merged.workingDir = workingDir;
 merged.cli = cli;

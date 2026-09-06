@@ -28,23 +28,8 @@ test('F5: finalizeAgent triggers immediate mermaid render after innerHTML', () =
         'finalizeAgent mermaid call must use immediate mode');
 });
 
-test('F9: VS promotion clears transient mermaid queue state before snapshot', () => {
-    assert.ok(uiSrc.includes('function clearMermaidTransientState'),
-        'ui.ts must define a helper that clears transient Mermaid state');
-    const idx = uiSrc.indexOf('export function finalizeAgent');
-    assert.ok(idx >= 0, 'finalizeAgent must exist');
-    const block = uiSrc.slice(idx, idx + 4200);
-    const clearIdx = block.indexOf('clearMermaidTransientState(div)');
-    const appendLiveIdx = block.indexOf('vs.appendLiveItem(div)');
-    const appendLazyIdx = block.indexOf('vs.appendItem(buildLazyVirtualMessageItem');
-    const appendIdx = appendLiveIdx >= 0 && appendLazyIdx >= 0
-        ? Math.min(appendLiveIdx, appendLazyIdx)
-        : Math.max(appendLiveIdx, appendLazyIdx);
-    assert.ok(clearIdx >= 0, 'finalizeAgent must clear Mermaid transient state');
-    assert.ok(appendIdx >= 0, 'finalizeAgent must append to Virtual Scroll');
-    assert.ok(clearIdx < appendIdx,
-        'transient Mermaid state must be cleared before VS snapshots outerHTML');
-});
+// F9 promotion is driven through the real finalizer/VS snapshot boundary in
+// web-replay-behavior.test.ts. A fixed byte window cannot prove call ordering.
 
 test('F9: finalizeAgent skips immediate Mermaid queue for DOM promoted to VS', () => {
     const idx = uiSrc.indexOf('export function finalizeAgent');

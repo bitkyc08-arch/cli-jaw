@@ -111,8 +111,8 @@ test('Discord forwarder sends text before a guarded local image attachment', asy
 
 // ─── orchestrateAndCollect receives chatId ──────────
 
-test('orchestrateAndCollect call includes chatId', () => {
-    const collectCall = botSrc.match(/orchestrateAndCollect\(prompt,[\s\S]*?\)/);
+test('orchestrateAndCollectData call includes chatId', () => {
+    const collectCall = botSrc.match(/orchestrateAndCollectData\(prompt,[\s\S]*?\)/);
     assert.ok(collectCall, 'should call orchestrateAndCollect');
     assert.match(collectCall![0], /chatId/,
         'orchestrateAndCollect call should include chatId');

@@ -64,6 +64,10 @@ mock.module('../../src/cli/commands.ts', {
 });
 mock.module('../../src/orchestrator/collect.ts', {
     namedExports: {
+        orchestrateAndCollectData: async (prompt: string, meta: Record<string, unknown>) => {
+            state.onOrchestrate?.(prompt, meta);
+            return { text: 'steered reply', data: {} };
+        },
         orchestrateAndCollect: async (prompt: string, meta: Record<string, unknown>) => {
             state.onOrchestrate?.(prompt, meta);
             return 'steered reply';

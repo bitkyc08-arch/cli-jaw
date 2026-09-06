@@ -59,10 +59,16 @@ export interface PiRpcSession {
     sendPrompt(message: string, opts?: {
         effort?: string;
         onEvent?: (event: PiRuntimeEvent) => void;
+        onRawRecord?: (record: unknown) => void;
     }): Promise<{ text: string; stderr: string }>;
     abort(): Promise<void>;
     close(): void;
     kill(): void;
+}
+
+function notifyPiRawRecord(observer: ((record: unknown) => void) | undefined, record: unknown): void {
+    try { observer?.(record); }
+    catch { console.warn('[jaw:pi] raw activity observer failed'); }
 }
 
 const PI_PACKAGE = '@earendil-works/pi-coding-agent';
@@ -490,12 +496,14 @@ type PersistentPrompt = {
     text: string;
     stderrStart: number;
     onEvent: ((event: PiRuntimeEvent) => void) | undefined;
+    onRawRecord: ((record: unknown) => void) | undefined;
     resolve: (result: { text: string; stderr: string }) => void;
     reject: (error: Error) => void;
 };
 
 type AbortWait = {
     id: number;
+    onRawRecord: ((record: unknown) => void) | undefined;
     accepted: boolean;
     terminal: boolean;
     resolve: () => void;
@@ -562,11 +570,18 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
         let raw: unknown;
         try { raw = JSON.parse(line); }
         catch {
-            console.warn(`[jaw:pi] JSON parse failed: ${line.slice(0, 200)}`);
+            console.warn(`[jaw:pi] JSON parse failed (${line.length} chars; payload omitted)`);
             return;
         }
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
         const record = raw as Record<string, unknown>;
+        const isAbortResponse = abortWait && record['id'] === abortWait.id
+            && record['type'] === 'response' && record['command'] === 'abort';
+        // The old prompt may have ended and a newer one may already be active.
+        // Its abort acknowledgement still belongs to the captured abort owner.
+        // A newer prompt with no observer deliberately owns (and drops) its raw records.
+        notifyPiRawRecord(isAbortResponse ? abortWait?.onRawRecord
+            : activePrompt ? activePrompt.onRawRecord : abortWait?.onRawRecord, raw);
         if (abortWait && record['id'] === abortWait.id && record['type'] === 'response' && record['command'] === 'abort') {
             if (record['success'] === true) abortWait.accepted = true;
             else {
@@ -636,7 +651,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
                 // A head-only cap without this reset would freeze stderr.length
                 // and make every later slice() return ''.
                 stderr = '';
-                activePrompt = { text: '', stderrStart: stderr.length, onEvent: opts.onEvent, resolve, reject };
+                activePrompt = { text: '', stderrStart: stderr.length, onEvent: opts.onEvent, onRawRecord: opts.onRawRecord, resolve, reject };
                 try {
                     if (opts.effort) write('set_thinking_level', { level: opts.effort });
                     write('prompt', { message });
@@ -658,7 +673,7 @@ export function spawnPersistentPiRpc(profile: PiProfile, pi: PiSettings, options
                     abortWait = null;
                     reject(new Error('pi rpc abort timed out'));
                 }, PI_RPC_ABORT_TIMEOUT_MS);
-                abortWait = { id, accepted: false, terminal: false, resolve, reject, timer };
+                abortWait = { id, onRawRecord: activePrompt?.onRawRecord, accepted: false, terminal: false, resolve, reject, timer };
             });
         },
         close() {
@@ -711,6 +726,7 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
     sysPrompt?: string;
     sessionId?: string;
     onEvent?: (event: PiRuntimeEvent) => void;
+    onRawRecord?: (record: unknown) => void;
     root?: string;
 }): { child: ChildProcess; done: Promise<{ text: string; code: number; sessionId?: string | null; stderr: string }> } {
     const dir = ensurePiRuntimeConfig(pi, profile.id, options.effort || '', options.root);
@@ -756,9 +772,10 @@ export function spawnPiRpc(profile: PiProfile, pi: PiSettings, options: {
             try { parsed = JSON.parse(line); }
             catch {
                 parseFailures++;
-                console.warn(`[jaw:pi] JSON parse failed (${parseFailures}): ${line.slice(0, 200)}`);
+                console.warn(`[jaw:pi] JSON parse failed (${parseFailures}; ${line.length} chars; payload omitted)`);
                 return;
             }
+            notifyPiRawRecord(options.onRawRecord, parsed);
             const event = parsePiRpcRecord(parsed);
             if (event.sessionId) {
                 sessionId = event.sessionId;

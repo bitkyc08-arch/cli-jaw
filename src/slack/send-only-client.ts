@@ -78,9 +78,12 @@ export async function sendSlackText(
     token: string,
     target: RemoteTarget,
     text: string,
-    options: { fetchImpl?: SlackFetch; blocks?: unknown; signal?: AbortSignal } = {},
+    options: { fetchImpl?: SlackFetch; blocks?: unknown; signal?: AbortSignal; requireBodyDelivery?: boolean } = {},
 ): Promise<{ ok: boolean; error?: string; status?: number; ts?: string }> {
     const chunks = chunkSlackMessage(toMrkdwn(text));
+    if (options.requireBodyDelivery && !chunks.some(chunk => chunk.trim().length > 0)) {
+        return slackFailure('empty_message', 400);
+    }
     // The FIRST chunk's ts. A caller that wants to remove what it just posted —
     // the queue notice — needs a handle, and the first message is the one the
     // user sees, so it is the stable one to name.

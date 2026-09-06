@@ -66,6 +66,12 @@ async function attemptSend(send: () => Promise<unknown>, signal?: AbortSignal): 
 type MaybeRichApi = Pick<Api, 'sendMessage'> & Partial<Pick<Api, 'sendRichMessage'>>;
 
 export interface RichSendOpts {
+    /** Private native completion guard; not a Bot API option. */
+    requireBodyDelivery?: boolean;
+    /** Private receipt observer; never forwarded to the Bot API. */
+    onBodyDelivered?: () => void;
+    /** Invalidates a receipt when the legacy final-format failure is swallowed. */
+    onBodyDeliveryFailed?: () => void;
     message_thread_id?: number;
     business_connection_id?: string;
     direct_messages_topic_id?: number;
@@ -276,6 +282,27 @@ function insideCodeFence(raw: string, index: number): boolean {
     return fences % 2 === 1;
 }
 
+function requireTelegramBody(chunks: readonly string[], opts: RichSendOpts | undefined): void {
+    if (!chunks.some(chunk => chunk.trim().length > 0)) {
+        notifyBodyObserver(opts?.onBodyDeliveryFailed);
+        if (opts?.requireBodyDelivery) {
+            throw Object.assign(new Error('telegram_empty_message'), { code: 'empty_message', status: 400 });
+        }
+    }
+}
+
+function observeBodyDelivery(body: string, opts: RichSendOpts | undefined): void {
+    if (!body.trim() || opts?.signal?.aborted || !opts?.onBodyDelivered) return;
+    notifyBodyObserver(opts.onBodyDelivered);
+}
+
+function notifyBodyObserver(observer: (() => void) | undefined): void {
+    if (!observer) return;
+    // Receipt instrumentation cannot turn an accepted send into a retry/failure.
+    try { void Promise.resolve(observer()).catch(() => {}); }
+    catch { /* Observer failure never changes the legacy delivery outcome. */ }
+}
+
 function richOpts(opts?: RichSendOpts) {
     return stripUndefined({
         message_thread_id: opts?.message_thread_id,
@@ -312,6 +339,7 @@ export async function sendTelegramMarkdown(
     // pushed the first message past the API limit and forced a needless
     // fallback.
     const chunks = chunkWithPrefixBudget(markdown, prefix, RICH_MESSAGE_LIMIT);
+    requireTelegramBody(chunks, opts);
     for (let i = 0; i < chunks.length; i += 1) {
         if (opts?.signal?.aborted) return ABORTED;
         const withPrefix = i === 0 ? `${prefix}${chunks[i]}` : chunks[i]!;
@@ -331,7 +359,7 @@ export async function sendTelegramMarkdown(
         if (needsFallback) {
             const fallback = await sendHtmlFallback(api, chatId, chunks[i]!, opts, i === 0 ? prefix : '');
             if (!fallback.ok) return fallback;
-        }
+        } else observeBodyDelivery(withPrefix, opts);
     }
     return OK;
 }
@@ -352,6 +380,7 @@ async function sendHtmlFallback(
     const chunks = safePrefix
         ? chunkTelegramMessage(html, HTML_MESSAGE_LIMIT - safePrefix.length)
         : chunkTelegramMessage(html, HTML_MESSAGE_LIMIT);
+    requireTelegramBody(chunks, opts);
     for (let i = 0; i < chunks.length; i += 1) {
         if (opts?.signal?.aborted) return ABORTED;
         const withPrefix = i === 0 ? `${safePrefix}${chunks[i]}` : chunks[i]!;
@@ -359,9 +388,18 @@ async function sendHtmlFallback(
             const needsPlain = await attemptSend(
                 () => api.sendMessage(chatId, withPrefix, htmlOpts, opts?.signal as never), opts?.signal);
             if (needsPlain) {
-                await attemptSend(() =>
-                    api.sendMessage(chatId, withPrefix.replace(/<[^>]+>/g, ''), plainOpts, opts?.signal as never), opts?.signal);
-            }
+                const plain = withPrefix.replace(/<[^>]+>/g, '');
+                requireTelegramBody([plain], opts);
+                let plainFailure: unknown;
+                const plainFailedFormat = await attemptSend(async () => {
+                    try { return await api.sendMessage(chatId, plain, plainOpts, opts?.signal as never); }
+                    catch (error) { plainFailure = error; throw error; }
+                }, opts?.signal);
+                if (plainFailedFormat) {
+                    notifyBodyObserver(opts?.onBodyDeliveryFailed);
+                    if (opts?.requireBodyDelivery) throw plainFailure;
+                } else observeBodyDelivery(plain, opts);
+            } else observeBodyDelivery(withPrefix, opts);
         } catch (err: unknown) {
             if (opts?.signal?.aborted) return ABORTED;
             throw err;
