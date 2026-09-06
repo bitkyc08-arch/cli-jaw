@@ -17,6 +17,9 @@ export function buildLazyVirtualMessageItem(m: MessageItem, index: number): Virt
     const messageId = String(m.id ?? generateId());
     const sourceAttrs = messageSourceAttributes({ role, messageId, turnIndex: index });
     const traceAttr = m.trace_run_id ? ` data-trace-run-id="${escapeHtml(m.trace_run_id)}"` : '';
+    const sessionAttr = m.session_id === undefined ? '' : ` data-message-session-id="${escapeHtml(m.session_id)}"`;
+    const savedAttr = m.server_message_id === undefined ? ''
+        : ` data-server-message-id="${escapeHtml(String(m.server_message_id))}" data-activity-saved="true"`;
     const rawContent = stripOrchestration(
         role === 'user' ? formatUserPrompt(m.content) : m.content,
     );
@@ -31,7 +34,7 @@ export function buildLazyVirtualMessageItem(m: MessageItem, index: number): Virt
     // Keep .msg-user for boundary semantics; modifier slims the visual (see chat-messages.ts).
     const goalBoundaryClass = role === 'user' && m.cli === 'goal_continuation' ? ' msg-goal-boundary' : '';
     const html = role === 'agent'
-        ? `<div class="msg msg-agent" ${sourceAttrs}${traceAttr}><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}${actions}</div></div>`
-        : `<div class="msg msg-${role}${goalBoundaryClass}" ${sourceAttrs}><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
+        ? `<div class="msg msg-agent" ${sourceAttrs}${traceAttr}${sessionAttr}${savedAttr}><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}${actions}</div></div>`
+        : `<div class="msg msg-${role}${goalBoundaryClass}" ${sourceAttrs}${sessionAttr}${savedAttr}><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
     return { id: generateId(), messageId, html, height: 80, rehydratesProcessDetails: Boolean(rawToolLog) };
 }

@@ -1,6 +1,7 @@
 /* Presentation changes visibility only; the existing message owns the answer. */
 :root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-key] .process-block,
 :root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-key][data-activity-live="true"] .msg-content,
+:root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-recovering="true"]:not([data-activity-saved="true"]) .msg-content,
 :root[data-presentation-mode="legacy"] .activity-turn {
     display: none;
 }
@@ -108,6 +109,7 @@
 
 .activity-turn .activity-empty,
 .activity-turn .activity-degraded,
+.activity-turn .activity-connection,
 .activity-turn .activity-omitted,
 .activity-turn .activity-choice-notice,
 .activity-turn .activity-requests {
@@ -139,4 +141,59 @@
     margin-block: var(--space-2);
     color: var(--text);
     overflow-wrap: anywhere;
+}
+
+:root[data-presentation-mode="legacy"] .activity-read-control,
+:root[data-presentation-mode="legacy"] .activity-read-capacity,
+:root[data-presentation-mode="legacy"] .activity-discovery {
+    display: none;
+}
+
+.activity-read-control,
+.activity-discovery,
+.activity-read-capacity,
+.activity-legacy-cache {
+    min-width: 0;
+    max-width: 100%;
+    margin-block: var(--space-2);
+    color: var(--text);
+    font: var(--text-sm)/1.5 var(--font-ui);
+    overflow-wrap: anywhere;
+}
+
+.activity-read-control p,
+.activity-discovery-status,
+.activity-record-label { margin-block: var(--space-2); }
+.activity-record-label { color: var(--text-muted); font-family: var(--font-mono); }
+.activity-read-control p:empty { display: none; }
+.activity-discovery > summary,
+.activity-legacy-cache > summary { cursor: pointer; padding-block: var(--space-2); }
+.activity-discovery nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.activity-recorded-run { min-width: 0; padding-block: var(--space-3); border-block-start: 1px solid var(--border); }
+.activity-read-control button,
+.activity-discovery button {
+    max-width: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--text-dim);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    background: var(--surface);
+    font: inherit;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.activity-read-control button:disabled,
+.activity-discovery button:disabled { color: var(--text-dim); cursor: default; }
+.activity-read-control button:focus-visible,
+.activity-discovery :is(button, summary):focus-visible,
+.activity-legacy-cache summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.activity-legacy-cache pre { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.activity-read-control[hidden],
+.activity-discovery[hidden],
+.activity-read-control [hidden] { display: none; }
+@media (pointer: coarse) {
+    .activity-read-control button,
+    .activity-discovery :is(button, summary),
+    .activity-legacy-cache summary { min-height: 44px; }
 }

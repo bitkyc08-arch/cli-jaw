@@ -27,6 +27,7 @@ function storagePort() {
                 objectStore(name: string) {
                     assert.equal(name, storeName);
                     return {
+                        indexNames: { contains: (index: string) => index === 'scope' },
                         add(row: Row) {
                             assert.equal(mode, 'readwrite');
                             const copy = structuredClone({ ...row, id: nextId++ });
@@ -53,6 +54,13 @@ function storagePort() {
                                                     assert.ok(index >= 0); rows[index] = copy; writes.push('update');
                                                 });
                                             },
+                                            delete() {
+                                                assert.equal(mode, 'readwrite');
+                                                tasks.push(() => {
+                                                    const index = rows.findIndex(item => item['id'] === row['id']);
+                                                    assert.ok(index >= 0); rows.splice(index, 1); writes.push('delete');
+                                                });
+                                            },
                                             continue() { offset++; advance(); },
                                         } : null;
                                         req.onsuccess?.();
@@ -74,6 +82,7 @@ function storagePort() {
     return { rows, writes, failures,
         indexedDB: { open: () => request(() => database, task => { releaseOpen = task; }) },
         releaseOpen() { assert.ok(releaseOpen); releaseOpen(); releaseOpen = undefined; },
+        close() { (database as typeof database & { onclose?: Task }).onclose?.(); },
     };
 }
 
@@ -136,4 +145,96 @@ test('explicit captured scope and empty answer correction survive resolved-openD
     assert.equal(port.rows.length, count);
     assert.equal(port.rows.find(row => row['trace_run_id'] === 'run-empty')?.['content'], '');
     assert.equal(port.rows.find(row => row['trace_run_id'] === 'run-empty')?.['scope'], 'A');
+});
+
+test('bulk writes capture the namespace before pending open and preserve other namespaces', async () => {
+    await cache.upsertMessage({ scope: 'bulk-A', role: 'assistant', content: 'stale A', timestamp: 6 });
+    await cache.upsertMessage({ scope: 'bulk-B', role: 'assistant', content: 'B sentinel', timestamp: 7 });
+    const before = structuredClone(port.rows);
+    port.close();
+    cache.setMessageScope('bulk-A');
+    const pending = cache.cacheMessages([{ message_id: 61, role: 'assistant', content: 'fresh A',
+        trace_run_id: 'run-bulk-A', session_id: 'chat-A', timestamp: 8 }]);
+    cache.setMessageScope('bulk-B');
+    assert.deepEqual(port.rows, before);
+    port.releaseOpen(); await pending;
+    const a = await cache.getScopedMessages('bulk-A');
+    assert.equal(a.length, 1);
+    assert.equal(a[0]?.content, 'fresh A');
+    assert.equal(a[0]?.trace_run_id, 'run-bulk-A');
+    assert.equal(a[0]?.session_id, 'chat-A');
+    assert.equal(a[0]?.message_id, 61);
+    assert.deepEqual(await cache.getScopedMessages('bulk-B'), before.filter(row => row['scope'] === 'bulk-B'));
+});
+
+test('bulk explicit namespace survives pending open without inferring legacy session ownership', async () => {
+    const before = structuredClone(port.rows);
+    port.close();
+    cache.setMessageScope('bulk-B');
+    const pending = cache.cacheMessages([{ role: 'assistant', content: 'legacy', timestamp: 9 }], 'bulk-explicit');
+    cache.setMessageScope('bulk-C');
+    assert.deepEqual(port.rows, before);
+    port.releaseOpen(); await pending;
+    const rows = await cache.getScopedMessages('bulk-explicit');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.content, 'legacy');
+    assert.equal(Object.hasOwn(rows[0]!, 'session_id'), false);
+    assert.equal(Object.hasOwn(rows[0]!, 'trace_run_id'), false);
+    assert.deepEqual(port.rows.filter(row => row['scope'] !== 'bulk-explicit'), before);
+    await cache.cacheMessages([], 'bulk-explicit');
+    assert.deepEqual(await cache.getScopedMessages('bulk-explicit'), rows);
+});
+
+test('session-aware saved answer updates only its exact chat and compatible database row', async () => {
+    const firstNewRow = port.rows.length;
+    const base = { scope: 'shared-cache', role: 'assistant', content: 'original', timestamp: 10,
+        trace_run_id: 'run-owned', session_id: 'chat-owned' };
+    await cache.upsertMessage(base);
+    await cache.upsertMessage({ ...base, message_id: 71 });
+    await cache.upsertMessage({ ...base, message_id: 72 });
+    await cache.upsertMessage({ ...base, message_id: 'browser-uuid' });
+    await cache.upsertMessage({ ...base, session_id: 'other-chat' });
+    const { session_id: _session, ...legacy } = base;
+    await cache.upsertMessage(legacy);
+    await cache.upsertMessage({ ...base, role: 'user' });
+    await cache.upsertMessage({ ...base, trace_run_id: 'other-run' });
+    await cache.upsertMessage({ ...base, scope: 'other-cache' });
+    const before = structuredClone(port.rows);
+    assert.equal(before[firstNewRow]?.['session_id'], 'chat-owned', 'upsert must retain explicit session metadata');
+    // Only the first two fixtures are the saved row (unknown ID and matching ID).
+    // Local IDB ids remain untouched, and every other full row must be identical.
+    const expected = before.map((row, index) => index === firstNewRow || index === firstNewRow + 1
+        ? { ...row, content: '', message_id: 71 } : row);
+    const writing = cache.replaceCachedAnswer('run-owned', '', 'shared-cache', 'chat-owned', 71);
+    cache.setMessageScope('elsewhere'); await writing;
+    assert.deepEqual(port.rows, expected);
+    await cache.replaceCachedAnswer('run-owned', 'different ID', 'shared-cache', 'chat-owned', 999);
+    assert.deepEqual(port.rows, expected);
+});
+
+test('session-only corrections preserve existing IDs and never stamp unknown rows', async () => {
+    const firstNewRow = port.rows.length;
+    const base = { scope: 'session-only', role: 'assistant', content: 'original', timestamp: 11, trace_run_id: 'run-session' };
+    await cache.upsertMessage({ ...base, session_id: 'chat-owned', message_id: 81 });
+    await cache.upsertMessage({ ...base, session_id: 'chat-owned', message_id: 'browser-id' });
+    await cache.upsertMessage(base);
+    await cache.upsertMessage({ ...base, session_id: 'other-chat' });
+    const before = structuredClone(port.rows);
+    await cache.replaceCachedAnswer('run-session', 'session only', 'session-only', 'chat-owned');
+    assert.deepEqual(port.rows, before.map((row, index) => index === firstNewRow || index === firstNewRow + 1
+        ? { ...row, content: 'session only' } : row));
+    const after = structuredClone(port.rows);
+    await cache.replaceCachedAnswer('run-session', 'must not infer', 'session-only', '');
+    assert.deepEqual(port.rows, after, 'even an empty explicit session is not a legacy three-argument call');
+});
+
+test('nonpositive and noninteger saved IDs cannot overwrite cached identity', async () => {
+    await cache.upsertMessage({ scope: 'invalid-id', session_id: 'chat', role: 'assistant', content: 'original',
+        trace_run_id: 'run-invalid-id', timestamp: 11 });
+    for (const id of [0, -1, 1.5, NaN, Infinity]) {
+        await cache.replaceCachedAnswer('run-invalid-id', 'corrected', 'invalid-id', 'chat', id);
+        const [row] = await cache.getScopedMessages('invalid-id');
+        assert.equal(row?.message_id, undefined);
+        assert.equal(row?.session_id, 'chat');
+    }
 });

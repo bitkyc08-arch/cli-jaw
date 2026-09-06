@@ -4,6 +4,63 @@ import { ActivityReplay } from '../../src/shared/activity-replay.js';
 import { applyActivityEvent, createActivityState, type ActivityState } from '../../src/shared/activity-state.js';
 import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.js';
 
+test('targeted restoration buffers A while unrelated B continues immediately', async () => {
+    const replay = new ActivityReplay(() => {});
+    replay.live(delta(1, 'A', 'a')); replay.live(delta(1, 'B', 'b'));
+    const read = deferred();
+    const work = replay.restore(read.read, { runId: 'a' });
+    try {
+        replay.live(delta(2, ' buffered', 'a'));
+        replay.live(delta(2, ' live', 'b'));
+        assert.equal(text([...replay.turns.values()].find(s => s.identity.runId === 'a')!), 'A');
+        assert.equal(text([...replay.turns.values()].find(s => s.identity.runId === 'b')!), 'B live');
+    } finally { read.resolve([delta(1, 'A', 'a')]); await work; }
+    assert.equal(text([...replay.turns.values()].find(s => s.identity.runId === 'a')!), 'A buffered');
+});
+
+test('targeted restore preserves transferred pending B before its newer live event', async () => {
+    const replay = new ActivityReplay(() => {});
+    replay.live(delta(1, 'B', 'b'));
+    const first = deferred(); const previous = replay.restore(first.read);
+    replay.live(delta(2, ' old', 'b'));
+    const second = deferred(); const next = replay.restore(second.read, { runId: 'a' });
+    replay.live(delta(3, ' new', 'b'));
+    assert.equal(text([...replay.turns.values()].find(s => s.identity.runId === 'b')!), 'B');
+    second.resolve([delta(1, 'A', 'a')]); await next; await previous;
+    assert.equal(text([...replay.turns.values()].find(s => s.identity.runId === 'b')!), 'B old new');
+});
+
+test('targeted restore rejects an unrelated seed without publishing it', async () => {
+    const replay = new ActivityReplay(() => {});
+    await assert.rejects(replay.restore(async () => [delta(1, 'foreign', 'b')], { runId: 'a' }), /activity_restore_target/);
+    assert.equal(replay.turns.size, 0);
+});
+
+test('external cancellation aborts the targeted replay even when its reader ignores cancellation', async () => {
+    const replay = new ActivityReplay(() => {});
+    const read = deferred(); const controller = new AbortController();
+    const work = replay.restore(read.read, { runId: 'a', signal: controller.signal });
+    const observed = work.then(() => null, error => error);
+    try {
+        controller.abort();
+        assert.equal(read.signal.aborted, true);
+    } finally { read.resolve([delta(1, 'late', 'a')]); }
+    assert.equal((await observed)?.name, 'AbortError');
+    assert.equal(replay.turns.size, 0);
+    replay.live(delta(1, 'next', 'b'));
+    assert.equal(replay.turns.size, 1);
+});
+
+test('eviction uses caller priority without evicting its protected model', () => {
+    const replay = new ActivityReplay(() => {}, state => state.identity.runId !== 'run-0',
+        state => state.identity.runId === 'run-2' ? 0 : 1);
+    for (let i = 0; i < 16; i++) { replay.live(delta(1, 'saved', 'run-' + i)); replay.live(end(2, 'run-' + i)); }
+    replay.live(delta(1, 'new', 'next'));
+    const runs = [...replay.turns.values()].map(s => s.identity.runId);
+    assert.ok(runs.includes('run-0')); assert.ok(runs.includes('run-1'));
+    assert.equal(runs.includes('run-2'), false); assert.equal(runs.length, 16);
+});
+
 const identity = { version: 1 as const, runId: 'r', sessionId: 's', scope: 'local:s', turnId: 't' };
 const key = '["s","local:s","r","t"]';
 const event = (seq: number, body: RuntimeEventBody, runId = 'r'): RuntimeEvent => ({ ...identity, runId, seq, ...body });

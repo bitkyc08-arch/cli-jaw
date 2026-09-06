@@ -12,7 +12,7 @@
 .trace-drawer-footer { border-top: 1px solid var(--border); border-bottom: 0; }
 .trace-drawer-kicker { margin: 0 0 2px; color: var(--text-dim); font: 600 var(--text-xs)/1 var(--font-mono); }
 .trace-drawer h2 { margin: 0; font-size: var(--text-lg); }
-.trace-drawer-close, .trace-load-more, .process-step-trace {
+.trace-drawer-close, .trace-page-button, .process-step-trace {
     border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
 }
 .trace-drawer-close { width: 34px; height: 34px; border-radius: 6px; font-size: 22px; }
@@ -41,8 +41,9 @@
     margin: 0; min-width: 0; overflow: auto; padding: 14px; color: var(--text);
     background: var(--code-bg); font: 500 var(--text-sm)/1.55 var(--font-mono); white-space: pre-wrap; word-break: break-word;
 }
-.trace-load-more { border-radius: 6px; padding: 7px 10px; font: 600 var(--text-sm)/1 var(--font-mono); }
-.trace-load-more:disabled { opacity: 0.4; cursor: default; }
+.trace-page-button { border-radius: 6px; padding: 7px 10px; font: 600 var(--text-sm)/1 var(--font-mono); }
+.trace-page-button:disabled, .trace-page-button[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.trace-page-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) {
     .trace-drawer { width: 100vw; }
     .trace-drawer-body { grid-template-columns: 1fr; grid-template-rows: minmax(160px, 0.42fr) minmax(0, 0.58fr); }

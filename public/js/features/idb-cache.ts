@@ -27,6 +27,7 @@ export interface CachedMessage {
     cli?: string | null;
     tool_log?: string | null;
     trace_run_id?: string | null;
+    session_id?: string;
     scope?: string;
 }
 
@@ -106,7 +107,8 @@ async function evictStaleScopes(db: IDBDatabase): Promise<void> {
     }
 }
 
-export async function cacheMessages(messages: CachedMessage[]): Promise<void> {
+export async function cacheMessages(messages: CachedMessage[], scope?: string): Promise<void> {
+    const targetScope = scope ?? currentScope;
     try {
         // Guard: never wipe the cache with an empty array — only a deliberate
         // clearCache() call should empty the store. This prevents data loss when
@@ -121,7 +123,6 @@ export async function cacheMessages(messages: CachedMessage[]): Promise<void> {
         // here erased every other scope's offline fallback on each load, while
         // reads stay scoped via getScopedMessages(). Delete-then-add runs in
         // one transaction, so the scope swap stays atomic.
-        const targetScope = currentScope || 'default';
         const cursorReq = store.index('scope').openCursor(IDBKeyRange.only(targetScope));
         cursorReq.onsuccess = () => {
             const cursor = cursorReq.result;
@@ -137,6 +138,8 @@ export async function cacheMessages(messages: CachedMessage[]): Promise<void> {
                     content: msg.content,
                     cli: msg.cli ?? null,
                     tool_log: msg.tool_log ?? null,
+                    ...(msg.trace_run_id === undefined ? {} : { trace_run_id: msg.trace_run_id }),
+                    ...(msg.session_id === undefined ? {} : { session_id: msg.session_id }),
                     timestamp: msg.timestamp || Date.now(),
                     scope: targetScope,
                 });
@@ -188,6 +191,7 @@ export async function upsertMessage(msg: CachedMessage): Promise<void> {
             cli: msg.cli ?? null,
             tool_log: msg.tool_log ?? null,
             trace_run_id: msg.trace_run_id ?? null,
+            ...(msg.session_id === undefined ? {} : { session_id: msg.session_id }),
             timestamp: msg.timestamp || Date.now(),
             scope,
         });
@@ -200,8 +204,9 @@ export async function upsertMessage(msg: CachedMessage): Promise<void> {
     }
 }
 
-/** Correct only existing answers in the run's captured cache scope. */
-export async function replaceCachedAnswer(runId: string, content: string, scope: string): Promise<void> {
+/** Correct existing answers only; explicit chat/DB identity must match stored ownership. */
+export async function replaceCachedAnswer(runId: string, content: string, scope: string, sessionId?: string, messageId?: number): Promise<void> {
+    const savedMessageId = messageId !== undefined && Number.isSafeInteger(messageId) && messageId > 0 ? messageId : undefined;
     try {
         const db = await openDB();
         const tx = db.transaction(STORE, 'readwrite');
@@ -210,8 +215,12 @@ export async function replaceCachedAnswer(runId: string, content: string, scope:
             const cursor = request.result;
             if (!cursor) return;
             const row = cursor.value as CachedMessage;
-            if (row.scope === scope && row.role === 'assistant' && row.trace_run_id === runId) {
-                cursor.update({ ...row, content });
+            if (row.scope === scope && row.role === 'assistant' && row.trace_run_id === runId
+                && (sessionId === undefined || row.session_id === sessionId)
+                && (savedMessageId === undefined || row.message_id == null || row.message_id === savedMessageId)) {
+                cursor.update({ ...row, content,
+                    ...(savedMessageId === undefined ? {} : { message_id: savedMessageId }),
+                });
             }
             cursor.continue();
         };

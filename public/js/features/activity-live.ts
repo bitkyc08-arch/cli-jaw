@@ -1,7 +1,8 @@
 import type { RuntimeEvent, RuntimeItemStatus } from '../../../src/shared/runtime-contract.js';
 import type { ActivityIdentity } from '../../../src/shared/presentation.js';
 import { activityKey, createActivityState, type ActivityState } from '../../../src/shared/activity-state.js';
-import { ActivityReplay } from '../../../src/shared/activity-replay.js';
+import { ActivityReplay, type ActivityRestoreOptions } from '../../../src/shared/activity-replay.js';
+import type { SavedActivityAnswer } from '../../../src/shared/activity-read.js';
 import { createActivityChoices, createActivityView, type ActivityChoices } from './activity-view.js';
 import { getMessageScope, replaceCachedAnswer } from './idb-cache.js';
 
@@ -13,6 +14,8 @@ export interface ActivityHost {
     reconcileMessage(id: string, update: (message: HTMLElement) => void): boolean;
     replaceAnswer(message: HTMLElement, text: string): void;
     inspectTrace(runId: string, sessionId: string): void;
+    closeTrace?(): void;
+    evicted?(message: HTMLElement): void;
 }
 let host: ActivityHost;
 export function configureLiveActivityHost(next: ActivityHost): void { host = next; }
@@ -31,7 +34,7 @@ export interface LiveActivityTurn {
     recordingGap: boolean;
     canonicalTerminal: boolean;
     terminalStatus?: TerminalStatus;
-    answerSource?: 'canonical' | 'compatibility';
+    answerSource?: 'canonical' | 'compatibility' | 'saved' | 'unavailable';
     cacheScope: string;
 }
 const turns = new Map<string, LiveActivityTurn>();
@@ -39,8 +42,32 @@ const choicesByTurn = new Map<string, ActivityChoices>();
 const replay = new ActivityReplay(model => {
     const turn = turns.get(activityKey(model.identity));
     if (turn) { turn.model = model; render(turn); }
-});
+}, canRelease, releaseRank);
 let identity: ActivityIdentity | null = null;
+let transportHealthy = true;
+
+function canRelease(model: ActivityState): boolean {
+    const message = turns.get(activityKey(model.identity))?.message;
+    return !message?.contains(message.ownerDocument.activeElement);
+}
+function releaseRank(model: ActivityState): number {
+    return turns.get(activityKey(model.identity))?.message.isConnected ? 1 : 0;
+}
+
+export function setActivityTransportHealthy(healthy: boolean): void {
+    transportHealthy = healthy;
+    for (const turn of turns.values()) render(turn);
+}
+
+export function closeActivityTrace(): void { host.closeTrace?.(); }
+export function isCurrentActivityMessage(message: HTMLElement): boolean { return host.currentMessage() === message; }
+
+function releaseTurn(key: string, turn: LiveActivityTurn): void {
+    turn.view.dispose();
+    delete turn.message.dataset['activityKey']; delete turn.message.dataset['activityLive'];
+    turns.delete(key); replay.turns.delete(key);
+    host.evicted?.(turn.message);
+}
 
 export function clearLiveActivity(): void {
     for (const turn of turns.values()) {
@@ -67,23 +94,18 @@ export function findLiveActivity(runId: string): LiveActivityTurn | undefined {
 function render(turn: LiveActivityTurn): void {
     const status = turn.model.end?.status ?? turn.terminalStatus;
     turn.degraded = turn.recordingGap || (!turn.model.end && !turn.canonicalTerminal && !!turn.terminalStatus);
-    turn.message.dataset['activityLive'] = status ? 'false' : 'true';
-    turn.view.render(turn.model, { ...(status ? { status } : {}), degraded: turn.degraded });
+    turn.message.dataset['activityLive'] = status || turn.message.dataset['activitySaved'] === 'true' ? 'false' : 'true';
+    turn.view.render(turn.model, { ...(status ? { status } : {}), degraded: turn.degraded,
+        connectionUnavailable: !status && (!transportHealthy || turn.model.identity.scope !== identity?.scope) });
 }
 
 function makeRoom(): boolean {
     if (turns.size < MAX_TURNS) return true;
-    for (const [key, turn] of turns) {
-        if (!turn.model.end && !turn.terminalStatus) continue;
-        // Keep the final answer; only this disposable Activity projection is removed.
-        turn.view.dispose();
-        delete turn.message.dataset['activityKey'];
-        delete turn.message.dataset['activityLive'];
-        turns.delete(key);
-        replay.turns.delete(key);
-        return true;
-    }
-    return false;
+    const candidate = [...turns].filter(([, turn]) => (turn.model.end || turn.terminalStatus) && canRelease(turn.model))
+        .sort(([, a], [, b]) => releaseRank(a.model) - releaseRank(b.model))[0];
+    if (!candidate) return false;
+    // Keep full answers and explicit choices; only disposable preview data leaves.
+    releaseTurn(candidate[0], candidate[1]); return true;
 }
 
 function choicesFor(key: string): ActivityChoices | null {
@@ -107,6 +129,7 @@ function bindModel(model: ActivityState, message: HTMLElement): LiveActivityTurn
     message.dataset['activityKey'] = key;
     message.dataset['traceRunId'] = model.identity.runId;
     message.dataset['activitySession'] = model.identity.sessionId;
+    message.dataset['messageSessionId'] = model.identity.sessionId;
     const body = message.querySelector<HTMLElement>('.agent-body');
     if (!body) return null;
     message.querySelector('.activity-turn')?.remove();
@@ -129,6 +152,8 @@ export function ingestLiveActivity(event: RuntimeEvent, reuseCurrent = true): Li
     if (existingRun && activityKey(existingRun.model.identity) !== key) return null;
     let turn = turns.get(key);
     if (!turn) {
+        const seed = replay.turns.get(key);
+        if (seed && (seed.end || event.seq <= seed.seq)) return null;
         if (!choicesFor(key) || !makeRoom()) throw new ActivityCapacityError();
         const current = host.currentMessage();
         const canReuse = reuseCurrent && current?.isConnected
@@ -164,7 +189,7 @@ export function settleLiveActivity(runId: string | null, status: TerminalStatus 
 /** Compatibility text keeps its original provenance after a canonical-first render. */
 export function reconcileLiveActivityAnswer(runId: string, text: string): void {
     const turn = findLiveActivity(runId);
-    if (!turn || turn.answerSource !== 'canonical') return;
+    if (!turn || (turn.answerSource !== 'canonical' && turn.answerSource !== 'unavailable')) return;
     const messageId = turn.message.dataset['messageId'];
     let replaced = false;
     const update = (message: HTMLElement) => {
@@ -177,7 +202,28 @@ export function reconcileLiveActivityAnswer(runId: string, text: string): void {
     if (!messageId || !host.reconcileMessage(messageId, update)) update(turn.message);
     if (!replaced) return;
     turn.answerSource = 'compatibility';
-    void replaceCachedAnswer(runId, text, turn.cacheScope);
+    void replaceCachedAnswer(runId, text, turn.cacheScope, turn.model.identity.sessionId);
+}
+
+/** Caller has resolved the exact saved MESSAGE and settled any current lifecycle. */
+export function reconcileSavedActivityAnswer(message: HTMLElement, saved: SavedActivityAnswer, cacheScope: string): boolean {
+    if (host.currentMessage() === message) return false;
+    const runId = saved.trace_run_id;
+    let replaced = false;
+    const update = (target: HTMLElement) => {
+        if (target.dataset['traceRunId'] !== runId || target.dataset['messageSessionId'] !== saved.session_id
+            || (target.dataset['serverMessageId'] && target.dataset['serverMessageId'] !== String(saved.id))) return;
+        rebindLiveActivity(runId, target);
+        host.replaceAnswer(target, saved.content);
+        target.dataset['serverMessageId'] = String(saved.id); target.dataset['activitySaved'] = 'true';
+        const turn = findLiveActivity(runId);
+        if (turn?.message === target) { turn.answerSource = 'saved'; render(turn); }
+        replaced = true;
+    };
+    const messageId = message.dataset['messageId'];
+    if (!messageId || !host.reconcileMessage(messageId, update)) update(message);
+    if (replaced) void replaceCachedAnswer(runId, saved.content, cacheScope, saved.session_id, saved.id);
+    return replaced;
 }
 
 export function degradeLiveActivity(runId: string): void {
@@ -195,6 +241,7 @@ export function rebindLiveActivity(runId: string, message: HTMLElement): void {
     message.dataset['activityKey'] = activityKey(turn.model.identity);
     message.dataset['traceRunId'] = runId;
     message.dataset['activitySession'] = turn.model.identity.sessionId;
+    message.dataset['messageSessionId'] = turn.model.identity.sessionId;
     turn.message = message;
     turn.view = createActivityView(body, turn.choices, model => {
         host.inspectTrace(runId, model.identity.sessionId);
@@ -202,8 +249,9 @@ export function rebindLiveActivity(runId: string, message: HTMLElement): void {
     render(turn);
 }
 
-export async function restoreLiveActivity(read: (signal: AbortSignal) => Promise<readonly RuntimeEvent[]>): Promise<void> {
-    await replay.restore(read);
+export async function restoreLiveActivity(read: (signal: AbortSignal) => Promise<readonly RuntimeEvent[]>, options?: ActivityRestoreOptions): Promise<void> {
+    try { await replay.restore(read, options); }
+    finally { for (const [key, turn] of turns) if (!replay.turns.has(key)) releaseTurn(key, turn); }
 }
 
 export function mountHistoryActivity(message: HTMLElement, runId: string): LiveActivityTurn | null {
@@ -225,7 +273,7 @@ export function setActivityReadHealth(runId: string, incomplete: boolean): void 
 
 /** Virtual scroll recreates DOM; reconnect retained disclosure choices to its rows. */
 export function remountLiveActivity(root: ParentNode): void {
-    for (const message of root.querySelectorAll<HTMLElement>('.msg-agent[data-activity-key]')) {
+    for (const message of root.querySelectorAll<HTMLElement>('.msg-agent[data-activity-key], .activity-recorded-run[data-activity-key]')) {
         const turn = turns.get(message.dataset['activityKey']!);
         if (!turn) {
             message.querySelector('.activity-turn')?.remove();

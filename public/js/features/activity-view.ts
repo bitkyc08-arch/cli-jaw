@@ -26,6 +26,7 @@ export function rememberActivityChoice(choices: ActivityChoices, id: string, ope
 export interface ActivityDisplayStatus {
     status?: RuntimeItemStatus | 'finished';
     degraded?: boolean;
+    connectionUnavailable?: boolean;
 }
 
 export function createActivityView(
@@ -69,12 +70,13 @@ export function createActivityView(
     disclosure.append(summary, empty, list, nav);
     const error = element('p', 'activity-error');
     const degraded = element('p', 'activity-degraded');
+    const connection = element('p', 'activity-connection'); connection.hidden = true;
     const omitted = element('p', 'activity-omitted');
     const choiceNotice = element('p', 'activity-choice-notice');
     choiceNotice.setAttribute('role', 'status');
     const requests = element('p', 'activity-requests');
     for (const notice of [error, degraded, omitted, choiceNotice, requests]) notice.hidden = true;
-    root.append(status, error, disclosure, degraded, omitted, choiceNotice, requests);
+    root.append(status, error, disclosure, degraded, connection, omitted, choiceNotice, requests);
     const historyButton = inspectHistory ? button('Inspect retained activity', 'activity-trace') : null;
     if (historyButton) {
         historyButton.setAttribute('aria-label', 'Inspect retained activity in Trace');
@@ -146,6 +148,8 @@ export function createActivityView(
         text(summary, model.latestAction ? `Activity: ${model.latestAction} (${count})` : `Activity (${count})`);
         text(degraded, display.degraded ? 'Activity is incomplete. Some runtime updates were not received.' : '');
         degraded.hidden = !display.degraded;
+        text(connection, display.connectionUnavailable ? 'Live activity updates are unavailable. Retained activity can be refreshed separately.' : '');
+        connection.hidden = !display.connectionUnavailable;
         const loss = model.omitted;
         const entries = [...model.entries.values()];
         const limited = !!(loss.entries || loss.textChars || loss.requests || loss.finalChars)

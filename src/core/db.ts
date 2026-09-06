@@ -566,6 +566,16 @@ export const insertMessage = db.prepare('INSERT INTO messages (role, content, cl
 export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
 export const insertMessageWithTraceRun = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, trace_run_id, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
 export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? ORDER BY id ASC');
+// Two rows distinguish a unique saved answer from ambiguity without loading a
+// whole transcript. Oversized content never crosses the SQLite -> JS boundary.
+export const getSavedActivityAnswer = db.prepare(`
+    SELECT id, role, trace_run_id, session_id,
+        CASE WHEN length(CAST(content AS BLOB)) <= @maxBytes THEN content ELSE NULL END AS content,
+        length(CAST(content AS BLOB)) AS content_bytes
+    FROM messages INDEXED BY idx_messages_trace_run
+    WHERE trace_run_id = @runId AND session_id = @sessionId AND role = 'assistant'
+    ORDER BY id ASC LIMIT 2
+`);
 const maxMessageIdStmt = db.prepare('SELECT MAX(id) AS maxId FROM messages WHERE session_id = ?');
 const steerSalvageStmt = db.prepare(`SELECT content FROM messages
     WHERE session_id = ? AND id > ? AND role = 'assistant' AND content LIKE '⏹️ [interrupted]%'

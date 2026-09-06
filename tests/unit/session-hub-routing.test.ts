@@ -91,3 +91,26 @@ test('?session=id scopes history, count, and search while absence preserves the 
         assert.deepEqual(off, legacy);
     });
 });
+
+test('withSession=1 names the actual selected chat without changing default arrays or includeTrace/limit', async () => {
+    db.prepare("INSERT INTO chat_sessions (id, seq, label) VALUES ('hub-a', 920, 'A'), ('hub-b', 921, 'B')").run();
+    db.prepare("INSERT INTO messages (role, content, session_id, trace) VALUES ('user', 'A', 'hub-a', 'trace A'), ('assistant', 'B first', 'hub-b', 'trace B1'), ('assistant', 'B last', 'hub-b', 'trace B2')").run();
+    db.prepare("UPDATE session SET active_chat_session = 'hub-a' WHERE id = 'default'").run();
+    const app = express(); registerMessageRoutes(app, noAuth);
+    await withServer(app, async base => {
+        const read = async (query: string) => {
+            const response = await fetch(`${base}/api/messages${query}`, { signal: AbortSignal.timeout(3000) });
+            assert.equal(response.status, 200); return (await response.json()).data;
+        };
+        for (const enabled of [false, true]) {
+            settings.multiSession.enabled = enabled;
+            const active = await read(''); assert.ok(Array.isArray(active));
+            assert.deepEqual(await read('?withSession=1'), { sessionId: 'hub-a', messages: active });
+            const query = '?session=hub-b&includeTrace=1&limit=1';
+            const rows = await read(query); assert.equal(rows.length, 1); assert.equal(rows[0].trace, 'trace B2');
+            assert.deepEqual(await read(query + '&withSession=1'), { sessionId: 'hub-b', messages: rows });
+            assert.deepEqual(await read(query + '&withSession=0'), rows);
+            assert.deepEqual(await read('?session=missing&withSession=1'), { sessionId: 'missing', messages: [] });
+        }
+    });
+});

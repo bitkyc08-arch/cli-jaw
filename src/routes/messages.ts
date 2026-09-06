@@ -5,11 +5,11 @@
 
 import type { Router } from 'express';
 import type { AuthMiddleware } from './types.js';
-import { ok } from '../http/response.js';
+import { ok, fail } from '../http/response.js';
 import {
     getMessages, getMessagesWithTrace, getRecentMessagesAll, getRecentMessagesAllWithTrace,
     searchMessages, searchMessagesAllSessions, getMessageContext, getMessageCount,
-    getLatestAssistantMessage, getLatestDashboardActivityMessage,
+    getLatestAssistantMessage, getLatestDashboardActivityMessage, getSavedActivityAnswer,
 } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
 import { dashboardActivityTitleFromExcerpt } from '../core/message-summary.js';
@@ -18,6 +18,16 @@ import { isAgentBusy } from '../agent/spawn.js';
 import { listToolEntriesForMessage } from '../trace/store.js';
 import { mergeLatestTools } from '../agent/merge-tool-log.js';
 import { HYDRATE_TOOL_CARDS_FROM_TRACE } from '../core/config.js';
+import { MAX_SAVED_ACTIVITY_ANSWER_BYTES } from '../shared/activity-read.js';
+
+interface SavedActivityAnswerRow {
+    id: number;
+    role: 'assistant';
+    content: string | null;
+    content_bytes: number;
+    trace_run_id: string;
+    session_id: string;
+}
 
 // Option D (devlog 260620 Phase 3): tool cards for a finished message come from
 // trace_events (durable, uncapped) when the rollout flag is on AND the message has a
@@ -45,6 +55,40 @@ export function resolveToolLog(
 }
 
 export function registerMessageRoutes(app: Router, requireAuth: AuthMiddleware): void {
+    app.use('/api/messages/by-trace', (_req, res, next) => {
+        res.setHeader('Cache-Control', 'no-store');
+        next();
+    });
+    app.get('/api/messages/by-trace/:runId', requireAuth, (req, res) => {
+        const runId = req.params['runId'], sessionId = req.query['session'];
+        if (typeof runId !== 'string' || !/^tr_[A-Za-z0-9_-]{16,80}$/.test(runId)
+            || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 240
+            || Object.keys(req.query).some(key => key !== 'session')) {
+            fail(res, 400, 'invalid_activity_answer_query'); return;
+        }
+        try {
+            // MESSAGE ownership is independent of the optional original trace link.
+            // A fork may read its own copied answer; trace routes keep their own guards.
+            const rows = getSavedActivityAnswer.all({ runId, sessionId, maxBytes: MAX_SAVED_ACTIVITY_ANSWER_BYTES }) as SavedActivityAnswerRow[];
+            if (rows.length > 1) { fail(res, 409, 'ambiguous_activity_answer'); return; }
+            const row = rows[0];
+            if (!row) { ok(res, { message: null }); return; }
+            if (row.content === null || row.content_bytes > MAX_SAVED_ACTIVITY_ANSWER_BYTES) {
+                fail(res, 413, 'activity_answer_too_large'); return;
+            }
+            const message = { id: row.id, role: row.role, content: row.content,
+                trace_run_id: row.trace_run_id, session_id: row.session_id };
+            const serialized = JSON.stringify({ ok: true, data: { message } });
+            if (Buffer.byteLength(serialized, 'utf8') > MAX_SAVED_ACTIVITY_ANSWER_BYTES) {
+                fail(res, 413, 'activity_answer_too_large'); return;
+            }
+            // Send exactly the representation whose total wire bytes were checked.
+            res.type('application/json').send(serialized);
+        } catch {
+            console.warn('[messages] saved activity answer unavailable');
+            fail(res, 503, 'activity_answer_unavailable');
+        }
+    });
     app.get('/api/messages', requireAuth, (req, res) => {
         const includeTrace = ['1', 'true', 'yes'].includes(String(req.query["includeTrace"] || '').toLowerCase());
         // Optional recent-window: `?limit=N` returns only the most recent N messages
@@ -63,7 +107,7 @@ export function registerMessageRoutes(app: Router, requireAuth: AuthMiddleware):
             ...row,
             tool_log: resolveToolLog(row["id"], row["tool_log"] as string | null | undefined),
         }));
-        ok(res, safeRows);
+        ok(res, req.query['withSession'] === '1' ? { sessionId, messages: safeRows } : safeRows);
     });
 
     app.get('/api/messages/count', (req, res) => {

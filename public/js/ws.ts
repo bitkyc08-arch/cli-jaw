@@ -22,7 +22,11 @@ import {
     ActivityCapacityError, configureLiveActivityHost, clearLiveActivity, setLiveActivityIdentity,
     findLiveActivity, ingestLiveActivity, settleLiveActivity, reconcileLiveActivityAnswer,
     degradeLiveActivity, rebindLiveActivity,
+    setActivityTransportHealthy,
 } from './features/activity-live.js';
+import { setActivityHistoryIdentity, setActivityHistoryReadReady, setActivityTranscript,
+    observeActivityHistory, hydrateActivityHost, discoverActivityHistory, disposeActivityHistory,
+    markActivityHistoryUnavailable, type RecoveredActivityTerminal } from './features/activity-history.js';
 
 configureLiveActivityHost({
     currentMessage: () => state.currentAgentDiv,
@@ -30,6 +34,11 @@ configureLiveActivityHost({
     createMessage: createActivityMessage,
     reconcileMessage: (id, update) => getVirtualScroll().reconcileMessage(id, update),
     replaceAnswer: replaceAgentAnswer,
+    evicted: markActivityHistoryUnavailable,
+    closeTrace: () => {
+        void import('./features/trace-drawer.js').then(m => m.closeTraceDrawer())
+            .catch(error => console.warn('[activity] trace close unavailable', error));
+    },
     inspectTrace: (runId, sessionId) => {
         void import('./features/trace-drawer.js').then(m => m.openTraceDrawer(runId, undefined, sessionId))
             .catch(error => console.warn('[activity] trace unavailable', error));
@@ -225,6 +234,7 @@ function shouldDropReplayedTool(runId: string | null, seq: number | null, replay
 /** Record the turn that just finalized and reset the live cursors. Pass the
  *  event's runId when present; falls back to the adopted live run id. */
 function markRunFinalized(runId: string | null): void {
+    ++liveRunRevision;
     const finalized = runId ?? liveTraceRunId;
     liveTraceRunId = null;
     liveAppliedTextLen = 0;
@@ -238,6 +248,7 @@ function markRunFinalized(runId: string | null): void {
  *  new turn started — the text cursor restarts from zero. */
 function adoptLiveRun(runId: string | null): void {
     if (!runId || runId === liveTraceRunId) return;
+    ++liveRunRevision;
     liveTraceRunId = runId;
     liveAppliedTextLen = 0;
 }
@@ -263,6 +274,7 @@ function syncLiveRunCursor(activeRun?: { running?: boolean; traceRunId?: string;
 }
 
 let currentOrcScope = '';
+let liveRunRevision = 0;
 let activityAdmissionReady = false;
 let activityStreamHealthy = false;
 let pendingRuntimeBytes = 0;
@@ -273,6 +285,8 @@ let runtimeBufferLost = false;
 
 function suspendRuntimeAdmission(): void {
     activityAdmissionReady = false;
+    setActivityTransportHealthy(false);
+    setActivityHistoryReadReady(false);
     if (liveTraceRunId) degradeLiveActivity(liveTraceRunId);
 }
 
@@ -340,6 +354,7 @@ function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
         return;
     }
     if (!turn) return;
+    ++liveRunRevision;
     if (runtimeBufferLost) degradeLiveActivity(event.runId);
     if (event.kind !== 'turn-end') {
         if (!finalized && !replay) adoptLiveRun(event.runId);
@@ -351,7 +366,7 @@ function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
     markRunFinalized(event.runId);
     // The journal is redacted and the reducer is bounded. Use the incoming
     // terminal here; a later owned public answer may reconcile this same row.
-    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId, turn.cacheScope);
+    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId, turn.cacheScope, event.sessionId);
     notifyUnreadResponse();
 }
 
@@ -376,11 +391,39 @@ function settleCompatibilityMessage(msg: WsMessage): void {
     const tools = msg.type === 'agent_done' ? msg.toolLog : undefined;
     if (known && runId) {
         finalizeAgent(finality === 'absent' ? null : msg.text || '', tools,
-            finality ?? (ownedText ? 'present' : undefined), runId, known.cacheScope);
+            finality ?? (ownedText ? 'present' : undefined), runId, known.cacheScope, known.model.identity.sessionId);
         if (finality === 'absent' && typeof msg.text === 'string' && msg.text)
             addSystemMsg(escapeHtml(msg.text.slice(0, 500)), 'activity-diagnostic');
     } else finalizeAgent(msg.text || '', tools, finality);
     notifyUnreadResponse();
+}
+
+/** A retained terminal is not a new SSE event or permission response. */
+function recoverActivityTerminal(value: RecoveredActivityTerminal): void {
+    const message = state.currentAgentDiv;
+    const turn = findLiveActivity(value.runId);
+    if (!message || liveTraceRunId !== value.runId || state.activityIdentity?.sessionId !== value.sessionId
+        || message !== value.message || message.dataset['traceRunId'] !== value.runId || isFinalizedRun(value.runId)) return;
+    if (turn && (turn.model.identity.sessionId !== value.sessionId || turn.model.identity.scope !== value.scope
+        || value.turnId !== undefined && turn.model.identity.turnId !== value.turnId)) return;
+    settleLiveActivity(value.runId, value.status);
+    markRunFinalized(value.runId);
+    if (message.dataset['activitySaved'] === 'true') {
+        if (turn) turn.answerSource = 'saved';
+        delete message.dataset['activityRecovering']; cleanupToolActivity(); setStatus('idle'); return;
+    }
+    if (turn) turn.answerSource = value.answer.kind === 'saved' ? 'saved' : 'unavailable';
+    // No verified answer remains blank, with the history control explaining
+    // absence versus a failed read. Never resurrect the provisional stream.
+    finalizeAgent(value.answer.kind === 'saved' ? value.answer.message.content : null, undefined,
+        value.answer.kind === 'saved' ? 'present' : 'absent', value.runId, value.cacheScope, value.sessionId);
+    notifyUnreadResponse();
+}
+
+function bindHistoryIdentity(): void {
+    setActivityHistoryIdentity(state.activityIdentity, { terminal: recoverActivityTerminal,
+        refreshIdentity: () => syncOrchestrateSnapshot('history-identity', { hydrateRun: true }) });
+    setActivityHistoryReadReady(activityAdmissionReady);
 }
 
 function drainRuntimeBuffer(): void {
@@ -415,6 +458,7 @@ type RuntimeSnapshot = {
 
 async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): Promise<void> {
     const capture = nativeRequests.beginSnapshot();
+    const readRevision = liveRunRevision;
     let snap: RuntimeSnapshot;
     try {
         // Includes headers AND body: manual identity recovery must release its
@@ -429,6 +473,8 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     capture.accept(snap?.activityIdentity);
     activityAdmissionReady = activityStreamHealthy && state.activityIdentity !== null;
     setLiveActivityIdentity(state.activityIdentity);
+    setActivityTransportHealthy(activityAdmissionReady);
+    bindHistoryIdentity();
     currentOrcScope = String(snap.orc.scope || '');
     applyOrcState(snap.orc.state);
     applyOrcContext(snap.orc.ctx || null);
@@ -437,7 +483,9 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     updateQueueBadge(snap.runtime.queuePending);
     applyQueuedOverlay(snap.queued || []);
     renderPendingQueue(snap.queued || []);
-    if (options.hydrateRun) {
+    const snapshotRunFinalized = isFinalizedRun(snap.activeRun?.traceRunId ?? null);
+    const currentRunSnapshot = readRevision === liveRunRevision;
+    if (options.hydrateRun && currentRunSnapshot && !snapshotRunFinalized) {
         hydrateActiveRun(snap.activeRun);
         // The hydrated block now renders the snapshot's cumulative state —
         // move the replay cursors there so replayed chunks older than the
@@ -445,16 +493,23 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
         syncLiveRunCursor(snap.activeRun);
         if (snap.activeRun?.running && snap.activeRun.traceRunId && state.currentAgentDiv) {
             state.currentAgentDiv.dataset['traceRunId'] = snap.activeRun.traceRunId;
+            if (state.activityIdentity) state.currentAgentDiv.dataset['messageSessionId'] = state.activityIdentity.sessionId;
             rebindLiveActivity(snap.activeRun.traceRunId, state.currentAgentDiv);
         }
     }
     hydrateGoalState();
-    if (snap.runtime.busy) {
-        setStatus('running');
-    } else if (!isRecentSteer()) {
-        setStatus('idle');
+    if (currentRunSnapshot) {
+        if (snap.runtime.busy && !snapshotRunFinalized) setStatus('running');
+        else if (!isRecentSteer()) setStatus('idle');
     }
     if (activityAdmissionReady) drainRuntimeBuffer();
+    const historyRoot = document.getElementById('chatMessages');
+    if (historyRoot) observeActivityHistory(historyRoot);
+    if (activityAdmissionReady && options.hydrateRun) {
+        if (state.currentAgentDiv && liveTraceRunId && (currentRunSnapshot || findLiveActivity(liveTraceRunId)?.degraded))
+            void hydrateActivityHost(state.currentAgentDiv, liveTraceRunId, true);
+        void discoverActivityHistory();
+    }
     import('./features/employees.js').then(m => {
         if (typeof m.renderEmployees === 'function') m.renderEmployees();
     });
@@ -1175,6 +1230,7 @@ function handleServerEvent(msg: WsMessage): void {
         // process block on the live placeholder.
         if (isFinalizedRun(toolRunId)) return;
         if (shouldDropReplayedTool(toolRunId, toolSeq, msg.sseReplay === true)) return;
+        ++liveRunRevision;
         // Employee mirror events carry the EMPLOYEE's run id — adopting it
         // would reset the boss text cursor and weaken replay protection
         // during interleave (260613 20 P2-i). Only boss tools adopt.
@@ -1229,10 +1285,11 @@ function handleServerEvent(msg: WsMessage): void {
             if (missing < outputText.length) outputText = outputText.slice(-missing);
             liveAppliedTextLen = msg.textLen;
         }
-        appendAgentText(outputText);
+        ++liveRunRevision; appendAgentText(outputText);
     } else if (msg.type === 'agent_status') {
         if (!msg.running && isRecentSteer()) return;
         if (msg.running && isRecentSteer()) clearSteer();
+        ++liveRunRevision;
         if (msg.running !== undefined) {
             setStatus(msg.running ? 'running' : 'idle');
         } else {
@@ -1285,12 +1342,14 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'orchestrate_done') {
         settleCompatibilityMessage(msg);
     } else if (msg.type === 'clear') {
+        ++liveRunRevision; disposeActivityHistory();
         clearRuntimePresentation(); setLiveActivityIdentity(state.activityIdentity);
         cancelPostRender();
         cleanupToolActivity();
         getVirtualScroll().clear();
         const el = document.getElementById('chatMessages');
         if (el) el.innerHTML = '';
+        bindHistoryIdentity(); setActivityTranscript(state.activityIdentity?.sessionId ?? null, new Set());
         // Intentional clear — also wipe this tab's cached history. The cache is keyed by
         // location and working directory, NOT by execution scope, so it clears its own
         // current scope rather than the one the event carries: passing the server's scope
@@ -1367,6 +1426,7 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'session_list') {
         handleSessionListBroadcast(msg);
     } else if (msg.type === 'session_switched' || msg.type === 'session_created') {
+        disposeActivityHistory();
         suspendRuntimeAdmission(); clearRuntimePresentation();
         nativeRequests.invalidateIdentity();
         // Reload messages for the new active session

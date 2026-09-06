@@ -176,6 +176,23 @@ test('same-session snapshot reconstruction rebinds Activity to the visible activ
     assert.equal(host.querySelector('.msg-content')?.getAttribute('data-raw'), 'visible final');
 });
 
+test('a delayed A snapshot cannot replace B started after the read or reset its busy state', async () => {
+    const a = start();
+    activeRun = { running: true, traceRunId: a, cli: 'cursor', text: 'old A snapshot', toolLog: [] };
+    const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    holdSnapshot = async () => { started.resolve(); await release.promise; };
+    const pending = ws.syncOrchestrateSnapshot('late-A', { hydrateRun: true }); await started.promise;
+    runtime(a, 2, { kind: 'turn-end', status: 'done', finalText: 'A final' });
+    const b = start(); const bHost = state.currentAgentDiv;
+    runtime(b, 2, { kind: 'tool', itemId: 'b', name: 'B tool', status: 'running' });
+    release.resolve(); await pending;
+    assert.equal(state.currentAgentDiv, bHost); assert.equal(state.agentBusy, true);
+    assert.equal(bHost?.dataset['traceRunId'], b);
+    assert.equal(live.findLiveActivity(b)?.message, bHost);
+    runtime(b, 3, { kind: 'turn-end', status: 'done', finalText: 'B final' });
+    assert.equal(bHost?.querySelector('.msg-content')?.getAttribute('data-raw'), 'B final');
+});
+
 test('debounced second focus does not invalidate the snapshot admitted by the first', async () => {
     const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

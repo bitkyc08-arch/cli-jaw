@@ -443,7 +443,7 @@ export function replaceAgentAnswer(message: HTMLElement, text: string): void {
     void renderMermaidBlocks(content, { immediate: true });
 }
 
-export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent', traceRunId?: string, cacheScope?: string): void {
+export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent', traceRunId?: string, cacheScope?: string, cacheSessionId?: string): void {
     const nativeFinal = runtimeFinality === 'present' || runtimeFinality === 'absent';
     // Guard: prevent double-render when both agent_done + orchestrate_done fire
     const now = Date.now();
@@ -475,6 +475,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
             state.currentAgentDiv = addMessage('agent', '');
         }
         if (traceRunId) state.currentAgentDiv.dataset['traceRunId'] = traceRunId;
+        delete state.currentAgentDiv.dataset['activityRecovering'];
         state.currentAgentDiv.removeAttribute(ACTIVE_RUN_HYDRATED_ATTR);
         const content = (state.currentAgentDiv as HTMLElement)?.querySelector('.msg-content');
         // Live stream is preview-only; agent_done text is always authoritative.
@@ -552,6 +553,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
             trace_run_id: state.currentAgentDiv?.dataset['traceRunId'] ?? null,
             timestamp: Date.now(),
             ...(cacheScope === undefined ? {} : { scope: cacheScope }),
+            ...(cacheSessionId === undefined ? {} : { session_id: cacheSessionId }),
         }).catch(() => {});
     }
     currentStream = null;

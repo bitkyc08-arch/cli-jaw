@@ -21,10 +21,14 @@ import { normalizeMessageToolLog, parseToolLog, toProcessSteps, type MessageItem
 import { canFollowAfterRestore, ensureScrollTracking, markFollowingBottom, settleChatBottomAfterInitialLoad } from './chat-scroll.js';
 import { updateStatMsgs } from './ui-status.js';
 import { seedCompletedElicitationsFromMessages } from './elicitation-state.js';
-import { withCurrentSessionQuery } from './session-hub.js';
+import { withCurrentSessionQuery, currentSessionId } from './session-hub.js';
 import { remountLiveActivity, recycleActivityHost } from './activity-live.js';
+import { prepareActivityTranscript, setActivityTranscript, observeActivityHistory, recycleActivityHistory } from './activity-history.js';
 
-const activityVirtualHooks = { postRender: remountLiveActivity, recycle: recycleActivityHost };
+const activityVirtualHooks = {
+    postRender(root: HTMLElement) { remountLiveActivity(root); observeActivityHistory(root); },
+    recycle(message: HTMLElement) { recycleActivityHistory(message); recycleActivityHost(message); },
+};
 
 /** Live promotion may bypass history bootstrap; preserve every installed callback. */
 export function ensureActivityVirtualCallbacks(vs: ReturnType<typeof getVirtualScroll>): void {
@@ -143,6 +147,12 @@ export function makeBootstrapDeps(
 function hydrateSmallHistory(messages: MessageItem[]): void {
     messages.forEach(m => {
         const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content, m.cli);
+        if (m.id !== undefined) div.dataset['messageId'] = String(m.id);
+        if (m.trace_run_id) div.dataset['traceRunId'] = m.trace_run_id;
+        if (m.session_id !== undefined) div.dataset['messageSessionId'] = m.session_id;
+        if (m.server_message_id !== undefined) {
+            div.dataset['serverMessageId'] = String(m.server_message_id); div.dataset['activitySaved'] = 'true';
+        }
         if (m.role === 'assistant' && m.tool_log) {
             const tools = parseToolLog(m.tool_log);
             if (tools.length > 0) {
@@ -165,6 +175,10 @@ function cachedToMessage(message: CachedMessage): MessageItem {
         content: message.content,
         cli: message.cli ?? null,
         tool_log: message.tool_log ?? null,
+        trace_run_id: message.trace_run_id ?? null,
+        ...(message.session_id === undefined ? {} : { session_id: message.session_id }),
+        ...(typeof message.message_id === 'number' && Number.isSafeInteger(message.message_id) && message.message_id > 0
+            ? { server_message_id: message.message_id } : {}),
     };
 }
 
@@ -183,13 +197,29 @@ function historySignature(scope: string, msgs: MessageItem[]): string {
 // Without single-flight they both clear+bootstrap the virtual scroll and the
 // newest rows can stay lazy-pending. Concurrent callers join the same load.
 let loadMessagesInFlight: Promise<void> | null = null;
+let loadMessagesKey = '', loadGeneration = 0;
+let loadController: AbortController | null = null;
+let renderedView = '', renderedSession: string | null = null;
+let renderedRuns = new Set<string>();
 
 export async function loadMessages(): Promise<void> {
-    if (loadMessagesInFlight) return loadMessagesInFlight;
-    loadMessagesInFlight = loadMessagesOnce().finally(() => {
-        loadMessagesInFlight = null;
+    const requestedSession = currentSessionId();
+    const key = `${readCurrentMessageLocationKey()}:${requestedSession ?? ''}`;
+    if (loadMessagesKey === key) {
+        if (loadMessagesInFlight) return loadMessagesInFlight;
+    }
+    loadController?.abort(); const controller = new AbortController(); loadController = controller;
+    loadMessagesKey = key; const generation = ++loadGeneration;
+    const path = `/api/messages${bootMessageQuery()}&withSession=1`;
+    prepareActivityTranscript();
+    const timer = setTimeout(() => controller.abort(new DOMException('Message history deadline', 'TimeoutError')), 30_000);
+    const current = () => generation === loadGeneration
+        && key === `${readCurrentMessageLocationKey()}:${currentSessionId() ?? ''}`;
+    const work = loadMessagesOnce({ requestedSession, key, path, signal: controller.signal, current }).finally(() => {
+        clearTimeout(timer);
+        if (loadMessagesInFlight === work) { loadMessagesInFlight = null; loadController = null; }
     });
-    return loadMessagesInFlight;
+    loadMessagesInFlight = work; return work;
 }
 
 /** True while a history snapshot fetch/rebuild is mid-flight. A live append
@@ -201,32 +231,100 @@ export function historyReloadInFlight(): boolean {
     return loadMessagesInFlight !== null;
 }
 
-async function loadMessagesOnce(): Promise<void> {
+interface MessageReadContext {
+    requestedSession: string | null; key: string; path: string; signal: AbortSignal; current(): boolean;
+}
+
+/** Keep legacy API unwrapping, but a superseded/expired read cannot hold the view. */
+async function readMessagesApi<T>(path: string, signal: AbortSignal): Promise<T | null> {
+    signal.throwIfAborted();
+    let abort!: () => void;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+        abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true });
+    });
+    try { return await Promise.race([api<T>(path, { signal }), cancelled]); }
+    finally { signal.removeEventListener('abort', abort); }
+}
+
+function parseMessageSnapshot(raw: unknown, requested: string | null): { sessionId: string | null; messages: MessageItem[] } {
+    let sessionId = requested, rows: unknown;
+    if (Array.isArray(raw)) rows = raw; // Older server: explicit requested session only.
+    else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const value = raw as Record<string, unknown>;
+        if (typeof value['sessionId'] !== 'string' || !value['sessionId'] || value['sessionId'].length > 240
+            || requested !== null && value['sessionId'] !== requested) throw new Error('message_session_mismatch');
+        sessionId = value['sessionId']; rows = value['messages'];
+    }
+    if (!Array.isArray(rows)) throw new Error('invalid_message_snapshot');
+    const messages = rows.slice(-BOOT_MESSAGE_WINDOW).map((value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_message_snapshot');
+        const record = value as Record<string, unknown>;
+        if (typeof record['role'] !== 'string' || typeof record['content'] !== 'string'
+            || (record['id'] !== undefined && !(typeof record['id'] === 'number' && Number.isSafeInteger(record['id']) && record['id'] > 0)
+                && !(typeof record['id'] === 'string' && record['id'].length <= 240))
+            || (record['trace_run_id'] != null && !(typeof record['trace_run_id'] === 'string' && record['trace_run_id'].length <= 240))
+            || (record['session_id'] !== undefined && !(typeof record['session_id'] === 'string' && record['session_id'].length > 0 && record['session_id'].length <= 240))
+            || (sessionId && record['session_id'] !== undefined && record['session_id'] !== sessionId)
+            || (record['cli'] != null && typeof record['cli'] !== 'string')
+            || (record['tool_log'] != null && typeof record['tool_log'] !== 'string')) throw new Error('invalid_message_snapshot');
+        const row = record as unknown as MessageItem;
+        const normalized: MessageItem = { ...row, ...(sessionId === null ? {} : { session_id: sessionId }) };
+        // Derive only from the actual API row, not a supplied helper field or IDB id.
+        delete normalized.server_message_id;
+        if (typeof row.id === 'number') normalized.server_message_id = row.id;
+        return normalizeMessageToolLog(normalized);
+    });
+    return { sessionId, messages };
+}
+
+function legacyCachePreview(messages: CachedMessage[]): void {
+    if (!messages.length) return;
+    const box = document.createElement('details'); box.className = 'activity-legacy-cache';
+    const title = document.createElement('summary'); title.textContent = 'Unverified legacy cache preview';
+    const notice = document.createElement('p');
+    notice.textContent = 'This limited cache preview has no verified conversation identity. Connect to refresh; it cannot load Activity history.';
+    const text = document.createElement('pre');
+    text.textContent = messages.slice(-40).map(message => message.content.slice(0, 1000)).join('\n\n');
+    box.append(title, notice, text); chatContainer()?.append(box);
+}
+const chatContainer = () => document.getElementById('chatMessages');
+
+async function loadMessagesOnce(context: MessageReadContext): Promise<void> {
     const vs = getVirtualScroll();
     const chatEl = document.getElementById('chatMessages');
     const previousScope = getMessageScope();
     const locationKey = readCurrentMessageLocationKey();
     let workingDir = readWorkingDirFromScope(previousScope);
     try {
-        const settings = await api<{ workingDir?: string }>('/api/settings');
+        const settings = await readMessagesApi<{ workingDir?: string }>('/api/settings', context.signal);
         if (settings?.workingDir) workingDir = settings.workingDir;
     } catch { /* localStorage fallback already initialized currentScope */ }
+    if (!context.current()) return;
     const nextScope = buildMessageScopeIdentity({ locationKey, workingDir });
     setMessageScope(nextScope);
     const scopeChanged = nextScope !== previousScope;
-    const msgs = await api<MessageItem[]>(`/api/messages${bootMessageQuery()}`);
-    if (msgs !== null) {
-        const safeMsgs = msgs.map(normalizeMessageToolLog);
+    let snapshot: ReturnType<typeof parseMessageSnapshot> | null = null;
+    try {
+        const raw = await readMessagesApi<unknown>(context.path, context.signal);
+        if (raw !== null) snapshot = parseMessageSnapshot(raw, context.requestedSession);
+    } catch (error) { if (context.current()) console.warn('[history] message snapshot unavailable', error); }
+    if (!context.current()) return;
+    if (snapshot) {
+        const safeMsgs = snapshot.messages;
         seedCompletedElicitationsFromMessages(safeMsgs);
         const hadRenderedHistory = Boolean(chatEl?.querySelector('.msg')) || vs.active;
-        const signature = historySignature(nextScope, safeMsgs);
+        const signature = historySignature(`${nextScope}:${snapshot.sessionId ?? ''}`, safeMsgs);
+        renderedView = context.key; renderedSession = snapshot.sessionId;
+        renderedRuns = new Set(safeMsgs.filter(message => message.role === 'assistant' && message.trace_run_id).map(message => message.trace_run_id!));
         if (hadRenderedHistory && !scopeChanged && signature === lastRenderedSignature) {
             updateStatMsgs(safeMsgs.length);
+            setActivityTranscript(renderedSession, renderedRuns);
             return; // identical history — keep the live DOM and scroll state
         }
         lastRenderedSignature = signature;
         const shouldForceBottom = scopeChanged || !hadRenderedHistory;
         const savedIndex = !shouldForceBottom && vs.active ? vs.firstVisibleIndex() : null;
+        if (chatEl) recycleActivityHistory(chatEl);
         vs.clear();
         if (chatEl) chatEl.innerHTML = '';
         if (safeMsgs.length >= VS_THRESHOLD) {
@@ -241,16 +339,23 @@ async function loadMessagesOnce(): Promise<void> {
         cacheMessages(safeMsgs.map(m => ({
             ...(m.id !== undefined ? { message_id: m.id } : {}),
             role: m.role, content: m.content, cli: m.cli ?? null, tool_log: m.tool_log ?? null, timestamp: Date.now(),
-        }))).catch(() => {});
+            trace_run_id: m.trace_run_id ?? null, ...(m.session_id === undefined ? {} : { session_id: m.session_id }),
+        })), nextScope).catch(() => {});
+        setActivityTranscript(renderedSession, renderedRuns);
         updateStatMsgs(safeMsgs.length);
         showEmptyState();
         return;
     }
-    if (chatEl && chatEl.children.length > 0) {
+    if (chatEl && chatEl.children.length > 0 && renderedView === context.key) {
+        setActivityTranscript(renderedSession, renderedRuns);
         showEmptyState();
         return;
     }
-    const cached = await getScopedMessages();
+    if (chatEl && renderedView !== context.key) { recycleActivityHistory(chatEl); vs.clear(); chatEl.replaceChildren(); }
+    const allCached = await getScopedMessages(nextScope);
+    if (!context.current()) return;
+    const cached = (context.requestedSession === null ? allCached
+        : allCached.filter(message => message.session_id === context.requestedSession)).slice(-BOOT_MESSAGE_WINDOW);
     if (cached.length > 0) {
         const safeCached = cached.map(cachedToMessage).map(normalizeMessageToolLog);
         seedCompletedElicitationsFromMessages(safeCached);
@@ -265,5 +370,9 @@ async function loadMessagesOnce(): Promise<void> {
         addSystemMsg(`${ICONS.warning} ${t('ui.offline.banner')}`);
         updateStatMsgs(safeCached.length);
     }
+    if (context.requestedSession !== null) legacyCachePreview(allCached.filter(message => message.session_id === undefined));
+    renderedView = context.key; renderedSession = context.requestedSession;
+    renderedRuns = new Set(cached.filter(message => message.role === 'assistant' && message.trace_run_id).map(message => message.trace_run_id!));
+    setActivityTranscript(renderedSession, renderedRuns);
     showEmptyState();
 }
