@@ -16,6 +16,22 @@ import {
 } from '../../src/trace/store.ts';
 import type { ToolEntry } from '../../src/types/agent.ts';
 
+test('conditional trace finalization changes only a running row and preserves a closed result exactly', () => {
+    const runId = startTraceRun({ cli: 'cursor', audience: 'public' });
+    finalizeTraceRun(runId, 'error', 'sanitized setup diagnostic', { onlyIfRunning: true });
+    const closed = getTraceRun(runId);
+    assert.equal(closed?.status, 'error'); assert.equal(closed?.error, 'sanitized setup diagnostic');
+    assert.ok(closed?.finished_at);
+    finalizeTraceRun(runId, 'done', 'must not replace diagnostic', { onlyIfRunning: true });
+    assert.deepEqual(getTraceRun(runId), closed);
+    assert.doesNotThrow(() => finalizeTraceRun('tr_missing_setup_fixture', 'error', 'missing', { onlyIfRunning: true }));
+    assert.equal(getTraceRun('tr_missing_setup_fixture'), null);
+    // The opt-in must not change existing callers' unconditional behavior.
+    finalizeTraceRun(runId, 'interrupted', 'legacy update');
+    assert.equal(getTraceRun(runId)?.status, 'interrupted');
+    assert.equal(getTraceRun(runId)?.error, 'legacy update');
+});
+
 test('trace store records redacted raw events, spills large payloads, and stamps tool pointers', () => {
     const runId = startTraceRun({
         cli: 'codex',
