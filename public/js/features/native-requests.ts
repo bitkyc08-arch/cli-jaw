@@ -252,7 +252,7 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
         announce(outcome, true);
         const refreshGeneration = generation + 1;
         await refresh('auto');
-        if (!disposed && !suspended && generation === refreshGeneration && !accepted && selected && key(selected) === key(item)) announce(outcome);
+        if (!disposed && !suspended && fresh && generation === refreshGeneration && !accepted && selected && key(selected) === key(item)) announce(outcome);
     }
 
     async function refresh(mode: 'manual' | 'auto' = 'manual'): Promise<void> {
@@ -303,7 +303,8 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
             lock(); restoreFocus();
         } catch {
             if (!current() || gen !== generation || controller.signal.aborted) return;
-            if (!suspended) clear();
+            // A failed read is not settlement. Keep the draft and expiry while
+            // fresh=false prevents submission until an authoritative GET.
             root.hidden = false; lock();
             announce('Pending requests could not be loaded. Refresh requests to retry.');
         } finally {

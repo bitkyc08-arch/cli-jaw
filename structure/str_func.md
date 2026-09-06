@@ -495,10 +495,10 @@ cli-jaw/
 │   ├── locales/              ← i18n (ko/en/ja/zh .json)
 │   └── js/                   ← 97 .ts files (root 19 + features/ 55 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
 │       ├── bounded-api.ts    ← bounded authenticated JSON reads and decision writes (49L)
-│       ├── ws.ts             ← legacy event dispatch plus scoped snapshot/native request bridge (1200L)
+│       ├── ws.ts             ← legacy event dispatch plus scoped snapshot/native request bridge (1212L)
 │       ├── features/
 │       │   ├── native-request-bridge.ts ← SSE health/epoch, captured identity and request refresh (130L)
-│       │   └── native-requests.ts ← live exact-bound approvals/questions and manual recovery (333L)
+│       │   └── native-requests.ts ← live exact-bound approvals/questions and manual recovery (334L)
 │       └── render/
 │           ├── markdown.ts   ← marked/sanitize pipeline + `/media`/guarded `/api/image` inline media rewrite (193L)
 │           └── delegations.ts ← one-time document capture image-error delegation + render delegation registry (41L)

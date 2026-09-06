@@ -120,6 +120,31 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
         assert.equal(requests().length, 0); assert.ok(button('Refresh requests'));
     });
 
+    for (const stage of ['headers', 'body']) await t.test(`manual identity ${stage} deadline releases retry without reconnect`, async st => {
+        const deadline = new AbortController();
+        st.mock.method(AbortSignal, 'timeout', ms => { assert.equal(ms, 15_000); return deadline.signal; });
+        let cancelled = false, requestSignal: AbortSignal | null | undefined;
+        const count = calls.filter(call => call.url.pathname === '/api/orchestrate/snapshot').length;
+        serve = async (_url, init) => {
+            requestSignal = init.signal;
+            if (stage === 'headers') return new Promise<Response>(() => {});
+            return new Response(new ReadableStream({ cancel() { cancelled = true; } }), {
+                headers: { 'content-type': 'application/json' },
+            });
+        };
+        button('Refresh requests').click(); await drained();
+        assert.equal(calls.filter(call => call.url.pathname === '/api/orchestrate/snapshot').length, count + 1);
+        deadline.abort(new DOMException('Owned 15-second deadline', 'TimeoutError')); await drained();
+        assert.equal(requestSignal?.aborted, true);
+        if (stage === 'body') assert.equal(cancelled, true);
+        assert.match(status(), /could not be loaded/); assert.equal(state.activityIdentity, null);
+        st.mock.restoreAll();
+        serve = async () => snapshot(null);
+        button('Refresh requests').click(); await drained();
+        assert.equal(calls.filter(call => call.url.pathname === '/api/orchestrate/snapshot').length, count + 2);
+        assert.match(status(), /identity unavailable/); assert.equal(posts().length, 0);
+    });
+
     await t.test('manual identity + list recovery enables exact current response without restoring native stream health', async () => {
         serve = async url => url.pathname === '/api/orchestrate/snapshot' ? snapshot() : listed([pending('custom:job')]);
         button('Refresh requests').click();

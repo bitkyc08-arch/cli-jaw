@@ -1,6 +1,7 @@
 // ── Server Event Connection (SSE via event-channel) ──
 import { state } from './state.js';
 import { API_BASE } from './api.js';
+import { requestBoundedJson } from './bounded-api.js';
 import { connectEventChannel, subscribe, onChannelOpen, onChannelDisconnect, onChannelUnavailable } from './event-channel.js';
 import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore, showChatRestoreIndicator, markSteered, clearSteer, isRecentSteer } from './ui.js';
 import { renderPendingQueue } from './features/pending-queue.js';
@@ -241,13 +242,24 @@ let lastRestoreTriggerAt = 0;
 const SNAPSHOT_SYNC_THROTTLE_MS = 750;
 const RESTORE_TRIGGER_DEBOUNCE_MS = 750;
 
+type RuntimeSnapshot = {
+    activityIdentity?: unknown;
+    orc: { scope?: string; state: OrcStateName; ctx?: Parameters<typeof applyOrcContext>[0] };
+    heartbeat?: Parameters<typeof applyHeartbeatRuntime>[0];
+    workers: Parameters<typeof hydrateAgentPhases>[0];
+    runtime: { queuePending: number; busy: boolean };
+    queued?: Parameters<typeof applyQueuedOverlay>[0];
+    activeRun?: Parameters<typeof hydrateActiveRun>[0] & Parameters<typeof syncLiveRunCursor>[0];
+};
+
 async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): Promise<void> {
     const capture = nativeRequests.beginSnapshot();
-    let snap;
+    let snap: RuntimeSnapshot;
     try {
-        const response = await fetch(`${API_BASE}${capture.path}`);
-        if (!response.ok) throw new Error('snapshot_unavailable');
-        snap = await response.json();
+        // Includes headers AND body: manual identity recovery must release its
+        // latch even if the peer never finishes responding. Preserve API auth.
+        snap = await requestBoundedJson(capture.path, { method: 'GET' },
+            new AbortController().signal, 16 * 1024 * 1024) as RuntimeSnapshot;
     } catch (error) { capture.fail(); throw error; }
     if (!capture.isCurrent()) return;
     capture.accept(snap?.activityIdentity);

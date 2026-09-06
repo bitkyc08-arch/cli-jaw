@@ -321,13 +321,14 @@ test('expiry removes actions and refreshes; even a delayed timer cannot permit a
     button(host, 'Allow once').click(); await nextTick(); assert.equal(posts().length, 0);
 });
 
-test('GET failure removes stale actions and retry is visible; 409 and uncertain POST refresh without retrying POST', async () => {
+test('GET failure locks stale actions and retry is visible; 409 and uncertain POST refresh without retrying POST', async () => {
     const { host, root, panel } = await mounted();
     serve = async () => json({ ok: false }, 503); await panel.refresh();
-    assert.equal(root.hidden, false); assert.equal(root.querySelector('form'), null);
+    assert.equal(root.hidden, false); assert.ok(root.querySelector('form'));
+    assert.equal(button(host, 'Allow once').disabled, true);
     assert.match(root.textContent!, /could not be loaded/);
     serve = async () => listed([pending()]); button(host, 'Refresh requests').click();
-    await until(() => !!host.querySelector('form'));
+    await until(() => !button(host, 'Allow once').disabled);
     for (const code of [400, 409, 503, 200]) {
         const before = posts().length;
         serve = async (_url, init) => init.method === 'POST' ? json({ accepted: true }, code) : listed([pending()]);
@@ -336,6 +337,42 @@ test('GET failure removes stale actions and retry is visible; 409 and uncertain 
         assert.match(root.textContent!, code === 409 ? /expired or was already answered/ : /could not be confirmed/);
         await nextTick(); assert.equal(posts().length, before + 1);
     }
+});
+
+test('healthy-stream failed GET retains question draft, choice and focus but cannot submit until revalidated', async () => {
+    const item = question([field({ allowFreeform: true, multiSelect: true })]);
+    const { host, panel } = await mounted([item]);
+    const text = host.querySelector('textarea')!;
+    const choice = host.querySelector<HTMLInputElement>('input')!;
+    choice.click(); text.value = '작성 중인 답변'; text.focus(); text.setSelectionRange(1, 4);
+    for (const failure of ['http', 'network']) {
+        serve = async () => { if (failure === 'network') throw new TypeError('offline'); return json({}, 503); };
+        await panel.refresh('auto');
+        assert.equal(host.querySelector('textarea'), text); assert.equal(text.value, '작성 중인 답변');
+        assert.equal(choice.checked, true); assert.equal(document.activeElement, text);
+        assert.equal(text.selectionStart, 1); assert.equal(text.selectionEnd, 4);
+        assert.equal(button(host, 'Submit answers').disabled, true);
+        submit(host); assert.equal(posts().length, 0);
+        serve = async () => listed([item]); await panel.refresh('manual');
+        assert.equal(host.querySelector('textarea'), text); assert.equal(choice.checked, true);
+        assert.equal(button(host, 'Submit answers').disabled, false);
+    }
+});
+
+test('unknown POST followed by failed reconciliation keeps the draft and never replays a write', async () => {
+    const item = question([field({ allowFreeform: true, multiSelect: true })]);
+    const { host, panel } = await mounted([item]);
+    const text = host.querySelector('textarea')!; text.value = 'unconfirmed answer';
+    const choice = host.querySelector<HTMLInputElement>('input')!; choice.click();
+    serve = async (_url, init) => { if (init.method === 'POST') throw new TypeError('unknown write'); return json({}, 503); };
+    submit(host);
+    await until(() => host.textContent!.includes('could not be loaded'));
+    assert.equal(host.querySelector('textarea'), text); assert.equal(choice.checked, true);
+    assert.equal(text.value, 'unconfirmed answer'); assert.equal(button(host, 'Submit answers').disabled, true);
+    submit(host); assert.equal(posts().length, 1);
+    serve = async () => listed([item]); await panel.refresh('manual');
+    assert.equal(host.querySelector('textarea'), text); assert.equal(choice.checked, true);
+    assert.equal(button(host, 'Submit answers').disabled, false); assert.equal(posts().length, 1);
 });
 
 test('late POST cannot paint another selected request and blocks double send while in flight', async () => {
@@ -387,7 +424,8 @@ test('list cap is 128; 6MiB receive cap cancels oversized stream before renderin
     const { host, panel } = await mounted();
     const requests = Array.from({ length: 128 }, (_, i) => pending({ requestId: `r${i}` }));
     serve = async () => listed(requests); await panel.refresh(); assert.equal(host.querySelectorAll('form').length, 1);
-    serve = async () => listed([...requests, pending()]); await panel.refresh(); assert.equal(host.querySelector('form'), null);
+    serve = async () => listed([...requests, pending()]); await panel.refresh();
+    assert.equal(button(host, 'Allow once').disabled, true);
     // Legal envelope padding above the old 2MiB ceiling still loads through the real helper.
     serve = async () => json({ ok: true, data: { requests: [pending()] }, padding: 'x'.repeat(3 * 1024 * 1024) });
     await panel.refresh(); assert.equal(host.querySelectorAll('form').length, 1);
@@ -396,7 +434,7 @@ test('list cap is 128; 6MiB receive cap cancels oversized stream before renderin
         start(controller) { controller.enqueue(new Uint8Array(6 * 1024 * 1024 + 1)); },
         cancel() { cancelled = true; },
     }), { headers: { 'Content-Type': 'application/json' } });
-    await panel.refresh(); assert.equal(cancelled, true); assert.equal(host.querySelector('form'), null);
+    await panel.refresh(); assert.equal(cancelled, true); assert.equal(button(host, 'Allow once').disabled, true);
 });
 
 test('malformed envelopes fail closed, and replayed request events cannot create actions or refreshes', async () => {
