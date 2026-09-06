@@ -27,7 +27,7 @@ import { updateTraceToolRow } from '../../trace/store.js';
 import { handleCodexEvent } from './codex.js';
 import { handleCursorEvent } from './cursor.js';
 import { handleGrokEvent } from './grok.js';
-import { handleOpenCodeEvent } from './opencode.js';
+import { handleOpenCodeEvent, refreshOpenCodeTool } from './opencode.js';
 import { extractToolLabels } from './tool-labels.js';
 
 export function extractSessionId(cli: string, event: CliEventRecord): string | null {
@@ -158,6 +158,7 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
 
         // Buffer thinking deltas
         if (inner?.type === 'content_block_delta' && inner.delta?.type === 'thinking_delta') {
+            if (inner.delta.thinking) ctx.printActivity?.reasoning(inner.delta.thinking, 'append');
             if (!ctx.claudeThinkingBuf) ctx.claudeThinkingBuf = '';
             ctx.claudeThinkingBuf += inner.delta.thinking || '';
             ctx.claudeThinkingHadDelta = true;
@@ -182,6 +183,7 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
             }
             const seg = appendAssistantRawText(ctx, deltaText);
             if (seg) {
+                ctx.printActivity?.message(deltaText, 'append', 'unknown');
                 // Arm the per-message guard only when real text flowed: an all-empty
                 // text_delta run must NOT skip the complete-block fallback (else its
                 // prose would be dropped).
@@ -316,6 +318,7 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
 
     const toolLabels = extractToolLabels(cli, event, ctx);
     for (const toolLabel of toolLabels) {
+        if (cli === 'opencode' && refreshOpenCodeTool(ctx, agentLabel, empTag, toolLabel)) continue;
         // Dedupe: same logic as ACP path — skip already-seen tool keys
         const key = [
             toolLabel.icon,
@@ -325,6 +328,13 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
         ].join(':');
         if (ctx.seenToolKeys && ctx.seenToolKeys.has(key)) continue;
         if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
+        // Complete reasoning cards have no delta hook. Observe accepted plaintext
+        // once here; the shared tool emitter deliberately skips synthetic cards.
+        if (toolLabel.toolType === 'thinking' && toolLabel.detail
+            && ((cli === 'codex' && event.item?.type === 'reasoning')
+                || (isClaudeLikeCli(cli) && event.type === 'assistant' && !ctx.hasClaudeStreamEvents))) {
+            ctx.printActivity?.reasoning(toolLabel.detail, 'replace');
+        }
 
         // Resolve running → done/error: replace existing running entry in toolLog
         if (toolLabel.stepRef && (toolLabel.status === 'done' || toolLabel.status === 'error')) {

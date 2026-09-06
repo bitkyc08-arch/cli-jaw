@@ -22,6 +22,14 @@ Telegram hub-member native target replies require the hub's additive bodyDeliver
 
 ## Transport selection and session identity
 
+### Print observation and tool convergence
+
+`runtime/print-projection.ts` is a counter-only accepted-content observer; `print-activity.ts` composes it with existing RuntimeProjection/journal bounds. Generic print and legacy Copilot ACP branches create it once. Native Codex/Pi/Cursor/Grok/Claude retain their own projections and never also take the print path. Accepted Codex phase tags, Claude deltas/snapshots, Cursor normalized segments, Grok text/thought, OpenCode steps and Kiro/AGY/Copilot accepted text are observed before destructive legacy resets. Unknown text stays unknown; stderr, housekeeping and control frames are not assistant messages. Synthetic narration/thought cards are not double-counted as tools.
+
+The existing lifecycle's `onRuntimeEnd` supplies the print application-final, preserving null/empty/whitespace meaning without a native outcome. Normal and bypass error/retry paths close once. Print trace link/finalize errors are best-effort diagnostics, not rollback of an inserted assistant MESSAGE or authority for another inference/send. Reverse linkage may be incomplete after a failed trace write; body/tool blob fallback remains. This is not an atomic MESSAGE+trace-link promise.
+
+`merge-tool-log.ts` keeps primary-first order, latest within each source, primary ties and terminal-over-running precedence. Identity is run+ref or run+seq, never label; unknown workers cannot use boss fallback identity. Exact-pointer parser recovery updates existing durable tool rows after RAM eviction. Only print calls `RuntimeProjection.tool` with `allowTerminalUpdates:true`; native frozen result/enrichment rules remain the default. Live snapshots read at most400 newest durable tool rows even at equal count and merge RAM fallback. The sanitizer's explicit `knownOmitted` option preserves a conservative known loss marker using max-overlap accounting, not addition of overlapping RAM/DB counts. Ordinary append/storage callers keep their existing additive count behavior.
+
 ### Durable Activity journal
 
 `src/trace/activity-journal.ts` commits validated runtime bodies using the existing trace sequence allocator inside one SQLite transaction. `trace_runs.session_id/scope_key` capture the original chat and execution scope at all provider trace starts, including internal Claude workers. The journal validates stored owner, audience and running status before append. Internal records support private child/decision lifecycle but never public SSE, discovery or replay. A copied/forked message cannot acquire source history; deleting its original chat deletes its owned traces. Additive migration backfills only `trace_runs.message_id -> messages.id`, never copied `trace_run_id` pointers, and never invents a historical scope.

@@ -13,6 +13,8 @@ aliases: [CLI Stream Event Reference, stream events, SSE event channel, NDJSON p
 
 ## 1. 전체 흐름
 
+Print providers also feed the canonical journal through accepted parser hooks and `runtime/print-activity.ts`. This observer does not replace `agent_output`, `agent_tool` or lifecycle-selected `agent_done`. Unknown text remains unknown; only explicit provider phase tags or the lifecycle's application-final establish their respective meanings. Synthetic narration/thought cards are not observed twice. Trace failure produces degradation without another send/inference. Exact-pointer tool recovery and `merge-tool-log.ts` converge terminal details; only print opts into explicit terminal-to-terminal updates. Native terminal defaults and messaging listeners remain unchanged. See `runtime-integration.md` for storage and omission semantics.
+
 ```text
 CLI spawn / ACP session
   → raw stdout/stderr lines

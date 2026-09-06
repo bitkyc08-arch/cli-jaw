@@ -3,7 +3,8 @@ import type { AuthMiddleware } from './types.js';
 import { fail } from '../http/response.js';
 import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, waitForExitSettled, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
 import { getLiveRun } from '../agent/live-run-state.js';
-import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
+import { listToolEntriesForRun } from '../trace/store.js';
+import { mergeLatestTools } from '../agent/merge-tool-log.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
@@ -47,7 +48,7 @@ import type { EmployeeRow, SyntheticEmployeeRow } from '../core/employees.js';
 import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import { resolveMainCli } from '../core/main-session.js';
 import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
-import { sanitizeToolLogForDurableStorage, isToolLogOverflowMarker } from '../shared/tool-log-sanitize.js';
+import { sanitizeToolLogForDurableStorage, isToolLogOverflowMarker, omittedCountOf } from '../shared/tool-log-sanitize.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { validateDispatchTask } from '../workflows/employee-boundary.js';
 import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbox.js';
@@ -76,17 +77,14 @@ function getSafeLiveRun(scope: string) {
     const liveRun = getLiveRun(scope);
     let toolLog = sanitizeToolLogForDurableStorage(liveRun.toolLog);
     if (liveRun.running && liveRun.traceRunId) {
-        const bossCount = toolLog.filter(t => t.isEmployee !== true && !isToolLogOverflowMarker(t)).length;
-        const ramBehind = toolLog.length === 0
-            || toolLog.some(isToolLogOverflowMarker)
-            || countToolTraceRows(liveRun.traceRunId) > bossCount;
-        if (ramBehind) {
-            const boss = listToolEntriesForRun(liveRun.traceRunId);
-            if (boss.length > bossCount) {
-                const mirrors = toolLog.filter(t => t.isEmployee === true);
-                toolLog = sanitizeToolLogForDurableStorage([...boss, ...mirrors]);
-            }
-        }
+        // Updates replace rows in place, so equal counts still need a durable read.
+        // All RAM entries remain fallback when storage missed a tool, including boss tools.
+        const boss = listToolEntriesForRun(liveRun.traceRunId, 400);
+        // A nonempty bounded query may be only a retained suffix. Preserve known
+        // RAM loss without adding overlapping reconstruction omission counts.
+        const knownOmitted = omittedCountOf(toolLog.find(isToolLogOverflowMarker));
+        const mirrors = liveRun.toolLog.filter(tool => !isToolLogOverflowMarker(tool));
+        toolLog = sanitizeToolLogForDurableStorage(mergeLatestTools(boss, mirrors, liveRun.traceRunId), { knownOmitted });
     }
     return { ...liveRun, toolLog };
 }

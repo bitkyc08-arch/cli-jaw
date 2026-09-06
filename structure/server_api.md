@@ -17,6 +17,8 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 ## Route Module Architecture
 
+Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durable rows even when RAM has the same count; in-place tool completion can change content without changing count. It merges all RAM fallback, preserves exact run/item identity and retains known omission when DB only has a suffix. The snapshot-only sanitizer option uses max-overlap rather than summing source omissions. `/api/messages` uses the same latest merge and synthesized durable pointers while preserving worker blob mirrors and existing bounds. No new endpoint, tenant policy or final-delivery path is introduced.
+
 | Module | Lines | Routes | 역할 |
 | --- | ---: | ---: | --- |
 | `server.ts` | 640L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |

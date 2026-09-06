@@ -14,6 +14,8 @@ aliases: [Prompt Injection Flow, CLI-JAW prompt flow, prompt pipeline]
 
 ## 전체 구조
 
+Print Activity observes accepted content before existing durable-text resets; it does not build a new prompt, infer a final, trigger another model call or change retries. Existing lifecycle selects the application-final and interrupted output policy. Generic print/legacy Copilot ACP startup failures and the existing single AGY stale-resume retry close the old observation once. Native steer, pending Claude worker cancellation and MESSAGE-before-exit settlement stay under their existing owners.
+
 ```mermaid
 graph TD
     A1["A-1.md<br/>시스템 규칙"] --> SYS["getSystemPrompt()"]

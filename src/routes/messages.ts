@@ -16,6 +16,7 @@ import { dashboardActivityTitleFromExcerpt } from '../core/message-summary.js';
 import { sanitizeSerializedToolLog, serializeSanitizedToolLog, parseToolLogBounded } from '../shared/tool-log-sanitize.js';
 import { isAgentBusy } from '../agent/spawn.js';
 import { listToolEntriesForMessage } from '../trace/store.js';
+import { mergeLatestTools } from '../agent/merge-tool-log.js';
 import { HYDRATE_TOOL_CARDS_FROM_TRACE } from '../core/config.js';
 
 // Option D (devlog 260620 Phase 3): tool cards for a finished message come from
@@ -32,20 +33,12 @@ export function resolveToolLog(
         if (traceTools.length) {
             // Boss tools come from trace_events (durable, uncapped). Worker mirrors
             // (isEmployee) stay sourced from the blob, where Phase 1 already preserves them
-            // sanitized — so enabling the flag never drops worker cards. Union by stepRef.
+            // sanitized — so enabling the flag never drops worker cards.
             // (Folding worker child runs from trace via parent_run_id is the purer Option D
             // path but needs a cross-process linkage write; the blob mirror is display-
             // equivalent and ships the flag safely now — devlog 260620 doc 20/31.)
             const blobWorkers = parseToolLogBounded(blobToolLog).filter((t) => t.isEmployee === true);
-            if (!blobWorkers.length) return serializeSanitizedToolLog(traceTools);
-            const seen = new Set<string>();
-            const merged: unknown[] = [];
-            for (const t of [...traceTools, ...blobWorkers] as { stepRef?: unknown }[]) {
-                const ref = typeof t.stepRef === 'string' && t.stepRef ? t.stepRef : null;
-                if (ref) { if (seen.has(ref)) continue; seen.add(ref); }
-                merged.push(t);
-            }
-            return serializeSanitizedToolLog(merged);
+            return serializeSanitizedToolLog(mergeLatestTools(traceTools, blobWorkers, ''));
         }
     }
     return sanitizeSerializedToolLog(blobToolLog);
