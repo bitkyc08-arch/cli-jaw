@@ -25,6 +25,7 @@ mock.module('../../src/agent/runtime/claude-run-controls.js', { namedExports: { 
 // the application/SDK/SQLite integration belongs to native-claude-spawn.test.ts.
 let serial = 0;
 const traceEnds: Array<{ id: string; status: string }> = [];
+const traceClosePolicies: unknown[] = [];
 const traceTools: ToolEntry[] = [];
 const broadcasts: Array<{ name: string; value: Record<string, unknown> }> = [];
 const ordered: string[] = [];
@@ -39,7 +40,9 @@ mock.module('../../src/agent/lifecycle-handler.js', { namedExports: { handleAgen
 mock.module('../../src/trace/store.js', { namedExports: {
     startTraceRun: () => `trace-${++serial}`, createTraceId: () => `trace-${++serial}`,
     stampTraceTool() {}, updateTraceToolRow: (tool: ToolEntry) => { traceTools.push(structuredClone(tool)); },
-    finalizeTraceRun: (id: string, status: string) => { traceEnds.push({ id, status }); },
+    finalizeTraceRun: (id: string, status: string, _error: unknown, policy: unknown) => {
+        traceEnds.push({ id, status }); traceClosePolicies.push(policy);
+    },
 } });
 mock.module('../../src/core/db.js', { namedExports: { insertMessage: { run() {} } } });
 mock.module('../../src/core/bus.js', { namedExports: {
@@ -111,6 +114,7 @@ test.beforeEach(() => {
     reserved.length = 0; retainedForTeardown.clear();
     traceEnds.length = 0; traceTools.length = 0; broadcasts.length = 0; workerUpdates.length = 0; slot = undefined; clearLiveRun('scope');
     ordered.length = 0;
+    traceClosePolicies.length = 0;
     failCompat = false;
 });
 test.afterEach(() => {
@@ -206,6 +210,7 @@ test('cleanup failure preserves an already selected worker outcome and trace sta
     assert.equal(result.runtimeOutcome?.finalText, 'answer');
     assert.deepEqual(traceEnds, [{ id: f.context().runId, status: 'done' }]);
     assert.equal(broadcasts.filter(value => value.name === 'agent_done').length, 0);
+    assert.deepEqual(traceClosePolicies, [{ onlyIfRunning: true }]);
 });
 
 test('stopped unfinished worker tool is terminal in trace and snapshots before lifecycle, preserving completed tools', async () => {
