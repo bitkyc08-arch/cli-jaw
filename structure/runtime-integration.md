@@ -8,6 +8,13 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 
 ## Shared event contract foundation
 
+The shared native Cursor/Grok host admits one cached fallback start before a
+pre-start failure or immediate Stop emits compatibility completion. Exceptional
+settlement and final cleanup close only the captured still-running trace header,
+even if canonical recording fails. They never rewrite an already selected result,
+timestamp or another owner's run. Exact lease/exit-barrier cleanup remains separate;
+failure diagnostics are not final MESSAGE content.
+
 `src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
 
 `src/agent/runtime/events.ts` records a validated, redacted body through the existing trace writer before publishing `agent_runtime` on the agent event topic. The trace writer owns sequence allocation; sequence gaps are valid. The tuple codec in `src/trace/runtime-body-codec.ts` preserves numeric usage without weakening raw-trace secret masking. Known structured fragments must be sanitized before clipping by their producer. Recording failure returns null, never a fabricated event or another inference.
