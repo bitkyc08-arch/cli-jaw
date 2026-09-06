@@ -5,6 +5,9 @@ import type { TuiStore } from '../../../src/cli/tui/store.js';
 import type { StreamSink } from '../../../src/cli/tui/stream.js';
 import type { IdeType } from '../../../src/ide/diff.js';
 import type { ChatChannel } from './channel.js';
+import type { ActivityIdentity } from '../../../src/shared/presentation.js';
+import type { ActivityReplay } from '../../../src/shared/activity-replay.js';
+import type { TuiActivityAnswers } from './activity-answer-read.js';
 
 // ─── ANSI color codes ────────────────────────
 export const c = {
@@ -108,6 +111,18 @@ export interface TuiContext {
     runtimeLocale: string;
     tuiConfig: { pasteCollapseLines: number; pasteCollapseChars: number; [k: string]: unknown };
     settingsSnapshot: Record<string, unknown>;
+    activityAnswers?: TuiActivityAnswers;
+    activityIdentity: ActivityIdentity | null;
+    activitySettlementIdentity?: ActivityIdentity | null;
+    activityActiveRunId?: string | null;
+    activityReplay?: ActivityReplay;
+    activityRestoreToken?: symbol;
+    onActivityIdentityChanged?: (previous: ActivityIdentity | null, next: ActivityIdentity | null) => void;
+    activityHistoryEscapeTimer?: ReturnType<typeof setTimeout>;
+    activityIdentityGeneration: number;
+    settingsRefreshGeneration?: number;
+    activeActivityKey?: string;
+    activityActiveGeneration?: number;
     values: { port: string; raw: boolean; simple: boolean };
     isRaw: boolean;
 

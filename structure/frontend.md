@@ -13,7 +13,30 @@ aliases: [CLI-JAW Frontend, public architecture, frontend.md]
 > 메인 UI는 `index.html`에서 Google Fonts `Chakra Petch` + `Outfit`을 불러오고, 로컬 `public/assets/fonts/GeistVF.woff2`와 `JetBrainsMono-Variable.woff2`는 자산으로 보관 중이다.
 > PWA는 `manifest.json` + `sw.js` + `icons/`로 구성된다. 오프라인 메시지 캐시, virtual scroll, markdown/KaTeX/Mermaid 렌더링, sandboxed diagram widget, avatar emoji/image 커스터마이즈, voice recording, SSE-first event-channel, PABCD roadmap, subagent-aware ProcessBlock 렌더링, slash command 복구 액션, 반응형 사이드바, theme toggle, chat search, workflow cockpit이 현재 런타임의 핵심이다.
 
-TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock startup from answer-sink startup. Thinking may start the clock without an answer sink; the first later assistant chunk creates that sink once, keeping the same clock/footer and thinking transcript. Completed markdown blocks stream before the terminal, and finalization flushes the remaining answer once. Fullscreen/raw behavior is unchanged.
+Legacy TUI output in `bin/commands/tui/ws-handler.ts` separates turn-clock startup from answer-sink startup. Activity-native output uses the scoped owners below; piped raw remains unchanged.
+
+### Interactive TUI Activity
+
+`src/cli/tui/activity.ts` groups live work, defaults collapsed and preserves explicit
+disclosure through later updates. Whole-instance compatibility frames are fenced
+before transcript/lifecycle mutation. Snapshot identity owns live admission; selected
+history keeps original scope for the same authorized chat without changing writes.
+The reducer is a bounded preview, not an answer source. Journal terminal text is
+redacted. `activity-answer.ts` coalesces compatibility delivery and exact saved MESSAGE
+(saved wins), with null/empty/whitespace distinct and explicit correction after
+irreversible printing. Missing journal uses an identified assistant receipt, never
+a fabricated canonical event. Absent-native error text remains a bounded diagnostic.
+
+`bin/commands/tui/activity-http.ts` is GET-only, rejects redirects, combines caller
+abort/deadline and counts streamed bytes before JSON:270000/page,16MiB snapshot/MESSAGE.
+`activity-answer-read.ts` retains one active and16 queued identity/ref-only jobs;
+retirement/captured-base checks prevent old replies from updating a new view.
+Late line output redraws the existing draft/cursor without repeating turn cleanup.
+F6 is a read-only inspector: Enter shows journal records; A shows exact saved answer.
+Missing, loading, absent and unavailable are distinct. The selected answer renderer
+retains only a viewport, not a full wrapped row array. Terminal sanitation and shared
+grapheme cell policy preserve raw stored bytes while preventing provider VT controls.
+Native scrollback releases payload only after actual flush; see `tui-scrollback.md`.
 
 ---
 
@@ -47,7 +70,7 @@ Canonical terminal previews and public answers can arrive in either order. A lat
 
 The exact final answer comes from MESSAGE, never the redacted journal preview. The opt-in resolved-session MESSAGE envelope supplies chat identity; browser/VS IDs remain distinct from server MESSAGE IDs. Saved-answer reads use the explicit chat/run endpoint with16MiB limit. Ambiguous links do not transfer a view. Fork-owned copied answers may display without gaining source Trace access. Metadata-free offline cache is a labeled text-only disclosure, not an identified conversation. MESSAGE loading is singleflight per view, cancellation-bounded and namespace-captured before asynchronous work.
 
-The raw Trace drawer displays at most80 event rows with earlier/later controls; sparse sequence and row offset remain separate. Raw actions stay disabled until ownership has been checked. Manager/Electron integration and TUI adoption are independently verified follow-on surfaces.
+The raw Trace drawer displays at most80 event rows with earlier/later controls; sparse sequence and row offset remain separate. Raw actions stay disabled until ownership has been checked. TUI has a separate read-only history and exact-answer consumer; integrated Electron QA is separately verified.
 
 ```text
 public/

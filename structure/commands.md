@@ -69,6 +69,17 @@ effort, fast, context, tools, redraw, retry, export, resume, hotkeys
 Appearance MVP screen in the main content region; it does not expose unsupported
 JWC-only `Context` settings. Line-mode still returns the generic command result.
 
+Interactive rich TUI uses Activity by default. Appearance → Presentation switches
+only `presentation.mode` between Activity and Legacy; it does not select transport
+or permissions. Fullscreen Ctrl+O toggles the latest uncommitted Activity before
+legacy tool details/background tasks. F6 opens read-only retained history:
+Up/Down records, Left/Right runs, Enter record detail, A saved answer, R reload,
+N next descriptor window, PageUp/PageDown/Home/End scroll, Esc/F6 close. Pasted
+control sequences remain paste, including during inspector close/reset. This is
+a server-active-chat client: F6 selection never changes message/Stop routing.
+Classic Ctrl+O keeps background tasks; `--simple` and piped `--raw` receive no
+Activity reads or new output/termination behavior.
+
 ---
 
 ## Root CLI Surface (`bin/cli-jaw.ts` + `bin/commands/*.ts`)

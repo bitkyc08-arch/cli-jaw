@@ -176,7 +176,7 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Architecture Docs Sync
 
-- Native event foundation: `src/shared/runtime-contract.ts` + `src/agent/runtime/*` own canonical Codex/Pi projections and optional explicit outcomes. `agent_runtime`/`agent_runtime_gap` publish directly to SSE, bypassing messaging listeners. Native compatibility terminals carry only finality/status and existing trace identity; no public partial/outcome object. Preserve legacy final selection when outcome is absent, and interrupted MESSAGE salvage before exit settlement. See `structure/runtime-integration.md` and `structure/stream-events.md`; Classic live Activity and its default preference are implemented separately from this event foundation; Classic history has its own bounded restoration owner; Manager/TUI integration remains downstream.
+- Native event foundation: `src/shared/runtime-contract.ts` + `src/agent/runtime/*` own canonical Codex/Pi projections and optional explicit outcomes. `agent_runtime`/`agent_runtime_gap` publish directly to SSE, bypassing messaging listeners. Native compatibility terminals carry only finality/status and existing trace identity; no public partial/outcome object. Preserve legacy final selection when outcome is absent, and interrupted MESSAGE salvage before exit settlement. See `structure/runtime-integration.md` and `structure/stream-events.md`; Classic live Activity and its default preference are implemented separately from this event foundation; Classic history has its own bounded restoration owner; Interactive TUI has its own scoped consumer described below.
 - Runtime selection: only Cursor/Grok/Claude accept `perCli.<cli>.transport`; existing absence stays print before defaults merge. Native switchable keys prefix the whole legacy bucket with `native-v1:` and never overwrite the print singleton. Capture transport/bucket once, forward through lifecycle persistence/compact, and keep scoped resets exact. Unsupported main/worker native adapters fail before print/fallback work; compiled support in `/api/cli-status` is separate from cached auth/binary readiness. Codex App/Pi keys remain unchanged.
 - Claude native: the optional SDK, shared pool/host and existing lifecycle own sequential main turns, fresh worker assignments, immutable terminal claims, hard Stop and interrupted MESSAGE before exit-settle. Default steer remains kill/resume, never advertised as in-band. Auto/safe decisions use live requests; deny/unknown profiles fail before preparation, including the memory extractor. Images are bounded and child activity is foreground-only. Child declarations reconcile from both parent/child frames; their ID ownership survives child completion and is not the same as live permission eligibility. Pre-start failure/Stop use one cached fallback before compatibility output; `onlyIfRunning` preserves finished trace headers.
 
@@ -197,15 +197,26 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Native decisions
 
+Interactive TUI Activity is implemented in `src/cli/tui/activity*.ts` and
+`bin/commands/tui/activity*.ts`. Default Activity/explicit Legacy is independent of
+transport. Snapshot owns live admission; F6 is read-only history, never a message/
+Stop target selector. Journal text is redacted, not final: exact saved MESSAGE wins
+over compatibility and preserves null/empty/whitespace. Keep missing-journal receipt
+binding shared by live and replay, bounded GET/queue lifetime, native-absent diagnostic
+separation, newer-run cleanup guards and draft-preserving late line output. Release
+payload only after actual scrollback flush; raw/simple paths receive no new reads.
+Sync commands/frontend/stream/tui-scrollback docs; broader visual/cross-runtime and
+final integrated Electron QA have separate owners and are not implied by TUI tests.
+
 Classic retained Activity uses `activity-history.ts`/`activity-discovery.ts` and the
 shared fixed-through reader. Preserve original stored scope, bounded per-run replay,
 focus-aware eviction and rejection of nested copied host keys. MESSAGE loading opts
 into `withSession=1`; `/api/messages/by-trace/:runId?session=...` returns a unique
 exact saved answer (16MiB,409 ambiguity), never grants source Trace access to forks.
 Cache/VS IDs are not server MESSAGE IDs. Keep raw Trace at80 rows with paging and
-honor denied/unverified actions. See frontend/API docs; Manager/TUI remain separate.
+honor denied/unverified actions. See frontend/API docs; TUI request records remain read-only.
 
-`presentation.mode` accepts only activity/legacy; absence defaultsActivity for fresh/upgraded homes, explicitLegacy survives reload, and perCli.transport is independent. Explicit known mode and/or eligible transport-only API patches preserve admitted-run ownership and skip fallback reset/singleton sync/JWC rewrite. Keep legacy presentation-subtree skips separately, and retain serialization, persistence rollback and messaging dispatch. Mixed execution-changing/unknown/empty leaves retain invalidation; external-file transport edits still invalidate while API self-write echoes are ignored. Classic preference refresh uses the existing bounded reader and shared load/event generation; never replace native-request-bridge with the old Web donor. Manager Display owns singleflight, disabled/guarded edits, captured dirty acknowledgement and client/port epochs. Classic live and retained Activity consume the canonical stream and journal; Manager integration and TUI remain separate follow-ons. Keep bounded views, current-run final ownership and independent request controls.
+`presentation.mode` accepts only activity/legacy; absence defaultsActivity for fresh/upgraded homes, explicitLegacy survives reload, and perCli.transport is independent. Explicit known mode and/or eligible transport-only API patches preserve admitted-run ownership and skip fallback reset/singleton sync/JWC rewrite. Keep legacy presentation-subtree skips separately, and retain serialization, persistence rollback and messaging dispatch. Mixed execution-changing/unknown/empty leaves retain invalidation; external-file transport edits still invalidate while API self-write echoes are ignored. Classic preference refresh uses the existing bounded reader and shared load/event generation; never replace native-request-bridge with the old Web donor. Manager Display owns singleflight, disabled/guarded edits, captured dirty acknowledgement and client/port epochs. Classic live and retained Activity consume the canonical stream and journal; Manager and TUI have separate instance and input lifecycle owners. Keep bounded views, current-run final ownership and independent request controls.
 
 Print Activity uses `runtime/print-projection.ts` and `print-activity.ts` as observers, never final selectors. Only accepted parser text enters; stderr/control output stays raw. Lifecycle supplies the application-final and existing bypass/retry paths close once. `merge-tool-log.ts` reconciles exact run/ref or run/seq identities; unknown workers never borrow boss identity. Bounded snapshot hydration retains known RAM omission with the sanitizer's explicit max-overlap option; default append/storage counting is unchanged. Only print opts into terminal tool refresh; native default freeze/enrichment, Claude pending-worker cancellation and Slack final/ACK/queue owners remain intact.
 

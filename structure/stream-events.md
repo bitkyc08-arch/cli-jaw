@@ -110,6 +110,14 @@ Owner-bound `activity-journal.ts` now persists immutable canonical events before
 
 ### `broadcast()` public events
 
+Interactive TUI consumes the same canonical side channel with snapshot-owned
+identity. Unknown foreign compatibility frames are rejected before legacy input/
+clock/IDE mutation. Canonical terminal status does not promote journal text into
+an answer: the exact chat/run MESSAGE read refines an admitted compatibility
+receipt, including missing-journal runs. Snapshot-owned newer runs retain lifecycle
+ownership even without a canonical model. F6 records are read-only; inspecting an
+approval never answers it. Raw pipe retains existing NDJSON/agent_done termination.
+
 아래 표는 2026-07-06 code read 기준 `broadcast(type, data)` 또는 `broadcast(..., 'public')`로 public SSE bus에 들어갈 수 있는 event inventory다. Hard count는 Phase 2 generated hook으로 대체 예정이라 여기서는 수동 숫자를 고정하지 않는다.
 
 | Type | 대표 payload | 발행 위치 / 용도 |

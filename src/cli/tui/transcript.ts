@@ -1,9 +1,36 @@
+import type { RuntimeTurnOutcome } from '../../shared/runtime-contract.js';
+import type { ActivityTranscriptItem } from './activity.js';
+
+export type TuiAnswerReadState = 'pending' | 'saved' | 'absent' | 'unavailable';
+export interface TuiAnswerReadIdentity { sessionId: string; scope: string; runId: string; }
+export interface TuiAnswerReadReceipt {
+    answerReadState?: TuiAnswerReadState;
+    answerReadMessage?: string;
+}
+export type TuiAnswerReadTarget = ActivityTranscriptItem | (Extract<TranscriptItem, { type: 'assistant' }>
+    & { activityReadIdentity: TuiAnswerReadIdentity });
+
+interface ActivityPreviewReceipt {
+    activityPreviewKey?: string;
+    activityPreviewPrinted?: boolean;
+    activityPreviewSettled?: boolean;
+    activityPreviewTruncated?: boolean;
+}
+
+const FALLBACK_PREVIEW_MAX_ROWS = 16;
+const FALLBACK_PREVIEW_MAX_CHARS = 32 * 1024;
+const FALLBACK_PREVIEW_ROW_CHARS = 4096;
+
 export type TranscriptItem =
+    | ActivityTranscriptItem
     | { type: 'user'; displayText: string; submitText: string; timestamp: number; agentId?: string }
-    | { type: 'assistant'; text: string; streaming: boolean; timestamp: number; agentId?: string }
-    | { type: 'thinking'; text: string; streaming: boolean; timestamp: number; agentId?: string; collapsed?: boolean; stepRef?: string }
+    | ({ type: 'assistant'; text: string; streaming: boolean; timestamp: number; agentId?: string;
+        activityKey?: string; activityFinality?: 'present' | 'absent'; activityStatus?: RuntimeTurnOutcome['status']; activityPrinted?: boolean;
+        activitySource?: 'compatibility' | 'saved'; activityDigest?: string; activityReleased?: boolean; activityCorrection?: boolean; activityDiagnostic?: boolean;
+        activityReadIdentity?: TuiAnswerReadIdentity } & ActivityPreviewReceipt & TuiAnswerReadReceipt)
+    | ({ type: 'thinking'; text: string; streaming: boolean; timestamp: number; agentId?: string; collapsed?: boolean; stepRef?: string } & ActivityPreviewReceipt)
     | { type: 'tool'; text: string; timestamp: number; agentId?: string; collapsed?: boolean; detail?: string; stepRef?: string; status?: 'running' | 'done' | 'error' }
-    | { type: 'command'; text: string; timestamp: number; commandName?: string; ok?: boolean }
+    | { type: 'command'; text: string; timestamp: number; commandName?: string; ok?: boolean; activityDiagnosticKey?: string }
     | { type: 'status'; text: string; ephemeral: true; timestamp: number; agentId?: string };
 
 export interface TranscriptState {
@@ -91,6 +118,54 @@ export function appendAssistantTurnText(state: TranscriptState, chunk: string, a
     if (appendToActiveAssistant(state, chunk)) return true;
     startAssistantItem(state, agentId);
     return appendToActiveAssistant(state, chunk);
+}
+
+/** A missing canonical record permits a preview, never ownership of another run's tail. */
+export function appendActivityFallbackPreview(
+    state: TranscriptState, key: string, text: string,
+    options: { thinking?: boolean; replace?: boolean; agentId?: string; stepRef?: string } = {},
+): { item?: Extract<TranscriptItem, { type: 'assistant' | 'thinking' }>; previousText: string; omitted: boolean } | undefined {
+    if (!text) return;
+    const type = options.thinking ? 'thinking' : 'assistant';
+    const previews = state.items.filter((item): item is Extract<TranscriptItem, { type: 'assistant' | 'thinking' }> =>
+        (item.type === 'assistant' || item.type === 'thinking') && item.activityPreviewKey === key);
+    if (previews.some(item => item.activityPreviewSettled)) return;
+    // Once any input is omitted, freeze this run's preview. Resuming at a later
+    // chunk could expose the suffix of a discarded OSC/CSI control sequence.
+    if (previews.some(item => item.activityPreviewTruncated)) return { previousText: '', omitted: true };
+    const existing = previews.find(item => item.type === type && item.agentId === options.agentId
+        && (item.type !== 'thinking' || item.stepRef === options.stepRef));
+    if (!existing && previews.length >= FALLBACK_PREVIEW_MAX_ROWS) {
+        previews[0]!.activityPreviewTruncated = true;
+        return { previousText: '', omitted: true };
+    }
+    const previousText = existing?.text ?? '';
+    const budget = Math.min(FALLBACK_PREVIEW_ROW_CHARS,
+        FALLBACK_PREVIEW_MAX_CHARS - previews.reduce((sum, item) => sum + item.text.length, 0) + previousText.length);
+    const omitted = (options.replace ? text.length : previousText.length + text.length) > budget;
+    const bounded = options.replace ? text.slice(0, budget) : previousText + text.slice(0, Math.max(0, budget - previousText.length));
+    const item: Extract<TranscriptItem, { type: 'assistant' | 'thinking' }> = existing ?? {
+        type, text: bounded, streaming: true, timestamp: Date.now(), activityPreviewKey: key,
+        ...(options.agentId ? { agentId: options.agentId } : {}),
+        ...(options.stepRef ? { stepRef: options.stepRef } : {}),
+    };
+    item.text = bounded;
+    item.streaming = true;
+    if (!existing) state.items.push(item);
+    if (omitted) item.activityPreviewTruncated = true;
+    return { item, previousText, omitted };
+}
+
+/** Empty tombstones preserve both row references and native scrollback indices. */
+export function settleActivityFallbackPreviews(state: TranscriptState, key: string): boolean {
+    let printed = false;
+    for (const item of state.items) {
+        if ((item.type !== 'assistant' && item.type !== 'thinking') || item.activityPreviewKey !== key
+            || item.activityPreviewSettled) continue;
+        printed ||= Boolean(item.activityPreviewPrinted);
+        Object.assign(item, { type: 'assistant', text: '', streaming: false, activityPreviewSettled: true });
+    }
+    return printed;
 }
 
 // jawcode parity (083.5): a live thinking tail settles into its collapsed

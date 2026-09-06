@@ -26,6 +26,7 @@ import { openPromptBlock, reopenPromptLine, redrawPromptLine, renderBlockSeparat
 import { openBgtaskOverlay, dismissOverlay, redrawInputWithAutocomplete, openHelpOverlay, openCommandPalette, refreshCommandPalette, refreshChoiceSelector, closeAutocompleteForCtx, applySettingsSelection } from './overlays.js';
 import { runSlashCommand } from './slash-command-runner.js';
 import { appendFullscreenStatus, isFullscreen, requestFullscreenFrame } from './fullscreen-feedback.js';
+import { closeTuiActivityHistory } from './activity-history.js';
 
 function refreshAutocompleteNav(ctx: TuiContext): void {
     const ac = ctx.store.autocomplete;
@@ -70,6 +71,8 @@ export function flushPendingEscape(ctx: TuiContext): void {
     ctx.escPending = false;
     ctx.escTimer = null;
     const ov = ctx.store.overlay;
+    if (ctx.store.activityPasteDrain.active) return;
+    if (ov.activityHistory.open) { closeTuiActivityHistory(ctx); return; }
     if (ov.helpOpen || ov.paletteOpen || ov.selector.open || ov.bgtaskOpen || ov.settingsOpen) {
         dismissOverlay(ctx);
         return;

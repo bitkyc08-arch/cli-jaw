@@ -53,6 +53,9 @@ import { handleKeyInput, flushPendingEscape } from './tui/input-handler.js';
 import { runFullscreenMode } from './tui/fullscreen-mode.js';
 import { resolveTuiDisplayMode } from '../../src/cli/tui/mode.js';
 import { handleWsMessage } from './tui/ws-handler.js';
+import { refreshActivityIdentity } from './tui/api.js';
+import { bindActivityContext, restoreActiveActivity, invalidateActivityContext } from './tui/activity-replay.js';
+import { routeActivityHistoryInput } from './tui/activity-history.js';
 import { connectChannel, type ChatChannel } from './tui/channel.js';
 import { asRecord, fieldString } from '../_http-client.js';
 
@@ -198,6 +201,9 @@ const ctx: TuiContext = {
     runtimeLocale,
     tuiConfig,
     settingsSnapshot,
+    activityIdentity: null,
+    activitySettlementIdentity: null,
+    activityIdentityGeneration: 0,
     values: { port: values.port as string, raw: !!values.raw, simple: !!values.simple },
     isRaw: !!values.raw,
     store: createTuiStore(),
@@ -265,7 +271,11 @@ if (rawPiped) {
     try { ws.close(); } catch { /* already closed */ }
     process.exit(2);
 } else {
-    if (!ctx.isRaw) await initHighlight();   // interactive rich TUI only; --simple & --raw untouched
+    if (!ctx.isRaw) {
+        bindActivityContext(ctx);
+        await refreshActivityIdentity(ctx);
+        await initHighlight();
+    } // interactive rich TUI only; --simple & --raw untouched
     // Initialize jawcode TUI components (async, once)
     const { tryInitJawcodeTui } = await import('../../src/cli/tui/jawcode-render.js');
     const { renderWelcome } = await import('../../src/cli/tui/jawcode-bridge.js');
@@ -305,6 +315,9 @@ if (rawPiped) {
 
     process.stdin.on('data', (_key) => {
         let incoming = _key as unknown as string;
+        if (routeActivityHistoryInput(ctx, incoming, token => handleKeyInput(ctx, token), {
+            columns: process.stdout.columns || 80, height: Math.max(1, getRows() - 5),
+        })) return;
         if (ctx.escPending) {
             if (ctx.escTimer) clearTimeout(ctx.escTimer);
             ctx.escTimer = null;
@@ -338,8 +351,11 @@ if (rawPiped) {
 
     // ─── Channel messages (SSE or legacy WS) ─
     ws.on('message', (data) => handleWsMessage(ctx, data));
+    ws.onReconnect?.(() => { void restoreActiveActivity(ctx); });
+    if (!ctx.isRaw) void restoreActiveActivity(ctx);
 
     ws.on('close', () => {
+        invalidateActivityContext(ctx);
         cleanupScrollRegion(resolveShellLayout(process.stdout.columns || 80, getRows(), ctx.store.panes));
         console.log(`\n  ${c.dim}Disconnected${c.reset}\n`);
         setBracketedPaste(false);
