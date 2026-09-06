@@ -4,9 +4,6 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Documentation Map
 
-- Cursor setup failures admit their captured run before compatibility completion, then attempt canonical termination and close only the still-running trace header. Diagnostics do not create an assistant final; journal failures retain compatibility delivery and explicit incomplete history.
-
-
 - Start at `structure/INDEX.md` for the current architecture map.
 - Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes. Concurrent inbound gateway changes belong in `structure/INDEX.md`, `structure/infra.md`, `structure/telegram.md`, and the messaging runtime docs.
 - Do not use the old `devlog/structure/` path for architecture docs; the active folder is `structure/`.
@@ -16,6 +13,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 - The running server executes compiled `dist/` (`jaw serve` → `dist/server.js`), never the TS sources. After changing `server.ts`/`src/**`/`bin/**`, run `npm run build` before telling anyone to restart; frontend changes additionally need `npm run build:frontend`. Full rules: `AGENTS.md` § Build & Deploy Contract.
 
 ## Current Runtime Notes
+
+- Cursor setup failures admit their captured run before compatibility completion, then attempt canonical termination and close only the still-running trace header. Diagnostics do not create an assistant final; journal failures retain compatibility delivery and explicit incomplete history.
 
 - Native decision APIs are `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id`. Existing instance auth, exact run/session/scope/turn and current-owner checks apply; this is not a tenant ACL or a new loopback credential policy. The registry sanitizes and preflights the32KiB event before insertion, keeps native option IDs in private mappings, and caps128 requests/120s; ACP callbacks cap32 and retain cancellation latches through reply completion. An unflushed selected reply forces connection retirement on cancellation. Provider activation and Activity controls remain separate; no messaging contract changes.
 
