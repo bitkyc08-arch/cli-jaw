@@ -70,10 +70,16 @@ function traceAllowed(message: HTMLElement, allowed: boolean): void {
     });
 }
 function finishPromise(host: Host): void {
+    host.retry.disabled = false;
     host.pending = false; host.resolve?.(); host.resolve = null; host.promise = null;
 }
 function cancel(host: Host, remove: boolean): void {
-    host.controller.abort(); observer?.unobserve(host.message);
+    host.controller.abort();
+    if (remove) observer?.unobserve(host.message);
+    else {
+        host.status.textContent = 'Activity read cancelled. Retry to inspect.';
+        host.retry.textContent = 'Retry activity'; host.retry.hidden = false; host.box.hidden = false;
+    }
     if (queued.delete(host.message)) finishPromise(host);
     if (remove) { hosts.delete(host.message); host.box.remove(); }
 }
@@ -147,6 +153,9 @@ async function execute(host: Host): Promise<void> {
             return combine(seed, tail);
         }, { runId: host.runId, signal: host.controller.signal });
         if (!current(host, captured, epoch, path) || !seed || !tail) return;
+        // Validated history ownership survives removal of the transient active
+        // snapshot marker, including an empty journal's first successful answer.
+        host.message.dataset['activitySession'] = captured.sessionId;
         const result = tail;
         let turn = findLiveActivity(host.runId);
         const recordedEnd = [...seed.events, ...result.events].find(event => event.kind === 'turn-end');
@@ -214,7 +223,6 @@ async function execute(host: Host): Promise<void> {
     } finally {
         clearTimeout(timer);
         if (hosts.get(host.message) === host) {
-            host.retry.disabled = false;
             if (!host.controller.signal.aborted || host.controller.signal.reason?.name === 'TimeoutError') host.loaded = true;
         }
     }

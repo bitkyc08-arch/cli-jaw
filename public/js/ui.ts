@@ -474,6 +474,12 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
         if (!state.currentAgentDiv || !state.currentAgentDiv.isConnected) {
             state.currentAgentDiv = addMessage('agent', '');
         }
+        // Exact current-run recovery preserves the original row even when its
+        // journal has no Activity model and the first saved-answer read succeeds.
+        const preserveActivityHost = !!(state.currentAgentDiv.dataset['activityKey']
+            || state.currentAgentDiv.dataset['activityAnswerPending']
+            || traceRunId && cacheSessionId && state.currentAgentDiv.dataset['traceRunId'] === traceRunId
+                && state.currentAgentDiv.dataset['messageSessionId'] === cacheSessionId);
         if (traceRunId) state.currentAgentDiv.dataset['traceRunId'] = traceRunId;
         delete state.currentAgentDiv.dataset['activityRecovering'];
         state.currentAgentDiv.removeAttribute(ACTIVE_RUN_HYDRATED_ATTR);
@@ -523,7 +529,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
                 else if (encoded) pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
-            if (durableToolLogJson && !div.dataset['activityKey'] && !div.dataset['activityAnswerPending']) {
+            if (durableToolLogJson && !preserveActivityHost) {
                 // A first/cleared chat can activate VS from an already-rendered
                 // user row without the history loader's lazy callback.
                 if (!vs.onLazyRender) registerVirtualScrollCallbacks(vs);
@@ -539,15 +545,14 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
             } else {
                 div.dataset['turnIndex'] = String(vs.count);
                 if (!div.dataset['messageId']) div.dataset['messageId'] = generateId();
-                if (div.dataset['activityKey'] || div.dataset['activityAnswerPending']) ensureActivityVirtualCallbacks(vs);
+                if (preserveActivityHost) ensureActivityVirtualCallbacks(vs);
                 vs.appendLiveItem(div);
             }
             div.remove();
         }
 
         // Cache agent response for offline (use finalText to capture stream-only responses)
-        if (finalText || (traceRunId && (state.currentAgentDiv?.dataset['activityKey']
-            || state.currentAgentDiv?.dataset['activityAnswerPending']))) upsertMessage({
+        if (finalText || (traceRunId && preserveActivityHost)) upsertMessage({
             role: 'assistant',
             content: finalText,
             tool_log: durableToolLogJson,

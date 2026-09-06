@@ -1,6 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupWebUiDom, resetWebUiDom, getObservedElements } from './web-ui-test-dom.ts';
+import { setupWebUiDom, resetWebUiDom, getObservedElements, getUnobservedElements } from './web-ui-test-dom.ts';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
 
 // 241/242: real history/read/replay/live/view; only HTTP and storage are ports.
@@ -167,6 +167,28 @@ test('external recycle cancels the active barrier and lets B finish before uncoo
     await hydrate(savedMessage(runId('after-late-A')));
     assert.equal(a.querySelector('.activity-turn'), null);
     assert.equal(terminals.includes(a.dataset['traceRunId']!), false);
+});
+
+test('SSE suspension releases retained queued controls for manual retry without discarding observation', options, async () => {
+    const a = savedMessage(runId('outage-active-A'));
+    const b = savedMessage(runId('outage-queued-B'));
+    history.setActivityHistoryReadReady(true);
+    const gate = hold(a.dataset['traceRunId']!);
+    const readingA = hydrate(a); await gate.started;
+    const readingB = hydrate(b);
+    const retry = b.querySelector<HTMLButtonElement>('.activity-read-control button')!;
+    assert.equal(retry.disabled, true);
+    history.setActivityHistoryReadReady(false);
+    await readingA; await readingB;
+    assert.equal(retry.disabled, false, 'a cancelled queued job never enters execute finally');
+    assert.doesNotMatch(b.querySelector('.activity-read-control')!.textContent!, /queued|Loading/);
+    assert.equal(getUnobservedElements().includes(b), false, 'retained rows must still receive future viewport demand');
+    assert.ok(getObservedElements().includes(b));
+    retry.click();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.ok(b.querySelector('.activity-turn'), 'actual enabled button can read while SSE automatic admission stays down');
+    assert.deepEqual(terminals, [b.dataset['traceRunId']]);
+    assert.equal(a.querySelector('.activity-turn'), null, 'the aborted uncooperative A did not need to resolve');
 });
 
 for (const admission of ['live', 'history'] as const) {

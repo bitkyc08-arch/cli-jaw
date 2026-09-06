@@ -226,7 +226,7 @@ test.after(async () => {
     for (const [key, value] of originals) { if (value) Object.defineProperty(globalThis, key, value); else Reflect.deleteProperty(globalThis, key); }
 });
 
-async function recoverModelFree(virtualized = false) {
+async function recoverModelFree(virtualized = false, beforeFinalize: () => void | Promise<void> = () => {}) {
     const runId = 'tr_model_free_' + String(++serial).padStart(16, '0');
     if (virtualized) { visibleRows = [0, 1]; ui.addMessage('user', 'seed virtual scroll'); }
     cache.setMessageScope('cache-A');
@@ -238,6 +238,7 @@ async function recoverModelFree(virtualized = false) {
     const messageId = original.dataset['messageId']; assert.ok(messageId);
     assert.equal(live.findLiveActivity(runId), undefined, 'empty seed must not invent an ActivityState or turnId');
     const completion = history.hydrateActivityHost(original, runId, true);
+    await beforeFinalize();
     savedRelease.resolve(); await completion; await port.drain();
     assert.equal(savedReads, 1); assert.equal(journalReads, 2, 'real seed and suffix readers both ran');
     assert.equal(state.currentAgentDiv, null); assert.equal(state.agentBusy, false);
@@ -291,6 +292,37 @@ test('successful exact saved retry withdraws unavailable provenance before a lat
     assert.equal(original.querySelector('.msg-content')?.getAttribute('data-raw'), savedReply.content);
     assert.deepEqual(await cache.getScopedMessages('cache-A'), before);
     assert.equal(port.writes.length, writes); assert.equal(finalizations, finalsBefore); assert.equal(unread, unreadBefore);
+    assert.equal(live.findLiveActivity(runId), undefined);
+});
+
+for (const content of ['FIRST SAVED ANSWER', '']) test(`first successful model-free saved recovery retains tool-backed VS ownership (${content ? 'nonempty' : 'empty'})`, { timeout: 10000 }, async t => {
+    savedReply = { kind: 'saved', id: 88, content };
+    const forcedScroll: string[] = [];
+    const { runId, messageId } = await recoverModelFree(true, async () => {
+        // Initial append and preserveScrollDuringMutation schedule a two-frame
+        // follow. Settle that known layout before the user starts browsing away.
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const container = document.getElementById('chatMessages')!;
+        for (const [key, value] of [['scrollHeight', 5000], ['clientHeight', 600]] as const)
+            Object.defineProperty(container, key, { configurable: true, value });
+        t.after(() => { Reflect.deleteProperty(container, 'scrollHeight'); Reflect.deleteProperty(container, 'clientHeight'); });
+        container.scrollTop = 0; container.dispatchEvent(new window.Event('scroll'));
+        t.mock.method(virtual.getVirtualScroll(), 'scrollToBottom', () => { forcedScroll.push(new Error('scroll caller').stack!); });
+    });
+    const rows = [...document.querySelectorAll<HTMLElement>('.msg-agent')].filter(row => row.dataset['traceRunId'] === runId);
+    assert.equal(rows.length, 1);
+    const row = rows[0]!;
+    assert.equal(row.dataset['messageId'], messageId);
+    assert.equal(row.dataset['messageSessionId'], identity.sessionId);
+    assert.equal(row.dataset['serverMessageId'], '88');
+    assert.equal(row.dataset['activitySaved'], 'true');
+    assert.equal(row.querySelector('.msg-content')?.getAttribute('data-raw'), content);
+    assert.equal(forcedScroll.length, 0, 'asynchronous history completion cannot force the browsing user to the tail: ' + forcedScroll.join('\n'));
+    const cached = (await cache.getScopedMessages('cache-A')).filter(item => item.trace_run_id === runId);
+    assert.equal(cached.length, 1); assert.equal(cached[0]!.content, content);
+    assert.equal(cached[0]!.session_id, identity.sessionId); assert.equal(cached[0]!.message_id, 88);
+    await history.hydrateActivityHost(row, runId, true); await port.drain();
+    assert.equal(savedReads, 2, 'retained VS row can inspect its history again');
     assert.equal(live.findLiveActivity(runId), undefined);
 });
 

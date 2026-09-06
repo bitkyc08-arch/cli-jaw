@@ -426,9 +426,6 @@ function recoverActivityTerminal(value: RecoveredActivityTerminal): void {
         // packet must match the delivery identity that owned this current host.
         settleModelFreeUnavailableAnswer({ runId: value.runId, sessionId: value.sessionId,
             scope: state.activityIdentity.scope, message, cacheScope: value.cacheScope });
-        // Finalization removes the active snapshot marker. Preserve its verified
-        // chat provenance so this same model-free host can retry saved reads.
-        if (hasModelFreeAnswerReceipt(value.runId)) message.dataset['activitySession'] = value.sessionId;
     }
     // No verified answer remains blank, with the history control explaining
     // absence versus a failed read. Never resurrect the provisional stream.
