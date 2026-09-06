@@ -23,7 +23,17 @@ TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock st
 
 `presentation.mode` is Activity by default for fresh/upgraded settings without a choice, or explicitly Legacy. Manager Display places this before TUI appearance using the existing SelectField/SettingsSection skin. It has current-instance singleflight, disabled/guarded editing, failed-save draft retention and captured dirty-entry acknowledgement; A→B→A cannot accept an old completion. Existing SettingsShell is keyed by port and is not rewritten.
 
-Classic `presentation-preference.ts` shares initial-load/event generations, coalesces queued changes and reads settings with the existing4MiB/15s bounded helper. It accepts direct settings or successful ok/data, retains last mode on latest failure, and never invokes loadSettings/runtime migration from settings_change. The current native request bridge and snapshot recovery remain untouched. This checkpoint stores/applies the preference dataset; the full Activity renderer/history comes in the following integration layer, so no renderer activation is inferred from the field alone.
+Classic `presentation-preference.ts` shares initial-load/event generations, coalesces queued changes and reads settings with the existing4MiB/15s bounded helper. It accepts direct settings or successful ok/data, retains last mode on latest failure, and never invokes loadSettings/runtime migration from settings_change. The native request bridge still owns snapshot identity, outage/manual freshness and original execution-ID responses.
+
+### Live Activity
+
+Classic consumes parsed canonical events through the existing SSE dispatcher. Activity is the default presentation: one closed native disclosure groups tools, commentary, reasoning and explicitly unknown-phase output; the existing message body owns the full final answer. Legacy remains reversible during a turn because CSS hides, rather than deletes, its existing bounded preview. Requests stay outside disclosure in either mode.
+
+`src/shared/activity-state.ts` owns the pure preview reducer (128 entries,4096 chars each,65536 combined chars,16 request notices,32768-char final preview). `activity-replay.ts` coordinates bounded state; it does not fetch history. `features/activity-view.ts` renders40 rows/page and retains128 explicit item choices. `activity-live.ts` retains16 turn models/64 choice groups and receives existing renderer actions through a host port; it must not import the legacy ui/state/VS/Trace dependency cycle.
+
+`ws.ts` admits events only against the snapshot bridge's accepted session/scope and current stream readiness. Pre-admission events and gap notices share256 entries/1MiB; foreign identities are ignored, overflow and missing starts are visibly incomplete. Capacity fallback preserves the compatibility answer. Native-input/cancel-reprompt receipts are not terminals. A new run resets only the previous legacy presentation singleton, not the runtime.
+
+Canonical terminal previews and public answers can arrive in either order. A later run-bound native-present or print answer corrects only its own earlier canonical row, without another completion/unread notification. Native-absent diagnostics are notices, not Activity answers. Virtual scroll uses stable message IDs and additive live remount/recycle hooks; cache correction updates only existing assistant rows in the captured browser cache scope and run. The full answer is never read back from the bounded reducer. Cold history/discovery/replay restoration is a separate follow-on; current live-row recycling does not imply it exists.
 
 ```text
 public/

@@ -28,6 +28,7 @@ export type RestoreReason =
 
 export interface VirtualItem {
     id: string;
+    messageId?: string;
     html: string;
     height: number; // used as estimateSize hint; tanstack measures real heights
     rehydratesProcessDetails?: boolean;
@@ -35,6 +36,10 @@ export interface VirtualItem {
 
 export type LazyRenderCallback = (targets: HTMLElement[]) => void;
 export type RestoreFollowPredicate = () => boolean;
+export interface VirtualLifecycleHooks {
+    postRender(root: HTMLElement): void;
+    recycle(element: HTMLElement): void;
+}
 type MeasurableVirtualElement = Pick<HTMLElement, 'getBoundingClientRect'>;
 interface ScrollAnchor {
     el: HTMLElement;
@@ -82,6 +87,23 @@ export class VirtualScroll {
 
     onLazyRender: LazyRenderCallback | null = null;
     onPostRender: ((viewport: HTMLElement) => void) | null = null;
+    onRecycle: ((element: HTMLElement) => void) | null = null;
+    private lifecycleHooks = new Set<VirtualLifecycleHooks>();
+
+    /** Add a stable owner's hooks without replacing caller-owned callbacks. */
+    addLifecycleHooks(hooks: VirtualLifecycleHooks): void {
+        this.lifecycleHooks.add(hooks);
+    }
+
+    private postRender(root: HTMLElement): void {
+        this.onPostRender?.(root);
+        for (const hooks of this.lifecycleHooks) hooks.postRender(root);
+    }
+
+    private recycle(element: HTMLElement): void {
+        this.onRecycle?.(element);
+        for (const hooks of this.lifecycleHooks) hooks.recycle(element);
+    }
 
     constructor(containerId: string) {
         this.container = document.getElementById(containerId)!;
@@ -212,13 +234,35 @@ export class VirtualScroll {
         releaseMermaidNodes(div);
         const html = div.outerHTML;
         const id = generateId();
-        this.items.push({ id, html, height: EST_HEIGHT });
+        const messageId = div.dataset['messageId'];
+        this.items.push({ id, ...(messageId ? { messageId } : {}), html, height: EST_HEIGHT });
         if (this.virtualizer) {
             this.virtualizer.setOptions({
                 ...this.virtualizer.options,
                 count: this.items.length,
             });
+            // Promotion must mount even if neither viewport nor scroll offset changed.
+            this.renderItems();
         }
+    }
+
+    /** Reconcile one uniquely identified row, including an offscreen retained row. */
+    reconcileMessage(messageId: string, update: (message: HTMLElement) => void): boolean {
+        const index = this.items.findIndex(item => item.messageId === messageId);
+        if (index < 0 || this.items.some((item, i) => i !== index && item.messageId === messageId)) return false;
+        const item = this.items[index]!;
+        const mounted = this.mounted.get(index);
+        const wrapper = this.container.ownerDocument.createElement('div');
+        if (!mounted) wrapper.innerHTML = item.html;
+        const message = mounted ?? wrapper.firstElementChild as HTMLElement | null;
+        if (!message || message.dataset['messageId'] !== messageId) return false;
+        update(message);
+        item.html = message.outerHTML;
+        if (mounted && this.virtualizer) {
+            syncMeasuredItemHeight(this.items, index, mounted);
+            this.virtualizer.measureElement(mounted);
+        }
+        return true;
     }
 
     updateItemHtml(idx: number, html: string): void {
@@ -376,6 +420,7 @@ export class VirtualScroll {
         if (!this._active) return;
         this.deactivate();
         this.container.innerHTML = this.items.map(it => it.html).join('');
+        this.postRender(this.container);
         this.items = [];
     }
 
@@ -385,6 +430,8 @@ export class VirtualScroll {
         this.itemGap = 0;
         this.onLazyRender = null;
         this.onPostRender = null;
+        this.onRecycle = null;
+        this.lifecycleHooks.clear();
     }
 
     // ── Activation / Deactivation ──
@@ -557,6 +604,7 @@ export class VirtualScroll {
         this.virtualizer = null;
         this._active = false;
         for (const el of this.mounted.values()) {
+            this.recycle(el);
             releaseMermaidNodes(el);
             releaseProcessBlockDetails(el);
         }
@@ -584,6 +632,7 @@ export class VirtualScroll {
 
         for (const [idx, el] of this.mounted) {
             if (!wantedSet.has(idx)) {
+                this.recycle(el);
                 releaseMermaidNodes(el);
                 const item = this.items[idx];
                 if (item?.rehydratesProcessDetails) releaseProcessBlockDetails(el);
@@ -621,9 +670,7 @@ export class VirtualScroll {
             }
         }
 
-        if (this.onPostRender) {
-            this.onPostRender(this.innerEl);
-        }
+        this.postRender(this.innerEl);
 
         // Newly mounted elements now have their final rendered content.
         for (const el of newlyMounted) {

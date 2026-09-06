@@ -7,12 +7,20 @@ import { setupWebUiDom, resetWebUiDom } from './web-ui-test-dom.ts';
 // selection, bridge, panel, parsers, auth and bounded REST all execute for real.
 const effects: Array<{ name: string; args: unknown[] }> = [];
 const ui: Record<string, (...args: unknown[]) => unknown> = {};
-for (const name of ['setStatus', 'updateQueueBadge', 'addSystemMsg', 'appendAgentText', 'finalizeAgent',
+for (const name of ['setStatus', 'updateQueueBadge', 'addSystemMsg', 'appendAgentText', 'finalizeAgent', 'replaceAgentAnswer',
     'addMessage', 'showProcessStep', 'cleanupToolActivity', 'applyQueuedOverlay', 'hydrateActiveRun',
     'reconcileChatBottomAfterRestore', 'showChatRestoreIndicator', 'markSteered', 'clearSteer', 'loadMessages']) {
     ui[name] = (...args) => { effects.push({ name, args }); };
 }
 ui['isRecentSteer'] = () => false;
+ui['addMessage'] = (...args) => {
+    effects.push({ name: 'addMessage', args });
+    const message = document.createElement('div'); message.className = 'msg msg-agent';
+    const body = document.createElement('div'); body.className = 'agent-body';
+    const content = document.createElement('div'); content.className = 'msg-content';
+    body.append(content); message.append(body); document.getElementById('chatMessages')!.append(message);
+    return message;
+};
 mock.module('../../public/js/ui.js', { namedExports: ui });
 mock.module('../../public/js/virtual-scroll.js', { namedExports: { getVirtualScroll: () => ({}) } });
 mock.module('../../public/js/render.js', { namedExports: { escapeHtml: (s: string) => s, cancelPostRender() {} } });

@@ -824,7 +824,7 @@ export async function steerAgent(
     if (run?.meta.cli === 'jwc' && runtime.busy) {
         insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
         broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget }));
+        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget, mode: 'native-input' }));
         await runtime.steer(settings["workingDir"] || process.cwd(), newPrompt);
         // A steer injects into the turn already running; no new completion
         // event will ever carry this id. Settling here is what stops a caller
@@ -903,7 +903,7 @@ export async function steerAgent(
         }
         insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
         broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget }));
+        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget, mode: 'native-input' }));
         settleOnce(meta?.requestId, 'steered');
         return 'steered';
     }

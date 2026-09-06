@@ -120,8 +120,11 @@ export function createNativeRequestBridge(options: BridgeOptions) {
             if (health !== 'healthy' || !identity || identityPath !== snapshotPath()) return;
             const notice = name === RUNTIME_REQUEST_NOTICE_EVENT ? parseRuntimeRequestNotice(value) : null;
             const runtime = name === 'agent_runtime' ? parseRuntimeEvent(value) : null;
+            const replayed = value !== null && typeof value === 'object'
+                && (value as Record<string, unknown>)['sseReplay'] === true;
             if ((notice && same(notice)) || (runtime && same(runtime)
-                && (runtime.kind === 'request' || runtime.kind === 'request-settled'))) scheduleRefresh();
+                && (runtime.kind === 'request' || runtime.kind === 'request-settled'
+                    || (runtime.kind === 'turn-end' && !replayed)))) scheduleRefresh();
         },
         dispose() {
             ++epoch; ++snapshotGeneration; forget(); recovery?.remove(); recovery = null;

@@ -12,7 +12,9 @@
 
 ## Current sync hotspots (2026-06)
 
-- `presentation.mode` defaults/activity and Legacy opt-in share `src/shared/presentation.ts` with the existing identity parser. Keep config/ingress/runtime-settings side-effect boundaries, Classic preference generation/bounded reads, Manager Display draft/instance guards and current-vs-later renderer activation synchronized in frontend/API/runtime docs. No transport-default migration or messaging restart is implied.
+- Classic live Activity: `activity-state.ts`/`activity-replay.ts` own bounded preview state; `activity-view.ts` owns disclosure, `activity-live.ts` uses injected host actions to avoid the legacy renderer SCC. Preserve original snapshot/request bridge ownership, shared bounded pre-admission event/gap queue, native-absent diagnostic separation, late canonical/public final reconciliation and captured-scope cache correction. Additive VS hooks must not replace existing lazy/post callbacks. Cold history is not implemented by live remounting. Keep frontend/stream/root notes aligned.
+
+- `presentation.mode` defaults/activity and Legacy opt-in share `src/shared/presentation.ts` with the existing identity parser. Keep config/ingress/runtime-settings side-effect boundaries, Classic preference generation/bounded reads, Manager Display draft/instance guards and Classic live Activity versus later history/Manager/TUI activation synchronized in frontend/API/runtime docs. No transport-default migration or messaging restart is implied.
 
 - Print Activity observer/accepted parser hooks, exact-pointer terminal recovery and latest run-scoped tool merge are documented in runtime/stream/spawn/API docs. Preserve lifecycle-selected final, native terminal defaults, trace-failure containment and current channel sends. Snapshot known-omission is a conservative retained loss signal, never a sum of overlapping source counts or a claim of complete reconstruction.
 

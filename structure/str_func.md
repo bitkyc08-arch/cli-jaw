@@ -443,6 +443,8 @@ cli-jaw/
 │   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (58L)
 │   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
 │   │   ├── presentation.ts   ← independent Activity/Legacy mode and server-supplied identity parser (24L)
+│   │   ├── activity-state.ts ← bounded pure Activity preview reducer (155L)
+│   │   ├── activity-replay.ts ← bounded live/replay coordination without I/O (224L)
 │   │   ├── runtime-request-notice.ts ← versioned metadata-only request wake-up contract (12L)
 │   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
 │   │   ├── structured-fence.ts ← structured renderer fence scanner/parser helper (80L)
@@ -491,20 +493,23 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 576 files source/assets, ~101816L; generated `public/dist` and `public/public/dist` excluded)
-│   ├── index.html            ← 뼈대 + header project/git status anchor (1224L)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 579 files source/assets, ~102689L; generated `public/dist` and `public/public/dist` excluded)
+│   ├── index.html            ← 뼈대 + header project/git status anchor (1225L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)
 │   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2509L)
-│   │   └── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
+│   │   ├── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
+│   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (142L)
 │   ├── locales/              ← i18n (ko/en/ja/zh .json)
-│   └── js/                   ← 109 .ts files (root 21 + features/ 65 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
+│   └── js/                   ← 111 .ts files (root 21 + features/ 67 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
 │       ├── bounded-api.ts    ← bounded authenticated JSON reads and decision writes (49L)
-│       ├── ws.ts             ← legacy event dispatch plus scoped snapshot/native request bridge (1217L)
+│       ├── ws.ts             ← legacy event dispatch plus scoped snapshot/native request bridge (1397L)
 │       ├── features/
 │       │   ├── presentation-preference.ts ← bounded generation-fenced settings preference refresh (52L)
-│       │   ├── native-request-bridge.ts ← SSE health/epoch, captured identity and request refresh (130L)
+│       │   ├── activity-live.ts ← host-port live ownership, final correction and remount (238L)
+│       │   ├── activity-view.ts ← bounded native disclosure and remembered choices (214L)
+│       │   ├── native-request-bridge.ts ← SSE health/epoch, captured identity and request refresh (133L)
 │       │   └── native-requests.ts ← live exact-bound approvals/questions and manual recovery (334L)
 │       └── render/
 │           ├── markdown.ts   ← marked/sanitize pipeline + `/media`/guarded `/api/image` inline media rewrite (193L)

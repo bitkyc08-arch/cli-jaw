@@ -22,6 +22,14 @@ import { canFollowAfterRestore, ensureScrollTracking, markFollowingBottom, settl
 import { updateStatMsgs } from './ui-status.js';
 import { seedCompletedElicitationsFromMessages } from './elicitation-state.js';
 import { withCurrentSessionQuery } from './session-hub.js';
+import { remountLiveActivity, recycleActivityHost } from './activity-live.js';
+
+const activityVirtualHooks = { postRender: remountLiveActivity, recycle: recycleActivityHost };
+
+/** Live promotion may bypass history bootstrap; preserve every installed callback. */
+export function ensureActivityVirtualCallbacks(vs: ReturnType<typeof getVirtualScroll>): void {
+    vs.addLifecycleHooks(activityVirtualHooks);
+}
 
 export function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
     return msgs.map((m, index) => buildLazyVirtualMessageItem(normalizeMessageToolLog(m), index));
@@ -70,7 +78,7 @@ function readWorkingDirFromScope(scope: string): string | null {
 }
 
 export function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualScroll>): void {
-    vs.onLazyRender = (targets: HTMLElement[]) => {
+    vs.onLazyRender ??= (targets: HTMLElement[]) => {
         for (const el of targets) {
             if (!el.classList.contains('lazy-pending')) continue;
             const raw = el.getAttribute('data-raw') || '';
@@ -97,7 +105,7 @@ export function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualS
             void renderMermaidBlocks(el, { immediate: true });
         }
     };
-    vs.onPostRender = (viewport: HTMLElement) => {
+    vs.onPostRender ??= (viewport: HTMLElement) => {
         activateWidgets(viewport);
         hydrateElicitationBlocks(viewport);
         hydrateSearchResultsBlocks(viewport);
@@ -108,6 +116,7 @@ export function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualS
         void linkifyFilePathsWithNotesRoot(viewport);
         void renderMermaidBlocks(viewport, { immediate: true });
     };
+    ensureActivityVirtualCallbacks(vs);
 }
 
 export function makeBootstrapDeps(

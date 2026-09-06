@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { API_BASE } from './api.js';
 import { requestBoundedJson } from './bounded-api.js';
 import { connectEventChannel, subscribe, onChannelOpen, onChannelDisconnect, onChannelUnavailable } from './event-channel.js';
-import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore, showChatRestoreIndicator, markSteered, clearSteer, isRecentSteer } from './ui.js';
+import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, replaceAgentAnswer, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore, showChatRestoreIndicator, markSteered, clearSteer, isRecentSteer } from './ui.js';
 import { renderPendingQueue } from './features/pending-queue.js';
 import { t, getLang } from './features/i18n.js';
 import { getVirtualScroll } from './virtual-scroll.js';
@@ -15,6 +15,33 @@ import { shouldApplyOrcStateEvent } from './features/orchestrate-scope.js';
 import { providerLabel } from './provider-icons.js';
 import { handleSessionListBroadcast } from './features/session-hub.js';
 import { createNativeRequestBridge } from './features/native-request-bridge.js';
+import { parseRuntimeEvent } from '../../src/shared/runtime-event-parse.js';
+import type { RuntimeEvent } from '../../src/shared/runtime-contract.js';
+import { parseActivityIdentity, type ActivityIdentity } from '../../src/shared/presentation.js';
+import {
+    ActivityCapacityError, configureLiveActivityHost, clearLiveActivity, setLiveActivityIdentity,
+    findLiveActivity, ingestLiveActivity, settleLiveActivity, reconcileLiveActivityAnswer,
+    degradeLiveActivity, rebindLiveActivity,
+} from './features/activity-live.js';
+
+configureLiveActivityHost({
+    currentMessage: () => state.currentAgentDiv,
+    useMessage: message => { state.currentAgentDiv = message; },
+    createMessage: createActivityMessage,
+    reconcileMessage: (id, update) => getVirtualScroll().reconcileMessage(id, update),
+    replaceAnswer: replaceAgentAnswer,
+    inspectTrace: (runId, sessionId) => {
+        void import('./features/trace-drawer.js').then(m => m.openTraceDrawer(runId, undefined, sessionId))
+            .catch(error => console.warn('[activity] trace unavailable', error));
+    },
+});
+
+function createActivityMessage(): HTMLElement {
+    // A missed previous terminal must not carry its legacy stream/tool singleton
+    // into the new run's answer/cache. This is presentation cleanup, not Stop.
+    cleanupToolActivity();
+    return addMessage('agent', '');
+}
 
 const nativeRequests = createNativeRequestBridge({
     host: () => document.querySelector<HTMLElement>('.chat-area'),
@@ -80,6 +107,8 @@ interface WsMessage {
     startedAt?: number;
     text?: string | null;
     runtimeFinality?: 'present' | 'absent';
+    runtimeStatus?: 'done' | 'error' | 'stopped';
+    mode?: string;
     toolLog?: { icon: string; label: string; detail?: string; toolType?: string; stepRef?: string; isEmployee?: boolean; traceRunId?: string; traceSeq?: number; detailAvailable?: boolean; detailBytes?: number; rawRetentionStatus?: string }[];
     from?: string;
     to?: string;
@@ -116,7 +145,7 @@ interface WsMessage {
     code?: string;
     employeeName?: string;
     exitCode?: number;
-    error?: string;
+    error?: string | boolean;
     message?: string;
     steered?: boolean;
     steerWaitMs?: number;
@@ -148,7 +177,7 @@ const finalizedTraceRuns: string[] = [];
 const liveAppliedToolSeqByRun = new Map<string, number>();
 
 function isFinalizedRun(runId: string | null): boolean {
-    return runId !== null && finalizedTraceRuns.includes(runId);
+    return runId !== null && (finalizedTraceRuns.includes(runId) || !!findLiveActivity(runId)?.answerSource);
 }
 
 function positiveSeq(value: unknown): number | null {
@@ -234,6 +263,138 @@ function syncLiveRunCursor(activeRun?: { running?: boolean; traceRunId?: string;
 }
 
 let currentOrcScope = '';
+let activityAdmissionReady = false;
+let activityStreamHealthy = false;
+let pendingRuntimeBytes = 0;
+type ActivityGap = ActivityIdentity & { runId: string };
+type PendingActivity = { event: RuntimeEvent; replay: boolean } | { gap: ActivityGap };
+let pendingRuntime: PendingActivity[] = [];
+let runtimeBufferLost = false;
+
+function suspendRuntimeAdmission(): void {
+    activityAdmissionReady = false;
+    if (liveTraceRunId) degradeLiveActivity(liveTraceRunId);
+}
+
+function clearRuntimePresentation(): void {
+    clearLiveActivity();
+    pendingRuntime = []; pendingRuntimeBytes = 0; runtimeBufferLost = false;
+}
+
+function showActivityUnavailable(runId: string, detail = 'Activity preview is unavailable at its retention limit. The final answer will still appear here.'): void {
+    let message = state.currentAgentDiv;
+    if (!message || message.dataset['traceRunId'] !== runId) {
+        message = createActivityMessage();
+        state.currentAgentDiv = message;
+        message.dataset['traceRunId'] = runId;
+    }
+    if (!message.querySelector('.activity-unavailable')) {
+        const notice = message.ownerDocument.createElement('p');
+        notice.className = 'activity-unavailable'; notice.setAttribute('role', 'status');
+        notice.textContent = detail;
+        message.querySelector('.agent-body')?.prepend(notice);
+    }
+    adoptLiveRun(runId);
+}
+
+function bufferActivity(entry: PendingActivity): void {
+    const bytes = new TextEncoder().encode(JSON.stringify(entry)).length;
+    if (pendingRuntime.length >= 256 || pendingRuntimeBytes + bytes > 1024 * 1024) {
+        pendingRuntime = []; pendingRuntimeBytes = 0; runtimeBufferLost = true;
+        return;
+    }
+    pendingRuntime.push(entry); pendingRuntimeBytes += bytes;
+}
+
+function handleActivityGap(gap: ActivityGap): void {
+    const identity = state.activityIdentity;
+    if (!activityAdmissionReady || !identity) { bufferActivity({ gap }); return; }
+    if (gap.sessionId !== identity.sessionId || gap.scope !== identity.scope) return;
+    if (findLiveActivity(gap.runId)) degradeLiveActivity(gap.runId);
+    else if (liveTraceRunId === gap.runId && state.currentAgentDiv)
+        showActivityUnavailable(gap.runId, 'Activity is incomplete. Runtime updates were not recorded; the final answer remains available separately.');
+}
+
+function handleRuntimeEvent(event: RuntimeEvent, replay = false): void {
+    const identity = state.activityIdentity;
+    if (!activityAdmissionReady || !identity) {
+        bufferActivity({ event, replay });
+        return;
+    }
+    if (event.sessionId !== identity.sessionId || event.scope !== identity.scope) return;
+    const known = findLiveActivity(event.runId);
+    if (known && known.model.identity.turnId !== event.turnId) return;
+    const finalized = isFinalizedRun(event.runId);
+    if (finalized && !known) return;
+    if (!known && liveTraceRunId && liveTraceRunId !== event.runId && (event.kind !== 'turn-start' || replay)) return;
+    let turn;
+    try {
+        turn = ingestLiveActivity(event, !liveTraceRunId || liveTraceRunId === event.runId)
+            ?? (event.kind === 'turn-end' && known?.model.end?.seq === event.seq ? known : null);
+    } catch (error) {
+        if (!(error instanceof ActivityCapacityError)) throw error;
+        // Capacity cannot transfer an old run's host to a new answer. Keep a
+        // separate bounded-warning host and the compatibility final path alive.
+        if (!replay && (!liveTraceRunId || liveTraceRunId === event.runId || event.kind === 'turn-start'))
+            showActivityUnavailable(event.runId);
+        return;
+    }
+    if (!turn) return;
+    if (runtimeBufferLost) degradeLiveActivity(event.runId);
+    if (event.kind !== 'turn-end') {
+        if (!finalized && !replay) adoptLiveRun(event.runId);
+        return;
+    }
+    if (finalized || (liveTraceRunId && liveTraceRunId !== event.runId)
+        || state.currentAgentDiv !== turn.message) return;
+    turn.answerSource = 'canonical';
+    markRunFinalized(event.runId);
+    // The journal is redacted and the reducer is bounded. Use the incoming
+    // terminal here; a later owned public answer may reconcile this same row.
+    finalizeAgent(event.finalText, undefined, event.finalText === null ? 'absent' : 'present', event.runId, turn.cacheScope);
+    notifyUnreadResponse();
+}
+
+function settleCompatibilityMessage(msg: WsMessage): void {
+    if (msg.isEmployee === true) return;
+    const runId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
+    const finality = msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined;
+    if (!runId && !finality && (msg.error === true || (liveTraceRunId && findLiveActivity(liveTraceRunId)))) {
+        if (typeof msg.text === 'string' && msg.text) addSystemMsg(escapeHtml(msg.text), 'tool-activity');
+        return;
+    }
+    const known = runId ? findLiveActivity(runId) : undefined;
+    const ownedText = !!known && finality !== 'absent' && typeof msg.text === 'string';
+    if (isFinalizedRun(runId)) {
+        if (ownedText && runId) reconcileLiveActivityAnswer(runId, msg.text!);
+        return;
+    }
+    if (runId && liveTraceRunId && runId !== liveTraceRunId) return;
+    settleLiveActivity(runId, msg.runtimeStatus ?? (msg.error === true ? 'error' : undefined));
+    if (known) known.answerSource = 'compatibility';
+    markRunFinalized(runId);
+    const tools = msg.type === 'agent_done' ? msg.toolLog : undefined;
+    if (known && runId) {
+        finalizeAgent(finality === 'absent' ? null : msg.text || '', tools,
+            finality ?? (ownedText ? 'present' : undefined), runId, known.cacheScope);
+        if (finality === 'absent' && typeof msg.text === 'string' && msg.text)
+            addSystemMsg(escapeHtml(msg.text.slice(0, 500)), 'activity-diagnostic');
+    } else finalizeAgent(msg.text || '', tools, finality);
+    notifyUnreadResponse();
+}
+
+function drainRuntimeBuffer(): void {
+    const buffered = pendingRuntime;
+    pendingRuntime = []; pendingRuntimeBytes = 0;
+    for (const entry of buffered) {
+        if ('event' in entry) handleRuntimeEvent(entry.event, entry.replay);
+        else handleActivityGap(entry.gap);
+    }
+    if (runtimeBufferLost && liveTraceRunId && state.currentAgentDiv && !findLiveActivity(liveTraceRunId))
+        showActivityUnavailable(liveTraceRunId, 'Activity is incomplete. Updates were dropped while reconnecting; the final answer remains available separately.');
+    runtimeBufferLost = false;
+}
+
 let lastLoadTs = 0;
 let snapshotSyncInFlight: Promise<void> | null = null;
 let lastSnapshotSyncAt = 0;
@@ -260,9 +421,14 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
         // latch even if the peer never finishes responding. Preserve API auth.
         snap = await requestBoundedJson(capture.path, { method: 'GET' },
             new AbortController().signal, 16 * 1024 * 1024) as RuntimeSnapshot;
-    } catch (error) { capture.fail(); throw error; }
+    } catch (error) {
+        if (capture.isCurrent()) suspendRuntimeAdmission();
+        capture.fail(); throw error;
+    }
     if (!capture.isCurrent()) return;
     capture.accept(snap?.activityIdentity);
+    activityAdmissionReady = activityStreamHealthy && state.activityIdentity !== null;
+    setLiveActivityIdentity(state.activityIdentity);
     currentOrcScope = String(snap.orc.scope || '');
     applyOrcState(snap.orc.state);
     applyOrcContext(snap.orc.ctx || null);
@@ -277,6 +443,10 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
         // move the replay cursors there so replayed chunks older than the
         // snapshot are dropped instead of re-appended.
         syncLiveRunCursor(snap.activeRun);
+        if (snap.activeRun?.running && snap.activeRun.traceRunId && state.currentAgentDiv) {
+            state.currentAgentDiv.dataset['traceRunId'] = snap.activeRun.traceRunId;
+            rebindLiveActivity(snap.activeRun.traceRunId, state.currentAgentDiv);
+        }
     }
     hydrateGoalState();
     if (snap.runtime.busy) {
@@ -284,6 +454,7 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     } else if (!isRecentSteer()) {
         setStatus('idle');
     }
+    if (activityAdmissionReady) drainRuntimeBuffer();
     import('./features/employees.js').then(m => {
         if (typeof m.renderEmployees === 'function') m.renderEmployees();
     });
@@ -794,6 +965,7 @@ let snapshotReady: Promise<void> = Promise.resolve();
 let orcStateEpoch = 0;
 
 export function connect(): void {
+    activityStreamHealthy = false; suspendRuntimeAdmission();
     nativeRequests.channelChanged();
     registerOrchestrateRestoreHooks();
     if (!channelWired) {
@@ -811,6 +983,7 @@ export function connect(): void {
 export const reopenChannel = connect;
 
 function handleChannelUp(transport: 'sse' | 'ws'): void {
+    activityStreamHealthy = transport === 'sse'; suspendRuntimeAdmission();
     if (transport === 'sse') nativeRequests.sseOpened();
     console.log(`[${transport}] connected`);
     fallbackRetryDelayMs = 2000;
@@ -846,6 +1019,7 @@ function handleChannelUp(transport: 'sse' | 'ws'): void {
 }
 
 function handleReplayGap(): void {
+    suspendRuntimeAdmission(); runtimeBufferLost = true;
     showChatRestoreIndicator('replay_gap');
     snapshotReady = import('./ui.js').then(async m => {
         try {
@@ -875,6 +1049,7 @@ function clearChannelDownToastTimer(): void {
 }
 
 function handleChannelDown(): void {
+    activityStreamHealthy = false; suspendRuntimeAdmission();
     nativeRequests.unavailable();
     console.log('[channel] disconnected');
     import('./ui.js').then(m => m.cleanupToolActivity());
@@ -967,10 +1142,25 @@ function wireEventChannel(): void {
     });
     onChannelOpen(() => handleChannelUp('sse'));
     onChannelDisconnect(() => handleChannelDown());
-    onChannelUnavailable(() => { nativeRequests.unavailable(); connectLegacyWebSocket(); });
+    onChannelUnavailable(() => {
+        activityStreamHealthy = false; suspendRuntimeAdmission();
+        nativeRequests.unavailable(); connectLegacyWebSocket();
+    });
 }
 
 function handleServerEvent(msg: WsMessage): void {
+    if (msg.type === 'agent_runtime') {
+        const event = parseRuntimeEvent(msg);
+        if (event) handleRuntimeEvent(event, msg.sseReplay === true);
+        return;
+    }
+    if (msg.type === 'agent_runtime_gap') {
+        const gap = msg as unknown as Record<string, unknown>;
+        const pair = parseActivityIdentity(gap);
+        if (pair && typeof gap['runId'] === 'string' && gap['runId'].length > 0 && gap['runId'].length <= 240)
+            handleActivityGap({ ...pair, runId: gap['runId'] });
+        return;
+    }
     // Hot-path first (devlog 260705_frontend_perf M5): agent_tool/agent_output
     // arrive many times per second during streaming — they head the chain so
     // each event pays 1-2 string compares instead of walking cold branches.
@@ -1090,27 +1280,12 @@ function handleServerEvent(msg: WsMessage): void {
             // Suppress agent_done from steered (killed) process.
             // Server sets steered:true; isRecentSteer is fallback for edge cases.
         } else {
-            const doneRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
-            // Replayed done of an already-finalized turn — drop, the history
-            // item exists. A done carrying a DIFFERENT run id than the live
-            // stream is a stale replay from a previous turn: finalizing here
-            // froze the in-flight block mid-turn (260612 duplicate-block RCA).
-            if (isFinalizedRun(doneRunId)) return;
-            if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
-            markRunFinalized(doneRunId);
-            finalizeAgent(msg.text || '', msg.toolLog,
-                msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined);
-            notifyUnreadResponse();
+            settleCompatibilityMessage(msg);
         }
     } else if (msg.type === 'orchestrate_done') {
-        const doneRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
-        if (isFinalizedRun(doneRunId)) return;
-        if (doneRunId && liveTraceRunId && doneRunId !== liveTraceRunId) return;
-        markRunFinalized(doneRunId);
-        finalizeAgent(msg.text || '', undefined,
-            msg.runtimeFinality === 'present' || msg.runtimeFinality === 'absent' ? msg.runtimeFinality : undefined);
-        notifyUnreadResponse();
+        settleCompatibilityMessage(msg);
     } else if (msg.type === 'clear') {
+        clearRuntimePresentation(); setLiveActivityIdentity(state.activityIdentity);
         cancelPostRender();
         cleanupToolActivity();
         getVirtualScroll().clear();
@@ -1142,6 +1317,10 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'memory_status') {
         import('./features/memory.js').then(m => m.refreshMemorySidebar());
     } else if (msg.type === 'steer_started') {
+        // Both modes continue one logical run. Metadata is not a final and a
+        // delayed receipt must not retire a newer turn in this conversation.
+        if (msg.mode === 'native-input' || msg.mode === 'cancel-reprompt'
+            || (liveTraceRunId && findLiveActivity(liveTraceRunId))) return;
         markSteered();
         markRunFinalized(null); // killed run — drop its replayed stream too
         finalizeAgent('');
@@ -1180,14 +1359,15 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'alert_escalation') {
         addSystemMsg(escapeHtml(msg.message || ''), 'tool-activity');
     } else if (msg.type === 'schedule_wakeup_failed') {
-        addSystemMsg(`⚠️ Wakeup failed — ${escapeHtml(String(msg.reason || ''))}: ${escapeHtml(msg.error || '')}`, 'tool-activity');
+        addSystemMsg(`⚠️ Wakeup failed — ${escapeHtml(String(msg.reason || ''))}: ${escapeHtml(String(msg.error || ''))}`, 'tool-activity');
     } else if (msg.type === 'goal_continuation_failed') {
-        addSystemMsg(`⚠️ Goal continuation failed: ${escapeHtml(msg.error || '')}`, 'tool-activity');
+        addSystemMsg(`⚠️ Goal continuation failed: ${escapeHtml(String(msg.error || ''))}`, 'tool-activity');
     } else if (msg.type === 'settings_change') {
         handleSettingsChange(msg as { cli?: string; projectDirs?: string[] | null; changedKeys?: string[] });
     } else if (msg.type === 'session_list') {
         handleSessionListBroadcast(msg);
     } else if (msg.type === 'session_switched' || msg.type === 'session_created') {
+        suspendRuntimeAdmission(); clearRuntimePresentation();
         nativeRequests.invalidateIdentity();
         // Reload messages for the new active session
         window.location.reload();

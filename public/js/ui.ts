@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { renderMarkdown, escapeHtml, stripOrchestration, linkifyFilePaths } from './render.js';
-import { renderMermaidBlocks } from './render.js';
+import { renderMermaidBlocks, releaseMermaidNodes } from './render.js';
 import { generateId } from './uuid.js';
 import { getAppName } from './features/appname.js';
 import { getAgentAvatarMarkup, getUserAvatarMarkup } from './features/avatar.js';
@@ -15,7 +15,7 @@ import { renderLiveToolActivity, cleanupToolElements, type ToolLogEntry } from '
 import { initMessageActions } from './features/message-actions.js';
 import { addSystemMsg, addMessage, removeSkeleton } from './features/chat-messages.js';
 import { buildLazyVirtualMessageItem } from './features/message-item-html.js';
-import { loadMessages, registerVirtualScrollCallbacks } from './features/message-history.js';
+import { loadMessages, registerVirtualScrollCallbacks, ensureActivityVirtualCallbacks } from './features/message-history.js';
 import { isChatNearBottom, reconcileChatBottomAfterLayout, showChatRestoreIndicator, hideChatRestoreIndicator, hideChatRestoreIndicatorAfterSettle, reconcileChatBottomAfterRestore, scrollToBottom, ensureScrollTracking, canFollowAfterRestore, markFollowingBottom } from './features/chat-scroll.js';
 import { currentProcessBlockFromDom, hasAgentToolBlock, normalizeAgentToolBlocks, removeAgentToolBlocks, serializeProcessStepsForToolLog } from './features/process-block-dom.js';
 import { mergeExplicitAndLiveToolLogs, normalizeMessageToolLog, parseToolLog, sanitizedToolLogEntries, sanitizedToolLogJson, sanitizedToolLogJsonFromEntries, toProcessSteps, type ActiveRunSnapshot, type MessageItem, type QueuedOverlayItem } from './features/process-log-adapter.js';
@@ -429,7 +429,21 @@ function clearMermaidTransientState(root: HTMLElement): void {
     });
 }
 
-export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent'): void {
+/** Correct an already-owned message without replaying final lifecycle effects. */
+export function replaceAgentAnswer(message: HTMLElement, text: string): void {
+    const content = message.querySelector<HTMLElement>('.msg-content');
+    if (!content) return;
+    const raw = stripOrchestration(text);
+    if (content.getAttribute('data-raw') === raw && (raw || content.childNodes.length === 0)) return;
+    releaseMermaidNodes(content);
+    content.innerHTML = raw ? renderMarkdown(text) : '';
+    content.setAttribute('data-raw', raw);
+    content.classList.remove('lazy-pending');
+    activateWidgets(content);
+    void renderMermaidBlocks(content, { immediate: true });
+}
+
+export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], runtimeFinality?: 'present' | 'absent', traceRunId?: string, cacheScope?: string): void {
     const nativeFinal = runtimeFinality === 'present' || runtimeFinality === 'absent';
     // Guard: prevent double-render when both agent_done + orchestrate_done fire
     const now = Date.now();
@@ -460,6 +474,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
         if (!state.currentAgentDiv || !state.currentAgentDiv.isConnected) {
             state.currentAgentDiv = addMessage('agent', '');
         }
+        if (traceRunId) state.currentAgentDiv.dataset['traceRunId'] = traceRunId;
         state.currentAgentDiv.removeAttribute(ACTIVE_RUN_HYDRATED_ATTR);
         const content = (state.currentAgentDiv as HTMLElement)?.querySelector('.msg-content');
         // Live stream is preview-only; agent_done text is always authoritative.
@@ -507,7 +522,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
                 else if (encoded) pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
-            if (durableToolLogJson) {
+            if (durableToolLogJson && !div.dataset['activityKey']) {
                 // A first/cleared chat can activate VS from an already-rendered
                 // user row without the history loader's lazy callback.
                 if (!vs.onLazyRender) registerVirtualScrollCallbacks(vs);
@@ -516,23 +531,27 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
                     content: finalText,
                     cli: null,
                     tool_log: durableToolLogJson,
+                    trace_run_id: div.dataset['traceRunId'] ?? null,
                 }, vs.count));
                 releaseProcessBlockDetails(div);
                 vs.scrollToBottom();
             } else {
                 div.dataset['turnIndex'] = String(vs.count);
                 if (!div.dataset['messageId']) div.dataset['messageId'] = generateId();
+                if (div.dataset['activityKey']) ensureActivityVirtualCallbacks(vs);
                 vs.appendLiveItem(div);
             }
             div.remove();
         }
 
         // Cache agent response for offline (use finalText to capture stream-only responses)
-        if (finalText) upsertMessage({
+        if (finalText || (traceRunId && state.currentAgentDiv?.dataset['activityKey'])) upsertMessage({
             role: 'assistant',
             content: finalText,
             tool_log: durableToolLogJson,
+            trace_run_id: state.currentAgentDiv?.dataset['traceRunId'] ?? null,
             timestamp: Date.now(),
+            ...(cacheScope === undefined ? {} : { scope: cacheScope }),
         }).catch(() => {});
     }
     currentStream = null;
