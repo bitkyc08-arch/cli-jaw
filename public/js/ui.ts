@@ -15,7 +15,7 @@ import { renderLiveToolActivity, cleanupToolElements, type ToolLogEntry } from '
 import { initMessageActions } from './features/message-actions.js';
 import { addSystemMsg, addMessage, removeSkeleton } from './features/chat-messages.js';
 import { buildLazyVirtualMessageItem } from './features/message-item-html.js';
-import { loadMessages } from './features/message-history.js';
+import { loadMessages, registerVirtualScrollCallbacks } from './features/message-history.js';
 import { isChatNearBottom, reconcileChatBottomAfterLayout, showChatRestoreIndicator, hideChatRestoreIndicator, hideChatRestoreIndicatorAfterSettle, reconcileChatBottomAfterRestore, scrollToBottom, ensureScrollTracking, canFollowAfterRestore, markFollowingBottom } from './features/chat-scroll.js';
 import { currentProcessBlockFromDom, hasAgentToolBlock, normalizeAgentToolBlocks, removeAgentToolBlocks, serializeProcessStepsForToolLog } from './features/process-block-dom.js';
 import { mergeExplicitAndLiveToolLogs, normalizeMessageToolLog, parseToolLog, sanitizedToolLogEntries, sanitizedToolLogJson, sanitizedToolLogJsonFromEntries, toProcessSteps, type ActiveRunSnapshot, type MessageItem, type QueuedOverlayItem } from './features/process-log-adapter.js';
@@ -508,6 +508,9 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
                 widget.replaceWith(pending);
             });
             if (durableToolLogJson) {
+                // A first/cleared chat can activate VS from an already-rendered
+                // user row without the history loader's lazy callback.
+                if (!vs.onLazyRender) registerVirtualScrollCallbacks(vs);
                 vs.appendItem(buildLazyVirtualMessageItem({
                     role: 'assistant',
                     content: finalText,
