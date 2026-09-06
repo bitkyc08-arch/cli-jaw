@@ -7,7 +7,7 @@ const text = (x: unknown): x is string => typeof x === 'string' && x.length <= 2
 const status = (x: unknown): x is 'running' | 'done' | 'error' | 'stopped' =>
     x === 'running' || x === 'done' || x === 'error' || x === 'stopped';
 
-function requestView(x: unknown): RuntimeRequestView | null {
+export function parseRuntimeRequestView(x: unknown): RuntimeRequestView | null {
     if (!record(x) || typeof x['title'] !== 'string' || x['title'].length > 500 ||
         !Array.isArray(x['fields']) || x['fields'].length > 8) return null;
     const fields: RuntimeRequestView['fields'] = [];
@@ -66,7 +66,7 @@ export function parseRuntimeEvent(value: unknown): RuntimeEvent | null {
     }
     if (kind === 'request' && id(value['requestId']) &&
         (value['requestType'] === 'approval' || value['requestType'] === 'question')) {
-        const view = requestView(value['view']);
+        const view = parseRuntimeRequestView(value['view']);
         return view ? { ...base, kind, requestId: value['requestId'], requestType: value['requestType'], view } : null;
     }
     if (kind === 'request-settled' && id(value['requestId'])) return { ...base, kind, requestId: value['requestId'] };

@@ -126,5 +126,12 @@ export class ClaudeSdkMessages {
     }
 
     get partialText(): string { return this.latestId === undefined ? '' : this.text(this.latestId); }
+    /** Interruption only: a tool-only boundary cannot erase this turn's last plaintext. */
+    get interruptedText(): string {
+        for (const [id, message] of [...this.messages].reverse()) {
+            if ([...message.blocks.values()].some(block => block.type === 'text')) return this.text(id);
+        }
+        return '';
+    }
     get finalRef(): string { return this.latestId === undefined ? 'claude:final' : 'claude:message:' + this.latestId; }
 }

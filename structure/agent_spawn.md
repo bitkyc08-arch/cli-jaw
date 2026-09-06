@@ -15,6 +15,23 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 
 ## src/agent/* — Spawn & Session
 
+### Native Claude ownership
+
+`claude-runtime-run.ts` adapts the optional SDK to the shared native host and
+existing lifecycle. Main turns reuse a pooled query; workers own one fresh query
+and a unique instruction directory. `claude-run-controls.ts` retains logical
+cancellation/completion before acquisition and after process-map removal, while
+`hasActiveAgent` joins real process and native control status. Targeted/all Stop
+and existing shutdown waits include these controls; cleanup never invents a PID.
+
+Native auto/safe supports live decisions, bounded images and foreground child
+activity. Deny/unknown profiles refuse before preparation, including actual
+memory-flush callers; print options are unchanged. Child owner history is retained
+independently of live permission eligibility, with bounded reconciliation for both
+parent/child declaration order. Runtime finality, interrupted MESSAGE/exit-settle
+and print/native session buckets remain under their existing owners. See
+[runtime integration](runtime-integration.md) for limits and decision delivery.
+
 | File | Line count | Role |
 | --- | ---: | --- |
 | `src/agent/spawn.ts` | 2476L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |

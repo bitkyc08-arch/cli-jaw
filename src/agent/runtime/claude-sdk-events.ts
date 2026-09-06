@@ -38,6 +38,7 @@ export class ClaudeSdkEvents {
     }
 
     get partialText(): string { return this.messages.partialText; }
+    get interruptedText(): string { return this.messages.interruptedText; }
 
     accept(raw: unknown): RuntimeTurnResult | undefined {
         if (this.finished || this.outcome) return this.outcome;
@@ -67,6 +68,14 @@ export class ClaudeSdkEvents {
         if (outcome.finalText !== null) this.projection.text('message', this.messages.finalRef, outcome.finalText, 'replace', 'final');
         this.projection.close(end ?? { kind: 'turn-end', status: outcome.status, finalText: outcome.finalText,
             ...(outcome.status === 'error' ? { error: 'Claude turn failed' } : {}) });
+    }
+
+    finishChild(status: 'done' | 'error' | 'stopped'): void {
+        if (this.finished) return;
+        this.finished = true;
+        for (const id of this.tools) this.projection.tool('claude:tool:' + id, {
+            status: status === 'error' ? 'error' : 'stopped',
+        });
     }
 
     private result(frame: Obj): RuntimeTurnResult | undefined {

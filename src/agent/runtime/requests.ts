@@ -4,6 +4,7 @@ import { decodeRuntimeBody, encodeRuntimeBody, RUNTIME_BODY_BYTES, sanitizeRunti
 import { stringifyTraceValue } from '../../trace/redact.js';
 
 export type RuntimeRequestBinding = Pick<RuntimeEventIdentity, 'runId' | 'sessionId' | 'scope' | 'turnId'>;
+export type RuntimeRequestChangeObserver = (sessionId: string) => void;
 type RequestType = 'approval' | 'question';
 type Entry = RuntimeRequestBinding & {
     requestId: string; requestType: RequestType; view: RuntimeRequestView; expiresAt: number;
@@ -80,6 +81,20 @@ function requestView(identity: RuntimeEventIdentity, requestId: string, requestT
 export class RuntimeRequests {
     private readonly entries = new Map<string, Entry>();
 
+    constructor(private changeObserver?: RuntimeRequestChangeObserver) {}
+
+    /** One composition-owned observer; never a second collection of live requests. */
+    setChangeObserver(observer: RuntimeRequestChangeObserver | undefined): void {
+        this.changeObserver = observer;
+    }
+
+    private changed(sessionId: string): void {
+        try {
+            void Promise.resolve(this.changeObserver?.(sessionId))
+                .catch(() => console.warn('[runtime] request_notice_failed'));
+        } catch { console.warn('[runtime] request_notice_failed'); }
+    }
+
     open<T>(input: RuntimeRequestBinding & {
         parentItemId?: string; requestType: RequestType; view: unknown;
         validate(value: unknown): T; cancelled: T; isCurrent(): boolean;
@@ -105,6 +120,7 @@ export class RuntimeRequests {
             // Only this entry's validated answer or its captured cancellation reaches finish.
             resolve: value => resolve(value as T) };
         this.entries.set(requestId, entry);
+        this.changed(sessionId);
         return { requestId, answer, expiresAt, view, cancel: () => this.finish(entry, cancelled) };
     }
 
@@ -152,6 +168,7 @@ export class RuntimeRequests {
         this.entries.delete(entry.requestId);
         clearTimeout(entry.timer);
         entry.resolve(response);
+        this.changed(entry.sessionId);
     }
 }
 

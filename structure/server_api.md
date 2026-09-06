@@ -42,7 +42,8 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/skills.ts` | 89L | 5 | skills list/read/enable/disable/reset |
 | `src/routes/avatar.ts` | 146L | 4 | avatar summary + agent/user image upload/delete/read |
 | `src/routes/traces.ts` | 80L | 3 | public trace summary/event read routes |
-| `src/routes/runtime-requests.ts` | 33L | 2 | exact-bound ephemeral native decisions; existing instance auth |
+| `src/routes/runtime-requests.ts` | 35L | 2 | exact-bound ephemeral native decisions; existing instance auth |
+| `src/routes/runtime-request-notices.ts` | 22L | — | captured chat to presentation-scope SSE notice mapping |
 | `src/routes/link-preview.ts` | 319L | 2 | Rich link preview metadata fetch + guarded image proxy |
 | `src/routes/heartbeat.ts` | 289L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
 | `src/routes/jaw-ceo.ts` | 321L | 20 | Jaw CEO coordinator: state/message/query/docs-edit/settings/events/pending/watch/audit/voice/confirmations |
@@ -82,6 +83,19 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | --- | --- | --- |
 | `GET` | `/api/runtime/requests?sessionId=<jaw-id>` | Explicit nonempty session ID, at most240 characters. Returns `{ok:true,data:{requests:[...]}}`; never substitutes the active session. |
 | `POST` | `/api/runtime/requests/:id` | Body contains only `runId`, `sessionId`, `scope`, `turnId`, `response`. Exact stored binding and current ownership required. Returns `{ok:true,data:{accepted:true}}`. |
+
+The live list is session-scoped and may contain multiple execution scopes. A
+presentation hint never replaces those IDs: the Classic/Manager chat panel POSTs
+the selected live entry unchanged. Registry insertion/removal triggers the
+route-owned SSE-only `agent_runtime_requests_changed` metadata hint, mapped to the
+captured chat's display scope without active-chat fallback. It bypasses messaging
+listeners and does not contain tool input, answers or native provider IDs.
+
+`GET /api/orchestrate/snapshot?session=<id>` adds server-owned `activityIdentity`
+and `Cache-Control: no-store`. Malformed supplied session values return400;
+unknown named sessions return404 when multi-session is enabled. With that feature
+disabled, existing active/default snapshot behavior remains. Snapshot identity
+does not grant response authority or replace a pending entry's execution binding.
 
 Both routes use the same existing requireAuth and global Host/Origin guards as the worker. Loopback and configured LAN bypass remain unchanged; these routes do not introduce per-session user ACLs. Missing/malformed input or an invalid choice returns400; missing, expired, stale, already answered or mismatched requests return409 `request_not_current`. A bad choice does not consume a current request. No top-level requests alias exists.
 

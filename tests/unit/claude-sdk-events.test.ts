@@ -108,7 +108,7 @@ test('unstreamed .261 blocks accumulate in stable order and duplicate frame UUID
     assert.equal(h.mapper.partialText, 'onetwo');
 });
 
-test('new parent resets salvage immediately and old message updates do not become latest', () => {
+test('new parent resets current partial immediately and old message updates do not become latest', () => {
     const h = harness(); h.assistant('old', [text('narration')]); h.start('new');
     assert.equal(h.mapper.partialText, ''); h.block(0, text('answer'));
     h.assistant('old', [text('old update')]);
@@ -172,10 +172,26 @@ test('out-of-order result and duplicate terminal never reopen a tool', () => {
     assert.ok(tools.every(e => e.detail === undefined));
 });
 
-test('empty new assistant message resets previous salvage', () => {
+test('empty new assistant message resets current partial', () => {
     const h = harness(); h.assistant('old', [text('old')]); h.assistant('new', []);
     assert.equal(h.mapper.partialText, '');
 });
+
+for (const next of ['tool', 'thinking', 'empty-message', 'message-start', 'empty-text']) {
+    test(`interrupted context is separate from current partial at ${next}`, () => {
+        const h = harness(); h.assistant('old', [text('PARENT_PROGRESS')]);
+        if (next === 'tool') h.assistant('new', [{ type: 'tool_use', id: 't', name: 'Read', input: { file_path: 'owned' } }]);
+        if (next === 'thinking') h.assistant('new', [{ type: 'thinking', thinking: 'not-parent-text' }]);
+        if (next === 'empty-message') h.assistant('new', []);
+        if (next === 'message-start') h.start('new');
+        if (next === 'empty-text') h.assistant('new', [text('')]);
+        assert.equal(h.mapper.partialText, '', 'wp17 current-message reset remains unchanged');
+        assert.equal(h.mapper.interruptedText, next === 'empty-text' ? '' : 'PARENT_PROGRESS');
+        const outcome = h.mapper.accept(result('')); assert.deepEqual(outcome, { status: 'done', finalText: '', partialText: '' });
+        h.mapper.finish(outcome!);
+        assert.deepEqual(h.events.filter(e => e.kind === 'message' && e.phase === 'final').map(e => e.text), ['']);
+    });
+}
 
 test('two pending stopped text blocks reconcile in their original index order', () => {
     const h = harness(); h.start(); h.block(0, text('A')); h.stop(0); h.block(1, text('C')); h.stop(1);

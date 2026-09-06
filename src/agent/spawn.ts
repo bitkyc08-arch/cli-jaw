@@ -76,7 +76,7 @@ import { AcpReplacement } from './runtime/acp/replacement.js';
 import { beginSteerInput, cancelSteerInputs, cancelAllSteerInputs } from './steer-input-guard.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { startClaudeNativeRun } from './claude-runtime-run.js';
-import { hasClaudeRuns, cancelClaudeScope, cancelAllClaudeRuns } from './runtime/claude-run-controls.js';
+import { hasClaudeRuns, hasClaudeWorker, cancelClaudeWorker, cancelClaudeScope, cancelAllClaudeRuns } from './runtime/claude-run-controls.js';
 import type { RuntimePrompt } from './runtime/session.js';
 import type { PreparedClaudeOptions } from './runtime/claude-sdk-options.js';
 import { syncLiveTools } from './events/helpers.js';
@@ -139,6 +139,9 @@ import { getEmployeeMcpServers } from './mcp-passthrough.js';
 // ─── State ───────────────────────────────────────────
 
 export const activeProcesses = new Map<string, ChildProcess>(); // agentId → child process
+export function hasActiveAgent(agentId: string): boolean {
+    return activeProcesses.has(agentId) || hasClaudeWorker(agentId);
+}
 
 /** Kill reason recorded when a duplicate registration reaps the previous child. */
 const DUP_REGISTRATION_KILL_REASON = 'dup-registration';
@@ -410,6 +413,7 @@ function emitKiroStreamEvents(
 }
 
 export function killAgentById(agentId: string): boolean {
+    if (cancelClaudeWorker(agentId, 'user')) return true;
     const proc = activeProcesses.get(agentId);
     if (!proc) return false;
     try {
@@ -1282,8 +1286,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const unavailableNative = runtimeTransport === 'native'
         && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)));
     const restrictiveNative = runtimeTransport === 'native' && (cli === 'cursor' || cli === 'grok') && permissions !== 'auto';
-    if (unavailableNative || restrictiveNative) {
-        const message = unavailableNative
+    const unsupportedClaudePolicy = runtimeTransport === 'native' && cli === 'claude'
+        && permissions !== 'auto' && permissions !== 'safe';
+    const duplicateClaudeWorker = isEmployee && (hasClaudeWorker(opts.agentId || 'main')
+        || (runtimeTransport === 'native' && cli === 'claude' && activeProcesses.has(opts.agentId || 'main')));
+    if (unavailableNative || restrictiveNative || unsupportedClaudePolicy || duplicateClaudeWorker) {
+        const message = duplicateClaudeWorker ? 'Worker is still completing its previous assignment.'
+            : unsupportedClaudePolicy ? 'Claude native supports auto or safe permissions. Select print to retain this permission profile.'
+            : unavailableNative
             ? `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`
             : `${cli === 'cursor' ? 'Cursor' : 'Grok'} native restrictive permissions are not verified in this build. Select print transport to retain restrictive permission behavior.`;
         const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
@@ -1673,14 +1683,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // All CLIs auto-read AGENTS.md/CLAUDE.md/GEMINI.md from cwd.
     // Employees must NOT see the Boss's instruction files.
     let spawnCwd = settings["workingDir"];
+    let claudeEmployeeTmpDir: string | undefined;
 
     if (opts.agentId && (customSysPrompt || sysPrompt)) {
         const empPrompt = customSysPrompt || sysPrompt;
         const empPromptWithWorkspace = opts.workspaceContext
             ? `${opts.workspaceContext}\n\n${empPrompt}`
             : empPrompt;
-        const tmpDir = join(os.tmpdir(), `jaw-emp-${agentLabel}-${Date.now()}`);
+        const nativeClaude = runtimeTransport === 'native' && cli === 'claude';
+        const tmpDir = nativeClaude
+            ? fs.mkdtempSync(join(os.tmpdir(), `jaw-emp-${agentLabel.slice(0, 80).replace(/[^\w.-]/g, '_')}-`))
+            : join(os.tmpdir(), `jaw-emp-${agentLabel}-${Date.now()}`);
         fs.mkdirSync(tmpDir, { recursive: true });
+        if (nativeClaude) claudeEmployeeTmpDir = tmpDir;
 
         for (const name of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'CONTEXT.md']) {
             fs.writeFileSync(join(tmpDir, name), empPromptWithWorkspace);
@@ -1749,12 +1764,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
 
-    // ─── Native Claude main: provider adaptation uses the shared host/lifecycle. ───
-    if (runtimeTransport === 'native' && cli === 'claude' && mainManaged) {
-        const capturedRun = mainRun!;
+    // ─── Native Claude: provider adaptation uses the shared host/lifecycle. ───
+    if (runtimeTransport === 'native' && cli === 'claude') {
+        const cleanupClaudeWorker = () => {
+            if (claudeEmployeeTmpDir) cleanupEmployeeTmpDir(claudeEmployeeTmpDir, '', agentLabel);
+        };
+        const capturedRun = mainRun;
         let capturedExit: (typeof exitSettlers extends Map<string, infer T> ? T : never) | undefined;
         const ownedRun = () => isCurrentSessionOwner(persistenceOwner, scopeKey)
-            && activeMainProcesses.get(scopeKey) === capturedRun;
+            && (!mainManaged || activeMainProcesses.get(scopeKey) === capturedRun);
         let attachedCancel: ((reason: string) => void) | undefined;
         const watchdog: NonNullable<Parameters<typeof attachWatchdog>[3]> = {};
         for (const key of ['firstProgressMs', 'idleMs', 'absoluteMs', 'absoluteHardCapMs'] as const) {
@@ -1768,7 +1786,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             return startClaudeNativeRun({ prepared, timeoutMs: resolvedAgyPrintTimeoutMs, watchdog,
                 prompt: { text: withSteerContext(withHistoryPrompt(prompt, historyBlock), opts.steerContext), ...(opts.images ? { images: opts.images } : {}) },
                 audience: traceAudience, liveScope: effectiveLiveScope, parentLiveScope: parentLiveScopeForChild,
-                storedSessionId: resumeSessionId, fresh: forceNew || opts._skipResume === true,
+                ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}),
+                storedSessionId: resumeSessionId, fresh: forceNew || opts._skipResume === true || isEmployee,
+                cleanupUnleased: cleanupClaudeWorker,
                 isCurrent: ownedRun, isCurrentOwner: token => isCurrentSessionOwner(token, scopeKey), consumeKillReason,
                 activity: identity => opts.lifecycle?.onActivity?.('native-runtime', identity),
                 exited: code => opts.lifecycle?.onExit?.(code),
@@ -1779,30 +1799,38 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     cfg: { ...cfg, effort }, ownerGeneration, persistenceOwner, forceNew, empSid, isResume, effortDefault: effort,
                     activeProcesses, scopeKey, runtimeTransport, scopedBucket: currentBucket, chatSessionId, releaseMainRun,
                     retryState: queueCtrl.retryStateForScope(scopeKey), fallbackState: queueCtrl.fallbackStateForScope(scopeKey), fallbackMaxRetries: FALLBACK_MAX_RETRIES },
-                starting: cancel => { attachedCancel = cancel; capturedRun.starting = true; capturedRun.cancelPending = cancel; },
+                starting: cancel => {
+                    attachedCancel = cancel;
+                    if (capturedRun) { capturedRun.starting = true; capturedRun.cancelPending = cancel; }
+                },
                 ready: (child, cancel) => {
                     if (!ownedRun()) throw new Error('claude_owner_lost');
                     attachedCancel ??= cancel;
-                    capturedRun.process = child; capturedRun.starting = false;
-                    if (capturedRun.cancelPending === attachedCancel) delete capturedRun.cancelPending;
-                    capturedRun.cancelTurn = attachedCancel;
-                },
-                finished: (child, _cancel, queued) => {
-                    try {
+                    if (capturedRun) {
+                        capturedRun.process = child; capturedRun.starting = false;
                         if (capturedRun.cancelPending === attachedCancel) delete capturedRun.cancelPending;
-                        if (capturedRun.cancelTurn === attachedCancel) delete capturedRun.cancelTurn;
-                        if (activeMainProcesses.get(scopeKey) === capturedRun) releaseMainRun(scopeKey, child, ownerGeneration);
+                        capturedRun.cancelTurn = attachedCancel;
+                    } else registerActiveProcess(agentLabel, child);
+                },
+                finished: (child, _cancel, queued, cleanupSafe) => {
+                    try {
+                        if (capturedRun && capturedRun.cancelPending === attachedCancel) delete capturedRun.cancelPending;
+                        if (capturedRun && capturedRun.cancelTurn === attachedCancel) delete capturedRun.cancelTurn;
+                        if (capturedRun && activeMainProcesses.get(scopeKey) === capturedRun) releaseMainRun(scopeKey, child, ownerGeneration);
+                        if (!mainManaged && activeProcesses.get(agentLabel) === child) activeProcesses.delete(agentLabel);
+                        if (cleanupSafe) cleanupClaudeWorker();
                     } finally {
                         if (capturedExit && exitSettlers.get(scopeKey) === capturedExit) { exitSettlers.delete(scopeKey); capturedExit.resolve(); }
-                        if (queued || !activeMainProcesses.has(scopeKey)) void processQueue(scopeKey);
+                        if (mainManaged && (queued || !activeMainProcesses.has(scopeKey))) void processQueue(scopeKey);
                     }
                 },
             });
         } catch {
-            if (activeMainProcesses.get(scopeKey) === capturedRun) releaseMainRun(scopeKey, null, ownerGeneration);
+            if (capturedRun && activeMainProcesses.get(scopeKey) === capturedRun) releaseMainRun(scopeKey, null, ownerGeneration);
+            cleanupClaudeWorker();
             const text = 'Claude native runtime could not be admitted.';
-            broadcast('agent_done', { text, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId }, traceAudience);
-            if (!activeMainProcesses.has(scopeKey)) void processQueue(scopeKey);
+            broadcast('agent_done', { text, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId, ...empTag }, traceAudience);
+            if (mainManaged && !activeMainProcesses.has(scopeKey)) void processQueue(scopeKey);
             return { child: null, promise: Promise.resolve({ text, code: 1 }) };
         }
     }

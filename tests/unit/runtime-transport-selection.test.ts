@@ -27,7 +27,7 @@ test('compiled main and worker support are explicit, not binary/auth claims', ()
     for (const cli of ['cursor', 'grok', 'claude']) {
         assert.equal(isSwitchableNativeCli(cli), true);
         assert.deepEqual(runtimeSelectionStatus(cli, 'native'), {
-            transport: 'native', nativeAdapterImplemented: true, nativeWorkerImplemented: false,
+            transport: 'native', nativeAdapterImplemented: true, nativeWorkerImplemented: cli === 'claude',
         });
     }
     for (const cli of ['codex-app', 'pi']) {

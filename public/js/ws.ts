@@ -13,6 +13,12 @@ import { notifyUnreadResponse } from './features/attention-badge.js';
 import { shouldApplyOrcStateEvent } from './features/orchestrate-scope.js';
 import { providerLabel } from './provider-icons.js';
 import { handleSessionListBroadcast } from './features/session-hub.js';
+import { createNativeRequestBridge } from './features/native-request-bridge.js';
+
+const nativeRequests = createNativeRequestBridge({
+    host: () => document.querySelector<HTMLElement>('.chat-area'),
+    refreshSnapshot: () => syncOrchestrateSnapshot('native-request-retry', { hydrateRun: true }),
+});
 
 const ROADMAP_PHASES = ['I', 'P', 'A', 'B', 'C'] as const;
 
@@ -236,8 +242,15 @@ const SNAPSHOT_SYNC_THROTTLE_MS = 750;
 const RESTORE_TRIGGER_DEBOUNCE_MS = 750;
 
 async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): Promise<void> {
-    const response = await fetch(`${API_BASE}/api/orchestrate/snapshot`);
-    const snap = await response.json();
+    const capture = nativeRequests.beginSnapshot();
+    let snap;
+    try {
+        const response = await fetch(`${API_BASE}${capture.path}`);
+        if (!response.ok) throw new Error('snapshot_unavailable');
+        snap = await response.json();
+    } catch (error) { capture.fail(); throw error; }
+    if (!capture.isCurrent()) return;
+    capture.accept(snap?.activityIdentity);
     currentOrcScope = String(snap.orc.scope || '');
     applyOrcState(snap.orc.state);
     applyOrcContext(snap.orc.ctx || null);
@@ -764,6 +777,7 @@ let snapshotReady: Promise<void> = Promise.resolve();
 let orcStateEpoch = 0;
 
 export function connect(): void {
+    nativeRequests.channelChanged();
     registerOrchestrateRestoreHooks();
     if (!channelWired) {
         channelWired = true;
@@ -780,6 +794,7 @@ export function connect(): void {
 export const reopenChannel = connect;
 
 function handleChannelUp(transport: 'sse' | 'ws'): void {
+    if (transport === 'sse') nativeRequests.sseOpened();
     console.log(`[${transport}] connected`);
     fallbackRetryDelayMs = 2000;
     clearChannelDownToastTimer(); // reconnected within grace — stay silent
@@ -843,6 +858,7 @@ function clearChannelDownToastTimer(): void {
 }
 
 function handleChannelDown(): void {
+    nativeRequests.unavailable();
     console.log('[channel] disconnected');
     import('./ui.js').then(m => m.cleanupToolActivity());
     if (channelDownToastTimer !== null) return; // earliest outage owns the deadline
@@ -928,12 +944,13 @@ function wireEventChannel(): void {
             .catch(err => console.warn('[widget] refresh failed:', (err as Error).message));
     });
     subscribe('*', null, (data) => {
+        nativeRequests.event(String(data['event']), data);
         const msg = { ...data, type: data['event'] } as unknown as WsMessage;
         handleServerEvent(msg);
     });
     onChannelOpen(() => handleChannelUp('sse'));
     onChannelDisconnect(() => handleChannelDown());
-    onChannelUnavailable(() => connectLegacyWebSocket());
+    onChannelUnavailable(() => { nativeRequests.unavailable(); connectLegacyWebSocket(); });
 }
 
 function handleServerEvent(msg: WsMessage): void {
@@ -1154,6 +1171,7 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'session_list') {
         handleSessionListBroadcast(msg);
     } else if (msg.type === 'session_switched' || msg.type === 'session_created') {
+        nativeRequests.invalidateIdentity();
         // Reload messages for the new active session
         window.location.reload();
     }
