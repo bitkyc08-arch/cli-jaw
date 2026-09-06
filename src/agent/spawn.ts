@@ -38,6 +38,7 @@ import { saveUpload as _saveUpload, buildMediaPrompt, buildMediaPromptMany, type
 import { resolveMainCli, consumePendingBootstrapPrompt, peekPendingBootstrapPrompt } from '../core/main-session.js';
 import {
     getSessionOwnershipGeneration,
+    isCurrentSessionOwner,
     persistMainSession,
 } from './session-persistence.js';
 import { isCompactMarkerRow } from '../core/compact.js';
@@ -47,7 +48,7 @@ import { sanitizeWorkerProgressTools } from '../orchestrator/worker-progress.js'
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
 import { formatCliUnavailableMessage, detectCliBinary } from '../core/cli-detect.js';
-import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveOrcScope } from '../orchestrator/scope.js';
+import { LOCAL_SESSION_SCOPE_ACTIVATION, resolveExecutionBinding } from '../orchestrator/scope.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { beginLiveRun, appendLiveRunText, setLiveRunTraceId, clearLiveRun, replaceLiveRunTools, appendLiveRunTool, getLiveRun } from './live-run-state.js';
 import {
@@ -56,7 +57,9 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions, mergeEnvWindowsSafe } from './spawn-env.js';
-import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext } from './prompt-context.js';
+import { buildPromptForArgs, shouldBuildHistoryBlock, withHistoryPrompt, withSteerContext,
+    PROMPT_HISTORY_MAX_ROWS, PROMPT_HISTORY_MAX_CHARS, appendCursorAcceptedInstruction,
+    buildCursorReplacementPrompt, type CursorAcceptedContext } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -65,18 +68,27 @@ import {
     resolveOpencodeBinary,
 } from './opencode-diagnostics.js';
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
-import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
-import { RuntimeProjection } from './runtime/projection.js';
+import type { RuntimeEvent, RuntimeLivenessIdentity, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import { handoffRuntimeOutcome } from './runtime/outcome.js';
+import { AcpRuntimeSession } from './runtime/acp/runtime-session.js';
+import { MainReplacementOwnerMismatchError, replaceAcpMainTurn, type MainReplacementResult } from './runtime/replace-turn.js';
+import { AcpReplacement } from './runtime/acp/replacement.js';
+import { beginSteerInput, cancelSteerInputs, cancelAllSteerInputs } from './steer-input-guard.js';
+import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
+import { syncLiveTools } from './events/helpers.js';
+import { RuntimeProjection, type RuntimeEnd } from './runtime/projection.js';
+import { recordRuntimeEvent } from './runtime/events.js';
 import { CodexProjection } from './runtime/codex-projection.js';
 import { PiProjection } from './runtime/pi-projection.js';
 import { PiRawTrace } from './runtime/pi-raw-trace.js';
 import { isNativeAdapterImplemented, isNativeWorkerImplemented, isSwitchableNativeCli, resolveRuntimeTransport, runtimeSessionBucket } from './runtime/selection.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
-import type { RemoteTarget } from '../messaging/types.js';
+import { isRemoteTarget, type RemoteTarget } from '../messaging/types.js';
+import { buildRemoteBindingKey } from '../messaging/session-key.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntimesByScope, runtimeForScope } from './jwc-runtime.js';
 import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
-import { appendTraceEvent, finalizeTraceRun, stampTraceTool, startTraceRun } from '../trace/store.js';
+import { appendTraceEvent, createTraceId, finalizeTraceRun, stampTraceTool, startTraceRun, updateTraceToolRow } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
     appendAgyFullText,
@@ -200,6 +212,8 @@ export type MainRunState = {
      * queues with a reason broadcast).
      */
     steerTurnInBand?: (text: string) => Promise<'steered' | 'unavailable' | 'rejected'>;
+    /** Native local-dispatch hook; failure must never become queued input. */
+    replaceTurn?: (text: string, commitInput: () => void) => Promise<MainReplacementResult>;
 };
 
 export const activeMainProcesses = new Map<string, MainRunState>();
@@ -636,6 +650,7 @@ export function killActiveAgent(reason?: string): boolean;
 export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
     const scopeKey = scopedReason === undefined ? 'default' : scopeKeyOrReason;
     const reason = scopedReason ?? scopeKeyOrReason;
+    cancelSteerInputs(scopeKey);
     const run = activeMainProcesses.get(scopeKey);
     const hadTimer = queueCtrl.isRetryPending(scopeKey);
     const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
@@ -652,7 +667,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
         settleOnce(run?.meta?.requestId, 'cancelled', { reason });
         clearWorkerSlotsOnStop(scopeKey, reason);
     }
-    if (run?.cancelTurn && (getActiveMainCli(scopeKey) === 'codex-app' || getActiveMainCli(scopeKey) === 'pi')) {
+    if (run?.cancelTurn && ['codex-app', 'pi', 'cursor'].includes(getActiveMainCli(scopeKey) || '')) {
         if (run.process?.pid) killReasons.set(run.process.pid, reason);
         console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey)} action=lease.cancel`);
         if (reason === 'steer' || reason === 'interrupt') armExitSettle(scopeKey);
@@ -699,6 +714,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
 }
 
 export function killAllAgents(reason = 'user') {
+    cancelAllSteerInputs();
     const hadTimer = queueCtrl.isRetryPending(null);
     const mainScopes = [...activeMainProcesses.keys()];
     let killedMain = false;
@@ -776,11 +792,12 @@ export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
     if (run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true) return true;
-    // codex-app: the hook exists exactly while a steerable turn is in flight.
-    return typeof run?.steerTurnInBand === 'function';
+    // Route CLI steering through either the in-band hook or the native replacement hook.
+    // Each owning hook decides whether the current turn can still accept the input.
+    return typeof run?.steerTurnInBand === 'function' || typeof run?.replaceTurn === 'function';
 }
 
-export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run';
+export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run' | 'cancelled';
 
 export async function steerAgent(
     scopeKey: string,
@@ -801,6 +818,56 @@ export async function steerAgent(
         // from waiting for an answer that structurally cannot arrive.
         settleOnce(meta?.requestId, 'steered');
         return 'steered';
+    }
+    if (typeof run?.replaceTurn === 'function') {
+        const capturedSessionOwner = getSessionOwnershipGeneration(scopeKey);
+        const owner = run.meta;
+        const ownerTarget = isRemoteTarget(owner.target) ? owner.target : undefined;
+        const ownerRemoteKey = owner.remoteKey ?? (ownerTarget ? buildRemoteBindingKey(ownerTarget) : undefined);
+        const suppliedTarget = meta?.target;
+        if ((meta?.chatSessionId !== undefined && meta.chatSessionId !== owner.chatSessionId)
+            || (meta?.remoteKey !== undefined && meta.remoteKey !== ownerRemoteKey)
+            || (suppliedTarget !== undefined && (!isRemoteTarget(suppliedTarget)
+                || buildRemoteBindingKey(suppliedTarget) !== ownerRemoteKey
+                || (ownerTarget !== undefined && (buildRemoteBindingKey(suppliedTarget) !== buildRemoteBindingKey(ownerTarget)
+                    || suppliedTarget.targetKind !== ownerTarget.targetKind
+                    || suppliedTarget.guildId !== ownerTarget.guildId
+                    || suppliedTarget.parentTargetId !== ownerTarget.parentTargetId))))) {
+            throw new MainReplacementOwnerMismatchError();
+        }
+        const capturedMeta = { ...meta, ...(suppliedTarget === undefined ? {} : { target: { ...suppliedTarget } }) };
+        const capturedOwnerGeneration = run.ownerGeneration;
+        const workingDir = settings['workingDir'] || null;
+        let attempted = false;
+        const inputGuard = beginSteerInput(scopeKey);
+        let outcome: MainReplacementResult, inputCancelled: boolean;
+        try {
+            outcome = await run.replaceTurn(newPrompt, () => {
+                if (activeMainProcesses.get(scopeKey) !== run || run.ownerGeneration !== capturedOwnerGeneration
+                    || !isCurrentSessionOwner(capturedSessionOwner, scopeKey)) {
+                    throw new MainReplacementOwnerMismatchError();
+                }
+                if (attempted) throw new Error('native_replacement_duplicate_input');
+                attempted = true; // A partial recording failure must never retry this input.
+                insertMessage.run('user', newPrompt, source, '', workingDir, chatSessionId);
+                broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
+                broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+                    sessionId: chatSessionId, target: capturedMeta.target, chatId: capturedMeta.chatId,
+                    requestId: capturedMeta.requestId, remoteKey: capturedMeta.remoteKey, replyViaTarget: capturedMeta.replyViaTarget,
+                    mode: 'cancel-reprompt', localDispatch: true }));
+                settleOnce(capturedMeta.requestId, 'steered');
+            });
+        } finally { inputCancelled = inputGuard.isCancelled(); inputGuard.release(); }
+        if (outcome.kind === 'failed') throw outcome.error;
+        if ((outcome.kind === 'dispatched') !== attempted) throw new Error('native_replacement_inconsistent_receipt');
+        if (outcome.kind === 'dispatched') return 'steered';
+        if (outcome.kind === 'cancelled' || inputCancelled) {
+            settleOnce(capturedMeta.requestId, 'cancelled', { reason: 'native-steer-stopped', scope: scopeKey, sessionId: chatSessionId });
+            return 'cancelled';
+        }
+        broadcast('steer_rejected', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey,
+            sessionId: chatSessionId, reason: outcome.reason, requestId: capturedMeta.requestId }));
+        return 'fallback-queue';
     }
     if (typeof run?.steerTurnInBand === 'function') {
         // codex-app same-turn steer. The user row is written only AFTER the
@@ -932,7 +999,8 @@ export function makeCleanEnv(
     return merged;
 }
 
-function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string, maxSessions = 10, maxTotalChars = 8000) {
+function buildHistoryBlock(currentPrompt: string, workingDir: string | null | undefined, chatSessionId: string,
+    maxSessions = PROMPT_HISTORY_MAX_ROWS, maxTotalChars = PROMPT_HISTORY_MAX_CHARS) {
     const recent = getRecentMessages.all(workingDir || null, chatSessionId, Math.max(1, maxSessions * 2)) as RecentMessageRow[];
     if (!recent.length) return '';
 
@@ -1031,6 +1099,7 @@ import { CodexAppClient, CodexSteerError, isRecoverableResumeError } from './cod
 import {
     acquireCodexAppRuntime,
     acquirePiRuntime,
+    acquireCursorRuntime,
     type PiLease,
 } from './runtime-pool.js';
 import {
@@ -1052,7 +1121,7 @@ export type { QueueController } from './spawn/queue.js';
 
 
 export interface SpawnLifecycle {
-    onActivity?: (source: string) => void;
+    onActivity?: (source: string, identity?: RuntimeLivenessIdentity) => void;
     onExit?: (code: number | null) => void;
 }
 
@@ -1126,27 +1195,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const empTag = isEmployee ? { isEmployee: true } : {};
     const multiSessionEnabled = settings["multiSession"]?.enabled === true;
     const capturedScope = currentSessionScope();
-    const scopeKey = multiSessionEnabled
-        ? (opts.scopeKey || capturedScope?.scope || resolveOrcScope(stripUndefined({
-            origin,
-            target: opts.target,
-            chatId: opts.chatId,
-            workingDir: settings["workingDir"] || null,
-            persistedScopeId: opts.remoteKey,
-            multiSessionEnabled,
-        })))
-        : 'default';
-    const chatSessionId = multiSessionEnabled
-        ? (opts.chatSessionId || capturedScope?.chatSessionId || getActiveChatSession())
-        : getActiveChatSession();
-    if (multiSessionEnabled) {
-        opts = stripUndefined({
-            ...opts,
-            scopeKey,
-            chatSessionId,
-            ...(opts.remoteKey ? { remoteKey: opts.remoteKey } : {}),
-        });
-    }
+    const binding = resolveExecutionBinding(stripUndefined({ scope: opts.scopeKey, chatSessionId: opts.chatSessionId,
+        captured: capturedScope, activeChatSessionId: getActiveChatSession(), origin,
+        target: opts.target, chatId: opts.chatId, workingDir: settings['workingDir'] || null,
+        persistedScopeId: opts.remoteKey, multiSessionEnabled }));
+    const scopeKey = binding.scope, chatSessionId = binding.chatSessionId;
+    opts = stripUndefined({ ...opts, scopeKey, chatSessionId,
+        ...(opts.remoteKey ? { remoteKey: opts.remoteKey } : {}) });
 
     let mainRun = mainManaged ? activeMainProcesses.get(scopeKey) : undefined;
     if (mainManaged && mainRun && !opts._settingsGateWaited) {
@@ -1169,14 +1224,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             console.log('[jaw] Agent already running, skipping');
             return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
         }
-        mainRun!.starting = true;
+        const waitingRun = mainRun!;
+        waitingRun.starting = true;
         let cancelled = false;
         let cancelReason = 'user';
         const cancelThisSpawn = (reason: string) => {
             cancelled = true;
             cancelReason = reason;
         };
-        mainRun!.cancelPending = cancelThisSpawn;
+        waitingRun.cancelPending = cancelThisSpawn;
         const promise: Promise<SpawnPromiseResult> = (async () => {
             try {
                 await waitForRuntimeSettingsIdle();
@@ -1187,12 +1243,49 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 return await next.promise;
             } finally {
                 const latest = activeMainProcesses.get(scopeKey);
-                if (latest?.cancelPending === cancelThisSpawn) delete latest.cancelPending;
-                if (latest) latest.starting = false;
+                if (latest === waitingRun) {
+                    if (latest.cancelPending === cancelThisSpawn) delete latest.cancelPending;
+                    latest.starting = false;
+                }
                 void processQueue(scopeKey);
             }
         })();
         return { child: null, promise };
+    }
+
+    let resolve: (value: SpawnPromiseResult) => void;
+    const resultPromise = new Promise<SpawnPromiseResult>(r => { resolve = r; });
+
+    const session = (getSession() as SessionRow | undefined) ?? {};
+    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
+    const ownerGeneration = persistenceOwner.global;
+    if (mainRun) mainRun.ownerGeneration = ownerGeneration;
+    let cli = resolveMainCli(opts.cli, settings, session);
+    if (mainRun) mainRun.meta.cli = cli;
+
+    // Namespace selection is captured once for this run. Builtin native
+    // Codex/Pi keep their existing bucket keys; only switchable adapters use
+    // the new namespace. Reject unavailable native choices before fallback,
+    // saved-session reads, bootstrap consumption, or worker isolation.
+    const runtimeTransport = isSwitchableNativeCli(cli)
+        ? resolveRuntimeTransport(settings['perCli']?.[cli]?.transport) : 'print';
+    const permissions = opts.permissions || settings['permissions'] || session.permissions || 'auto';
+    const unavailableNative = runtimeTransport === 'native'
+        && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)));
+    const restrictiveNative = runtimeTransport === 'native' && cli === 'cursor' && permissions !== 'auto';
+    if (unavailableNative || restrictiveNative) {
+        const message = unavailableNative
+            ? `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`
+            : 'Cursor native restrictive permissions are not verified in this build. Select print transport to retain restrictive permission behavior.';
+        const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
+            && releaseMainRun(scopeKey, null, ownerGeneration);
+        broadcast('agent_done', {
+            text: message, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId,
+            ...(opts.requestId ? { requestId: opts.requestId } : {}), ...empTag,
+        }, isEmployee ? 'internal' : 'public');
+        resolve!({ text: message, code: 78 });
+        if (released) void processQueue(scopeKey);
+        return { child: null, promise: resultPromise };
     }
 
     // Ensure AGENTS.md on disk is fresh before CLI reads it
@@ -1215,6 +1308,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (mainManaged) {
         setCurrentMainMeta(scopeKey, stripUndefined({
             origin,
+            cli,
             target: opts.target,
             chatId: opts.chatId,
             requestId: opts.requestId,
@@ -1225,42 +1319,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }));
     }
 
-    let resolve: (value: SpawnPromiseResult) => void;
-    const resultPromise = new Promise<SpawnPromiseResult>(r => { resolve = r; });
-
-    const session = (getSession() as SessionRow | undefined) ?? {};
-    const persistenceOwner = getSessionOwnershipGeneration(scopeKey);
-    const ownerGeneration = persistenceOwner.global;
-    if (mainRun) mainRun.ownerGeneration = ownerGeneration;
-    let cli = resolveMainCli(opts.cli, settings, session);
-    if (mainRun) mainRun.meta.cli = cli;
-
-    // Namespace selection is captured once for this run. Builtin native
-    // Codex/Pi keep their existing bucket keys; only switchable adapters use
-    // the new namespace. Reject unavailable native choices before fallback,
-    // saved-session reads, bootstrap consumption, or worker isolation.
-    const runtimeTransport = isSwitchableNativeCli(cli)
-        ? resolveRuntimeTransport(settings['perCli']?.[cli]?.transport) : 'print';
-    if (runtimeTransport === 'native'
-        && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)))) {
-        const message = `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`;
-        const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
-            && releaseMainRun(scopeKey, null, ownerGeneration);
-        broadcast('agent_done', {
-            text: message, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId,
-            ...(opts.requestId ? { requestId: opts.requestId } : {}), ...empTag,
-        }, isEmployee ? 'internal' : 'public');
-        resolve!({ text: message, code: 78 });
-        if (released) void processQueue(scopeKey);
-        return { child: null, promise: resultPromise };
-    }
 
     // Phase 52: Bootstrap consumption is moved BELOW the bucket-aware `isResume`
     // computation so we can use the authoritative per-bucket resume decision
     // instead of the legacy `isResumeGuess` heuristic. See comment near line 762.
 
     // ─── Fallback retry: skip to fallback if retries exhausted ───
-    if (!opts._isFallback && !opts.internal) {
+    if (runtimeTransport !== 'native' && !opts._isFallback && !opts.internal) {
         const st = queueCtrl.fallbackStateForScope(scopeKey).get(cli);
         if (st?.fallbackCli && st.retriesLeft <= 0) {
             const fbAvail = detectCli(st.fallbackCli)?.available;
@@ -1331,7 +1396,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         return { child: null, promise: resultPromise };
     }
 
-    const permissions = opts.permissions || settings["permissions"] || session.permissions || 'auto';
     if (cli === 'opencode') {
         ensureOpencodeAlwaysAllowPermissions();
     }
@@ -1352,7 +1416,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const model = cli === 'ai-e' && effectiveProvider === 'claude'
         ? migrateLegacyClaudeValue(requestedModel)
         : requestedModel;
-    const runtimeModel = cli === 'cursor' ? resolveCursorModelVariant(model, effort) : model;
+    const runtimeModel = cli === 'cursor' && runtimeTransport !== 'native' ? resolveCursorModelVariant(model, effort) : model;
     const codexMultiplexMain = cli === 'codex-app' && mainManaged && !opts.agentId
         && settings["runtime"]?.codexApp?.multiplex === true;
     if (mainManaged) {
@@ -1525,14 +1589,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             prompt,
             settings["workingDir"],
             chatSessionId,
-            10,
-            8000,
+            PROMPT_HISTORY_MAX_ROWS,
+            PROMPT_HISTORY_MAX_CHARS,
         )
         : '';
     let agyBootstrap: AgyBootstrapEnvelope | null = null;
     let promptForArgs = buildPromptForArgs({
         cli,
         effectiveProvider,
+        runtimeTransport,
         prompt,
         historyBlock,
         sysPrompt,
@@ -1588,7 +1653,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         return buildResumeArgs(cli, runtimeModel, effort, sid, promptForArgs, permissions, options);
     };
     let args: string[] = [];
-    if (cli !== 'agy') args = buildCurrentArgs(argOptions);
+    if (cli !== 'agy' && runtimeTransport !== 'native') args = buildCurrentArgs(argOptions);
 
     const agentLabel = agentId || 'main';
     const traceAudience: 'public' | 'internal' = (opts.internal || isEmployee) ? 'internal' : 'public';
@@ -1673,6 +1738,259 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'claude-e') console.log(`[jaw:${agentLabel}:args] ${JSON.stringify(args)}`);
     }
 
+
+    // ─── Native Cursor main: protocol ownership is separate from application settlement. ───
+    if (runtimeTransport === 'native' && cli === 'cursor' && mainManaged) {
+        const capturedRun = mainRun!;
+        const nativeCwd = spawnCwd || process.cwd();
+        let traceRunId: string;
+        try { traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: nativeCwd, agentLabel, audience: traceAudience }); }
+        catch { traceRunId = createTraceId(); console.warn('[runtime:cursor] trace creation unavailable'); }
+        const identity = Object.freeze({ runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
+            turnId: traceRunId, audience: traceAudience,
+            ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}) });
+        const ctx: SpawnContext = { fullText: '', traceLog: [], toolLog: [], seenToolKeys: new Set(),
+            hasClaudeStreamEvents: false, sessionId: null, cost: null, turns: null, duration: null, tokens: null,
+            stderrBuf: '', runStartedAt: Date.now(), origin,
+            ...(opts.requestId ? { requestId: opts.requestId } : {}),
+            liveScope: effectiveLiveScope, parentLiveScope: parentLiveScopeForChild, traceRunId, traceAudience };
+        const toolMirror = new Map<string, ToolEntry>();
+        const mirrorLimit = 160;
+        let facade: AcpRuntimeSession | null = null, ownedLease: NativeRunLease | null = null;
+        let failedStart: RuntimeProjection | null = null;
+        let nativeStarted = false, runtimeEnded = false, finalizeFailed = false, finalized = false;
+        let stopReason: string | null = null, queueRequested = false;
+        let capturedExit: (typeof exitSettlers extends Map<string, infer T> ? T : never) | undefined;
+        let selectedResult: SpawnPromiseResult | undefined;
+        const ownsRun = () => !finalized && activeMainProcesses.get(scopeKey) === capturedRun
+            && isCurrentSessionOwner(persistenceOwner, scopeKey);
+        const cursorTarget = opts.target ? { ...opts.target } : undefined;
+        let acceptedContext: CursorAcceptedContext = { messages: [], omitted: false };
+        const prepareReplacement = (instruction: string, partialText: string) => {
+            if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+            return { text: buildCursorReplacementPrompt({
+                instruction: prependRemoteConversationContext(instruction, cursorTarget),
+                originalRequest: promptForSnapshot, accepted: acceptedContext, partialText, sysPrompt,
+            }) };
+        };
+        const replaceHook = (instruction: string, commitInput: () => void): Promise<MainReplacementResult> =>
+            replaceAcpMainTurn(facade, instruction, () => {
+                if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
+                const next = appendCursorAcceptedInstruction(acceptedContext, instruction);
+                const result: unknown = commitInput();
+                if (result !== null && (typeof result === 'object' || typeof result === 'function')
+                    && typeof (result as { then?: unknown }).then === 'function') {
+                    void Promise.resolve(result).catch(() => undefined);
+                    throw new Error('cursor_acp_async_input_commit');
+                }
+                acceptedContext = next;
+            });
+        const resultFor = (outcome: RuntimeTurnOutcome): SpawnPromiseResult => ({
+            text: outcome.finalText?.trim() ?? '', code: outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1,
+            runtimeOutcome: outcome, traceRunId,
+        });
+        const diagnostic = () => facade?.lastError?.includes('config')
+            ? 'Cursor native model or effort is unsupported. Choose an advertised model/effort; Composer models may require an unset effort.'
+            : 'Cursor native runtime failed. Check the native model, effort and existing CLI login.';
+        const startFailedRuntime = () => {
+            if (!failedStart) {
+                failedStart = new RuntimeProjection(identity);
+                failedStart.start(cli);
+            }
+            return failedStart;
+        };
+        const closeFailedTrace = (outcome: RuntimeTurnOutcome) => {
+            try {
+                finalizeTraceRun(traceRunId, outcome.status === 'stopped' ? 'interrupted' : outcome.status,
+                    outcome.status === 'error' ? diagnostic() : null, { onlyIfRunning: true });
+            } catch { console.warn('[runtime:cursor] failure trace finalization unavailable'); }
+        };
+        const endRuntime = (end: RuntimeEnd) => {
+            if (runtimeEnded) return;
+            runtimeEnded = true;
+            if (facade?.claimTurnOutcome(traceRunId)) {
+                if (!facade.finalizeTurn(traceRunId, end)) finalizeFailed = true;
+            } else if (!nativeStarted) {
+                startFailedRuntime().close(end);
+            } else {
+                finalizeFailed = true;
+                console.warn('[runtime:cursor] missing owned finalizer');
+            }
+        };
+        const failRuntime = (outcome: RuntimeTurnOutcome): SpawnPromiseResult => {
+            ctx.stallWatchdog?.stop();
+            const selected = ctx.runtimeTerminalAttempted && ctx.runtimeOutcome ? ctx.runtimeOutcome : {
+                status: stopReason || ctx.stallReason ? 'stopped' as const : 'error' as const,
+                finalText: null, partialText: outcome.partialText,
+            };
+            handoffRuntimeOutcome(ctx, selected);
+            try {
+                // Admit the captured run before compatibility consumers retire it.
+                if (!nativeStarted && !runtimeEnded) startFailedRuntime();
+                if (!ctx.runtimeTerminalAttempted) {
+                    ctx.runtimeTerminalAttempted = true;
+                    broadcast('agent_done', { traceRunId, scope: scopeKey, sessionId: chatSessionId, origin, cli,
+                        ...(opts.requestId ? { requestId: opts.requestId } : {}),
+                        text: selected.status === 'stopped' ? '' : `❌ ${diagnostic()}`, error: true,
+                        runtimeStatus: selected.status, runtimeFinality: selected.finalText === null ? 'absent' : 'present',
+                    }, traceAudience);
+                }
+            } finally {
+                try {
+                    endRuntime({ kind: 'turn-end', status: selected.status, finalText: selected.finalText,
+                        ...(selected.status === 'error' ? { error: diagnostic() } : {}) });
+                } finally { closeFailedTrace(selected); }
+            }
+            return selectedResult ?? resultFor(selected);
+        };
+        let nativeRun!: ReturnType<typeof runNativeRuntime<SpawnPromiseResult>>;
+        const cancelHook = (reason: string) => {
+            stopReason ??= reason;
+            if (reason === 'steer' || reason === 'interrupt') {
+                armExitSettle(scopeKey);
+                capturedExit ??= exitSettlers.get(scopeKey);
+            }
+            nativeRun.cancel(reason);
+        };
+        capturedRun.starting = true;
+        nativeRun = runNativeRuntime<SpawnPromiseResult>({
+            turnId: traceRunId, prompt: { text: promptForArgs }, isCurrent: ownsRun,
+            acquire: async signal => {
+                const lease = await acquireCursorRuntime({
+                    key: { scopeKey, cwd: nativeCwd, model: runtimeModel === 'default' ? '' : runtimeModel, effort, permissions },
+                    binary: detected.path || 'cursor-agent', env: spawnEnv, promptTimeoutMs: resolvedAgyPrintTimeoutMs,
+                    persistenceOwner, isCurrentOwner: token => isCurrentSessionOwner(token, scopeKey), canAcquire: ownsRun,
+                    storedSessionId: resumeSessionId, forceNew, signal,
+                });
+                facade = new AcpRuntimeSession(lease.session, { provider: cli, deferTurnEnd: true,
+                    getTurnContext: () => ({ ...identity, isCurrent: ownsRun }),
+                    createReplacement: io => new AcpReplacement(io), prepareReplacement,
+                    capabilities: { transport: 'native', steer: 'cancel-reprompt', resume: lease.session.agentCapabilities['loadSession'] === true,
+                        tools: true, toolOutput: true, approvals: true, questions: false, images: false, subagents: false },
+                    record: (context, body) => {
+                        if (body.kind === 'turn-start') nativeStarted = true;
+                        return recordRuntimeEvent(context, body);
+                    },
+                });
+                ownedLease = { child: lease.session.child, session: facade,
+                    release: () => lease.release(), retire: reason => lease.retire(reason) };
+                return ownedLease;
+            },
+            ready: lease => {
+                if (!ownsRun()) throw new Error('native_run_owner_lost');
+                capturedRun.process = lease.child;
+                if (!opts._skipInsert) insertMessage.run('user', prompt, cli, runtimeModel, nativeCwd, chatSessionId);
+                capturedRun.starting = false;
+                ctx.sessionId = lease.session.nativeSessionId || null;
+                if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
+                capturedRun.cancelTurn = cancelHook;
+                capturedRun.replaceTurn = replaceHook;
+                beginLiveRun(liveScope, cli); setLiveRunTraceId(liveScope, traceRunId);
+                const activityIdentity: RuntimeLivenessIdentity = { runId: traceRunId, sessionId: chatSessionId,
+                    scope: scopeKey, origin, ...(opts.requestId ? { requestId: opts.requestId } : {}) };
+                const onIo = () => {
+                    if (!ownsRun()) return;
+                    try { opts.lifecycle?.onActivity?.('native-runtime', activityIdentity); }
+                    catch { console.warn('[runtime:cursor] liveness observer failed'); }
+                };
+                const dispose = () => {
+                    ctx.stallWatchdog?.stop();
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
+                    lease.child.stdout?.off('data', onIo); lease.child.stderr?.off('data', onIo);
+                };
+                try {
+                    lease.child.stdout?.on('data', onIo); lease.child.stderr?.on('data', onIo);
+                    ctx.stallWatchdog = attachWatchdog(lease.child, agentLabel, reason => {
+                        ctx.stallReason = reason; nativeRun.cancel(reason);
+                    });
+                    broadcast('agent_status', { running: true, status: 'running', agentId: agentLabel, cli,
+                        scope: scopeKey, sessionId: chatSessionId, traceRunId,
+                        ...(opts.requestId ? { requestId: opts.requestId } : {}) }, traceAudience);
+                    return dispose;
+                } catch (error) { dispose(); throw error; }
+            },
+            event: (event: RuntimeEvent) => {
+                if (event.kind === 'usage') {
+                    ctx.tokens = { ...(event.inputTokens === undefined ? {} : { input_tokens: event.inputTokens }),
+                        ...(event.outputTokens === undefined ? {} : { output_tokens: event.outputTokens }),
+                        ...(event.cachedTokens === undefined ? {} : { cached_input_tokens: event.cachedTokens }) };
+                }
+                if (event.kind !== 'tool') return;
+                let tool = toolMirror.get(event.itemId);
+                if (!tool && toolMirror.size >= mirrorLimit) return;
+                const detail = [event.input, event.output, event.detail].filter(value => value !== undefined && value !== '').join('\n');
+                if (!tool) {
+                    tool = { icon: '🔧', label: event.name, toolType: 'tool', status: event.status, detail,
+                        stepRef: `runtime:${traceRunId}:${event.itemId}` };
+                    stampTraceTool(tool, ctx, 'tool'); toolMirror.set(event.itemId, tool);
+                } else {
+                    Object.assign(tool, { label: event.name, status: event.status, detail }); updateTraceToolRow(tool);
+                }
+                ctx.toolLog = [...toolMirror.values()]; syncLiveTools(ctx);
+            },
+            settle: async (lease, outcome, problem) => {
+                // Immediate Stop can settle without entering acquire/ready/send.
+                if (!nativeStarted && !runtimeEnded) startFailedRuntime();
+                ctx.stallWatchdog?.stop(); ctx.fullText = outcome.partialText;
+                if (problem) ctx.stderrBuf = problem;
+                if (lease) ctx.sessionId = lease.session.nativeSessionId || null;
+                const recordedReason = consumeKillReason(lease?.child.pid);
+                const killReason = stopReason || recordedReason;
+                const wasKilled = Boolean(killReason), wasSteer = killReason === 'steer' || killReason === 'interrupt' || killReason === DUP_REGISTRATION_KILL_REASON;
+                const code = outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1;
+                handoffRuntimeOutcome(ctx, outcome);
+                try { opts.lifecycle?.onExit?.(code); } catch { console.warn('[runtime:cursor] exit observer failed'); }
+                await handleAgentExit({ onRuntimeEnd: endRuntime,
+                    ctx, code, cli, model: runtimeModel, effectiveProvider, agentLabel, mainManaged, origin,
+                    resumeKey, prompt, opts, cfg: { ...cfg, effort }, ownerGeneration, persistenceOwner, forceNew, empSid,
+                    isResume, wasKilled, wasSteer, smokeResult: detectSmokeResponse(outcome.finalText ?? '', ctx.toolLog, code, cli),
+                    effortDefault: effort, costLine: '', resolve: value => { selectedResult ??= value; },
+                    activeProcesses, scopeKey, runtimeTransport, scopedBucket: currentBucket, chatSessionId,
+                    childProcess: lease?.child ?? null, releaseMainRun,
+                    retryState: queueCtrl.retryStateForScope(scopeKey), fallbackState: queueCtrl.fallbackStateForScope(scopeKey),
+                    fallbackMaxRetries: FALLBACK_MAX_RETRIES, processQueue: () => { queueRequested = true; },
+                });
+                if (finalizeFailed && lease) await lease.retire(new Error('native_runtime_finalization_failed'));
+                return selectedResult ?? resultFor(ctx.runtimeOutcome ?? outcome);
+            },
+            failed: (_error, _lease, outcome) => failRuntime(outcome),
+            finalized: () => {
+                finalized = true;
+                try {
+                    if (capturedRun.cancelPending === cancelHook) delete capturedRun.cancelPending;
+                    if (capturedRun.cancelTurn === cancelHook) delete capturedRun.cancelTurn;
+                    if (capturedRun.replaceTurn === replaceHook) delete capturedRun.replaceTurn;
+                    if (activeMainProcesses.get(scopeKey) === capturedRun) {
+                        const child = ownedLease?.child ?? null;
+                        if (releaseMainRun(scopeKey, child, ownerGeneration)) {
+                            if (getLiveRun(liveScope).traceRunId === traceRunId) clearLiveRun(liveScope);
+                            broadcast('agent_status', { running: false, agentId: agentLabel, cli, scope: scopeKey,
+                                sessionId: chatSessionId, traceRunId }, traceAudience);
+                        }
+                    }
+                } finally {
+                    // Preserve a selected result while closing only our running row.
+                    if (ctx.runtimeOutcome) closeFailedTrace(ctx.runtimeOutcome);
+                    if (capturedExit && exitSettlers.get(scopeKey) === capturedExit) {
+                        exitSettlers.delete(scopeKey); capturedExit.resolve();
+                    }
+                    // Exceptional settlement can release the slot before lifecycle requests its normal wake.
+                    if (queueRequested || !activeMainProcesses.has(scopeKey)) void processQueue(scopeKey);
+                }
+            },
+        });
+        capturedRun.cancelPending = cancelHook;
+        let resolved = false;
+        const resolveOnce = (value: SpawnPromiseResult) => { if (!resolved) { resolved = true; resolve!(value); } };
+        nativeRun.done.then(resolveOnce, error => {
+            const prior = ctx.runtimeTerminalAttempted && ctx.runtimeOutcome ? ctx.runtimeOutcome
+                : error instanceof NativeRunFailure ? { ...error.outcome,
+                    status: stopReason || ctx.stallReason || error.outcome.status === 'stopped' ? 'stopped' as const : 'error' as const, finalText: null }
+                    : { status: 'error' as const, finalText: null, partialText: ctx.fullText };
+            resolveOnce(selectedResult ?? resultFor(prior));
+        });
+        return { child: null, promise: resultPromise };
+    }
 
     // ─── Copilot ACP branch ──────────────────────
     if (cli === 'copilot') {

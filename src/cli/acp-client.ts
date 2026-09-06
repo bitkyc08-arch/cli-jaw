@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { createInterface } from 'readline';
 import { ownProcess, type OwnedProcess, type OwnedProcessOptions } from '../agent/spawn/process-kill.js';
 import { createTextStreamReader } from '../agent/stream-text.js';
+import { decodeFrame, type RpcFrame } from '../agent/runtime/acp/wire.js';
 
 type AcpId = string | number;
 interface AcpRequest<P = unknown> { jsonrpc: '2.0'; id: AcpId; method: string; params?: P }
@@ -240,46 +241,42 @@ export class AcpClient extends EventEmitter {
         const trimmed = line.trim();
         if (!trimmed) return;
 
-        let msg: Record<string, unknown>;
-        try { msg = JSON.parse(trimmed) as Record<string, unknown>; } catch {
-            if (process.env["DEBUG"]) console.log(`[acp] non-JSON line: ${trimmed.slice(0, 100)}`);
+        let msg: RpcFrame;
+        try { msg = decodeFrame(trimmed); } catch {
+            // Preserve legacy stdout tolerance without logging raw malformed frames.
             return;
         }
 
         // Any valid JSON-RPC message = agent is alive → reset idle timer
         this._activityPing?.();
 
-        const id = msg["id"] as number | string | undefined;
-        const method = msg["method"] as string | undefined;
+        // Peers own independent ID spaces: dispatch methods before correlating responses.
+        if ('method' in msg) {
+            if ('id' in msg) {
+                this._handleAgentRequest(msg);
+            } else {
+                if (msg.method === 'session/cancelled') {
+                    console.warn(`[acp:cancelled] ${JSON.stringify(msg.params || {}).slice(0, 200)}`);
+                }
+                this.emit(msg.method, msg.params);
+            }
+            return;
+        }
 
         // Response to a request (has id)
+        const id = msg.id;
         if (id != null && this._pending.has(id as number)) {
             const p = this._pending.get(id as number)!;
             this._pending.delete(id as number);
             if (p.timer) clearTimeout(p.timer);
 
-            const error = msg["error"] as { code: number; message: string; data?: unknown } | undefined;
-            if (error) {
+            if ('error' in msg) {
+                const error = msg.error;
                 const details = error.data ? ` ${JSON.stringify(error.data)}` : '';
                 p.reject(new Error(`ACP error [${error.code}]: ${error.message}${details}`));
             } else {
-                p.resolve(msg["result"]);
+                p.resolve(msg.result);
             }
-            return;
-        }
-
-        // Agent request to client (has id + method) — auto-respond
-        if (id != null && method) {
-            this._handleAgentRequest(msg as unknown as AcpRequest);
-            return;
-        }
-
-        // Notification from agent (no id, has method)
-        if (method) {
-            if (method === 'session/cancelled') {
-                console.warn(`[acp:cancelled] ${JSON.stringify(msg["params"] || {}).slice(0, 200)}`);
-            }
-            this.emit(method, msg["params"]);
             return;
         }
     }

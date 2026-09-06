@@ -1,5 +1,10 @@
 import { CodexAppClient, isRecoverableResumeError } from './codex-app-client.js';
 import { resolveCodexAppLaneKey } from './args.js';
+import { realpathSync } from 'node:fs';
+import type { SessionOwnerToken } from './session-persistence.js';
+import { createCursorSession, type CursorSessionOptions } from './runtime/acp/cursor-session.js';
+import { validateAcpSessionOptions, type AcpSession } from './runtime/acp/session.js';
+import { normalizeNativePermissions } from './runtime/acp/permissions.js';
 import {
     normalizePiSettings,
     spawnPersistentPiRpc,
@@ -34,13 +39,16 @@ type AcquireWaiter = {
     resolve: () => void;
     reject: (err: Error) => void;
     timer: NodeJS.Timeout;
+    cleanup?: () => void;
 };
 
 type PoolEntry<R extends ManagedRuntime, S> =
-    | { state: 'creating'; scopeKey: string; waiters: AcquireWaiter[]; lastUsedAt: number }
+    | { state: 'creating'; scopeKey: string; waiters: AcquireWaiter[]; lastUsedAt: number;
+        abortCreate?: () => void; nativeOwner?: SessionOwnerToken }
     | { state: 'ready'; scopeKey: string; runtime: R; sessionId: S | null;
         busy: boolean; dead: boolean; waiters: AcquireWaiter[]; lastUsedAt: number;
-        disposeExit: () => void };
+        disposeExit: () => void; nativeOwner?: SessionOwnerToken; leaseOwner?: symbol;
+        cursorRetirement?: Promise<void> };
 
 type ReadyEntry<R extends ManagedRuntime, S> = Extract<PoolEntry<R, S>, { state: 'ready' }>;
 
@@ -92,7 +100,24 @@ export interface PiAcquireOptions {
     waitMs?: number;
 }
 
-type Engine = 'codex-app' | 'pi';
+export interface CursorAcquireOptions {
+    key: { scopeKey: string; cwd: string; model: string; effort: string; permissions: unknown };
+    binary: string; env: NodeJS.ProcessEnv; promptTimeoutMs: number;
+    persistenceOwner: SessionOwnerToken;
+    isCurrentOwner(owner: SessionOwnerToken): boolean;
+    canAcquire(): boolean;
+    storedSessionId?: string | null;
+    forceNew?: boolean;
+    waitMs?: number;
+    signal?: AbortSignal;
+    createSession?: (options: CursorSessionOptions) => Promise<AcpSession>;
+}
+export interface CursorLease extends RuntimeLease<ManagedRuntime, string> {
+    session: AcpSession;
+    retire(reason?: Error): Promise<void>;
+}
+
+type Engine = 'codex-app' | 'pi' | 'cursor';
 type AnyEntry = PoolEntry<ManagedRuntime, unknown>;
 type EngineStore = {
     entries: Map<string, AnyEntry>;
@@ -132,6 +157,7 @@ function drainWaiters(entry: { waiters: AcquireWaiter[] }, outcome: 'wake' | Err
     const pending = entry.waiters.splice(0);
     for (const waiter of pending) {
         clearTimeout(waiter.timer);
+        waiter.cleanup?.();
         if (outcome instanceof Error) waiter.reject(outcome);
         else waiter.resolve();
     }
@@ -139,17 +165,25 @@ function drainWaiters(entry: { waiters: AcquireWaiter[] }, outcome: 'wake' | Err
 
 function removeWaiter(entry: { waiters: AcquireWaiter[] }, id: number): void {
     const index = entry.waiters.findIndex((waiter) => waiter.id === id);
-    if (index >= 0) entry.waiters.splice(index, 1);
+    if (index >= 0) {
+        const waiter = entry.waiters.splice(index, 1)[0]!;
+        clearTimeout(waiter.timer); waiter.cleanup?.();
+    }
 }
 
-function waitForEntry(entry: { waiters: AcquireWaiter[] }, waitMs: number): Promise<void> {
+function waitForEntry(entry: { waiters: AcquireWaiter[] }, waitMs: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
+        if (signal?.aborted) { reject(new Error('runtime pool acquire aborted')); return; }
         const id = nextWaiterId++;
         const timer = setTimeout(() => {
             removeWaiter(entry, id);
             reject(new Error(`runtime pool acquire timed out after ${waitMs}ms`));
         }, waitMs);
-        entry.waiters.push({ id, resolve, reject, timer });
+        const abort = () => { removeWaiter(entry, id); reject(new Error('runtime pool acquire aborted')); };
+        entry.waiters.push({ id, resolve, reject, timer,
+            ...(signal ? { cleanup: () => signal.removeEventListener('abort', abort) } : {}) });
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) abort();
     });
 }
 
@@ -169,6 +203,7 @@ function removeEntry(store: EngineStore, key: string, entry: AnyEntry, reason: E
 
 function closeEntry(store: EngineStore, key: string, entry: AnyEntry, reason: Error): void {
     removeEntry(store, key, entry, reason);
+    if (entry.state === 'creating') entry.abortCreate?.();
     if (entry.state === 'ready') {
         void Promise.resolve(entry.runtime.close()).catch((err: unknown) => {
             console.warn('[runtime-pool] close failed:', (err as Error).message);
@@ -581,14 +616,229 @@ export async function acquirePiRuntime(opts: PiAcquireOptions): Promise<PiLease>
     }
 }
 
+type CursorManagedRuntime = ManagedRuntime & { session: AcpSession };
+
+function removeRetiredCursorEntry(store: EngineStore, key: string, entry: AnyEntry): void {
+    if (store.entries.get(key) !== entry) return;
+    // A completed fence wakes acquisitions to rescan the scope, not to fail them.
+    drainWaiters(entry, 'wake');
+    removeEntry(store, key, entry, new Error('cursor runtime retired'));
+}
+
+function retireCursorEntry(store: EngineStore, key: string, entry: ReadyEntry<ManagedRuntime, unknown>,
+    reason: Error): Promise<void> {
+    if (entry.cursorRetirement) return entry.cursorRetirement;
+    if (store.entries.get(key) !== entry) return Promise.resolve();
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    // Install before invoking session code: retire/close can synchronously emit exit.
+    entry.dead = true;
+    entry.cursorRetirement = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    void entry.cursorRetirement.catch(() => {
+        console.warn('[runtime-pool] cursor retirement failed; awaiting captured child exit');
+    });
+    try {
+        (entry.runtime as CursorManagedRuntime).session.retire(reason);
+        void Promise.resolve(entry.runtime.close()).then(() => {
+            removeRetiredCursorEntry(store, key, entry);
+            resolve();
+        }, reject);
+    } catch (error) { reject(error); }
+    // A rejected close remains fenced. Only observed close or this child's exit removes it.
+    return entry.cursorRetirement;
+}
+
+function cursorRuntime(session: AcpSession): CursorManagedRuntime {
+    return { session, get alive() { return session.alive; }, supportsInterrupt: true,
+        close: () => session.close(), interrupt: () => session.cancel(), kill: () => session.retire(),
+        onExit: cb => {
+            const listener = (code: number | null) => cb(code);
+            session.child.on('exit', listener);
+            return () => { session.child.off('exit', listener); };
+        } };
+}
+function makeCursorLease(store: EngineStore, key: string, entry: ReadyEntry<ManagedRuntime, unknown>, reused: boolean): CursorLease {
+    const runtime = entry.runtime as CursorManagedRuntime;
+    const token = Symbol('cursor-lease');
+    entry.leaseOwner = token;
+    let released = false;
+    const owns = () => store.entries.get(key) === entry && entry.leaseOwner === token;
+    return { runtime, session: runtime.session, sessionId: runtime.session.nativeSessionId, reused,
+        release() {
+            if (released) return;
+            released = true;
+            if (!owns()) return;
+            delete entry.leaseOwner;
+            entry.busy = false; entry.lastUsedAt = Date.now();
+            if (entry.cursorRetirement || entry.dead || !runtime.alive || !runtime.session.idle) {
+                void retireCursorEntry(store, key, entry, new Error('cursor runtime released before idle'));
+                return;
+            }
+            drainWaiters(entry, 'wake');
+        },
+        retire(reason = new Error('cursor lease retired')) {
+            if (released || !owns()) return Promise.resolve();
+            return retireCursorEntry(store, key, entry, reason);
+        },
+        async cancel() {
+            if (released || !owns()) return;
+            try { await runtime.interrupt(); }
+            catch {
+                if (released || !owns()) return;
+                await retireCursorEntry(store, key, entry, new Error('cursor runtime cancelled and discarded'));
+            }
+        },
+    };
+}
+
+async function createCursorEntry(store: EngineStore, key: string, creating: Extract<AnyEntry, { state: 'creating' }>,
+    opts: CursorAcquireOptions, deadline: number, check: () => void): Promise<CursorLease> {
+    const controller = new AbortController();
+    let rejectAbort!: (error: Error) => void;
+    const interrupted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+    void interrupted.catch(() => undefined);
+    let abandoned = false, installed = false, candidate: AcpSession | null = null;
+    const abort = (error: Error) => {
+        if (controller.signal.aborted) return;
+        controller.abort(error); rejectAbort(error);
+        removeEntry(store, key, creating, error);
+    };
+    creating.abortCreate = () => abort(new Error('cursor runtime creation replaced'));
+    const onAbort = () => abort(new Error('cursor runtime acquire aborted'));
+    const timer = setTimeout(() => abort(new Error('cursor runtime acquire timed out')), Math.max(1, deadline - performance.now()));
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
+    const retire = (session: AcpSession) => {
+        session.retire(new Error('cursor runtime creation discarded'));
+        void session.close().catch(() => { console.warn('[runtime-pool] cursor creation cleanup failed'); });
+    };
+    const creation = Promise.resolve().then(() => {
+        if (opts.signal?.aborted) onAbort();
+        if (controller.signal.aborted) throw new Error('cursor runtime acquire aborted');
+        check();
+        return (opts.createSession ?? createCursorSession)({ binary: opts.binary, env: opts.env, cwd: opts.key.cwd,
+            permissions: opts.key.permissions, model: opts.key.model, effort: opts.key.effort,
+            promptTimeoutMs: opts.promptTimeoutMs, signal: controller.signal,
+            ...(opts.forceNew || !opts.storedSessionId ? {} : { resumeSessionId: opts.storedSessionId }) });
+    }).then(session => { candidate = session; if (abandoned) retire(session); return session; });
+    try {
+        const session = await Promise.race([creation, interrupted]);
+        check();
+        if (controller.signal.aborted || store.entries.get(key) !== creating || !session.alive || !session.idle) {
+            throw new Error('cursor runtime creation superseded');
+        }
+        const runtime = cursorRuntime(session);
+        let ready!: ReadyEntry<ManagedRuntime, unknown>;
+        const disposeExit = runtime.onExit(() => {
+            if (store.entries.get(key) !== ready) return;
+            ready.dead = true;
+            if (ready.cursorRetirement || !ready.busy) removeRetiredCursorEntry(store, key, ready);
+            else drainWaiters(ready, 'wake');
+        });
+        ready = { state: 'ready', scopeKey: opts.key.scopeKey, runtime, sessionId: session.nativeSessionId,
+            busy: true, dead: false, waiters: [], lastUsedAt: Date.now(), disposeExit,
+            nativeOwner: { ...opts.persistenceOwner } };
+        store.entries.set(key, ready); installed = true;
+        drainWaiters(creating, 'wake');
+        return makeCursorLease(store, key, ready, false);
+    } catch (error) {
+        abandoned = true;
+        controller.abort(error);
+        if (candidate && !installed) retire(candidate);
+        removeEntry(store, key, creating, error instanceof Error ? error : new Error('cursor runtime creation failed'));
+        throw error;
+    } finally {
+        clearTimeout(timer); opts.signal?.removeEventListener('abort', onAbort);
+        delete creating.abortCreate;
+    }
+}
+
+export async function acquireCursorRuntime(input: CursorAcquireOptions): Promise<CursorLease> {
+    if (typeof input.canAcquire !== 'function') throw new Error('cursor runtime caller admission required');
+    const waitMs = input.waitMs ?? DEFAULT_POOL_WAIT_MS;
+    if (!Number.isSafeInteger(waitMs) || waitMs <= 0 || waitMs > 2_147_483_647) throw new Error('cursor runtime invalid acquire timeout');
+    validateAcpSessionOptions({ permissions: input.key.permissions, promptTimeoutMs: input.promptTimeoutMs });
+    for (const value of [input.binary, input.key.scopeKey, input.key.cwd]) {
+        if (typeof value !== 'string' || !value) throw new Error('cursor runtime invalid key');
+    }
+    for (const value of [input.key.model, input.key.effort]) {
+        if (typeof value !== 'string' || value.length > 1024) throw new Error('cursor runtime invalid key');
+    }
+    if (![input.persistenceOwner.global, input.persistenceOwner.scope].every(value => Number.isSafeInteger(value) && value >= 0)) {
+        throw new Error('cursor runtime invalid ownership');
+    }
+    const deadline = performance.now() + waitMs;
+    const owner = { global: input.persistenceOwner.global, scope: input.persistenceOwner.scope };
+    const isCurrentOwner = input.isCurrentOwner, canAcquire = input.canAcquire, signal = input.signal;
+    const check = () => {
+        let current = false;
+        try { current = isCurrentOwner(owner) === true && canAcquire() === true; } catch { /* fail closed */ }
+        if (!current || signal?.aborted) throw new Error('cursor runtime ownership invalidated');
+        if (performance.now() >= deadline) throw new Error('cursor runtime acquire timed out');
+    };
+    check();
+    const opts: CursorAcquireOptions = { ...input, persistenceOwner: owner,
+        key: { ...input.key, cwd: realpathSync(input.key.cwd), permissions: normalizeNativePermissions(input.key.permissions) } };
+    check(); startPoolReaper();
+    const store = storeFor('cursor');
+    const key = JSON.stringify(['cursor', opts.key.scopeKey, opts.key.cwd, opts.binary,
+        opts.key.model, opts.key.effort, opts.key.permissions, 'native']);
+    // forceNew invalidates the captured entries only, never a borrower admitted after an await.
+    const forced = new Set(opts.forceNew
+        ? [...(store.scopeIndex.get(opts.key.scopeKey) ?? [])].map(k => store.entries.get(k)) : []);
+    for (;;) {
+        check();
+        // Every await returns here. A key-local check alone can admit two different keys.
+        let blocked = false;
+        for (const scopeKey of store.scopeIndex.get(opts.key.scopeKey) ?? []) {
+            const candidate = store.entries.get(scopeKey);
+            if (!candidate) continue;
+            const invalidated = forced.has(candidate) || candidate.nativeOwner?.global !== owner.global
+                || candidate.nativeOwner?.scope !== owner.scope;
+            if (candidate.state === 'creating') {
+                if (invalidated) closeEntry(store, scopeKey, candidate, new Error('cursor runtime creation ownership invalidated'));
+                else await waitForEntry(candidate, Math.max(1, deadline - performance.now()), signal);
+            } else if (candidate.cursorRetirement) {
+                await waitForEntry(candidate, Math.max(1, deadline - performance.now()), signal);
+            } else if (candidate.busy && !invalidated) {
+                // Protocol idle/exit is not application settlement. Never interrupt a normal owner.
+                await waitForEntry(candidate, Math.max(1, deadline - performance.now()), signal);
+            } else if (invalidated || scopeKey !== key || candidate.dead || !candidate.runtime.alive
+                || (opts.storedSessionId && opts.storedSessionId !== candidate.sessionId)
+                || !(candidate.runtime as CursorManagedRuntime).session.idle) {
+                void retireCursorEntry(store, scopeKey, candidate, new Error('cursor runtime entry stale'));
+                if (store.entries.get(scopeKey) === candidate) {
+                    await waitForEntry(candidate, Math.max(1, deadline - performance.now()), signal);
+                }
+            } else continue;
+            blocked = true;
+            break;
+        }
+        if (blocked) continue;
+        const entry = store.entries.get(key);
+        if (!entry) {
+            const creating: Extract<AnyEntry, { state: 'creating' }> = { state: 'creating', scopeKey: opts.key.scopeKey,
+                waiters: [], lastUsedAt: Date.now(), nativeOwner: owner };
+            store.entries.set(key, creating);
+            let keys = store.scopeIndex.get(opts.key.scopeKey);
+            if (!keys) { keys = new Set(); store.scopeIndex.set(opts.key.scopeKey, keys); }
+            keys.add(key);
+            return createCursorEntry(store, key, creating, opts, deadline, check);
+        }
+        if (entry.state === 'ready') {
+            entry.busy = true; entry.lastUsedAt = Date.now();
+            return makeCursorLease(store, key, entry, true);
+        }
+    }
+}
+
 export function startPoolReaper(idleMs = DEFAULT_POOL_IDLE_MS): void {
     if (reaper) return;
     reaper = setInterval(() => {
         const now = Date.now();
-        for (const store of stores.values()) {
+        for (const [engine, store] of stores) {
             for (const [key, entry] of store.entries) {
                 if (entry.state === 'ready' && !entry.busy && now - entry.lastUsedAt >= idleMs) {
-                    closeEntry(store, key, entry, new Error('runtime pool idle timeout'));
+                    if (engine === 'cursor') void retireCursorEntry(store, key, entry, new Error('runtime pool idle timeout'));
+                    else closeEntry(store, key, entry, new Error('runtime pool idle timeout'));
                 }
             }
         }
