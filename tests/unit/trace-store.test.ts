@@ -16,6 +16,23 @@ import {
 } from '../../src/trace/store.ts';
 import type { ToolEntry } from '../../src/types/agent.ts';
 
+test('conditional trace close settles running only and preserves every selected terminal', () => {
+    const pending = startTraceRun({ cli: 'cursor', audience: 'public' });
+    finalizeTraceRun(pending, 'error', 'setup failed', { onlyIfRunning: true });
+    assert.equal(getTraceRun(pending)?.status, 'error');
+    assert.equal(getTraceRun(pending)?.error, 'setup failed');
+    for (const status of ['done', 'error', 'interrupted'] as const) {
+        const id = startTraceRun({ cli: 'cursor', audience: 'public' });
+        finalizeTraceRun(id, status, 'selected');
+        const before = getTraceRun(id);
+        finalizeTraceRun(id, 'error', 'late cleanup', { onlyIfRunning: true });
+        assert.deepEqual(getTraceRun(id), before);
+    }
+    const unconditional = startTraceRun({ cli: 'cursor', audience: 'public' });
+    finalizeTraceRun(unconditional, 'done'); finalizeTraceRun(unconditional, 'error', 'legacy');
+    assert.equal(getTraceRun(unconditional)?.status, 'error');
+});
+
 test('trace store records redacted raw events, spills large payloads, and stamps tool pointers', () => {
     const runId = startTraceRun({
         cli: 'codex',

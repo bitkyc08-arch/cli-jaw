@@ -310,7 +310,7 @@ test(`native ${cli} ${scenario} exception cannot rewrite an already selected fin
 });
 
 for (const cli of ['cursor', 'grok'] as const)
-for (const reason of ['user', 'interrupt'] as const)
+for (const reason of ['user', 'interrupt', 'steer'] as const)
 test(`native ${cli} immediate ${reason} Stop admits and closes before any acquire, settling its exit barrier`, { timeout: 10_000 }, async () => {
     config.settings.cli = cli;
     const owner = createChatSession('immediate Stop owner'); const scope = `local:${owner.id}`;
@@ -318,6 +318,7 @@ test(`native ${cli} immediate ${reason} Stop admits and closes before any acquir
     const off = subscribe(event => packets.push(event));
     let exitBarrier: Promise<void> | undefined;
     let barrierSettled = false;
+    let headerAtBarrier: string | undefined;
     db.exec('CREATE TEMP TABLE setup_closures (run_id TEXT, status TEXT)');
     db.exec("CREATE TEMP TRIGGER setup_close_count AFTER UPDATE OF status ON trace_runs BEGIN INSERT INTO setup_closures VALUES(new.id,new.status); END");
     try {
@@ -325,12 +326,20 @@ test(`native ${cli} immediate ${reason} Stop admits and closes before any acquir
             scopeKey: scope, chatSessionId: owner.id, sysPrompt: '', _skipHistory: true, _isSmokeContinuation: true });
         assert.equal(acquisitions, 0, 'native runner has not entered its acquire microtask');
         assert.equal(killActiveAgent(scope, reason), true);
-        // interrupt arms a real barrier synchronously in the host's cancel hook.
+        // interrupt/steer arm a real barrier synchronously in the host's cancel hook.
         // Its timeout is deliberately longer than this test: timeout cannot prove settlement.
-        exitBarrier = waitForExitSettled(scope, 30_000).then(() => { barrierSettled = true; });
+        exitBarrier = waitForExitSettled(scope, 30_000).then(() => {
+            barrierSettled = true;
+            const terminal = packets.find(packet => packet.event === 'agent_done'
+                && packet.data.sessionId === owner.id);
+            headerAtBarrier = getTraceRun(String(terminal?.data.traceRunId))?.status;
+        });
         const result = await run.promise;
         await new Promise<void>(resolve => setImmediate(resolve));
         assert.equal(barrierSettled, true, 'the captured exit barrier resolves without its timeout');
+        if (reason !== 'user') {
+            assert.equal(headerAtBarrier, 'interrupted', 'the trace is closed when the real exit waiter resolves');
+        }
         assert.equal(acquisitions, 0); assert.equal(releases, 0); assert.equal(children.length, 0);
         assert.equal(fs.readFileSync(wirePath, 'utf8'), '', 'no initialize, acquire or prompt traffic');
         assert.equal(result.code, 130); assert.equal(result.text, '');
