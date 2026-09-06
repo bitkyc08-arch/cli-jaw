@@ -1760,6 +1760,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const toolMirror = new Map<string, ToolEntry>();
         const mirrorLimit = 160;
         let facade: AcpRuntimeSession | null = null, ownedLease: NativeRunLease | null = null;
+        let failedStart: RuntimeProjection | null = null;
         let nativeStarted = false, runtimeEnded = false, finalizeFailed = false, finalized = false;
         let stopReason: string | null = null, queueRequested = false;
         let capturedExit: (typeof exitSettlers extends Map<string, infer T> ? T : never) | undefined;
@@ -1794,14 +1795,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const diagnostic = () => facade?.lastError?.includes('config')
             ? 'Cursor native model or effort is unsupported. Choose an advertised model/effort; Composer models may require an unset effort.'
             : 'Cursor native runtime failed. Check the native model, effort and existing CLI login.';
+        const startFailedRuntime = () => {
+            failedStart ??= new RuntimeProjection(identity);
+            failedStart.start(cli);
+            return failedStart;
+        };
         const endRuntime = (end: RuntimeEnd) => {
             if (runtimeEnded) return;
             runtimeEnded = true;
             if (facade?.claimTurnOutcome(traceRunId)) {
                 if (!facade.finalizeTurn(traceRunId, end)) finalizeFailed = true;
             } else if (!nativeStarted) {
-                const failedStart = new RuntimeProjection(identity);
-                failedStart.start(cli); failedStart.close(end);
+                startFailedRuntime().close(end);
             } else {
                 finalizeFailed = true;
                 console.warn('[runtime:cursor] missing owned finalizer');
@@ -1815,6 +1820,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             };
             handoffRuntimeOutcome(ctx, selected);
             try {
+                // Admit the run before compatibility consumers retire its identity.
+                if (!nativeStarted && !runtimeEnded) startFailedRuntime();
                 if (!ctx.runtimeTerminalAttempted) {
                     ctx.runtimeTerminalAttempted = true;
                     broadcast('agent_done', { traceRunId, scope: scopeKey, sessionId: chatSessionId, origin, cli,
@@ -1824,8 +1831,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     }, traceAudience);
                 }
             } finally {
-                endRuntime({ kind: 'turn-end', status: selected.status, finalText: selected.finalText,
-                    ...(selected.status === 'error' ? { error: diagnostic() } : {}) });
+                try {
+                    endRuntime({ kind: 'turn-end', status: selected.status, finalText: selected.finalText,
+                        ...(selected.status === 'error' ? { error: diagnostic() } : {}) });
+                } finally {
+                    // Acquire/ready/settle exceptions can bypass lifecycle's trace
+                    // finalizer. Close only this still-running row, even if canonical
+                    // recording failed, without rewriting an already settled result.
+                    try {
+                        finalizeTraceRun(traceRunId, selected.status === 'stopped' ? 'interrupted' : selected.status,
+                            selected.status === 'error' ? diagnostic() : null, { onlyIfRunning: true });
+                    } catch { console.warn('[runtime:cursor] failure trace finalization unavailable'); }
+                }
             }
             return selectedResult ?? resultFor(selected);
         };
