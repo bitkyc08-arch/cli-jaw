@@ -43,6 +43,7 @@ const updateRunEventStats = db.prepare(`
     WHERE id = ?
 `);
 const finalizeRunStmt = db.prepare('UPDATE trace_runs SET status = ?, finished_at = ?, error = COALESCE(?, error) WHERE id = ?');
+const finalizeRunningRunStmt = db.prepare("UPDATE trace_runs SET status = ?, finished_at = ?, error = COALESCE(?, error) WHERE id = ? AND status = 'running'");
 const linkRunStmt = db.prepare('UPDATE trace_runs SET message_id = ? WHERE id = ?');
 const getRunStmt = db.prepare('SELECT * FROM trace_runs WHERE id = ?');
 const listEventsStmt = db.prepare(`
@@ -222,9 +223,12 @@ export function stampTraceToolEntries(ctx: TraceCarrier & { toolLog?: ToolEntry[
     if (!ctx.traceRunId || !Array.isArray(ctx.toolLog)) return;
     for (const tool of ctx.toolLog) stampTraceTool(tool, ctx, tool.toolType || 'tool');
 }
-export function finalizeTraceRun(runId: string | null | undefined, status: TraceRunStatus, error?: string | null): void {
+export function finalizeTraceRun(runId: string | null | undefined, status: TraceRunStatus, error?: string | null,
+    options?: { onlyIfRunning?: boolean }): void {
     if (!runId || !TRACE_ID_RE.test(runId)) return;
-    finalizeRunStmt.run(status, Date.now(), error || null, runId);
+    if (options?.onlyIfRunning) {
+        if (!finalizeRunningRunStmt.run(status, Date.now(), error || null, runId).changes) return;
+    } else finalizeRunStmt.run(status, Date.now(), error || null, runId);
     seqCache.delete(runId);
 }
 export function linkTraceRunToMessage(runId: string | null | undefined, messageId: number): void {
