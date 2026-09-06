@@ -1,0 +1,287 @@
+import { randomUUID } from 'node:crypto';
+import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { RuntimeCapabilities, RuntimeEvent, RuntimeEventBody } from '../../shared/runtime-contract.js';
+import { parseRuntimeEvent } from '../../shared/runtime-event-parse.js';
+import { FULLTEXT_MAX_CHARS } from '../events/fulltext-bound.js';
+import { recordRuntimeEvent, type RuntimeEventContext } from './events.js';
+import type { NativeRuntimeSession, RuntimePrompt, RuntimeTurnResult, RuntimeInputAcceptance } from './session.js';
+import { runtimeRequests, type RuntimeRequests } from './requests.js';
+import { createClaudeInput } from './claude-sdk-input.js';
+import { buildClaudeSdkOptions, type PreparedClaudeOptions } from './claude-sdk-options.js';
+import { loadClaudeSdk } from './claude-sdk-loader.js';
+import { createClaudeProcessOwner } from './claude-sdk-process.js';
+import { createClaudeClose } from './claude-sdk-close.js';
+import { createClaudeMetadata, type ClaudeResultMetadata } from './claude-sdk-metadata.js';
+import { claudeForegroundHooks } from './claude-sdk-hooks.js';
+import type { ClaudeRootWaitOptions } from './claude-sdk-roots.js';
+
+export interface ClaudeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
+export type { ClaudeResultMetadata } from './claude-sdk-metadata.js';
+export type ClaudeQuery = AsyncIterable<SDKMessage> & { close(): void };
+export interface ClaudeSessionOptions {
+    prepared: PreparedClaudeOptions;
+    getTurnContext(): ClaudeTurnContext;
+    promptTimeoutMs: number;
+    closeTimeoutMs?: number;
+    registry?: RuntimeRequests;
+    signal?: AbortSignal;
+    onMetadata?(context: Readonly<ClaudeTurnContext>, metadata: ClaudeResultMetadata): void;
+    queryFactory?(input: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): ClaudeQuery;
+    record?(context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent | null;
+}
+type Turn = {
+    context: Readonly<ClaudeTurnContext>; onEvent(event: RuntimeEvent): void;
+    resolve(result: RuntimeTurnResult): void; timer: ReturnType<typeof setTimeout>;
+    partial: string; uuid: ReturnType<typeof randomUUID>; offered: boolean;
+};
+const MAX_PROMPT_BYTES = 1024 * 1024;
+const MAX_PARTIAL_CHARS = 1024 * 1024;
+const RESULT_TYPES = new Set(['success', 'error_during_execution', 'error_max_turns',
+    'error_max_budget_usd', 'error_max_structured_output_retries']);
+function record(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('claude_invalid_frame');
+    return value as Record<string, unknown>;
+}
+function validTimeout(value: number): void {
+    if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) throw new Error('claude_invalid_timeout');
+}
+
+/** A query owns one reader; each admitted send owns an immutable jaw turn binding. */
+export class ClaudeSdkSession implements NativeRuntimeSession {
+    readonly capabilities: RuntimeCapabilities = Object.freeze({ transport: 'native', steer: 'queued', resume: true,
+        tools: false, toolOutput: false, approvals: false, questions: false, images: false, subagents: false });
+    readonly supportsInterrupt = true;
+    // One active turn can own at most one unconsumed, <=1MiB text message.
+    private readonly input = createClaudeInput<SDKUserMessage>(1);
+    private readonly processes = createClaudeProcessOwner({ onMultipleRoots: () => this.fail('claude_multiple_root_processes') });
+    private query: ClaudeQuery | undefined;
+    private reader: Promise<void> = Promise.resolve();
+    private readonly exits = new Set<(code: number | null) => void>();
+    private turn: Turn | null = null;
+    private id = '';
+    private closing = false;
+    private closeOperation: (() => Promise<void>) | undefined;
+    private failure = false;
+    private failureCode: string | null = null;
+    private exited = false;
+    private readonly registry: RuntimeRequests;
+    private readonly terminalIds = new Set<string>();
+    private readonly readMetadata = createClaudeMetadata();
+
+    constructor(private readonly options: ClaudeSessionOptions) {
+        this.registry = options.registry ?? runtimeRequests;
+    }
+    async start(factory: NonNullable<ClaudeSessionOptions['queryFactory']>): Promise<void> {
+        if (this.query || this.closing) throw new Error('claude_session_already_started');
+        const options = this.options;
+        const prepared = buildClaudeSdkOptions(options.prepared);
+        try { this.query = factory({ prompt: this.input.stream, options: {
+            ...prepared, spawnClaudeCodeProcess: value => this.processes.spawn(value),
+            // Until wp19 exposes live callbacks, safe requests are never auto-approved.
+            canUseTool: async () => ({ behavior: 'deny', message: 'Claude native decision surface unavailable' }),
+            hooks: claudeForegroundHooks(),
+        } });
+            this.reader = this.read(this.query);
+        } catch (error) { this.failure = true; await this.close(); throw error; }
+    }
+    get alive(): boolean { return this.query !== undefined && !this.closing && !this.failure; }
+    get idle(): boolean { return this.alive && this.turn === null; }
+    get nativeSessionId(): string { return this.id; }
+    get activeProcessCount(): number { return this.processes.activeCount; }
+    get stderrBytes(): number { return this.processes.stderrBytes; }
+    get lastError(): string | null { return this.failureCode; }
+    get primaryChild() { return this.processes.primaryChild; }
+    get rootProcessState() { return this.processes.rootProcessState; }
+    waitForPrimaryChild(options?: ClaudeRootWaitOptions) { return this.processes.waitForPrimaryChild(options); }
+
+    async send(prompt: RuntimePrompt, onEvent: (event: RuntimeEvent) => void): Promise<RuntimeTurnResult> {
+        if (!this.alive) throw new Error('claude_session_closed');
+        if (this.terminalIds.size >= 512) throw new Error('claude_terminal_capacity');
+        if (this.turn) throw new Error('claude_session_busy');
+        if (typeof prompt.text !== 'string' || Buffer.byteLength(prompt.text) > MAX_PROMPT_BYTES) throw new Error('claude_prompt_limit');
+        if (prompt.images?.length) throw new Error('claude_images_unavailable');
+        const context = Object.freeze({ ...this.options.getTurnContext() });
+        if (!this.current(context)) throw new Error('claude_owner_stale');
+        if (!parseRuntimeEvent({ ...context, version: 1, seq: 1, kind: 'turn-start', provider: 'claude' })) {
+            throw new Error('claude_invalid_context');
+        }
+        let resolve!: (value: RuntimeTurnResult) => void;
+        const result = new Promise<RuntimeTurnResult>(yes => { resolve = yes; });
+        const turn: Turn = { context, onEvent, resolve, partial: '', uuid: randomUUID(), offered: false,
+            timer: setTimeout(() => this.fail('claude_prompt_timeout'), this.options.promptTimeoutMs) };
+        this.turn = turn;
+        this.emit(turn, { kind: 'turn-start', provider: 'claude' });
+        if (this.turn !== turn || this.closing) return result;
+        if (!this.current(turn.context)) {
+            this.settle({ status: 'stopped', finalText: null, partialText: '' });
+            this.kill(); return result;
+        }
+        turn.offered = true;
+        if (!this.input.offer({ type: 'user', uuid: turn.uuid, session_id: this.id,
+            parent_tool_use_id: null, message: { role: 'user', content: prompt.text } })) this.fail('claude_input_closed');
+        return result;
+    }
+    async steer(_prompt: RuntimePrompt): Promise<RuntimeInputAcceptance> {
+        return { accepted: false, mode: 'queued', turnId: this.turn?.context.turnId ?? '', reason: 'Use the scoped follow-up policy' };
+    }
+    async respond(requestId: string, response: unknown): Promise<void> {
+        if (!this.turn || !this.alive) throw new Error('request_not_current');
+        this.registry.respond(requestId, this.turn.context, response);
+    }
+    interrupt(): Promise<void> { return this.close(); }
+    cancel(): Promise<void> { return this.close(); }
+    kill(): void { void this.close().catch(() => console.warn('[claude-native] cleanup_failed')); }
+    onExit(cb: (code: number | null) => void): () => void {
+        if (this.exited) { cb(this.failure ? 1 : 0); return () => {}; }
+        this.exits.add(cb); return () => { this.exits.delete(cb); };
+    }
+    private current(context: Readonly<ClaudeTurnContext>): boolean {
+        try { return context.isCurrent() === true; } catch { return false; }
+    }
+    private emit(turn: Turn, body: RuntimeEventBody): void {
+        if (!this.current(turn.context)) return;
+        try {
+            const event = (this.options.record ?? recordRuntimeEvent)(turn.context, body);
+            if (event) turn.onEvent(event);
+        } catch { console.warn('[claude-native] projection_failed'); }
+    }
+    private settle(outcome: RuntimeTurnResult): void {
+        const turn = this.turn;
+        if (!turn) return;
+        this.turn = null; clearTimeout(turn.timer);
+        try { this.registry.cancelRun(turn.context.runId); }
+        catch {
+            this.failure = true; this.failureCode ??= 'claude_request_cleanup_failed';
+            outcome = { status: 'error', finalText: null, partialText: outcome.partialText };
+        }
+        this.emit(turn, { kind: 'turn-end', status: outcome.status, finalText: outcome.finalText });
+        turn.resolve(outcome);
+        if (this.failure || this.terminalIds.size >= 512) this.kill();
+    }
+    private fail(reason: string): void {
+        this.failureCode ??= reason;
+        this.failure = true;
+        this.settle({ status: 'error', finalText: null, partialText: this.turn?.partial ?? '' });
+        this.kill();
+    }
+    private async read(query: ClaudeQuery): Promise<void> {
+        try {
+            for await (const message of query) {
+                if (this.closing) break;
+                const raw = record(message);
+                if (typeof raw['type'] !== 'string') throw new Error('claude_invalid_frame');
+                const patch = raw['type'] === 'system' && raw['subtype'] === 'task_updated' ? raw['patch'] : undefined;
+                const toolResult = raw['type'] === 'user' ? raw['tool_use_result'] : undefined;
+                if ((raw['type'] === 'system' && raw['subtype'] === 'task_started' && raw['is_backgrounded'] === true)
+                    || (patch && typeof patch === 'object' && Reflect.get(patch, 'is_backgrounded') === true)
+                    || (toolResult && typeof toolResult === 'object' && Reflect.get(toolResult, 'status') === 'async_launched')) {
+                    this.fail('claude_background_tasks_unsupported'); break;
+                }
+                const parent = raw['parent_tool_use_id'];
+                if (parent !== undefined && parent !== null) {
+                    if (typeof parent !== 'string' || !parent || parent.length > 1024) throw new Error('claude_invalid_parent');
+                    continue;
+                }
+                const resultId = raw['type'] === 'result' ? raw['uuid'] : undefined;
+                if (resultId !== undefined && (typeof resultId !== 'string' || !resultId || resultId.length > 1024)) {
+                    throw new Error('claude_invalid_result_id');
+                }
+                if (typeof resultId === 'string' && this.terminalIds.has(resultId)) continue;
+                const turn = this.turn;
+                if (turn && (!this.current(turn.context) || !this.correlated(raw, turn))) {
+                    this.fail('claude_owner_or_correlation_stale'); break;
+                }
+                if (raw['type'] === 'system' && raw['subtype'] === 'init' && this.options.prepared.permissions === 'safe'
+                    && raw['permissionMode'] !== 'default') { this.fail('claude_safe_mode_not_confirmed'); break; }
+                if (raw['type'] === 'system' && raw['subtype'] === 'init') {
+                    const id = raw['session_id'];
+                    if (typeof id === 'string' && id && id.length <= 1024) this.id = id;
+                }
+                if (typeof resultId === 'string') {
+                    if (this.terminalIds.size >= 512) { this.fail('claude_terminal_capacity'); break; }
+                    this.terminalIds.add(resultId);
+                    if (!turn && this.terminalIds.size >= 512) this.kill();
+                }
+                if (!turn) continue;
+                if (raw['type'] === 'result' && raw['subtype'] === 'success' && raw['is_error'] === false
+                    && raw['num_turns'] === 0 && raw['user_message_uuid'] === undefined && raw['user_message_uuids'] === undefined) continue;
+                this.accept(raw, turn);
+            }
+            if (!this.closing) this.fail('claude_eof');
+        } catch { if (!this.closing) this.fail('claude_reader_failed'); }
+        finally { this.input.close(); }
+    }
+    private accept(raw: Record<string, unknown>, turn: Turn): void {
+        if (raw['type'] === 'assistant') {
+            const message = record(raw['message']);
+            if (!Array.isArray(message['content']) || message['content'].length > 512) throw new Error('claude_invalid_content');
+            let text = '';
+            for (const value of message['content'].slice(0, 512)) {
+                const block = record(value);
+                if (block['type'] === 'text' && typeof block['text'] === 'string') text += block['text'].slice(0, MAX_PARTIAL_CHARS - text.length);
+            }
+            turn.partial = text;
+        } else if (raw['type'] === 'result') {
+            if (typeof raw['subtype'] !== 'string' || !RESULT_TYPES.has(raw['subtype']) || typeof raw['is_error'] !== 'boolean') {
+                throw new Error('claude_invalid_result');
+            }
+            const status = raw['subtype'] === 'success' && raw['is_error'] === false ? 'done' : 'error';
+            const value = raw['result'];
+            if (status === 'done' && value !== undefined && value !== null && typeof value !== 'string') {
+                throw new Error('claude_invalid_final');
+            }
+            const finalText = status === 'done' && typeof value === 'string' ? value : null;
+            if (finalText !== null && finalText.length > FULLTEXT_MAX_CHARS) throw new Error('claude_final_limit');
+            const nativeId = raw['session_id'];
+            if (typeof nativeId === 'string' && nativeId && nativeId.length <= 1024) this.id = nativeId;
+            const metadata = this.readMetadata(raw, status === 'done', this.id);
+            try { this.options.onMetadata?.(turn.context, metadata); } catch { console.warn('[claude-native] metadata_failed'); }
+            if (this.closing || this.turn !== turn) return;
+            if (!this.current(turn.context)) { this.fail('claude_owner_stale'); return; }
+            this.settle({ status, finalText, partialText: turn.partial });
+        }
+    }
+    private correlated(raw: Record<string, unknown>, turn: Turn): boolean {
+        if (!turn.offered) return false;
+        const id = raw['user_message_uuid'], ids = raw['user_message_uuids'];
+        if (ids !== undefined) {
+            if (!Array.isArray(ids) || ids.length > 64 || ids.some(value => typeof value !== 'string')) return false;
+            return ids.includes(turn.uuid);
+        }
+        return id === undefined || id === turn.uuid;
+    }
+    close(): Promise<void> {
+        let outcome: RuntimeTurnResult;
+        this.closeOperation ??= createClaudeClose({ timeoutMs: this.options.closeTimeoutMs ?? 5000,
+            fence: () => {
+                this.closing = true;
+                outcome = { status: this.failure ? 'error' : 'stopped', finalText: null, partialText: this.turn?.partial ?? '' };
+            },
+            startTermination: () => { try { this.query?.close(); } finally { this.processes.terminate(); } },
+            settlePending: () => { this.input.close(); this.settle(outcome); },
+            readerDone: () => Promise.all([this.reader, this.processes.wait()]),
+            onClosed: () => {
+                this.exited = true;
+                for (const cb of this.exits) { try { cb(this.failure ? 1 : 0); } catch { console.warn('[claude-native] exit_observer_failed'); } }
+                this.exits.clear();
+            },
+        });
+        return this.closeOperation();
+    }
+}
+
+export async function createClaudeSdkSession(options: ClaudeSessionOptions): Promise<ClaudeSdkSession> {
+    const captured: ClaudeSessionOptions = { ...options, prepared: { ...options.prepared } };
+    const env = captured.prepared.env;
+    if (env && typeof env === 'object' && !Array.isArray(env)) captured.prepared.env = { ...env };
+    validTimeout(captured.promptTimeoutMs); validTimeout(captured.closeTimeoutMs ?? 5000);
+    buildClaudeSdkOptions(captured.prepared);
+    if (captured.signal?.aborted) throw new Error('claude_acquire_aborted');
+    const factory = captured.queryFactory ?? (await loadClaudeSdk()).query;
+    if (captured.signal?.aborted) throw new Error('claude_acquire_aborted');
+    const session = new ClaudeSdkSession(captured);
+    await session.start(factory);
+    if (captured.signal?.aborted) { await session.close(); throw new Error('claude_acquire_aborted'); }
+    if (!session.alive) { await session.close(); throw new Error(session.lastError ?? 'claude_acquire_failed'); }
+    return session;
+}

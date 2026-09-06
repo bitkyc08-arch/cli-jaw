@@ -30,6 +30,14 @@ Print keys are byte-for-byte unchanged. Switchable native sessions use `native-v
 
 `GET /api/cli-status` adds `runtimeSelection: {transport, nativeAdapterImplemented, nativeWorkerImplemented}` only to those three engines plus builtin Codex App/Pi. These are compiled implementation flags, not authentication/binary/probe readiness. Existing status evidence and non-participating rows remain unchanged. Display preferences and runtime transport choice are separate controls; the Activity default is not enabled by this layer.
 
+## Internal Claude SDK session core
+
+`runtime/claude-sdk-session.ts` owns one persistent query from the optional, exact-pinned `@anthropic-ai/claude-agent-sdk@0.3.261`. One reader consumes sequential parent-text turns; explicit resume is passed to a new query. The factory captures prepared options, environment and cancellation before lazy loading. The input stream has one unconsumed text slot (at most1MiB) and one active turn; this does not bound the SDK's internal buffers or provide in-band steer.
+
+Turn bindings separate jaw IDs from the provider session ID. Bounded terminal dedupe, explicit user-message UUID checks and owner rechecks prevent stale identified results from completing a replacement turn. Anonymous output still relies on the SDK's single-query ordering contract. Final text remains authoritative, including empty versus absent; partial text is never promoted after error or Stop. Cleanup fences admission immediately and succeeds only after reader completion and observed owned-process closure. Native Windows launch is covered by resolver simulations, not installed-provider proof.
+
+This internal core is not yet wired into native selection, main/worker pools or Activity. Tool/reasoning/child projection, approval/question/image surfaces and host controls remain follow-on work; advanced capabilities stay false and pending tool decisions are denied. Foreground-only hooks reject unsupported background modes without promising an OS sandbox. Claude print and claude-e remain unchanged. SDK authentication follows the official API/cloud setup; no claude.ai login flow, credential copying or subscription entitlement is added. Current core qualification uses the real pinned SDK with an owned simulated CLI, not a fresh live-provider run.
+
 ## ACP v1 transport boundary
 
 `src/agent/runtime/acp/wire.ts` owns the shared single-envelope decoder. The legacy Copilot `AcpClient` routes a method-bearing peer request before looking up a pending client request, so equal bidirectional IDs cannot consume each other's work. Existing Copilot spawn arguments, permissions, activity timers and callbacks remain unchanged. Malformed stdout is still ignored there, without logging the raw malformed line.
