@@ -23,7 +23,7 @@ Display preference storage/editor now defaults `presentation.mode` to Activity w
 
 Print observation and latest tool convergence are now shared runtime layers: see `agent_spawn.md`, `stream-events.md` and `runtime-integration.md`. They preserve existing final/channel behavior and do not enable Activity presentation defaults. Partial durable snapshot recovery keeps its known omission notice.
 
-Durable Activity storage and original-session ownership now live in `src/trace/activity-{journal,control,retention}.ts`. Read [runtime integration](runtime-integration.md) for append/loss/retention and [server API](server_api.md) for bounded discovery/replay plus owned raw reads. Display defaults and full history UI remain separate work.
+Durable Activity storage and original-session ownership live in `src/trace/activity-{journal,control,retention}.ts`. Read [runtime integration](runtime-integration.md) for append/loss/retention, [server API](server_api.md) for bounded discovery/replay and exact saved-answer lookup, and [frontend](frontend.md) for Classic history restoration, bounded discovery and Trace paging. Dedicated Manager/Electron and TUI integration remain separate surfaces.
 
 ```mermaid
 graph LR

@@ -33,7 +33,17 @@ Classic consumes parsed canonical events through the existing SSE dispatcher. Ac
 
 `ws.ts` admits events only against the snapshot bridge's accepted session/scope and current stream readiness. Pre-admission events and gap notices share256 entries/1MiB; foreign identities are ignored, overflow and missing starts are visibly incomplete. Capacity fallback preserves the compatibility answer. Native-input/cancel-reprompt receipts are not terminals. A new run resets only the previous legacy presentation singleton, not the runtime.
 
-Canonical terminal previews and public answers can arrive in either order. A later run-bound native-present or print answer corrects only its own earlier canonical row, without another completion/unread notification. Native-absent diagnostics are notices, not Activity answers. Virtual scroll uses stable message IDs and additive live remount/recycle hooks; cache correction updates only existing assistant rows in the captured browser cache scope and run. The full answer is never read back from the bounded reducer. Cold history/discovery/replay restoration is a separate follow-on; current live-row recycling does not imply it exists.
+Canonical terminal previews and public answers can arrive in either order. A later run-bound native-present or print answer corrects only its own earlier canonical row, without another completion/unread notification. Native-absent diagnostics are notices, not Activity answers. Virtual scroll uses stable message IDs and additive live remount/recycle hooks; cache correction updates only existing assistant rows in the captured browser cache scope and run. The full answer is never read back from the bounded reducer.
+
+### Retained Activity and saved answers
+
+`activity-history.ts` admits only owned transcript/discovery hosts. It queues at most16 reads behind one active job, retains64 host records, cancels recycled/navigation jobs and bounds each read job to30s. Targeted replay buffers only that run while unrelated live turns continue. Historical stored execution scope is preserved; it need not equal the currently selected live scope. Focused terminal previews cannot be evicted, and recycled offscreen previews are preferred for eviction. Remounts reject nested copied message keys.
+
+`activity-read.ts` validates fixed-through pages and one run/turn identity, with4096 events/4MiB across seed and catch-up. `activity-discovery.ts` exposes a secondary disclosure for runs outside the loaded transcript:256 descriptors/window,16 visible rows and opaque-ID paging, not chronological ordering. Closed discovery does not fetch payloads. Missing or partial Activity has an explicit retry/retention notice; read success does not establish healthy SSE.
+
+The exact final answer comes from MESSAGE, never the redacted journal preview. The opt-in resolved-session MESSAGE envelope supplies chat identity; browser/VS IDs remain distinct from server MESSAGE IDs. Saved-answer reads use the explicit chat/run endpoint with16MiB limit. Ambiguous links do not transfer a view. Fork-owned copied answers may display without gaining source Trace access. Metadata-free offline cache is a labeled text-only disclosure, not an identified conversation. MESSAGE loading is singleflight per view, cancellation-bounded and namespace-captured before asynchronous work.
+
+The raw Trace drawer displays at most80 event rows with earlier/later controls; sparse sequence and row offset remain separate. Raw actions stay disabled until ownership has been checked. Manager/Electron integration and TUI adoption are independently verified follow-on surfaces.
 
 ```text
 public/

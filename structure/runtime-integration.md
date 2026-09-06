@@ -38,6 +38,13 @@ The existing lifecycle's `onRuntimeEnd` supplies the print application-final, pr
 
 ### Durable Activity journal
 
+Classic restores this journal through the bounded history/discovery owners described
+in `frontend.md`. Historical scope stays as recorded even after live scope changes.
+Exact saved answers use the run+chat MESSAGE index, not the redacted canonical final
+preview or a nullable reverse trace link. A fork may read its own copied MESSAGE
+without gaining access to source history. Recovery never synthesizes a RuntimeEvent,
+answers a historical decision, or changes runtime scheduling or Slack delivery.
+
 `src/trace/activity-journal.ts` commits validated runtime bodies using the existing trace sequence allocator inside one SQLite transaction. `trace_runs.session_id/scope_key` capture the original chat and execution scope at all provider trace starts, including internal Claude workers. The journal validates stored owner, audience and running status before append. Internal records support private child/decision lifecycle but never public SSE, discovery or replay. A copied/forked message cannot acquire source history; deleting its original chat deletes its owned traces. Additive migration backfills only `trace_runs.message_id -> messages.id`, never copied `trace_run_id` pointers, and never invents a historical scope.
 
 Bounds: 32KiB/event, 4096 events/4MiB per run, 20,000 runtime events/32MiB globally, also bounded by configured total trace rows. A private `system/runtime.control.v1` row holds append high-water, counts, close and first loss; it is not a canonical event. Loss stops later appends and never truncates an append-dependent prefix into a plausible answer. Control failure cannot suppress final delivery or interrupted MESSAGE salvage. Finalization closes control after an actual header update; a zero-change `onlyIfRunning` returns without touching completed control. Startup closes stale running records without resuming a provider.

@@ -79,6 +79,13 @@ SSE behavior:
 
 ### Canonical runtime side channel
 
+Classic history catch-up uses fixed-through HTTP pages and a per-run replay barrier;
+unrelated live runs continue rendering. Restore keeps stored scope separate from
+current live admission. Snapshot revision fencing prevents an older A read from
+rehydrating over newer live B. Saved MESSAGE owns final text; recovery metadata is
+local UI state, never a fabricated stream terminal. SSE outage state stays distinct
+from successful manual reads. Historical requests remain non-actionable.
+
 Grok native main supplies the passive usage mapper through the existing runtime-session hook. It accepts only the original prompt response's aggregate `_meta.usage`; cached-read tokens are reported separately, missing counts stay absent and invalid optional counters suppress only telemetry. It does not infer cost or substitute top-level last-call totals. Core tool/message projection and final selection remain independent. Optional Grok completion notifications cannot emit a terminal or settle a cancellation; unsupported executable extensions are refused.
 
 Cursor native main sends tool/message/reasoning previews through the same canonical emitter, never provisional `agent_output`. Its raw authoritative result is claimed before application persistence; `onRuntimeEnd` finalizes the captured turn after output policy/stop precedence. A private `SpawnLifecycle.onActivity` identity callback connects owned native I/O to its collector independently of journal success. It carries no text, is not an SSE/messaging event, cannot refresh another request or a completed collector, and retains explicit mention-watch scope/chat ownership with multi-session off.

@@ -14,7 +14,14 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Current Runtime Notes
 
-- Presentation preference is activity(default on fresh/upgraded absence) or explicitlegacy; runtime transport/permissions are separate. Display-only apply skips only fallback/singleton/JWC effects, not serialization or rollback. Classic's bounded4MiB/15s preference GET retains last mode on failure and ignores old generations. Manager Display singleflight and port/client epochs preserve drafts on failed or stale saves. Do not replace the native request bridge. Classic live Activity uses bounded native disclosures and one authoritative answer; cold history and dedicated Manager/TUI integration remain separate.
+- Classic history restoration uses bounded targeted replay and preserves recorded
+  scope; unrelated live runs continue. Exact saved answers come from the run+chat
+  MESSAGE lookup, not redacted journal finals. Resolved-session loading and captured
+  cache namespaces keep browser/server IDs distinct. Raw Trace pages cap80 rows;
+  denied/unverified actions stay inert. Fork MESSAGE visibility does not confer
+  original Trace ownership. Keep frontend/API docs aligned.
+
+- Presentation preference is activity(default on fresh/upgraded absence) or explicitlegacy; runtime transport/permissions are separate. Display-only apply skips only fallback/singleton/JWC effects, not serialization or rollback. Classic's bounded4MiB/15s preference GET retains last mode on failure and ignores old generations. Manager Display singleflight and port/client epochs preserve drafts on failed or stale saves. Do not replace the native request bridge. Classic live and retained Activity use bounded native disclosures and one authoritative saved/public answer; dedicated Manager/TUI integration remains separate.
 
 - Print providers observe accepted text/thought/tool boundaries through `runtime/print-activity.ts`; they never create a native outcome or infer final from exit0/last text. Existing lifecycle selects the application-final; trace link/finalize failure cannot roll back its MESSAGE or block delivery. `merge-tool-log.ts` keeps run-scoped latest terminal tool detail. Snapshot reconstruction must retain known omission even with nonempty partial DB rows; default sanitizer semantics and messaging stay unchanged. Native terminal replacement remains opt-in for print only.
 

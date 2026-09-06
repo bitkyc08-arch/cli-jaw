@@ -17,6 +17,21 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 ## Route Module Architecture
 
+### Saved Activity answer lookup
+
+`GET /api/messages?withSession=1` returns `{sessionId,messages}` inside the existing
+ok/data envelope, using the actual resolved conversation. Without literal1 the
+legacy array remains unchanged. This metadata opt-in does not change final selection.
+
+`GET /api/messages/by-trace/:runId?session=<id>` requires explicit nonempty session
+and a valid public run ID under existing instance auth. It reads assistant MESSAGE
+rows through the existing trace index, independent of the optional reverse trace
+link. A unique match returns `{message:{id,role,content,trace_run_id,session_id}}`;
+zero matches returns `{message:null}`; two matches returns409. Content and exact
+serialized response are bounded to16MiB (413); repository failure returns generic503.
+All responses use no-store. A copied fork MESSAGE is readable in its own chat, but
+this endpoint never grants permission to read the original chat's journal or raw Trace.
+
 `GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton/JWC file, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
 
 Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durable rows even when RAM has the same count; in-place tool completion can change content without changing count. It merges all RAM fallback, preserves exact run/item identity and retains known omission when DB only has a suffix. The snapshot-only sanitizer option uses max-overlap rather than summing source omissions. `/api/messages` uses the same latest merge and synthesized durable pointers while preserving worker blob mirrors and existing bounds. No new endpoint, tenant policy or final-delivery path is introduced.
@@ -26,7 +41,7 @@ Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durabl
 | `server.ts` | 640L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
 | `src/routes/static.ts` | 137L | 4 | root HTML + `/media/:filename` upload media serve + guarded `/api/image` local media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
 | `src/routes/system.ts` | 82L | 5 | health/session/runtime/auth-token/slack-manifest |
-| `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
+| `src/routes/messages.ts` | 186L | 5 | message list/count/search/latest and exact saved Activity answer |
 | `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
 | `src/routes/instance.ts` | 53L | 3 | instance lock GET/POST/DELETE |
 | `src/routes/chat-sessions.ts` | 62L | 4 | session list/create/switch/delete (전 route requireAuth) |

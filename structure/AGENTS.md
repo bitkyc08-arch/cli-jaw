@@ -12,7 +12,13 @@
 
 ## Current sync hotspots (2026-06)
 
-- Classic live Activity: `activity-state.ts`/`activity-replay.ts` own bounded preview state; `activity-view.ts` owns disclosure, `activity-live.ts` uses injected host actions to avoid the legacy renderer SCC. Preserve original snapshot/request bridge ownership, shared bounded pre-admission event/gap queue, native-absent diagnostic separation, late canonical/public final reconciliation and captured-scope cache correction. Additive VS hooks must not replace existing lazy/post callbacks. Cold history is not implemented by live remounting. Keep frontend/stream/root notes aligned.
+- Classic retained Activity: keep `activity-history.ts`/`activity-discovery.ts`, shared
+  fixed-through reads, MESSAGE `withSession=1` and exact saved-answer lookup in sync.
+  Preserve stored scope, unrelated live progress, namespace/ID separation, bounded
+  queue/eviction and80-row raw paging. Old metadata-free cache is not chat authority;
+  fork answers never acquire original Trace access. See frontend/API/runtime docs.
+
+- Classic live Activity: `activity-state.ts`/`activity-replay.ts` own bounded preview state; `activity-view.ts` owns disclosure, `activity-live.ts` uses injected host actions to avoid the legacy renderer SCC. Preserve original snapshot/request bridge ownership, shared bounded pre-admission event/gap queue, native-absent diagnostic separation, late canonical/public final reconciliation and captured-scope cache correction. Additive VS hooks must not replace existing lazy/post callbacks. Cold history has a separate bounded reader/discovery owner; live remounting alone does not restore it. Keep frontend/stream/root notes aligned.
 
 - `presentation.mode` defaults/activity and Legacy opt-in share `src/shared/presentation.ts` with the existing identity parser. Keep config/ingress/runtime-settings side-effect boundaries, Classic preference generation/bounded reads, Manager Display draft/instance guards and Classic live Activity versus later history/Manager/TUI activation synchronized in frontend/API/runtime docs. No transport-default migration or messaging restart is implied.
 
