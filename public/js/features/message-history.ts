@@ -215,9 +215,19 @@ export async function loadMessages(): Promise<void> {
     const timer = setTimeout(() => controller.abort(new DOMException('Message history deadline', 'TimeoutError')), 30_000);
     const current = () => generation === loadGeneration
         && key === `${readCurrentMessageLocationKey()}:${currentSessionId() ?? ''}`;
-    const work = loadMessagesOnce({ requestedSession, key, path, signal: controller.signal, current }).finally(() => {
+    const work = loadMessagesOnce({ requestedSession, key, path, signal: controller.signal,
+        current: () => !controller.signal.aborted && current(),
+    }).catch(error => {
+        if (!controller.signal.aborted) throw error;
+    }).finally(() => {
         clearTimeout(timer);
         if (loadMessagesInFlight === work) { loadMessagesInFlight = null; loadController = null; }
+        // Release only this view's suspension; an older cancellation cannot resume
+        // a newer load or grant identity to an unverified cache result.
+        if (controller.signal.aborted && current()) {
+            setActivityTranscript(renderedView === key ? renderedSession : null,
+                renderedView === key ? renderedRuns : new Set());
+        }
     });
     loadMessagesInFlight = work; return work;
 }
@@ -235,14 +245,14 @@ interface MessageReadContext {
     requestedSession: string | null; key: string; path: string; signal: AbortSignal; current(): boolean;
 }
 
-/** Keep legacy API unwrapping, but a superseded/expired read cannot hold the view. */
-async function readMessagesApi<T>(path: string, signal: AbortSignal): Promise<T | null> {
+/** HTTP and IndexedDB share the loader's deadline, even when a source ignores abort. */
+async function readMessageSource<T>(read: () => Promise<T>, signal: AbortSignal): Promise<T> {
     signal.throwIfAborted();
     let abort!: () => void;
     const cancelled = new Promise<never>((_resolve, reject) => {
         abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true });
     });
-    try { return await Promise.race([api<T>(path, { signal }), cancelled]); }
+    try { return await Promise.race([read(), cancelled]); }
     finally { signal.removeEventListener('abort', abort); }
 }
 
@@ -296,7 +306,7 @@ async function loadMessagesOnce(context: MessageReadContext): Promise<void> {
     const locationKey = readCurrentMessageLocationKey();
     let workingDir = readWorkingDirFromScope(previousScope);
     try {
-        const settings = await readMessagesApi<{ workingDir?: string }>('/api/settings', context.signal);
+        const settings = await readMessageSource(() => api<{ workingDir?: string }>('/api/settings', { signal: context.signal }), context.signal);
         if (settings?.workingDir) workingDir = settings.workingDir;
     } catch { /* localStorage fallback already initialized currentScope */ }
     if (!context.current()) return;
@@ -305,7 +315,7 @@ async function loadMessagesOnce(context: MessageReadContext): Promise<void> {
     const scopeChanged = nextScope !== previousScope;
     let snapshot: ReturnType<typeof parseMessageSnapshot> | null = null;
     try {
-        const raw = await readMessagesApi<unknown>(context.path, context.signal);
+        const raw = await readMessageSource(() => api<unknown>(context.path, { signal: context.signal }), context.signal);
         if (raw !== null) snapshot = parseMessageSnapshot(raw, context.requestedSession);
     } catch (error) { if (context.current()) console.warn('[history] message snapshot unavailable', error); }
     if (!context.current()) return;
@@ -352,7 +362,7 @@ async function loadMessagesOnce(context: MessageReadContext): Promise<void> {
         return;
     }
     if (chatEl && renderedView !== context.key) { recycleActivityHistory(chatEl); vs.clear(); chatEl.replaceChildren(); }
-    const allCached = await getScopedMessages(nextScope);
+    const allCached = await readMessageSource(() => getScopedMessages(nextScope), context.signal);
     if (!context.current()) return;
     const cached = (context.requestedSession === null ? allCached
         : allCached.filter(message => message.session_id === context.requestedSession)).slice(-BOOT_MESSAGE_WINDOW);

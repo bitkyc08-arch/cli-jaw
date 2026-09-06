@@ -63,7 +63,11 @@ function current(host: Host, captured: ActivityIdentity, epoch: number, path: st
         && identity.scope === captured.scope && owns(host.message, host.runId, captured.sessionId);
 }
 function traceAllowed(message: HTMLElement, allowed: boolean): void {
-    message.querySelectorAll<HTMLButtonElement>('.process-step-trace').forEach(button => { button.disabled = !allowed; });
+    message.querySelectorAll<HTMLElement>('.process-step-trace').forEach(button => {
+        button.setAttribute('aria-disabled', String(!allowed));
+        button.tabIndex = allowed ? 0 : -1;
+        if (button instanceof window.HTMLButtonElement) button.disabled = !allowed;
+    });
 }
 function finishPromise(host: Host): void {
     host.pending = false; host.resolve?.(); host.resolve = null; host.promise = null;

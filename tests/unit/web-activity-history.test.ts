@@ -30,7 +30,8 @@ function message(answer='SAVED ANSWER', runId=base.runId, saved=true) {
     if (saved) { node.dataset['serverMessageId']='1'; node.dataset['activitySaved']='true'; }
     const body=document.createElement('div');body.className='agent-body';
     const content=document.createElement('div');content.className='msg-content';content.dataset['raw']=answer;content.textContent=answer;
-    const trace=document.createElement('button');trace.className='process-step-trace';trace.textContent='Trace';
+    const trace=document.createElement('span');trace.className='process-step-trace';trace.textContent='Trace';
+    trace.setAttribute('role','button');trace.tabIndex=0;
     body.append(content,trace);node.append(body);document.getElementById('chatMessages')!.append(node);return node;
 }
 test.before(async()=>{
@@ -72,7 +73,7 @@ test('journal hydration retains one full persisted answer and renders Activity o
     assert.equal(host.querySelector('.activity-final'),null);
     assert.equal(host.querySelector('.msg-content')?.getAttribute('data-raw'),full);
     assert.match(host.querySelector('.activity-turn')!.textContent!,/Read/);
-    assert.equal(host.querySelector<HTMLButtonElement>('.process-step-trace')!.disabled,false);
+    assert.equal(host.querySelector('.process-step-trace')!.getAttribute('aria-disabled'),'false');
     assert.equal(ends.length,1);
 });
 
@@ -112,10 +113,12 @@ test('failed read retains answer and retry restores the same host',{timeout:1000
 test('copied foreign trace controls stay disabled; owned raw-only legacy trace remains inspectable',{timeout:10000},async()=>{
     serve=async()=>response({},404);const foreign=message();
     await history.hydrateActivityHost(foreign,base.runId);
-    assert.equal(foreign.querySelector<HTMLButtonElement>('.process-step-trace')!.disabled,true);
+    assert.equal(foreign.querySelector('.process-step-trace')!.getAttribute('aria-disabled'),'true');
+    assert.equal(foreign.querySelector<HTMLElement>('.process-step-trace')!.tabIndex,-1);
     const own=message();serve=async url=>url.pathname.endsWith('/activity')?response({},404):response({id:base.runId});
     await history.hydrateActivityHost(own,base.runId);
-    assert.equal(own.querySelector<HTMLButtonElement>('.process-step-trace')!.disabled,false);
+    assert.equal(own.querySelector('.process-step-trace')!.getAttribute('aria-disabled'),'false');
+    assert.equal(own.querySelector<HTMLElement>('.process-step-trace')!.tabIndex,0);
     assert.match(own.querySelector('.activity-read-control')!.textContent!,/was not recorded/);
     assert.equal(own.querySelector<HTMLButtonElement>('.activity-read-control button')!.hidden,true);
 });

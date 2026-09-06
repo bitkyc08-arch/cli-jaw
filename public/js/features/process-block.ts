@@ -415,6 +415,10 @@ function withProcessBlockLayoutMutation(anchor: Element | null, mutate: () => vo
     mutate();
 }
 
+function traceActionAllowed(trigger: HTMLElement): boolean {
+    return trigger.getAttribute('aria-disabled') !== 'true' && !trigger.matches(':disabled');
+}
+
 export function bindProcessBlockInteractions(root: HTMLElement): void {
     if (root.dataset['processBlockBound'] === '1') return;
     root.addEventListener('click', (event) => {
@@ -424,6 +428,7 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
         if (traceTrigger) {
             event.preventDefault();
             event.stopPropagation();
+            if (!traceActionAllowed(traceTrigger)) return;
             const runId = traceTrigger.dataset['traceRunId'] || '';
             const seq = Number(traceTrigger.dataset['traceSeq'] || 0);
             const intent = ++traceOpenIntent;
@@ -434,7 +439,7 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
             const snapshot = requestBoundedJson(path, {}, controller.signal, 16 * 1024 * 1024);
             Promise.all([import('./trace-drawer.js'), snapshot])
                 .then(([m, data]) => {
-                    if (intent !== traceOpenIntent || !traceTrigger.isConnected
+                    if (intent !== traceOpenIntent || !traceTrigger.isConnected || !traceActionAllowed(traceTrigger)
                         || path !== withCurrentSessionQuery('/api/orchestrate/snapshot')) return;
                     const identity = parseActivityIdentity(data && typeof data === 'object' && !Array.isArray(data)
                         ? (data as Record<string, unknown>)['activityIdentity'] : null);
@@ -498,6 +503,16 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
                 }
             });
         }
+    });
+    root.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const trigger = (event.target as HTMLElement | null)?.closest<HTMLElement>('.process-step-trace');
+        if (!trigger) return;
+        // Native buttons already synthesize click. The nested span needs an explicit
+        // keyboard path that neither scrolls nor activates its parent step toggle.
+        if (trigger.tagName === 'BUTTON' && traceActionAllowed(trigger) && !event.repeat) return;
+        event.preventDefault(); event.stopPropagation();
+        if (!event.repeat && traceActionAllowed(trigger)) trigger.click();
     });
     root.dataset['processBlockBound'] = '1';
 }

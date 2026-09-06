@@ -274,6 +274,9 @@ export function setActivityReadHealth(runId: string, incomplete: boolean): void 
 /** Virtual scroll recreates DOM; reconnect retained disclosure choices to its rows. */
 export function remountLiveActivity(root: ParentNode): void {
     for (const message of root.querySelectorAll<HTMLElement>('.msg-agent[data-activity-key], .activity-recorded-run[data-activity-key]')) {
+        // Transcript markup is not a host registry. A copied key inside an
+        // answer must never transfer the retained view away from its real row.
+        if (message.parentElement?.closest('.msg-agent, .activity-recorded-run')) continue;
         const turn = turns.get(message.dataset['activityKey']!);
         if (!turn) {
             message.querySelector('.activity-turn')?.remove();
@@ -281,6 +284,9 @@ export function remountLiveActivity(root: ParentNode): void {
             delete message.dataset['activityLive'];
             continue;
         }
+        if (message.dataset['traceRunId'] !== turn.model.identity.runId
+            || message.dataset['messageSessionId'] !== turn.model.identity.sessionId
+            || message.dataset['messageId'] !== turn.message.dataset['messageId']) continue;
         rebindLiveActivity(turn.model.identity.runId, message);
     }
 }
