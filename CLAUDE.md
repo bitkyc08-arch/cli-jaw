@@ -4,6 +4,9 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Documentation Map
 
+- Cursor setup failures admit their captured run before compatibility completion, then attempt canonical termination and close only the still-running trace header. Diagnostics do not create an assistant final; journal failures retain compatibility delivery and explicit incomplete history.
+
+
 - Start at `structure/INDEX.md` for the current architecture map.
 - Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes. Concurrent inbound gateway changes belong in `structure/INDEX.md`, `structure/infra.md`, `structure/telegram.md`, and the messaging runtime docs.
 - Do not use the old `devlog/structure/` path for architecture docs; the active folder is `structure/`.

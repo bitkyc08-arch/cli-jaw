@@ -411,6 +411,8 @@ Cursor main turns support the native ACP path with explicit `transport: "native"
 
 Native Cursor redirects use **cancel-reprompt**, not in-band input: the original prompt's cancelled response and pending updates finish before the replacement is sent in the same native session. cli-jaw restores the original request, accepted redirects and bounded incomplete output as context while keeping current instructions active. `/steer` uses this path; another pending redirect may queue, but a failed or indeterminate dispatch is not automatically retried. `/queue steer <n>` retains its separate interrupt-and-run-now behavior.
 
+If native Cursor setup fails, the run closes with an error diagnostic instead of remaining active. The diagnostic is kept separate from an assistant answer.
+
 Native decision APIs are available at `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id`. They use the existing instance authentication policy, exact run/session/scope/turn matching and opaque choice handles. Decisions expire after two minutes; accepting a response records a choice, not tool completion. Provider activation and Activity approval controls remain separate follow-on layers; messaging behavior is unchanged.
 
 ### Instance Manager
