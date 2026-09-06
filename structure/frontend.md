@@ -19,6 +19,12 @@ TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock st
 
 ## 파일 구조
 
+### Display preference plumbing
+
+`presentation.mode` is Activity by default for fresh/upgraded settings without a choice, or explicitly Legacy. Manager Display places this before TUI appearance using the existing SelectField/SettingsSection skin. It has current-instance singleflight, disabled/guarded editing, failed-save draft retention and captured dirty-entry acknowledgement; A→B→A cannot accept an old completion. Existing SettingsShell is keyed by port and is not rewritten.
+
+Classic `presentation-preference.ts` shares initial-load/event generations, coalesces queued changes and reads settings with the existing4MiB/15s bounded helper. It accepts direct settings or successful ok/data, retains last mode on latest failure, and never invokes loadSettings/runtime migration from settings_change. The current native request bridge and snapshot recovery remain untouched. This checkpoint stores/applies the preference dataset; the full Activity renderer/history comes in the following integration layer, so no renderer activation is inferred from the field alone.
+
 ```text
 public/
 ├── index.html            ← 메인 UI 엔트리

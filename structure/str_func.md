@@ -38,7 +38,7 @@ cli-jaw/
 │   └── mime-detect.ts        ← MIME 타입 감지 헬퍼 (67L)
 ├── src/
 │   ├── core/                 ← 의존 0 인프라 계층 (31 files, 3847L)
-│   │   ├── config.ts         ← JAW_HOME, settings, APP_VERSION + migrateSettings legacy Claude model normalization + avatar settings deep merge + default `settings.pi` + corrupt settings backup + CLI 탐지 re-export hub (1522L)
+│   │   ├── config.ts         ← JAW_HOME, settings, APP_VERSION + migrateSettings legacy Claude model normalization + avatar settings deep merge + default `settings.pi` + corrupt settings backup + CLI 탐지 re-export hub (1528L)
 │   │   ├── cli-detection.ts  ← CLI 탐지 + `pi` npm-exec fallback + `kiro-code`(`kiro-cli` binary)/`claude-e`/`ai-e` helper `--idle-timeout-ms` compatibility probe + local package release/debug candidates (280L)
 │   │   ├── compact.ts        ← compact 헬퍼 (COMPACT_MARKER_CONTENT, managed summary builder, cutoff logic, harvestGitGrep + harvestChatGrep 1KB/1KB budget split) (784L)
 │   │   ├── instance.ts       ← 인스턴스 ID, node/jaw 경로, 유닛명 sanitize (61L)
@@ -54,7 +54,7 @@ cli-jaw/
 │   │   ├── main-session.ts   ← 메인 세션 authoritative CLI/clear-state helper + clearBossSessionOnly (232L)
 │   │   ├── message-summary.ts ← message preview/summary helper (55L)
 │   │   ├── path-expand.ts    ← shell-style path expansion helper (12L)
-│   │   ├── runtime-settings.ts ← settings side effects 통합 helper (468L)
+│   │   ├── runtime-settings.ts ← settings side effects 통합 helper (469L)
 │   │   ├── runtime-settings-gate.ts ← settings mutation in-flight gate (41L)
 │   │   ├── codex-config.ts   ← Codex config.toml context window sync (96L)
 │   │   ├── runtime-path.ts   ← buildServicePath() PATH 보강 (nvm/fnm/homebrew/volta/asdf/cargo/bun/yarn/pnpm 14+ dirs) + win32 MSYS/Cygwin 항목 정규화 (230L)
@@ -68,7 +68,7 @@ cli-jaw/
 │   │   ├── launchd-cleanup.ts ← launchd stale plist / runtime cleanup (16L)
 │   │   ├── launchd-plist.ts  ← launchd plist 생성 helper (89L)
 │   │   ├── tcc.ts            ← macOS TCC / screen-recording 권한 점검 (55L)
-│   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (243L)
+│   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (258L)
 │   │   └── skill-cache.ts    ← 활성 스킬 슬래시 커맨드 캐시 (registerSkillLoader, getSkillCommandsCache, invalidateSkillCommandsCache) (44L)
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
@@ -442,7 +442,7 @@ cli-jaw/
 │   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
 │   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (58L)
 │   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
-│   │   ├── presentation.ts   ← server-supplied Activity display identity parser (10L)
+│   │   ├── presentation.ts   ← independent Activity/Legacy mode and server-supplied identity parser (24L)
 │   │   ├── runtime-request-notice.ts ← versioned metadata-only request wake-up contract (12L)
 │   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
 │   │   ├── structured-fence.ts ← structured renderer fence scanner/parser helper (80L)
@@ -491,7 +491,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 575 files source/assets, ~101610L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 576 files source/assets, ~101816L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1224L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
@@ -499,10 +499,11 @@ cli-jaw/
 │   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2509L)
 │   │   └── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
 │   ├── locales/              ← i18n (ko/en/ja/zh .json)
-│   └── js/                   ← 97 .ts files (root 19 + features/ 55 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
+│   └── js/                   ← 109 .ts files (root 21 + features/ 65 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
 │       ├── bounded-api.ts    ← bounded authenticated JSON reads and decision writes (49L)
-│       ├── ws.ts             ← legacy event dispatch plus scoped snapshot/native request bridge (1212L)
+│       ├── ws.ts             ← legacy event dispatch plus scoped snapshot/native request bridge (1217L)
 │       ├── features/
+│       │   ├── presentation-preference.ts ← bounded generation-fenced settings preference refresh (52L)
 │       │   ├── native-request-bridge.ts ← SSE health/epoch, captured identity and request refresh (130L)
 │       │   └── native-requests.ts ← live exact-bound approvals/questions and manual recovery (334L)
 │       └── render/

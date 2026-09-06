@@ -22,6 +22,12 @@ Telegram hub-member native target replies require the hub's additive bodyDeliver
 
 ## Transport selection and session identity
 
+### Independent display preference
+
+`presentation.mode` is `activity` by default or explicitly `legacy`. Both fresh and upgraded documents without the field use Activity; explicit Legacy and future siblings survive merge/load/watch. This policy does not change the separate existing-user print transport policy. API rejects invalid blocks/modes; watch ingress keeps current mode on rejected fields. A sole own presentation patch skips fallback reset, singleton session sync and JWC config rewrite while preserving serialized persistence/rollback and the existing messaging dispatcher, which finds no affected transport. Mixed/empty patches retain existing behavior. Registered native ownership and live identity remain current.
+
+Manager Display offers Activity first and Legacy as a reversible choice, with current-instance singleflight, guarded disabled edits and captured dirty acknowledgement. Classic applies a bounded generation-fenced settings refresh on settings_change, not loadSettings/runtime prompts. Failed latest reads retain the applied mode. This is preference plumbing; full Activity renderer/admission/history and TUI adoption are separate following layers, not certified by the setting alone.
+
 ### Print observation and tool convergence
 
 `runtime/print-projection.ts` is a counter-only accepted-content observer; `print-activity.ts` composes it with existing RuntimeProjection/journal bounds. Generic print and legacy Copilot ACP branches create it once. Native Codex/Pi/Cursor/Grok/Claude retain their own projections and never also take the print path. Accepted Codex phase tags, Claude deltas/snapshots, Cursor normalized segments, Grok text/thought, OpenCode steps and Kiro/AGY/Copilot accepted text are observed before destructive legacy resets. Unknown text stays unknown; stderr, housekeeping and control frames are not assistant messages. Synthetic narration/thought cards are not double-counted as tools.

@@ -19,6 +19,8 @@ aliases: [CLI-JAW Architecture Reference, cli-jaw 구조 허브, structure index
 
 ## 시스템 개요
 
+Display preference storage/editor now defaults `presentation.mode` to Activity with explicit Legacy reversal; runtime transport is separate. See `frontend.md`, `server_api.md` and `runtime-integration.md`. Preference plumbing does not itself certify the following Activity renderer/history rollout.
+
 Print observation and latest tool convergence are now shared runtime layers: see `agent_spawn.md`, `stream-events.md` and `runtime-integration.md`. They preserve existing final/channel behavior and do not enable Activity presentation defaults. Partial durable snapshot recovery keeps its known omission notice.
 
 Durable Activity storage and original-session ownership now live in `src/trace/activity-{journal,control,retention}.ts`. Read [runtime integration](runtime-integration.md) for append/loss/retention and [server API](server_api.md) for bounded discovery/replay plus owned raw reads. Display defaults and full history UI remain separate work.

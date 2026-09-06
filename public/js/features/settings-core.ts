@@ -17,6 +17,7 @@ import { providerIcon, providerLabel } from '../provider-icons.js';
 import { postPreviewInvalidate } from '../preview-parent-origin.js';
 import { formatProjectLabel } from './project-label.js';
 import { loadHeaderGitStatus, refreshHeaderGitStatusFromSettingsChange } from './project-git-status.js';
+import { applyPresentationSettings, beginPresentationRead } from './presentation-preference.js';
 
 let activeSettingsSave: Promise<void> | null = null;
 
@@ -426,8 +427,10 @@ function syncCliProviderControl(settings: SettingsData | null, cli: string): str
 
 export async function loadSettings(): Promise<void> {
     await loadCliRegistry();
+    const presentationRead = beginPresentationRead();
     let s = await api<SettingsData>('/api/settings');
     if (!s) return;
+    applyPresentationSettings(s, presentationRead);
     s = await resolvePendingRuntimeMigration(s);
     // Runtime first, then sessions: which CLI runs is the earlier decision, and a v1
     // install has both pending at once. The second call takes the snapshot the first

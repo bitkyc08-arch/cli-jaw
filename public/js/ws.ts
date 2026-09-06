@@ -359,6 +359,11 @@ function requestBrowserRestoreSync(reason: string): void {
 // same path for forward-compat and resolves to a signature-skip no-op today.
 function handleSettingsChange(msg: { cli?: string; projectDirs?: string[] | null; changedKeys?: string[] }): void {
     const changedKeys = Array.isArray(msg.changedKeys) ? msg.changedKeys : [];
+    if (changedKeys.includes('presentation')) {
+        void import('./features/presentation-preference.js')
+            .then(m => m.refreshPresentationSettings())
+            .catch(error => console.warn('[ws] presentation refresh failed', error));
+    }
     // Turning multi-session on or off changes what the SERVER puts on every event and
     // what this tab is subscribed to, and the two are decided at different times: the
     // session view is built once at boot and the channel carries the scope it produced.

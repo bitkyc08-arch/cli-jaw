@@ -12,6 +12,8 @@
 
 ## Current sync hotspots (2026-06)
 
+- `presentation.mode` defaults/activity and Legacy opt-in share `src/shared/presentation.ts` with the existing identity parser. Keep config/ingress/runtime-settings side-effect boundaries, Classic preference generation/bounded reads, Manager Display draft/instance guards and current-vs-later renderer activation synchronized in frontend/API/runtime docs. No transport-default migration or messaging restart is implied.
+
 - Print Activity observer/accepted parser hooks, exact-pointer terminal recovery and latest run-scoped tool merge are documented in runtime/stream/spawn/API docs. Preserve lifecycle-selected final, native terminal defaults, trace-failure containment and current channel sends. Snapshot known-omission is a conservative retained loss signal, never a sum of overlapping source counts or a claim of complete reconstruction.
 
 - Durable Activity journal: synchronize trace owner columns/original-message backfill, six native/print admission headers, internal append/public replay separation, explicit-session raw drawer reads, immutable event/first-loss control and whole-prefix retention in runtime/API/stream/infra docs. Current finality and messaging contracts remain independent; no Activity display/default rollout is implied by journal availability.

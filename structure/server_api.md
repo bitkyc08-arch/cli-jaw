@@ -17,6 +17,8 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 ## Route Module Architecture
 
+`GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton/JWC file, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
+
 Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durable rows even when RAM has the same count; in-place tool completion can change content without changing count. It merges all RAM fallback, preserves exact run/item identity and retains known omission when DB only has a suffix. The snapshot-only sanitizer option uses max-overlap rather than summing source omissions. `/api/messages` uses the same latest merge and synthesized durable pointers while preserving worker blob mirrors and existing bounds. No new endpoint, tenant policy or final-delivery path is introduced.
 
 | Module | Lines | Routes | 역할 |
