@@ -39,6 +39,10 @@ export interface LiveActivityTurn {
 }
 const turns = new Map<string, LiveActivityTurn>();
 const choicesByTurn = new Map<string, ActivityChoices>();
+interface PendingAnswer extends ActivityIdentity {
+    runId: string; message: HTMLElement; messageId: string; cacheScope: string; corrected: boolean;
+}
+const pendingAnswers = new Map<string, PendingAnswer>();
 const replay = new ActivityReplay(model => {
     const turn = turns.get(activityKey(model.identity));
     if (turn) { turn.model = model; render(turn); }
@@ -76,7 +80,7 @@ export function clearLiveActivity(): void {
         delete turn.message.dataset['activityLive'];
     }
     turns.clear();
-    replay.reset(); choicesByTurn.clear();
+    replay.reset(); choicesByTurn.clear(); pendingAnswers.clear();
     identity = null;
 }
 
@@ -186,6 +190,37 @@ export function settleLiveActivity(runId: string | null, status: TerminalStatus 
     render(turn);
 }
 
+/** An ended owned host may have no recorded model; retain only answer provenance. */
+export function settleModelFreeUnavailableAnswer(value: Omit<PendingAnswer, 'messageId' | 'corrected'>): void {
+    const messageId = value.message.dataset['messageId'];
+    if (!messageId || host.currentMessage() !== value.message || findLiveActivity(value.runId)
+        || value.message.dataset['traceRunId'] !== value.runId
+        || value.message.dataset['messageSessionId'] !== value.sessionId) return;
+    if (pendingAnswers.size >= 64) pendingAnswers.delete(pendingAnswers.keys().next().value!);
+    pendingAnswers.set(value.runId, { ...value, messageId, corrected: false });
+    value.message.dataset['activityAnswerPending'] = 'true';
+}
+
+export function hasModelFreeAnswerReceipt(runId: string): boolean { return pendingAnswers.has(runId); }
+
+export function reconcileModelFreePublicAnswer(value: ActivityIdentity & { runId: string; text: string }): boolean {
+    const pending = pendingAnswers.get(value.runId);
+    if (!pending || pending.corrected || pending.sessionId !== value.sessionId || pending.scope !== value.scope) return false;
+    let replaced = false;
+    const update = (message: HTMLElement) => {
+        if (message.dataset['messageId'] !== pending.messageId || message.dataset['traceRunId'] !== value.runId
+            || message.dataset['messageSessionId'] !== value.sessionId
+            || message.dataset['activityAnswerPending'] !== 'true') return;
+        host.replaceAnswer(message, value.text);
+        delete message.dataset['activityAnswerPending']; replaced = true;
+    };
+    if (!host.reconcileMessage(pending.messageId, update) && pending.message.isConnected) update(pending.message);
+    if (!replaced) return false;
+    pending.corrected = true;
+    void replaceCachedAnswer(value.runId, value.text, pending.cacheScope, value.sessionId);
+    return true;
+}
+
 /** Compatibility text keeps its original provenance after a canonical-first render. */
 export function reconcileLiveActivityAnswer(runId: string, text: string): void {
     const turn = findLiveActivity(runId);
@@ -216,6 +251,9 @@ export function reconcileSavedActivityAnswer(message: HTMLElement, saved: SavedA
         rebindLiveActivity(runId, target);
         host.replaceAnswer(target, saved.content);
         target.dataset['serverMessageId'] = String(saved.id); target.dataset['activitySaved'] = 'true';
+        delete target.dataset['activityAnswerPending'];
+        const pending = pendingAnswers.get(runId);
+        if (pending && pending.messageId === target.dataset['messageId'] && pending.sessionId === saved.session_id) pending.corrected = true;
         const turn = findLiveActivity(runId);
         if (turn?.message === target) { turn.answerSource = 'saved'; render(turn); }
         replaced = true;

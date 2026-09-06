@@ -22,7 +22,7 @@ import {
     ActivityCapacityError, configureLiveActivityHost, clearLiveActivity, setLiveActivityIdentity,
     findLiveActivity, ingestLiveActivity, settleLiveActivity, reconcileLiveActivityAnswer,
     degradeLiveActivity, rebindLiveActivity,
-    setActivityTransportHealthy,
+    setActivityTransportHealthy, settleModelFreeUnavailableAnswer, reconcileModelFreePublicAnswer, hasModelFreeAnswerReceipt,
 } from './features/activity-live.js';
 import { setActivityHistoryIdentity, setActivityHistoryReadReady, setActivityTranscript,
     observeActivityHistory, hydrateActivityHost, discoverActivityHistory, disposeActivityHistory,
@@ -186,7 +186,8 @@ const finalizedTraceRuns: string[] = [];
 const liveAppliedToolSeqByRun = new Map<string, number>();
 
 function isFinalizedRun(runId: string | null): boolean {
-    return runId !== null && (finalizedTraceRuns.includes(runId) || !!findLiveActivity(runId)?.answerSource);
+    return runId !== null && (finalizedTraceRuns.includes(runId) || hasModelFreeAnswerReceipt(runId)
+        || !!findLiveActivity(runId)?.answerSource);
 }
 
 function positiveSeq(value: unknown): number | null {
@@ -382,6 +383,13 @@ function settleCompatibilityMessage(msg: WsMessage): void {
     const ownedText = !!known && finality !== 'absent' && typeof msg.text === 'string';
     if (isFinalizedRun(runId)) {
         if (ownedText && runId) reconcileLiveActivityAnswer(runId, msg.text!);
+        else if (!known && runId && finality !== 'absent' && typeof msg.text === 'string') {
+            // A model-free receipt is not authority to guess missing packet IDs.
+            const packetIdentity = parseActivityIdentity(msg);
+            if (packetIdentity && packetIdentity.sessionId === state.activityIdentity?.sessionId) {
+                reconcileModelFreePublicAnswer({ ...packetIdentity, runId, text: msg.text });
+            }
+        }
         return;
     }
     if (runId && liveTraceRunId && runId !== liveTraceRunId) return;
@@ -413,6 +421,15 @@ function recoverActivityTerminal(value: RecoveredActivityTerminal): void {
         delete message.dataset['activityRecovering']; cleanupToolActivity(); setStatus('idle'); return;
     }
     if (turn) turn.answerSource = value.answer.kind === 'saved' ? 'saved' : 'unavailable';
+    else if (value.answer.kind !== 'saved' && state.activityIdentity) {
+        // History's execution scope may predate a routing change. A late public
+        // packet must match the delivery identity that owned this current host.
+        settleModelFreeUnavailableAnswer({ runId: value.runId, sessionId: value.sessionId,
+            scope: state.activityIdentity.scope, message, cacheScope: value.cacheScope });
+        // Finalization removes the active snapshot marker. Preserve its verified
+        // chat provenance so this same model-free host can retry saved reads.
+        if (hasModelFreeAnswerReceipt(value.runId)) message.dataset['activitySession'] = value.sessionId;
+    }
     // No verified answer remains blank, with the history control explaining
     // absence versus a failed read. Never resurrect the provisional stream.
     finalizeAgent(value.answer.kind === 'saved' ? value.answer.message.content : null, undefined,

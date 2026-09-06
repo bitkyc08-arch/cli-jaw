@@ -523,7 +523,7 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
                 else if (encoded) pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
-            if (durableToolLogJson && !div.dataset['activityKey']) {
+            if (durableToolLogJson && !div.dataset['activityKey'] && !div.dataset['activityAnswerPending']) {
                 // A first/cleared chat can activate VS from an already-rendered
                 // user row without the history loader's lazy callback.
                 if (!vs.onLazyRender) registerVirtualScrollCallbacks(vs);
@@ -539,14 +539,15 @@ export function finalizeAgent(text: string | null, toolLog?: ToolLogEntry[], run
             } else {
                 div.dataset['turnIndex'] = String(vs.count);
                 if (!div.dataset['messageId']) div.dataset['messageId'] = generateId();
-                if (div.dataset['activityKey']) ensureActivityVirtualCallbacks(vs);
+                if (div.dataset['activityKey'] || div.dataset['activityAnswerPending']) ensureActivityVirtualCallbacks(vs);
                 vs.appendLiveItem(div);
             }
             div.remove();
         }
 
         // Cache agent response for offline (use finalText to capture stream-only responses)
-        if (finalText || (traceRunId && state.currentAgentDiv?.dataset['activityKey'])) upsertMessage({
+        if (finalText || (traceRunId && (state.currentAgentDiv?.dataset['activityKey']
+            || state.currentAgentDiv?.dataset['activityAnswerPending']))) upsertMessage({
             role: 'assistant',
             content: finalText,
             tool_log: durableToolLogJson,
