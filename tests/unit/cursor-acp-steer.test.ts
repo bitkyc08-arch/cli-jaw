@@ -35,6 +35,7 @@ test.mock.module('../../src/orchestrator/gateway.js', { namedExports: { ...gatew
 const { steerHandler } = await import('../../src/cli/handlers-runtime.ts');
 const { withSessionScope } = await import('../../src/core/session-context.ts');
 const { db, insertMessage } = await import('../../src/core/db.ts');
+const { createChatSession } = await import('../../src/core/chat-sessions.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { poolStats } = await import('../../src/agent/runtime-pool.ts');
 const { clearGoalTimers } = await import('../../src/agent/lifecycle-handler.ts');
@@ -64,7 +65,7 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 function options(target?: RemoteTarget) {
     const id = ++serial;
     return { cli: 'cursor', model: 'default', effort: '', origin: 'web',
-        scopeKey: `control-scope-${id}`, chatSessionId: `control-chat-${id}`, requestId: `control-request-${id}`,
+        scopeKey: `control-scope-${id}`, chatSessionId: createChatSession(`Control chat ${id}`).id, requestId: `control-request-${id}`,
         sysPrompt: 'OPERATIONAL_SENTINEL: keep output local.', _skipHistory: true, _isSmokeContinuation: true,
         ...(target ? { target } : {}) };
 }
