@@ -192,6 +192,8 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
   Canonical: dev-pabcd §10, dev-testing §9.5; injected via orchestration template and goal continuation.
 - `structure/` reading map: start at `structure/INDEX.md`; depth — `telegram.md` (Hub), `prompt_flow.md` (attest/hooks/bounded search), `stream-events.md` (pause gate/SSE), `infra.md` (test scripts), `commands.md` + `server_api.md` (slash/API surfaces). Concurrent inbound gateway docs: `structure/INDEX.md` §gateway, `structure/infra.md` §`src/messaging/`, `structure/telegram.md` §common messaging layer; legacy `settings.channel` is a deprecated read-only alias for one major version.
 
+- Grok main native ACP requires literal auto, existing advertised authentication/model/effort, and no leader. Its optional common replacement strategy waits for original cancellation and drain, preserves one logical final, commits input only after local dispatch with current ownership, and never queues fatal failures. Restrictive policies and workers fail before preparation. Sync `structure/runtime-integration.md`.
+
 ### Native decisions
 
 `src/agent/runtime/requests.ts` and `acp/callbacks.ts` own bounded pending decisions, opaque native-option mapping and cancellation latches. `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id` use the existing instance auth policy (including loopback/LAN bypass), never a current-session fallback. Match run/session/scope/turn and current ownership before answering. Canonical sanitization and the32KiB event preflight precede insertion; global128/120s and per-connection32 bounds apply. An admitted selected write cannot be retracted: cancellation during dispatch retires the connection. Provider activation, approval UI and messaging changes are not implied. Sync `structure/runtime-integration.md` and `structure/server_api.md`.
@@ -206,8 +208,8 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Mid-run steer (기본 정책)
 
-- `multiSession.midRunPolicy` 기본값은 `'steer'`다. JWC와 steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor는 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. 원래 요청·수락된 추가 지시·제한된 부분 출력은 읽기 전용 문맥으로, 현재 운영 지침은 활성 지침으로 복원한다.
-- Native Cursor는 전송 완료 뒤에도 main 객체·세대·정규 소유권을 재검사하고 입력을 한 번만 기록한다. 진행 중인 replacement의 후속 입력은 큐로 갈 수 있지만, 취소·전송·기록 실패는 자동 재시도하지 않는다. 나머지 런타임의 기존 in-band/kill-steer 동작과 `followup`/`collect` 대기는 유지한다.
+- `multiSession.midRunPolicy` 기본값은 `'steer'`다. JWC와 steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor와 Grok은 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. Cursor는 원래 요청·수락된 추가 지시·제한된 부분 출력을 읽기 전용 문맥으로, 현재 운영 지침을 활성 지침으로 복원한다. Grok에는 이 재주입을 적용하지 않는다.
+- Native Cursor와 Grok은 전송 완료 뒤에도 main 객체·세대·정규 소유권을 재검사하고 입력을 한 번만 기록한다. 진행 중인 replacement의 후속 입력은 큐로 갈 수 있지만, 취소·전송·기록 실패는 자동 재시도하지 않는다. Stop으로 무효화된 입력은 실제 enqueue까지 보호하고 `cancelled`로 끝내며, 이후 새 입력은 받을 수 있다. 나머지 런타임의 기존 in-band/kill-steer 동작과 `followup`/`collect` 대기는 유지한다.
 - `/steer`는 런타임 훅을 사용한다. 별도 `/queue steer <n>`은 기존 항목을 중단 후 우선 실행하는 동작을 유지한다. Kill 경로의 제한된 부분 출력은 pre-kill MAX(id)와 정확한 exit-settle 배리어 뒤 `withSteerContext`로 복원한다. 전체 과거 맥락 보존을 보장하지 않는다. 정책 표는 `structure/prompt_flow.md`를 참고한다.
 
 ### Korean Content Skill Routing

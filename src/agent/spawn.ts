@@ -667,7 +667,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
         settleOnce(run?.meta?.requestId, 'cancelled', { reason });
         clearWorkerSlotsOnStop(scopeKey, reason);
     }
-    if (run?.cancelTurn && ['codex-app', 'pi', 'cursor'].includes(getActiveMainCli(scopeKey) || '')) {
+    if (run?.cancelTurn && ['codex-app', 'pi', 'cursor', 'grok'].includes(getActiveMainCli(scopeKey) || '')) {
         if (run.process?.pid) killReasons.set(run.process.pid, reason);
         console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey)} action=lease.cancel`);
         if (reason === 'steer' || reason === 'interrupt') armExitSettle(scopeKey);
@@ -1100,8 +1100,10 @@ import {
     acquireCodexAppRuntime,
     acquirePiRuntime,
     acquireCursorRuntime,
+    acquireGrokRuntime,
     type PiLease,
 } from './runtime-pool.js';
+import { grokMainOptions } from './runtime/grok-main.js';
 import {
     acquireCodexAppLane,
     CodexHostGenerationStaleError,
@@ -1272,11 +1274,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const permissions = opts.permissions || settings['permissions'] || session.permissions || 'auto';
     const unavailableNative = runtimeTransport === 'native'
         && (!isNativeAdapterImplemented(cli) || (isEmployee && !isNativeWorkerImplemented(cli)));
-    const restrictiveNative = runtimeTransport === 'native' && cli === 'cursor' && permissions !== 'auto';
+    const restrictiveNative = runtimeTransport === 'native' && (cli === 'cursor' || cli === 'grok') && permissions !== 'auto';
     if (unavailableNative || restrictiveNative) {
         const message = unavailableNative
             ? `${cli} native ${isEmployee ? 'worker ' : ''}transport is not implemented in this build. Set perCli.${cli}.transport to "print" to use compatibility mode.`
-            : 'Cursor native restrictive permissions are not verified in this build. Select print transport to retain restrictive permission behavior.';
+            : `${cli === 'cursor' ? 'Cursor' : 'Grok'} native restrictive permissions are not verified in this build. Select print transport to retain restrictive permission behavior.`;
         const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
             && releaseMainRun(scopeKey, null, ownerGeneration);
         broadcast('agent_done', {
@@ -1416,7 +1418,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const model = cli === 'ai-e' && effectiveProvider === 'claude'
         ? migrateLegacyClaudeValue(requestedModel)
         : requestedModel;
-    const runtimeModel = cli === 'cursor' && runtimeTransport !== 'native' ? resolveCursorModelVariant(model, effort) : model;
+    const runtimeModel = cli === 'cursor' && runtimeTransport !== 'native' ? resolveCursorModelVariant(model, effort)
+        : cli === 'grok' && runtimeTransport === 'native' && model === 'default' ? 'grok-build' : model;
     const codexMultiplexMain = cli === 'codex-app' && mainManaged && !opts.agentId
         && settings["runtime"]?.codexApp?.multiplex === true;
     if (mainManaged) {
@@ -1739,13 +1742,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
 
-    // ─── Native Cursor main: protocol ownership is separate from application settlement. ───
-    if (runtimeTransport === 'native' && cli === 'cursor' && mainManaged) {
+    // ─── Native ACP main: protocol ownership is separate from application settlement. ───
+    if (runtimeTransport === 'native' && (cli === 'cursor' || cli === 'grok') && mainManaged) {
+        const grok = cli === 'grok';
+        const acquireRuntime = grok ? acquireGrokRuntime : acquireCursorRuntime;
         const capturedRun = mainRun!;
         const nativeCwd = spawnCwd || process.cwd();
         let traceRunId: string;
         try { traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: nativeCwd, agentLabel, audience: traceAudience }); }
-        catch { traceRunId = createTraceId(); console.warn('[runtime:cursor] trace creation unavailable'); }
+        catch { traceRunId = createTraceId(); console.warn(`[runtime:${cli}] trace creation unavailable`); }
         const identity = Object.freeze({ runId: traceRunId, sessionId: chatSessionId, scope: scopeKey,
             turnId: traceRunId, audience: traceAudience,
             ...(opts.runtimeParentItemId ? { parentItemId: opts.runtimeParentItemId } : {}) });
@@ -1772,7 +1777,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 originalRequest: promptForSnapshot, accepted: acceptedContext, partialText, sysPrompt,
             }) };
         };
-        const replaceHook = (instruction: string, commitInput: () => void): Promise<MainReplacementResult> =>
+        const cursorReplaceHook = (instruction: string, commitInput: () => void): Promise<MainReplacementResult> =>
             replaceAcpMainTurn(facade, instruction, () => {
                 if (!ownsRun()) throw new Error('cursor_acp_owner_lost');
                 const next = appendCursorAcceptedInstruction(acceptedContext, instruction);
@@ -1788,7 +1793,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             text: outcome.finalText?.trim() ?? '', code: outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1,
             runtimeOutcome: outcome, traceRunId,
         });
-        const diagnostic = () => facade?.lastError?.includes('config')
+        const diagnostic = () => grok ? 'Grok native runtime failed. Check the native model, effort and existing CLI login.' : facade?.lastError?.includes('config')
             ? 'Cursor native model or effort is unsupported. Choose an advertised model/effort; Composer models may require an unset effort.'
             : 'Cursor native runtime failed. Check the native model, effort and existing CLI login.';
         const endRuntime = (end: RuntimeEnd) => {
@@ -1801,7 +1806,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 failedStart.start(cli); failedStart.close(end);
             } else {
                 finalizeFailed = true;
-                console.warn('[runtime:cursor] missing owned finalizer');
+                console.warn(`[runtime:${cli}] missing owned finalizer`);
             }
         };
         const failRuntime = (outcome: RuntimeTurnOutcome): SpawnPromiseResult => {
@@ -1835,19 +1840,26 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             nativeRun.cancel(reason);
         };
+        const grokReplaceHook = async (text: string, commitInput: () => void): Promise<MainReplacementResult> => {
+            if (!ownsRun()) return { kind: 'race', reason: 'native-owner-lost' };
+            const result = await replaceAcpMainTurn(facade, text, commitInput);
+            return result.kind === 'unavailable' && !ownsRun() ? { kind: 'race', reason: 'native-owner-lost' } : result;
+        };
+        const replaceHook = grok ? grokReplaceHook : cursorReplaceHook;
+        if (grok) capturedRun.replaceTurn = replaceHook;
         capturedRun.starting = true;
         nativeRun = runNativeRuntime<SpawnPromiseResult>({
             turnId: traceRunId, prompt: { text: promptForArgs }, isCurrent: ownsRun,
             acquire: async signal => {
-                const lease = await acquireCursorRuntime({
+                const lease = await acquireRuntime({
                     key: { scopeKey, cwd: nativeCwd, model: runtimeModel === 'default' ? '' : runtimeModel, effort, permissions },
-                    binary: detected.path || 'cursor-agent', env: spawnEnv, promptTimeoutMs: resolvedAgyPrintTimeoutMs,
+                    binary: detected.path || (grok ? 'grok' : 'cursor-agent'), env: spawnEnv, promptTimeoutMs: resolvedAgyPrintTimeoutMs,
                     persistenceOwner, isCurrentOwner: token => isCurrentSessionOwner(token, scopeKey), canAcquire: ownsRun,
                     storedSessionId: resumeSessionId, forceNew, signal,
                 });
                 facade = new AcpRuntimeSession(lease.session, { provider: cli, deferTurnEnd: true,
+                    ...(grok ? grokMainOptions : { createReplacement: io => new AcpReplacement(io), prepareReplacement }),
                     getTurnContext: () => ({ ...identity, isCurrent: ownsRun }),
-                    createReplacement: io => new AcpReplacement(io), prepareReplacement,
                     capabilities: { transport: 'native', steer: 'cancel-reprompt', resume: lease.session.agentCapabilities['loadSession'] === true,
                         tools: true, toolOutput: true, approvals: true, questions: false, images: false, subagents: false },
                     record: (context, body) => {
@@ -1874,7 +1886,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const onIo = () => {
                     if (!ownsRun()) return;
                     try { opts.lifecycle?.onActivity?.('native-runtime', activityIdentity); }
-                    catch { console.warn('[runtime:cursor] liveness observer failed'); }
+                    catch { console.warn(`[runtime:${cli}] liveness observer failed`); }
                 };
                 const dispose = () => {
                     ctx.stallWatchdog?.stop();
@@ -1920,7 +1932,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 const wasKilled = Boolean(killReason), wasSteer = killReason === 'steer' || killReason === 'interrupt' || killReason === DUP_REGISTRATION_KILL_REASON;
                 const code = outcome.status === 'done' ? 0 : outcome.status === 'stopped' ? 130 : 1;
                 handoffRuntimeOutcome(ctx, outcome);
-                try { opts.lifecycle?.onExit?.(code); } catch { console.warn('[runtime:cursor] exit observer failed'); }
+                try { opts.lifecycle?.onExit?.(code); } catch { console.warn(`[runtime:${cli}] exit observer failed`); }
                 await handleAgentExit({ onRuntimeEnd: endRuntime,
                     ctx, code, cli, model: runtimeModel, effectiveProvider, agentLabel, mainManaged, origin,
                     resumeKey, prompt, opts, cfg: { ...cfg, effort }, ownerGeneration, persistenceOwner, forceNew, empSid,

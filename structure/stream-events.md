@@ -77,7 +77,7 @@ SSE behavior:
 
 ### Canonical runtime side channel
 
-Grok's passive usage mapper accepts only the original prompt response's aggregate `_meta.usage`; cached-read tokens are reported separately, missing counts stay absent and invalid optional counters suppress only telemetry. It does not infer cost or substitute top-level last-call totals. Core tool/message projection and final selection remain independent. Optional Grok completion notifications cannot emit a terminal or settle a cancellation; unsupported executable extensions are refused. This mapper layer alone does not enable Grok application selection.
+Grok native main supplies the passive usage mapper through the existing runtime-session hook. It accepts only the original prompt response's aggregate `_meta.usage`; cached-read tokens are reported separately, missing counts stay absent and invalid optional counters suppress only telemetry. It does not infer cost or substitute top-level last-call totals. Core tool/message projection and final selection remain independent. Optional Grok completion notifications cannot emit a terminal or settle a cancellation; unsupported executable extensions are refused.
 
 Cursor native main sends tool/message/reasoning previews through the same canonical emitter, never provisional `agent_output`. Its raw authoritative result is claimed before application persistence; `onRuntimeEnd` finalizes the captured turn after output policy/stop precedence. A private `SpawnLifecycle.onActivity` identity callback connects owned native I/O to its collector independently of journal success. It carries no text, is not an SSE/messaging event, cannot refresh another request or a completed collector, and retains explicit mention-watch scope/chat ownership with multi-session off.
 
