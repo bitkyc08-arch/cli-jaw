@@ -1,9 +1,9 @@
 // Display page: conversation presentation and tui.* fields.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { SettingsPageProps, DirtyEntry } from '../types';
 import { SelectField, NumberField } from '../fields';
-import { presentationMode, type PresentationMode } from '../../../../../src/shared/presentation';
+import { isPresentationMode, presentationMode, type PresentationMode } from '../../../../../src/shared/presentation';
 import { describeError } from '../components/error-normalize';
 import {
     SettingsSection,
@@ -59,7 +59,10 @@ const DISPLAY_KEYS = [
 export default function Display({ port, client, dirty, registerSave }: SettingsPageProps) {
     const { state, refresh, setData } = usePageSnapshot<DisplaySnapshot>(client, '/api/settings', [port]);
     const [draft, setDraft] = useState<TuiBlock>({});
-    const [mode, setMode] = useState<PresentationMode>('activity');
+    const pendingMode = useSyncExternalStore(dirty.subscribe,
+        () => dirty.pending.get('presentation.mode')?.value, () => undefined);
+    const mode = isPresentationMode(pendingMode) ? pendingMode
+        : presentationMode(state.kind === 'ready' ? state.data : undefined);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const activeInstance = useRef<{ client: SettingsPageProps['client']; port: number } | null>(null);
@@ -77,13 +80,11 @@ export default function Display({ port, client, dirty, registerSave }: SettingsP
     useEffect(() => {
         if (state.kind === 'ready') {
             setDraft({ ...(state.data.tui || {}) });
-            setMode(presentationMode(state.data));
         }
     }, [state]);
 
     useEffect(() => {
         setDraft({});
-        setMode('activity');
         setSaveError(null);
         return () => {
             for (const key of DISPLAY_KEYS) dirty.remove(key);
@@ -117,7 +118,6 @@ export default function Display({ port, client, dirty, registerSave }: SettingsP
             // operation, never a newer or unrelated write into the dirty store.
             for (const [key, entry] of submitted) if (dirty.pending.get(key) === entry) dirty.remove(key);
             setDraft({ ...(fresh.tui || {}) });
-            setMode(presentationMode(fresh));
             setData(fresh);
             await refresh();
         }).finally(() => {
@@ -168,7 +168,6 @@ export default function Display({ port, client, dirty, registerSave }: SettingsP
                     onChange={(next) => {
                         if (activeSave.current) return;
                         if (next !== 'activity' && next !== 'legacy') return;
-                        setMode(next);
                         setEntry('presentation.mode', {
                             value: next,
                             original: presentationMode(state.data),

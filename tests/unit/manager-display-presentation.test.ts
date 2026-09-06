@@ -305,3 +305,22 @@ test('A to B to A never reuses the first A save generation', async t => {
     assert.equal(first.reads(), reads, 'old completion cannot refresh the re-mounted A generation');
     assert.equal(view.control().disabled, false);
 });
+
+test('Discard clears the presentation draft and restores the actual saved mode without a PUT', async t => {
+    const api = settingsClient({}); const view = await mountDisplay(t, api.client);
+    await view.choose('Legacy transcript');
+    await act(async () => { view.dirty.clear(); });
+    assert.equal(view.control().textContent, 'Activity (default)');
+    assert.equal(view.dirty.isDirty(), false); assert.deepEqual(api.writes, []);
+});
+
+test('a newer same-field dirty entry remains the displayed intent after an older save completes', async t => {
+    const api = settingsClient({}); const gate = api.deferPut();
+    const view = await mountDisplay(t, api.client); await view.choose('Legacy transcript');
+    let pending!: Promise<void>;
+    await act(async () => { pending = view.registered()!(); });
+    await act(async () => { view.dirty.set('presentation.mode', { value: 'activity', original: 'legacy', valid: true }); });
+    await act(async () => { gate.resolve(); await pending; });
+    assert.equal(view.control().textContent, 'Activity (default)');
+    assert.deepEqual(view.dirty.saveBundle(), { 'presentation.mode': 'activity' });
+});
