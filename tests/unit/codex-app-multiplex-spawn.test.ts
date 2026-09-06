@@ -341,6 +341,7 @@ test.mock.module('../../src/trace/store.js', {
         appendTraceEvent: (entry: Record<string, unknown>) => { harness.traceEvents.push(entry); },
         stampTraceTool() {}, stampTraceToolEntries() {},
         updateTraceToolRow() {}, getTraceEvent: () => null, linkTraceRunToMessage() {},
+        getTraceToolEntry() { throw new Error('unexpected Claude tool lookup in Codex multiplex fixture'); },
         createTraceId: () => 'tr_multiplexfixture0001',
         startTraceRun: () => 'tr_multiplexfixture0001',
         finalizeTraceRun: (runId: string | null | undefined, status: string) => {

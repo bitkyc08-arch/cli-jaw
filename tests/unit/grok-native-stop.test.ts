@@ -51,6 +51,9 @@ test.mock.module('../../src/orchestrator/gateway.js', { namedExports: { ...gatew
 const { steerHandler } = await import('../../src/cli/handlers-runtime.ts');
 const { withSessionScope } = await import('../../src/core/session-context.ts');
 const { db } = await import('../../src/core/db.ts');
+const { createChatSession } = await import('../../src/core/chat-sessions.ts');
+const { getTraceRun } = await import('../../src/trace/store.ts');
+const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { poolStats } = await import('../../src/agent/runtime-pool.ts');
 const { clearGoalTimers } = await import('../../src/agent/lifecycle-handler.ts');
@@ -83,7 +86,7 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 function options() {
     const id = ++serial;
     return { cli: 'grok', model: 'default', effort: '', origin: 'web',
-        scopeKey: `grok-stop-scope-${id}`, chatSessionId: `grok-stop-chat-${id}`, requestId: `grok-stop-request-${id}`,
+        scopeKey: `grok-stop-scope-${id}`, chatSessionId: createChatSession(`Grok Stop chat ${id}`).id, requestId: `grok-stop-request-${id}`,
         sysPrompt: 'OPERATIONAL_SENTINEL: keep output local.', _skipHistory: true, _isSmokeContinuation: true };
 }
 function rows(sessionId: string) {
@@ -92,6 +95,7 @@ function rows(sessionId: string) {
 const checkpoint = () => new Promise<void>(resolve => setImmediate(resolve));
 async function start(t: test.TestContext) {
     const opts = options(), events: Event[] = [], partial = Promise.withResolvers<void>();
+    assert.deepEqual(db.prepare('SELECT id FROM chat_sessions WHERE id=?').get(opts.chatSessionId), { id: opts.chatSessionId });
     let exits = 0;
     t.after(subscribe(event => {
         if (event.data['scope'] !== opts.scopeKey && event.data['sessionId'] !== opts.chatSessionId) return;
@@ -100,6 +104,12 @@ async function start(t: test.TestContext) {
     }));
     const run = agent.spawnAgent('ORIGINAL_A: continue old task.', { ...opts, lifecycle: { onExit: () => { exits++; } } });
     await Promise.race([partial.promise, run.promise.then(() => { throw new Error('Grok main ended before fixture partial'); })]);
+    const message = events.find(event => event.event === 'agent_runtime' && event.data['kind'] === 'message')!;
+    assert.equal(message.data['scope'], opts.scopeKey); assert.equal(message.data['sessionId'], opts.chatSessionId);
+    const traceId = String(message.data['runId']);
+    assert.equal(getTraceRun(traceId)?.session_id, opts.chatSessionId);
+    assert.equal(getTraceRun(traceId)?.scope_key, opts.scopeKey);
+    assert.ok(readActivityPage({ runId: traceId, sessionId: opts.chatSessionId, after: 0, limit: 40 })?.events.some(event => event.kind === 'message'));
     const peer = peers.at(-1)!;
     await peer.waitFor(value => value.kind === 'prompt');
     const owner = agent.activeMainProcesses.get(opts.scopeKey)!;
