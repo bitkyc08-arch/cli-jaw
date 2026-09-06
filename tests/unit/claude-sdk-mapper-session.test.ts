@@ -2,7 +2,7 @@ import test, { mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 class Output implements AsyncIterableIterator<SDKMessage> {

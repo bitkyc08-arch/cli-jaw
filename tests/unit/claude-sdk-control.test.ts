@@ -6,7 +6,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeSessionOptions } from '../../src/agent/runtime/claude-sdk-session.ts';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
 // Recorders are injected here; module loading must not initialize shared SQLite.
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 test('close latches before reentrant callbacks and awaits the actual barrier', async () => {

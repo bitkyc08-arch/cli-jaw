@@ -2,7 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClaudeProcessOwner } from '../../src/agent/runtime/claude-sdk-process.ts';
 // Session recording is injected below; do not initialize a real shared SQLite.
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 function stream() {

@@ -8,8 +8,9 @@ import { encodeRuntimeBody, decodeRuntimeBody } from '../../src/trace/runtime-bo
 import { stringifyTraceValue } from '../../src/trace/redact.ts';
 
 // This suite injects every recorder; loading the unused SQLite default races other test processes.
-mock.module('../../src/trace/store.js', { namedExports: {
-    appendTraceEvent: () => assert.fail('default trace recorder must not be used by a pure projector test'),
+mock.module('../../src/trace/activity-journal.js', { namedExports: {
+    markActivityFailure: () => {},
+    appendActivityBody: () => assert.fail('default trace recorder must not be used by a pure projector test'),
 } });
 const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 const { AcpProjection } = await import('../../src/agent/runtime/acp/projection.ts');

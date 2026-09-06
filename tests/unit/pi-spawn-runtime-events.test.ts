@@ -115,11 +115,15 @@ test.mock.module('../../src/agent/lifecycle-handler.js', { namedExports: {
 const { spawnAgent, activeProcesses, activeMainProcesses, armExitSettle, waitForExitSettled, settleExit } = await import('../../src/agent/spawn.ts');
 const { addBroadcastListener, removeBroadcastListener } = await import('../../src/core/bus.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
+const { createChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
+const { readActivityPage } = await import('../../src/trace/activity-journal.ts');
+let chatId = '';
 const legacyListener = (type: string, data: Record<string, unknown>) => { fixture.legacy.push({ type, data }); };
 const publicEvents: string[] = [];
 let unsubscribe = () => {};
 
 test.beforeEach(() => {
+    chatId = createChatSession('Pi journal fixture').id; setActiveChatSession('default');
     fixture.mode = 'ok'; fixture.calls.length = 0; fixture.acquisitions.length = 0;
     fixture.contexts.length = 0; fixture.events.length = 0; fixture.lifecycle.length = 0; fixture.legacy.length = 0;
     fixture.direct = 0; fixture.releases = 0; fixture.watchdogStops = 0; publicEvents.length = 0;
@@ -137,7 +141,7 @@ test.beforeEach(() => {
 });
 test.afterEach(() => { removeBroadcastListener(legacyListener); unsubscribe(); });
 function opts(employee = false) {
-    return { cli: 'pi', model: 'fixture-pi', effort: 'high', scopeKey: 'pi-test-scope', chatSessionId: 'jaw-chat-id',
+    return { cli: 'pi', model: 'fixture-pi', effort: 'high', scopeKey: 'pi-test-scope', chatSessionId: chatId,
         requestId: 'pi-test-request', runtimeParentItemId: 'jaw-parent-item', origin: 'web',
         sysPrompt: employee ? 'employee fixture instructions' : '', _skipInsert: true, _skipHistory: true,
         _skipResume: true, _isSmokeContinuation: true, ...(employee ? { agentId: 'pi-fixture-worker' } : {}) };
@@ -145,7 +149,7 @@ function opts(employee = false) {
 function assertCanonicalContext(employee: boolean) {
     assert.ok(fixture.events.length > 0, 'real spawn must feed the shared runtime emitter');
     for (const context of fixture.contexts) {
-        assert.equal(context.sessionId, 'jaw-chat-id'); assert.equal(context.scope, 'pi-test-scope');
+        assert.equal(context.sessionId, chatId); assert.equal(context.scope, 'pi-test-scope');
         assert.equal(context.parentItemId, 'jaw-parent-item');
         assert.equal(context.audience, employee ? 'internal' : 'public');
         assert.equal(context.turnId, context.runId);
@@ -170,6 +174,12 @@ for (const employee of [false, true]) {
         assert.equal(fixture.lifecycle[0]?.ctx.runtimeOutcome, undefined, 'Pi preserves its existing legacy outcome contract');
         assert.equal(fixture.lifecycle[0]?.ctx.toolLog.filter(tool => tool.label === 'bash').length, 1);
         assertCanonicalContext(employee);
+        const traceId = fixture.events[0]!.runId;
+        assert.equal(traces.getTraceRun(traceId)?.session_id, chatId);
+        assert.equal(traces.getTraceRun(traceId)?.scope_key, 'pi-test-scope');
+        const page = readActivityPage({ runId: traceId, sessionId: chatId, after: 0, limit: 40 });
+        if (employee) assert.equal(page, null);
+        else { assert.deepEqual(page!.events, fixture.events); assert.equal(page!.incomplete, false); }
         assert.equal(fixture.events.at(-1)?.kind, 'turn-end');
         assert.equal((fixture.events.at(-1) as Extract<RuntimeEvent, { kind: 'turn-end' }>).finalText, 'lifecycle-selected final');
         const tools = fixture.events.filter((e): e is Extract<RuntimeEvent, { kind: 'tool' }> => e.kind === 'tool');

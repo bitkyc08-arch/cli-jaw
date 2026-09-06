@@ -1,7 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 // Recorders are injected here; module loading must not initialize shared SQLite.
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { ClaudeSdkEvents } = await import('../../src/agent/runtime/claude-sdk-events.ts');
 const { RuntimeProjection } = await import('../../src/agent/runtime/projection.ts');
 import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-contract.ts';

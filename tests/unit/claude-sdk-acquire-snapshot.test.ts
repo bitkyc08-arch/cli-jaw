@@ -2,7 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 let loaded: Promise<unknown>;
 mock.module('../../src/agent/runtime/claude-sdk-loader.js', { namedExports: { loadClaudeSdk: () => loaded } });
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 function setup() {
     let release!: (sdk: unknown) => void, close!: () => void;

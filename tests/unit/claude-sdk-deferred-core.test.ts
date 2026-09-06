@@ -5,7 +5,7 @@ import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
 import { FULLTEXT_MAX_CHARS } from '../../src/agent/events/fulltext-bound.ts';
 import { lifecycleRuntimeOutcome } from '../../src/agent/runtime/outcome.ts';
 import type { RuntimeEnd } from '../../src/agent/runtime/projection.ts';
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 async function fixture(t: TestContext, recording: 'ok' | 'null' | 'throw' = 'ok') {

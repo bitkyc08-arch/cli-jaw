@@ -87,7 +87,10 @@ for (const invalidation of ['none', 'session', 'detached', 'new-intent'] as cons
             if (url.startsWith('/api/orchestrate/snapshot')) {
                 snapshots++; return snapshots === 1 ? pending.promise : jsonResponse({ activityIdentity: { sessionId: 'second-owner', scope: 'default' } });
             }
-            if (url.startsWith('/api/traces/')) return apiData({ id: 'tr_trigger', cli: 'fixture', eventCount: 0, total: 0, events: [] });
+            if (url.includes('/events/7?')) return apiData({ runId: 'tr_trigger', seq: 7, source: 'tool', raw: 'TRIGGER_RAW' });
+            if (url.includes('/events?')) return apiData({ total: 1, events: [{ seq: 7, source: 'tool', eventType: 'tool', preview: 'trigger detail' }] });
+            if (url.startsWith('/api/traces/')) return apiData({ id: 'tr_trigger', cli: 'fixture', model: 'fixture',
+                agentLabel: 'main', status: 'done', rawRetentionStatus: 'available', eventCount: 1, byteCount: 100, startedAt: 1 });
             throw new Error(`unexpected fetch ${url}`);
         }) as typeof fetch;
         await selectSession('view-one');
@@ -106,9 +109,11 @@ for (const invalidation of ['none', 'session', 'detached', 'new-intent'] as cons
         assert.ok(calls.includes('/api/orchestrate/snapshot?session=view-one'));
         const reads = calls.filter(path => path.startsWith('/api/traces/'));
         if (invalidation === 'none') {
-            assert.ok(reads.length > 0); assert.ok(reads.every(path => path.includes('session=server-owner')));
+            assert.equal(reads.length, 3); assert.ok(reads.every(path => path.includes('session=server-owner')));
+            assert.equal(document.getElementById('traceEventRaw')?.textContent, 'TRIGGER_RAW');
         } else if (invalidation === 'new-intent') {
-            assert.ok(reads.length > 0); assert.ok(reads.every(path => path.includes('session=second-owner')));
+            assert.equal(reads.length, 3); assert.ok(reads.every(path => path.includes('session=second-owner')));
+            assert.equal(document.getElementById('traceEventRaw')?.textContent, 'TRIGGER_RAW');
         } else assert.deepEqual(reads, []);
         const { closeTraceDrawer } = await import('../../public/js/features/trace-drawer.ts'); closeTraceDrawer();
     });

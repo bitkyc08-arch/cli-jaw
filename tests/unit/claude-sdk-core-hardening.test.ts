@@ -7,7 +7,7 @@ import { RuntimeRequests } from '../../src/agent/runtime/requests.ts';
 import { FULLTEXT_MAX_CHARS } from '../../src/agent/events/fulltext-bound.ts';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
 // Every recorder in this file is injected; no shared SQLite migration is needed.
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
+mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
 const { createClaudeSdkSession, ClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
 class Output implements AsyncIterableIterator<SDKMessage> {
