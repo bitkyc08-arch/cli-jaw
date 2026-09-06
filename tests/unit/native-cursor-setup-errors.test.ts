@@ -12,6 +12,7 @@ const script = join(home, 'setup-error-peer.mjs');
 const wirePath = join(home, 'peer-wire.jsonl');
 let peerMode = 'setup';
 let onSetupFailure: (() => void) | undefined;
+const setupErrors: string[] = [];
 fs.writeFileSync(script, `
 import readline from 'node:readline';
 import { appendFileSync } from 'node:fs';
@@ -50,7 +51,10 @@ test.mock.module('../../src/agent/runtime/acp/cursor-session.js', { namedExports
             const child = spawn(process.execPath, [script, wirePath, peerMode], options);
             children.push(child); return child;
         }) as typeof spawn,
-        }); } catch (error) { onSetupFailure?.(); throw error; }
+        }); } catch (error) {
+            setupErrors.push(error instanceof Error ? error.message : String(error));
+            onSetupFailure?.(); throw error;
+        }
     },
 } });
 const pool = await import('../../src/agent/runtime-pool.ts');
@@ -78,6 +82,7 @@ const { addBroadcastListener, removeBroadcastListener } = await import('../../sr
 test.beforeEach(t => {
     fs.writeFileSync(wirePath, '');
     peerMode = 'setup'; onSetupFailure = undefined;
+    setupErrors.length = 0;
     failRelease = false; releaseFaults = 0;
     config.settings.cli = 'cursor'; config.settings.workingDir = home; config.settings.projectDirs = [home];
     config.settings.permissions = 'auto'; config.settings.fallbackOrder = []; config.settings.activeOverrides = {};
@@ -151,9 +156,16 @@ test(`native ${scenario} failure closes its trace once and retains real SSE diag
             scopeKey: scope, chatSessionId: owner.id, requestId: `setup-${owner.id}`, sysPrompt: '',
             _skipHistory: true, _isSmokeContinuation: true }).promise;
         const deadline = Date.now() + 1000;
-        while (!packets.some(p => p.event === 'agent_done') && Date.now() < deadline) {
+        const delivered = () => {
+            const done = packets.find(p => p.event === 'agent_done' && p.sessionId === owner.id);
+            return done && packets.some(p => p.runId === done.traceRunId && (scenario === 'journal'
+                ? p.event === 'agent_runtime_gap' : p.event === 'agent_runtime' && p.kind === 'turn-end'));
+        };
+        while (!delivered() && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 5));
         }
+        assert.ok(delivered(), 'receive the matching canonical terminal or journal gap as well as compatibility');
+        assert.deepEqual(setupErrors, scenario === 'ready' || scenario === 'settle' ? [] : ['acp_rpc_error:-32603']);
         assert.deepEqual(fs.readFileSync(wirePath, 'utf8').trim().split('\n').map(line => JSON.parse(line).method),
             ['initialize', 'authenticate', 'session/new', ...(scenario === 'settle' ? ['session/prompt'] : [])]);
         assert.equal(result.code, scenario === 'cancelled' ? 130 : 1); assert.equal(result.text, ''); assert.equal(result.runtimeOutcome?.finalText, null);
