@@ -93,8 +93,8 @@ export function PiProfileDialog({ client, pi, provider, model, onClose, onRegist
         setError(null);
         try {
             const result = await client.post<{
-                models: string[];
-                settings?: { pi?: PiSettingsView };
+                ok: true;
+                data: { models: string[]; settings?: { pi?: PiSettingsView } };
             }>('/api/pi/profiles/register', {
                 id,
                 label: id,
@@ -103,7 +103,8 @@ export function PiProfileDialog({ client, pi, provider, model, onClose, onRegist
                 model: modelId,
                 apiKey,
             });
-            onRegistered({ provider: id, model: modelId, models: result.models || [], pi: result.settings?.pi });
+            const data = result.data;
+            onRegistered({ provider: id, model: modelId, models: data.models || [], pi: data.settings?.pi });
             onClose();
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : String(err));

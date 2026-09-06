@@ -58,11 +58,13 @@ function fixture(t: TestContext, name: string) {
             assert.equal(path, '/api/pi/profiles/register'); assert.ok(registrationGate, 'only explicitly admitted fixture registration');
             const value = body as Record<string, string>; posts.push(structuredClone(value));
             await registrationGate.promise;
-            const profile = { id: value.id, label: value.id, model: value.model, mode: value.mode, endpoint: value.endpoint };
+            const profile = { id: value.id, label: value.id, model: value.model, mode: value.mode, endpoint: value.endpoint,
+                apiKeySet: true, apiKeyLast4: '1234', apiKind: 'openai-completions' };
+            const models = [value.model, 'discovery-only-model'];
             // The real route commits both profile and selection before replying.
-            snapshot = { ...snapshot, pi: { defaultProfileId: value.id, profiles: [profile] },
+            snapshot = { ...snapshot, pi: { defaultProfileId: value.id, profiles: [profile], discoveredModels: { [value.id!]: models } },
                 perCli: { ...snapshot.perCli as Record<string, unknown>, pi: { provider: value.id, model: value.model } } };
-            return { ok: true, data: { models: [value.model], settings: { pi: snapshot.pi } } } as T;
+            return { ok: true, data: { models, settings: { pi: snapshot.pi } } } as T;
         }, async delete() { throw Error('Unexpected DELETE'); },
     };
     t.after(async () => { await act(async () => { for (const gate of gates) gate.resolve(); }); });
@@ -260,11 +262,16 @@ async function registerNewPi(view: Awaited<ReturnType<typeof mount>>) {
     assert.ok(button); await act(async () => button.click());
     const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!;
     await act(async () => {
-        for (const [id, value] of [['pi-profile-id', 'new-profile'], ['pi-profile-model', 'new-model']]) {
+        for (const [id, value] of [['pi-profile-id', 'new-profile'], ['pi-profile-model', 'new-model'],
+            ['pi-profile-endpoint', 'https://registered.invalid/v1'], ['pi-profile-key', 'fixture-key-1234']]) {
             const input = view.container.querySelector<HTMLInputElement>('#' + id)!; assert.ok(input);
             setter.call(input, value); input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
         }
     });
+    await act(async () => view.container.querySelector<HTMLButtonElement>('#pi-profile-mode')!.click());
+    const mode = [...view.container.querySelectorAll<HTMLButtonElement>('[role="dialog"] [role="option"]')]
+        .find(node => node.querySelector('span')?.textContent === 'openai');
+    assert.ok(mode); await act(async () => mode.click());
     const register = [...view.container.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(node => node.textContent === 'Register')!;
     assert.ok(register); await act(async () => register.click());
 }
@@ -285,6 +292,16 @@ for (const saveFails of [true, false]) test(`admitted Pi registration stays visi
     assert.ok(piRow); assert.match(piRow.textContent!, /new-profile/); assert.match(piRow.textContent!, /new-model/);
     assert.equal(view.dirty.pending.get('perCli.pi.provider')?.value, 'new-profile');
     assert.equal(view.dirty.pending.get('perCli.pi.model')?.value, 'new-model');
+    const model = piRow.querySelector<HTMLButtonElement>('#percli-pi-model'); assert.ok(model);
+    await act(async () => model.click());
+    assert.ok([...piRow.querySelectorAll('[role="option"] span')].some(node => node.textContent === 'discovery-only-model'));
+    await act(async () => model.click());
+    const settings = [...piRow.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Settings');
+    assert.ok(settings); await act(async () => settings.click());
+    assert.equal(view.container.querySelector<HTMLInputElement>('#pi-profile-endpoint')?.value, 'https://registered.invalid/v1');
+    assert.equal(view.container.querySelector('#pi-profile-mode .settings-select-value')?.textContent, 'openai');
+    const key = view.container.querySelector<HTMLInputElement>('#pi-profile-key'); assert.ok(key);
+    assert.equal(key.placeholder, 'set (1234)'); assert.equal(key.value, '', 'reopened dialog never restores a raw key');
 });
 
 for (const returnToA of [false, true]) test(`retired Pi registration cannot write current ${returnToA ? 'A after B' : 'B'} draft`, bounded, async t => {
