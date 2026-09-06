@@ -42,14 +42,11 @@ readline.createInterface({input:process.stdin}).on('line',line=> {
  process.stderr.write('fixture progress\n');
  send({type:'system',subtype:'init',session_id:'private-claude-session',permissionMode:'default'});
  send({type:'assistant',parent_tool_use_id:null,message:{id:'partial-'+turns,content:[{type:'text',text:'PRE-TOOL COMMENTARY'}]}});
+ if(text.includes('HOLD_PARTIAL_PROGRESS')) { waiting={message,text}; send({fixturePause:true}); return; }
  if(text.includes('HOLD_NATIVE_FIXTURE')) return;
- const question=text.includes('ASK_QUESTION'), approval=text.includes('ASK_APPROVAL');
- const tool=question?'AskUserQuestion':approval?'Bash':'Read', id='private-tool-'+turns;
- const input=question?{questions:[{question:'Choose color?',header:'Color',multiSelect:false,options:[{label:'Blue'},{label:'Green'}]}]}
-  :approval?{command:'pwd'}:{file_path:'fixture.txt'};
+ const tool='Read', id='private-tool-'+turns, input={file_path:'fixture.txt'};
  send({type:'assistant',parent_tool_use_id:null,message:{id:'tool-'+turns,content:[{type:'tool_use',id,name:tool,input}]}});
  if(text.includes('HOLD_TOOL_PROGRESS')) { waiting={message,text,id}; send({fixturePause:true}); return; }
- if(question||approval) { waiting={message,text}; send({fixturePermission:true,tool,id,input}); return; }
  send({type:'user',parent_tool_use_id:null,message:{content:[{type:'tool_result',tool_use_id:id,content:'fixture tool output'}]}});
  finish(message,text);
 });
@@ -61,7 +58,10 @@ test.mock.module('../../src/core/config.js', { namedExports: { ...config,
 type QueryInput = Parameters<NonNullable<ClaudeSessionOptions['queryFactory']>>[0];
 const queries: Array<{ options: QueryInput['options']; child: ChildProcessWithoutNullStreams; messages: any[]; decisions: any[]; done: Promise<void> }> = [];
 let beforeFixtureResume: (() => Promise<void>) | undefined;
-test.mock.module('../../src/agent/runtime/claude-sdk-loader.js', { namedExports: { loadClaudeSdk: async () => ({ query: ({ prompt, options }: QueryInput) => {
+let sdkMissing = false;
+test.mock.module('../../src/agent/runtime/claude-sdk-loader.js', { namedExports: { loadClaudeSdk: async () => {
+    if (sdkMissing) throw new Error('Claude native SDK unavailable');
+    return { query: ({ prompt, options }: QueryInput) => {
     const controller = new AbortController();
     const child = options.spawnClaudeCodeProcess!({ command: process.execPath, args: ['-e', childCode],
         cwd: options.cwd, env: process.env, signal: controller.signal }) as ChildProcessWithoutNullStreams;
@@ -76,14 +76,18 @@ test.mock.module('../../src/agent/runtime/claude-sdk-loader.js', { namedExports:
                 const frame = JSON.parse(line);
                 if (frame.fixturePause) {
                     await beforeFixtureResume?.(); child.stdin.write(JSON.stringify({ fixtureDecision: true }) + '\n');
-                } else if (frame.fixturePermission) {
-                    const decision = await options.canUseTool!(frame.tool, frame.input, { toolUseID: frame.id, signal: controller.signal });
-                    decisions.push(decision); child.stdin.write(JSON.stringify({ fixtureDecision: decision }) + '\n');
                 } else yield frame;
             }
         },
     };
-} }) } });
+} }; } } });
+// Install this boundary before Session/Projection capture their recorder import.
+const trace = await import('../../src/trace/store.ts');
+let failJournal = false;
+test.mock.module('../../src/trace/store.js', { namedExports: { ...trace,
+    appendTraceEvent: (...args: Parameters<typeof trace.appendTraceEvent>) => {
+        if (failJournal) throw new Error('fixture journal failure'); return trace.appendTraceEvent(...args);
+    } } });
 const factory = await import('../../src/agent/runtime/claude-sdk-session.ts');
 const sessions: InstanceType<typeof factory.ClaudeSdkSession>[] = [];
 const inputs: ClaudeSessionOptions[] = [];
@@ -102,12 +106,6 @@ let beforeLifecycle: ((input: Parameters<typeof lifecycle.handleAgentExit>[0]) =
 test.mock.module('../../src/agent/lifecycle-handler.js', { namedExports: { ...lifecycle,
     handleAgentExit: async (input: Parameters<typeof lifecycle.handleAgentExit>[0]) => {
         await beforeLifecycle?.(input); return lifecycle.handleAgentExit(input);
-    } } });
-const trace = await import('../../src/trace/store.ts');
-let failJournal = false;
-test.mock.module('../../src/trace/store.js', { namedExports: { ...trace,
-    appendTraceEvent: (...args: Parameters<typeof trace.appendTraceEvent>) => {
-        if (failJournal) throw new Error('fixture journal failure'); return trace.appendTraceEvent(...args);
     } } });
 const { spawnAgent, killActiveAgent, killAgentById, killAllAgents, waitForExitSettled, waitForProcessEnd,
     waitForAllProcessesEnd, activeMainProcesses, activeProcesses, enqueueMessage, messageQueue, removeQueuedMessage } = await import('../../src/agent/spawn.ts');
@@ -144,7 +142,7 @@ function assertTerminalOrder(events: Array<{ type: string; data: Record<string, 
 }
 test.beforeEach(t => {
     inputs.length = 0; queries.length = 0; factoryDone.length = 0; beforeFactory = undefined; beforeLifecycle = undefined; failJournal = false;
-    beforeFixtureResume = undefined; detectedBinary = process.execPath;
+    beforeFixtureResume = undefined; detectedBinary = process.execPath; sdkMissing = false;
     config.settings.cli = 'claude'; config.settings.workingDir = root; config.settings.projectDirs = [root];
     config.settings.permissions = 'auto'; config.settings.fallbackOrder = []; config.settings.activeOverrides = {};
     config.settings.perCli = { ...config.settings.perCli, claude: { model: 'default', effort: 'low', transport: 'native' } };
@@ -342,6 +340,34 @@ runTest('failed fallback recording still returns one diagnostic without a fabric
         assert.equal(events.filter(event => event.type === 'agent_done').length, 1);
         assert.equal(trace.getTraceRun(result.traceRunId!)?.status, 'error');
         assert.equal(queries.length, 0); assert.deepEqual(assistantRows(opts.chatSessionId), []);
+    } finally { off(); }
+});
+
+runTest('journal failure still persists interrupted salvage before the actual exit-settle barrier', async () => {
+    failJournal = true; const opts = options(), watermark = getMaxMessageId(opts.chatSessionId);
+    let barrier: Promise<void> | undefined, salvage: string | null | undefined;
+    beforeFixtureResume = async () => {
+        // The async query has already yielded the parent frame here.
+        assert.equal(killActiveAgent(opts.scopeKey, 'steer'), true);
+        barrier = waitForExitSettled(opts.scopeKey).then(() => { salvage = getSteerSalvageAfter(opts.chatSessionId, watermark); });
+    };
+    const result = await spawnAgent('HOLD_PARTIAL_PROGRESS', opts).promise;
+    assert.ok(barrier); await barrier;
+    assert.equal(result.runtimeOutcome?.status, 'stopped'); assert.equal(result.runtimeOutcome?.finalText, null);
+    assert.equal(result.runtimeOutcome?.partialText, 'PRE-TOOL COMMENTARY');
+    assert.equal(salvage, '⏹️ [interrupted]\n\nPRE-TOOL COMMENTARY');
+    assert.equal(hasClaudeRuns(opts.scopeKey), false);
+});
+
+runTest('optional SDK load failure ends explicit native mode without print or fallback', async () => {
+    sdkMissing = true; const opts = options(), events: Array<{ type: string; data: Record<string, any> }> = [];
+    const off = subscribe(event => events.push({ type: event.event, data: event.data }));
+    try {
+        const result = await spawnAgent('no SDK available', opts).promise;
+        assert.equal(result.runtimeOutcome?.status, 'error'); assert.equal(result.runtimeOutcome?.finalText, null);
+        assert.equal(queries.length, 0); assert.ok(result.traceRunId); assertTerminalOrder(events, result.traceRunId);
+        assert.equal(events.some(event => event.type === 'agent_fallback' || event.type === 'agent_output'), false);
+        assert.deepEqual(assistantRows(opts.chatSessionId), []);
     } finally { off(); }
 });
 
